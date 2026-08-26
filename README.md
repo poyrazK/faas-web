@@ -228,7 +228,7 @@ https://gregale.dev/v1/auth/github/callback
 
 Vercel's native Git integration is connected to `poyrazK/faas-web`. Pull
 requests receive preview deployments automatically, and pushes to `main`
-deploy to `gregale.dev`.
+deploy to `gregale.dev`. The `main` branch is the production branch.
 
 Anywhere else, the equivalent one-liner:
 
