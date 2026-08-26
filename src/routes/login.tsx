@@ -1,17 +1,49 @@
-import { createFileRoute, redirect } from '@tanstack/react-router';
+import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router';
+import { useEffect } from 'react';
 import { AuthLayout } from '@/components/auth/auth-layout';
 import { PasswordFlow } from '@/components/auth/password-flow';
-import { hasOnboarded, readSession } from '@/lib/auth';
+import { clearOAuthPending, hasOAuthPending, hasOnboarded, readSession, useAuth } from '@/lib/auth';
 import { pageHead } from '@/lib/seo';
 
 export const Route = createFileRoute('/login')({
   head: () => pageHead({ title: 'Sign in' }),
   beforeLoad: () => {
     if (readSession()) throw redirect({ to: hasOnboarded() ? '/dashboard' : '/onboarding' });
+    // OAuth returns through a full-page provider redirect. There is no
+    // localStorage session hint yet, so let AuthProvider verify the HttpOnly
+    // cookie before deciding that this is really a signed-out visit.
+    if (hasOAuthPending()) return;
   },
-  component: () => (
+  component: LoginPage,
+});
+
+function LoginPage() {
+  const navigate = useNavigate();
+  const { user, loading } = useAuth();
+  const oauthPending = hasOAuthPending();
+
+  // WEBSITE_URL may point at `/login` on an existing deployment. Complete the
+  // same cookie-to-client handoff as the landing route in that case too.
+  useEffect(() => {
+    if (loading || !hasOAuthPending()) return;
+    clearOAuthPending();
+    if (!user) return;
+    void navigate({ to: hasOnboarded() ? '/dashboard' : '/onboarding', replace: true });
+  }, [loading, navigate, user]);
+
+  if (oauthPending && loading) {
+    return (
+      <AuthLayout>
+        <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
+          Finishing sign-in…
+        </p>
+      </AuthLayout>
+    );
+  }
+
+  return (
     <AuthLayout>
       <PasswordFlow mode="signin" />
     </AuthLayout>
-  ),
-});
+  );
+}
