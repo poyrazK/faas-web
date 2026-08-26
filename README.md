@@ -226,6 +226,10 @@ https://gregale.dev/v1/auth/google/callback
 https://gregale.dev/v1/auth/github/callback
 ```
 
+Vercel's native Git integration is connected to `poyrazK/faas-web`. Pull
+requests receive preview deployments automatically, and pushes to `main`
+deploy to `gregale.dev`.
+
 Anywhere else, the equivalent one-liner:
 
 ```nginx
