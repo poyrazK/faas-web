@@ -37,7 +37,11 @@ export function slugifyHeading(text: string): string {
 }
 
 export function docSource(slug: string): string | undefined {
-  return FILES[`/content/docs/${slug}.md`];
+  // A Windows checkout can vendor these files with CRLF endings, and `.` in a
+  // JS regex refuses to match `\r` — which silently breaks `stripTitle` and
+  // renders the title twice. Normalising once here heals every consumer,
+  // the copy-to-clipboard text included.
+  return FILES[`/content/docs/${slug}.md`]?.replace(/\r\n/g, '\n');
 }
 
 /**
@@ -58,6 +62,18 @@ export function extractHeadings(markdown: string): Heading[] {
   }
 
   return headings;
+}
+
+/**
+ * Estimated reading time, for the index cards and the page header.
+ *
+ * Prose pace (~220 wpm) over a plain word split. Code samples and tables count
+ * as words, which overweights them slightly — close enough for a label that is
+ * explicitly an estimate ("~3 min"), and honest enough not to need more.
+ */
+export function readingMinutes(markdown: string): number {
+  const words = markdown.split(/\s+/).filter(Boolean).length;
+  return Math.max(1, Math.round(words / 220));
 }
 
 /**
