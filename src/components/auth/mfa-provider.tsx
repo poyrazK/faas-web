@@ -47,6 +47,7 @@ export function MfaProvider({ children }: { children: ReactNode }) {
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [required, setRequired] = useState(false);
 
   const resetTransient = useCallback(() => {
     setEnrollment(null);
@@ -57,6 +58,7 @@ export function MfaProvider({ children }: { children: ReactNode }) {
   const openMfa = useCallback(
     (nextMode: MfaMode = 'choose') => {
       resetTransient();
+      setRequired(false);
       setMode(nextMode);
       setOpen(true);
     },
@@ -65,6 +67,7 @@ export function MfaProvider({ children }: { children: ReactNode }) {
 
   const handleMfaRequired = useCallback(() => {
     setError(null);
+    setRequired(true);
     setMode('choose');
     setOpen(true);
   }, []);
@@ -104,6 +107,7 @@ export function MfaProvider({ children }: { children: ReactNode }) {
   const complete = useCallback(async () => {
     setBusy(false);
     setOpen(false);
+    setRequired(false);
     resetTransient();
     // A blocked query remains cached as an error. Refetch every resource so
     // the page that triggered the gate recovers immediately after the cookie
@@ -148,11 +152,17 @@ export function MfaProvider({ children }: { children: ReactNode }) {
         open={open}
         onClose={close}
         title={
-          mode === 'choose' ? 'Additional verification required' : 'Multi-factor authentication'
+          mode === 'choose'
+            ? required
+              ? 'Additional verification required'
+              : 'Protect your account with MFA'
+            : 'Multi-factor authentication'
         }
         description={
           mode === 'choose'
-            ? 'This session needs MFA before the dashboard can load.'
+            ? required
+              ? 'This session needs MFA before the dashboard can load.'
+              : 'MFA is optional. Set it up when you want extra protection for your account.'
             : 'Use an authenticator app or a saved recovery code to continue.'
         }
         width="max-w-lg"
@@ -160,8 +170,9 @@ export function MfaProvider({ children }: { children: ReactNode }) {
         {mode === 'choose' && (
           <div className="space-y-4">
             <p className="text-sm leading-relaxed text-muted-foreground">
-              MFA adds a second factor to your Gregale account. Set up an authenticator if this is
-              your first time, or verify an existing one to unlock the dashboard.
+              {required
+                ? 'MFA adds a second factor to your Gregale account. Set up an authenticator if this is your first time, or verify an existing one to unlock the dashboard.'
+                : 'MFA adds a second factor to your Gregale account. Set up an authenticator now to require a code whenever you sign in from a new dashboard session.'}
             </p>
             {error && <InlineError message={error} />}
             <div className="grid gap-2 sm:grid-cols-2">
