@@ -4,6 +4,110 @@
  */
 
 export interface paths {
+    "/v1/admin/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List operator runtime configuration
+         * @description Returns the closed configuration catalog together with desired and
+         *     effective values. Sensitive settings are redacted. This is an
+         *     operator-only route and is not part of the customer API.
+         */
+        get: operations["listOperatorRuntimeConfig"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/config/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update an operator runtime setting
+         * @description Applies a catalogued setting through the zero-downtime runtime
+         *     configuration path. Hot settings return the applied entry; graceful
+         *     and rolling settings return a durable operation.
+         */
+        patch: operations["updateOperatorRuntimeConfig"];
+        trace?: never;
+    };
+    "/v1/admin/config-operations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a runtime configuration apply operation
+         * @description Polls a durable graceful or rolling configuration apply operation.
+         */
+        get: operations["getOperatorRuntimeConfigOperation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/config/{key}/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Roll back a runtime setting to a previous revision
+         * @description Applies a historical value as a new version through the hot-apply path.
+         */
+        post: operations["rollbackOperatorRuntimeConfig"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/config/{key}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List runtime configuration revisions
+         * @description Read-only append-only version history for one catalogued setting.
+         */
+        get: operations["listOperatorRuntimeConfigRevisions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/account": {
         parameters: {
             query?: never;
@@ -4409,6 +4513,87 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description One entry from the closed operator runtime-configuration catalog. */
+        OperatorRuntimeConfig: {
+            key: string;
+            label: string;
+            description: string;
+            category: string;
+            /** @enum {string} */
+            kind: "boolean" | "integer" | "duration" | "string" | "enum" | "secret_reference";
+            default_value: unknown;
+            desired_value: unknown;
+            effective_value: unknown;
+            /** @enum {string} */
+            source: "default_or_environment" | "operator";
+            /** @enum {string} */
+            apply_mode: "hot" | "graceful" | "rolling" | "break_glass";
+            mutable: boolean;
+            sensitive: boolean;
+            /** @enum {string} */
+            status: "pending" | "applied" | "failed" | "blocked";
+            last_error?: string;
+            /** Format: int64 */
+            version: number;
+            /** Format: date-time */
+            updated_at?: string;
+            /** Format: date-time */
+            applied_at?: string;
+        };
+        /** @description Durable asynchronous runtime-configuration apply request. */
+        OperatorRuntimeConfigOperation: {
+            /** Format: uuid */
+            id: string;
+            key: string;
+            /** @enum {string} */
+            scope: "global" | "control_plane" | "daemon" | "node";
+            scope_id: string;
+            /** Format: int64 */
+            version: number;
+            desired_value: unknown;
+            effective_value: unknown;
+            /** @enum {string} */
+            apply_mode: "graceful" | "rolling" | "break_glass";
+            /** @enum {string} */
+            status: "pending" | "running" | "succeeded" | "failed" | "blocked" | "cancelled";
+            phase: string;
+            error?: string;
+            reason: string;
+            target_count: number;
+            applied_count: number;
+            failed_count: number;
+            /** Format: date-time */
+            requested_at: string;
+            /** Format: date-time */
+            started_at?: string;
+            /** Format: date-time */
+            finished_at?: string;
+        };
+        /** @description One append-only runtime configuration revision. */
+        OperatorRuntimeConfigRevision: {
+            /** Format: int64 */
+            id: number;
+            key: string;
+            /** @enum {string} */
+            scope: "global" | "control_plane" | "daemon" | "node";
+            scope_id: string;
+            /** Format: int64 */
+            version: number;
+            old_value: unknown;
+            new_value: unknown;
+            actor_id?: string;
+            reason: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        /** @description Request to apply a historical runtime configuration revision. */
+        RollbackOperatorRuntimeConfigRequest: {
+            /** Format: int64 */
+            version: number;
+            reason: string;
+            /** Format: int64 */
+            expected_version?: number;
+        };
         /** @description Email + password for sign-in. Email is canonicalised server-side (lowercase + trim). */
         PasswordLoginRequest: {
             /** Format: email */
@@ -9802,6 +9987,168 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listOperatorRuntimeConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Runtime configuration catalog */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["OperatorRuntimeConfig"][];
+                        /** Format: date-time */
+                        generated_at: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    updateOperatorRuntimeConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Catalog key to update. */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    value: unknown;
+                    reason: string;
+                    /** Format: int64 */
+                    expected_version?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Applied configuration entry */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorRuntimeConfig"];
+                };
+            };
+            /** @description Graceful apply operation queued */
+            202: {
+                headers: {
+                    /** @description Polling URL for the durable apply operation. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorRuntimeConfigOperation"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getOperatorRuntimeConfigOperation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Durable configuration operation id. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Runtime configuration apply operation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorRuntimeConfigOperation"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    rollbackOperatorRuntimeConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Catalog key to roll back. */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RollbackOperatorRuntimeConfigRequest"];
+            };
+        };
+        responses: {
+            /** @description Rolled-back and applied configuration entry */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorRuntimeConfig"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listOperatorRuntimeConfigRevisions: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of revisions to return. */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Catalog key whose history should be returned. */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Configuration revision history */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["OperatorRuntimeConfigRevision"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     getAccount: {
         parameters: {
             query?: never;

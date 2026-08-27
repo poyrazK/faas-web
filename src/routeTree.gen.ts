@@ -30,6 +30,7 @@ import { Route as DashboardInvoicesRouteImport } from './routes/dashboard.invoic
 import { Route as DashboardKeysRouteImport } from './routes/dashboard.keys'
 import { Route as DashboardLogsRouteImport } from './routes/dashboard.logs'
 import { Route as DashboardMetricsRouteImport } from './routes/dashboard.metrics'
+import { Route as DashboardOperatorRouteImport } from './routes/dashboard.operator'
 import { Route as DashboardPlansRouteImport } from './routes/dashboard.plans'
 import { Route as DashboardQueuesRouteImport } from './routes/dashboard.queues'
 import { Route as DashboardSecretsRouteImport } from './routes/dashboard.secrets'
@@ -152,6 +153,11 @@ const DashboardMetricsRoute = DashboardMetricsRouteImport.update({
   path: '/metrics',
   getParentRoute: () => DashboardRoute,
 } as any)
+const DashboardOperatorRoute = DashboardOperatorRouteImport.update({
+  id: '/operator',
+  path: '/operator',
+  getParentRoute: () => DashboardRoute,
+} as any)
 const DashboardPlansRoute = DashboardPlansRouteImport.update({
   id: '/plans',
   path: '/plans',
@@ -255,6 +261,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/keys': typeof DashboardKeysRoute
   '/dashboard/logs': typeof DashboardLogsRoute
   '/dashboard/metrics': typeof DashboardMetricsRoute
+  '/dashboard/operator': typeof DashboardOperatorRoute
   '/dashboard/plans': typeof DashboardPlansRoute
   '/dashboard/queues': typeof DashboardQueuesRoute
   '/dashboard/secrets': typeof DashboardSecretsRoute
@@ -292,6 +299,7 @@ export interface FileRoutesByTo {
   '/dashboard/keys': typeof DashboardKeysRoute
   '/dashboard/logs': typeof DashboardLogsRoute
   '/dashboard/metrics': typeof DashboardMetricsRoute
+  '/dashboard/operator': typeof DashboardOperatorRoute
   '/dashboard/plans': typeof DashboardPlansRoute
   '/dashboard/queues': typeof DashboardQueuesRoute
   '/dashboard/secrets': typeof DashboardSecretsRoute
@@ -332,6 +340,7 @@ export interface FileRoutesById {
   '/dashboard/keys': typeof DashboardKeysRoute
   '/dashboard/logs': typeof DashboardLogsRoute
   '/dashboard/metrics': typeof DashboardMetricsRoute
+  '/dashboard/operator': typeof DashboardOperatorRoute
   '/dashboard/plans': typeof DashboardPlansRoute
   '/dashboard/queues': typeof DashboardQueuesRoute
   '/dashboard/secrets': typeof DashboardSecretsRoute
@@ -373,6 +382,7 @@ export interface FileRouteTypes {
     | '/dashboard/keys'
     | '/dashboard/logs'
     | '/dashboard/metrics'
+    | '/dashboard/operator'
     | '/dashboard/plans'
     | '/dashboard/queues'
     | '/dashboard/secrets'
@@ -410,6 +420,7 @@ export interface FileRouteTypes {
     | '/dashboard/keys'
     | '/dashboard/logs'
     | '/dashboard/metrics'
+    | '/dashboard/operator'
     | '/dashboard/plans'
     | '/dashboard/queues'
     | '/dashboard/secrets'
@@ -449,6 +460,7 @@ export interface FileRouteTypes {
     | '/dashboard/keys'
     | '/dashboard/logs'
     | '/dashboard/metrics'
+    | '/dashboard/operator'
     | '/dashboard/plans'
     | '/dashboard/queues'
     | '/dashboard/secrets'
@@ -626,6 +638,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardMetricsRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/dashboard/operator': {
+      id: '/dashboard/operator'
+      path: '/operator'
+      fullPath: '/dashboard/operator'
+      preLoaderRoute: typeof DashboardOperatorRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/dashboard/plans': {
       id: '/dashboard/plans'
       path: '/plans'
@@ -756,6 +775,7 @@ interface DashboardRouteChildren {
   DashboardKeysRoute: typeof DashboardKeysRoute
   DashboardLogsRoute: typeof DashboardLogsRoute
   DashboardMetricsRoute: typeof DashboardMetricsRoute
+  DashboardOperatorRoute: typeof DashboardOperatorRoute
   DashboardPlansRoute: typeof DashboardPlansRoute
   DashboardQueuesRoute: typeof DashboardQueuesRoute
   DashboardSecretsRoute: typeof DashboardSecretsRoute
@@ -788,6 +808,7 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardKeysRoute: DashboardKeysRoute,
   DashboardLogsRoute: DashboardLogsRoute,
   DashboardMetricsRoute: DashboardMetricsRoute,
+  DashboardOperatorRoute: DashboardOperatorRoute,
   DashboardPlansRoute: DashboardPlansRoute,
   DashboardQueuesRoute: DashboardQueuesRoute,
   DashboardSecretsRoute: DashboardSecretsRoute,
