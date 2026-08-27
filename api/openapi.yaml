@@ -1090,6 +1090,41 @@ paths:
               schema: { $ref: '#/components/schemas/Problem' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
 
+  /v1/auth/csrf:
+    get:
+      tags: [auth]
+      operationId: issueBrowserCSRFToken
+      summary: Issue an action-bound CSRF token for the dashboard.
+      description: |
+        Returns a short-lived CSRF token bound to the authenticated
+        account and the requested browser mutation. The matching
+        `faas_csrf` cookie is HttpOnly; clients send the returned
+        `csrf_token` in the mutation's JSON body. This route remains
+        reachable while the session is `mfa_pending` so the dashboard
+        can complete MFA enrollment or recovery.
+      parameters:
+        - $ref: '#/components/parameters/CookieSession'
+        - name: action
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [auth.logout, auth.session.revoke, auth.sessions.revoke_all, mfa_confirm, mfa_recover, mfa_disable]
+          description: Exact mutation action the token will authorize.
+      responses:
+        '200':
+          description: Action-bound CSRF token.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CSRFTokenResponse' }
+        '400':
+          description: Unknown or missing action.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
   /v1/auth/sessions:
     get:
       tags: [auth]
@@ -12239,6 +12274,15 @@ components:
         `{}` decodes cleanly without a "no JSON object" parse error.
       type: object
       additionalProperties: false
+
+    CSRFTokenResponse:
+      description: Action-bound CSRF token for browser clients.
+      type: object
+      required: [csrf_token]
+      properties:
+        csrf_token:
+          type: string
+          description: Opaque token to echo in the mutation's JSON body.
 
     MFAEnrollResponse:
       description: |

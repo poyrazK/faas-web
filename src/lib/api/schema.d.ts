@@ -624,6 +624,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/csrf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Issue an action-bound CSRF token for the dashboard.
+         * @description Returns a short-lived CSRF token bound to the authenticated
+         *     account and the requested browser mutation. The matching
+         *     `faas_csrf` cookie is HttpOnly; clients send the returned
+         *     `csrf_token` in the mutation's JSON body. This route remains
+         *     reachable while the session is `mfa_pending` so the dashboard
+         *     can complete MFA enrollment or recovery.
+         */
+        get: operations["issueBrowserCSRFToken"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/sessions": {
         parameters: {
             query?: never;
@@ -8691,6 +8716,11 @@ export interface components {
          *     `{}` decodes cleanly without a "no JSON object" parse error.
          */
         MFAEnrollRequest: Record<string, never>;
+        /** @description Action-bound CSRF token for browser clients. */
+        CSRFTokenResponse: {
+            /** @description Opaque token to echo in the mutation's JSON body. */
+            csrf_token: string;
+        };
         /**
          * @description One-shot enrollment payload. Returned exactly once on
          *     /enroll. The server persists `mfa_secret_encrypted` (sealed)
@@ -10718,6 +10748,49 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    issueBrowserCSRFToken: {
+        parameters: {
+            query: {
+                /** @description Exact mutation action the token will authorize. */
+                action: "auth.logout" | "auth.session.revoke" | "auth.sessions.revoke_all" | "mfa_confirm" | "mfa_recover" | "mfa_disable";
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                /**
+                 * @description Dashboard session cookie. Sealed; opaque to the client
+                 *     (`HttpOnly; Secure; SameSite=Lax`). 7-day fixed lifetime.
+                 *     The browser sets it automatically on `/login` / `/signup`;
+                 *     the SDK uses the device-code flow instead and never sets
+                 *     this cookie.
+                 */
+                faas_sid?: components["parameters"]["CookieSession"];
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Action-bound CSRF token. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CSRFTokenResponse"];
+                };
+            };
+            /** @description Unknown or missing action. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
             429: components["responses"]["TooManyRequests"];
         };
     };

@@ -6,6 +6,7 @@ import { AuthProvider } from '@/lib/auth';
 import { DataProvider } from '@/lib/store';
 import { retryPolicy } from '@/lib/api/queries';
 import { ToastProvider } from '@/components/ui/toast';
+import { MfaProvider } from '@/components/auth/mfa-provider';
 import { DevBypassButton } from '@/components/dev-bypass-button';
 import { pageHead } from '@/lib/seo';
 
@@ -51,32 +52,34 @@ const queryClient = new QueryClient({
 function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <DataProvider>
-          {/* Tuned for a paper page: the sweep now has to read as a darkening
+      <MfaProvider>
+        <AuthProvider>
+          <DataProvider>
+            {/* Tuned for a paper page: the sweep now has to read as a darkening
               band rather than a glow, so brightness comes up toward neutral —
               pulling it down was what kept it from blowing out against the old
               near-black surface, and on white that only made it muddy. */}
-          <GlimmProvider
-            palette={MINT_SWEEP}
-            brightness={0.94}
-            sweepMs={950}
-            outroMs={620}
-            easing="easeInOutCubic"
-            waveAmount={0.6}
-            swellAmount={0.6}
-          >
-            <ToastProvider>
-              {/* Applies each route's `head` to the document. */}
-              <HeadContent />
-              <Outlet />
-              {/* Statically false in production, so the button and its
+            <GlimmProvider
+              palette={MINT_SWEEP}
+              brightness={0.94}
+              sweepMs={950}
+              outroMs={620}
+              easing="easeInOutCubic"
+              waveAmount={0.6}
+              swellAmount={0.6}
+            >
+              <ToastProvider>
+                {/* Applies each route's `head` to the document. */}
+                <HeadContent />
+                <Outlet />
+                {/* Statically false in production, so the button and its
                   module are dropped from the bundle. */}
-              {import.meta.env.DEV && <DevBypassButton />}
-            </ToastProvider>
-          </GlimmProvider>
-        </DataProvider>
-      </AuthProvider>
+                {import.meta.env.DEV && <DevBypassButton />}
+              </ToastProvider>
+            </GlimmProvider>
+          </DataProvider>
+        </AuthProvider>
+      </MfaProvider>
     </QueryClientProvider>
   );
 }
