@@ -424,6 +424,11 @@ export function formatMs(ms: number): string {
 }
 
 export function formatRelative(ts: number): string {
+  // A zero timestamp is the adapter's explicit sentinel for an app that has
+  // never been deployed. Treat invalid timestamps as missing data rather than
+  // rendering the Unix epoch as a many-thousand-day-old deployment.
+  if (!Number.isFinite(ts) || ts <= 0) return 'Never';
+
   // Against the real clock: every caller now passes live API timestamps, and
   // the pinned fixture clock above made anything newer than it read "just now".
   const diff = Date.now() - ts;
