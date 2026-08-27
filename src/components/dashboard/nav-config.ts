@@ -17,6 +17,7 @@ import {
   Shuffle,
   GraphUp,
   Group,
+  Github,
   GitFork as WorkflowIcon,
 } from 'iconoir-react';
 
@@ -85,6 +86,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: '/dashboard/keys', label: 'API Keys', icon: Key },
       { to: '/dashboard/team', label: 'Team', icon: Group },
+      { to: '/dashboard/account', label: 'Account', icon: Github },
       { to: '/dashboard/security', label: 'Security', icon: ShieldCheck },
       { to: '/dashboard/settings', label: 'Settings', icon: Settings },
     ],

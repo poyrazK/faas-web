@@ -20,10 +20,12 @@ const API_ORIGIN = process.env.API_ORIGIN ?? 'https://api.gregale.dev';
 const MOCK = process.env.MOCK_API === '1';
 
 /**
- * Paths `apid` owns outright. `/auth/*` is in here because the OAuth consent
- * and callback routes are real full-page navigations to the server.
+ * Paths `apid` owns outright. `/auth/*` and `/oauth/*` are in here because
+ * the OAuth consent and callback routes are real full-page navigations to the
+ * server. The dashboard install endpoint is also a browser form POST: using
+ * the proxy keeps the session cookie on this origin during local development.
  */
-const API_PATHS = ['/v1', '/auth'];
+const API_PATHS = ['/v1', '/auth', '/dashboard/install', '/oauth'];
 
 /**
  * `/login` and `/signup` are owned by *both* sides, split by method: this app

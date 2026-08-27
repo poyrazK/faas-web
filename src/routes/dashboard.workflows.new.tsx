@@ -9,6 +9,7 @@ import { BuildLog } from '@/components/dashboard/build-log';
 import { PageHeader, Panel } from '@/components/dashboard/primitives';
 import { type Runtime } from '@/lib/mock-data';
 import { errorMessage } from '@/lib/api/errors';
+import { useAuth } from '@/lib/auth';
 import { useData } from '@/lib/store';
 import { useDeployFromRefFor, useUpdateAppFor } from '@/lib/api/queries';
 import { cn } from '@/lib/utils';
@@ -64,6 +65,7 @@ const MEMORY = [128, 256, 512, 1024, 2048];
 function NewFunctionPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { account } = useAuth();
   const { addWorkflow } = useData();
 
   const [createdId, setCreatedId] = useState<string | null>(null);
@@ -81,6 +83,7 @@ function NewFunctionPage() {
   const [runtime, setRuntime] = useState<Runtime>('node22');
   const [memoryMb, setMemoryMb] = useState(512);
   const [scaleToZero, setScaleToZero] = useState(true);
+  const githubConnected = Boolean(account?.github_install_id);
 
   const [deploying, setDeploying] = useState(false);
   const [deployed, setDeployed] = useState(false);
@@ -481,6 +484,24 @@ function NewFunctionPage() {
                 </span>{' '}
                 — billed only for time spent running.
               </p>
+
+              {source === 'git' && !githubConnected && (
+                <div
+                  role="alert"
+                  className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-brand/30 bg-brand/5 px-3 py-2.5 text-xs"
+                >
+                  <span className="text-muted-foreground">
+                    Connect GitHub before deploying from a repository. This keeps the app from being
+                    created without its first deployment.
+                  </span>
+                  <Link
+                    to="/dashboard/account"
+                    className="shrink-0 font-medium text-brand hover:underline"
+                  >
+                    Connect GitHub
+                  </Link>
+                </div>
+              )}
             </Panel>
 
             <div className="flex items-center justify-between">
@@ -490,6 +511,7 @@ function NewFunctionPage() {
               </Button>
               <Button
                 variant="cta"
+                disabled={source === 'git' && !githubConnected}
                 onClick={() => setDeploying(true)}
                 className="h-10 gap-2 rounded-lg px-6"
               >
