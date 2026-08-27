@@ -1,5 +1,5 @@
 import { createRootRoute, HeadContent, Link, Outlet } from '@tanstack/react-router';
-import { accentChain } from 'glimm';
+import { hexToRgb, type Palette } from 'glimm';
 import { GlimmProvider } from 'glimm/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from '@/lib/auth';
@@ -18,14 +18,37 @@ export const Route = createRootRoute({
 });
 
 /**
- * The sweep palette, fitted to the brand ramp.
+ * The sweep palette, built by hand rather than fitted.
  *
- * glimm ships six named palettes and none of them are mint — `mint` exists only
- * in its accent set, which is not what `palette` takes. `accentChain` fits a
- * cosine palette to an arbitrary chain of hexes, so the sweep travels the same
- * three steps of the ramp the rest of the site uses.
+ * glimm ships six named palettes and none of them are mint, so this was
+ * `accentChain(['#d3fae8', '#00ce91', '#006f40'])` — a least-squares cosine
+ * fit through three ramp steps. The fit has a trap: the shader's hue
+ * coordinate drifts (a random 0–0.4 per-session shift plus 0.04/s of session
+ * time), and the fitted curve's extrapolated half-period is grey-brown and
+ * dusty pink — so sweeps later in a session slid visibly off-brand.
+ *
+ * A cosine palette with *equal phases* has no off-curve half: every channel
+ * peaks together, so every hue-coordinate value — drifted or not — lands on
+ * the straight RGB segment between the two anchors. The drift still animates
+ * the band, but it can only slide along the ramp. The pale `#d3fae8` anchor
+ * is gone on purpose: the band has to read as a darkening band on paper (see
+ * the brightness note below), and a near-white stop fought that; the shader's
+ * own specular highlights supply the light sparkle instead.
  */
-const MINT_SWEEP = accentChain(['#d3fae8', '#00ce91', '#006f40']);
+function rampSegment(hexA: string, hexB: string): Palette {
+  const A = hexToRgb(hexA);
+  const B = hexToRgb(hexB);
+  const mid = (i: number) => (A[i] + B[i]) / 2;
+  const half = (i: number) => (A[i] - B[i]) / 2;
+  return {
+    a: [mid(0), mid(1), mid(2)], // centre of the segment
+    b: [half(0), half(1), half(2)], // amplitude: t=0 → hexA, t=1 → hexB
+    c: [0.5, 0.5, 0.5],
+    d: [0, 0, 0], // equal phases — the property the whole comment is about
+  };
+}
+
+const MINT_SWEEP = rampSegment('#00ce91', '#006f40');
 
 /**
  * Created once at module scope rather than per render, so a re-render never

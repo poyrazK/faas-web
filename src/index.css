@@ -314,6 +314,15 @@
     }
   }
 
+  /* Anchor jumps glide instead of teleporting — the docs' heading anchors and
+     on-page contents are the main consumers. Scoped to no-preference because
+     CSS smooth scrolling does not consult prefers-reduced-motion on its own. */
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
+  }
+
   * {
     border-color: var(--color-border);
     outline-color: color-mix(in oklab, var(--color-ring) 50%, transparent);

@@ -1,7 +1,8 @@
-import type { ReactNode } from 'react';
+import { isValidElement, type ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Link } from '@tanstack/react-router';
+import { CopyButton } from '@/components/docs/copy-button';
 import { slugifyHeading } from '@/lib/docs-content';
 
 /**
@@ -92,10 +93,14 @@ const COMPONENTS: Components = {
   },
 
   ul: ({ children }) => (
-    <ul className="mt-4 flex list-disc flex-col gap-2 pl-5 text-muted-foreground">{children}</ul>
+    <ul className="mt-4 flex list-disc flex-col gap-2 pl-5 text-muted-foreground marker:text-muted-foreground/50">
+      {children}
+    </ul>
   ),
   ol: ({ children }) => (
-    <ol className="mt-4 flex list-decimal flex-col gap-2 pl-5 text-muted-foreground">{children}</ol>
+    <ol className="mt-4 flex list-decimal flex-col gap-2 pl-5 text-muted-foreground marker:text-muted-foreground/50">
+      {children}
+    </ol>
   ),
   li: ({ children }) => <li className="leading-relaxed">{children}</li>,
 
@@ -113,15 +118,33 @@ const COMPONENTS: Components = {
     </code>
   ),
 
-  pre: ({ children }) => (
-    // Scrolls inside its own box: a long command must not widen the page.
-    <pre className="mt-4 overflow-x-auto rounded-xl border border-border bg-muted p-4 text-foreground">
-      {children}
-    </pre>
-  ),
+  pre: ({ children }) => {
+    // The single child is the <code> element: its className carries the fence
+    // language for the header, and its text is what the copy button puts on
+    // the clipboard — extracted as plain text so the button keeps working if
+    // the children ever grow highlight spans.
+    const child = Array.isArray(children) ? children[0] : children;
+    let language = 'text';
+    if (isValidElement(child)) {
+      const match = /language-([\w+-]+)/.exec(
+        (child.props as { className?: string }).className ?? ''
+      );
+      if (match) language = match[1];
+    }
+    return (
+      <figure className="mt-4 overflow-hidden rounded-xl border border-border bg-muted">
+        <figcaption className="flex items-center justify-between gap-3 border-b border-border px-4 py-1.5">
+          <span className="label-mono text-muted-foreground">{language}</span>
+          <CopyButton text={textOf(children).replace(/\n$/, '')} className="py-1 text-xs" />
+        </figcaption>
+        {/* Scrolls inside its own box: a long command must not widen the page. */}
+        <pre className="overflow-x-auto p-4 text-foreground">{children}</pre>
+      </figure>
+    );
+  },
 
   blockquote: ({ children }) => (
-    <blockquote className="mt-4 border-l-2 border-brand/40 pl-4 text-muted-foreground">
+    <blockquote className="mt-4 rounded-r-lg border-l-2 border-brand/50 bg-brand-muted/25 px-4 py-3 text-muted-foreground [&>*:first-child]:mt-0">
       {children}
     </blockquote>
   ),
@@ -136,8 +159,12 @@ const COMPONENTS: Components = {
     </div>
   ),
   thead: ({ children }) => <thead className="bg-muted">{children}</thead>,
+  // Mono uppercase headers — the same label voice the console's tables and
+  // the site's eyebrows use, which is right for what these tables are: data.
   th: ({ children }) => (
-    <th className="border-b border-border px-4 py-2.5 text-left font-medium">{children}</th>
+    <th className="label-mono border-b border-border px-4 py-2.5 text-left text-muted-foreground">
+      {children}
+    </th>
   ),
   td: ({ children }) => (
     <td className="border-b border-border px-4 py-2.5 align-top text-muted-foreground last:border-0">
