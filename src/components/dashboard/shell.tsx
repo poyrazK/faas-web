@@ -149,6 +149,16 @@ function Breadcrumbs() {
     { label: section ? (SECTION_LABELS[section] ?? section) : 'Overview' },
   ];
 
+  // Operator pages are a small namespace rather than one resource. Keep the
+  // breadcrumb useful on nested fleet/customer routes instead of showing the
+  // runtime-config label for every `/dashboard/operator/*` page.
+  if (section === 'operator' && detail) {
+    trail[0] = { label: 'Operations' };
+    trail.push({
+      label: detail === 'fleet' ? 'Fleet' : detail === 'tenants' ? 'Customers' : detail,
+    });
+  }
+
   if (section === 'workflows' && detail) {
     trail.push({
       label:
