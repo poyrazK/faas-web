@@ -23,6 +23,7 @@ const STATE_FILTERS: { key: RunState | 'all'; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'running', label: 'Running' },
   { key: 'idle', label: 'Idle' },
+  { key: 'undeployed', label: 'Undeployed' },
   { key: 'error', label: 'Failing' },
   { key: 'deploying', label: 'Deploying' },
 ];

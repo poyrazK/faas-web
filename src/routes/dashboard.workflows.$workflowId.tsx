@@ -25,6 +25,8 @@ import { useData } from '@/lib/store';
 import { useToast } from '@/components/ui/toast';
 import { useConfirm } from '@/components/ui/confirm';
 import { errorMessage } from '@/lib/api/errors';
+import { useAuth } from '@/lib/auth';
+import { isPaidPlan } from '@/lib/plan';
 import { cn } from '@/lib/utils';
 import { LogsBody } from './dashboard.logs';
 import { RoutesBody } from './dashboard.apis';
@@ -42,6 +44,7 @@ import { DeploymentDetailPanel } from '@/components/dashboard/deployment-detail'
 import { Pill } from '@/components/dashboard/resource-table';
 import { Modal } from '@/components/ui/modal';
 import { pageHead, useDocumentTitle } from '@/lib/seo';
+import { PlanGate } from '@/components/dashboard/plan-gate';
 
 const METRIC_RANGES: MetricsRange[] = ['5m', '15m', '1h', '6h', '24h', '7d', '15d'];
 
@@ -108,6 +111,7 @@ function FunctionDetailPage() {
   };
   const [range, setRange] = useState<MetricsRange>('24h');
   const { getWorkflow, deploymentsFor, redeploy, loading, error, refresh } = useData();
+  const { account, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const park = useParkApp();
   const wake = useWakeApp();
@@ -130,7 +134,14 @@ function FunctionDetailPage() {
 
   // Real per-app aggregates for the Metrics tab. Called with the slug, which is
   // what `workflowId` is.
-  const metrics = useAppMetrics(workflowId, range);
+  const paidAccess = account !== null && isPaidPlan(account.plan);
+  const metrics = useAppMetrics(workflowId, range, { enabled: paidAccess });
+  const metricsDegraded = Boolean(metrics.data && metrics.data.source !== 'prometheus');
+  const metricsTileState = metrics.isPending
+    ? ('loading' as const)
+    : metrics.error || metricsDegraded
+      ? ('unavailable' as const)
+      : ('ready' as const);
   const builds = useBuilds({
     // Build duration is not part of DeploymentResponse. Poll the companion
     // records alongside deployments while any visible build is unfinished.
@@ -381,57 +392,90 @@ function FunctionDetailPage() {
         aria-labelledby={`${tabsId}-tab-${tab}`}
         className="flex flex-col gap-6"
       >
-        {tab === 'Metrics' && (
-          <div className="flex flex-col gap-6">
-            <div className="flex justify-end">
-              <RangeSelector
-                value={range}
-                onChange={setRange}
-                options={METRIC_RANGES.map((r) => ({ key: r, label: r }))}
-              />
-            </div>
+        {tab === 'Metrics' &&
+          (authLoading || account === null ? (
+            <LoadingState message="Checking plan access…" />
+          ) : !paidAccess ? (
+            <PlanGate
+              feature="Per-app metrics"
+              description="Request, latency, cold-start, error, and SLO signals are available on Hobby and above."
+            />
+          ) : (
+            <div className="flex flex-col gap-6">
+              <div className="flex justify-end">
+                <RangeSelector
+                  value={range}
+                  onChange={setRange}
+                  options={METRIC_RANGES.map((r) => ({ key: r, label: r }))}
+                />
+              </div>
 
-            {/* Scalars, not a series: `/v1/apps/{slug}/metrics` returns one
+              {/* Scalars, not a series: `/v1/apps/{slug}/metrics` returns one
                 aggregate per window. The sparkline charts that used to sit here
                 were drawn from a seeded PRNG and are gone with it. */}
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <StatTile
-                label="Requests"
-                value={metrics.data ? formatCompact(metrics.data.request_count) : '—'}
-              />
-              <StatTile
-                label="Error rate"
-                value={metrics.data ? metrics.data.error_rate_pct.toFixed(2) : '—'}
-                unit="%"
-                deltaGood={false}
-              />
-              <StatTile
-                label="Cold starts"
-                value={metrics.data ? metrics.data.cold_start_pct.toFixed(2) : '—'}
-                unit="%"
-              />
-              <StatTile
-                label="Wake p95 (fleet)"
-                value={metrics.data ? formatMs(metrics.data.wake_p95_ms) : '—'}
-              />
-            </div>
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                {metricsDegraded && (
+                  <p
+                    className="text-xs text-muted-foreground sm:col-span-2 xl:col-span-4"
+                    role="status"
+                  >
+                    Metrics are degraded ({metrics.data?.source}), so no figures can be read for
+                    this window.
+                  </p>
+                )}
+                <StatTile
+                  label="Requests"
+                  value={metrics.data ? formatCompact(metrics.data.request_count) : '—'}
+                  state={metricsTileState}
+                />
+                <StatTile
+                  label="Error rate"
+                  value={metrics.data ? metrics.data.error_rate_pct.toFixed(2) : '—'}
+                  unit="%"
+                  deltaGood={false}
+                  state={metricsTileState}
+                />
+                <StatTile
+                  label="Cold starts"
+                  value={metrics.data ? metrics.data.cold_start_pct.toFixed(2) : '—'}
+                  unit="%"
+                  state={metricsTileState}
+                />
+                <StatTile
+                  label="Wake p95 (fleet)"
+                  value={metrics.data ? formatMs(metrics.data.wake_p95_ms) : '—'}
+                  state={metricsTileState}
+                />
+              </div>
 
-            <Panel title="Response latency" description="2xx traffic over the selected window">
-              {metrics.error ? (
-                <ErrorState error={metrics.error} onRetry={() => void metrics.refetch()} />
-              ) : metrics.isPending ? (
-                <LoadingState message="Querying metrics…" />
-              ) : (
-                <div className="grid gap-4 p-5 sm:grid-cols-3">
-                  <StatTile label="p50" value={formatMs(metrics.data?.latency_p50_ms ?? 0)} />
-                  <StatTile label="p95" value={formatMs(metrics.data?.latency_p95_ms ?? 0)} />
-                  <StatTile label="p99" value={formatMs(metrics.data?.latency_p99_ms ?? 0)} />
-                </div>
-              )}
-            </Panel>
-            <SloPanel slug={fn.id} />
-          </div>
-        )}
+              <Panel title="Response latency" description="2xx traffic over the selected window">
+                {metrics.error ? (
+                  <ErrorState error={metrics.error} onRetry={() => void metrics.refetch()} />
+                ) : metrics.isPending ? (
+                  <LoadingState message="Querying metrics…" />
+                ) : (
+                  <div className="grid gap-4 p-5 sm:grid-cols-3">
+                    <StatTile
+                      label="p50"
+                      value={formatMs(metrics.data?.latency_p50_ms ?? 0)}
+                      state={metricsTileState}
+                    />
+                    <StatTile
+                      label="p95"
+                      value={formatMs(metrics.data?.latency_p95_ms ?? 0)}
+                      state={metricsTileState}
+                    />
+                    <StatTile
+                      label="p99"
+                      value={formatMs(metrics.data?.latency_p99_ms ?? 0)}
+                      state={metricsTileState}
+                    />
+                  </div>
+                )}
+              </Panel>
+              <SloPanel slug={fn.id} />
+            </div>
+          ))}
 
         {tab === 'Invoke' && <InvokePanel slug={fn.id} />}
 

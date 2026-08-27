@@ -91,21 +91,31 @@ export function useAppsMetrics(range: MetricsRange = '24h', options?: Options<Ap
 
 export type AppsMetrics = components['schemas']['AppsMetricsResponse'];
 
-export function useAppMetrics(slug: string, range: MetricsRange = '24h') {
+export function useAppMetrics(
+  slug: string,
+  range: MetricsRange = '24h',
+  options?: Options<AppMetrics>
+) {
   return useQuery({
     queryKey: keys.appMetrics(slug, range),
     queryFn: () =>
       unwrap(api.GET('/v1/apps/{slug}/metrics', { params: { path: { slug }, query: { range } } })),
-    enabled: Boolean(slug),
+    ...options,
+    enabled: Boolean(slug) && options?.enabled !== false,
   });
 }
 
-export function useAppSlo(slug: string, window: AppSLOWindow = '24h') {
+export function useAppSlo(
+  slug: string,
+  window: AppSLOWindow = '24h',
+  options?: Options<components['schemas']['AppSLOResponse']>
+) {
   return useQuery({
     queryKey: keys.appSlo(slug, window),
     queryFn: () =>
       unwrap(api.GET('/v1/apps/{slug}/slo', { params: { path: { slug }, query: { window } } })),
-    enabled: Boolean(slug),
+    ...options,
+    enabled: Boolean(slug) && options?.enabled !== false,
   });
 }
 

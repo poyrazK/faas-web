@@ -111,6 +111,11 @@ describe('toWorkflow', () => {
     const workflow = toWorkflow(app());
     expect(workflow.version).toBe('');
     expect(workflow.lastDeployedAt).toBe(0);
+    expect(workflow.state).toBe('undeployed');
+  });
+
+  it('keeps a live state once a deployment exists', () => {
+    expect(toWorkflow(app(), undefined, deployment()).state).toBe('running');
   });
 
   it('falls back to the app type when there is no runtime', () => {

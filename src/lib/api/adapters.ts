@@ -60,6 +60,15 @@ function shortDigest(digest: string | undefined): string {
  */
 export function toWorkflow(app: App, metrics?: AppsMetrics, latest?: ApiDeployment): Workflow {
   const row = metrics?.apps?.[app.slug];
+  const appState = toRunState(app.status);
+  // `active` is the API's default for a newly-created app as well as a live
+  // one. Without a deployment row, showing "Running" tells the customer that
+  // something is serving traffic when there is nothing to serve yet.
+  const state = latest
+    ? appState
+    : appState === 'deploying' || appState === 'error'
+      ? appState
+      : 'undeployed';
 
   return {
     // The slug, not the 32-hex id: it is what every `/v1/apps/{slug}` route is
@@ -68,7 +77,7 @@ export function toWorkflow(app: App, metrics?: AppsMetrics, latest?: ApiDeployme
     name: app.slug,
     runtime: app.runtime ?? app.type,
     memoryMb: app.ram_mb,
-    state: toRunState(app.status),
+    state,
     url: app.url,
     // Metrics come from the Prometheus rollup and are absent when it is
     // degraded — zero is the honest reading of "no requests in the window".
