@@ -28,3 +28,13 @@ export function isDeploymentTerminal(status: string | undefined): boolean {
   const phase = deploymentPhase(status);
   return phase === 'live' || phase === 'failed';
 }
+
+/** A rollback is useful only when there is an earlier successful deployment. */
+export function hasRollbackTarget(deployments: ReadonlyArray<{ state: string }>): boolean {
+  return deployments.filter((deployment) => deployment.state === 'succeeded').length > 1;
+}
+
+/** Invoke and live logs need at least one deployment that can serve traffic. */
+export function hasRunnableDeployment(deployments: ReadonlyArray<{ state: string }>): boolean {
+  return deployments.some((deployment) => deployment.state === 'succeeded');
+}
