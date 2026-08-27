@@ -45,6 +45,8 @@ import { Pill } from '@/components/dashboard/resource-table';
 import { Modal } from '@/components/ui/modal';
 import { pageHead, useDocumentTitle } from '@/lib/seo';
 import { PlanGate } from '@/components/dashboard/plan-gate';
+import { DeploymentGate } from '@/components/dashboard/deployment-gate';
+import { hasRollbackTarget, hasRunnableDeployment } from '@/lib/deployment-status';
 
 const METRIC_RANGES: MetricsRange[] = ['5m', '15m', '1h', '6h', '24h', '7d', '15d'];
 
@@ -207,6 +209,8 @@ function FunctionDetailPage() {
   const selectedDeployment = selectedDeploymentId
     ? deployments.find((dep) => dep.id === selectedDeploymentId)
     : undefined;
+  const hasRunnable = hasRunnableDeployment(deployments);
+  const canRollback = hasRollbackTarget(deployments);
   const isDeploying =
     fn.state === 'deploying' || deployments.some((deployment) => deployment.state === 'building');
 
@@ -294,43 +298,45 @@ function FunctionDetailPage() {
               <Rocket className="h-3.5 w-3.5" />
               Deploy
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5"
-              disabled={isDeploying}
-              onClick={async () => {
-                if (
-                  !(await confirm({
-                    title: `Roll back ${fn.name}?`,
-                    description:
-                      'Traffic moves to the previous successful deployment. The current one stays available to roll forward to.',
-                    confirmLabel: 'Roll back',
-                  }))
-                )
-                  return;
-                // `POST /v1/apps/{slug}/rollback` — a real write, so the toast
-                // reports what happened rather than announcing it up front.
-                void redeploy(fn.id)
-                  .then(() =>
-                    toast({
-                      kind: 'success',
-                      title: 'Rolled back',
-                      description: `${fn.name} is serving its previous deployment.`,
-                    })
+            {canRollback && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                disabled={isDeploying}
+                onClick={async () => {
+                  if (
+                    !(await confirm({
+                      title: `Roll back ${fn.name}?`,
+                      description:
+                        'Traffic moves to the previous successful deployment. The current one stays available to roll forward to.',
+                      confirmLabel: 'Roll back',
+                    }))
                   )
-                  .catch((err: unknown) =>
-                    toast({
-                      kind: 'error',
-                      title: 'Rollback failed',
-                      description: errorMessage(err),
-                    })
-                  );
-              }}
-            >
-              <Refresh className={cn('h-3.5 w-3.5', isDeploying && 'animate-spin')} />
-              {isDeploying ? 'Deploying…' : 'Roll back'}
-            </Button>
+                    return;
+                  // `POST /v1/apps/{slug}/rollback` — a real write, so the toast
+                  // reports what happened rather than announcing it up front.
+                  void redeploy(fn.id)
+                    .then(() =>
+                      toast({
+                        kind: 'success',
+                        title: 'Rolled back',
+                        description: `${fn.name} is serving its previous deployment.`,
+                      })
+                    )
+                    .catch((err: unknown) =>
+                      toast({
+                        kind: 'error',
+                        title: 'Rollback failed',
+                        description: errorMessage(err),
+                      })
+                    );
+                }}
+              >
+                <Refresh className={cn('h-3.5 w-3.5', isDeploying && 'animate-spin')} />
+                {isDeploying ? 'Deploying…' : 'Roll back'}
+              </Button>
+            )}
           </>
         }
       />
@@ -477,7 +483,12 @@ function FunctionDetailPage() {
             </div>
           ))}
 
-        {tab === 'Invoke' && <InvokePanel slug={fn.id} />}
+        {tab === 'Invoke' &&
+          (!hasRunnable ? (
+            <DeploymentGate slug={fn.id} resource="Invoke" />
+          ) : (
+            <InvokePanel slug={fn.id} />
+          ))}
 
         {tab === 'Deployments' && (
           <>
@@ -537,7 +548,12 @@ function FunctionDetailPage() {
           </>
         )}
 
-        {tab === 'Logs' && <LogsBody slug={fn.id} />}
+        {tab === 'Logs' &&
+          (!hasRunnable ? (
+            <DeploymentGate slug={fn.id} resource="Logs" />
+          ) : (
+            <LogsBody slug={fn.id} />
+          ))}
         {tab === 'Routes' && <RoutesBody slug={fn.id} />}
         {tab === 'Secrets' && <SecretsBody slug={fn.id} />}
         {tab === 'Env' && <EnvBody slug={fn.id} />}
