@@ -73,14 +73,6 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    title: 'Operations',
-    items: [
-      { to: '/dashboard/operator', label: 'Runtime config', icon: Settings },
-      { to: '/dashboard/operator/fleet', label: 'Fleet', icon: Server },
-      { to: '/dashboard/operator/tenants', label: 'Customers', icon: Group },
-    ],
-  },
-  {
     title: 'Billing',
     items: [
       { to: '/dashboard/usage', label: 'Usage', icon: GraphUp },
