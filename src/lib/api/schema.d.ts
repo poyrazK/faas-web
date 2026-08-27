@@ -4713,6 +4713,244 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/obs/nodes/{name}/heartbeats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read recent heartbeat history for one compute node. */
+        get: operations["listOperatorNodeHeartbeats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/obs/nodes/wake-latency": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read per-node wake latency quantiles. */
+        get: operations["getOperatorNodeWakeLatency"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/obs/anomalies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read traffic anomalies against the seven-day baseline. */
+        get: operations["listOperatorAnomalies"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/obs/rate-limits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read durable and live rate-limit signals. */
+        get: operations["getOperatorRateLimits"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/obs/audit-log/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search structured operator audit evidence. */
+        get: operations["searchOperatorAuditLog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/obs/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read live platform events. */
+        get: operations["listOperatorEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/obs/builder-heartbeats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read builderd health and queued build depth. */
+        get: operations["getOperatorBuilderHeartbeats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/builds/sweep-stuck": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reclaim running builds older than a guarded threshold. */
+        post: operations["sweepOperatorStuckBuilds"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/ops/accounts/{id}/suspend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Suspend a customer account and revoke its sessions. */
+        post: operations["suspendOperatorAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/ops/accounts/{id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore a suspended customer account. */
+        post: operations["restoreOperatorAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/ops/accounts/{id}/revoke-sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke all active sessions for a customer account. */
+        post: operations["revokeOperatorAccountSessions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/ops/nodes/{name}/drain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Drain a compute node from new placement. */
+        post: operations["drainOperatorNode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/ops/nodes/{name}/force-drain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Force a compute node inactive despite live workloads. */
+        post: operations["forceDrainOperatorNode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/ops/nodes/{name}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Re-enable a compute node for placement. */
+        post: operations["activateOperatorNode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -9410,6 +9648,182 @@ export interface components {
             finished_at?: string | null;
             error?: string;
             snap_ids_marked_stale?: string[];
+        };
+        ObsHeartbeatRow: {
+            /** Format: date-time */
+            received_at: string;
+            /** Format: date-time */
+            last_heartbeat_at: string;
+            source: string;
+            /** Format: int64 */
+            gap_to_previous_ms: number;
+            missed: boolean;
+            stale: boolean;
+        };
+        ObsHeartbeatListResponse: {
+            /** Format: uuid */
+            node_id: string;
+            name: string;
+            /** Format: date-time */
+            since: string;
+            since_clamped: boolean;
+            heartbeats: components["schemas"]["ObsHeartbeatRow"][];
+            limit: number;
+        };
+        ObsWakeLatencyQuantile: {
+            /** Format: uuid */
+            node_id: string;
+            node_name: string;
+            p50_ms: number;
+            p95_ms: number;
+            p99_ms: number;
+            /** Format: int64 */
+            sample_count: number;
+        };
+        ObsNodeWakeLatencyResponse: {
+            window: string;
+            quantiles: components["schemas"]["ObsWakeLatencyQuantile"][];
+            fleet_p95_ms: number;
+            /** Format: date-time */
+            as_of: string;
+        };
+        ObsAnomalyRow: {
+            /** Format: uuid */
+            account_id: string;
+            /** Format: uuid */
+            app_id: string;
+            /** Format: uuid */
+            node_id?: string;
+            node_name?: string;
+            /** Format: date-time */
+            minute: string;
+            current: number;
+            baseline_mean: number;
+            baseline_stddev: number;
+            baseline_samples: number;
+            z_score?: number | null;
+            reason: string;
+        };
+        ObsAnomalyListResponse: {
+            /** Format: date-time */
+            generated_at: string;
+            window_hours: number;
+            baseline_window_days: number;
+            /** @enum {string} */
+            group_by: "app" | "node";
+            items: components["schemas"]["ObsAnomalyRow"][];
+        };
+        ObsRateLimitDurableRow: {
+            /** Format: uuid */
+            account_id: string;
+            hits: number;
+            /** Format: date-time */
+            last_event_at: string;
+        };
+        ObsRateLimitLiveRow: {
+            ip: string;
+            currently_rate_limited: boolean;
+            live_hits_30s: number;
+            /** Format: date-time */
+            last_event_at: string;
+        };
+        ObsRateLimitResponse: {
+            /** Format: date-time */
+            generated_at: string;
+            window_hours: number;
+            sources: string[];
+            lag_seconds: number;
+            durable: components["schemas"]["ObsRateLimitDurableRow"][];
+            live: components["schemas"]["ObsRateLimitLiveRow"][];
+        };
+        ObsAuditLogRow: {
+            /** Format: uuid */
+            id: string;
+            kind: string;
+            /** Format: uuid */
+            account_id?: string;
+            /** Format: email */
+            account_email?: string;
+            actor?: string;
+            /** Format: date-time */
+            received_at: string;
+            data?: unknown;
+            is_operator_action: boolean;
+        };
+        ObsAuditLogSearchResponse: {
+            /** Format: date-time */
+            generated_at: string;
+            items: components["schemas"]["ObsAuditLogRow"][];
+            limit: number;
+            include_anonymous: boolean;
+            window_hours: number;
+            kind_prefix?: string;
+            /** Format: uuid */
+            account_id?: string;
+            /** Format: email */
+            actor_email?: string;
+            operator_only?: boolean;
+            /** Format: uuid */
+            target_account_id?: string;
+        };
+        ObsEventRow: {
+            /** Format: int64 */
+            id: number;
+            /** Format: date-time */
+            at: string;
+            actor: string;
+            kind: string;
+            /** Format: uuid */
+            subject?: string;
+            data?: unknown;
+        };
+        ObsEventListResponse: {
+            /** Format: date-time */
+            generated_at: string;
+            items: components["schemas"]["ObsEventRow"][];
+            limit: number;
+            window_hours: number;
+            kind_prefix?: string;
+            actor?: string;
+            /** Format: uuid */
+            subject?: string;
+        };
+        ObsBuilderHeartbeatRow: {
+            /** Format: uuid */
+            node_id: string;
+            /** Format: date-time */
+            received_at: string;
+            cpu_pct_60s?: number | null;
+            /** Format: int64 */
+            disk_used_bytes?: number | null;
+        };
+        ObsBuilderHeartbeatListResponse: {
+            /** Format: date-time */
+            generated_at: string;
+            items: components["schemas"]["ObsBuilderHeartbeatRow"][];
+            queued_builds: number;
+        };
+        SweepStuckBuildsResponse: {
+            ok: boolean;
+            swept_count: number;
+            older_than_seconds: number;
+            /** Format: date-time */
+            threshold_iso: string;
+        };
+        ObsAccountMutationResponse: {
+            account: components["schemas"]["ObsTenantRow"];
+            /** @enum {string} */
+            action: "suspend" | "restore" | "revoke-sessions";
+            revoked_sessions: number;
+        };
+        ObsNodeMutationResponse: {
+            ok: boolean;
+            node: string;
+            previous_active: boolean;
+            active: boolean;
+            live_instances: number;
+            forced: boolean;
+            reason: string;
         };
         /**
          * @description RFC 7807 problem+json envelope. The `code` field is the stable
@@ -18975,6 +19389,412 @@ export interface operations {
                     "application/json": components["schemas"]["OperatorIntentResponse"];
                 };
             };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    listOperatorNodeHeartbeats: {
+        parameters: {
+            query?: {
+                since?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Heartbeat history and gap classification. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObsHeartbeatListResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getOperatorNodeWakeLatency: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Five-minute per-node and fleet wake latency quantiles. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObsNodeWakeLatencyResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    listOperatorAnomalies: {
+        parameters: {
+            query?: {
+                window_hours?: number;
+                limit?: number;
+                group_by?: "app" | "node";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Bounded anomaly list with baseline context. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObsAnomalyListResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getOperatorRateLimits: {
+        parameters: {
+            query?: {
+                window_hours?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Durable account buckets and local live IP buckets. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObsRateLimitResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    searchOperatorAuditLog: {
+        parameters: {
+            query?: {
+                account_id?: string;
+                kind_prefix?: string;
+                since?: string;
+                include_anonymous?: boolean;
+                limit?: number;
+                actor_email?: string;
+                operator_only?: boolean;
+                target_account_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Structured audit rows with operator-action classification. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObsAuditLogSearchResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    listOperatorEvents: {
+        parameters: {
+            query?: {
+                actor?: string;
+                kind_prefix?: string;
+                subject?: string;
+                since?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Live event rows for incident investigation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObsEventListResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getOperatorBuilderHeartbeats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Recent builder heartbeats and fleet queue depth. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObsBuilderHeartbeatListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    sweepOperatorStuckBuilds: {
+        parameters: {
+            query: {
+                confirm: "true";
+                older_than?: string;
+                /** @description Optional durable audit reason. Lowercase letters, numbers, and underscores only. */
+                reason?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Number of stuck build rows reclaimed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SweepStuckBuildsResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    suspendOperatorAccount: {
+        parameters: {
+            query: {
+                confirm: "true";
+                reason?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Updated account projection. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObsAccountMutationResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    restoreOperatorAccount: {
+        parameters: {
+            query: {
+                confirm: "true";
+                reason?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Updated account projection. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObsAccountMutationResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    revokeOperatorAccountSessions: {
+        parameters: {
+            query: {
+                confirm: "true";
+                reason?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Updated account projection and revoked-session count. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObsAccountMutationResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    drainOperatorNode: {
+        parameters: {
+            query: {
+                confirm: "true";
+                reason?: string;
+            };
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Updated compute-node state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObsNodeMutationResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    forceDrainOperatorNode: {
+        parameters: {
+            query: {
+                confirm: "true";
+                reason?: string;
+            };
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Updated compute-node state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObsNodeMutationResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    activateOperatorNode: {
+        parameters: {
+            query: {
+                confirm: "true";
+                reason?: string;
+            };
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Updated compute-node state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObsNodeMutationResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];

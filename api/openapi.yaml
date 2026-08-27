@@ -7384,6 +7384,391 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
 
+  /v1/admin/obs/nodes/{name}/heartbeats:
+    get:
+      tags: [admin]
+      operationId: listOperatorNodeHeartbeats
+      summary: Read recent heartbeat history for one compute node.
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+        - name: since
+          in: query
+          schema: { type: string, format: date-time }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 2000, default: 200 }
+      responses:
+        '200':
+          description: Heartbeat history and gap classification.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObsHeartbeatListResponse' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/admin/obs/nodes/wake-latency:
+    get:
+      tags: [admin]
+      operationId: getOperatorNodeWakeLatency
+      summary: Read per-node wake latency quantiles.
+      responses:
+        '200':
+          description: Five-minute per-node and fleet wake latency quantiles.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObsNodeWakeLatencyResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/admin/obs/anomalies:
+    get:
+      tags: [admin]
+      operationId: listOperatorAnomalies
+      summary: Read traffic anomalies against the seven-day baseline.
+      parameters:
+        - name: window_hours
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 168, default: 24 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+        - name: group_by
+          in: query
+          schema: { type: string, enum: [app, node], default: app }
+      responses:
+        '200':
+          description: Bounded anomaly list with baseline context.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObsAnomalyListResponse' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/admin/obs/rate-limits:
+    get:
+      tags: [admin]
+      operationId: getOperatorRateLimits
+      summary: Read durable and live rate-limit signals.
+      parameters:
+        - name: window_hours
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 168, default: 24 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+      responses:
+        '200':
+          description: Durable account buckets and local live IP buckets.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObsRateLimitResponse' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/admin/obs/audit-log/search:
+    get:
+      tags: [admin]
+      operationId: searchOperatorAuditLog
+      summary: Search structured operator audit evidence.
+      parameters:
+        - name: account_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: kind_prefix
+          in: query
+          schema: { type: string }
+        - name: since
+          in: query
+          schema: { type: string, format: date-time }
+        - name: include_anonymous
+          in: query
+          schema: { type: boolean, default: false }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 500, default: 200 }
+        - name: actor_email
+          in: query
+          schema: { type: string, format: email }
+        - name: operator_only
+          in: query
+          schema: { type: boolean, default: false }
+        - name: target_account_id
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Structured audit rows with operator-action classification.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObsAuditLogSearchResponse' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/admin/obs/events:
+    get:
+      tags: [admin]
+      operationId: listOperatorEvents
+      summary: Read live platform events.
+      parameters:
+        - name: actor
+          in: query
+          schema: { type: string }
+        - name: kind_prefix
+          in: query
+          schema: { type: string }
+        - name: subject
+          in: query
+          schema: { type: string, format: uuid }
+        - name: since
+          in: query
+          schema: { type: string, format: date-time }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 500, default: 200 }
+      responses:
+        '200':
+          description: Live event rows for incident investigation.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObsEventListResponse' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/admin/obs/builder-heartbeats:
+    get:
+      tags: [admin]
+      operationId: getOperatorBuilderHeartbeats
+      summary: Read builderd health and queued build depth.
+      responses:
+        '200':
+          description: Recent builder heartbeats and fleet queue depth.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObsBuilderHeartbeatListResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/admin/builds/sweep-stuck:
+    post:
+      tags: [admin]
+      operationId: sweepOperatorStuckBuilds
+      summary: Reclaim running builds older than a guarded threshold.
+      parameters:
+        - name: confirm
+          in: query
+          required: true
+          schema: { type: string, enum: ['true'] }
+        - name: older_than
+          in: query
+          schema: { type: string, pattern: '^[0-9]+(ms|s|m|h)$', default: 15m }
+        - name: reason
+          in: query
+          schema: { type: string, pattern: '^[a-z0-9_]{1,64}$', default: operator_reclaim_build }
+          description: Optional durable audit reason. Lowercase letters, numbers, and underscores only.
+      responses:
+        '200':
+          description: Number of stuck build rows reclaimed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SweepStuckBuildsResponse' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/admin/ops/accounts/{id}/suspend:
+    post:
+      tags: [admin]
+      operationId: suspendOperatorAccount
+      summary: Suspend a customer account and revoke its sessions.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: confirm
+          in: query
+          required: true
+          schema: { type: string, enum: ['true'] }
+        - name: reason
+          in: query
+          schema: { type: string, pattern: '^[a-z0-9_]{1,64}$' }
+      responses:
+        '200':
+          description: Updated account projection.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObsAccountMutationResponse' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/admin/ops/accounts/{id}/restore:
+    post:
+      tags: [admin]
+      operationId: restoreOperatorAccount
+      summary: Restore a suspended customer account.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: confirm
+          in: query
+          required: true
+          schema: { type: string, enum: ['true'] }
+        - name: reason
+          in: query
+          schema: { type: string, pattern: '^[a-z0-9_]{1,64}$' }
+      responses:
+        '200':
+          description: Updated account projection.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObsAccountMutationResponse' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/admin/ops/accounts/{id}/revoke-sessions:
+    post:
+      tags: [admin]
+      operationId: revokeOperatorAccountSessions
+      summary: Revoke all active sessions for a customer account.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: confirm
+          in: query
+          required: true
+          schema: { type: string, enum: ['true'] }
+        - name: reason
+          in: query
+          schema: { type: string, pattern: '^[a-z0-9_]{1,64}$' }
+      responses:
+        '200':
+          description: Updated account projection and revoked-session count.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObsAccountMutationResponse' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/admin/ops/nodes/{name}/drain:
+    post:
+      tags: [admin]
+      operationId: drainOperatorNode
+      summary: Drain a compute node from new placement.
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+        - name: confirm
+          in: query
+          required: true
+          schema: { type: string, enum: ['true'] }
+        - name: reason
+          in: query
+          schema: { type: string, pattern: '^[a-z0-9_]{1,64}$' }
+      responses:
+        '200':
+          description: Updated compute-node state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObsNodeMutationResponse' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/admin/ops/nodes/{name}/force-drain:
+    post:
+      tags: [admin]
+      operationId: forceDrainOperatorNode
+      summary: Force a compute node inactive despite live workloads.
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+        - name: confirm
+          in: query
+          required: true
+          schema: { type: string, enum: ['true'] }
+        - name: reason
+          in: query
+          schema: { type: string, pattern: '^[a-z0-9_]{1,64}$' }
+      responses:
+        '200':
+          description: Updated compute-node state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObsNodeMutationResponse' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/admin/ops/nodes/{name}/activate:
+    post:
+      tags: [admin]
+      operationId: activateOperatorNode
+      summary: Re-enable a compute node for placement.
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+        - name: confirm
+          in: query
+          required: true
+          schema: { type: string, enum: ['true'] }
+        - name: reason
+          in: query
+          schema: { type: string, pattern: '^[a-z0-9_]{1,64}$' }
+      responses:
+        '200':
+          description: Updated compute-node state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObsNodeMutationResponse' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
 components:
 
   securitySchemes:
@@ -13142,6 +13527,217 @@ components:
         snap_ids_marked_stale:
           type: array
           items: { type: string, format: uuid }
+
+    ObsHeartbeatRow:
+      type: object
+      required: [received_at, last_heartbeat_at, source, gap_to_previous_ms, missed, stale]
+      properties:
+        received_at: { type: string, format: date-time }
+        last_heartbeat_at: { type: string, format: date-time }
+        source: { type: string }
+        gap_to_previous_ms: { type: integer, format: int64 }
+        missed: { type: boolean }
+        stale: { type: boolean }
+
+    ObsHeartbeatListResponse:
+      type: object
+      required: [node_id, name, since, since_clamped, heartbeats, limit]
+      properties:
+        node_id: { type: string, format: uuid }
+        name: { type: string }
+        since: { type: string, format: date-time }
+        since_clamped: { type: boolean }
+        heartbeats:
+          type: array
+          items: { $ref: '#/components/schemas/ObsHeartbeatRow' }
+        limit: { type: integer }
+
+    ObsWakeLatencyQuantile:
+      type: object
+      required: [node_id, node_name, p50_ms, p95_ms, p99_ms, sample_count]
+      properties:
+        node_id: { type: string, format: uuid }
+        node_name: { type: string }
+        p50_ms: { type: number }
+        p95_ms: { type: number }
+        p99_ms: { type: number }
+        sample_count: { type: integer, format: int64 }
+
+    ObsNodeWakeLatencyResponse:
+      type: object
+      required: [window, quantiles, fleet_p95_ms, as_of]
+      properties:
+        window: { type: string }
+        quantiles:
+          type: array
+          items: { $ref: '#/components/schemas/ObsWakeLatencyQuantile' }
+        fleet_p95_ms: { type: number }
+        as_of: { type: string, format: date-time }
+
+    ObsAnomalyRow:
+      type: object
+      required: [account_id, app_id, minute, current, baseline_mean, baseline_stddev, baseline_samples, reason]
+      properties:
+        account_id: { type: string, format: uuid }
+        app_id: { type: string, format: uuid }
+        node_id: { type: string, format: uuid }
+        node_name: { type: string }
+        minute: { type: string, format: date-time }
+        current: { type: number }
+        baseline_mean: { type: number }
+        baseline_stddev: { type: number }
+        baseline_samples: { type: integer }
+        z_score: { type: [number, 'null'] }
+        reason: { type: string }
+
+    ObsAnomalyListResponse:
+      type: object
+      required: [generated_at, window_hours, baseline_window_days, group_by, items]
+      properties:
+        generated_at: { type: string, format: date-time }
+        window_hours: { type: integer }
+        baseline_window_days: { type: integer }
+        group_by: { type: string, enum: [app, node] }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/ObsAnomalyRow' }
+
+    ObsRateLimitDurableRow:
+      type: object
+      required: [account_id, hits, last_event_at]
+      properties:
+        account_id: { type: string, format: uuid }
+        hits: { type: integer }
+        last_event_at: { type: string, format: date-time }
+
+    ObsRateLimitLiveRow:
+      type: object
+      required: [ip, currently_rate_limited, live_hits_30s, last_event_at]
+      properties:
+        ip: { type: string }
+        currently_rate_limited: { type: boolean }
+        live_hits_30s: { type: integer }
+        last_event_at: { type: string, format: date-time }
+
+    ObsRateLimitResponse:
+      type: object
+      required: [generated_at, window_hours, sources, lag_seconds, durable, live]
+      properties:
+        generated_at: { type: string, format: date-time }
+        window_hours: { type: integer }
+        sources:
+          type: array
+          items: { type: string }
+        lag_seconds: { type: integer }
+        durable:
+          type: array
+          items: { $ref: '#/components/schemas/ObsRateLimitDurableRow' }
+        live:
+          type: array
+          items: { $ref: '#/components/schemas/ObsRateLimitLiveRow' }
+
+    ObsAuditLogRow:
+      type: object
+      required: [id, kind, received_at, is_operator_action]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string }
+        account_id: { type: string, format: uuid }
+        account_email: { type: string, format: email }
+        actor: { type: string }
+        received_at: { type: string, format: date-time }
+        data: {}
+        is_operator_action: { type: boolean }
+
+    ObsAuditLogSearchResponse:
+      type: object
+      required: [generated_at, items, limit, include_anonymous, window_hours]
+      properties:
+        generated_at: { type: string, format: date-time }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/ObsAuditLogRow' }
+        limit: { type: integer }
+        include_anonymous: { type: boolean }
+        window_hours: { type: integer }
+        kind_prefix: { type: string }
+        account_id: { type: string, format: uuid }
+        actor_email: { type: string, format: email }
+        operator_only: { type: boolean }
+        target_account_id: { type: string, format: uuid }
+
+    ObsEventRow:
+      type: object
+      required: [id, at, actor, kind]
+      properties:
+        id: { type: integer, format: int64 }
+        at: { type: string, format: date-time }
+        actor: { type: string }
+        kind: { type: string }
+        subject: { type: string, format: uuid }
+        data: {}
+
+    ObsEventListResponse:
+      type: object
+      required: [generated_at, items, limit, window_hours]
+      properties:
+        generated_at: { type: string, format: date-time }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/ObsEventRow' }
+        limit: { type: integer }
+        window_hours: { type: integer }
+        kind_prefix: { type: string }
+        actor: { type: string }
+        subject: { type: string, format: uuid }
+
+    ObsBuilderHeartbeatRow:
+      type: object
+      required: [node_id, received_at]
+      properties:
+        node_id: { type: string, format: uuid }
+        received_at: { type: string, format: date-time }
+        cpu_pct_60s: { type: [number, 'null'] }
+        disk_used_bytes: { type: [integer, 'null'], format: int64 }
+
+    ObsBuilderHeartbeatListResponse:
+      type: object
+      required: [generated_at, items, queued_builds]
+      properties:
+        generated_at: { type: string, format: date-time }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/ObsBuilderHeartbeatRow' }
+        queued_builds: { type: integer }
+
+    SweepStuckBuildsResponse:
+      type: object
+      required: [ok, swept_count, older_than_seconds, threshold_iso]
+      properties:
+        ok: { type: boolean }
+        swept_count: { type: integer }
+        older_than_seconds: { type: integer }
+        threshold_iso: { type: string, format: date-time }
+
+    ObsAccountMutationResponse:
+      type: object
+      required: [account, action, revoked_sessions]
+      properties:
+        account: { $ref: '#/components/schemas/ObsTenantRow' }
+        action: { type: string, enum: [suspend, restore, revoke-sessions] }
+        revoked_sessions: { type: integer }
+
+    ObsNodeMutationResponse:
+      type: object
+      required: [ok, node, previous_active, active, live_instances, forced, reason]
+      properties:
+        ok: { type: boolean }
+        node: { type: string }
+        previous_active: { type: boolean }
+        active: { type: boolean }
+        live_instances: { type: integer }
+        forced: { type: boolean }
+        reason: { type: string }
 
     Problem:
       type: object

@@ -155,7 +155,14 @@ function Breadcrumbs() {
   if (section === 'operator' && detail) {
     trail[0] = { label: 'Operations' };
     trail.push({
-      label: detail === 'fleet' ? 'Fleet' : detail === 'tenants' ? 'Customers' : detail,
+      label:
+        detail === 'fleet'
+          ? 'Fleet'
+          : detail === 'tenants'
+            ? 'Customers'
+            : detail === 'incidents'
+              ? 'Incidents'
+              : detail,
     });
   }
 

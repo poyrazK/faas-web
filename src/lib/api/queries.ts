@@ -35,6 +35,16 @@ export type OperatorAppDetail = components['schemas']['ObsAppDetailResponse'];
 export type OperatorInstance = components['schemas']['ObsInstanceRow'];
 export type OperatorIntent = components['schemas']['OperatorIntentResponse'];
 export type OperatorIntentAccepted = components['schemas']['OperatorIntentAcceptedResponse'];
+export type OperatorHeartbeatList = components['schemas']['ObsHeartbeatListResponse'];
+export type OperatorWakeLatency = components['schemas']['ObsNodeWakeLatencyResponse'];
+export type OperatorAnomalyList = components['schemas']['ObsAnomalyListResponse'];
+export type OperatorRateLimits = components['schemas']['ObsRateLimitResponse'];
+export type OperatorAuditLog = components['schemas']['ObsAuditLogSearchResponse'];
+export type OperatorEvents = components['schemas']['ObsEventListResponse'];
+export type OperatorBuilderHeartbeats = components['schemas']['ObsBuilderHeartbeatListResponse'];
+export type OperatorNodeMutation = components['schemas']['ObsNodeMutationResponse'];
+export type OperatorAccountMutation = components['schemas']['ObsAccountMutationResponse'];
+export type OperatorStuckBuildSweep = components['schemas']['SweepStuckBuildsResponse'];
 
 export const keys = {
   account: ['account'] as const,
@@ -70,7 +80,15 @@ export const keys = {
   operatorNodes: (includeInactive: boolean, cursor?: string) =>
     ['operator', 'nodes', includeInactive, cursor ?? 'first'] as const,
   operatorNode: (name: string) => ['operator', 'nodes', name] as const,
+  operatorNodeHeartbeats: (name: string) => ['operator', 'nodes', name, 'heartbeats'] as const,
   operatorApp: (id: string, range: string) => ['operator', 'apps', id, range] as const,
+  operatorWakeLatency: ['operator', 'wake-latency'] as const,
+  operatorAnomalies: (groupBy: string, windowHours: number) =>
+    ['operator', 'anomalies', groupBy, windowHours] as const,
+  operatorRateLimits: (windowHours: number) => ['operator', 'rate-limits', windowHours] as const,
+  operatorAuditLog: (sinceHours: number) => ['operator', 'audit-log', sinceHours] as const,
+  operatorEvents: (sinceHours: number) => ['operator', 'events', sinceHours] as const,
+  operatorBuilderHeartbeats: ['operator', 'builder-heartbeats'] as const,
   operatorIntent: (id: string) => ['operator', 'intents', id] as const,
   appSecrets: (slug: string) => ['apps', slug, 'secrets'] as const,
   appEnv: (slug: string) => ['apps', slug, 'env'] as const,
@@ -467,6 +485,96 @@ export function useOperatorNodeDetail(name: string) {
   });
 }
 
+export function useOperatorNodeHeartbeats(name: string, limit = 200) {
+  return useQuery({
+    queryKey: [...keys.operatorNodeHeartbeats(name), limit],
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/admin/obs/nodes/{name}/heartbeats', {
+          params: { path: { name }, query: { limit } },
+        })
+      ),
+    enabled: Boolean(name),
+    refetchInterval: name ? 30_000 : false,
+  });
+}
+
+export function useOperatorWakeLatency() {
+  return useQuery({
+    queryKey: keys.operatorWakeLatency,
+    queryFn: () => unwrap(api.GET('/v1/admin/obs/nodes/wake-latency', {})),
+    refetchInterval: 30_000,
+  });
+}
+
+export function useOperatorAnomalies(
+  groupBy: 'app' | 'node' = 'app',
+  windowHours = 24,
+  limit = 50
+) {
+  return useQuery({
+    queryKey: keys.operatorAnomalies(groupBy, windowHours),
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/admin/obs/anomalies', {
+          params: { query: { group_by: groupBy, window_hours: windowHours, limit } },
+        })
+      ),
+    refetchInterval: 60_000,
+  });
+}
+
+export function useOperatorRateLimits(windowHours = 24, limit = 100) {
+  return useQuery({
+    queryKey: [...keys.operatorRateLimits(windowHours), limit],
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/admin/obs/rate-limits', {
+          params: { query: { window_hours: windowHours, limit } },
+        })
+      ),
+    refetchInterval: 30_000,
+  });
+}
+
+function operatorSince(hours: number): string {
+  return new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+}
+
+export function useOperatorAuditLog(sinceHours = 24, limit = 200) {
+  return useQuery({
+    queryKey: [...keys.operatorAuditLog(sinceHours), limit],
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/admin/obs/audit-log/search', {
+          params: { query: { since: operatorSince(sinceHours), limit, operator_only: true } },
+        })
+      ),
+    refetchInterval: 30_000,
+  });
+}
+
+export function useOperatorEvents(sinceHours = 24, limit = 200) {
+  return useQuery({
+    queryKey: [...keys.operatorEvents(sinceHours), limit],
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/admin/obs/events', {
+          params: { query: { since: operatorSince(sinceHours), limit } },
+        })
+      ),
+    refetchInterval: 15_000,
+  });
+}
+
+export function useOperatorBuilderHeartbeats() {
+  return useQuery({
+    queryKey: keys.operatorBuilderHeartbeats,
+    queryFn: () => unwrap(api.GET('/v1/admin/obs/builder-heartbeats', {})),
+    refetchInterval: 30_000,
+  });
+}
+
 export function useOperatorAppDetail(id: string, range: MetricsRange = '1h') {
   return useQuery({
     queryKey: keys.operatorApp(id, range),
@@ -537,6 +645,90 @@ export function useForceColdBootApp() {
         })
       ),
     onSuccess: () => invalidateOperatorFleet(qc),
+  });
+}
+
+export type OperatorNodeAction = 'drain' | 'force-drain' | 'activate';
+
+export function useOperatorNodeAction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      name,
+      action,
+      reason,
+    }: {
+      name: string;
+      action: OperatorNodeAction;
+      reason: string;
+    }) => {
+      const params = { path: { name }, query: { confirm: 'true' as const, reason } };
+      switch (action) {
+        case 'drain':
+          return unwrap(api.POST('/v1/admin/ops/nodes/{name}/drain', { params }));
+        case 'force-drain':
+          return unwrap(api.POST('/v1/admin/ops/nodes/{name}/force-drain', { params }));
+        case 'activate':
+          return unwrap(api.POST('/v1/admin/ops/nodes/{name}/activate', { params }));
+      }
+    },
+    onSuccess: (_data, { name }) => {
+      void invalidateOperatorFleet(qc);
+      void qc.invalidateQueries({ queryKey: keys.operatorNode(name) });
+    },
+  });
+}
+
+export type OperatorAccountAction = 'suspend' | 'restore' | 'revoke-sessions';
+
+export function useOperatorAccountAction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      action,
+      reason,
+    }: {
+      id: string;
+      action: OperatorAccountAction;
+      reason: string;
+    }) => {
+      const params = { path: { id }, query: { confirm: 'true' as const, reason } };
+      switch (action) {
+        case 'suspend':
+          return unwrap(api.POST('/v1/admin/ops/accounts/{id}/suspend', { params }));
+        case 'restore':
+          return unwrap(api.POST('/v1/admin/ops/accounts/{id}/restore', { params }));
+        case 'revoke-sessions':
+          return unwrap(api.POST('/v1/admin/ops/accounts/{id}/revoke-sessions', { params }));
+      }
+    },
+    onSuccess: (_data, { id }) => {
+      void qc.invalidateQueries({ queryKey: keys.operatorOverview });
+      void qc.invalidateQueries({ queryKey: ['operator', 'tenants'] });
+      void qc.invalidateQueries({ queryKey: ['operator', 'tenants', id, '360'] });
+      void qc.invalidateQueries({ queryKey: keys.operatorTenantActivity(id, 50) });
+    },
+  });
+}
+
+export function useSweepOperatorStuckBuilds() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      olderThan = '15m',
+      reason = 'operator_reclaim_build',
+    }: { olderThan?: string; reason?: string } = {}) =>
+      unwrap(
+        api.POST('/v1/admin/builds/sweep-stuck', {
+          params: { query: { confirm: 'true', older_than: olderThan, reason } },
+        })
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.operatorBuilderHeartbeats });
+      void qc.invalidateQueries({ queryKey: keys.operatorEvents(24) });
+      void qc.invalidateQueries({ queryKey: keys.operatorAuditLog(24) });
+    },
   });
 }
 

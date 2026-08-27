@@ -17,6 +17,10 @@ import {
   type RecoveryTarget,
 } from '@/components/dashboard/operator-recovery';
 import {
+  OperatorLifecycleDialog,
+  type OperatorLifecycleTarget,
+} from '@/components/dashboard/operator-operations';
+import {
   type OperatorTenant,
   useOperatorTenant360,
   useOperatorTenantActivity,
@@ -63,11 +67,13 @@ function TenantDrawer({
   month,
   onClose,
   onRecovery,
+  onAccountAction,
 }: {
   tenant: TenantRow | null;
   month: string;
   onClose: () => void;
   onRecovery: (target: RecoveryTarget) => void;
+  onAccountAction: (target: OperatorLifecycleTarget) => void;
 }) {
   const detail = useOperatorTenant360(tenant?.account_id ?? '', month);
   const activity = useOperatorTenantActivity(tenant?.account_id ?? '');
@@ -271,6 +277,53 @@ function TenantDrawer({
               <Metric label="Personal org" value={data.account.is_personal ? 'Yes' : 'No'} />
               <Metric label="Org" value={data.account.org_slug || '—'} />
             </div>
+            <div className="mt-5 flex flex-wrap gap-2 border-t border-border pt-4">
+              {data.account.status === 'suspended' ? (
+                <Button
+                  size="xs"
+                  variant="outline"
+                  onClick={() =>
+                    onAccountAction({
+                      kind: 'account',
+                      id: data.account.account_id,
+                      action: 'restore',
+                      label: data.account.account_id,
+                    })
+                  }
+                >
+                  Restore account
+                </Button>
+              ) : (
+                <Button
+                  size="xs"
+                  variant="destructive"
+                  onClick={() =>
+                    onAccountAction({
+                      kind: 'account',
+                      id: data.account.account_id,
+                      action: 'suspend',
+                      label: data.account.account_id,
+                    })
+                  }
+                >
+                  Suspend account
+                </Button>
+              )}
+              <Button
+                size="xs"
+                variant="outline"
+                onClick={() =>
+                  onAccountAction({
+                    kind: 'account',
+                    id: data.account.account_id,
+                    action: 'revoke-sessions',
+                    label: data.account.account_id,
+                  })
+                }
+              >
+                Revoke sessions
+              </Button>
+            </div>
           </Panel>
         </div>
       ) : null}
@@ -290,6 +343,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 function TenantsPage() {
   const [selected, setSelected] = useState<TenantRow | null>(null);
   const [recovery, setRecovery] = useState<RecoveryTarget | null>(null);
+  const [accountAction, setAccountAction] = useState<OperatorLifecycleTarget | null>(null);
   const [intentId, setIntentId] = useState<string | null>(null);
   const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [tenantCursors, setTenantCursors] = useState<(string | undefined)[]>([undefined]);
@@ -450,6 +504,17 @@ function TenantsPage() {
         month={month}
         onClose={() => setSelected(null)}
         onRecovery={setRecovery}
+        onAccountAction={setAccountAction}
+      />
+      <OperatorLifecycleDialog
+        key={
+          accountAction?.kind === 'account'
+            ? `${accountAction.id}-${accountAction.action}`
+            : 'account-action-closed'
+        }
+        target={accountAction}
+        onClose={() => setAccountAction(null)}
+        onCompleted={() => void tenants.refetch()}
       />
       <OperatorRecoveryDialog
         key={

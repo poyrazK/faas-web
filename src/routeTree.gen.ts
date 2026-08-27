@@ -45,6 +45,7 @@ import { Route as DashboardWorkersRouteImport } from './routes/dashboard.workers
 import { Route as DocsIndexRouteImport } from './routes/docs.index'
 import { Route as DocsSlugRouteImport } from './routes/docs.$slug'
 import { Route as DashboardOperatorFleetRouteImport } from './routes/dashboard.operator.fleet'
+import { Route as DashboardOperatorIncidentsRouteImport } from './routes/dashboard.operator.incidents'
 import { Route as DashboardOperatorTenantsRouteImport } from './routes/dashboard.operator.tenants'
 import { Route as DashboardWorkflowsIndexRouteImport } from './routes/dashboard.workflows.index'
 import { Route as DashboardWorkflowsWorkflowIdRouteImport } from './routes/dashboard.workflows.$workflowId'
@@ -230,6 +231,12 @@ const DashboardOperatorFleetRoute = DashboardOperatorFleetRouteImport.update({
   path: '/fleet',
   getParentRoute: () => DashboardOperatorRoute,
 } as any)
+const DashboardOperatorIncidentsRoute =
+  DashboardOperatorIncidentsRouteImport.update({
+    id: '/incidents',
+    path: '/incidents',
+    getParentRoute: () => DashboardOperatorRoute,
+  } as any)
 const DashboardOperatorTenantsRoute =
   DashboardOperatorTenantsRouteImport.update({
     id: '/tenants',
@@ -290,6 +297,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/': typeof DashboardIndexRoute
   '/docs/': typeof DocsIndexRoute
   '/dashboard/operator/fleet': typeof DashboardOperatorFleetRoute
+  '/dashboard/operator/incidents': typeof DashboardOperatorIncidentsRoute
   '/dashboard/operator/tenants': typeof DashboardOperatorTenantsRoute
   '/dashboard/workflows/$workflowId': typeof DashboardWorkflowsWorkflowIdRoute
   '/dashboard/workflows/new': typeof DashboardWorkflowsNewRoute
@@ -330,6 +338,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof DashboardIndexRoute
   '/docs': typeof DocsIndexRoute
   '/dashboard/operator/fleet': typeof DashboardOperatorFleetRoute
+  '/dashboard/operator/incidents': typeof DashboardOperatorIncidentsRoute
   '/dashboard/operator/tenants': typeof DashboardOperatorTenantsRoute
   '/dashboard/workflows/$workflowId': typeof DashboardWorkflowsWorkflowIdRoute
   '/dashboard/workflows/new': typeof DashboardWorkflowsNewRoute
@@ -373,6 +382,7 @@ export interface FileRoutesById {
   '/dashboard/': typeof DashboardIndexRoute
   '/docs/': typeof DocsIndexRoute
   '/dashboard/operator/fleet': typeof DashboardOperatorFleetRoute
+  '/dashboard/operator/incidents': typeof DashboardOperatorIncidentsRoute
   '/dashboard/operator/tenants': typeof DashboardOperatorTenantsRoute
   '/dashboard/workflows/$workflowId': typeof DashboardWorkflowsWorkflowIdRoute
   '/dashboard/workflows/new': typeof DashboardWorkflowsNewRoute
@@ -417,6 +427,7 @@ export interface FileRouteTypes {
     | '/dashboard/'
     | '/docs/'
     | '/dashboard/operator/fleet'
+    | '/dashboard/operator/incidents'
     | '/dashboard/operator/tenants'
     | '/dashboard/workflows/$workflowId'
     | '/dashboard/workflows/new'
@@ -457,6 +468,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/docs'
     | '/dashboard/operator/fleet'
+    | '/dashboard/operator/incidents'
     | '/dashboard/operator/tenants'
     | '/dashboard/workflows/$workflowId'
     | '/dashboard/workflows/new'
@@ -499,6 +511,7 @@ export interface FileRouteTypes {
     | '/dashboard/'
     | '/docs/'
     | '/dashboard/operator/fleet'
+    | '/dashboard/operator/incidents'
     | '/dashboard/operator/tenants'
     | '/dashboard/workflows/$workflowId'
     | '/dashboard/workflows/new'
@@ -768,6 +781,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardOperatorFleetRouteImport
       parentRoute: typeof DashboardOperatorRoute
     }
+    '/dashboard/operator/incidents': {
+      id: '/dashboard/operator/incidents'
+      path: '/incidents'
+      fullPath: '/dashboard/operator/incidents'
+      preLoaderRoute: typeof DashboardOperatorIncidentsRouteImport
+      parentRoute: typeof DashboardOperatorRoute
+    }
     '/dashboard/operator/tenants': {
       id: '/dashboard/operator/tenants'
       path: '/tenants'
@@ -801,11 +821,13 @@ declare module '@tanstack/react-router' {
 
 interface DashboardOperatorRouteChildren {
   DashboardOperatorFleetRoute: typeof DashboardOperatorFleetRoute
+  DashboardOperatorIncidentsRoute: typeof DashboardOperatorIncidentsRoute
   DashboardOperatorTenantsRoute: typeof DashboardOperatorTenantsRoute
 }
 
 const DashboardOperatorRouteChildren: DashboardOperatorRouteChildren = {
   DashboardOperatorFleetRoute: DashboardOperatorFleetRoute,
+  DashboardOperatorIncidentsRoute: DashboardOperatorIncidentsRoute,
   DashboardOperatorTenantsRoute: DashboardOperatorTenantsRoute,
 }
 

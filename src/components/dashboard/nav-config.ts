@@ -18,6 +18,7 @@ import {
   GraphUp,
   Group,
   GitFork as WorkflowIcon,
+  WarningTriangle,
 } from 'iconoir-react';
 
 /**
@@ -78,6 +79,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: '/dashboard/operator', label: 'Runtime config', icon: Settings },
       { to: '/dashboard/operator/fleet', label: 'Fleet', icon: Server },
       { to: '/dashboard/operator/tenants', label: 'Customers', icon: Group },
+      { to: '/dashboard/operator/incidents', label: 'Incidents', icon: WarningTriangle },
     ],
   },
   {
