@@ -28,9 +28,15 @@ const BASE_URL = import.meta.env.VITE_API_URL ?? '';
  * there is exactly one session per document.
  */
 let onUnauthorized: (() => void) | null = null;
+let onMfaRequired: (() => void) | null = null;
 
 export function setUnauthorizedHandler(handler: (() => void) | null) {
   onUnauthorized = handler;
+}
+
+/** Called when an authenticated request is blocked by the session MFA gate. */
+export function setMfaRequiredHandler(handler: (() => void) | null) {
+  onMfaRequired = handler;
 }
 
 /** Paths where a 401 is the answer to the question, not an expired session. */
@@ -69,23 +75,13 @@ export const api = createClient<paths>({
 
 api.use(sessionMiddleware);
 
-/**
- * The dashboard CSRF token, for the endpoints that demand it in the body.
- *
- * Double-submit: the server sets a `faas_csrf` cookie on every authenticated
- * response and expects the same value echoed in the JSON body, so
- * `VerifyAuthenticated` can compare the two. Unlike `faas_sid` this cookie is
- * deliberately *not* `HttpOnly` — it has to be readable here for the pattern to
- * work at all, and it is useless without the session cookie riding alongside.
- *
- * Returns an empty string when it is missing, which the server rejects with
- * `csrf_mismatch` — the correct outcome, and better than guessing a value.
- */
-export function csrfToken(): string {
-  if (typeof document === 'undefined') return '';
-  const match = document.cookie.match(/(?:^|;\s*)faas_csrf=([^;]*)/);
-  return match ? decodeURIComponent(match[1]) : '';
-}
+export type CSRFAction =
+  | 'auth.logout'
+  | 'auth.session.revoke'
+  | 'auth.sessions.revoke_all'
+  | 'mfa_confirm'
+  | 'mfa_recover'
+  | 'mfa_disable';
 
 /**
  * Narrows an `openapi-fetch` result to its data, throwing `ApiError` otherwise.
@@ -99,10 +95,21 @@ export async function unwrap<T>(
 ): Promise<T> {
   const { data, error, response } = await result;
   if (error !== undefined || !response.ok) {
-    throw await toApiError(response, error);
+    const apiError = await toApiError(response, error);
+    if (apiError.code === 'mfa_required') onMfaRequired?.();
+    throw apiError;
   }
   // A 204 has no body, and its callers want the absence, not a fabricated value.
   return data as T;
+}
+
+/**
+ * Ask the API for a token bound to one mutation. The server keeps the matching
+ * cookie HttpOnly; the returned JSON value is the double-submit copy.
+ */
+export async function issueCSRF(action: CSRFAction): Promise<string> {
+  const result = await unwrap(api.GET('/v1/auth/csrf', { params: { query: { action } } }));
+  return result.csrf_token;
 }
 
 export { ApiError };

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient, type UseQueryOptions } from '@tanstack/react-query';
-import { api, csrfToken, unwrap } from './client';
+import { api, issueCSRF, unwrap } from './client';
 import { ApiError } from './errors';
 import type { components } from './schema';
 
@@ -18,6 +18,7 @@ export type App = components['schemas']['AppResponse'];
 export type Deployment = components['schemas']['DeploymentResponse'];
 export type AppMetrics = components['schemas']['AppMetricsResponse'];
 export type MetricsRange = AppMetrics['range'];
+export type MFAEnrollment = components['schemas']['MFAEnrollResponse'];
 
 export const keys = {
   account: ['account'] as const,
@@ -723,13 +724,15 @@ export function useSessions() {
 export function useRevokeSession() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
-      unwrap(
+    mutationFn: async (id: string) => {
+      const csrf_token = await issueCSRF('auth.session.revoke');
+      return unwrap(
         api.DELETE('/v1/auth/sessions/{id}', {
           params: { path: { id } },
-          body: { csrf_token: csrfToken() },
+          body: { csrf_token },
         })
-      ),
+      );
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['auth', 'sessions'] }),
   });
 }
@@ -737,10 +740,39 @@ export function useRevokeSession() {
 export function useRevokeAllSessions() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () =>
-      unwrap(api.POST('/v1/auth/sessions/revoke_all', { body: { csrf_token: csrfToken() } })),
+    mutationFn: async () => {
+      const csrf_token = await issueCSRF('auth.sessions.revoke_all');
+      return unwrap(api.POST('/v1/auth/sessions/revoke_all', { body: { csrf_token } }));
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['auth', 'sessions'] }),
   });
+}
+
+/* ------------------------------------------------------------------ *
+ * MFA — the session gate and account security page share these calls.
+ * ------------------------------------------------------------------ */
+
+export function enrollMfa() {
+  return unwrap(api.POST('/v1/account/mfa/enroll', {}));
+}
+
+export async function confirmMfa(totp: string) {
+  const csrf_token = await issueCSRF('mfa_confirm');
+  return unwrap(api.POST('/v1/account/mfa/confirm', { body: { totp, csrf_token } }));
+}
+
+export function verifyMfa(totp: string) {
+  return unwrap(api.POST('/v1/account/mfa/verify', { body: { totp } }));
+}
+
+export async function recoverMfa(code: string) {
+  const csrf_token = await issueCSRF('mfa_recover');
+  return unwrap(api.POST('/v1/account/mfa/recover', { body: { code, csrf_token } }));
+}
+
+export async function disableMfa(input: { password?: string; recovery_code?: string }) {
+  const csrf_token = await issueCSRF('mfa_disable');
+  return unwrap(api.POST('/v1/account/mfa/disable', { body: { ...input, csrf_token } }));
 }
 
 /* ------------------------------------------------------------------ *

@@ -7,6 +7,7 @@ import { Pill, ResourceTable, type Column } from '@/components/dashboard/resourc
 import { useToast } from '@/components/ui/toast';
 import { useConfirm } from '@/components/ui/confirm';
 import { useRevokeAllSessions, useRevokeSession, useSessions } from '@/lib/api/queries';
+import { useMfa } from '@/components/auth/mfa-provider';
 import { errorMessage } from '@/lib/api/errors';
 import { formatRelative } from '@/lib/mock-data';
 import { consoleHead } from '@/lib/seo';
@@ -24,8 +25,8 @@ export const Route = createFileRoute('/dashboard/security')({
  * hunting through rows. Revoking all is therefore the primary control, and the
  * current session is marked so it is obvious what "all" includes.
  *
- * Both writes carry a CSRF token from the `faas_csrf` cookie — see
- * `csrfToken()` in `lib/api/client.ts`.
+ * Both writes obtain an action-bound CSRF token from the API. The matching
+ * cookie is HttpOnly, so the browser never needs to read it directly.
  */
 interface SessionRow {
   id: string;
@@ -45,6 +46,7 @@ function formatWhen(value: string | undefined): string {
 function SecurityPage() {
   const { toast } = useToast();
   const confirm = useConfirm();
+  const { openMfa } = useMfa();
   const { data, isPending, error, refetch } = useSessions();
   const revoke = useRevokeSession();
   const revokeAll = useRevokeAllSessions();
@@ -181,6 +183,22 @@ function SecurityPage() {
           </Button>
         }
       />
+
+      <Panel
+        title="Multi-factor authentication"
+        description="Protect account and deployment actions with an authenticator app."
+        actions={
+          <Button size="sm" variant="outline" onClick={() => openMfa('choose')}>
+            Set up or verify
+          </Button>
+        }
+      >
+        <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
+          Manage the authenticator step for this browser session. If MFA is already enabled, you can
+          verify it here; if it is not, Gregale will guide you through enrollment and provide
+          one-time recovery codes.
+        </p>
+      </Panel>
 
       <Panel title="Active sessions">
         <ResourceTable
