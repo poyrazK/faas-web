@@ -128,10 +128,14 @@ export function useAppRoutes(slug: string) {
  * Deployments
  * ------------------------------------------------------------------ */
 
-export function useDeployments(limit = 50) {
+export function useDeployments(
+  limit = 50,
+  options?: Options<components['schemas']['DeploymentListResponse']>
+) {
   return useQuery({
     queryKey: [...keys.deployments, limit],
     queryFn: () => unwrap(api.GET('/v1/deployments', { params: { query: { limit } } })),
+    ...options,
   });
 }
 
@@ -722,10 +726,11 @@ export function useUpstreams(slug: string) {
  * Builds and supply chain
  * ------------------------------------------------------------------ */
 
-export function useBuilds() {
+export function useBuilds(options?: Options<components['schemas']['BuildListResponse']>) {
   return useQuery({
     queryKey: ['builds'],
     queryFn: () => unwrap(api.GET('/v1/builds', {})),
+    ...options,
   });
 }
 

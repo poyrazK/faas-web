@@ -260,14 +260,12 @@ function DeploymentsPage() {
     },
     {
       key: 'message',
-      label: 'Commit',
+      label: 'Deployment',
       render: (d) => (
         <span className="flex min-w-0 flex-col">
           <span className="truncate">{d.message}</span>
           <span className="mt-0.5 font-mono text-xs text-muted-foreground">
-            {/* The API carries no author on a deployment, so the separator
-                only earns its place when there is something after it. */}
-            {d.author ? `${d.commit} · ${d.author}` : d.commit}
+            image {d.version || '—'}
           </span>
         </span>
       ),
@@ -280,11 +278,6 @@ function DeploymentsPage() {
           {getWorkflow(d.workflowId)?.name ?? '—'}
         </span>
       ),
-    },
-    {
-      key: 'version',
-      label: 'Version',
-      render: (d) => <span className="font-mono text-xs">{d.version}</span>,
     },
     {
       key: 'durationMs',
@@ -320,8 +313,8 @@ function DeploymentsPage() {
         rows={deployments}
         columns={columns}
         initialSort={{ key: 'createdAt', dir: 'desc' }}
-        searchKeys={['message', 'commit', 'author', 'version']}
-        searchPlaceholder="Filter by commit, author, or version…"
+        searchKeys={['message', 'commit', 'version']}
+        searchPlaceholder="Filter by deployment or image…"
         emptyMessage="No deployments match these filters."
         loading={loading}
         error={error}
