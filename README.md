@@ -4,6 +4,18 @@ Marketing site and product console for [one-box FaaS](https://github.com/poyrazK
 — functions on Firecracker microVMs that scale to zero. The console talks to the
 real `apid` REST API; the marketing site is static.
 
+## Deployment boundary
+
+This repository is the customer-facing `faas-web` application. Its Vercel
+project is connected to `poyrazK/faas-web`, uses `main` as the production
+branch, and owns [gregale.dev](https://gregale.dev).
+
+The operator console is a separate application in
+[`poyrazK/faas-frontend`](https://github.com/poyrazK/faas-frontend), deployed by
+the `faas-frontend` Vercel project at
+[operations.gregale.dev](https://operations.gregale.dev). Operator routes and
+`/v1/admin/*` client calls do not belong in this repository.
+
 ## Getting started
 
 ```bash
@@ -229,7 +241,8 @@ https://gregale.dev/v1/auth/github/callback
 
 Vercel's native Git integration is connected to `poyrazK/faas-web`. Pull
 requests receive preview deployments automatically, and pushes to `main`
-deploy to `gregale.dev`. The `main` branch is the production branch.
+deploy to `gregale.dev`. The `main` branch is the production branch. The
+operations deployment is managed independently by the `faas-frontend` project.
 
 Anywhere else, the equivalent one-liner:
 
