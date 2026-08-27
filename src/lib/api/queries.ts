@@ -19,6 +19,10 @@ export type Deployment = components['schemas']['DeploymentResponse'];
 export type AppMetrics = components['schemas']['AppMetricsResponse'];
 export type MetricsRange = AppMetrics['range'];
 export type MFAEnrollment = components['schemas']['MFAEnrollResponse'];
+export type OperatorRuntimeConfig = components['schemas']['OperatorRuntimeConfig'];
+export type OperatorRuntimeConfigOperation =
+  components['schemas']['OperatorRuntimeConfigOperation'];
+export type OperatorRuntimeConfigRevision = components['schemas']['OperatorRuntimeConfigRevision'];
 
 export const keys = {
   account: ['account'] as const,
@@ -37,6 +41,12 @@ export const keys = {
   instances: ['instances'] as const,
   invocations: ['invocations'] as const,
   auditLog: ['audit-log'] as const,
+  operatorRuntimeConfig: ['operator', 'runtime-config'] as const,
+  operatorRuntimeConfigEntry: (key: string) => ['operator', 'runtime-config', key] as const,
+  operatorRuntimeConfigRevisions: (key: string) =>
+    ['operator', 'runtime-config', key, 'revisions'] as const,
+  operatorRuntimeConfigOperation: (id: string) =>
+    ['operator', 'runtime-config', 'operations', id] as const,
   appSecrets: (slug: string) => ['apps', slug, 'secrets'] as const,
   appEnv: (slug: string) => ['apps', slug, 'env'] as const,
   appAlerts: (slug: string) => ['apps', slug, 'alerts'] as const,
@@ -294,6 +304,86 @@ export function useInstances() {
   return useQuery({
     queryKey: keys.instances,
     queryFn: () => unwrap(api.GET('/v1/instances', {})),
+  });
+}
+
+/* ------------------------------------------------------------------ *
+ * Operator runtime configuration
+ *
+ * These routes are deliberately separate from customer settings. They are
+ * operator-only, versioned writes against the control-plane catalog, and a
+ * graceful/rolling change may return a durable operation instead of the
+ * applied catalog entry.
+ * ------------------------------------------------------------------ */
+
+export function useOperatorRuntimeConfig() {
+  return useQuery({
+    queryKey: keys.operatorRuntimeConfig,
+    queryFn: () => unwrap(api.GET('/v1/admin/config', {})),
+  });
+}
+
+export function useOperatorRuntimeConfigRevisions(key: string, limit = 50) {
+  return useQuery({
+    queryKey: [...keys.operatorRuntimeConfigRevisions(key), limit],
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/admin/config/{key}/revisions', {
+          params: { path: { key }, query: { limit } },
+        })
+      ),
+    enabled: Boolean(key),
+  });
+}
+
+export function useOperatorRuntimeConfigOperation(id: string) {
+  return useQuery({
+    queryKey: keys.operatorRuntimeConfigOperation(id),
+    queryFn: () =>
+      unwrap(api.GET('/v1/admin/config-operations/{id}', { params: { path: { id } } })),
+    enabled: Boolean(id),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status && ['succeeded', 'failed', 'blocked', 'cancelled'].includes(status)
+        ? false
+        : 2_000;
+    },
+  });
+}
+
+export function useUpdateOperatorRuntimeConfig() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      key,
+      ...body
+    }: {
+      key: string;
+      value: unknown;
+      reason: string;
+      expected_version?: number;
+    }) => unwrap(api.PATCH('/v1/admin/config/{key}', { params: { path: { key } }, body })),
+    onSuccess: (_data, { key }) => {
+      void qc.invalidateQueries({ queryKey: keys.operatorRuntimeConfig });
+      void qc.invalidateQueries({ queryKey: keys.operatorRuntimeConfigEntry(key) });
+      void qc.invalidateQueries({ queryKey: keys.operatorRuntimeConfigRevisions(key) });
+    },
+  });
+}
+
+export function useRollbackOperatorRuntimeConfig() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      key,
+      ...body
+    }: { key: string } & components['schemas']['RollbackOperatorRuntimeConfigRequest']) =>
+      unwrap(api.POST('/v1/admin/config/{key}/rollback', { params: { path: { key } }, body })),
+    onSuccess: (_data, { key }) => {
+      void qc.invalidateQueries({ queryKey: keys.operatorRuntimeConfig });
+      void qc.invalidateQueries({ queryKey: keys.operatorRuntimeConfigEntry(key) });
+      void qc.invalidateQueries({ queryKey: keys.operatorRuntimeConfigRevisions(key) });
+    },
   });
 }
 
