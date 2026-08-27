@@ -16,6 +16,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard.index'
+import { Route as DashboardAccountRouteImport } from './routes/dashboard.account'
 import { Route as DashboardAlertsRouteImport } from './routes/dashboard.alerts'
 import { Route as DashboardApisRouteImport } from './routes/dashboard.apis'
 import { Route as DashboardAuditRouteImport } from './routes/dashboard.audit'
@@ -80,6 +81,11 @@ const SignupRoute = SignupRouteImport.update({
 const DashboardIndexRoute = DashboardIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardAccountRoute = DashboardAccountRouteImport.update({
+  id: '/account',
+  path: '/account',
   getParentRoute: () => DashboardRoute,
 } as any)
 const DashboardAlertsRoute = DashboardAlertsRouteImport.update({
@@ -241,6 +247,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/signup': typeof SignupRoute
+  '/dashboard/account': typeof DashboardAccountRoute
   '/dashboard/alerts': typeof DashboardAlertsRoute
   '/dashboard/apis': typeof DashboardApisRoute
   '/dashboard/audit': typeof DashboardAuditRoute
@@ -278,6 +285,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/signup': typeof SignupRoute
+  '/dashboard/account': typeof DashboardAccountRoute
   '/dashboard/alerts': typeof DashboardAlertsRoute
   '/dashboard/apis': typeof DashboardApisRoute
   '/dashboard/audit': typeof DashboardAuditRoute
@@ -318,6 +326,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/signup': typeof SignupRoute
+  '/dashboard/account': typeof DashboardAccountRoute
   '/dashboard/alerts': typeof DashboardAlertsRoute
   '/dashboard/apis': typeof DashboardApisRoute
   '/dashboard/audit': typeof DashboardAuditRoute
@@ -359,6 +368,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/onboarding'
     | '/signup'
+    | '/dashboard/account'
     | '/dashboard/alerts'
     | '/dashboard/apis'
     | '/dashboard/audit'
@@ -396,6 +406,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/onboarding'
     | '/signup'
+    | '/dashboard/account'
     | '/dashboard/alerts'
     | '/dashboard/apis'
     | '/dashboard/audit'
@@ -435,6 +446,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/onboarding'
     | '/signup'
+    | '/dashboard/account'
     | '/dashboard/alerts'
     | '/dashboard/apis'
     | '/dashboard/audit'
@@ -526,6 +538,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/dashboard/'
       preLoaderRoute: typeof DashboardIndexRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/account': {
+      id: '/dashboard/account'
+      path: '/account'
+      fullPath: '/dashboard/account'
+      preLoaderRoute: typeof DashboardAccountRouteImport
       parentRoute: typeof DashboardRoute
     }
     '/dashboard/alerts': {
@@ -742,6 +761,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface DashboardRouteChildren {
+  DashboardAccountRoute: typeof DashboardAccountRoute
   DashboardAlertsRoute: typeof DashboardAlertsRoute
   DashboardApisRoute: typeof DashboardApisRoute
   DashboardAuditRoute: typeof DashboardAuditRoute
@@ -774,6 +794,7 @@ interface DashboardRouteChildren {
 }
 
 const DashboardRouteChildren: DashboardRouteChildren = {
+  DashboardAccountRoute: DashboardAccountRoute,
   DashboardAlertsRoute: DashboardAlertsRoute,
   DashboardApisRoute: DashboardApisRoute,
   DashboardAuditRoute: DashboardAuditRoute,

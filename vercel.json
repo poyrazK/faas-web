@@ -5,6 +5,16 @@
   "outputDirectory": "dist",
   "routes": [
     {
+      "src": "^/dashboard/install/connect$",
+      "methods": ["POST"],
+      "dest": "https://api.gregale.dev/dashboard/install/connect"
+    },
+    {
+      "src": "^/oauth(?:/(.*))?$",
+      "methods": ["GET", "HEAD", "OPTIONS"],
+      "dest": "https://api.gregale.dev/oauth/$1"
+    },
+    {
       "src": "^/v1(?:/(.*))?$",
       "methods": ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
       "dest": "https://api.gregale.dev/v1/$1"

@@ -86,6 +86,7 @@ function NewFunctionPage() {
   // failed Free-plan submission before the customer had seen the limit.
   const [memoryMb, setMemoryMb] = useState(128);
   const [scaleToZero, setScaleToZero] = useState(true);
+  const githubConnected = Boolean(account?.github_install_id);
 
   const [deploying, setDeploying] = useState(false);
   const [deploymentId, setDeploymentId] = useState<string | null>(null);
@@ -126,7 +127,7 @@ function NewFunctionPage() {
   }
 
   async function createFunction() {
-    if (deployBlocked) return;
+    if (deployBlocked || (source === 'git' && !githubConnected)) return;
     setDeploying(true);
     setSubmissionError(null);
     try {
@@ -613,6 +614,24 @@ function NewFunctionPage() {
                 </span>{' '}
                 — billed only for time spent running.
               </p>
+
+              {source === 'git' && !githubConnected && (
+                <div
+                  role="alert"
+                  className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-brand/30 bg-brand/5 px-3 py-2.5 text-xs"
+                >
+                  <span className="text-muted-foreground">
+                    Connect GitHub before deploying from a repository. This keeps the app from being
+                    created without its first deployment.
+                  </span>
+                  <Link
+                    to="/dashboard/account"
+                    className="shrink-0 font-medium text-brand hover:underline"
+                  >
+                    Connect GitHub
+                  </Link>
+                </div>
+              )}
             </Panel>
 
             <div className="flex items-center justify-between">
@@ -622,7 +641,7 @@ function NewFunctionPage() {
               </Button>
               <Button
                 variant="cta"
-                disabled={deployBlocked}
+                disabled={deployBlocked || (source === 'git' && !githubConnected)}
                 onClick={() => void createFunction()}
                 className="h-10 gap-2 rounded-lg px-6"
               >
