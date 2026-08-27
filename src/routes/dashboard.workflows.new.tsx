@@ -5,7 +5,7 @@ import { ArrowLeft, ArrowRight, Check, Github, Package } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/components/ui/toast';
-import { BuildLog } from '@/components/dashboard/build-log';
+import { DeploymentProgress } from '@/components/dashboard/deployment-progress';
 import { PageHeader, Panel } from '@/components/dashboard/primitives';
 import { type Runtime } from '@/lib/mock-data';
 import { errorMessage } from '@/lib/api/errors';
@@ -83,93 +83,168 @@ function NewFunctionPage() {
   const [scaleToZero, setScaleToZero] = useState(true);
 
   const [deploying, setDeploying] = useState(false);
-  const [deployed, setDeployed] = useState(false);
+  const [deploymentId, setDeploymentId] = useState<string | null>(null);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
 
   const nameValid = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(name);
+  const repoValid = /^[^/\s]+\/[^/\s]+$/.test(repo.trim());
+
+  async function retrySourceDeploy() {
+    if (!createdId || source !== 'git' || !repoValid || retrying) return;
+    setRetrying(true);
+    setSubmissionError(null);
+    try {
+      const deployment = await deployFromRef.mutateAsync({
+        slug: createdId,
+        repo: repo.trim(),
+        ref: ref.trim() || 'main',
+        format: 'tarball',
+      });
+      setDeploymentId(deployment.id);
+      toast({
+        kind: 'success',
+        title: 'Build accepted',
+        description: `${repo.trim()}@${ref.trim() || 'main'} is queued for build.`,
+      });
+    } catch (err) {
+      setSubmissionError(errorMessage(err));
+    } finally {
+      setRetrying(false);
+    }
+  }
+
+  async function createFunction() {
+    setDeploying(true);
+    setSubmissionError(null);
+    try {
+      // App creation is the durable first step. The UI only advances to build
+      // status after the API returns the actual deployment id.
+      const created = await addWorkflow({ name, runtime, memoryMb, type: appType });
+      setCreatedId(created.id);
+      setCreatedUrl(created.url);
+
+      const scalePromise: Promise<unknown> = !scaleToZero
+        ? updateApp.mutateAsync({ slug: created.id, min_instances: 1 })
+        : Promise.resolve();
+      const deploymentPromise =
+        source === 'git' && repoValid
+          ? deployFromRef.mutateAsync({
+              slug: created.id,
+              repo: repo.trim(),
+              ref: ref.trim() || 'main',
+              format: 'tarball',
+            })
+          : Promise.resolve(null);
+
+      const [scaleResult, deploymentResult] = await Promise.allSettled([
+        scalePromise,
+        deploymentPromise,
+      ]);
+
+      if (scaleResult.status === 'rejected') {
+        toast({
+          kind: 'error',
+          title: 'App created, but configuration failed',
+          description: errorMessage(scaleResult.reason),
+        });
+      }
+
+      if (deploymentResult.status === 'fulfilled' && deploymentResult.value) {
+        setDeploymentId(deploymentResult.value.id);
+        toast({
+          kind: 'success',
+          title: 'Build accepted',
+          description: `${repo.trim()}@${ref.trim() || 'main'} is queued for build.`,
+        });
+      } else if (deploymentResult.status === 'rejected') {
+        setSubmissionError(errorMessage(deploymentResult.reason));
+        toast({
+          kind: 'error',
+          title: 'App created, but build was not submitted',
+          description: errorMessage(deploymentResult.reason),
+        });
+      } else {
+        toast({
+          kind: 'success',
+          title: 'App ready',
+          description: `${name} is ready. Deploy it with gregale deploy when you are.`,
+        });
+      }
+    } catch (err) {
+      setDeploying(false);
+      toast({
+        kind: 'error',
+        title: 'Could not create the app',
+        description: errorMessage(err),
+      });
+    }
+  }
 
   if (deploying) {
     return (
       <div className="mx-auto flex max-w-2xl flex-col gap-6">
         <PageHeader
-          title={deployed ? 'Deployed' : 'Deploying'}
-          description={
-            deployed
-              ? `${name} is live and already scaled to zero.`
-              : `Building ${name} and capturing its snapshot.`
-          }
+          title="New function"
+          description="Track the app and its first deployment from the platform state."
         />
 
-        <BuildLog
-          onComplete={() => {
-            // `addWorkflow` is a real `POST /v1/apps` now, so it can fail —
-            // most often 409 on a slug already in use, or 403 when the plan's
-            // app limit is reached.
-            void addWorkflow({ name, runtime, memoryMb, type: appType })
-              .then(async (created) => {
-                // What the wizard promised, now actually done: a Git source
-                // kicks off the first build, and "scale to zero" off pins one
-                // instance resident. Both used to be shown and discarded.
-                const followUps: Promise<unknown>[] = [];
-                if (!scaleToZero)
-                  followUps.push(updateApp.mutateAsync({ slug: created.id, min_instances: 1 }));
-                if (source === 'git' && repo.includes('/'))
-                  followUps.push(
-                    deployFromRef.mutateAsync({
-                      slug: created.id,
-                      repo: repo.trim(),
-                      ref: ref.trim() || 'main',
-                      format: 'tarball',
-                    })
-                  );
-                const results = await Promise.allSettled(followUps);
-                const failed = results.find((r) => r.status === 'rejected') as
-                  PromiseRejectedResult | undefined;
-                setCreatedId(created.id);
-                setCreatedUrl(created.url);
-                setDeployed(true);
-                if (failed) {
-                  toast({
-                    kind: 'error',
-                    title: 'App created, but not every step landed',
-                    description: errorMessage(failed.reason),
-                  });
-                } else {
-                  toast({
-                    kind: 'success',
-                    title: 'App created',
-                    description:
-                      source === 'git' && repo.includes('/')
-                        ? `${repo.trim()}@${ref.trim() || 'main'} is building. It goes live when the build succeeds.`
-                        : `${name} is ready. Deploy it with gregale deploy when you are.`,
-                  });
-                }
-              })
-              .catch((err: unknown) => {
-                setDeploying(false);
-                toast({
-                  kind: 'error',
-                  title: 'Could not create the app',
-                  description: errorMessage(err),
-                });
-              });
-          }}
-        />
+        {source === 'git' ? (
+          <DeploymentProgress
+            appCreated={Boolean(createdId)}
+            appName={name}
+            deploymentId={deploymentId}
+            repo={repo}
+            ref={ref}
+            submissionError={submissionError}
+          />
+        ) : (
+          <Panel title="App ready" description="No deployment was started.">
+            <p className="text-sm text-muted-foreground">
+              The app is ready for its first deployment from the CLI or CI.
+            </p>
+            <code className="mt-4 block overflow-x-auto rounded-lg border border-border bg-background p-3 font-mono text-xs text-foreground">
+              gregale deploy --app {name}
+            </code>
+          </Panel>
+        )}
 
-        {deployed && (
+        {submissionError && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[color:var(--status-critical)]/35 bg-card p-4">
+            <p className="text-xs text-muted-foreground">
+              The app exists, so you can retry the source deployment without creating a second app.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={retrying}
+              onClick={() => void retrySourceDeploy()}
+            >
+              {retrying ? 'Retrying…' : 'Try again'}
+            </Button>
+          </div>
+        )}
+
+        {createdId && (
           <motion.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, ease: EASE }}
             className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-4"
           >
-            <a
-              href={createdUrl ?? undefined}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-mono text-xs text-muted-foreground transition-colors hover:text-foreground"
-            >
-              {createdUrl ?? 'Waiting for the endpoint…'}
-            </a>
+            <div className="min-w-0">
+              <p className="text-xs text-muted-foreground">
+                {source === 'git' && deploymentId ? 'Endpoint' : 'App endpoint'}
+              </p>
+              <a
+                href={createdUrl ?? undefined}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-mono text-xs text-muted-foreground transition-colors hover:text-foreground"
+              >
+                {createdUrl ?? 'Waiting for the endpoint…'}
+              </a>
+            </div>
             <div className="flex gap-2">
               <Button
                 variant="outline"
@@ -183,12 +258,10 @@ function NewFunctionPage() {
                 size="sm"
                 className="gap-1.5 rounded-md"
                 onClick={() =>
-                  createdId
-                    ? navigate({
-                        to: '/dashboard/workflows/$workflowId',
-                        params: { workflowId: createdId },
-                      })
-                    : navigate({ to: '/dashboard' })
+                  navigate({
+                    to: '/dashboard/workflows/$workflowId',
+                    params: { workflowId: createdId },
+                  })
                 }
               >
                 View function
@@ -306,7 +379,7 @@ function NewFunctionPage() {
             <div className="flex justify-end">
               <Button
                 variant="cta"
-                disabled={source === 'git' && !repo.includes('/')}
+                disabled={source === 'git' && !repoValid}
                 onClick={() => setStep(1)}
                 className="h-10 gap-2 rounded-lg"
               >
@@ -490,7 +563,7 @@ function NewFunctionPage() {
               </Button>
               <Button
                 variant="cta"
-                onClick={() => setDeploying(true)}
+                onClick={() => void createFunction()}
                 className="h-10 gap-2 rounded-lg px-6"
               >
                 Deploy function
