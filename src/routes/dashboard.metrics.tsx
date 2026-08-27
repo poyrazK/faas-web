@@ -12,6 +12,9 @@ import {
 } from '@/components/dashboard/primitives';
 import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
 import { useAppMetrics, type MetricsRange } from '@/lib/api/queries';
+import { useAuth } from '@/lib/auth';
+import { isPaidPlan } from '@/lib/plan';
+import { PlanGate } from '@/components/dashboard/plan-gate';
 import { consoleHead } from '@/lib/seo';
 
 export const Route = createFileRoute('/dashboard/metrics')({
@@ -50,8 +53,12 @@ function formatCount(value: number | undefined): string {
 function MetricsPage() {
   const appState = useSelectedApp();
   const { slug, select, apps } = appState;
+  const { account, loading: authLoading } = useAuth();
   const [range, setRange] = useState<MetricsRange>('24h');
-  const { data, isPending, error, refetch } = useAppMetrics(slug, range);
+  const paidAccess = account !== null && isPaidPlan(account.plan);
+  const { data, isPending, error, refetch } = useAppMetrics(slug, range, {
+    enabled: paidAccess,
+  });
 
   // "prometheus" on success; anything else is the documented degraded string.
   const degraded = Boolean(data && data.source !== 'prometheus');
@@ -73,6 +80,7 @@ function MetricsPage() {
               <select
                 value={range}
                 onChange={(e) => setRange(e.target.value as MetricsRange)}
+                disabled={!paidAccess}
                 aria-label="Metrics window"
                 className="h-9 rounded-md border border-border bg-card px-2.5 text-sm outline-none focus:border-brand/50"
               >
@@ -88,7 +96,14 @@ function MetricsPage() {
       />
 
       <AppScope state={appState} resource="metrics">
-        {degraded && (
+        {authLoading || account === null ? (
+          <LoadingState message="Checking plan access…" />
+        ) : !paidAccess ? (
+          <PlanGate
+            feature="Per-app metrics"
+            description="Request, latency, cold-start, and error aggregates are available on Hobby and above."
+          />
+        ) : degraded ? (
           <p
             role="status"
             className="flex items-start gap-2 rounded-lg border px-3 py-2 text-xs"
@@ -100,15 +115,15 @@ function MetricsPage() {
             />
             Metrics are degraded ({data?.source}), so no figures can be read for this window.
           </p>
-        )}
+        ) : null}
 
-        {phase === 'unreachable' ? (
+        {paidAccess && phase === 'unreachable' ? (
           <UnreachableState onRetry={() => void refetch()} />
-        ) : phase === 'error' ? (
+        ) : paidAccess && phase === 'error' ? (
           <ErrorState error={error} onRetry={() => void refetch()} />
-        ) : phase === 'loading' ? (
+        ) : paidAccess && phase === 'loading' ? (
           <LoadingState message="Querying metrics…" />
-        ) : (
+        ) : paidAccess ? (
           <>
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <StatTile label="Requests" value={formatCount(data?.request_count)} state={tile} />
@@ -130,7 +145,7 @@ function MetricsPage() {
               fleet figure, not this app alone.
             </p>
           </>
-        )}
+        ) : null}
       </AppScope>
     </div>
   );

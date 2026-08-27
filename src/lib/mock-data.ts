@@ -22,7 +22,7 @@ export const NOW = new Date('2026-08-13T14:00:00Z').getTime();
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 
-export type RunState = 'running' | 'idle' | 'error' | 'deploying';
+export type RunState = 'running' | 'idle' | 'error' | 'deploying' | 'undeployed';
 
 /**
  * The runtimes `apid` actually accepts, mirrored from `CreateAppRequest` in

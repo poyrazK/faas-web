@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
@@ -14,6 +15,9 @@ import {
   type AppSLOWindow,
 } from '@/lib/api/queries';
 import { errorMessage } from '@/lib/api/errors';
+import { useAuth } from '@/lib/auth';
+import { isPaidPlan } from '@/lib/plan';
+import { PlanGate } from './plan-gate';
 
 const FIELD =
   'h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-brand/50';
@@ -38,6 +42,7 @@ function pretty(value: unknown): string {
 /** A small request console for the customer-facing invoke path. */
 export function InvokePanel({ slug }: { slug: string }) {
   const { toast } = useToast();
+  const { account, loading: authLoading } = useAuth();
   const sync = useInvokeApp();
   const asyncInvoke = useInvokeAppAsync();
   const [mode, setMode] = useState<'sync' | 'async'>('sync');
@@ -48,6 +53,11 @@ export function InvokePanel({ slug }: { slug: string }) {
   const [output, setOutput] = useState<unknown>(null);
   const [pendingId, setPendingId] = useState('');
   const invocation = useInvocation(pendingId, true);
+  const syncAvailable = account !== null && isPaidPlan(account.plan);
+  // Keep the in-memory choice harmless if the account resolves as Free after
+  // the panel mounted: the displayed and submitted mode becomes async
+  // without a state-setting effect or a paid-only request.
+  const effectiveMode = syncAvailable ? mode : 'async';
 
   const submit = () => {
     let body: {
@@ -70,10 +80,10 @@ export function InvokePanel({ slug }: { slug: string }) {
 
     setOutput(null);
     setPendingId('');
-    const request = mode === 'sync' ? sync.mutateAsync : asyncInvoke.mutateAsync;
+    const request = effectiveMode === 'sync' ? sync.mutateAsync : asyncInvoke.mutateAsync;
     void request({ slug, ...body })
       .then((result) => {
-        if (mode === 'async') {
+        if (effectiveMode === 'async') {
           setPendingId(result.id);
           setOutput({ id: result.id, status: 'queued' });
           toast({ kind: 'success', title: 'Invocation queued' });
@@ -86,7 +96,7 @@ export function InvokePanel({ slug }: { slug: string }) {
       );
   };
 
-  const pending = mode === 'async' && Boolean(pendingId) && !invocation.data;
+  const pending = effectiveMode === 'async' && Boolean(pendingId) && !invocation.data;
   const busy = sync.isPending || asyncInvoke.isPending;
 
   return (
@@ -100,10 +110,12 @@ export function InvokePanel({ slug }: { slug: string }) {
             <button
               key={value}
               type="button"
-              aria-pressed={mode === value}
+              aria-pressed={effectiveMode === value}
+              aria-disabled={value === 'sync' && !syncAvailable}
+              disabled={value === 'sync' && !syncAvailable}
               onClick={() => setMode(value)}
               className={`rounded px-2.5 py-1 text-xs transition-colors ${
-                mode === value
+                effectiveMode === value
                   ? 'bg-muted text-foreground'
                   : 'text-muted-foreground hover:text-foreground'
               }`}
@@ -155,14 +167,27 @@ export function InvokePanel({ slug }: { slug: string }) {
         </label>
         <div className="flex items-center justify-between gap-3 sm:col-span-2">
           <p className="text-xs text-muted-foreground">
-            {mode === 'sync'
+            {effectiveMode === 'sync'
               ? 'The request waits for the platform result and may take longer on a cold app.'
               : 'The request returns immediately; its status is polled until it reaches a terminal state.'}
           </p>
-          <Button size="sm" onClick={submit} disabled={busy}>
+          <Button size="sm" onClick={submit} disabled={busy || authLoading}>
             {busy ? 'Sending…' : 'Send request'}
           </Button>
         </div>
+        {authLoading ? (
+          <p className="text-xs text-muted-foreground sm:col-span-2" role="status">
+            Checking plan access…
+          </p>
+        ) : account && !syncAvailable ? (
+          <p className="text-xs text-muted-foreground sm:col-span-2" role="status">
+            Synchronous invocation is available on Hobby and above. Async invocation remains
+            available on the free plan.{' '}
+            <Link to="/dashboard/plans" className="text-brand hover:underline">
+              Compare plans
+            </Link>
+          </p>
+        ) : null}
       </div>
 
       {(output !== null || pendingId) && (
@@ -186,9 +211,13 @@ export function InvokePanel({ slug }: { slug: string }) {
 const SLO_WINDOWS: AppSLOWindow[] = ['1h', '24h', '7d'];
 
 export function SloPanel({ slug }: { slug: string }) {
+  const { account, loading: authLoading } = useAuth();
   const [window, setWindow] = useState<AppSLOWindow>('24h');
-  const slo = useAppSlo(slug, window);
+  const paidAccess = account !== null && isPaidPlan(account.plan);
+  const slo = useAppSlo(slug, window, { enabled: paidAccess });
   const data = slo.data;
+  const degraded = Boolean(data && data.source !== 'prometheus');
+  const tileState = degraded ? ('unavailable' as const) : ('ready' as const);
 
   return (
     <Panel
@@ -198,6 +227,7 @@ export function SloPanel({ slug }: { slug: string }) {
         <select
           value={window}
           onChange={(e) => setWindow(e.target.value as AppSLOWindow)}
+          disabled={!paidAccess}
           className="h-8 rounded-md border border-border bg-background px-2 font-mono text-xs outline-none focus:border-brand/50"
           aria-label="SLO window"
         >
@@ -207,32 +237,65 @@ export function SloPanel({ slug }: { slug: string }) {
         </select>
       }
     >
-      {slo.error ? (
+      {authLoading ? (
+        <LoadingState message="Checking plan access…" />
+      ) : account === null || !paidAccess ? (
+        <PlanGate
+          feature="Service-level metrics"
+          description="Per-app SLOs include request, error, cold-boot, wake-queue, and latency signals for paid plans."
+        />
+      ) : slo.error ? (
         <ErrorState error={slo.error} onRetry={() => void slo.refetch()} />
       ) : slo.isPending || !data ? (
         <LoadingState message="Reading service level…" />
       ) : (
         <div className="flex flex-col gap-4">
-          {data.source !== 'prometheus' && (
+          {degraded && (
             <p className="text-xs text-muted-foreground" role="status">
               Telemetry source: <span className="font-mono">{data.source}</span>
             </p>
           )}
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <StatTile label="Requests" value={data.requests_total.toLocaleString()} />
+            <StatTile
+              label="Requests"
+              value={data.requests_total.toLocaleString()}
+              state={tileState}
+            />
             <StatTile
               label="Error rate"
               value={data.error_rate_pct.toFixed(2)}
               unit="%"
               deltaGood={false}
+              state={tileState}
             />
-            <StatTile label="Cold boots" value={data.cold_boot_rate_pct.toFixed(2)} unit="%" />
-            <StatTile label="Wake queue p95" value={`${data.wake_queue_p95_ms.toFixed(1)} ms`} />
+            <StatTile
+              label="Cold boots"
+              value={data.cold_boot_rate_pct.toFixed(2)}
+              unit="%"
+              state={tileState}
+            />
+            <StatTile
+              label="Wake queue p95"
+              value={`${data.wake_queue_p95_ms.toFixed(1)} ms`}
+              state={tileState}
+            />
           </div>
           <div className="grid gap-4 sm:grid-cols-3">
-            <StatTile label="Latency p50" value={`${data.request_duration.p50_ms.toFixed(1)} ms`} />
-            <StatTile label="Latency p95" value={`${data.request_duration.p95_ms.toFixed(1)} ms`} />
-            <StatTile label="Latency p99" value={`${data.request_duration.p99_ms.toFixed(1)} ms`} />
+            <StatTile
+              label="Latency p50"
+              value={`${data.request_duration.p50_ms.toFixed(1)} ms`}
+              state={tileState}
+            />
+            <StatTile
+              label="Latency p95"
+              value={`${data.request_duration.p95_ms.toFixed(1)} ms`}
+              state={tileState}
+            />
+            <StatTile
+              label="Latency p99"
+              value={`${data.request_duration.p99_ms.toFixed(1)} ms`}
+              state={tileState}
+            />
           </div>
         </div>
       )}

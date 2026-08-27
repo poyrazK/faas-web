@@ -11,6 +11,8 @@ import { type Runtime } from '@/lib/mock-data';
 import { errorMessage } from '@/lib/api/errors';
 import { useData } from '@/lib/store';
 import { useDeployFromRefFor, useUpdateAppFor } from '@/lib/api/queries';
+import { useAuth } from '@/lib/auth';
+import { appQuotaExceeded, appQuotaRemaining, memoryAllowed } from '@/lib/plan';
 import { cn } from '@/lib/utils';
 import { pageHead } from '@/lib/seo';
 
@@ -65,6 +67,7 @@ function NewFunctionPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { addWorkflow } = useData();
+  const { account, loading: authLoading } = useAuth();
 
   const [createdId, setCreatedId] = useState<string | null>(null);
   // The endpoint the API assigned. Constructing one from the slug would be a
@@ -79,7 +82,9 @@ function NewFunctionPage() {
   const updateApp = useUpdateAppFor();
   const [appType, setAppType] = useState<'function' | 'app'>('function');
   const [runtime, setRuntime] = useState<Runtime>('node22');
-  const [memoryMb, setMemoryMb] = useState(512);
+  // Start at the platform floor. The previous 512 MB default guaranteed a
+  // failed Free-plan submission before the customer had seen the limit.
+  const [memoryMb, setMemoryMb] = useState(128);
   const [scaleToZero, setScaleToZero] = useState(true);
 
   const [deploying, setDeploying] = useState(false);
@@ -89,6 +94,12 @@ function NewFunctionPage() {
 
   const nameValid = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(name);
   const repoValid = /^[^/\s]+\/[^/\s]+$/.test(repo.trim());
+  const maxMemoryMb = account?.limits.ram_mb ?? 128;
+  const selectedMemoryMb = Math.min(memoryMb, maxMemoryMb);
+  const quotaRemaining = appQuotaRemaining(account);
+  const quotaExceeded = appQuotaExceeded(account);
+  const limitsLoading = authLoading && !account;
+  const deployBlocked = limitsLoading || quotaExceeded || !memoryAllowed(account, selectedMemoryMb);
 
   async function retrySourceDeploy() {
     if (!createdId || source !== 'git' || !repoValid || retrying) return;
@@ -115,12 +126,18 @@ function NewFunctionPage() {
   }
 
   async function createFunction() {
+    if (deployBlocked) return;
     setDeploying(true);
     setSubmissionError(null);
     try {
       // App creation is the durable first step. The UI only advances to build
       // status after the API returns the actual deployment id.
-      const created = await addWorkflow({ name, runtime, memoryMb, type: appType });
+      const created = await addWorkflow({
+        name,
+        runtime,
+        memoryMb: selectedMemoryMb,
+        type: appType,
+      });
       setCreatedId(created.id);
       setCreatedUrl(created.url);
 
@@ -465,11 +482,14 @@ function NewFunctionPage() {
                     <button
                       key={m}
                       type="button"
+                      disabled={m > maxMemoryMb}
                       onClick={() => setMemoryMb(m)}
-                      aria-pressed={memoryMb === m}
+                      aria-pressed={selectedMemoryMb === m}
+                      aria-disabled={m > maxMemoryMb}
+                      title={m > maxMemoryMb ? `Requires a plan with ${m} MB per app` : undefined}
                       className={cn(
-                        'rounded-md border px-3 py-1.5 font-mono text-xs transition-colors',
-                        memoryMb === m
+                        'rounded-md border px-3 py-1.5 font-mono text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-40',
+                        selectedMemoryMb === m
                           ? 'border-brand bg-brand/10 text-foreground'
                           : 'border-border text-muted-foreground hover:text-foreground'
                       )}
@@ -478,6 +498,15 @@ function NewFunctionPage() {
                     </button>
                   ))}
                 </div>
+                {account ? (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {account.plan} plan · up to {account.limits.ram_mb} MB per app
+                  </p>
+                ) : limitsLoading ? (
+                  <p className="mt-2 text-xs text-muted-foreground" role="status">
+                    Checking plan limits…
+                  </p>
+                ) : null}
               </div>
 
               <div className="mt-6 flex items-start justify-between gap-6 border-t border-border pt-5">
@@ -535,7 +564,7 @@ function NewFunctionPage() {
                       : 'Later, from the CLI',
                   ],
                   ['Runtime', runtime],
-                  ['Memory', `${memoryMb} MB`],
+                  ['Memory', `${selectedMemoryMb} MB`],
                   ['Scale to zero', scaleToZero ? 'Parks when idle' : 'One instance kept resident'],
                   // Assigned by the API on create, so it is not known until then.
                   ['Endpoint', createdUrl ?? 'Assigned on create'],
@@ -547,10 +576,40 @@ function NewFunctionPage() {
                 ))}
               </dl>
 
+              {account && (
+                <div
+                  role={quotaExceeded ? 'alert' : 'status'}
+                  className={cn(
+                    'mt-5 rounded-lg border px-3 py-2 text-xs',
+                    quotaExceeded
+                      ? 'border-[color:var(--status-critical)]/35 text-muted-foreground'
+                      : 'border-border text-muted-foreground'
+                  )}
+                >
+                  {quotaExceeded ? (
+                    <>
+                      You have reached the {account.plan} plan limit of{' '}
+                      {account.limits.deployed_apps} app
+                      {account.limits.deployed_apps === 1 ? '' : 's'}.{' '}
+                      <Link to="/dashboard/plans" className="text-brand hover:underline">
+                        Upgrade your plan
+                      </Link>{' '}
+                      to deploy another app.
+                    </>
+                  ) : (
+                    <>
+                      {account.plan} plan · {quotaRemaining} app
+                      {quotaRemaining === 1 ? '' : 's'} available · up to {account.limits.ram_mb} MB
+                      per app.
+                    </>
+                  )}
+                </div>
+              )}
+
               <p className="mt-5 text-xs text-muted-foreground">
                 Estimated cost at 100k invocations/month:{' '}
                 <span className="text-foreground">
-                  ${((memoryMb / 1024) * 0.05 * 100).toFixed(2)}
+                  ${((selectedMemoryMb / 1024) * 0.05 * 100).toFixed(2)}
                 </span>{' '}
                 — billed only for time spent running.
               </p>
@@ -563,6 +622,7 @@ function NewFunctionPage() {
               </Button>
               <Button
                 variant="cta"
+                disabled={deployBlocked}
                 onClick={() => void createFunction()}
                 className="h-10 gap-2 rounded-lg px-6"
               >

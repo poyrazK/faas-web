@@ -29,6 +29,7 @@ const STATE_CONFIG: Record<RunState, { label: string; color: string; icon: typeo
   idle: { label: 'Idle', color: 'var(--chart-muted)', icon: Circle },
   error: { label: 'Error', color: 'var(--status-critical)', icon: WarningTriangle },
   deploying: { label: 'Deploying', color: 'var(--status-warning)', icon: RefreshDouble },
+  undeployed: { label: 'Undeployed', color: 'var(--chart-muted)', icon: Circle },
 };
 
 export function StateBadge({ state, className }: { state: RunState; className?: string }) {
