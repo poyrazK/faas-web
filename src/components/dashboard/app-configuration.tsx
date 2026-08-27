@@ -7,6 +7,7 @@ import { useToast } from '@/components/ui/toast';
 import { errorMessage } from '@/lib/api/errors';
 import { useApp, useDeleteApp, useRenameApp, useUpdateApp, type App } from '@/lib/api/queries';
 import { ErrorState, LoadingState, Panel, UnreachableState, queryPhase } from './primitives';
+import { RegistryCredentialsPanel } from './app-core-panels';
 
 /**
  * The app's own settings, editable.
@@ -405,6 +406,7 @@ export function AppConfiguration({ slug }: { slug: string }) {
       </Panel>
       {/* Keyed on the id so a rename or a fresh read reseeds the draft. */}
       <ConfigForm key={`${data.id}:${data.slug}`} app={data} />
+      <RegistryCredentialsPanel slug={data.slug} />
       <RenamePanel key={`rename:${data.slug}`} app={data} />
       <DangerZone app={data} />
     </div>

@@ -35,6 +35,7 @@ import { AlertsBody } from './dashboard.alerts';
 import { WebhooksBody } from './dashboard.webhooks';
 import { EdgeRulesBody } from './dashboard.edge-rules';
 import { AppConfiguration } from '@/components/dashboard/app-configuration';
+import { InvokePanel, SloPanel } from '@/components/dashboard/app-core-panels';
 import { Modal } from '@/components/ui/modal';
 import { pageHead, useDocumentTitle } from '@/lib/seo';
 
@@ -51,6 +52,7 @@ const METRIC_RANGES: MetricsRange[] = ['5m', '15m', '1h', '6h', '24h', '7d', '15
  */
 const TABS = [
   'Metrics',
+  'Invoke',
   'Deployments',
   'Logs',
   'Routes',
@@ -365,8 +367,11 @@ function FunctionDetailPage() {
                 </div>
               )}
             </Panel>
+            <SloPanel slug={fn.id} />
           </div>
         )}
+
+        {tab === 'Invoke' && <InvokePanel slug={fn.id} />}
 
         {tab === 'Deployments' && (
           <Panel title="Deployment history" description={`${deployments.length} deployments`}>
