@@ -30,7 +30,6 @@ import { Route as DashboardInvoicesRouteImport } from './routes/dashboard.invoic
 import { Route as DashboardKeysRouteImport } from './routes/dashboard.keys'
 import { Route as DashboardLogsRouteImport } from './routes/dashboard.logs'
 import { Route as DashboardMetricsRouteImport } from './routes/dashboard.metrics'
-import { Route as DashboardOperatorRouteImport } from './routes/dashboard.operator'
 import { Route as DashboardPlansRouteImport } from './routes/dashboard.plans'
 import { Route as DashboardQueuesRouteImport } from './routes/dashboard.queues'
 import { Route as DashboardSecretsRouteImport } from './routes/dashboard.secrets'
@@ -44,8 +43,6 @@ import { Route as DashboardWebhooksRouteImport } from './routes/dashboard.webhoo
 import { Route as DashboardWorkersRouteImport } from './routes/dashboard.workers'
 import { Route as DocsIndexRouteImport } from './routes/docs.index'
 import { Route as DocsSlugRouteImport } from './routes/docs.$slug'
-import { Route as DashboardOperatorFleetRouteImport } from './routes/dashboard.operator.fleet'
-import { Route as DashboardOperatorTenantsRouteImport } from './routes/dashboard.operator.tenants'
 import { Route as DashboardWorkflowsIndexRouteImport } from './routes/dashboard.workflows.index'
 import { Route as DashboardWorkflowsWorkflowIdRouteImport } from './routes/dashboard.workflows.$workflowId'
 import { Route as DashboardWorkflowsNewRouteImport } from './routes/dashboard.workflows.new'
@@ -155,11 +152,6 @@ const DashboardMetricsRoute = DashboardMetricsRouteImport.update({
   path: '/metrics',
   getParentRoute: () => DashboardRoute,
 } as any)
-const DashboardOperatorRoute = DashboardOperatorRouteImport.update({
-  id: '/operator',
-  path: '/operator',
-  getParentRoute: () => DashboardRoute,
-} as any)
 const DashboardPlansRoute = DashboardPlansRouteImport.update({
   id: '/plans',
   path: '/plans',
@@ -225,17 +217,6 @@ const DocsSlugRoute = DocsSlugRouteImport.update({
   path: '/$slug',
   getParentRoute: () => DocsRoute,
 } as any)
-const DashboardOperatorFleetRoute = DashboardOperatorFleetRouteImport.update({
-  id: '/fleet',
-  path: '/fleet',
-  getParentRoute: () => DashboardOperatorRoute,
-} as any)
-const DashboardOperatorTenantsRoute =
-  DashboardOperatorTenantsRouteImport.update({
-    id: '/tenants',
-    path: '/tenants',
-    getParentRoute: () => DashboardOperatorRoute,
-  } as any)
 const DashboardWorkflowsIndexRoute = DashboardWorkflowsIndexRouteImport.update({
   id: '/workflows/',
   path: '/workflows/',
@@ -274,7 +255,6 @@ export interface FileRoutesByFullPath {
   '/dashboard/keys': typeof DashboardKeysRoute
   '/dashboard/logs': typeof DashboardLogsRoute
   '/dashboard/metrics': typeof DashboardMetricsRoute
-  '/dashboard/operator': typeof DashboardOperatorRouteWithChildren
   '/dashboard/plans': typeof DashboardPlansRoute
   '/dashboard/queues': typeof DashboardQueuesRoute
   '/dashboard/secrets': typeof DashboardSecretsRoute
@@ -289,8 +269,6 @@ export interface FileRoutesByFullPath {
   '/docs/$slug': typeof DocsSlugRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/docs/': typeof DocsIndexRoute
-  '/dashboard/operator/fleet': typeof DashboardOperatorFleetRoute
-  '/dashboard/operator/tenants': typeof DashboardOperatorTenantsRoute
   '/dashboard/workflows/$workflowId': typeof DashboardWorkflowsWorkflowIdRoute
   '/dashboard/workflows/new': typeof DashboardWorkflowsNewRoute
   '/dashboard/workflows/': typeof DashboardWorkflowsIndexRoute
@@ -314,7 +292,6 @@ export interface FileRoutesByTo {
   '/dashboard/keys': typeof DashboardKeysRoute
   '/dashboard/logs': typeof DashboardLogsRoute
   '/dashboard/metrics': typeof DashboardMetricsRoute
-  '/dashboard/operator': typeof DashboardOperatorRouteWithChildren
   '/dashboard/plans': typeof DashboardPlansRoute
   '/dashboard/queues': typeof DashboardQueuesRoute
   '/dashboard/secrets': typeof DashboardSecretsRoute
@@ -329,8 +306,6 @@ export interface FileRoutesByTo {
   '/docs/$slug': typeof DocsSlugRoute
   '/dashboard': typeof DashboardIndexRoute
   '/docs': typeof DocsIndexRoute
-  '/dashboard/operator/fleet': typeof DashboardOperatorFleetRoute
-  '/dashboard/operator/tenants': typeof DashboardOperatorTenantsRoute
   '/dashboard/workflows/$workflowId': typeof DashboardWorkflowsWorkflowIdRoute
   '/dashboard/workflows/new': typeof DashboardWorkflowsNewRoute
   '/dashboard/workflows': typeof DashboardWorkflowsIndexRoute
@@ -357,7 +332,6 @@ export interface FileRoutesById {
   '/dashboard/keys': typeof DashboardKeysRoute
   '/dashboard/logs': typeof DashboardLogsRoute
   '/dashboard/metrics': typeof DashboardMetricsRoute
-  '/dashboard/operator': typeof DashboardOperatorRouteWithChildren
   '/dashboard/plans': typeof DashboardPlansRoute
   '/dashboard/queues': typeof DashboardQueuesRoute
   '/dashboard/secrets': typeof DashboardSecretsRoute
@@ -372,8 +346,6 @@ export interface FileRoutesById {
   '/docs/$slug': typeof DocsSlugRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/docs/': typeof DocsIndexRoute
-  '/dashboard/operator/fleet': typeof DashboardOperatorFleetRoute
-  '/dashboard/operator/tenants': typeof DashboardOperatorTenantsRoute
   '/dashboard/workflows/$workflowId': typeof DashboardWorkflowsWorkflowIdRoute
   '/dashboard/workflows/new': typeof DashboardWorkflowsNewRoute
   '/dashboard/workflows/': typeof DashboardWorkflowsIndexRoute
@@ -401,7 +373,6 @@ export interface FileRouteTypes {
     | '/dashboard/keys'
     | '/dashboard/logs'
     | '/dashboard/metrics'
-    | '/dashboard/operator'
     | '/dashboard/plans'
     | '/dashboard/queues'
     | '/dashboard/secrets'
@@ -416,8 +387,6 @@ export interface FileRouteTypes {
     | '/docs/$slug'
     | '/dashboard/'
     | '/docs/'
-    | '/dashboard/operator/fleet'
-    | '/dashboard/operator/tenants'
     | '/dashboard/workflows/$workflowId'
     | '/dashboard/workflows/new'
     | '/dashboard/workflows/'
@@ -441,7 +410,6 @@ export interface FileRouteTypes {
     | '/dashboard/keys'
     | '/dashboard/logs'
     | '/dashboard/metrics'
-    | '/dashboard/operator'
     | '/dashboard/plans'
     | '/dashboard/queues'
     | '/dashboard/secrets'
@@ -456,8 +424,6 @@ export interface FileRouteTypes {
     | '/docs/$slug'
     | '/dashboard'
     | '/docs'
-    | '/dashboard/operator/fleet'
-    | '/dashboard/operator/tenants'
     | '/dashboard/workflows/$workflowId'
     | '/dashboard/workflows/new'
     | '/dashboard/workflows'
@@ -483,7 +449,6 @@ export interface FileRouteTypes {
     | '/dashboard/keys'
     | '/dashboard/logs'
     | '/dashboard/metrics'
-    | '/dashboard/operator'
     | '/dashboard/plans'
     | '/dashboard/queues'
     | '/dashboard/secrets'
@@ -498,8 +463,6 @@ export interface FileRouteTypes {
     | '/docs/$slug'
     | '/dashboard/'
     | '/docs/'
-    | '/dashboard/operator/fleet'
-    | '/dashboard/operator/tenants'
     | '/dashboard/workflows/$workflowId'
     | '/dashboard/workflows/new'
     | '/dashboard/workflows/'
@@ -663,13 +626,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardMetricsRouteImport
       parentRoute: typeof DashboardRoute
     }
-    '/dashboard/operator': {
-      id: '/dashboard/operator'
-      path: '/operator'
-      fullPath: '/dashboard/operator'
-      preLoaderRoute: typeof DashboardOperatorRouteImport
-      parentRoute: typeof DashboardRoute
-    }
     '/dashboard/plans': {
       id: '/dashboard/plans'
       path: '/plans'
@@ -761,20 +717,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DocsSlugRouteImport
       parentRoute: typeof DocsRoute
     }
-    '/dashboard/operator/fleet': {
-      id: '/dashboard/operator/fleet'
-      path: '/fleet'
-      fullPath: '/dashboard/operator/fleet'
-      preLoaderRoute: typeof DashboardOperatorFleetRouteImport
-      parentRoute: typeof DashboardOperatorRoute
-    }
-    '/dashboard/operator/tenants': {
-      id: '/dashboard/operator/tenants'
-      path: '/tenants'
-      fullPath: '/dashboard/operator/tenants'
-      preLoaderRoute: typeof DashboardOperatorTenantsRouteImport
-      parentRoute: typeof DashboardOperatorRoute
-    }
     '/dashboard/workflows/': {
       id: '/dashboard/workflows/'
       path: '/workflows'
@@ -799,19 +741,6 @@ declare module '@tanstack/react-router' {
   }
 }
 
-interface DashboardOperatorRouteChildren {
-  DashboardOperatorFleetRoute: typeof DashboardOperatorFleetRoute
-  DashboardOperatorTenantsRoute: typeof DashboardOperatorTenantsRoute
-}
-
-const DashboardOperatorRouteChildren: DashboardOperatorRouteChildren = {
-  DashboardOperatorFleetRoute: DashboardOperatorFleetRoute,
-  DashboardOperatorTenantsRoute: DashboardOperatorTenantsRoute,
-}
-
-const DashboardOperatorRouteWithChildren =
-  DashboardOperatorRoute._addFileChildren(DashboardOperatorRouteChildren)
-
 interface DashboardRouteChildren {
   DashboardAlertsRoute: typeof DashboardAlertsRoute
   DashboardApisRoute: typeof DashboardApisRoute
@@ -827,7 +756,6 @@ interface DashboardRouteChildren {
   DashboardKeysRoute: typeof DashboardKeysRoute
   DashboardLogsRoute: typeof DashboardLogsRoute
   DashboardMetricsRoute: typeof DashboardMetricsRoute
-  DashboardOperatorRoute: typeof DashboardOperatorRouteWithChildren
   DashboardPlansRoute: typeof DashboardPlansRoute
   DashboardQueuesRoute: typeof DashboardQueuesRoute
   DashboardSecretsRoute: typeof DashboardSecretsRoute
@@ -860,7 +788,6 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardKeysRoute: DashboardKeysRoute,
   DashboardLogsRoute: DashboardLogsRoute,
   DashboardMetricsRoute: DashboardMetricsRoute,
-  DashboardOperatorRoute: DashboardOperatorRouteWithChildren,
   DashboardPlansRoute: DashboardPlansRoute,
   DashboardQueuesRoute: DashboardQueuesRoute,
   DashboardSecretsRoute: DashboardSecretsRoute,

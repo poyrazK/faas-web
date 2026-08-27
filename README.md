@@ -118,10 +118,10 @@ stream, so it uses `EventSource` in `lib/api/logs.ts` rather than
 `openapi-fetch`. There is no single response to cache, so no TanStack Query
 either.
 
-Customer pages do not surface the `/v1/admin/*` routes. Operator-only controls
-are available in the Runtime config page under `/dashboard/operator`; the CLI
-device-code flow, OAuth callbacks, and the Stripe webhook receiver remain
-non-UI surfaces.
+Customer pages do not surface the `/v1/admin/*` routes or operator controls.
+The dedicated operations console is deployed separately at
+`https://operations.gregale.dev`; the CLI device-code flow, OAuth callbacks,
+and the Stripe webhook receiver remain non-UI surfaces in this project.
 
 ### Where the UI and the API disagreed
 
