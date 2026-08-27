@@ -23,6 +23,17 @@ export type OperatorRuntimeConfig = components['schemas']['OperatorRuntimeConfig
 export type OperatorRuntimeConfigOperation =
   components['schemas']['OperatorRuntimeConfigOperation'];
 export type OperatorRuntimeConfigRevision = components['schemas']['OperatorRuntimeConfigRevision'];
+export type OperatorOverview = components['schemas']['ObsOverviewResponse'];
+export type OperatorCapacity = components['schemas']['ObsCapacityResponse'];
+export type OperatorTenant = components['schemas']['ObsTenantRow'];
+export type OperatorTenant360 = components['schemas']['ObsTenant360Response'];
+export type OperatorTenantActivity = components['schemas']['ObsTenantActivityResponse'];
+export type OperatorNode = components['schemas']['ObsNodeRow'];
+export type OperatorNodeDetail = components['schemas']['ObsNodeDetailResponse'];
+export type OperatorAppDetail = components['schemas']['ObsAppDetailResponse'];
+export type OperatorInstance = components['schemas']['ObsInstanceRow'];
+export type OperatorIntent = components['schemas']['OperatorIntentResponse'];
+export type OperatorIntentAccepted = components['schemas']['OperatorIntentAcceptedResponse'];
 
 export const keys = {
   account: ['account'] as const,
@@ -47,6 +58,18 @@ export const keys = {
     ['operator', 'runtime-config', key, 'revisions'] as const,
   operatorRuntimeConfigOperation: (id: string) =>
     ['operator', 'runtime-config', 'operations', id] as const,
+  operatorOverview: ['operator', 'overview'] as const,
+  operatorCapacity: ['operator', 'capacity'] as const,
+  operatorTenants: (cursor?: string) => ['operator', 'tenants', cursor ?? 'first'] as const,
+  operatorTenant360: (id: string, month: string) =>
+    ['operator', 'tenants', id, '360', month] as const,
+  operatorTenantActivity: (id: string, limit: number) =>
+    ['operator', 'tenants', id, 'activity', limit] as const,
+  operatorNodes: (includeInactive: boolean, cursor?: string) =>
+    ['operator', 'nodes', includeInactive, cursor ?? 'first'] as const,
+  operatorNode: (name: string) => ['operator', 'nodes', name] as const,
+  operatorApp: (id: string, range: string) => ['operator', 'apps', id, range] as const,
+  operatorIntent: (id: string) => ['operator', 'intents', id] as const,
   appSecrets: (slug: string) => ['apps', slug, 'secrets'] as const,
   appEnv: (slug: string) => ['apps', slug, 'env'] as const,
   appAlerts: (slug: string) => ['apps', slug, 'alerts'] as const,
@@ -304,6 +327,170 @@ export function useInstances() {
   return useQuery({
     queryKey: keys.instances,
     queryFn: () => unwrap(api.GET('/v1/instances', {})),
+  });
+}
+
+/* ------------------------------------------------------------------ *
+ * Operator fleet and tenant operations
+ *
+ * These reads are admin-only on apid. They are kept separate from the
+ * account-scoped resources above so a missing operator permission is rendered
+ * as an access problem instead of an empty customer fleet.
+ * ------------------------------------------------------------------ */
+
+export function useOperatorOverview() {
+  return useQuery({
+    queryKey: keys.operatorOverview,
+    queryFn: () => unwrap(api.GET('/v1/admin/obs/overview', {})),
+    refetchInterval: 30_000,
+  });
+}
+
+export function useOperatorCapacity() {
+  return useQuery({
+    queryKey: keys.operatorCapacity,
+    queryFn: () => unwrap(api.GET('/v1/admin/obs/capacity', {})),
+    refetchInterval: 30_000,
+  });
+}
+
+export function useOperatorTenants(limit = 200, cursor?: string) {
+  return useQuery({
+    queryKey: keys.operatorTenants(cursor),
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/admin/obs/tenants', {
+          params: { query: { limit, ...(cursor ? { cursor } : {}) } },
+        })
+      ),
+  });
+}
+
+export function useOperatorTenant360(id: string, month: string) {
+  return useQuery({
+    queryKey: keys.operatorTenant360(id, month),
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/admin/obs/tenants/{id}/360', {
+          params: { path: { id }, query: { month } },
+        })
+      ),
+    enabled: Boolean(id),
+  });
+}
+
+export function useOperatorTenantActivity(id: string, limit = 50) {
+  return useQuery({
+    queryKey: keys.operatorTenantActivity(id, limit),
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/admin/obs/tenants/{id}/activity', {
+          params: { path: { id }, query: { limit } },
+        })
+      ),
+    enabled: Boolean(id),
+  });
+}
+
+export function useOperatorNodes(includeInactive = true, cursor?: string) {
+  return useQuery({
+    queryKey: keys.operatorNodes(includeInactive, cursor),
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/admin/obs/nodes', {
+          params: {
+            query: {
+              limit: 500,
+              include_inactive: includeInactive ? '1' : '0',
+              ...(cursor ? { cursor } : {}),
+            },
+          },
+        })
+      ),
+    refetchInterval: 30_000,
+  });
+}
+
+export function useOperatorNodeDetail(name: string) {
+  return useQuery({
+    queryKey: keys.operatorNode(name),
+    queryFn: () =>
+      unwrap(api.GET('/v1/admin/obs/nodes/{name}/detail', { params: { path: { name } } })),
+    enabled: Boolean(name),
+    refetchInterval: name ? 15_000 : false,
+  });
+}
+
+export function useOperatorAppDetail(id: string, range: MetricsRange = '1h') {
+  return useQuery({
+    queryKey: keys.operatorApp(id, range),
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/admin/obs/apps/{id}', {
+          params: { path: { id }, query: { range } },
+        })
+      ),
+    enabled: Boolean(id),
+  });
+}
+
+export function useOperatorIntent(id: string) {
+  return useQuery({
+    queryKey: keys.operatorIntent(id),
+    queryFn: () => unwrap(api.GET('/v1/admin/operator-intents/{id}', { params: { path: { id } } })),
+    enabled: Boolean(id),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status && ['succeeded', 'failed', 'cancelled'].includes(status) ? false : 2_000;
+    },
+  });
+}
+
+type RecoveryReason = { reason: string };
+
+function invalidateOperatorFleet(qc: ReturnType<typeof useQueryClient>) {
+  void qc.invalidateQueries({ queryKey: keys.operatorOverview });
+  void qc.invalidateQueries({ queryKey: keys.operatorCapacity });
+  void qc.invalidateQueries({ queryKey: ['operator', 'nodes'] });
+  void qc.invalidateQueries({ queryKey: keys.instances });
+}
+
+export function useForceParkInstance() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string } & RecoveryReason) =>
+      unwrap(
+        api.POST('/v1/admin/instances/{id}/force-park', {
+          params: { path: { id }, query: { confirm: 'true', reason } },
+        })
+      ),
+    onSuccess: () => invalidateOperatorFleet(qc),
+  });
+}
+
+export function useForceRestartInstance() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string } & RecoveryReason) =>
+      unwrap(
+        api.POST('/v1/admin/instances/{id}/force-restart', {
+          params: { path: { id }, query: { confirm: 'true', reason } },
+        })
+      ),
+    onSuccess: () => invalidateOperatorFleet(qc),
+  });
+}
+
+export function useForceColdBootApp() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ slug, reason }: { slug: string } & RecoveryReason) =>
+      unwrap(
+        api.POST('/v1/admin/apps/{slug}/force-cold-boot', {
+          params: { path: { slug }, query: { confirm: 'true', reason } },
+        })
+      ),
+    onSuccess: () => invalidateOperatorFleet(qc),
   });
 }
 
