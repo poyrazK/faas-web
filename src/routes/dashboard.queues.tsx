@@ -1,10 +1,13 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
+import { Button } from '@/components/ui/button';
 import { PageHeader, Panel, StatTile } from '@/components/dashboard/primitives';
 import { ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
-import { useDeadLetter, useQueuePeek, useQueueState } from '@/lib/api/queries';
+import { useDeadLetter, useQueuePeek, useQueueSend, useQueueState } from '@/lib/api/queries';
 import { formatRelative } from '@/lib/mock-data';
+import { useToast } from '@/components/ui/toast';
+import { errorMessage } from '@/lib/api/errors';
 import { consoleHead } from '@/lib/seo';
 
 export const Route = createFileRoute('/dashboard/queues')({
@@ -40,6 +43,57 @@ function formatAge(seconds: number | null | undefined): string {
   if (seconds < 60) return `${Math.round(seconds)}s`;
   if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
   return `${Math.round(seconds / 3600)}h`;
+}
+
+function QueueSendPanel({ slug }: { slug: string }) {
+  const { toast } = useToast();
+  const send = useQueueSend(slug);
+  const [payload, setPayload] = useState('{}');
+
+  const submit = () => {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(payload);
+    } catch (error) {
+      toast({ kind: 'error', title: 'Invalid JSON', description: errorMessage(error) });
+      return;
+    }
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      toast({ kind: 'error', title: 'Payload must be a JSON object' });
+      return;
+    }
+    void send
+      .mutateAsync({ payload: parsed as Record<string, unknown> })
+      .then((result) => {
+        setPayload('{}');
+        toast({ kind: 'success', title: 'Message queued', description: result.id });
+      })
+      .catch((error: unknown) =>
+        toast({ kind: 'error', title: 'Could not queue message', description: errorMessage(error) })
+      );
+  };
+
+  return (
+    <Panel
+      lit
+      title="Send a message"
+      description="Publish a JSON object to this app's FIFO queue. The queue consumer remains responsible for receiving and acknowledging work."
+      actions={
+        <Button size="sm" onClick={submit} disabled={send.isPending}>
+          {send.isPending ? 'Sending…' : 'Send message'}
+        </Button>
+      }
+    >
+      <textarea
+        value={payload}
+        onChange={(e) => setPayload(e.target.value)}
+        rows={5}
+        spellCheck={false}
+        aria-label="Queue message payload"
+        className="w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-sm outline-none focus:border-brand/50"
+      />
+    </Panel>
+  );
 }
 
 /**
@@ -126,6 +180,8 @@ export function QueuesBody({ slug }: { slug: string }) {
         />
         <StatTile label="Plan cap" value={String(state.data?.plan_cap ?? '—')} />
       </div>
+
+      <QueueSendPanel slug={slug} />
 
       <Panel title="Pending">
         <ResourceTable

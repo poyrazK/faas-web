@@ -18,6 +18,7 @@ export type App = components['schemas']['AppResponse'];
 export type Deployment = components['schemas']['DeploymentResponse'];
 export type AppMetrics = components['schemas']['AppMetricsResponse'];
 export type MetricsRange = AppMetrics['range'];
+export type AppSLOWindow = components['schemas']['AppSLOResponse']['window'];
 export type MFAEnrollment = components['schemas']['MFAEnrollResponse'];
 
 export const keys = {
@@ -26,6 +27,7 @@ export const keys = {
   app: (slug: string) => ['apps', slug] as const,
   appsMetrics: (range: MetricsRange) => ['apps', 'metrics', range] as const,
   appMetrics: (slug: string, range: MetricsRange) => ['apps', slug, 'metrics', range] as const,
+  appSlo: (slug: string, window: AppSLOWindow) => ['apps', slug, 'slo', window] as const,
   deployments: ['deployments'] as const,
   appDeployments: (slug: string) => ['apps', slug, 'deployments'] as const,
   domains: ['domains'] as const,
@@ -40,6 +42,7 @@ export const keys = {
   appSecrets: (slug: string) => ['apps', slug, 'secrets'] as const,
   appEnv: (slug: string) => ['apps', slug, 'env'] as const,
   appAlerts: (slug: string) => ['apps', slug, 'alerts'] as const,
+  appRegistryCredentials: (slug: string) => ['apps', slug, 'registry-credentials'] as const,
 };
 
 /** Shared policy: never retry a settled 4xx, retry the rest twice. */
@@ -88,12 +91,31 @@ export function useAppsMetrics(range: MetricsRange = '24h', options?: Options<Ap
 
 export type AppsMetrics = components['schemas']['AppsMetricsResponse'];
 
-export function useAppMetrics(slug: string, range: MetricsRange = '24h') {
+export function useAppMetrics(
+  slug: string,
+  range: MetricsRange = '24h',
+  options?: Options<AppMetrics>
+) {
   return useQuery({
     queryKey: keys.appMetrics(slug, range),
     queryFn: () =>
       unwrap(api.GET('/v1/apps/{slug}/metrics', { params: { path: { slug }, query: { range } } })),
-    enabled: Boolean(slug),
+    ...options,
+    enabled: Boolean(slug) && options?.enabled !== false,
+  });
+}
+
+export function useAppSlo(
+  slug: string,
+  window: AppSLOWindow = '24h',
+  options?: Options<components['schemas']['AppSLOResponse']>
+) {
+  return useQuery({
+    queryKey: keys.appSlo(slug, window),
+    queryFn: () =>
+      unwrap(api.GET('/v1/apps/{slug}/slo', { params: { path: { slug }, query: { window } } })),
+    ...options,
+    enabled: Boolean(slug) && options?.enabled !== false,
   });
 }
 
@@ -116,18 +138,57 @@ export function useAppRoutes(slug: string) {
  * Deployments
  * ------------------------------------------------------------------ */
 
-export function useDeployments(limit = 50) {
+export function useDeployments(
+  limit = 50,
+  options?: Options<components['schemas']['DeploymentListResponse']>
+) {
   return useQuery({
     queryKey: [...keys.deployments, limit],
     queryFn: () => unwrap(api.GET('/v1/deployments', { params: { query: { limit } } })),
+    ...options,
   });
 }
 
-export function useDeployment(id: string) {
+export function useDeployment(id: string, options?: Options<Deployment>) {
   return useQuery({
     queryKey: ['deployments', id],
     queryFn: () => unwrap(api.GET('/v1/deployments/{id}', { params: { path: { id } } })),
     enabled: Boolean(id),
+    ...options,
+  });
+}
+
+export function useUpdateDeploymentMinInstances() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, min_instances }: { id: string; min_instances: number }) =>
+      unwrap(
+        api.PATCH('/v1/deployments/{id}', {
+          params: { path: { id } },
+          body: { min_instances },
+        })
+      ),
+    onSuccess: (_data, { id }) => {
+      void qc.invalidateQueries({ queryKey: ['deployments', id] });
+      void qc.invalidateQueries({ queryKey: keys.deployments });
+    },
+  });
+}
+
+export function useUpdateDeploymentTraffic() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, traffic_percent }: { id: string; traffic_percent: number }) =>
+      unwrap(
+        api.PATCH('/v1/deployments/{id}/traffic', {
+          params: { path: { id } },
+          body: { traffic_percent },
+        })
+      ),
+    onSuccess: (_data, { id }) => {
+      void qc.invalidateQueries({ queryKey: ['deployments', id] });
+      void qc.invalidateQueries({ queryKey: keys.deployments });
+    },
   });
 }
 
@@ -386,6 +447,20 @@ export function useDeleteDomain() {
   });
 }
 
+export function useInvokeApp() {
+  return useMutation({
+    mutationFn: ({ slug, ...body }: { slug: string } & components['schemas']['InvokeRequest']) =>
+      unwrap(api.POST('/v1/apps/{slug}/invoke', { params: { path: { slug } }, body })),
+  });
+}
+
+export function useInvokeAppAsync() {
+  return useMutation({
+    mutationFn: ({ slug, ...body }: { slug: string } & components['schemas']['InvokeRequest']) =>
+      unwrap(api.POST('/v1/apps/{slug}/invoke/async', { params: { path: { slug } }, body })),
+  });
+}
+
 export function useCronRuns(id: string) {
   return useQuery({
     queryKey: ['crons', id, 'runs'],
@@ -453,11 +528,18 @@ export function useInvocations(limit = 50) {
   });
 }
 
-export function useInvocation(id: string) {
+export function useInvocation(id: string, poll = false) {
   return useQuery({
     queryKey: ['invocations', id],
     queryFn: () => unwrap(api.GET('/v1/invocations/{id}', { params: { path: { id } } })),
     enabled: Boolean(id),
+    refetchInterval: (query) => {
+      if (!poll) return false;
+      const state = query.state.data?.state;
+      return state && ['completed', 'failed', 'cancelled', 'dead_letter'].includes(state)
+        ? false
+        : 2_000;
+    },
   });
 }
 
@@ -588,6 +670,53 @@ export function useDeadLetter(slug: string) {
   });
 }
 
+export function useQueueSend(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: components['schemas']['QueueSendRequest']) =>
+      unwrap(api.POST('/v1/apps/{slug}/queues/send', { params: { path: { slug } }, body })),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['apps', slug, 'queues'] });
+    },
+  });
+}
+
+export function useAppRegistryCredentials(slug: string) {
+  return useQuery({
+    queryKey: keys.appRegistryCredentials(slug),
+    queryFn: () =>
+      unwrap(api.GET('/v1/apps/{slug}/registry-credentials', { params: { path: { slug } } })),
+    enabled: Boolean(slug),
+  });
+}
+
+export function useSetAppRegistryCredential(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: components['schemas']['PutAppRegistryCredentialRequest']) =>
+      unwrap(
+        api.PUT('/v1/apps/{slug}/registry-credentials', {
+          params: { path: { slug } },
+          body,
+        })
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.appRegistryCredentials(slug) }),
+  });
+}
+
+export function useDeleteAppRegistryCredential(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (registry: string) =>
+      unwrap(
+        api.DELETE('/v1/apps/{slug}/registry-credentials', {
+          params: { path: { slug }, query: { registry } },
+        })
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.appRegistryCredentials(slug) }),
+  });
+}
+
 /**
  * External services an app talks to, from `/v1/apps/{slug}/upstreams`.
  *
@@ -607,10 +736,11 @@ export function useUpstreams(slug: string) {
  * Builds and supply chain
  * ------------------------------------------------------------------ */
 
-export function useBuilds() {
+export function useBuilds(options?: Options<components['schemas']['BuildListResponse']>) {
   return useQuery({
     queryKey: ['builds'],
     queryFn: () => unwrap(api.GET('/v1/builds', {})),
+    ...options,
   });
 }
 

@@ -4,6 +4,110 @@
  */
 
 export interface paths {
+    "/v1/admin/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List operator runtime configuration
+         * @description Returns the closed configuration catalog together with desired and
+         *     effective values. Sensitive settings are redacted. This is an
+         *     operator-only route and is not part of the customer API.
+         */
+        get: operations["listOperatorRuntimeConfig"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/config/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update an operator runtime setting
+         * @description Applies a catalogued setting through the zero-downtime runtime
+         *     configuration path. Hot settings return the applied entry; graceful
+         *     and rolling settings return a durable operation.
+         */
+        patch: operations["updateOperatorRuntimeConfig"];
+        trace?: never;
+    };
+    "/v1/admin/config-operations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a runtime configuration apply operation
+         * @description Polls a durable graceful or rolling configuration apply operation.
+         */
+        get: operations["getOperatorRuntimeConfigOperation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/config/{key}/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Roll back a runtime setting to a previous revision
+         * @description Applies a historical value as a new version through the hot-apply path.
+         */
+        post: operations["rollbackOperatorRuntimeConfig"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/config/{key}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List runtime configuration revisions
+         * @description Read-only append-only version history for one catalogued setting.
+         */
+        get: operations["listOperatorRuntimeConfigRevisions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/account": {
         parameters: {
             query?: never;
@@ -4405,10 +4509,295 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/obs/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read the fleet operator KPI snapshot. */
+        get: operations["getOperatorObservabilityOverview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/obs/capacity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read fleet capacity and placement counters. */
+        get: operations["getOperatorCapacity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/obs/tenants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List tenants for the operator console. */
+        get: operations["listOperatorTenants"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/obs/tenants/{id}/360": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read the bounded tenant 360 view. */
+        get: operations["getOperatorTenant360"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/obs/tenants/{id}/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read safe tenant activity metadata. */
+        get: operations["getOperatorTenantActivity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/obs/nodes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List compute nodes with live utilization. */
+        get: operations["listOperatorNodes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/obs/nodes/{name}/detail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read the apps and instances placed on one node. */
+        get: operations["getOperatorNodeDetail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/obs/apps/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read app, deployment, instance, and health details. */
+        get: operations["getOperatorAppDetail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/instances/{id}/force-park": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Enqueue a guarded force-park action. */
+        post: operations["postForceParkInstance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/instances/{id}/force-restart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Enqueue a guarded force-restart action. */
+        post: operations["postForceRestartInstance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/apps/{slug}/force-cold-boot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Enqueue a guarded force-cold-boot action. */
+        post: operations["postForceColdBootApp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/operator-intents/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read the state of an accepted operator recovery intent. */
+        get: operations["getOperatorIntent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description One entry from the closed operator runtime-configuration catalog. */
+        OperatorRuntimeConfig: {
+            key: string;
+            label: string;
+            description: string;
+            category: string;
+            /** @enum {string} */
+            kind: "boolean" | "integer" | "duration" | "string" | "enum" | "secret_reference";
+            default_value: unknown;
+            desired_value: unknown;
+            effective_value: unknown;
+            /** @enum {string} */
+            source: "default_or_environment" | "operator";
+            /** @enum {string} */
+            apply_mode: "hot" | "graceful" | "rolling" | "break_glass";
+            mutable: boolean;
+            sensitive: boolean;
+            /** @enum {string} */
+            status: "pending" | "applied" | "failed" | "blocked";
+            last_error?: string;
+            /** Format: int64 */
+            version: number;
+            /** Format: date-time */
+            updated_at?: string;
+            /** Format: date-time */
+            applied_at?: string;
+        };
+        /** @description Durable asynchronous runtime-configuration apply request. */
+        OperatorRuntimeConfigOperation: {
+            /** Format: uuid */
+            id: string;
+            key: string;
+            /** @enum {string} */
+            scope: "global" | "control_plane" | "daemon" | "node";
+            scope_id: string;
+            /** Format: int64 */
+            version: number;
+            desired_value: unknown;
+            effective_value: unknown;
+            /** @enum {string} */
+            apply_mode: "graceful" | "rolling" | "break_glass";
+            /** @enum {string} */
+            status: "pending" | "running" | "succeeded" | "failed" | "blocked" | "cancelled";
+            phase: string;
+            error?: string;
+            reason: string;
+            target_count: number;
+            applied_count: number;
+            failed_count: number;
+            /** Format: date-time */
+            requested_at: string;
+            /** Format: date-time */
+            started_at?: string;
+            /** Format: date-time */
+            finished_at?: string;
+        };
+        /** @description One append-only runtime configuration revision. */
+        OperatorRuntimeConfigRevision: {
+            /** Format: int64 */
+            id: number;
+            key: string;
+            /** @enum {string} */
+            scope: "global" | "control_plane" | "daemon" | "node";
+            scope_id: string;
+            /** Format: int64 */
+            version: number;
+            old_value: unknown;
+            new_value: unknown;
+            actor_id?: string;
+            reason: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        /** @description Request to apply a historical runtime configuration revision. */
+        RollbackOperatorRuntimeConfigRequest: {
+            /** Format: int64 */
+            version: number;
+            reason: string;
+            /** Format: int64 */
+            expected_version?: number;
+        };
         /** @description Email + password for sign-in. Email is canonicalised server-side (lowercase + trim). */
         PasswordLoginRequest: {
             /** Format: email */
@@ -8610,6 +8999,418 @@ export interface components {
              */
             error?: string;
         };
+        ObsOverviewResponse: {
+            /** Format: date-time */
+            generated_at: string;
+            totals: components["schemas"]["ObsOverviewTotals"];
+            top_rate_limited_accounts_24h: components["schemas"]["ObsOverviewRateLimited"][];
+            node_health: components["schemas"]["ObsOverviewNodeHealth"][];
+            recent_failures_1h: components["schemas"]["ObsOverviewFailureKind"][];
+        };
+        ObsOverviewTotals: {
+            accounts_active: number;
+            accounts_past_due: number;
+            accounts_suspended: number;
+            orgs_total: number;
+            apps_total: number;
+            instances_live: number;
+            instances_waking: number;
+            nodes_active: number;
+            nodes_inactive: number;
+            audit_events_24h: number;
+        };
+        ObsOverviewRateLimited: {
+            /** Format: uuid */
+            account_id: string;
+            hits: number;
+        };
+        ObsOverviewNodeHealth: {
+            name: string;
+            active: boolean;
+            /** Format: date-time */
+            last_heartbeat_at?: string;
+            stale: boolean;
+        };
+        ObsOverviewFailureKind: {
+            kind: string;
+            count: number;
+        };
+        ObsTenantRow: {
+            /** Format: uuid */
+            account_id: string;
+            plan: string;
+            status: string;
+            org_slug?: string;
+            is_personal: boolean;
+            /** Format: date-time */
+            created_at: string;
+            mfa_enrolled: boolean;
+            apps_count: number;
+            deployments_live_count: number;
+            /** Format: email */
+            email?: string;
+        };
+        ObsTenantListResponse: {
+            items: components["schemas"]["ObsTenantRow"][];
+            next_cursor: string;
+            limit: number;
+        };
+        ObsTenantApp: {
+            /** Format: uuid */
+            id: string;
+            slug: string;
+            status: string;
+            deployments: number;
+        };
+        ObsTenantOrg: {
+            /** Format: uuid */
+            id: string;
+            slug: string;
+            role: string;
+        };
+        ObsTenantCounts: {
+            active: number;
+            revoked: number;
+        };
+        ObsTenantUsageApp: {
+            /** Format: uuid */
+            app_id: string;
+            app_slug?: string;
+            /** Format: int64 */
+            mb_seconds: number;
+            /** Format: int64 */
+            cpu_usec: number;
+            /** Format: int64 */
+            requests: number;
+            /** Format: int64 */
+            tx_bytes: number;
+            /** Format: int64 */
+            net_tx_bytes: number;
+            /** Format: int64 */
+            net_rx_bytes: number;
+            /** Format: int64 */
+            cold_boots: number;
+        };
+        ObsTenantUsage: {
+            month: string;
+            used_gb_hours: number;
+            /** Format: int64 */
+            included_gb_hours: number;
+            overage_gb_hours: number;
+            /** Format: int64 */
+            overage_cents: number;
+            used_cpu_hours: number;
+            used_egress_gb: number;
+            used_ingress_gb: number;
+            /** Format: int64 */
+            cold_boots: number;
+            /** Format: int64 */
+            requests: number;
+            apps: components["schemas"]["ObsTenantUsageApp"][];
+        };
+        ObsInvoiceSummary: {
+            /** Format: uuid */
+            id: string;
+            provider: string;
+            number?: string;
+            status: string;
+            currency: string;
+            /** Format: date-time */
+            period_start: string;
+            /** Format: date-time */
+            period_end: string;
+            /** Format: int64 */
+            total_cents: number;
+            /** Format: int64 */
+            amount_paid_cents: number;
+        };
+        ObsTenantBilling: {
+            /** Format: int64 */
+            current_month_overage_cents: number;
+            /** Format: int64 */
+            overage_cap_cents?: number | null;
+            /** Format: int64 */
+            active_credits_cents: number;
+            invoices: components["schemas"]["ObsInvoiceSummary"][];
+        };
+        ObsTenant360Response: {
+            account: components["schemas"]["ObsTenantRow"];
+            apps: components["schemas"]["ObsTenantApp"][];
+            orgs: components["schemas"]["ObsTenantOrg"][];
+            api_keys: components["schemas"]["ObsTenantCounts"];
+            sessions: components["schemas"]["ObsTenantCounts"];
+            usage: components["schemas"]["ObsTenantUsage"];
+            billing: components["schemas"]["ObsTenantBilling"];
+        };
+        ObsInvocationRow: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            app_id: string;
+            app_slug?: string;
+            state: string;
+            source: string;
+            method: string;
+            path: string;
+            outcome?: string;
+            attempts: number;
+            last_error?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            completed_at?: string | null;
+        };
+        ObsAuditActivityRow: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            at: string;
+            kind: string;
+            actor?: string;
+            subject?: string;
+        };
+        ObsTenantActivityResponse: {
+            /** Format: uuid */
+            account_id: string;
+            /** Format: date-time */
+            generated_at: string;
+            invocations: components["schemas"]["ObsInvocationRow"][];
+            audit_events: components["schemas"]["ObsAuditActivityRow"][];
+            limit: number;
+        };
+        ObsCapacitySummary: {
+            total_nodes: number;
+            active_nodes: number;
+            inactive_nodes: number;
+            /** Format: int64 */
+            total_vcpus: number;
+            /** Format: int64 */
+            total_vcpu_budget: number;
+            /** Format: int64 */
+            total_mem_mb: number;
+            /** Format: int64 */
+            total_admission_ceiling_mb: number;
+            /** Format: int64 */
+            ram_used_mb: number;
+            /** Format: int64 */
+            admission_margin_mb: number;
+            /** Format: int64 */
+            instances_live: number;
+            /** Format: int64 */
+            instances_running: number;
+            /** Format: int64 */
+            instances_waking: number;
+            /** Format: int64 */
+            instances_cold_booting: number;
+            /** Format: int64 */
+            apps_total: number;
+            /** Format: int64 */
+            tenants_total: number;
+            /** Format: int64 */
+            unplaced_apps: number;
+        };
+        ObsCapacityNode: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            active: boolean;
+            vcpus: number;
+            vcpu_budget: number;
+            mem_mb: number;
+            admission_ceiling_mb: number;
+            /** Format: int64 */
+            instances_live: number;
+            /** Format: int64 */
+            instances_running: number;
+            /** Format: int64 */
+            instances_waking: number;
+            /** Format: int64 */
+            instances_cold_booting: number;
+            /** Format: int64 */
+            ram_used_mb: number;
+            /** Format: int64 */
+            admission_margin_mb: number;
+            /** Format: int64 */
+            apps_count: number;
+            /** Format: int64 */
+            tenants_count: number;
+        };
+        ObsCapacityResponse: {
+            /** Format: date-time */
+            generated_at: string;
+            summary: components["schemas"]["ObsCapacitySummary"];
+            nodes: components["schemas"]["ObsCapacityNode"][];
+        };
+        ObsNodeRow: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            active: boolean;
+            vcpus: number;
+            mem_mb: number;
+            max_concurrency: number;
+            admission_ceiling_mb: number;
+            overlay_ip?: string;
+            /** Format: date-time */
+            last_heartbeat_at?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: int64 */
+            instances_live: number;
+            /** Format: int64 */
+            instances_running: number;
+            /** Format: int64 */
+            instances_waking: number;
+            /** Format: int64 */
+            instances_cold_booting: number;
+            /** Format: int64 */
+            ram_used_mb: number;
+            /** Format: int64 */
+            admission_margin_mb: number;
+            cpu_pct_60s?: number | null;
+            /** Format: int64 */
+            disk_used_bytes?: number | null;
+        };
+        ObsNodeListResponse: {
+            items: components["schemas"]["ObsNodeRow"][];
+            next_cursor: string;
+            limit: number;
+        };
+        ObsInstanceRow: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            app_id: string;
+            app_slug?: string;
+            /** Format: uuid */
+            account_id?: string;
+            /** Format: uuid */
+            deployment_id: string;
+            /** Format: uuid */
+            node_id?: string;
+            node_name?: string;
+            state: string;
+            ram_mb: number;
+            /** Format: date-time */
+            started_at: string;
+            /** Format: date-time */
+            last_request_at: string;
+            /** Format: date-time */
+            parked_at?: string | null;
+        };
+        ObsNodeApp: {
+            /** Format: uuid */
+            id: string;
+            slug: string;
+            /** Format: uuid */
+            account_id: string;
+            status: string;
+            instances_live: number;
+            instances_running: number;
+            instances_waking: number;
+            instances_cold_booting: number;
+            /** Format: int64 */
+            ram_used_mb: number;
+            /** Format: date-time */
+            last_request_at?: string | null;
+        };
+        ObsNodeDrainStatus: {
+            total_instances: number;
+            live_instances: number;
+            running_instances: number;
+            waking_instances: number;
+            cold_booting_instances: number;
+            drain_safe: boolean;
+            /** Format: date-time */
+            observed_at: string;
+        };
+        ObsNodeDetailResponse: {
+            node: components["schemas"]["ObsNodeRow"];
+            apps: components["schemas"]["ObsNodeApp"][];
+            instances: components["schemas"]["ObsInstanceRow"][];
+            drain: components["schemas"]["ObsNodeDrainStatus"];
+        };
+        ObsDeploymentRow: {
+            /** Format: uuid */
+            id: string;
+            status: string;
+            kind: string;
+            image_digest?: string;
+            source_url?: string;
+            commit_sha?: string;
+            error_code?: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        ObsAppDetail: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            account_id: string;
+            slug: string;
+            type: string;
+            runtime: string;
+            status: string;
+            ram_mb: number;
+            max_concurrency: number;
+            min_instances: number;
+            /** Format: date-time */
+            created_at: string;
+        };
+        ObsAppHealth: {
+            /** Format: date-time */
+            generated_at: string;
+            metrics: components["schemas"]["AppMetricsResponse"];
+            errors: components["schemas"]["AppErrorSummaryItem"][];
+            /** Format: date-time */
+            errors_window_start: string;
+            /** Format: date-time */
+            errors_window_end: string;
+        };
+        ObsAppDetailResponse: {
+            app: components["schemas"]["ObsAppDetail"];
+            deployments: components["schemas"]["ObsDeploymentRow"][];
+            instances: components["schemas"]["ObsInstanceRow"][];
+            invocations: components["schemas"]["ObsInvocationRow"][];
+            health: components["schemas"]["ObsAppHealth"];
+        };
+        OperatorIntentAcceptedResponse: {
+            ok: boolean;
+            /** Format: uuid */
+            intent_id: string;
+            status_url: string;
+            /** Format: date-time */
+            expires_at: string;
+            /** @enum {string} */
+            kind: "force_park" | "force_cold_boot" | "force_restart";
+            /** Format: uuid */
+            instance_id?: string;
+            previous_state?: string;
+            /** Format: uuid */
+            app_id?: string;
+            /** Format: uuid */
+            deployment_id?: string;
+            reason: string;
+        };
+        OperatorIntentResponse: {
+            /** Format: uuid */
+            intent_id: string;
+            /** @enum {string} */
+            kind: "force_park" | "force_cold_boot" | "force_restart";
+            /** @enum {string} */
+            status: "pending" | "running" | "succeeded" | "failed" | "cancelled";
+            target_id: string;
+            /** Format: uuid */
+            account_id?: string;
+            /** Format: date-time */
+            requested_at: string;
+            /** Format: date-time */
+            started_at?: string | null;
+            /** Format: date-time */
+            finished_at?: string | null;
+            error?: string;
+            snap_ids_marked_stale?: string[];
+        };
         /**
          * @description RFC 7807 problem+json envelope. The `code` field is the stable
          *     machine-readable identifier; clients branch on it. `limit` and
@@ -9801,6 +10602,168 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listOperatorRuntimeConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Runtime configuration catalog */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["OperatorRuntimeConfig"][];
+                        /** Format: date-time */
+                        generated_at: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    updateOperatorRuntimeConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Catalog key to update. */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    value: unknown;
+                    reason: string;
+                    /** Format: int64 */
+                    expected_version?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Applied configuration entry */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorRuntimeConfig"];
+                };
+            };
+            /** @description Graceful apply operation queued */
+            202: {
+                headers: {
+                    /** @description Polling URL for the durable apply operation. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorRuntimeConfigOperation"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getOperatorRuntimeConfigOperation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Durable configuration operation id. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Runtime configuration apply operation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorRuntimeConfigOperation"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    rollbackOperatorRuntimeConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Catalog key to roll back. */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RollbackOperatorRuntimeConfigRequest"];
+            };
+        };
+        responses: {
+            /** @description Rolled-back and applied configuration entry */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorRuntimeConfig"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listOperatorRuntimeConfigRevisions: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of revisions to return. */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Catalog key whose history should be returned. */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Configuration revision history */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["OperatorRuntimeConfigRevision"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     getAccount: {
         parameters: {
             query?: never;
@@ -17682,6 +18645,340 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+        };
+    };
+    getOperatorObservabilityOverview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Fleet counts, node health, and bounded failure buckets. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObsOverviewResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getOperatorCapacity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Aggregate capacity snapshot with per-node headroom. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObsCapacityResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    listOperatorTenants: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string;
+                /** @description Opt-in email projection; every use is audited. */
+                include_pii?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cursor-paginated tenant inventory. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObsTenantListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getOperatorTenant360: {
+        parameters: {
+            query?: {
+                month?: string;
+                /** @description Opt-in email projection; every use is audited. */
+                include_pii?: boolean;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tenant identity, apps, usage, and bounded billing summary. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObsTenant360Response"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getOperatorTenantActivity: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Invocation and audit metadata without request payloads or results. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObsTenantActivityResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    listOperatorNodes: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string;
+                include_inactive?: "0" | "1";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cursor-paginated node inventory. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObsNodeListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getOperatorNodeDetail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Node health, workload placement, and drain safety. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObsNodeDetailResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getOperatorAppDetail: {
+        parameters: {
+            query?: {
+                range?: "5m" | "15m" | "1h" | "6h" | "24h" | "7d" | "15d";
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Safe workload and health projection for an app. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObsAppDetailResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    postForceParkInstance: {
+        parameters: {
+            query: {
+                confirm: "true";
+                reason?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The recovery intent was accepted. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorIntentAcceptedResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    postForceRestartInstance: {
+        parameters: {
+            query: {
+                confirm: "true";
+                reason?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The recovery intent was accepted. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorIntentAcceptedResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    postForceColdBootApp: {
+        parameters: {
+            query: {
+                confirm: "true";
+                reason?: string;
+            };
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The recovery intent was accepted. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorIntentAcceptedResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getOperatorIntent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current intent state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorIntentResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
         };
     };
 }

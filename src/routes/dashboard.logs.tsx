@@ -13,7 +13,7 @@ import {
   Xmark,
 } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
-import { EmptyState, LevelTag, PageHeader } from '@/components/dashboard/primitives';
+import { EmptyState, LevelTag, LoadingState, PageHeader } from '@/components/dashboard/primitives';
 import { Pill } from '@/components/dashboard/resource-table';
 import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
 import { LOG_LEVELS, MAX_LINES, useLogStream, type LogLevelFilter } from '@/lib/api/logs';
@@ -22,6 +22,9 @@ import { errorMessage } from '@/lib/api/errors';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import { consoleHead } from '@/lib/seo';
+import { DeploymentGate } from '@/components/dashboard/deployment-gate';
+import { hasRunnableDeployment } from '@/lib/deployment-status';
+import { useData } from '@/lib/store';
 
 export const Route = createFileRoute('/dashboard/logs')({
   component: LogsPage,
@@ -410,6 +413,8 @@ export function LogsBody({ slug }: { slug: string }) {
 function LogsPage() {
   const appState = useSelectedApp();
   const { slug, select, apps } = appState;
+  const { deployments, loading: loadingData } = useData();
+  const selectedDeployments = deployments.filter((deployment) => deployment.workflowId === slug);
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -418,7 +423,13 @@ function LogsPage() {
         actions={<AppSelect slug={slug} onSelect={select} apps={apps} />}
       />
       <AppScope state={appState} resource="logs">
-        <LogsBody slug={slug} />
+        {loadingData ? (
+          <LoadingState message="Loading app state…" />
+        ) : !hasRunnableDeployment(selectedDeployments) ? (
+          <DeploymentGate slug={slug} resource="Logs" />
+        ) : (
+          <LogsBody slug={slug} />
+        )}
       </AppScope>
     </div>
   );

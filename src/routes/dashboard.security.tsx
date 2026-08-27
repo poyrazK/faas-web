@@ -186,7 +186,7 @@ function SecurityPage() {
 
       <Panel
         title="Multi-factor authentication"
-        description="Protect account and deployment actions with an authenticator app."
+        description="Optional extra protection for your dashboard account."
         actions={
           <Button size="sm" variant="outline" onClick={() => openMfa('choose')}>
             Set up or verify
@@ -195,8 +195,8 @@ function SecurityPage() {
       >
         <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
           Manage the authenticator step for this browser session. If MFA is already enabled, you can
-          verify it here; if it is not, Gregale will guide you through enrollment and provide
-          one-time recovery codes.
+          verify it here; if it is not, Gregale will guide you through optional enrollment and
+          provide one-time recovery codes.
         </p>
       </Panel>
 

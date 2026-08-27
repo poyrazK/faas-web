@@ -23,6 +23,7 @@ const STATE_FILTERS: { key: RunState | 'all'; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'running', label: 'Running' },
   { key: 'idle', label: 'Idle' },
+  { key: 'undeployed', label: 'Undeployed' },
   { key: 'error', label: 'Failing' },
   { key: 'deploying', label: 'Deploying' },
 ];
@@ -97,7 +98,7 @@ function FunctionsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Apps"
-        description="Every app deployed in this workspace."
+        description="Every app in this workspace."
         actions={
           <Button asChild size="sm" className="gap-1.5">
             <Link to="/dashboard/workflows/new">

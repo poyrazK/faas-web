@@ -49,8 +49,8 @@ export const DEPLOY_STAGES: BuildStage[] = [
 type StageState = 'pending' | 'active' | 'done';
 
 /**
- * Streams a deploy through its stages, emitting log lines as it goes.
- * Purely presentational — the caller decides what completion means.
+ * Presentational setup animation used only by the legacy local onboarding
+ * screen. The real new-app flow uses DeploymentProgress and server state.
  */
 export function BuildLog({
   stages = DEPLOY_STAGES,
@@ -64,20 +64,16 @@ export function BuildLog({
   const scroller = useRef<HTMLDivElement>(null);
   const completed = useRef(false);
 
-  // The deploy is scheduled once per mount; re-running it would restart the
-  // build. Callers may pass a fresh `onComplete` per render, so read the
-  // latest through a ref instead of re-subscribing.
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
   const stagesRef = useRef(stages);
 
   useEffect(() => {
-    const stages = stagesRef.current;
     const timers: ReturnType<typeof setTimeout>[] = [];
     let elapsed = 0;
     let lineId = 0;
 
-    stages.forEach((stage, stageIndex) => {
+    stagesRef.current.forEach((stage, stageIndex) => {
       const start = elapsed;
       timers.push(setTimeout(() => setCurrent(stageIndex), start));
 
@@ -95,7 +91,7 @@ export function BuildLog({
 
     timers.push(
       setTimeout(() => {
-        setCurrent(stages.length);
+        setCurrent(stagesRef.current.length);
         if (!completed.current) {
           completed.current = true;
           onCompleteRef.current?.();
@@ -114,11 +110,10 @@ export function BuildLog({
     i < current ? 'done' : i === current ? 'active' : 'pending';
 
   const progress = Math.min(100, (current / stages.length) * 100);
-  const status = current >= stages.length ? 'Deployed' : `${stages[current]?.label ?? 'Starting'}…`;
+  const status = current >= stages.length ? 'Ready' : `${stages[current]?.label ?? 'Starting'}…`;
 
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card">
-      {/* Progress rail */}
       <div className="h-0.5 w-full bg-muted">
         <motion.div
           className="h-full"
@@ -128,7 +123,6 @@ export function BuildLog({
         />
       </div>
 
-      {/* One-line live region: announces the stage instead of every log line. */}
       <p aria-live="polite" aria-atomic="true" className="sr-only">
         {status}
       </p>
@@ -163,7 +157,6 @@ export function BuildLog({
         })}
       </ol>
 
-      {/* Streaming output */}
       <div
         ref={scroller}
         role="log"
@@ -171,7 +164,7 @@ export function BuildLog({
         className="max-h-44 overflow-y-auto border-t border-border bg-background px-4 py-3 font-mono text-xs"
       >
         {lines.length === 0 ? (
-          <p className="text-muted-foreground">Waiting for the builder…</p>
+          <p className="text-muted-foreground">Preparing workspace…</p>
         ) : (
           lines.map((line) => (
             <motion.p

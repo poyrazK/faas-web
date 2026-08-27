@@ -111,6 +111,11 @@ describe('toWorkflow', () => {
     const workflow = toWorkflow(app());
     expect(workflow.version).toBe('');
     expect(workflow.lastDeployedAt).toBe(0);
+    expect(workflow.state).toBe('undeployed');
+  });
+
+  it('keeps a live state once a deployment exists', () => {
+    expect(toWorkflow(app(), undefined, deployment()).state).toBe('running');
   });
 
   it('falls back to the app type when there is no runtime', () => {
@@ -142,6 +147,23 @@ describe('toDeployment', () => {
 
     expect(result.state).toBe('failed');
     expect(result.message).toBe('build exited 1');
+  });
+
+  it('preserves server metadata for the durable deployment detail view', () => {
+    const result = toDeployment(
+      deployment({
+        status: 'failed',
+        error: 'build exited 1',
+        error_code: 'build_failed',
+        build_id: 'build0123456789abcdef0123456789ab',
+      }),
+      new Map()
+    );
+
+    expect(result.status).toBe('failed');
+    expect(result.error).toBe('build exited 1');
+    expect(result.errorCode).toBe('build_failed');
+    expect(result.buildId).toBe('build0123456789abcdef0123456789ab');
   });
 
   it('treats an unrecognised status as still building', () => {

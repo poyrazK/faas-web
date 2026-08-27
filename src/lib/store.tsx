@@ -11,6 +11,7 @@ import {
   type MetricsRange,
 } from './api/queries';
 import { slugIndex, toDeployment, toWorkflow } from './api/adapters';
+import { isDeploymentTerminal } from './deployment-status';
 import { NOW, type Deployment, type Runtime, type Workflow } from './mock-data';
 
 /**
@@ -62,7 +63,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
 
   const appsQuery = useApps();
-  const deploymentsQuery = useDeployments();
+  const deploymentsQuery = useDeployments(50, {
+    // A deployment is the durable source of truth for both the app page and
+    // the global history. Keep the list current while a build is moving, then
+    // stop polling once every visible row has reached a terminal state.
+    refetchInterval: (query) => {
+      const items = query.state.data?.items ?? [];
+      return items.some((deployment) => !isDeploymentTerminal(deployment.status)) ? 2_500 : false;
+    },
+  });
   // Metrics are a separate query on purpose: a degraded Prometheus zeroes this
   // response without taking the app list down with it, and the list is what the
   // console is actually for.

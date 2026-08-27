@@ -22,7 +22,7 @@ export const NOW = new Date('2026-08-13T14:00:00Z').getTime();
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 
-export type RunState = 'running' | 'idle' | 'error' | 'deploying';
+export type RunState = 'running' | 'idle' | 'error' | 'deploying' | 'undeployed';
 
 /**
  * The runtimes `apid` actually accepts, mirrored from `CreateAppRequest` in
@@ -68,6 +68,12 @@ export interface Deployment {
   workflowId: string;
   version: string;
   state: 'succeeded' | 'failed' | 'building';
+  /** The unmodified lifecycle status returned by the deployment API. */
+  status?: string;
+  /** The server's failure detail, when this deployment failed. */
+  error?: string | null;
+  errorCode?: string | null;
+  buildId?: string | null;
   commit: string;
   message: string;
   author: string;
@@ -418,6 +424,11 @@ export function formatMs(ms: number): string {
 }
 
 export function formatRelative(ts: number): string {
+  // A zero timestamp is the adapter's explicit sentinel for an app that has
+  // never been deployed. Treat invalid timestamps as missing data rather than
+  // rendering the Unix epoch as a many-thousand-day-old deployment.
+  if (!Number.isFinite(ts) || ts <= 0) return 'Never';
+
   // Against the real clock: every caller now passes live API timestamps, and
   // the pinned fixture clock above made anything newer than it read "just now".
   const diff = Date.now() - ts;

@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { DOC_ENTRIES, DOC_SECTIONS, docNeighbours, findDoc } from './docs-manifest';
-import { docSource, extractHeadings, slugifyHeading, stripTitle } from './docs-content';
+import {
+  docSource,
+  extractHeadings,
+  readingMinutes,
+  slugifyHeading,
+  stripTitle,
+} from './docs-content';
 
 /**
  * The manifest and the vendored markdown are maintained separately — one by
@@ -119,7 +125,23 @@ describe('stripTitle', () => {
   });
 });
 
+describe('readingMinutes', () => {
+  it('rounds to whole minutes and never reports zero', () => {
+    // A "0 min" label reads as an error, not a short page.
+    expect(readingMinutes('a few words only')).toBe(1);
+    expect(readingMinutes(Array(660).fill('word').join(' '))).toBe(3);
+  });
+});
+
 describe('vendored content', () => {
+  it('serves LF regardless of checkout line endings', () => {
+    // `stripTitle` and the heading scan both assume `\n`; a CRLF checkout
+    // (Windows, autocrlf) would otherwise render every title twice.
+    for (const entry of DOC_ENTRIES) {
+      expect(docSource(entry.slug)).not.toContain('\r');
+    }
+  });
+
   it('starts every document with an h1', () => {
     // `stripTitle` assumes it, and the page supplies its own title from the
     // manifest — a document without one would render its first paragraph as
