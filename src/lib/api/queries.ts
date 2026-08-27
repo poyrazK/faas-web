@@ -135,11 +135,12 @@ export function useDeployments(limit = 50) {
   });
 }
 
-export function useDeployment(id: string) {
+export function useDeployment(id: string, options?: Options<Deployment>) {
   return useQuery({
     queryKey: ['deployments', id],
     queryFn: () => unwrap(api.GET('/v1/deployments/{id}', { params: { path: { id } } })),
     enabled: Boolean(id),
+    ...options,
   });
 }
 
