@@ -195,7 +195,7 @@ function NewFunctionPage() {
             appName={name}
             deploymentId={deploymentId}
             repo={repo}
-            ref={ref}
+            sourceRef={ref}
             submissionError={submissionError}
           />
         ) : (

@@ -5,7 +5,9 @@ import {
   isDeploymentTerminal,
   type DeploymentPhase,
 } from '@/lib/deployment-status';
+import { useLogStream } from '@/lib/api/logs';
 import { cn } from '@/lib/utils';
+import { LogView } from './log-view';
 
 type StepState = 'pending' | 'active' | 'done' | 'failed';
 
@@ -26,14 +28,14 @@ export function DeploymentProgress({
   appName,
   deploymentId,
   repo,
-  ref,
+  sourceRef,
   submissionError,
 }: {
   appCreated: boolean;
   appName: string;
   deploymentId: string | null;
   repo: string;
-  ref: string;
+  sourceRef: string;
   submissionError?: string | null;
 }) {
   const statusQuery = useDeployment(deploymentId ?? '', {
@@ -42,6 +44,10 @@ export function DeploymentProgress({
       return 2_500;
     },
   });
+  const buildLog = useLogStream(
+    { kind: 'build', deploymentId: deploymentId ?? '', limit: 200 },
+    Boolean(deploymentId)
+  );
   const deployment = statusQuery.data;
   const phase = deploymentPhase(deployment?.status);
   const hasBuild = Boolean(deploymentId);
@@ -149,7 +155,7 @@ export function DeploymentProgress({
           <p>
             Source{' '}
             <span className="font-mono text-foreground">
-              {repo}@{ref || 'main'}
+              {repo}@{sourceRef || 'main'}
             </span>
           </p>
           {deploymentId && (
@@ -173,6 +179,23 @@ export function DeploymentProgress({
             </p>
           )}
         </div>
+
+        {hasBuild && (
+          <div className="mt-5 border-t border-border pt-4">
+            <p className="label-mono mb-2 text-muted-foreground">Build output</p>
+            {buildLog.lines.length > 0 ? (
+              <LogView lines={buildLog.lines} className="max-h-64" />
+            ) : buildLog.status === 'connecting' ? (
+              <p className="text-sm text-muted-foreground">Reading the build log…</p>
+            ) : buildLog.status === 'error' ? (
+              <p className="text-sm text-muted-foreground">
+                The build log disconnected{buildLog.reason ? `: ${buildLog.reason}` : '.'}
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground">No build output has arrived yet.</p>
+            )}
+          </div>
+        )}
       </div>
     </section>
   );

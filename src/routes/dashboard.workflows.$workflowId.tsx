@@ -36,6 +36,7 @@ import { WebhooksBody } from './dashboard.webhooks';
 import { EdgeRulesBody } from './dashboard.edge-rules';
 import { AppConfiguration } from '@/components/dashboard/app-configuration';
 import { InvokePanel, SloPanel } from '@/components/dashboard/app-core-panels';
+import { DeploymentProgress } from '@/components/dashboard/deployment-progress';
 import { Modal } from '@/components/ui/modal';
 import { pageHead, useDocumentTitle } from '@/lib/seo';
 
@@ -107,6 +108,12 @@ function FunctionDetailPage() {
   const [deployOpen, setDeployOpen] = useState(false);
   const [deployRepo, setDeployRepo] = useState('');
   const [deployRef, setDeployRef] = useState('main');
+  const [activeDeployment, setActiveDeployment] = useState<{
+    id: string;
+    repo: string;
+    ref: string;
+  } | null>(null);
+  const [deploySubmissionError, setDeploySubmissionError] = useState<string | null>(null);
   const confirm = useConfirm();
 
   const fn = getWorkflow(workflowId);
@@ -149,7 +156,8 @@ function FunctionDetailPage() {
   }
 
   const deployments = deploymentsFor(fn.id);
-  const isDeploying = fn.state === 'deploying';
+  const isDeploying =
+    fn.state === 'deploying' || deployments.some((deployment) => deployment.state === 'building');
 
   return (
     <div className="flex flex-col gap-6">
@@ -227,7 +235,10 @@ function FunctionDetailPage() {
               size="sm"
               className="gap-1.5"
               disabled={isDeploying}
-              onClick={() => setDeployOpen(true)}
+              onClick={() => {
+                setDeploySubmissionError(null);
+                setDeployOpen(true);
+              }}
             >
               <Rocket className="h-3.5 w-3.5" />
               Deploy
@@ -280,6 +291,17 @@ function FunctionDetailPage() {
         {fn.url}
         <OpenNewWindow className="h-3 w-3" />
       </a>
+
+      {activeDeployment && (
+        <DeploymentProgress
+          appCreated
+          appName={fn.name}
+          deploymentId={activeDeployment.id}
+          repo={activeDeployment.repo}
+          sourceRef={activeDeployment.ref}
+          submissionError={deploySubmissionError}
+        />
+      )}
 
       {/* Tabs */}
       <div
@@ -436,30 +458,41 @@ function FunctionDetailPage() {
             </Button>
             <Button
               size="sm"
-              disabled={!deployRepo.includes('/') || !deployRef.trim() || deployFromRef.isPending}
+              disabled={
+                !/^[^/\s]+\/[^/\s]+$/.test(deployRepo.trim()) ||
+                !deployRef.trim() ||
+                deployFromRef.isPending
+              }
               onClick={() => {
+                setDeploySubmissionError(null);
                 void deployFromRef
                   .mutateAsync({
                     repo: deployRepo.trim(),
                     ref: deployRef.trim(),
                     format: 'tarball',
                   })
-                  .then(() => {
+                  .then((deployment) => {
+                    setActiveDeployment({
+                      id: deployment.id,
+                      repo: deployRepo.trim(),
+                      ref: deployRef.trim(),
+                    });
                     setDeployOpen(false);
                     setTab('Deployments');
                     toast({
                       kind: 'success',
-                      title: 'Build started',
-                      description: `${deployRepo.trim()}@${deployRef.trim()} is building. It goes live when the build succeeds.`,
+                      title: 'Build accepted',
+                      description: `${deployRepo.trim()}@${deployRef.trim()} is queued.`,
                     });
                   })
-                  .catch((err: unknown) =>
+                  .catch((err: unknown) => {
+                    setDeploySubmissionError(errorMessage(err));
                     toast({
                       kind: 'error',
                       title: 'Could not start the deploy',
                       description: errorMessage(err),
-                    })
-                  );
+                    });
+                  });
               }}
             >
               {deployFromRef.isPending ? 'Starting…' : 'Deploy'}
@@ -468,6 +501,11 @@ function FunctionDetailPage() {
         }
       >
         <div className="grid gap-4">
+          {deploySubmissionError && (
+            <p role="alert" className="text-xs text-[color:var(--status-critical)]">
+              {deploySubmissionError}
+            </p>
+          )}
           <label className="flex flex-col gap-1.5">
             <span className="label-mono text-muted-foreground">Repository</span>
             <input
