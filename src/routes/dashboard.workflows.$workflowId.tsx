@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from 'react';
+import { useId, useMemo, useRef, useState } from 'react';
 import { createFileRoute, Link, useParams } from '@tanstack/react-router';
 import { ArrowLeft, OpenNewWindow, Pause, Play, Refresh, Rocket } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,7 @@ import {
 import { formatCompact, formatMs, formatRelative } from '@/lib/mock-data';
 import {
   useAppMetrics,
+  useBuilds,
   useDeployFromRef,
   useParkApp,
   useWakeApp,
@@ -37,6 +38,8 @@ import { EdgeRulesBody } from './dashboard.edge-rules';
 import { AppConfiguration } from '@/components/dashboard/app-configuration';
 import { InvokePanel, SloPanel } from '@/components/dashboard/app-core-panels';
 import { DeploymentProgress } from '@/components/dashboard/deployment-progress';
+import { DeploymentDetailPanel } from '@/components/dashboard/deployment-detail';
+import { Pill } from '@/components/dashboard/resource-table';
 import { Modal } from '@/components/ui/modal';
 import { pageHead, useDocumentTitle } from '@/lib/seo';
 
@@ -73,14 +76,18 @@ export const Route = createFileRoute('/dashboard/workflows/$workflowId')({
   // Tab lives in the URL, so a refresh or a shared link lands on the same one.
   // Optional, so links elsewhere need not pass it and the default tab leaves
   // no query string behind.
-  validateSearch: (search: Record<string, unknown>): { tab?: Tab } =>
-    TABS.includes(search.tab as Tab) ? { tab: search.tab as Tab } : {},
+  validateSearch: (search: Record<string, unknown>): { tab?: Tab; deployment?: string } => ({
+    ...(TABS.includes(search.tab as Tab) ? { tab: search.tab as Tab } : {}),
+    ...(typeof search.deployment === 'string' && search.deployment
+      ? { deployment: search.deployment }
+      : {}),
+  }),
   component: FunctionDetailPage,
 });
 
 function FunctionDetailPage() {
   const { workflowId } = useParams({ from: '/dashboard/workflows/$workflowId' });
-  const { tab = 'Metrics' } = Route.useSearch();
+  const { tab = 'Metrics', deployment: selectedDeploymentId } = Route.useSearch();
   const navigate = Route.useNavigate();
   // Replace rather than push, so tab switching does not fill the back stack.
   const setTab = (next: Tab) => navigate({ search: { tab: next }, replace: true });
@@ -124,6 +131,36 @@ function FunctionDetailPage() {
   // Real per-app aggregates for the Metrics tab. Called with the slug, which is
   // what `workflowId` is.
   const metrics = useAppMetrics(workflowId, range);
+  const builds = useBuilds({
+    // Build duration is not part of DeploymentResponse. Poll the companion
+    // records alongside deployments while any visible build is unfinished.
+    refetchInterval: (query) => {
+      const items = query.state.data?.items ?? [];
+      return items.some((build) => build.status === 'queued' || build.status === 'running')
+        ? 2_500
+        : false;
+    },
+  });
+  const buildTimings = useMemo(() => {
+    const byDeployment = new Map<
+      string,
+      {
+        durationSeconds?: number;
+        enqueuedAt: string;
+        startedAt?: string;
+        finishedAt?: string;
+      }
+    >();
+    for (const build of builds.data?.items ?? []) {
+      byDeployment.set(build.deployment_id, {
+        durationSeconds: build.duration_seconds,
+        enqueuedAt: build.enqueued_at,
+        startedAt: build.started_at,
+        finishedAt: build.finished_at,
+      });
+    }
+    return byDeployment;
+  }, [builds.data]);
 
   // Order matters: the app list arrives over the network now, so "not in the
   // list" means "not loaded yet" until the request settles. Claiming 404 first
@@ -156,6 +193,9 @@ function FunctionDetailPage() {
   }
 
   const deployments = deploymentsFor(fn.id);
+  const selectedDeployment = selectedDeploymentId
+    ? deployments.find((dep) => dep.id === selectedDeploymentId)
+    : undefined;
   const isDeploying =
     fn.state === 'deploying' || deployments.some((deployment) => deployment.state === 'building');
 
@@ -396,38 +436,61 @@ function FunctionDetailPage() {
         {tab === 'Invoke' && <InvokePanel slug={fn.id} />}
 
         {tab === 'Deployments' && (
-          <Panel title="Deployment history" description={`${deployments.length} deployments`}>
-            <ul className="flex flex-col divide-y divide-border">
-              {deployments.map((dep) => (
-                <li
-                  key={dep.id}
-                  className="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0"
-                >
-                  <span
-                    className="h-1.5 w-1.5 shrink-0 rounded-full"
-                    style={{
-                      background:
-                        dep.state === 'succeeded'
-                          ? 'var(--status-good)'
-                          : dep.state === 'failed'
-                            ? 'var(--status-critical)'
-                            : 'var(--status-warning)',
-                    }}
-                  />
-                  <span className="font-mono text-xs text-muted-foreground">{dep.version}</span>
-                  <span className="min-w-0 flex-1 truncate text-sm">{dep.message}</span>
-                  <span className="font-mono text-xs text-muted-foreground">{dep.commit}</span>
-                  <span className="text-xs text-muted-foreground">{dep.author}</span>
-                  <span className="w-20 text-right text-xs text-muted-foreground [font-variant-numeric:tabular-nums]">
-                    {(dep.durationMs / 1000).toFixed(1)}s
-                  </span>
-                  <span className="w-16 text-right text-xs text-muted-foreground [font-variant-numeric:tabular-nums]">
-                    {formatRelative(dep.createdAt)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </Panel>
+          <>
+            <Panel title="Deployment history" description={`${deployments.length} deployments`}>
+              {deployments.length === 0 ? (
+                <EmptyState message="No deployments yet. Deploy a Git ref or use the CLI." />
+              ) : (
+                <ul className="flex flex-col divide-y divide-border">
+                  {deployments.map((dep) => (
+                    <li key={dep.id}>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void navigate({
+                            search: { tab: 'Deployments', deployment: dep.id },
+                            replace: true,
+                          })
+                        }
+                        className="flex w-full flex-wrap items-center gap-3 py-3 text-left transition-colors first:pt-0 last:pb-0 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+                      >
+                        <Pill
+                          label={dep.status ?? dep.state}
+                          color={
+                            dep.state === 'succeeded'
+                              ? 'var(--status-good)'
+                              : dep.state === 'failed'
+                                ? 'var(--status-critical)'
+                                : 'var(--status-warning)'
+                          }
+                        />
+                        <span className="font-mono text-xs text-muted-foreground">
+                          image {dep.version || '—'}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-sm">{dep.message}</span>
+                        <span className="w-20 text-right text-xs text-muted-foreground [font-variant-numeric:tabular-nums]">
+                          {(() => {
+                            const seconds = buildTimings.get(dep.id)?.durationSeconds;
+                            return seconds == null ? '—' : `${seconds.toFixed(1)}s`;
+                          })()}
+                        </span>
+                        <span className="w-16 text-right text-xs text-muted-foreground [font-variant-numeric:tabular-nums]">
+                          {formatRelative(dep.createdAt)}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Panel>
+            {selectedDeployment && (
+              <DeploymentDetailPanel
+                deploymentId={selectedDeployment.id}
+                timing={buildTimings.get(selectedDeployment.id)}
+                onClose={() => void navigate({ search: { tab: 'Deployments' }, replace: true })}
+              />
+            )}
+          </>
         )}
 
         {tab === 'Logs' && <LogsBody slug={fn.id} />}
@@ -478,7 +541,10 @@ function FunctionDetailPage() {
                       ref: deployRef.trim(),
                     });
                     setDeployOpen(false);
-                    setTab('Deployments');
+                    void navigate({
+                      search: { tab: 'Deployments', deployment: deployment.id },
+                      replace: true,
+                    });
                     toast({
                       kind: 'success',
                       title: 'Build accepted',

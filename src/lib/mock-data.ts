@@ -68,6 +68,12 @@ export interface Deployment {
   workflowId: string;
   version: string;
   state: 'succeeded' | 'failed' | 'building';
+  /** The unmodified lifecycle status returned by the deployment API. */
+  status?: string;
+  /** The server's failure detail, when this deployment failed. */
+  error?: string | null;
+  errorCode?: string | null;
+  buildId?: string | null;
   commit: string;
   message: string;
   author: string;

@@ -144,6 +144,23 @@ describe('toDeployment', () => {
     expect(result.message).toBe('build exited 1');
   });
 
+  it('preserves server metadata for the durable deployment detail view', () => {
+    const result = toDeployment(
+      deployment({
+        status: 'failed',
+        error: 'build exited 1',
+        error_code: 'build_failed',
+        build_id: 'build0123456789abcdef0123456789ab',
+      }),
+      new Map()
+    );
+
+    expect(result.status).toBe('failed');
+    expect(result.error).toBe('build exited 1');
+    expect(result.errorCode).toBe('build_failed');
+    expect(result.buildId).toBe('build0123456789abcdef0123456789ab');
+  });
+
   it('treats an unrecognised status as still building', () => {
     expect(toDeployment(deployment({ status: 'queued' }), new Map()).state).toBe('building');
   });
