@@ -305,6 +305,16 @@
      animation-delay so a row of segments does not breathe in lockstep. */
   --animate-breathe: breathe 3.4s ease-in-out infinite;
 
+  /* The fuel gauge's drifting surface crest. Seamless: the SVG is 200%
+     wide and slides by half of itself. */
+  --animate-fuel-wave: fuel-wave 6s linear infinite;
+
+  @keyframes fuel-wave {
+    to {
+      transform: translateX(-50%);
+    }
+  }
+
   @keyframes breathe {
     0%,
     100% {
@@ -790,6 +800,25 @@
   .metric-glow {
     color: var(--foreground);
     text-shadow: 0 0 16px color-mix(in oklab, var(--brand-fill) 35%, transparent);
+  }
+
+  /* Fuel gauge: the level rises from empty on insertion (@starting-style,
+     stateless) and glides between readings; the surface crests drift
+     sideways on a seamless 200%-wide loop. The wave is an animate-* class,
+     so the reduced-motion blanket rule freezes it to a still surface. */
+  .fuel-fill {
+    height: var(--fuel-h, 0%);
+    transition: height 1s var(--motion-ease);
+  }
+  @starting-style {
+    .fuel-fill {
+      height: 0%;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .fuel-fill {
+      transition: none;
+    }
   }
 
   /* Footprint band materials. Lit segments carry a vertical mint gradient

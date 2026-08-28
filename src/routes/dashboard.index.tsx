@@ -17,7 +17,7 @@ import { FootprintBand, type FootprintApp } from '@/components/dashboard/footpri
 import { FirstRun } from '@/components/dashboard/first-run';
 import { SpotlightCard } from '@/components/ui/spotlight-card';
 import { BorderBeam } from '@/components/ui/border-beam';
-import { ProgressRing } from '@/components/ui/progress-ring';
+import { FuelGauge } from '@/components/ui/fuel-gauge';
 import { LiveDot } from '@/components/ui/live-dot';
 import { WindFlow } from '@/components/dashboard/wind-flow';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -210,8 +210,12 @@ function AllowanceCard({ usage }: { usage: ReturnType<typeof useUsageSummary> })
   const data = usage.data;
   const used = data?.used_gb_hours ?? 0;
   const included = data?.included_gb_hours ?? 0;
-  const pct = included > 0 ? Math.min(100, (used / included) * 100) : 0;
+  const remaining = Math.max(0, included - used);
+  const remainingPct = included > 0 ? Math.max(0, Math.min(100, (remaining / included) * 100)) : 0;
   const over = (data?.overage_gb_hours ?? 0) > 0;
+  // Empty-but-alarming: an overrun tank shows a warning residue rather than
+  // nothing, so "over" and "exactly empty" cannot be confused at a glance.
+  const displayPct = over ? 3 : remainingPct;
 
   return (
     <SpotlightCard className="lg:col-span-5 [animation-delay:60ms]">
@@ -232,34 +236,35 @@ function AllowanceCard({ usage }: { usage: ReturnType<typeof useUsageSummary> })
             <InlinePhase phase={phase} error={usage.error} loadingMessage="Reading usage…" />
           </div>
         ) : (
-          <>
-            <div className="flex flex-1 items-center justify-center py-4">
-              <ProgressRing
-                value={pct}
-                tone={over ? 'warning' : 'brand'}
-                label="Included GB-hour allowance used"
-              >
-                <p className="text-3xl leading-none font-semibold tracking-tight [font-variant-numeric:tabular-nums]">
-                  <CountUp value={pct} format={(v) => `${Math.round(v)}%`} />
-                </p>
-                <p className="mt-1.5 text-xs text-muted-foreground">of included</p>
-              </ProgressRing>
-            </div>
-            <p className="text-center text-xs text-muted-foreground">
-              <span className="text-foreground [font-variant-numeric:tabular-nums]">
-                {formatGbHours(used)}
-              </span>{' '}
-              of {formatGbHours(included)} GB-hours
+          <div className="mt-5 flex min-h-44 flex-1 items-stretch gap-7">
+            <FuelGauge
+              pct={displayPct}
+              tone={over ? 'warning' : 'brand'}
+              label="GB-hour allowance remaining"
+              scale={[formatGbHours(included), '0']}
+            />
+            <div className="flex min-w-0 flex-col justify-center gap-2">
+              <p className="text-4xl leading-none font-semibold tracking-tight">
+                <Odometer
+                  value={over ? (data?.overage_gb_hours ?? 0) : remaining}
+                  format={formatGbHours}
+                  className="metric-glow"
+                />
+                <span className="ml-2 align-baseline text-sm font-normal text-muted-foreground">
+                  {over ? 'GB-h over' : 'GB-h left'}
+                </span>
+              </p>
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                <span className="[font-variant-numeric:tabular-nums]">{formatGbHours(used)}</span>{' '}
+                of {formatGbHours(included)} used
+              </p>
               {over && (
-                <>
-                  {' · '}
-                  <span style={{ color: 'var(--status-warning)' }}>
-                    {formatMoney(data?.overage_cents)} overage
-                  </span>
-                </>
+                <p className="text-xs" style={{ color: 'var(--status-warning)' }}>
+                  {formatMoney(data?.overage_cents)} overage this period
+                </p>
               )}
-            </p>
-          </>
+            </div>
+          </div>
         )}
       </div>
     </SpotlightCard>
