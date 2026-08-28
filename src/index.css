@@ -782,20 +782,14 @@
     border-color: color-mix(in oklab, var(--brand) 70%, var(--border-secondary));
   }
 
-  /* A mint sheen across a readout figure — gradient-text, kept mostly
-     foreground so the number stays the most legible thing in the module.
-     Guarded: without background-clip support the transparent color would
-     erase the number, so plain foreground is the base. */
-  .metric-sheen {
+  /* A faint phosphor glow behind a readout figure — the instrument-panel
+     accent that DOES survive the odometer: gradient-text (background-clip)
+     cannot paint through the transformed digit strips, which is why the
+     digits went invisible under the earlier sheen. A text-shadow renders
+     with the glyphs wherever they are. */
+  .metric-glow {
     color: var(--foreground);
-  }
-  @supports (-webkit-background-clip: text) or (background-clip: text) {
-    .metric-sheen {
-      background: linear-gradient(120deg, var(--foreground) 45%, var(--mint-7) 110%);
-      -webkit-background-clip: text;
-      background-clip: text;
-      color: transparent;
-    }
+    text-shadow: 0 0 16px color-mix(in oklab, var(--brand-fill) 35%, transparent);
   }
 
   /* Footprint band materials. Lit segments carry a vertical mint gradient

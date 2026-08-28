@@ -400,7 +400,7 @@ function MetricCell({
           <span className="text-muted-foreground">—</span>
         ) : (
           <>
-            <Odometer value={value} format={format} className="metric-sheen" />
+            <Odometer value={value} format={format} className="metric-glow" />
             <span className="ml-1.5 align-baseline text-sm font-normal text-muted-foreground">
               {unit}
             </span>
