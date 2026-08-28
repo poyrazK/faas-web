@@ -19,7 +19,7 @@ import { SpotlightCard } from '@/components/ui/spotlight-card';
 import { BorderBeam } from '@/components/ui/border-beam';
 import { ProgressRing } from '@/components/ui/progress-ring';
 import { LiveDot } from '@/components/ui/live-dot';
-import { WindBeams } from '@/components/ui/wind-beams';
+import { WindFlow } from '@/components/dashboard/wind-flow';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AnimatedList } from '@/components/ui/animated-list';
 import { useData } from '@/lib/store';
@@ -165,9 +165,9 @@ function FleetCard({ workflows, bandApps }: { workflows: Workflow[]; bandApps: F
   return (
     <SpotlightCard elevation="raised" className="lg:col-span-7">
       <BorderBeam />
-      {/* The wind itself — one light source for the hero, in place of the
-          static wash. */}
-      <WindBeams />
+      {/* The wind itself — one light source for the hero. Shader-drawn air;
+          falls back to the still SVG ribbons without WebGL. */}
+      <WindFlow intensity={0.9} />
       <div className="relative flex h-full flex-col gap-7 p-6">
         <div className="flex items-start justify-between gap-4">
           <CardLabel>Fleet</CardLabel>
