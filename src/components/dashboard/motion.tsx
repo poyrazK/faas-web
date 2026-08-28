@@ -31,8 +31,10 @@ export const TAP = { scale: 0.97 } as const;
  * mounts in the same commit as the Stagger itself.
  */
 const item = {
-  hidden: { opacity: 0, y: 10 },
-  show: { opacity: 1, y: 0, transition: { duration: DURATION, ease: EASE } },
+  // From the northeast, like every entrance in the console — a gregale is a
+  // northeast wind. Mirrors the CSS `item-enter` keyframe.
+  hidden: { opacity: 0, x: 12, y: -8 },
+  show: { opacity: 1, x: 0, y: 0, transition: { duration: DURATION, ease: EASE } },
 };
 
 /** Staggered entrance for a group of siblings — wrap the group, mark each
@@ -149,8 +151,8 @@ export function Swap({ children, id }: { children: ReactNode; id: string | numbe
   return (
     <motion.div
       key={id}
-      initial={reduce ? false : { opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
+      initial={reduce ? false : { opacity: 0, x: 6, y: -4 }}
+      animate={{ opacity: 1, x: 0, y: 0 }}
       transition={{ duration: 0.3, ease: EASE }}
     >
       {children}

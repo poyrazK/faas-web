@@ -278,10 +278,28 @@
      which lands the one iteration on the final, visible frame. */
   --animate-item-enter: item-enter 0.38s var(--motion-ease);
 
+  /* Entrances drift in from the northeast — a gregale is a northeast wind,
+     and every ambient motion in the console honours its direction. */
   @keyframes item-enter {
     from {
       opacity: 0;
-      transform: translateY(10px);
+      transform: translate(12px, -8px);
+    }
+  }
+
+  /* State is breath: things that are awake breathe at low amplitude; parked
+     things are still. Infinite, so the reduced-motion blanket rule freezes
+     it entirely rather than shortening it. Stagger phases with a negative
+     animation-delay so a row of segments does not breathe in lockstep. */
+  --animate-breathe: breathe 3.4s ease-in-out infinite;
+
+  @keyframes breathe {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.78;
     }
   }
 
@@ -591,9 +609,21 @@
     inset: 0;
     z-index: -1;
     pointer-events: none;
+    /* Lit from the northeast, like everything else. */
     background: radial-gradient(
-      120% 80% at 0% 0%,
+      120% 80% at 100% 0%,
       color-mix(in oklab, var(--brand-fill) 10%, transparent),
+      transparent 60%
+    );
+  }
+
+  /* The page ground's atmosphere: a barely-there light field in the console's
+     northeast, so content sits in air instead of on flat ink. Applied by the
+     shell to the content column only — the marketing site keeps its paper. */
+  .console-atmosphere {
+    background: radial-gradient(
+      90% 48rem at 100% 0%,
+      color-mix(in oklab, var(--brand-fill) 4%, transparent),
       transparent 60%
     );
   }

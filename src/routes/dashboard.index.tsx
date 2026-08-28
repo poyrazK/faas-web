@@ -14,10 +14,11 @@ import {
   queryPhase,
 } from '@/components/dashboard/primitives';
 import { CountUp } from '@/components/dashboard/motion';
+import { FootprintBand, type FootprintApp } from '@/components/dashboard/footprint-band';
 import { FirstRun } from '@/components/dashboard/first-run';
 import { useData } from '@/lib/store';
 import { useAuth } from '@/lib/auth';
-import { useAppsMetrics, useInstances, useUsageSummary } from '@/lib/api/queries';
+import { useApps, useAppsMetrics, useInstances, useUsageSummary } from '@/lib/api/queries';
 import { formatCompact, formatRelative, type Workflow } from '@/lib/mock-data';
 import { consoleHead } from '@/lib/seo';
 import { cn } from '@/lib/utils';
@@ -56,97 +57,46 @@ function TileLabel({ children }: { children: React.ReactNode }) {
 }
 
 /* ------------------------------------------------------------------ *
- * Fleet — the signature tile
+ * The fleet hero — the instrument panel, not a card
  * ------------------------------------------------------------------ */
 
-function FleetTile({
-  workflows,
-  residentMb,
-  instanceCount,
-  residentKnown,
-}: {
-  workflows: Workflow[];
-  residentMb: number;
-  instanceCount: number;
-  residentKnown: boolean;
-}) {
-  const running = workflows.filter((w) => w.state === 'running').length;
-  // Parked is the whole point: an app that exists, costs nothing, and wakes on
-  // the next request. Undeployed apps are neither — they are excluded.
-  const parked = workflows.filter((w) => w.state === 'idle').length;
-
-  // Busiest first: on a page with one screen of room, traffic is the most
-  // useful ordering, and the full list is one click away.
-  const roster = useMemo(
-    () => [...workflows].sort((a, b) => b.invocations24h - a.invocations24h).slice(0, 6),
-    [workflows]
-  );
+function FleetHero({ workflows, bandApps }: { workflows: Workflow[]; bandApps: FootprintApp[] }) {
+  const awake = workflows.filter((w) => w.state === 'running').length;
+  const asleep = workflows.filter((w) => w.state === 'idle').length;
 
   return (
-    <Panel lit elevation="raised" padded={false} className="brand-wash lg:col-span-7 lg:row-span-2">
-      <div className="relative p-5">
-        <div className="flex items-start justify-between gap-4">
-          <TileLabel>Fleet</TileLabel>
-          <Link
-            to="/dashboard/workflows"
-            className="pressable inline-flex items-center gap-1 rounded text-xs text-muted-foreground hover:text-foreground"
+    <section className="animate-item-enter flex flex-col gap-7">
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+        {/* Display scale, no card chrome: the readout sits directly on the
+            page ground. "Awake / asleep" is the product's own physics — the
+            counts are app states, the band below is their memory. */}
+        <h2 className="text-6xl leading-none font-semibold tracking-[-0.045em] [font-variant-numeric:tabular-nums] sm:text-7xl">
+          <CountUp value={awake} />
+          <span className="ml-3 align-baseline text-2xl font-medium tracking-normal text-muted-foreground sm:text-3xl">
+            awake
+          </span>
+          <span
+            aria-hidden
+            className="mx-4 align-middle text-3xl font-normal text-muted-foreground/40"
           >
-            All apps
-            <ArrowRight className="h-3 w-3" />
-          </Link>
-        </div>
-
-        <div className="mt-4 flex flex-wrap items-baseline gap-x-8 gap-y-3">
-          <p className="text-5xl leading-none font-semibold tracking-tight [font-variant-numeric:tabular-nums]">
-            <CountUp value={running} />
-            <span className="ml-2 text-sm font-normal text-muted-foreground">running</span>
-          </p>
-          <p className="text-3xl leading-none font-semibold tracking-tight text-muted-foreground [font-variant-numeric:tabular-nums]">
-            <CountUp value={parked} />
-            <span className="ml-2 text-sm font-normal">parked</span>
-          </p>
-        </div>
-
-        <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-          {residentKnown ? (
-            <>
-              <span className="text-foreground [font-variant-numeric:tabular-nums]">
-                {residentMb.toLocaleString()} MB
-              </span>{' '}
-              resident across {instanceCount} {instanceCount === 1 ? 'instance' : 'instances'}.
-              Parked apps hold no memory and bill nothing until the next request.
-            </>
-          ) : (
-            <>Parked apps hold no memory and bill nothing until the next request.</>
-          )}
-        </p>
+            ·
+          </span>
+          <CountUp value={asleep} className="text-muted-foreground" />
+          <span className="ml-3 align-baseline text-2xl font-medium tracking-normal text-muted-foreground sm:text-3xl">
+            asleep
+          </span>
+        </h2>
+        <Link
+          to="/dashboard/workflows"
+          className="pressable mb-1 inline-flex items-center gap-1 rounded text-xs text-muted-foreground hover:text-foreground"
+        >
+          All apps
+          <ArrowRight className="h-3 w-3" />
+        </Link>
       </div>
 
-      {roster.length > 0 && (
-        <ul className="flex flex-col border-t border-border">
-          {roster.map((app) => (
-            <li key={app.id} className="border-b border-border last:border-0">
-              <Link
-                to="/dashboard/workflows/$workflowId"
-                params={{ workflowId: app.id }}
-                className="flex items-center justify-between gap-3 bg-background/40 px-5 py-2.5 transition-colors hover:bg-muted"
-              >
-                <span className="flex min-w-0 items-center gap-3">
-                  <span className="truncate font-mono text-xs">{app.name}</span>
-                  <span className="shrink-0 text-xs text-muted-foreground">{app.runtime}</span>
-                </span>
-                <span className="flex shrink-0 items-center gap-4">
-                  <span className="text-xs text-muted-foreground [font-variant-numeric:tabular-nums]">
-                    {app.invocations24h ? formatCompact(app.invocations24h) : '—'}
-                  </span>
-                  <StateBadge state={app.state} />
-                </span>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
-    </Panel>
+      {bandApps.length > 0 && <FootprintBand apps={bandApps} />}
+    </section>
   );
 }
 
@@ -168,7 +118,7 @@ function AttentionTile({
   const billingProblem = status && status !== 'active' ? status : null;
 
   return (
-    <Panel elevation="resting" className="lg:col-span-5 [animation-delay:60ms]">
+    <Panel elevation="resting" className="lg:col-span-7 [animation-delay:60ms]">
       <TileLabel>Needs attention</TileLabel>
 
       {billingProblem ? (
@@ -385,21 +335,41 @@ function OverviewPage() {
 
   const failing = useMemo(() => workflows.filter((w) => w.state === 'error'), [workflows]);
 
-  // Resident memory is the sum over instances that actually hold memory — a
-  // parked instance row still exists but its cgroup is gone, which is the
-  // claim the tile makes in words and so must not contradict in arithmetic.
-  // Unreadable is not zero, so the tile drops the line rather than reporting
-  // an empty fleet.
-  const { residentMb, instanceCount, residentKnown } = useMemo(() => {
-    const resident = (instances.data?.instances ?? []).filter(
-      (i) => i.state.toLowerCase() !== 'parked'
-    );
-    return {
-      residentMb: resident.reduce((sum, i) => sum + (i.ram_mb ?? 0), 0),
-      instanceCount: resident.length,
-      residentKnown: !instances.isPending && !instances.error,
-    };
-  }, [instances.data, instances.isPending, instances.error]);
+  // The band's data: per-app resident instances (parked rows excluded — a
+  // parked instance's cgroup is gone), joined back to slugs via the raw app
+  // list, which is a cache hit on the store's own query. When the instance
+  // read fails the band falls back to app states — one approximate segment
+  // per running app — rather than rendering an empty fleet.
+  const { data: rawApps } = useApps();
+  const slugById = useMemo(() => new Map((rawApps ?? []).map((a) => [a.id, a.slug])), [rawApps]);
+  const residentKnown = !instances.isPending && !instances.error;
+  const instRollup = useMemo(() => {
+    const bySlug = new Map<string, { count: number; mb: number }>();
+    for (const row of instances.data?.instances ?? []) {
+      if (row.state.toLowerCase() === 'parked') continue;
+      const slug = slugById.get(row.app_id);
+      if (!slug) continue;
+      const current = bySlug.get(slug) ?? { count: 0, mb: row.ram_mb };
+      bySlug.set(slug, { count: current.count + 1, mb: row.ram_mb });
+    }
+    return bySlug;
+  }, [instances.data, slugById]);
+
+  const bandApps = useMemo<FootprintApp[]>(
+    () =>
+      workflows.flatMap((w): FootprintApp[] => {
+        const live = instRollup.get(w.id);
+        if (live) return [{ slug: w.id, ramMb: live.mb, instances: live.count, awake: true }];
+        // Active with nothing resident is scale-to-zero doing its job — the
+        // app renders dark, like a parked one, because that is what it holds.
+        if (w.state === 'running' && !residentKnown)
+          return [{ slug: w.id, ramMb: w.memoryMb, instances: 1, awake: true }];
+        if (w.state === 'running' || w.state === 'idle')
+          return [{ slug: w.id, ramMb: w.memoryMb, instances: 0, awake: false }];
+        return [];
+      }),
+    [workflows, instRollup, residentKnown]
+  );
 
   const recent = useMemo(
     () => [...deployments].sort((a, b) => b.createdAt - a.createdAt).slice(0, 6),
@@ -449,71 +419,71 @@ function OverviewPage() {
           /* Two bands, mirrored: 7/5 then 5/7. The asymmetry is the hierarchy —
              the fleet leads, cost and history sit under it — and the reversal
              keeps the page from reading as two identical rows. */
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-            <FleetTile
-              workflows={workflows}
-              residentMb={residentMb}
-              instanceCount={instanceCount}
-              residentKnown={residentKnown}
-            />
-            <AttentionTile
-              status={account?.status}
-              failing={failing}
-              metricsDegraded={metricsDegraded}
-            />
-            <TrafficTile workflows={workflows} degraded={metricsDegraded} />
+          <>
+            <FleetHero workflows={workflows} bandApps={bandApps} />
 
-            <AllowanceTile usage={usage} />
+            {/* The bento resumes below the instrument panel: 7/5 then 5/7,
+                mirrored so the asymmetry reads as rhythm. */}
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+              <AttentionTile
+                status={account?.status}
+                failing={failing}
+                metricsDegraded={metricsDegraded}
+              />
+              <TrafficTile workflows={workflows} degraded={metricsDegraded} />
 
-            <Panel
-              elevation="resting"
-              padded={false}
-              className="lg:col-span-7 [animation-delay:240ms]"
-              title="Recent deployments"
-              actions={
-                <Link
-                  to="/dashboard/deployments"
-                  className="pressable inline-flex items-center gap-1 rounded text-xs text-muted-foreground hover:text-foreground"
-                >
-                  All deployments
-                  <ArrowRight className="h-3 w-3" />
-                </Link>
-              }
-            >
-              {recent.length === 0 ? (
-                <div className="p-5">
-                  <EmptyState message="Nothing deployed yet." />
-                </div>
-              ) : (
-                <ul className="flex flex-col">
-                  {recent.map((d) => (
-                    <li
-                      key={d.id}
-                      className={cn(
-                        'flex items-center justify-between gap-3 border-b border-border px-5 py-3 last:border-0'
-                      )}
-                    >
-                      <span className="flex min-w-0 flex-col gap-0.5">
-                        <span className="truncate font-mono text-xs">{d.workflowId}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {d.version || 'no image'} · {formatRelative(d.createdAt)}
+              <AllowanceTile usage={usage} />
+
+              <Panel
+                elevation="resting"
+                padded={false}
+                className="lg:col-span-7 [animation-delay:240ms]"
+                title="Recent deployments"
+                actions={
+                  <Link
+                    to="/dashboard/deployments"
+                    className="pressable inline-flex items-center gap-1 rounded text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    All deployments
+                    <ArrowRight className="h-3 w-3" />
+                  </Link>
+                }
+              >
+                {recent.length === 0 ? (
+                  <div className="p-5">
+                    <EmptyState message="Nothing deployed yet." />
+                  </div>
+                ) : (
+                  <ul className="flex flex-col">
+                    {recent.map((d) => (
+                      <li
+                        key={d.id}
+                        className={cn(
+                          'flex items-center justify-between gap-3 border-b border-border px-5 py-3 last:border-0'
+                        )}
+                      >
+                        <span className="flex min-w-0 flex-col gap-0.5">
+                          <span className="truncate font-mono text-xs">{d.workflowId}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {d.version || 'no image'} · {formatRelative(d.createdAt)}
+                          </span>
                         </span>
-                      </span>
-                      <StateBadge
-                        state={
-                          d.state === 'succeeded'
-                            ? 'running'
-                            : d.state === 'failed'
-                              ? 'error'
-                              : 'deploying'
-                        }
-                      />
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Panel>
-          </div>
+                        <StateBadge
+                          state={
+                            d.state === 'succeeded'
+                              ? 'running'
+                              : d.state === 'failed'
+                                ? 'error'
+                                : 'deploying'
+                          }
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Panel>
+            </div>
+          </>
         ))}
     </div>
   );

@@ -496,7 +496,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
             <div
               className={cn(
-                'transition-[padding] duration-200 ease-console',
+                'console-atmosphere min-h-screen transition-[padding] duration-200 ease-console',
                 collapsed ? 'lg:pl-[4.5rem]' : 'lg:pl-60'
               )}
             >
