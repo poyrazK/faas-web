@@ -1,14 +1,15 @@
 import { cn } from '@/lib/utils';
 
 /**
- * A vertical fuel tank for one bounded resource — the allowance card's
- * answer to the default donut. A graduated vessel with a mint liquid whose
- * surface waves gently (two drifting SVG crests, phase-offset), a blueprint
- * ruler down its side, and a level that rises from empty on first paint via
- * `@starting-style` — stateless, like the ring and the odometer.
+ * A horizontal fuel tube for one bounded resource — the allowance card's
+ * instrument. The liquid fills from the left toward the reading; its
+ * leading edge is a live meniscus (two drifting crests, phase-offset,
+ * frozen straight under reduced motion). The level extends from empty on
+ * first paint via `@starting-style` — stateless, like the odometer — and a
+ * blueprint ruler runs beneath with the scale at either end.
  *
- * Shows what is LEFT: a tank is an instrument for remaining fuel. `warning`
- * tone renders the near-empty alarm state. One real ratio, no series.
+ * Shows what is LEFT: a tank is an instrument for remaining fuel.
+ * `warning` renders the near-empty alarm state. One real ratio, no series.
  */
 export function FuelGauge({
   pct,
@@ -22,13 +23,13 @@ export function FuelGauge({
   tone?: 'brand' | 'warning';
   /** Accessible name for the meter. */
   label: string;
-  /** Ruler labels top→bottom, e.g. ['2,000', '0']. */
+  /** Ruler labels, [empty end, full end] — e.g. ['0', '2,000']. */
   scale: [string, string];
   className?: string;
 }) {
   const clamped = Math.max(0, Math.min(100, pct));
   const warning = tone === 'warning';
-  const liquidTop = warning ? 'var(--status-warning)' : 'var(--mint-7)';
+  const liquidEdge = warning ? 'var(--status-warning)' : 'var(--mint-7)';
 
   return (
     <div
@@ -37,55 +38,54 @@ export function FuelGauge({
       aria-valuemin={0}
       aria-valuemax={100}
       aria-label={label}
-      className={cn('flex items-stretch gap-2', className)}
+      className={cn('flex flex-col gap-1.5', className)}
     >
-      {/* The ruler: graduations on the drawing's side of the vessel. */}
-      <div aria-hidden className="flex flex-col justify-between py-0.5 text-right">
-        <span className="label-mono normal-case text-muted-foreground/80">{scale[0]}</span>
-        <span className="label-mono text-muted-foreground/50">—</span>
-        <span className="label-mono text-muted-foreground/80">{scale[1]}</span>
-      </div>
-      <div aria-hidden className="flex flex-col justify-between py-1.5">
-        {Array.from({ length: 9 }, (_, i) => (
-          <span key={i} className={cn('h-px bg-border', i % 4 === 0 ? 'w-2.5' : 'w-1.5')} />
-        ))}
-      </div>
-
       {/* The vessel. */}
-      <div className="relative w-14 overflow-hidden rounded-lg border border-border-secondary bg-background/60">
+      <div className="relative h-11 w-full overflow-hidden rounded-lg border border-border-secondary bg-background/60">
         <div
-          className="fuel-fill absolute inset-x-0 bottom-0"
+          className="fuel-fill-x absolute inset-y-0 left-0"
           style={
             {
-              '--fuel-h': `${clamped}%`,
+              '--fuel-w': `${clamped}%`,
               background: warning
-                ? 'linear-gradient(to top, color-mix(in oklab, var(--status-warning) 70%, transparent), var(--status-warning))'
-                : 'linear-gradient(to top, var(--brand-fill), var(--mint-7))',
+                ? 'linear-gradient(to right, color-mix(in oklab, var(--status-warning) 70%, transparent), var(--status-warning))'
+                : 'linear-gradient(to right, var(--brand-fill), var(--mint-7))',
               boxShadow: `0 0 24px -4px color-mix(in oklab, ${
                 warning ? 'var(--status-warning)' : 'var(--brand-fill)'
               } 55%, transparent)`,
             } as React.CSSProperties
           }
         >
-          {/* The surface: two crests drifting at different speeds, so the
-              liquid reads as liquid. Frozen flat under reduced motion. */}
+          {/* The meniscus: two crests drifting vertically along the liquid's
+              leading edge, so the fill reads as liquid, not a filled bar. */}
           <svg
-            viewBox="0 0 200 8"
+            viewBox="0 0 8 200"
             preserveAspectRatio="none"
-            className="animate-fuel-wave absolute -top-[7px] left-0 h-2 w-[200%]"
-            style={{ fill: liquidTop }}
+            className="animate-fuel-meniscus absolute -right-[7px] top-0 h-[200%] w-2"
+            style={{ fill: liquidEdge }}
           >
-            <path d="M0,5 Q12.5,1 25,5 T50,5 T75,5 T100,5 T125,5 T150,5 T175,5 T200,5 L200,8 L0,8 Z" />
+            <path d="M3,0 Q7,12.5 3,25 T3,50 T3,75 T3,100 T3,125 T3,150 T3,175 T3,200 L0,200 L0,0 Z" />
           </svg>
           <svg
-            viewBox="0 0 200 8"
+            viewBox="0 0 8 200"
             preserveAspectRatio="none"
-            className="animate-fuel-wave absolute -top-1 left-0 h-2 w-[200%] opacity-60 [animation-delay:-4s] [animation-duration:10s]"
-            style={{ fill: liquidTop }}
+            className="animate-fuel-meniscus absolute -right-1 top-0 h-[200%] w-2 opacity-60 [animation-delay:-4s] [animation-duration:10s]"
+            style={{ fill: liquidEdge }}
           >
-            <path d="M0,5 Q16,2 33,5 T66,5 T100,5 T133,5 T166,5 T200,5 L200,8 L0,8 Z" />
+            <path d="M3,0 Q6,16 3,33 T3,66 T3,100 T3,133 T3,166 T3,200 L0,200 L0,0 Z" />
           </svg>
         </div>
+      </div>
+
+      {/* The ruler: graduations beneath the vessel, scale at the ends. */}
+      <div aria-hidden className="flex items-start justify-between px-0.5">
+        {Array.from({ length: 9 }, (_, i) => (
+          <span key={i} className={cn('w-px bg-border', i % 4 === 0 ? 'h-2.5' : 'h-1.5')} />
+        ))}
+      </div>
+      <div aria-hidden className="flex justify-between">
+        <span className="label-mono text-muted-foreground/80">{scale[0]}</span>
+        <span className="label-mono normal-case text-muted-foreground/80">{scale[1]}</span>
       </div>
     </div>
   );

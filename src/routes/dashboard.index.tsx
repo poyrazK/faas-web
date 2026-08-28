@@ -236,14 +236,8 @@ function AllowanceCard({ usage }: { usage: ReturnType<typeof useUsageSummary> })
             <InlinePhase phase={phase} error={usage.error} loadingMessage="Reading usage…" />
           </div>
         ) : (
-          <div className="mt-5 flex min-h-44 flex-1 items-stretch gap-7">
-            <FuelGauge
-              pct={displayPct}
-              tone={over ? 'warning' : 'brand'}
-              label="GB-hour allowance remaining"
-              scale={[formatGbHours(included), '0']}
-            />
-            <div className="flex min-w-0 flex-col justify-center gap-2">
+          <div className="mt-5 flex flex-1 flex-col justify-center gap-6">
+            <div className="flex min-w-0 flex-col gap-2">
               <p className="text-4xl leading-none font-semibold tracking-tight">
                 <Odometer
                   value={over ? (data?.overage_gb_hours ?? 0) : remaining}
@@ -264,6 +258,13 @@ function AllowanceCard({ usage }: { usage: ReturnType<typeof useUsageSummary> })
                 </p>
               )}
             </div>
+
+            <FuelGauge
+              pct={displayPct}
+              tone={over ? 'warning' : 'brand'}
+              label="GB-hour allowance remaining"
+              scale={['0', formatGbHours(included)]}
+            />
           </div>
         )}
       </div>
