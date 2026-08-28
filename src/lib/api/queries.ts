@@ -84,6 +84,66 @@ async function applyOptimistic<T>(
 type Options<T> = Omit<UseQueryOptions<T, Error>, 'queryKey' | 'queryFn'>;
 
 /* ------------------------------------------------------------------ *
+ * Scheduling — delayed one-shot tasks, and the fate of a fired cron
+ * ------------------------------------------------------------------ */
+
+export type DelayedTask = components['schemas']['DelayedTaskResponse'];
+
+/** Schedule a one-shot task to fire at a future time. */
+export function useScheduleDelayedTask(slug: string) {
+  return useMutation({
+    mutationFn: (input: { scheduledAt: string; payload: Record<string, unknown> }) =>
+      unwrap(
+        api.POST('/v1/apps/{slug}/delayed-tasks', {
+          params: { path: { slug } },
+          body: { scheduled_at: input.scheduledAt, payload: input.payload },
+        })
+      ),
+  });
+}
+
+/** One delayed task's state. The API reads tasks by id only — there is no
+ * list endpoint — so the console tracks the ids it created. */
+export function useDelayedTask(id: string, options?: { poll?: boolean }) {
+  return useQuery({
+    queryKey: ['delayed-tasks', id],
+    queryFn: () => unwrap(api.GET('/v1/delayed-tasks/{id}', { params: { path: { id } } })),
+    enabled: Boolean(id),
+    refetchInterval: options?.poll
+      ? (query) => (query.state.data?.state === 'pending' ? 5_000 : false)
+      : undefined,
+  });
+}
+
+export function useCancelDelayedTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      unwrap(api.DELETE('/v1/delayed-tasks/{id}', { params: { path: { id } } })),
+    onSuccess: (_d, id) => void qc.invalidateQueries({ queryKey: ['delayed-tasks', id] }),
+  });
+}
+
+/** The state of one fire-now request — polled after "Run now" until it
+ * settles, so the button's toast can report what actually happened. */
+export function useFireNowRequest(requestId: string) {
+  return useQuery({
+    queryKey: ['cron-fire-now', requestId],
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/cron-fire-now-requests/{request_id}', {
+          params: { path: { request_id: requestId } },
+        })
+      ),
+    enabled: Boolean(requestId),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status && status !== 'pending' && status !== 'running' ? false : 2_000;
+    },
+  });
+}
+
+/* ------------------------------------------------------------------ *
  * Observability — error groups, wake anatomy, build provenance, deploy
  * preview, auth audit trail
  * ------------------------------------------------------------------ */

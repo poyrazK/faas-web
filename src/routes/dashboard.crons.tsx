@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { Clock, Play, Plus, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,7 @@ import {
   useDeleteCron,
   useRunCron,
   useUpdateCron,
+  useFireNowRequest,
 } from '@/lib/api/queries';
 import { slugIndex } from '@/lib/api/adapters';
 import { errorMessage } from '@/lib/api/errors';
@@ -36,6 +37,35 @@ export const Route = createFileRoute('/dashboard/crons')({
  * nothing could change), and no way to see whether the last run worked —
  * `useCronRuns` had been written and imported nowhere.
  */
+
+/**
+ * "Run now" used to fire and forget — the 202's request id was dropped and
+ * the outcome never reported. This watches one fire-now request and toasts
+ * its terminal state, then clears itself.
+ */
+function FireNowWatcher({ requestId, onDone }: { requestId: string; onDone: () => void }) {
+  const { toast } = useToast();
+  const q = useFireNowRequest(requestId);
+  const status = q.data?.status;
+  const reported = useRef(false);
+  useEffect(() => {
+    if (reported.current || !status || status === 'pending' || status === 'running') return;
+    reported.current = true;
+    if (q.data?.error) {
+      toast({ kind: 'error', title: 'Cron run failed', description: q.data.error });
+    } else {
+      toast({
+        kind: 'success',
+        title: 'Cron run finished',
+        description: q.data?.invocation_id
+          ? `Invocation ${q.data.invocation_id.slice(0, 12)}.`
+          : undefined,
+      });
+    }
+    onDone();
+  }, [status, q.data, toast, onDone]);
+  return null;
+}
 
 interface CronRow {
   id: string;
@@ -120,6 +150,7 @@ function CronsPage() {
   const [schedule, setSchedule] = useState('');
   const [path, setPath] = useState('/');
   const [history, setHistory] = useState<CronRow | null>(null);
+  const [fireRequest, setFireRequest] = useState<string | null>(null);
 
   const targetApp = appId || apps?.[0]?.id || '';
   const scheduleOk = schedule.trim().split(/\s+/).length === 5;
@@ -202,7 +233,12 @@ function CronsPage() {
             onClick={() => {
               void runCron
                 .mutateAsync(c.id)
-                .then(() => toast({ kind: 'success', title: 'Cron fired' }))
+                .then((fired) => {
+                  toast({ kind: 'success', title: 'Cron fired', description: 'Watching the run…' });
+                  // The 202 carries a request id; the watcher polls it and
+                  // reports the terminal state instead of dropping it.
+                  setFireRequest(fired.request_id);
+                })
                 .catch((err: unknown) =>
                   toast({ kind: 'error', title: 'Could not fire', description: errorMessage(err) })
                 );
@@ -246,6 +282,9 @@ function CronsPage() {
 
   return (
     <div className="flex flex-col gap-6">
+      {fireRequest && (
+        <FireNowWatcher requestId={fireRequest} onDone={() => setFireRequest(null)} />
+      )}
       <PageHeader
         title="Cron Jobs"
         description="Scheduled synthetic requests into your apps. Firing one by hand does not change its schedule."

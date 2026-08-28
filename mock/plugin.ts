@@ -1050,6 +1050,49 @@ route('DELETE', '/v1/orgs/{slug}/invitations/{token}', ({ params }) => {
   const hex = (n: number) =>
     Array.from({ length: n }, () => Math.floor(Math.random() * 16).toString(16)).join('');
 
+  // --- Scheduling: delayed tasks (session-tracked) + cron fire-now state ---
+  const delayedTasks = new Map<string, { id: string; scheduled_at: string; state: string }>();
+  route('POST', '/v1/apps/{slug}/delayed-tasks', async ({ body }) => {
+    const id = `dt_${hex(10)}`;
+    const t = {
+      id,
+      scheduled_at: String(body.scheduled_at ?? new Date().toISOString()),
+      state: 'pending',
+    };
+    delayedTasks.set(id, t);
+    return t;
+  });
+  route('GET', '/v1/delayed-tasks/{id}', ({ params, res }) => {
+    const t = delayedTasks.get(params.id);
+    if (!t) {
+      res.statusCode = 404;
+      return { type: 'about:blank', title: 'not found', code: 'not_found' };
+    }
+    if (t.state === 'pending' && Date.parse(t.scheduled_at) < Date.now()) t.state = 'completed';
+    return t;
+  });
+  route('DELETE', '/v1/delayed-tasks/{id}', ({ params }) => {
+    const t = delayedTasks.get(params.id);
+    if (t) t.state = 'cancelled';
+    return {};
+  });
+  const fireRequests = new Map<string, number>();
+  route('GET', '/v1/cron-fire-now-requests/{request_id}', ({ params }) => {
+    const started = fireRequests.get(params.request_id) ?? Date.now();
+    fireRequests.set(params.request_id, started);
+    const done = Date.now() - started > 4000;
+    return {
+      request_id: params.request_id,
+      cron_id: db.crons[0]?.id ?? 'cron_1',
+      status: done ? 'completed' : 'running',
+      requested_at: new Date(started).toISOString(),
+      finished_at: done ? new Date().toISOString() : null,
+      invocation_id: done ? `inv_${hex(8)}` : null,
+      error: '',
+      account_id: db.account.id,
+    };
+  });
+
   // --- Observability: error groups, wake timelines, diff preview, build
   // provenance, secret scan, auth audit events. ---
   const ERR_FP = 'fp_5c1a9b2e77d34fa0';
