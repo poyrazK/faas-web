@@ -287,6 +287,18 @@
     }
   }
 
+  /* A single point of light travelling the hero card's border — our cut of
+     the "border beam" pattern (Magic UI / Aceternity), redrawn in the brand
+     mint and slowed to a patrol rather than a sparkle. One card per page.
+     Infinite, so the reduced-motion blanket rule stops it outright. */
+  --animate-border-beam: border-beam 10s linear infinite;
+
+  @keyframes border-beam {
+    to {
+      --beam-angle: 360deg;
+    }
+  }
+
   /* State is breath: things that are awake breathe at low amplitude; parked
      things are still. Infinite, so the reduced-motion blanket rule freezes
      it entirely rather than shortening it. Stagger phases with a negative
@@ -427,6 +439,15 @@
       color: var(--mint-12);
     }
   }
+}
+
+/* The travelling border light needs a typed custom property so the angle
+   itself can animate; falls back to a static (invisible) beam where
+   @property is unsupported, which degrades to a plain border. */
+@property --beam-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
 }
 
 @layer base {
@@ -615,6 +636,112 @@
       color-mix(in oklab, var(--brand-fill) 10%, transparent),
       transparent 60%
     );
+  }
+
+  /* The border-beam ring: a conic sliver of mint clipped to a 1px border
+     band via the two-layer mask trick. Sits on an absolutely-positioned
+     child that inherits the card's radius. */
+  .border-beam-ring {
+    padding: 1px;
+    background: conic-gradient(
+      from var(--beam-angle),
+      transparent 0deg 322deg,
+      color-mix(in oklab, var(--brand-fill) 85%, transparent) 348deg,
+      transparent 360deg
+    );
+    mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    mask-composite: exclude;
+  }
+
+  /* Spotlight card overlays — our cut of the cursor-tracked glow (Magic
+     Card / Aceternity's glowing effect), in the brand mint. The component
+     drives --spot-x/--spot-y and --spot-o; these classes only paint. The
+     surface glow lights the card body, the ring glow lights the border band
+     nearest the cursor. */
+  .spotlight-glow {
+    opacity: var(--spot-o, 0);
+    transition: opacity var(--motion-base) var(--motion-ease);
+    background: radial-gradient(
+      14rem circle at var(--spot-x, 100%) var(--spot-y, 0%),
+      color-mix(in oklab, var(--brand-fill) 7%, transparent),
+      transparent 70%
+    );
+  }
+  .spotlight-ring {
+    opacity: var(--spot-o, 0);
+    transition: opacity var(--motion-base) var(--motion-ease);
+    padding: 1px;
+    background: radial-gradient(
+      11rem circle at var(--spot-x, 100%) var(--spot-y, 0%),
+      color-mix(in oklab, var(--brand) 55%, transparent),
+      transparent 70%
+    );
+    mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    mask-composite: exclude;
+  }
+
+  /* Wind beams — the gregale made visible. Curved SVG ribbons flowing
+     NE→SW behind the hero: a heavily blurred static ribbon as atmosphere,
+     and a bright pulse travelling the same curve via a normalised
+     dash-offset (pathLength=1000 on every path). Our from-scratch cut of
+     the flowing-gradient-beam pattern, on the console's tokens and wind.
+     Decorative only; reduced motion keeps the still ribbons and stops the
+     travel outright. */
+  .wind-ribbon {
+    filter: blur(22px);
+    opacity: 0.5;
+  }
+  .wind-pulse {
+    stroke-dasharray: 70 930;
+    animation: wind-travel var(--wind-duration, 9s) linear infinite;
+    animation-delay: var(--wind-delay, 0s);
+  }
+  @keyframes wind-travel {
+    to {
+      stroke-dashoffset: -1000;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .wind-pulse {
+      animation: none;
+      opacity: 0;
+    }
+  }
+
+  /* Footprint band materials. Lit segments carry a vertical mint gradient
+     and a soft under-glow — awake memory reads as warm; parked memory is a
+     dashed socket, present but dark. */
+  .fp-lit {
+    background: linear-gradient(to bottom, var(--mint-7), var(--brand-fill));
+    box-shadow: 0 2px 14px -2px color-mix(in oklab, var(--brand-fill) 45%, transparent);
+  }
+  .fp-dark {
+    border: 1px dashed var(--border-secondary);
+  }
+
+  /* Progress-ring sweep: the arc enters from empty on insertion and glides
+     between values thereafter. `@starting-style` keeps this stateless —
+     unsupported browsers simply show the value at once, as do reduced-motion
+     users. The custom properties are set inline per instance. */
+  .ring-sweep {
+    stroke-dashoffset: var(--ring-off);
+    transition:
+      stroke-dashoffset 0.9s var(--motion-ease),
+      stroke 0.3s var(--motion-ease);
+  }
+  @starting-style {
+    .ring-sweep {
+      stroke-dashoffset: var(--ring-circ);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ring-sweep {
+      transition: none;
+    }
   }
 
   /* The page ground's atmosphere: a barely-there light field in the console's

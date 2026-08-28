@@ -47,7 +47,7 @@ export function FootprintBand({ apps, className }: { apps: FootprintApp[]; class
       {/* The band. Segments per app; an awake app subdivides into its
           instances with hairline gaps, so granularity is visible without a
           second row. */}
-      <div className="flex h-9 items-stretch gap-[3px]" role="img" aria-label={bandLabel(ordered)}>
+      <div className="flex h-11 items-stretch gap-[3px]" role="img" aria-label={bandLabel(ordered)}>
         {ordered.map((app, appIndex) => {
           const pct = (footprintOf(app) / totalMb) * 100;
           return (
@@ -61,14 +61,14 @@ export function FootprintBand({ apps, className }: { apps: FootprintApp[]; class
                 Array.from({ length: app.instances }, (_, i) => (
                   <span
                     key={i}
-                    className="animate-breathe min-w-[2px] flex-1 rounded-[2px] bg-brand-fill"
+                    className="fp-lit animate-breathe min-w-[2px] flex-1 rounded-[3px]"
                     // Phase-shifted so the band shimmers rather than pulsing
                     // in lockstep; negative delay starts mid-cycle.
                     style={{ animationDelay: `${-((appIndex * 1.3 + i) % 3.4)}s` }}
                   />
                 ))
               ) : (
-                <span className="flex-1 rounded-[2px] border border-border bg-transparent" />
+                <span className="fp-dark flex-1 rounded-[3px]" />
               )}
             </div>
           );
