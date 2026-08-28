@@ -8,7 +8,6 @@ import {
   InlinePhase,
   LoadingState,
   PageHeader,
-  StateBadge,
   UnreachableState,
   queryPhase,
 } from '@/components/dashboard/primitives';
@@ -29,6 +28,7 @@ import { useApps, useAppsMetrics, useInstances, useUsageSummary } from '@/lib/ap
 import { formatCompact, formatRelative, type Workflow } from '@/lib/mock-data';
 import type { Deployment } from '@/lib/mock-data';
 import { consoleHead } from '@/lib/seo';
+import { cn } from '@/lib/utils';
 
 export const Route = createFileRoute('/dashboard/')({
   component: OverviewPage,
@@ -289,34 +289,48 @@ function TrafficCard({ workflows, degraded }: { workflows: Workflow[]; degraded:
 
   const unknown = <span className="text-muted-foreground">—</span>;
 
+  // Three readings as ruled rows sharing the card's height — an instrument
+  // column, not a headline floating over boxed leftovers.
   return (
     <SpotlightCard className="lg:col-span-5 [animation-delay:120ms]">
-      <div className="flex h-full flex-col gap-5 p-6">
-        <CardLabel>Traffic · last 24h</CardLabel>
-
-        <p className="text-4xl leading-none font-semibold tracking-tight [font-variant-numeric:tabular-nums]">
-          {degraded ? unknown : <CountUp value={requests} format={formatCompact} />}
-          <span className="ml-2 text-sm font-normal text-muted-foreground">requests</span>
-        </p>
-
-        <dl className="mt-auto grid grid-cols-2 gap-3">
-          <div className="rounded-lg bg-background/60 px-3.5 py-3">
-            <dt className="label-mono text-muted-foreground">Error rate</dt>
-            <dd
-              className="mt-1.5 text-sm [font-variant-numeric:tabular-nums]"
+      <div className="flex h-full flex-col">
+        <div className="px-5 pb-3 pt-4">
+          <CardLabel>Traffic · last 24h</CardLabel>
+        </div>
+        <div className="flex flex-1 flex-col divide-y divide-border border-t border-border">
+          <div className="flex flex-1 items-center justify-between gap-4 px-5 py-3">
+            <span className="label-mono text-muted-foreground">Requests</span>
+            <span className="text-2xl leading-none font-semibold tracking-tight [font-variant-numeric:tabular-nums]">
+              {degraded ? (
+                unknown
+              ) : (
+                <Odometer value={requests} format={formatCompact} className="metric-glow" />
+              )}
+            </span>
+          </div>
+          <div className="flex flex-1 items-center justify-between gap-4 px-5 py-3">
+            <span className="label-mono text-muted-foreground">Error rate</span>
+            <span
+              className="text-2xl leading-none font-semibold tracking-tight [font-variant-numeric:tabular-nums]"
               style={!degraded && errorPct > 1 ? { color: 'var(--status-critical)' } : undefined}
             >
               {degraded ? unknown : `${errorPct.toFixed(2)}%`}
-            </dd>
+            </span>
           </div>
-          <div className="rounded-lg bg-background/60 px-3.5 py-3">
-            <dt className="label-mono text-muted-foreground">Wake p95</dt>
-            <dd className="mt-1.5 text-sm [font-variant-numeric:tabular-nums]">
-              {degraded || !wakeP95 ? unknown : `${Math.round(wakeP95)} ms`}
-              <span className="ml-1 text-xs text-muted-foreground">fleet</span>
-            </dd>
+          <div className="flex flex-1 items-center justify-between gap-4 px-5 py-3">
+            <span className="label-mono text-muted-foreground">Wake p95</span>
+            <span className="text-2xl leading-none font-semibold tracking-tight [font-variant-numeric:tabular-nums]">
+              {degraded || !wakeP95 ? (
+                unknown
+              ) : (
+                <>
+                  {Math.round(wakeP95)}
+                  <span className="ml-1 text-sm font-normal text-muted-foreground">ms fleet</span>
+                </>
+              )}
+            </span>
           </div>
-        </dl>
+        </div>
       </div>
     </SpotlightCard>
   );
@@ -326,10 +340,15 @@ function TrafficCard({ workflows, degraded }: { workflows: Workflow[]; degraded:
  * Deployments — the live feed
  * ------------------------------------------------------------------ */
 
+const DEPLOY_STATE: Record<string, { label: string; color: string; live?: boolean }> = {
+  succeeded: { label: 'Live', color: 'var(--status-good)' },
+  failed: { label: 'Failed', color: 'var(--status-critical)' },
+};
+
 function DeploymentsCard({ recent }: { recent: Deployment[] }) {
   return (
     <SpotlightCard className="lg:col-span-7 [animation-delay:180ms]">
-      <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-4">
+      <div className="flex items-center justify-between gap-4 px-5 py-3.5">
         <CardLabel>Recent deployments</CardLabel>
         <Link
           to="/dashboard/deployments"
@@ -341,28 +360,39 @@ function DeploymentsCard({ recent }: { recent: Deployment[] }) {
       </div>
 
       {recent.length === 0 ? (
-        <div className="p-6">
+        <div className="p-5">
           <EmptyState message="Nothing deployed yet." />
         </div>
       ) : (
         <AnimatedList
           items={recent}
-          itemClassName="border-b border-border last:border-0"
-          render={(d) => (
-            <div className="flex items-center justify-between gap-3 px-6 py-3">
-              <span className="flex min-w-0 flex-col gap-0.5">
+          className="divide-y divide-border border-t border-border"
+          render={(d) => {
+            const state = DEPLOY_STATE[d.state] ?? {
+              label: 'Deploying',
+              color: 'var(--status-warning)',
+              live: true,
+            };
+            return (
+              <div className="flex items-center gap-3 px-5 py-2.5">
                 <span className="truncate font-mono text-xs">{d.workflowId}</span>
-                <span className="text-xs text-muted-foreground">
+                <span className="truncate text-xs text-muted-foreground">
                   {d.version || 'no image'} · {formatRelative(d.createdAt)}
                 </span>
-              </span>
-              <StateBadge
-                state={
-                  d.state === 'succeeded' ? 'running' : d.state === 'failed' ? 'error' : 'deploying'
-                }
-              />
-            </div>
-          )}
+                {/* Colour plus text, never hue alone; in-flight breathes. */}
+                <span
+                  className="ml-auto flex shrink-0 items-center gap-1.5 text-xs"
+                  style={{ color: state.color }}
+                >
+                  <span
+                    className={cn('h-1.5 w-1.5 rounded-full', state.live && 'animate-breathe')}
+                    style={{ background: state.color }}
+                  />
+                  {state.label}
+                </span>
+              </div>
+            );
+          }}
         />
       )}
     </SpotlightCard>
@@ -370,7 +400,7 @@ function DeploymentsCard({ recent }: { recent: Deployment[] }) {
 }
 
 /* ------------------------------------------------------------------ *
- * Consumption rail — the meters, as a measured strip
+ * Consumption rail — the meters, as readout modules
  * ------------------------------------------------------------------ */
 
 function MetricCell({
@@ -418,8 +448,8 @@ function MetricCell({
  * resident memory right now, and the month's CPU, egress, and ingress
  * (ADR-039/046/048). Readout modules rather than cards or a ruled strip:
  * no boxes, just blueprint crop marks measuring each figure, odometer
- * digits that roll up on arrival, and a mint sheen across the numerals.
- * GB-hours stays with the allowance ring.
+ * digits that roll up on arrival, and a glow across the numerals.
+ * GB-hours stays with the allowance gauge.
  */
 function ConsumptionRail({
   residentMb,
