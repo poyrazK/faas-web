@@ -7,7 +7,14 @@ import { PageHeader, Panel } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { useToast } from '@/components/ui/toast';
 import { useConfirm } from '@/components/ui/confirm';
-import { useApiKeys, useCreateApiKey, useDeleteApiKey, useRotateApiKey } from '@/lib/api/queries';
+import {
+  useApiKeys,
+  useCreateApiKey,
+  useDeleteApiKey,
+  useRotateApiKey,
+  useGraceWindow,
+  useSetGraceWindow,
+} from '@/lib/api/queries';
 import { errorMessage } from '@/lib/api/errors';
 import { consoleHead } from '@/lib/seo';
 
@@ -92,6 +99,53 @@ function PlaintextPanel({ value, onDismiss }: { value: string; onDismiss: () => 
         </Button>
       </div>
     </div>
+  );
+}
+
+/** How long a rotated key's predecessor keeps working. Plan default unless
+ * overridden here — a deploy mid-rotation should not fail. */
+function GraceWindowPanel() {
+  const { toast } = useToast();
+  const q = useGraceWindow();
+  const set = useSetGraceWindow();
+  const [days, setDays] = useState('');
+  return (
+    <Panel
+      title="Rotation grace window"
+      description="Days the old key keeps working after a rotation."
+    >
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="flex flex-col gap-1.5">
+          <span className="label-mono text-muted-foreground">Days</span>
+          <input
+            type="number"
+            min={0}
+            value={days === '' ? (q.data?.days ?? '') : days}
+            onChange={(e) => setDays(e.target.value)}
+            className="h-9 w-24 rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-brand/50 [font-variant-numeric:tabular-nums]"
+          />
+        </label>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={days === ''}
+          busy={set.isPending}
+          onClick={() =>
+            void set
+              .mutateAsync(Number(days))
+              .then(() => toast({ kind: 'success', title: 'Grace window updated' }))
+              .catch((err: unknown) =>
+                toast({ kind: 'error', title: 'Could not update', description: errorMessage(err) })
+              )
+          }
+        >
+          Save
+        </Button>
+        {q.data && (
+          <p className="text-xs text-muted-foreground">Plan default {q.data.plan_default} days.</p>
+        )}
+      </div>
+    </Panel>
   );
 }
 
@@ -332,6 +386,7 @@ function KeysPage() {
         error={error}
         onRetry={() => void refetch()}
       />
+      <GraceWindowPanel />
     </div>
   );
 }

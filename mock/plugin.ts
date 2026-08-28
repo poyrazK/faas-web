@@ -1050,6 +1050,61 @@ route('DELETE', '/v1/orgs/{slug}/invitations/{token}', ({ params }) => {
   const hex = (n: number) =>
     Array.from({ length: n }, () => Math.floor(Math.random() * 16).toString(16)).join('');
 
+  // --- Billing & account controls ---
+  route('POST', '/v1/account/overage-cap', () => ({ ...db.account, app_count: db.apps.length }));
+  route('POST', '/v1/billing/cancel', () => ({
+    cancel_scheduled: true,
+    effective_at: new Date(Date.now() + 19 * 86400e3).toISOString(),
+  }));
+  route('POST', '/v1/billing/retry', () => ({
+    attempt_id: `att_${hex(8)}`,
+    provider_ref_id: `txn_${hex(8)}`,
+    status: 'submitted',
+    next_billing_at: new Date(Date.now() + 30 * 86400e3).toISOString(),
+  }));
+  route('GET', '/v1/account/export', () => ({
+    exported_at: new Date().toISOString(),
+    account: db.account,
+    apps: db.apps,
+    deployments: db.deployments,
+    builds: db.builds,
+    instances: db.instances,
+    usage: [],
+    domains: db.domains,
+    crons: db.crons,
+    api_keys: db.keys ?? [],
+  }));
+  route('POST', '/v1/account/restore', () => ({ ...db.account, app_count: db.apps.length }));
+  let graceDays = 7;
+  route('GET', '/v1/account/keys/grace_window_days', () => ({ days: graceDays, plan_default: 7 }));
+  route('PATCH', '/v1/account/keys/grace_window_days', async ({ body }) => {
+    graceDays = Number(body.days ?? graceDays);
+    return { days: graceDays, plan_default: 7 };
+  });
+  let egressExtra = 0;
+  route('GET', '/v1/account/egress_allowlist_extra', () => ({
+    extra: egressExtra,
+    plan_cap: 8,
+    max_extra: 32,
+  }));
+  route('PATCH', '/v1/account/egress_allowlist_extra', async ({ body }) => {
+    egressExtra = Number(body.extra ?? egressExtra);
+    return { extra: egressExtra, plan_cap: 8, max_extra: 32 };
+  });
+  route('GET', '/v1/usage', () =>
+    db.apps.slice(0, 6).map((a, i) => ({
+      app_id: a.id,
+      mb_seconds: Math.round((i + 1) * 3.7e8),
+      requests: Math.round((6 - i) * 140_000),
+      included_gb_hours: 2000,
+      cpu_usec: Math.round((i + 1) * 9e9),
+      tx_bytes: Math.round((i + 1) * 4.1e9),
+      net_tx_bytes: Math.round((i + 1) * 1.2e9),
+      net_rx_bytes: Math.round((i + 1) * 0.8e9),
+      cold_boots: (i + 1) * 12,
+    }))
+  );
+
   // --- Supply chain & secrets hygiene ---
   const trustedSigners = new Map<
     string,
@@ -1102,30 +1157,28 @@ route('DELETE', '/v1/orgs/{slug}/invitations/{token}', ({ params }) => {
     kid: `kid_${hex(6)}`,
   }));
   route('GET', '/v1/secrets', () => ({
-    secrets: db.apps
-      .slice(0, 4)
-      .flatMap((a, i) => [
-        {
-          app_id: a.id,
-          app_slug: a.slug,
-          key: 'DATABASE_URL',
-          ciphertext: '***',
-          created_at: db.iso((30 + i) * 24),
-          updated_at: db.iso((3 + i) * 24),
-        },
-        ...(i % 2 === 0
-          ? [
-              {
-                app_id: a.id,
-                app_slug: a.slug,
-                key: 'STRIPE_KEY',
-                ciphertext: '***',
-                created_at: db.iso(60 * 24),
-                updated_at: db.iso(45 * 24),
-              },
-            ]
-          : []),
-      ]),
+    secrets: db.apps.slice(0, 4).flatMap((a, i) => [
+      {
+        app_id: a.id,
+        app_slug: a.slug,
+        key: 'DATABASE_URL',
+        ciphertext: '***',
+        created_at: db.iso((30 + i) * 24),
+        updated_at: db.iso((3 + i) * 24),
+      },
+      ...(i % 2 === 0
+        ? [
+            {
+              app_id: a.id,
+              app_slug: a.slug,
+              key: 'STRIPE_KEY',
+              ciphertext: '***',
+              created_at: db.iso(60 * 24),
+              updated_at: db.iso(45 * 24),
+            },
+          ]
+        : []),
+    ]),
     next_before: null,
   }));
 

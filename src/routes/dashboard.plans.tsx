@@ -5,8 +5,15 @@ import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/dashboard/primitives';
 import { Modal } from '@/components/ui/modal';
 import { useToast } from '@/components/ui/toast';
-import { useBillingPortal, useChangePlan } from '@/lib/api/queries';
+import {
+  useBillingPortal,
+  useChangePlan,
+  useCancelBilling,
+  useRetryBilling,
+} from '@/lib/api/queries';
 import { useAuth, type Plan } from '@/lib/auth';
+import { Panel } from '@/components/dashboard/primitives';
+import { useConfirm } from '@/components/ui/confirm';
 import { errorMessage } from '@/lib/api/errors';
 import { consoleHead } from '@/lib/seo';
 
@@ -58,6 +65,84 @@ const PLANS: { id: Plan; name: string; blurb: string; includes: string[] }[] = [
     includes: ['Reserved capacity', 'Highest quotas', '90-day log retention'],
   },
 ];
+
+/** Subscription controls the billing portal buries: retry a failed charge
+ * without leaving the console, or schedule a cancel that keeps the account
+ * alive until the period ends. */
+function BillingControlsPanel() {
+  const { toast } = useToast();
+  const confirm = useConfirm();
+  const { account } = useAuth();
+  const cancel = useCancelBilling();
+  const retry = useRetryBilling();
+
+  return (
+    <Panel
+      title="Subscription"
+      description="Cancelling takes effect at the end of the current period — nothing stops today."
+    >
+      <div className="flex flex-wrap items-center gap-3">
+        {account?.status === 'past_due' && (
+          <Button
+            size="sm"
+            busy={retry.isPending}
+            onClick={() =>
+              void retry
+                .mutateAsync()
+                .then((r) =>
+                  toast({
+                    kind: r.status === 'failed' ? 'error' : 'success',
+                    title: r.status === 'failed' ? 'Charge failed again' : 'Retry submitted',
+                    description: r.next_billing_at
+                      ? `Next billing ${new Date(r.next_billing_at).toLocaleDateString()}.`
+                      : undefined,
+                  })
+                )
+                .catch((err: unknown) =>
+                  toast({ kind: 'error', title: 'Could not retry', description: errorMessage(err) })
+                )
+            }
+          >
+            Retry payment
+          </Button>
+        )}
+        <Button
+          size="sm"
+          variant="outline"
+          busy={cancel.isPending}
+          onClick={async () => {
+            if (
+              !(await confirm({
+                title: 'Cancel at period end?',
+                description:
+                  'The subscription ends when the current period does. Apps keep serving until then; after that the account drops to the free tier limits.',
+                confirmLabel: 'Schedule cancellation',
+                destructive: true,
+              }))
+            )
+              return;
+            void cancel
+              .mutateAsync()
+              .then((r) =>
+                toast({
+                  kind: 'success',
+                  title: 'Cancellation scheduled',
+                  description: r.effective_at
+                    ? `Effective ${new Date(r.effective_at).toLocaleDateString()}.`
+                    : undefined,
+                })
+              )
+              .catch((err: unknown) =>
+                toast({ kind: 'error', title: 'Could not cancel', description: errorMessage(err) })
+              );
+          }}
+        >
+          Cancel at period end
+        </Button>
+      </div>
+    </Panel>
+  );
+}
 
 function PlansPage() {
   const { toast } = useToast();
@@ -186,6 +271,7 @@ function PlansPage() {
           </div>
         </div>
       </Modal>
+      <BillingControlsPanel />
     </div>
   );
 }

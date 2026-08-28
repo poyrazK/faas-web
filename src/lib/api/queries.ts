@@ -84,6 +84,96 @@ async function applyOptimistic<T>(
 type Options<T> = Omit<UseQueryOptions<T, Error>, 'queryKey' | 'queryFn'>;
 
 /* ------------------------------------------------------------------ *
+ * Billing & account controls
+ * ------------------------------------------------------------------ */
+
+/** Set (or clear with 0) a hard ceiling on monthly overage spend. */
+export function useSetOverageCap() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (capCents: number) =>
+      unwrap(api.POST('/v1/account/overage-cap', { body: { overage_cap_cents: capCents } })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.account }),
+  });
+}
+
+/** Cancel at period end — the account stays active until then. */
+export function useCancelBilling() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => unwrap(api.POST('/v1/billing/cancel', {})),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.account }),
+  });
+}
+
+/** Retry the latest unpaid invoice/transaction. */
+export function useRetryBilling() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => unwrap(api.POST('/v1/billing/retry', {})),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.account }),
+  });
+}
+
+/** The full GDPR export bundle, as JSON the caller hands to the browser. */
+export function useAccountExport() {
+  return useMutation({
+    mutationFn: () => unwrap(api.GET('/v1/account/export', {})),
+  });
+}
+
+/** Bring a deleted_pending account back inside the 30-day window. */
+export function useRestoreAccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => unwrap(api.POST('/v1/account/restore', {})),
+    onSuccess: () => qc.invalidateQueries(),
+  });
+}
+
+/** Key-rotation grace window: how long the old key keeps working. */
+export function useGraceWindow() {
+  return useQuery({
+    queryKey: ['account', 'grace-window'],
+    queryFn: () => unwrap(api.GET('/v1/account/keys/grace_window_days', {})),
+  });
+}
+
+export function useSetGraceWindow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (days: number) =>
+      unwrap(api.PATCH('/v1/account/keys/grace_window_days', { body: { days } })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['account', 'grace-window'] }),
+  });
+}
+
+/** Egress-allowlist extra budget: entries beyond the plan cap. */
+export function useEgressExtra() {
+  return useQuery({
+    queryKey: ['account', 'egress-extra'],
+    queryFn: () => unwrap(api.GET('/v1/account/egress_allowlist_extra', {})),
+  });
+}
+
+export function useSetEgressExtra() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (extra: number) =>
+      unwrap(api.PATCH('/v1/account/egress_allowlist_extra', { body: { extra } })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['account', 'egress-extra'] }),
+  });
+}
+
+/** Per-app monthly usage rows — the detail under the account roll-up. */
+export function usePerAppUsage() {
+  return useQuery({
+    queryKey: ['usage', 'per-app'],
+    queryFn: () => unwrap(api.GET('/v1/usage', {})),
+  });
+}
+
+/* ------------------------------------------------------------------ *
  * Supply chain & secrets hygiene
  * ------------------------------------------------------------------ */
 

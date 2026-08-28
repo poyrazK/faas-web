@@ -4,7 +4,15 @@ import { WarningTriangle, ArrowRight } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import { PageHeader, Panel } from '@/components/dashboard/primitives';
+import { FIELD } from '@/components/ui/field';
 import { clearWorkspace, readWorkspace, saveWorkspace, useAuth } from '@/lib/auth';
+import {
+  useAccountExport,
+  useEgressExtra,
+  useRestoreAccount,
+  useSetEgressExtra,
+} from '@/lib/api/queries';
+import { errorMessage } from '@/lib/api/errors';
 import { useFocusTrap } from '@/lib/use-focus-trap';
 import { consoleHead } from '@/lib/seo';
 
@@ -113,6 +121,135 @@ function DeleteWorkspaceDialog({
   );
 }
 
+/** The GDPR bundle, downloaded as a file — every owned resource plus the
+ * audit trail, straight from /v1/account/export. */
+function ExportPanel() {
+  const { toast } = useToast();
+  const exportAccount = useAccountExport();
+  return (
+    <Panel
+      title="Export your data"
+      description="Everything the platform holds about this account — apps, deployments, builds, usage, domains, crons, keys, sealed-secret envelopes, and the audit trail — as one JSON file."
+    >
+      <Button
+        size="sm"
+        variant="outline"
+        busy={exportAccount.isPending}
+        onClick={() =>
+          void exportAccount
+            .mutateAsync()
+            .then((bundle) => {
+              const blob = new Blob([JSON.stringify(bundle, null, 2)], {
+                type: 'application/json',
+              });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `gregale-export-${bundle.exported_at?.slice(0, 10) ?? 'now'}.json`;
+              a.click();
+              URL.revokeObjectURL(url);
+              toast({ kind: 'success', title: 'Export downloaded' });
+            })
+            .catch((err: unknown) =>
+              toast({ kind: 'error', title: 'Could not export', description: errorMessage(err) })
+            )
+        }
+      >
+        Download export
+      </Button>
+    </Panel>
+  );
+}
+
+/** Visible only inside the 30-day deletion window — the way back. */
+function RestoreBanner() {
+  const { toast } = useToast();
+  const { account, refreshAccount } = useAuth();
+  const restore = useRestoreAccount();
+  if (account?.status !== 'deleted_pending') return null;
+  return (
+    <div
+      role="alert"
+      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border px-5 py-4"
+      style={{
+        borderColor: 'color-mix(in oklab, var(--status-warning) 45%, transparent)',
+        background: 'color-mix(in oklab, var(--status-warning) 6%, transparent)',
+      }}
+    >
+      <p className="text-sm">
+        This account is scheduled for deletion. Everything is recoverable until the 30-day window
+        closes.
+      </p>
+      <Button
+        size="sm"
+        busy={restore.isPending}
+        onClick={() =>
+          void restore
+            .mutateAsync()
+            .then(() => {
+              void refreshAccount();
+              toast({ kind: 'success', title: 'Account restored' });
+            })
+            .catch((err: unknown) =>
+              toast({ kind: 'error', title: 'Could not restore', description: errorMessage(err) })
+            )
+        }
+      >
+        Restore account
+      </Button>
+    </div>
+  );
+}
+
+/** Per-account extra budget for egress-allowlist entries beyond the plan cap. */
+function EgressExtraPanel() {
+  const { toast } = useToast();
+  const q = useEgressExtra();
+  const set = useSetEgressExtra();
+  const [value, setValue] = useState('');
+  const current = q.data;
+  return (
+    <Panel
+      title="Egress allowlist budget"
+      description="Extra allowlist entries on top of the plan's cap, shared across apps."
+    >
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="flex flex-col gap-1.5">
+          <span className="label-mono text-muted-foreground">Extra entries</span>
+          <input
+            type="number"
+            min={0}
+            max={current?.max_extra}
+            value={value === '' ? (current?.extra ?? '') : value}
+            onChange={(e) => setValue(e.target.value)}
+            className={`${FIELD} w-32 [font-variant-numeric:tabular-nums]`}
+          />
+        </label>
+        <Button
+          size="sm"
+          disabled={value === ''}
+          busy={set.isPending}
+          onClick={() =>
+            void set
+              .mutateAsync(Number(value))
+              .then(() => toast({ kind: 'success', title: 'Egress budget updated' }))
+              .catch((err: unknown) =>
+                toast({ kind: 'error', title: 'Could not update', description: errorMessage(err) })
+              )
+          }
+        >
+          Save
+        </Button>
+        {current && (
+          <p className="text-xs text-muted-foreground">
+            Plan cap {current.plan_cap} per app · up to {current.max_extra} extra.
+          </p>
+        )}
+      </div>
+    </Panel>
+  );
+}
+
 function SettingsPage() {
   const { toast } = useToast();
   const { signOut } = useAuth();
@@ -152,6 +289,8 @@ function SettingsPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader title="Settings" description="Workspace configuration and credentials." />
+
+      <RestoreBanner />
 
       <Panel
         title="Workspace"
@@ -236,6 +375,8 @@ function SettingsPage() {
           onConfirm={handleDelete}
         />
       )}
+      <EgressExtraPanel />
+      <ExportPanel />
     </div>
   );
 }
