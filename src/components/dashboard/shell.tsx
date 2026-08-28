@@ -4,7 +4,6 @@ import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'motion/r
 import {
   IconoirProvider,
   NavArrowDown,
-  NavArrowRight,
   CloudXmark,
   LogOut,
   Menu,
@@ -157,8 +156,12 @@ function SidebarBody({
 // drift out of sync with the breadcrumb.
 
 /**
- * Page identity for the top bar. Without this the bar anchors nothing — the
- * sidebar knows where you are but the bar itself never said.
+ * Page identity as a shell path, not a breadcrumb trail.
+ *
+ * Gregale is CLI-first — the location reads the way the product talks:
+ * `workspace/section/detail` in the mono voice, separators as slashes, and
+ * a soft block cursor breathing at the end of the line. The workspace is
+ * the one link (home); the current segment carries `aria-current`.
  */
 function Breadcrumbs() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -171,19 +174,18 @@ function Breadcrumbs() {
     .filter(Boolean);
   const [section, detail] = segments;
 
-  const trail: { label: string }[] = [
-    { label: section ? (SECTION_LABELS[section] ?? section) : 'Overview' },
-  ];
-
+  const trail: string[] = [section ? (SECTION_LABELS[section] ?? section) : 'Overview'];
   if (section === 'workflows' && detail) {
-    trail.push({
-      label:
-        detail === 'new' ? 'New app' : (workflows.find((w) => w.id === detail)?.name ?? 'Workflow'),
-    });
+    trail.push(
+      detail === 'new' ? 'new' : (workflows.find((w) => w.id === detail)?.name ?? 'workflow')
+    );
   }
 
   return (
-    <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-sm">
+    <nav
+      aria-label="Breadcrumb"
+      className="flex min-w-0 items-center gap-1.5 font-mono text-xs [font-variant-numeric:tabular-nums]"
+    >
       <Link
         to="/dashboard"
         className="pressable flex shrink-0 items-center gap-2 rounded-md px-1.5 py-1 hover:bg-muted"
@@ -191,23 +193,35 @@ function Breadcrumbs() {
         <span className="flex h-5 w-5 items-center justify-center rounded bg-brand/20 text-[9px] font-semibold uppercase text-brand">
           {workspace.charAt(0)}
         </span>
-        <span className="hidden font-medium sm:inline">{workspace}</span>
+        <span className="hidden text-muted-foreground sm:inline">{workspace}</span>
       </Link>
 
-      {trail.map((crumb, i) => {
+      {trail.map((label, i) => {
         const last = i === trail.length - 1;
         return (
-          <span key={crumb.label} className="flex min-w-0 items-center gap-1.5">
-            <NavArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
+          <span key={label} className="flex min-w-0 items-center gap-1.5">
+            <span aria-hidden className="shrink-0 text-muted-foreground/40">
+              /
+            </span>
             <span
               aria-current={last ? 'page' : undefined}
-              className={cn('truncate px-1 py-0.5', last ? 'font-medium' : 'text-muted-foreground')}
+              className={cn(
+                'truncate lowercase',
+                last ? 'text-foreground' : 'text-muted-foreground'
+              )}
             >
-              {crumb.label}
+              {label}
             </span>
           </span>
         );
       })}
+
+      {/* The prompt's cursor: the machine, alive and waiting. Breathes on
+          the shared rhythm; still under reduced motion. */}
+      <span
+        aria-hidden
+        className="animate-breathe ml-0.5 inline-block h-3.5 w-[7px] shrink-0 rounded-[1px] bg-brand/60"
+      />
     </nav>
   );
 }
