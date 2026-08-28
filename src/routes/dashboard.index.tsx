@@ -164,7 +164,7 @@ function FleetCard({ workflows, bandApps }: { workflows: Workflow[]; bandApps: F
   const asleep = workflows.filter((w) => w.state === 'idle').length;
 
   return (
-    <SpotlightCard elevation="raised" className="lg:col-span-8">
+    <SpotlightCard elevation="raised" className="lg:col-span-10">
       <BorderBeam />
       {/* The wind itself — one light source for the hero. Shader-drawn air;
           falls back to the still SVG ribbons without WebGL. */}
@@ -218,25 +218,16 @@ function AllowanceCard({ usage }: { usage: ReturnType<typeof useUsageSummary> })
   const displayPct = over ? 3 : remainingPct;
 
   return (
-    <SpotlightCard className="lg:col-span-4 [animation-delay:60ms]">
-      <div className="flex h-full flex-col p-6">
-        <div className="flex items-start justify-between gap-4">
-          <CardLabel>Allowance · {data?.month ?? 'this month'}</CardLabel>
-          <Link
-            to="/dashboard/usage"
-            className="pressable inline-flex items-center gap-1 rounded text-xs text-muted-foreground hover:text-foreground"
-          >
-            Usage
-            <ArrowRight className="h-3 w-3" />
-          </Link>
-        </div>
+    <SpotlightCard className="lg:col-span-2 [animation-delay:60ms]">
+      <div className="flex h-full flex-col p-5">
+        <CardLabel>Allowance</CardLabel>
 
         {phase !== 'ready' ? (
           <div className="flex flex-1 items-center justify-center py-8">
             <InlinePhase phase={phase} error={usage.error} loadingMessage="Reading usage…" />
           </div>
         ) : (
-          <div className="mt-5 flex min-h-0 flex-1 flex-col items-center gap-6">
+          <div className="mt-4 flex min-h-0 flex-1 flex-col items-center gap-5">
             <FuelGauge
               className="min-h-40 flex-1"
               pct={displayPct}
@@ -244,26 +235,31 @@ function AllowanceCard({ usage }: { usage: ReturnType<typeof useUsageSummary> })
               label="GB-hour allowance remaining"
               scale={[formatGbHours(included), '0']}
             />
-            <div className="flex min-w-0 flex-col items-center gap-2 text-center">
-              <p className="text-4xl leading-none font-semibold tracking-tight">
+            <div className="flex min-w-0 flex-col items-center gap-1.5 text-center">
+              <p className="text-2xl leading-none font-semibold tracking-tight">
                 <Odometer
                   value={over ? (data?.overage_gb_hours ?? 0) : remaining}
                   format={formatGbHours}
                   className="metric-glow"
                 />
-                <span className="ml-2 align-baseline text-sm font-normal text-muted-foreground">
-                  {over ? 'GB-h over' : 'GB-h left'}
-                </span>
               </p>
+              <p className="text-xs text-muted-foreground">{over ? 'GB-h over' : 'GB-h left'}</p>
               <p className="text-xs leading-relaxed text-muted-foreground">
                 <span className="[font-variant-numeric:tabular-nums]">{formatGbHours(used)}</span>{' '}
-                of {formatGbHours(included)} used
+                of {formatGbHours(included)} · {data?.month}
               </p>
               {over && (
                 <p className="text-xs" style={{ color: 'var(--status-warning)' }}>
-                  {formatMoney(data?.overage_cents)} overage this period
+                  {formatMoney(data?.overage_cents)} overage
                 </p>
               )}
+              <Link
+                to="/dashboard/usage"
+                className="pressable mt-1 inline-flex items-center gap-1 rounded text-xs text-muted-foreground hover:text-foreground"
+              >
+                Usage
+                <ArrowRight className="h-3 w-3" />
+              </Link>
             </div>
           </div>
         )}
