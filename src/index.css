@@ -268,6 +268,23 @@
   /* The console curve as a Tailwind easing utility (`ease-console`). */
   --ease-console: cubic-bezier(0.16, 1, 0.3, 1);
 
+  /* The page-settling entrance for PageHeader, Panel, StatTile, and the
+     table — a short rise-and-fade on the console curve. A CSS animation
+     rather than Framer variants deliberately: it replays on every DOM
+     insertion, so content that mounts late (a code-split route landing
+     after navigation, a panel appearing once data arrives) still enters —
+     an orchestrated variant tree left exactly those stranded at opacity 0.
+     Reduced motion is covered by the blanket `[class*='animate-']` rule,
+     which lands the one iteration on the final, visible frame. */
+  --animate-item-enter: item-enter 0.38s var(--motion-ease);
+
+  @keyframes item-enter {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+  }
+
   /* A just-created table row announces itself with a brand wash that fades —
      "this is what you just made". A CSS animation rather than Framer so no
      inline background lingers to fight the row's hover style. Reduced motion

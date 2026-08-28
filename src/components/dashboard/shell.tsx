@@ -30,7 +30,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipProvider } from '@/components/ui/tooltip';
 import { CommandPalette } from './command-palette';
-import { EASE, Stagger } from './motion';
+import { EASE } from './motion';
 import { NAV_GROUPS, SECTION_LABELS } from './nav-config';
 import { cn } from '@/lib/utils';
 import { useFocusTrap } from '@/lib/use-focus-trap';
@@ -304,7 +304,6 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   const drawerRef = useRef<HTMLElement>(null);
   useFocusTrap(drawerRef, mobileOpen);
   const reduce = useReducedMotion();
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   const toggleCollapsed = () => setCollapsed((v) => !v);
   useEffect(() => {
@@ -537,13 +536,16 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                 {/* A measure, not the full viewport: past ~1100px a form row or a
                 label/value pair stops scanning as a pair. Tables set their own
                 min-width and scroll inside it. */}
-                {/* Keyed by pathname so every page settles in with the shared
-                  stagger: PageHeader, Panel, and StatTile carry ITEM_VARIANTS
-                  and join automatically; anything else renders in place. */}
-                <Stagger key={pathname} className="mx-auto flex max-w-[1100px] flex-col gap-6">
+                {/* Pages settle in via the CSS `animate-item-enter` entrance
+                  on PageHeader, Panel, StatTile, and the table — a mount
+                  animation, so it replays for every route's fresh DOM and for
+                  content that arrives late (code-split chunks, post-fetch
+                  panels). A pathname-keyed Stagger was tried here and left
+                  exactly that late content stranded at opacity 0. */}
+                <div className="mx-auto flex max-w-[1100px] flex-col gap-6">
                   <UnreachableBanner />
                   {children}
-                </Stagger>
+                </div>
               </main>
             </div>
 

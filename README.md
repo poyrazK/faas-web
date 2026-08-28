@@ -198,11 +198,14 @@ One curve, a few speeds, everywhere. The vocabulary lives in two places that
 mirror each other — change one, change both:
 
 - **TypeScript** — `components/dashboard/motion.tsx` exports `EASE`,
-  `DURATION`, and the components: `Stagger`/`Item` (page entrances — the shell
-  wraps every page in a `Stagger`, and `PageHeader`, `Panel`, `StatTile`, and
-  `ResourceTable` join it automatically via `ITEM_VARIANTS`), `CountUp` (a
-  figure that rolls to its new value), and `Swap` (a keyed cross-fade for a
-  block whose content is replaced, like a metrics window change).
+  `DURATION`, and the components: `Stagger`/`Item` (an orchestrated entrance
+  for content that all mounts in the same commit — never for children that
+  can arrive late, which it strands at opacity 0), `CountUp` (a figure that
+  rolls to its new value), and `Swap` (a keyed cross-fade for a block whose
+  content is replaced, like a metrics window change). Page entrances are NOT
+  Stagger: `PageHeader`, `Panel`, `StatTile`, and `ResourceTable` carry the
+  CSS `animate-item-enter` mount animation, which replays whenever they
+  enter the DOM — including code-split routes and post-fetch panels.
 - **CSS** — `--motion-ease` / `--motion-fast|base|slow` tokens in `index.css`,
   the `ease-console` Tailwind utility, and the `.pressable` class (the 0.97
   press dip for anything button-shaped that is not a `<Button>`; use it

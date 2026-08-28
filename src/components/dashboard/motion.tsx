@@ -19,18 +19,21 @@ export const DURATION = 0.38;
 export const TAP = { scale: 0.97 } as const;
 
 /**
- * The entrance every staggered child shares. Exported so a component that is
- * not a plain div (a `<section>`, a stat tile) can join a surrounding
- * `<Stagger>` by putting these variants on its own motion element. Outside a
- * `<Stagger>` the variants never activate and the element renders static —
- * safe to leave on shared components.
+ * The entrance every staggered child shares.
+ *
+ * **Only for content whose mount timing the `<Stagger>` controls.** A variant
+ * child that mounts after the parent has finished its entrance — a
+ * code-split route landing, a panel appearing once data arrives — is left at
+ * `hidden` (opacity 0) forever, because nothing re-runs the orchestration.
+ * The shared page components (PageHeader, Panel, StatTile, ResourceTable)
+ * therefore use the CSS `animate-item-enter` mount animation instead, which
+ * replays on every DOM insertion. Reach for Stagger only when every child
+ * mounts in the same commit as the Stagger itself.
  */
-export const ITEM_VARIANTS = {
+const item = {
   hidden: { opacity: 0, y: 10 },
   show: { opacity: 1, y: 0, transition: { duration: DURATION, ease: EASE } },
 };
-
-const item = ITEM_VARIANTS;
 
 /** Staggered entrance for a group of siblings — wrap the group, mark each
  * child with `<Item>`. Reduced motion renders children in place. */

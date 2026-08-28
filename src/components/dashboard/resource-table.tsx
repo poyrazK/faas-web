@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import { ArrowDown, ArrowUp, Search, Xmark } from 'iconoir-react';
 import { EmptyState, ErrorState, Skeleton, UnreachableState, queryPhase } from './primitives';
-import { EASE, ITEM_VARIANTS } from './motion';
+import { EASE } from './motion';
 import { cn } from '@/lib/utils';
 
 /** Rows past this index appear together — a stagger that long reads as lag. */
@@ -152,7 +152,7 @@ export function ResourceTable<T extends { id: string }>({
   };
 
   return (
-    <motion.div variants={ITEM_VARIANTS} className="flex flex-col gap-4">
+    <div className="animate-item-enter flex flex-col gap-4">
       {/* Also shown, filterless, once a table is big enough to truncate —
           the count is then the only statement of how much exists. */}
       {(searchKeys?.length || filters || rows.length > PAGE_SIZE) && (
@@ -374,7 +374,7 @@ export function ResourceTable<T extends { id: string }>({
           </div>
         )}
       </motion.div>
-    </motion.div>
+    </div>
   );
 }
 

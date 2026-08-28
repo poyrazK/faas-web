@@ -11,7 +11,7 @@ import {
 } from 'iconoir-react';
 import type { LogLevel, RunState } from '@/lib/mock-data';
 import { ApiError, errorMessage } from '@/lib/api/errors';
-import { CountUp, ITEM_VARIANTS } from './motion';
+import { CountUp } from './motion';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   DitherButton,
@@ -142,7 +142,7 @@ export function StatTile({
   const Arrow = positive ? GraphUp : GraphDown;
 
   return (
-    <motion.div variants={ITEM_VARIANTS} className="rounded-xl border border-border bg-card p-5">
+    <div className="animate-item-enter rounded-xl border border-border bg-card p-5">
       <p className="label-mono text-muted-foreground">{label}</p>
 
       <div className="mt-3 flex items-end justify-between gap-4">
@@ -191,7 +191,7 @@ export function StatTile({
           />
         )}
       </div>
-    </motion.div>
+    </div>
   );
 }
 
@@ -209,16 +209,13 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <motion.div
-      variants={ITEM_VARIANTS}
-      className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"
-    >
+    <div className="animate-item-enter flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
         {description && <p className="mt-1.5 text-sm text-muted-foreground">{description}</p>}
       </div>
       {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
-    </motion.div>
+    </div>
   );
 }
 
@@ -243,9 +240,11 @@ export function Panel({
   padded?: boolean;
 }) {
   return (
-    <motion.section
-      variants={ITEM_VARIANTS}
-      className={cn('relative overflow-hidden rounded-xl border border-border bg-card', className)}
+    <section
+      className={cn(
+        'animate-item-enter relative overflow-hidden rounded-xl border border-border bg-card',
+        className
+      )}
     >
       {/* The landing's lit edge, brightest at centre. One panel per page at
           most — it marks the thing the page is for. */}
@@ -271,7 +270,7 @@ export function Panel({
         </header>
       )}
       <div className={cn(padded && 'p-5')}>{children}</div>
-    </motion.section>
+    </section>
   );
 }
 
