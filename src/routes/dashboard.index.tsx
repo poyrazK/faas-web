@@ -21,6 +21,7 @@ import { ProgressRing } from '@/components/ui/progress-ring';
 import { LiveDot } from '@/components/ui/live-dot';
 import { WindFlow } from '@/components/dashboard/wind-flow';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Odometer } from '@/components/ui/odometer';
 import { AnimatedList } from '@/components/ui/animated-list';
 import { useData } from '@/lib/store';
 import { useAuth } from '@/lib/auth';
@@ -386,17 +387,23 @@ function MetricCell({
   hint: string;
 }) {
   return (
-    <div className="px-5 py-4 first:pl-1 last:pr-1" title={hint}>
+    <div className="crop-marks relative px-5 py-4" title={hint}>
+      <i aria-hidden />
+      <i aria-hidden />
+      <i aria-hidden />
+      <i aria-hidden />
       <p className="label-mono text-muted-foreground">{label}</p>
-      <p className="mt-1.5 text-2xl leading-none font-semibold tracking-tight [font-variant-numeric:tabular-nums]">
+      <p className="mt-2 text-3xl leading-none font-semibold tracking-tight">
         {loading ? (
-          <Skeleton className="h-6 w-16" />
+          <Skeleton className="h-7 w-16" />
         ) : value == null ? (
           <span className="text-muted-foreground">—</span>
         ) : (
           <>
-            <CountUp value={value} format={format} />
-            <span className="ml-1.5 text-sm font-normal text-muted-foreground">{unit}</span>
+            <Odometer value={value} format={format} className="metric-sheen" />
+            <span className="ml-1.5 align-baseline text-sm font-normal text-muted-foreground">
+              {unit}
+            </span>
           </>
         )}
       </p>
@@ -407,8 +414,10 @@ function MetricCell({
 /**
  * The informational meters the platform measures but does not bill —
  * resident memory right now, and the month's CPU, egress, and ingress
- * (ADR-039/046/048). A hairline strip rather than more cards: these are
- * readings, not destinations. GB-hours stays with the allowance ring.
+ * (ADR-039/046/048). Readout modules rather than cards or a ruled strip:
+ * no boxes, just blueprint crop marks measuring each figure, odometer
+ * digits that roll up on arrival, and a mint sheen across the numerals.
+ * GB-hours stays with the allowance ring.
  */
 function ConsumptionRail({
   residentMb,
@@ -422,7 +431,7 @@ function ConsumptionRail({
   const loading = usage.isPending;
   const failed = Boolean(usage.error);
   return (
-    <div className="animate-item-enter grid grid-cols-2 divide-border border-y border-border sm:grid-cols-4 sm:divide-x lg:col-span-12 [animation-delay:90ms]">
+    <div className="animate-item-enter grid grid-cols-2 gap-3 sm:grid-cols-4 lg:col-span-12 [animation-delay:90ms]">
       <MetricCell
         label="Memory now"
         value={residentKnown ? residentMb : undefined}
@@ -434,7 +443,9 @@ function ConsumptionRail({
         label="CPU"
         value={failed ? undefined : usage.data?.used_cpu_hours}
         unit="h"
-        format={(v) => v.toLocaleString(undefined, { maximumFractionDigits: 1 })}
+        format={(v) =>
+          v.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+        }
         loading={loading}
         hint="CPU-hours consumed this billing period. Measured, not billed."
       />
@@ -442,7 +453,9 @@ function ConsumptionRail({
         label="Egress"
         value={failed ? undefined : usage.data?.used_egress_gb}
         unit="GB"
-        format={(v) => v.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+        format={(v) =>
+          v.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+        }
         loading={loading}
         hint="Outbound transfer this billing period. Measured, not billed."
       />
@@ -450,7 +463,9 @@ function ConsumptionRail({
         label="Ingress"
         value={failed ? undefined : usage.data?.used_ingress_gb}
         unit="GB"
-        format={(v) => v.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+        format={(v) =>
+          v.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+        }
         loading={loading}
         hint="Inbound transfer this billing period. Measured, not billed."
       />

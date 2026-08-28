@@ -712,6 +712,92 @@
     }
   }
 
+  /* Odometer digits: each column is a strip of 0–9 rolled to its value.
+     `@starting-style` rolls it up from zero on insertion — stateless, like
+     the progress ring — and value changes glide on the same transition.
+     Reduced motion shows the digit at once. */
+  .odo-col {
+    display: inline-block;
+    height: 1em;
+    overflow: hidden;
+  }
+  .odo-strip {
+    display: flex;
+    flex-direction: column;
+    transform: translateY(calc(var(--odo-digit, 0) * -1em));
+    transition: transform 0.9s var(--motion-ease);
+  }
+  .odo-strip > span {
+    display: block;
+    height: 1em;
+    line-height: 1;
+  }
+  @starting-style {
+    .odo-strip {
+      transform: translateY(0);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .odo-strip {
+      transition: none;
+    }
+  }
+
+  /* Readout-module chrome: blueprint crop marks instead of borders — four
+     corner ticks that light toward mint on hover. The module has no box;
+     the marks measure it. */
+  .crop-marks > i {
+    position: absolute;
+    width: 9px;
+    height: 9px;
+    border: 0 solid var(--border-secondary);
+    transition: border-color var(--motion-base) var(--motion-ease);
+    pointer-events: none;
+  }
+  .crop-marks > i:nth-child(1) {
+    top: 0;
+    left: 0;
+    border-top-width: 1px;
+    border-left-width: 1px;
+  }
+  .crop-marks > i:nth-child(2) {
+    top: 0;
+    right: 0;
+    border-top-width: 1px;
+    border-right-width: 1px;
+  }
+  .crop-marks > i:nth-child(3) {
+    bottom: 0;
+    left: 0;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+  }
+  .crop-marks > i:nth-child(4) {
+    bottom: 0;
+    right: 0;
+    border-bottom-width: 1px;
+    border-right-width: 1px;
+  }
+  .crop-marks:hover > i {
+    border-color: color-mix(in oklab, var(--brand) 70%, var(--border-secondary));
+  }
+
+  /* A mint sheen across a readout figure — gradient-text, kept mostly
+     foreground so the number stays the most legible thing in the module.
+     Guarded: without background-clip support the transparent color would
+     erase the number, so plain foreground is the base. */
+  .metric-sheen {
+    color: var(--foreground);
+  }
+  @supports (-webkit-background-clip: text) or (background-clip: text) {
+    .metric-sheen {
+      background: linear-gradient(120deg, var(--foreground) 45%, var(--mint-7) 110%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+  }
+
   /* Footprint band materials. Lit segments carry a vertical mint gradient
      and a soft under-glow — awake memory reads as warm; parked memory is a
      dashed socket, present but dark. */
