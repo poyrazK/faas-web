@@ -6,8 +6,9 @@ import { PageHeader, Panel } from '@/components/dashboard/primitives';
 import { ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
 import { useToast } from '@/components/ui/toast';
+import { Modal } from '@/components/ui/modal';
 import { useConfirm } from '@/components/ui/confirm';
-import { useAppSecrets, useDeleteSecret, useSetSecret } from '@/lib/api/queries';
+import { useAppSecrets, useDeleteSecret, useSetSecret, useRotateSecret } from '@/lib/api/queries';
 import { errorMessage } from '@/lib/api/errors';
 import { FieldError } from '@/components/ui/field';
 import { cn } from '@/lib/utils';
@@ -58,6 +59,9 @@ export function SecretsBody({ slug }: { slug: string }) {
   const { data, isPending, error, refetch } = useAppSecrets(slug);
   const setSecret = useSetSecret(slug);
   const deleteSecret = useDeleteSecret(slug);
+  const rotate = useRotateSecret(slug);
+  const [rotating, setRotating] = useState<string | null>(null);
+  const [rotateValue, setRotateValue] = useState('');
 
   const [key, setKey] = useState('');
   const [value, setValue] = useState('');
@@ -209,7 +213,71 @@ export function SecretsBody({ slug }: { slug: string }) {
         loading={isPending}
         error={error}
         onRetry={() => void refetch()}
+        rowActions={(row) => (
+          <button
+            type="button"
+            onClick={() => {
+              setRotating(row.key);
+              setRotateValue('');
+            }}
+            className="pressable rounded text-xs text-muted-foreground hover:text-foreground"
+          >
+            Rotate
+          </button>
+        )}
       />
+
+      {/* Rotation re-seals under the current host identity. The value
+          crosses the wire once, exactly like create, and is never echoed. */}
+      <Modal
+        open={rotating !== null}
+        onClose={() => setRotating(null)}
+        title={rotating ? `Rotate ${rotating}` : ''}
+        description="Provide the value again; it is re-sealed under the current host key and never shown after this."
+        footer={
+          <>
+            <Button variant="ghost" size="sm" onClick={() => setRotating(null)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              disabled={!rotateValue}
+              busy={rotate.isPending}
+              onClick={() => {
+                if (!rotating) return;
+                void rotate
+                  .mutateAsync({ key: rotating, value: rotateValue })
+                  .then((r) => {
+                    setRotating(null);
+                    toast({
+                      kind: 'success',
+                      title: `Rotated ${r.key}`,
+                      description: `Sealed under key ${r.kid}.`,
+                    });
+                  })
+                  .catch((err: unknown) =>
+                    toast({
+                      kind: 'error',
+                      title: 'Could not rotate',
+                      description: errorMessage(err),
+                    })
+                  );
+              }}
+            >
+              Rotate secret
+            </Button>
+          </>
+        }
+      >
+        <input
+          type="password"
+          value={rotateValue}
+          onChange={(e) => setRotateValue(e.target.value)}
+          autoComplete="off"
+          placeholder="New value"
+          className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-brand"
+        />
+      </Modal>
     </div>
   );
 }

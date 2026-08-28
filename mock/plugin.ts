@@ -1050,6 +1050,85 @@ route('DELETE', '/v1/orgs/{slug}/invitations/{token}', ({ params }) => {
   const hex = (n: number) =>
     Array.from({ length: n }, () => Math.floor(Math.random() * 16).toString(16)).join('');
 
+  // --- Supply chain & secrets hygiene ---
+  const trustedSigners = new Map<
+    string,
+    { name: string; public_key_pem: string; added_at: string; added_by: string }[]
+  >();
+  route('PATCH', '/v1/apps/{slug}/security', async ({ params, body }) => {
+    const a = db.apps.find((x) => x.slug === params.slug);
+    if (a) (a as unknown as Record<string, unknown>).require_signed = Boolean(body.require_signed);
+    return { require_signed: Boolean(body.require_signed) };
+  });
+  route('GET', '/v1/apps/{slug}/trusted_signers', ({ params }) => ({
+    signers: trustedSigners.get(params.slug) ?? [
+      {
+        name: 'release-ci',
+        public_key_pem: '-----BEGIN PUBLIC KEY-----…',
+        added_at: new Date(Date.now() - 12 * 86400e3).toISOString(),
+        added_by: 'demo@acme-corp.dev',
+      },
+    ],
+  }));
+  route('PUT', '/v1/apps/{slug}/trusted_signers/{name}', async ({ params, body }) => {
+    const list = trustedSigners.get(params.slug) ?? [
+      {
+        name: 'release-ci',
+        public_key_pem: '-----BEGIN PUBLIC KEY-----…',
+        added_at: new Date(Date.now() - 12 * 86400e3).toISOString(),
+        added_by: 'demo@acme-corp.dev',
+      },
+    ];
+    const entry = {
+      name: params.name,
+      public_key_pem: String(body.public_key_pem ?? ''),
+      added_at: new Date().toISOString(),
+      added_by: 'demo@acme-corp.dev',
+    };
+    trustedSigners.set(params.slug, [...list.filter((x) => x.name !== params.name), entry]);
+    return entry;
+  });
+  route('DELETE', '/v1/apps/{slug}/trusted_signers/{name}', ({ params }) => {
+    const list = trustedSigners.get(params.slug) ?? [];
+    trustedSigners.set(
+      params.slug,
+      list.filter((x) => x.name !== params.name)
+    );
+    return {};
+  });
+  route('POST', '/v1/apps/{slug}/secrets/{key}/rotate', ({ params }) => ({
+    key: params.key,
+    rotated_at: new Date().toISOString(),
+    kid: `kid_${hex(6)}`,
+  }));
+  route('GET', '/v1/secrets', () => ({
+    secrets: db.apps
+      .slice(0, 4)
+      .flatMap((a, i) => [
+        {
+          app_id: a.id,
+          app_slug: a.slug,
+          key: 'DATABASE_URL',
+          ciphertext: '***',
+          created_at: db.iso((30 + i) * 24),
+          updated_at: db.iso((3 + i) * 24),
+        },
+        ...(i % 2 === 0
+          ? [
+              {
+                app_id: a.id,
+                app_slug: a.slug,
+                key: 'STRIPE_KEY',
+                ciphertext: '***',
+                created_at: db.iso(60 * 24),
+                updated_at: db.iso(45 * 24),
+              },
+            ]
+          : []),
+      ]),
+    next_before: null,
+  }));
+
   // --- Scheduling: delayed tasks (session-tracked) + cron fire-now state ---
   const delayedTasks = new Map<string, { id: string; scheduled_at: string; state: string }>();
   route('POST', '/v1/apps/{slug}/delayed-tasks', async ({ body }) => {

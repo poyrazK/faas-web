@@ -11,6 +11,7 @@ import {
   useRevokeSession,
   useSessions,
   useAuthAuditEvents,
+  useAccountSecrets,
 } from '@/lib/api/queries';
 import { useMfa } from '@/components/auth/mfa-provider';
 import { errorMessage } from '@/lib/api/errors';
@@ -79,6 +80,45 @@ function AuthEventsPanel() {
               )}
               <span className="ml-auto text-muted-foreground">
                 {new Date(e.at).toLocaleString()}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Panel>
+  );
+}
+
+/** Every sealed secret across the account — the hygiene inventory, so a
+ * stale credential is findable without opening each app. */
+function SecretsInventoryPanel() {
+  const q = useAccountSecrets();
+  const rows = q.data?.secrets ?? [];
+  const phase = queryPhase({ error: q.error, loading: q.isPending, isEmpty: rows.length === 0 });
+  return (
+    <Panel
+      title="Sealed secrets"
+      description="Across every app. Values are sealed — this lists names and ages only."
+      padded={phase !== 'ready'}
+    >
+      {phase !== 'ready' ? (
+        <InlinePhase
+          phase={phase}
+          error={q.error}
+          loadingMessage="Reading the inventory…"
+          emptyMessage="No sealed secrets on this account."
+        />
+      ) : (
+        <ul className="flex flex-col divide-y divide-border">
+          {rows.map((r) => (
+            <li
+              key={`${r.app_slug}/${r.key}`}
+              className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-2.5 text-xs"
+            >
+              <span className="font-mono">{r.app_slug}</span>
+              <span className="font-mono text-muted-foreground">{r.key}</span>
+              <span className="ml-auto text-muted-foreground">
+                updated {new Date(r.updated_at).toLocaleDateString()}
               </span>
             </li>
           ))}
@@ -259,6 +299,7 @@ function SecurityPage() {
           onRetry={() => void refetch()}
         />
       </Panel>
+      <SecretsInventoryPanel />
       <AuthEventsPanel />
     </div>
   );

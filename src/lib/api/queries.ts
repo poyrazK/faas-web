@@ -84,6 +84,89 @@ async function applyOptimistic<T>(
 type Options<T> = Omit<UseQueryOptions<T, Error>, 'queryKey' | 'queryFn'>;
 
 /* ------------------------------------------------------------------ *
+ * Supply chain & secrets hygiene
+ * ------------------------------------------------------------------ */
+
+/** Toggle signed-deploy enforcement for an app. Admin + MFA server-side —
+ * the MFA provider handles the step-up when it is demanded. */
+export function useSetAppSecurity(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (require_signed: boolean) =>
+      unwrap(
+        api.PATCH('/v1/apps/{slug}/security', {
+          params: { path: { slug } },
+          body: { require_signed },
+        })
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.app(slug) });
+      void qc.invalidateQueries({ queryKey: keys.apps });
+    },
+  });
+}
+
+export function useTrustedSigners(slug: string) {
+  return useQuery({
+    queryKey: ['apps', slug, 'trusted-signers'],
+    queryFn: () =>
+      unwrap(api.GET('/v1/apps/{slug}/trusted_signers', { params: { path: { slug } } })),
+    enabled: Boolean(slug),
+  });
+}
+
+export function usePutTrustedSigner(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { name: string; publicKeyPem: string }) =>
+      unwrap(
+        api.PUT('/v1/apps/{slug}/trusted_signers/{name}', {
+          params: { path: { slug, name: input.name } },
+          body: { public_key_pem: input.publicKeyPem },
+        })
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['apps', slug, 'trusted-signers'] }),
+  });
+}
+
+export function useDeleteTrustedSigner(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) =>
+      unwrap(
+        api.DELETE('/v1/apps/{slug}/trusted_signers/{name}', {
+          params: { path: { slug, name } },
+        })
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['apps', slug, 'trusted-signers'] }),
+  });
+}
+
+/** Re-seal a secret under the current host identity — the value crosses the
+ * wire once, exactly like create, and is never echoed back. */
+export function useRotateSecret(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { key: string; value: string }) =>
+      unwrap(
+        api.POST('/v1/apps/{slug}/secrets/{key}/rotate', {
+          params: { path: { slug, key: input.key } },
+          body: { value: input.value },
+        })
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.appSecrets(slug) }),
+  });
+}
+
+/** Every sealed secret across the account — the hygiene inventory. */
+export function useAccountSecrets() {
+  return useQuery({
+    queryKey: ['secrets'],
+    queryFn: () => unwrap(api.GET('/v1/secrets', {})),
+  });
+}
+
+/* ------------------------------------------------------------------ *
  * Scheduling — delayed one-shot tasks, and the fate of a fired cron
  * ------------------------------------------------------------------ */
 
