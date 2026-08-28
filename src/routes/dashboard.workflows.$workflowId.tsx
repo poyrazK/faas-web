@@ -18,6 +18,7 @@ import {
 import { formatCompact, formatMs, formatRelative } from '@/lib/mock-data';
 import {
   useAppMetrics,
+  useBindRepo,
   useBuilds,
   useDeployFromRef,
   useParkApp,
@@ -44,6 +45,7 @@ import { ErrorsBody } from '@/components/dashboard/errors-body';
 import { AppConfiguration } from '@/components/dashboard/app-configuration';
 import { InvokePanel, SloPanel } from '@/components/dashboard/app-core-panels';
 import { Swap } from '@/components/dashboard/motion';
+import { RepoPicker } from '@/components/dashboard/repo-picker';
 import { DeploymentProgress } from '@/components/dashboard/deployment-progress';
 import { DeploymentDetailPanel } from '@/components/dashboard/deployment-detail';
 import { Pill } from '@/components/dashboard/resource-table';
@@ -125,6 +127,7 @@ function FunctionDetailPage() {
   const park = useParkApp();
   const wake = useWakeApp();
   const deployFromRef = useDeployFromRef(workflowId);
+  const bindRepo = useBindRepo(workflowId);
   const [deployOpen, setDeployOpen] = useState(false);
   const [deployRepo, setDeployRepo] = useState('');
   const [deployRef, setDeployRef] = useState('main');
@@ -634,6 +637,18 @@ function FunctionDetailPage() {
                       title: 'Build accepted',
                       description: `${deployRepo.trim()}@${deployRef.trim()} is queued.`,
                     });
+                    // Persist the binding so the next deploy (and GitHub
+                    // pushes) know this app's repo. Quiet: failing to bind
+                    // must not spoil an accepted build.
+                    if (account?.github_install_id) {
+                      void bindRepo
+                        .mutateAsync({
+                          installationId: Number(account.github_install_id),
+                          repo: deployRepo.trim(),
+                          branch: deployRef.trim() || 'main',
+                        })
+                        .catch(() => {});
+                    }
                   })
                   .catch((err: unknown) => {
                     setDeploySubmissionError(errorMessage(err));
@@ -658,13 +673,12 @@ function FunctionDetailPage() {
           )}
           <label className="flex flex-col gap-1.5">
             <span className="label-mono text-muted-foreground">Repository</span>
-            <input
-              autoFocus
+            <RepoPicker
               value={deployRepo}
-              onChange={(e) => setDeployRepo(e.target.value)}
-              placeholder="owner/repo"
-              spellCheck={false}
-              className="h-9 rounded-md border border-border bg-background px-3 font-mono text-sm outline-none focus:border-brand/50"
+              onChange={(repo, defaultBranch) => {
+                setDeployRepo(repo);
+                if (defaultBranch) setDeployRef(defaultBranch);
+              }}
             />
           </label>
           <label className="flex flex-col gap-1.5">

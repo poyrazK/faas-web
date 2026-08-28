@@ -1050,6 +1050,19 @@ route('DELETE', '/v1/orgs/{slug}/invitations/{token}', ({ params }) => {
   const hex = (n: number) =>
     Array.from({ length: n }, () => Math.floor(Math.random() * 16).toString(16)).join('');
 
+  // --- GitHub installation repos + app binding ---
+  route('POST', '/v1/install/repos/list', () => [
+    { id: 1001, full_name: 'acme-corp/storefront', default_branch: 'main', private: true },
+    { id: 1002, full_name: 'acme-corp/checkout', default_branch: 'main', private: true },
+    { id: 1003, full_name: 'acme-corp/webhook-router', default_branch: 'master', private: false },
+    { id: 1004, full_name: 'acme-corp/nightly-etl', default_branch: 'main', private: true },
+  ]);
+  route('POST', '/v1/apps/{slug}/install/bind', async ({ body }) => ({
+    binding_id: hex(32),
+    repo_full_name: String(body.repo_full_name ?? ''),
+    production_branch: String(body.production_branch ?? 'main'),
+  }));
+
   // --- Organisations, org keys, invitations ---
   route('GET', '/v1/orgs/{slug}', ({ params }) => ({
     id: hex(32),

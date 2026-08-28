@@ -84,6 +84,43 @@ async function applyOptimistic<T>(
 type Options<T> = Omit<UseQueryOptions<T, Error>, 'queryKey' | 'queryFn'>;
 
 /* ------------------------------------------------------------------ *
+ * GitHub installation — the repos it can actually see
+ * ------------------------------------------------------------------ */
+
+/** The repos the GitHub App installation can reach — so pickers can list
+ * real repos instead of trusting a typed owner/name. */
+export function useInstallRepos(installationId: number | null) {
+  return useQuery({
+    queryKey: ['install', 'repos', installationId],
+    queryFn: () =>
+      unwrap(
+        api.POST('/v1/install/repos/list', {
+          body: { installation_id: installationId ?? 0, repo_full_name: '', production_branch: '' },
+        })
+      ),
+    enabled: installationId !== null && installationId > 0,
+    staleTime: 5 * 60_000,
+  });
+}
+
+/** Persist the (account, app, installation, repo, branch) binding. */
+export function useBindRepo(slug: string) {
+  return useMutation({
+    mutationFn: (input: { installationId: number; repo: string; branch: string }) =>
+      unwrap(
+        api.POST('/v1/apps/{slug}/install/bind', {
+          params: { path: { slug } },
+          body: {
+            installation_id: input.installationId,
+            repo_full_name: input.repo,
+            production_branch: input.branch,
+          },
+        })
+      ),
+  });
+}
+
+/* ------------------------------------------------------------------ *
  * Organisations — identity, seats, ownership, org-scoped keys
  * ------------------------------------------------------------------ */
 
