@@ -159,9 +159,9 @@ function SidebarBody({
  * Page identity as a shell path, not a breadcrumb trail.
  *
  * Gregale is CLI-first — the location reads the way the product talks:
- * `workspace/section/detail` in the mono voice, separators as slashes, and
- * a soft block cursor breathing at the end of the line. The workspace is
- * the one link (home); the current segment carries `aria-current`.
+ * `workspace/section/detail` in the mono voice, separators as slashes.
+ * The workspace is the one link (home); the current segment carries
+ * `aria-current`.
  */
 function Breadcrumbs() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -215,13 +215,6 @@ function Breadcrumbs() {
           </span>
         );
       })}
-
-      {/* The prompt's cursor: the machine, alive and waiting. Breathes on
-          the shared rhythm; still under reduced motion. */}
-      <span
-        aria-hidden
-        className="animate-breathe ml-0.5 inline-block h-3.5 w-[7px] shrink-0 rounded-[1px] bg-brand/60"
-      />
     </nav>
   );
 }
