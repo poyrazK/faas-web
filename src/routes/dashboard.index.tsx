@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { ArrowRight, Plus, WarningTriangle } from 'iconoir-react';
+import { ArrowRight, Plus } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import {
   EmptyState,
@@ -65,93 +65,80 @@ function CardLabel({ children }: { children: React.ReactNode }) {
  * Status line — the first thing the page says
  * ------------------------------------------------------------------ */
 
-type SystemStatus = { color: string; text: string };
-
-function systemStatus(
-  accountStatus: string | undefined,
-  failing: number,
-  degraded: boolean
-): SystemStatus {
-  if (accountStatus && accountStatus !== 'active')
-    return {
-      color: 'var(--status-critical)',
-      text: `Account ${accountStatus.replace(/_/g, ' ')}`,
-    };
-  if (failing > 0)
-    return {
-      color: 'var(--status-critical)',
-      text: `${failing} ${failing === 1 ? 'app' : 'apps'} failing`,
-    };
-  if (degraded) return { color: 'var(--status-warning)', text: 'Metrics degraded' };
-  return { color: 'var(--status-good)', text: 'All systems normal' };
-}
-
-/* ------------------------------------------------------------------ *
- * Alert card — exists only when something is wrong
- * ------------------------------------------------------------------ */
-
-function SystemAlert({
+/**
+ * The page's first sentence, and — when something is wrong — the whole
+ * alert: the detail rides inline after the verdict instead of duplicating
+ * itself in a tinted box below. One line, no chrome; the dot and the words
+ * carry it. Billing state outranks failing apps outranks degraded metrics.
+ */
+function StatusLine({
   accountStatus,
   failing,
+  degraded,
 }: {
   accountStatus: string | undefined;
   failing: Workflow[];
+  degraded: boolean;
 }) {
   const billingProblem = accountStatus && accountStatus !== 'active' ? accountStatus : null;
-  if (!billingProblem && failing.length === 0) return null;
+  const trouble = Boolean(billingProblem) || failing.length > 0;
+  const color = trouble
+    ? 'var(--status-critical)'
+    : degraded
+      ? 'var(--status-warning)'
+      : 'var(--status-good)';
 
   return (
-    <div
-      role="alert"
-      className="animate-item-enter flex flex-wrap items-start gap-x-6 gap-y-3 rounded-xl border px-5 py-4"
-      style={{
-        borderColor: 'color-mix(in oklab, var(--status-critical) 40%, transparent)',
-        background: 'color-mix(in oklab, var(--status-critical) 6%, transparent)',
-      }}
+    <p
+      role={trouble ? 'alert' : 'status'}
+      className="animate-item-enter -mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm text-muted-foreground"
     >
-      <WarningTriangle
-        className="mt-0.5 h-4 w-4 shrink-0"
-        style={{ color: 'var(--status-critical)' }}
-      />
-      {billingProblem ? (
-        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-3">
-          <p className="text-sm">
-            This account is <span className="font-medium">{billingProblem.replace(/_/g, ' ')}</span>
-            .
+      <span className="flex items-center gap-2.5">
+        <LiveDot color={color} />
+        {billingProblem ? (
+          <span>
+            Account <span className="text-foreground">{billingProblem.replace(/_/g, ' ')}</span>
             {billingProblem === 'past_due'
-              ? ' Settle the outstanding invoice to avoid suspension.'
-              : ' Apps may not serve traffic until it is resolved.'}
-          </p>
-          <Link
-            to="/dashboard/invoices"
-            className="pressable inline-flex items-center gap-1 rounded text-xs text-brand hover:text-brand-hover"
-          >
-            View invoices
-            <ArrowRight className="h-3 w-3" />
-          </Link>
-        </div>
+              ? ' — settle the invoice to avoid suspension'
+              : ' — apps may not serve traffic'}
+          </span>
+        ) : failing.length > 0 ? (
+          <span>
+            {failing.length} {failing.length === 1 ? 'app' : 'apps'} failing
+          </span>
+        ) : degraded ? (
+          <span>Metrics degraded</span>
+        ) : (
+          <span>All systems normal</span>
+        )}
+      </span>
+
+      {billingProblem ? (
+        <Link
+          to="/dashboard/invoices"
+          className="pressable inline-flex items-center gap-1 rounded text-xs text-brand hover:text-brand-hover"
+        >
+          View invoices
+          <ArrowRight className="h-3 w-3" />
+        </Link>
       ) : (
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-5 gap-y-1.5">
-          {failing.slice(0, 4).map((app) => (
-            <Link
-              key={app.id}
-              to="/dashboard/workflows/$workflowId"
-              params={{ workflowId: app.id }}
-              search={{ tab: 'Logs' }}
-              className="pressable inline-flex items-center gap-2 rounded font-mono text-xs hover:text-foreground"
-            >
-              {app.name}
-              <span style={{ color: 'var(--status-critical)' }}>
-                {app.errorRatePct.toFixed(2)}%
-              </span>
-            </Link>
-          ))}
-          {failing.length > 4 && (
-            <span className="text-xs text-muted-foreground">+{failing.length - 4} more</span>
-          )}
-        </div>
+        failing.slice(0, 4).map((app) => (
+          <Link
+            key={app.id}
+            to="/dashboard/workflows/$workflowId"
+            params={{ workflowId: app.id }}
+            search={{ tab: 'Logs' }}
+            className="pressable inline-flex items-center gap-1.5 rounded font-mono text-xs hover:text-foreground"
+          >
+            {app.name}
+            <span style={{ color: 'var(--status-critical)' }}>{app.errorRatePct.toFixed(2)}%</span>
+          </Link>
+        ))
       )}
-    </div>
+      {!billingProblem && failing.length > 4 && (
+        <span className="text-xs">+{failing.length - 4} more</span>
+      )}
+    </p>
   );
 }
 
@@ -520,7 +507,6 @@ function OverviewPage() {
   const phase = queryPhase({ error, loading });
   const metricsDegraded = Boolean(metrics.data && metrics.data.source !== 'prometheus');
   const failing = useMemo(() => workflows.filter((w) => w.state === 'error'), [workflows]);
-  const status = systemStatus(account?.status, failing.length, metricsDegraded);
 
   // The band's data: per-app resident instances (parked rows excluded — a
   // parked instance's cgroup is gone), joined back to slugs via the raw app
@@ -604,13 +590,12 @@ function OverviewPage() {
           <LoadingState message="Reading your account…" />
         ) : (
           <>
-            {/* The one-glance answer, before any figure. */}
-            <p className="animate-item-enter -mt-2 flex items-center gap-2.5 text-sm text-muted-foreground">
-              <LiveDot color={status.color} />
-              {status.text}
-            </p>
-
-            <SystemAlert accountStatus={account?.status} failing={failing} />
+            {/* The one-glance answer — and, when needed, the whole alert. */}
+            <StatusLine
+              accountStatus={account?.status}
+              failing={failing}
+              degraded={metricsDegraded}
+            />
 
             {/* Mirrored asymmetry: 7/5 then 5/7. */}
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
