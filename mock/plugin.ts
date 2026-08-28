@@ -1050,6 +1050,106 @@ route('DELETE', '/v1/orgs/{slug}/invitations/{token}', ({ params }) => {
   const hex = (n: number) =>
     Array.from({ length: n }, () => Math.floor(Math.random() * 16).toString(16)).join('');
 
+  // --- Organisations, org keys, invitations ---
+  route('GET', '/v1/orgs/{slug}', ({ params }) => ({
+    id: hex(32),
+    slug: params.slug,
+    name: 'Acme Corp',
+    personal: false,
+    plan: db.account.plan,
+    status: 'active',
+    created_at: db.iso(200 * 24),
+    updated_at: db.iso(2 * 24),
+  }));
+  route('PATCH', '/v1/orgs/{slug}', async ({ params, body }) => ({
+    id: hex(32),
+    slug: params.slug,
+    name: String(body.name ?? 'Acme Corp'),
+    personal: false,
+    plan: String(body.plan ?? db.account.plan),
+    status: 'active',
+    created_at: db.iso(200 * 24),
+    updated_at: new Date().toISOString(),
+  }));
+  route('DELETE', '/v1/orgs/{slug}', () => ({}));
+  route('GET', '/v1/orgs/{slug}/seat_usage', () => ({ used: 3, limit: 5, plan: db.account.plan }));
+  route('POST', '/v1/orgs/{slug}/transfer_ownership', ({ params }) => ({
+    id: hex(32),
+    slug: params.slug,
+    name: 'Acme Corp',
+    personal: false,
+    plan: db.account.plan,
+    status: 'active',
+    created_at: db.iso(200 * 24),
+    updated_at: new Date().toISOString(),
+  }));
+  const orgKeys: Record<string, unknown>[] = [
+    {
+      id: hex(32),
+      org_id: hex(32),
+      prefix: 'gk_org_a1b2',
+      label: 'ci-deploy',
+      scopes: ['deploy:write', 'apps:read'],
+      last_used_at: db.iso(5),
+      created_at: db.iso(90 * 24),
+      expires_at: null,
+      status: 'active',
+      revoked_at: null,
+      rotated_from_id: null,
+    },
+  ];
+  route('GET', '/v1/orgs/{slug}/keys', () => ({ keys: orgKeys }));
+  route('POST', '/v1/orgs/{slug}/keys', async ({ body }) => {
+    const key = {
+      id: hex(32),
+      org_id: hex(32),
+      prefix: `gk_org_${hex(4)}`,
+      label: String(body.label ?? ''),
+      scopes: body.scopes ?? [],
+      last_used_at: null,
+      created_at: new Date().toISOString(),
+      expires_at: null,
+      status: 'active',
+      revoked_at: null,
+      rotated_from_id: null,
+      plaintext: `gk_org_${hex(28)}`,
+    };
+    orgKeys.unshift(key);
+    return status(201, key);
+  });
+  route('DELETE', '/v1/orgs/{slug}/keys/{id}', ({ params }) => {
+    const i = orgKeys.findIndex((k) => k.id === params.id);
+    if (i >= 0) orgKeys.splice(i, 1);
+    return {};
+  });
+  route('POST', '/v1/orgs/{slug}/keys/{id}/rotate', ({ params }) => ({
+    key: orgKeys[0],
+    key_plaintext: `gk_org_${hex(28)}`,
+    old_key_id: params.id,
+    old_key_expires_at: new Date(Date.now() + 7 * 86400e3).toISOString(),
+  }));
+  route('GET', '/v1/invitations/{token}', ({ params }) => ({
+    id: hex(32),
+    org_id: hex(32),
+    org_slug: 'acme-corp',
+    email: 'new-teammate@acme-corp.dev',
+    role: 'developer',
+    status: params.token === 'used' ? 'accepted' : 'pending',
+    expires_at: new Date(Date.now() + 6 * 86400e3).toISOString(),
+    created_at: db.iso(24),
+  }));
+  route('POST', '/v1/invitations/{token}/accept', () => ({
+    account_id: hex(32),
+    email: 'new-teammate@acme-corp.dev',
+    role: 'developer',
+    joined_at: new Date().toISOString(),
+  }));
+  route('POST', '/dashboard/account/set-password', ({ res }) => {
+    res.statusCode = 302;
+    res.setHeader('location', '/dashboard/account');
+    return '';
+  });
+
   // --- Billing & account controls ---
   route('POST', '/v1/account/overage-cap', () => ({ ...db.account, app_count: db.apps.length }));
   route('POST', '/v1/billing/cancel', () => ({

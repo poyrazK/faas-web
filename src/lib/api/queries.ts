@@ -84,6 +84,120 @@ async function applyOptimistic<T>(
 type Options<T> = Omit<UseQueryOptions<T, Error>, 'queryKey' | 'queryFn'>;
 
 /* ------------------------------------------------------------------ *
+ * Organisations — identity, seats, ownership, org-scoped keys
+ * ------------------------------------------------------------------ */
+
+export function useOrg(slug: string) {
+  return useQuery({
+    queryKey: ['orgs', slug],
+    queryFn: () => unwrap(api.GET('/v1/orgs/{slug}', { params: { path: { slug } } })),
+    enabled: Boolean(slug),
+  });
+}
+
+export function usePatchOrg(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: components['schemas']['PatchOrgRequest']) =>
+      unwrap(api.PATCH('/v1/orgs/{slug}', { params: { path: { slug } }, body })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['orgs'] }),
+  });
+}
+
+export function useDeleteOrg() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (slug: string) =>
+      unwrap(api.DELETE('/v1/orgs/{slug}', { params: { path: { slug } } })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['orgs'] }),
+  });
+}
+
+export function useSeatUsage(slug: string) {
+  return useQuery({
+    queryKey: ['orgs', slug, 'seats'],
+    queryFn: () => unwrap(api.GET('/v1/orgs/{slug}/seat_usage', { params: { path: { slug } } })),
+    enabled: Boolean(slug),
+  });
+}
+
+export function useTransferOwnership(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (newOwnerAccountId: string) =>
+      unwrap(
+        api.POST('/v1/orgs/{slug}/transfer_ownership', {
+          params: { path: { slug } },
+          body: { new_owner_account_id: newOwnerAccountId },
+        })
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['orgs'] }),
+  });
+}
+
+export function useOrgKeys(slug: string) {
+  return useQuery({
+    queryKey: ['orgs', slug, 'keys'],
+    queryFn: () => unwrap(api.GET('/v1/orgs/{slug}/keys', { params: { path: { slug } } })),
+    enabled: Boolean(slug),
+  });
+}
+
+export function useCreateOrgKey(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: components['schemas']['CreateOrgAPIKeyRequest']) =>
+      unwrap(api.POST('/v1/orgs/{slug}/keys', { params: { path: { slug } }, body })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['orgs', slug, 'keys'] }),
+  });
+}
+
+export function useDeleteOrgKey(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      unwrap(api.DELETE('/v1/orgs/{slug}/keys/{id}', { params: { path: { slug, id } } })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['orgs', slug, 'keys'] }),
+  });
+}
+
+export function useRotateOrgKey(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      unwrap(
+        api.POST('/v1/orgs/{slug}/keys/{id}/rotate', {
+          params: { path: { slug, id } },
+          body: {},
+        })
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['orgs', slug, 'keys'] }),
+  });
+}
+
+/* ------------------------------------------------------------------ *
+ * Invitations — peek and accept by token
+ * ------------------------------------------------------------------ */
+
+export function useInvitation(token: string) {
+  return useQuery({
+    queryKey: ['invitations', token],
+    queryFn: () => unwrap(api.GET('/v1/invitations/{token}', { params: { path: { token } } })),
+    enabled: Boolean(token),
+    retry: false,
+  });
+}
+
+export function useAcceptInvitation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (token: string) =>
+      unwrap(api.POST('/v1/invitations/{token}/accept', { params: { path: { token } } })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['orgs'] }),
+  });
+}
+
+/* ------------------------------------------------------------------ *
  * Billing & account controls
  * ------------------------------------------------------------------ */
 

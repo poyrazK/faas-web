@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { SendMail, Trash } from 'iconoir-react';
 import { CopyMorph, useCopy } from '@/components/ui/copy-button';
+import { OrgKeysPanel, OrgPanel } from '@/components/dashboard/org-panels';
 import { FIELD } from '@/components/ui/field';
 import { Button } from '@/components/ui/button';
 import { PageHeader, Panel } from '@/components/dashboard/primitives';
@@ -438,6 +439,12 @@ function TeamPage() {
           }}
         />
       </Panel>
+      {active && (
+        <>
+          <OrgPanel slug={active} />
+          <OrgKeysPanel slug={active} />
+        </>
+      )}
     </div>
   );
 }
