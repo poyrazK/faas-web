@@ -1,5 +1,6 @@
 import { useId, useMemo, useRef, useState } from 'react';
 import { createFileRoute, Link, useParams } from '@tanstack/react-router';
+import { motion, useReducedMotion } from 'motion/react';
 import { ArrowLeft, OpenNewWindow, Pause, Play, Refresh, Rocket } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -11,6 +12,8 @@ import {
   RangeSelector,
   StatTile,
   StateBadge,
+  UnreachableState,
+  queryPhase,
 } from '@/components/dashboard/primitives';
 import { formatCompact, formatMs, formatRelative } from '@/lib/mock-data';
 import {
@@ -39,6 +42,7 @@ import { WebhooksBody } from './dashboard.webhooks';
 import { EdgeRulesBody } from './dashboard.edge-rules';
 import { AppConfiguration } from '@/components/dashboard/app-configuration';
 import { InvokePanel, SloPanel } from '@/components/dashboard/app-core-panels';
+import { Swap } from '@/components/dashboard/motion';
 import { DeploymentProgress } from '@/components/dashboard/deployment-progress';
 import { DeploymentDetailPanel } from '@/components/dashboard/deployment-detail';
 import { Pill } from '@/components/dashboard/resource-table';
@@ -66,7 +70,7 @@ const TABS = [
   'Logs',
   'Routes',
   'Secrets',
-  'Env',
+  'Env vars',
   'Queues',
   'Upstreams',
   'Alerts',
@@ -98,6 +102,7 @@ function FunctionDetailPage() {
   const setTab = (next: Tab) => navigate({ search: { tab: next }, replace: true });
   const tabsId = useId();
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const reduce = useReducedMotion();
   // Roving focus: arrows move between tabs and select as they go.
   const onTabKeyDown = (e: React.KeyboardEvent, index: number) => {
     const last = TABS.length - 1;
@@ -144,6 +149,7 @@ function FunctionDetailPage() {
     : metrics.error || metricsDegraded
       ? ('unavailable' as const)
       : ('ready' as const);
+  const metricsPhase = queryPhase({ error: metrics.error, loading: metrics.isPending });
   const builds = useBuilds({
     // Build duration is not part of DeploymentResponse. Poll the companion
     // records alongside deployments while any visible build is unfinished.
@@ -381,189 +387,207 @@ function FunctionDetailPage() {
             onClick={() => setTab(t)}
             onKeyDown={(e) => onTabKeyDown(e, i)}
             className={cn(
-              '-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
-              tab === t
-                ? 'border-brand text-foreground'
-                : 'border-transparent text-muted-foreground hover:text-foreground'
+              'pressable relative -mb-px whitespace-nowrap px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
+              tab === t ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
             )}
           >
             {t}
+            {/* The active underline slides between tabs — one shared element,
+                the same spring the sidebar pill rides. Reduced motion keeps a
+                static underline per tab. */}
+            {tab === t &&
+              (reduce ? (
+                <span aria-hidden className="absolute inset-x-0 bottom-0 h-0.5 bg-brand" />
+              ) : (
+                <motion.span
+                  aria-hidden
+                  layoutId="app-tab-underline"
+                  className="absolute inset-x-0 bottom-0 h-0.5 bg-brand"
+                  transition={{ type: 'spring', stiffness: 500, damping: 40 }}
+                />
+              ))}
           </button>
         ))}
       </div>
 
-      <div
-        role="tabpanel"
-        id={`${tabsId}-panel`}
-        aria-labelledby={`${tabsId}-tab-${tab}`}
-        className="flex flex-col gap-6"
-      >
-        {tab === 'Metrics' &&
-          (authLoading || account === null ? (
-            <LoadingState message="Checking plan access…" />
-          ) : !paidAccess ? (
-            <PlanGate
-              feature="Per-app metrics"
-              description="Request, latency, cold-start, error, and SLO signals are available on Hobby and above."
-            />
-          ) : (
-            <div className="flex flex-col gap-6">
-              <div className="flex justify-end">
-                <RangeSelector
-                  value={range}
-                  onChange={setRange}
-                  options={METRIC_RANGES.map((r) => ({ key: r, label: r }))}
+      <div role="tabpanel" id={`${tabsId}-panel`} aria-labelledby={`${tabsId}-tab-${tab}`}>
+        {/* Keyed by tab, so switching cross-fades the panel in rather than
+            hard-swapping — the tab strip above stays put either way. */}
+        <Swap id={tab}>
+          <div className="flex flex-col gap-6">
+            {tab === 'Metrics' &&
+              (authLoading || account === null ? (
+                <LoadingState message="Checking plan access…" />
+              ) : !paidAccess ? (
+                <PlanGate
+                  feature="Per-app metrics"
+                  description="Request, latency, cold-start, error, and SLO signals are available on Hobby and above."
                 />
-              </div>
+              ) : (
+                <div className="flex flex-col gap-6">
+                  <div className="flex justify-end">
+                    <RangeSelector
+                      value={range}
+                      onChange={setRange}
+                      options={METRIC_RANGES.map((r) => ({ key: r, label: r }))}
+                    />
+                  </div>
 
-              {/* Scalars, not a series: `/v1/apps/{slug}/metrics` returns one
+                  {/* Scalars, not a series: `/v1/apps/{slug}/metrics` returns one
                 aggregate per window. The sparkline charts that used to sit here
                 were drawn from a seeded PRNG and are gone with it. */}
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                {metricsDegraded && (
-                  <p
-                    className="text-xs text-muted-foreground sm:col-span-2 xl:col-span-4"
-                    role="status"
-                  >
-                    Metrics are degraded ({metrics.data?.source}), so no figures can be read for
-                    this window.
-                  </p>
-                )}
-                <StatTile
-                  label="Requests"
-                  value={metrics.data ? formatCompact(metrics.data.request_count) : '—'}
-                  state={metricsTileState}
-                />
-                <StatTile
-                  label="Error rate"
-                  value={metrics.data ? metrics.data.error_rate_pct.toFixed(2) : '—'}
-                  unit="%"
-                  deltaGood={false}
-                  state={metricsTileState}
-                />
-                <StatTile
-                  label="Cold starts"
-                  value={metrics.data ? metrics.data.cold_start_pct.toFixed(2) : '—'}
-                  unit="%"
-                  state={metricsTileState}
-                />
-                <StatTile
-                  label="Wake p95 (fleet)"
-                  value={metrics.data ? formatMs(metrics.data.wake_p95_ms) : '—'}
-                  state={metricsTileState}
-                />
-              </div>
-
-              <Panel title="Response latency" description="2xx traffic over the selected window">
-                {metrics.error ? (
-                  <ErrorState error={metrics.error} onRetry={() => void metrics.refetch()} />
-                ) : metrics.isPending ? (
-                  <LoadingState message="Querying metrics…" />
-                ) : (
-                  <div className="grid gap-4 p-5 sm:grid-cols-3">
+                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                    {metricsDegraded && (
+                      <p
+                        className="text-xs text-muted-foreground sm:col-span-2 xl:col-span-4"
+                        role="status"
+                      >
+                        Metrics are degraded ({metrics.data?.source}), so no figures can be read for
+                        this window.
+                      </p>
+                    )}
                     <StatTile
-                      label="p50"
-                      value={formatMs(metrics.data?.latency_p50_ms ?? 0)}
+                      label="Requests"
+                      value={metrics.data ? formatCompact(metrics.data.request_count) : '—'}
                       state={metricsTileState}
                     />
                     <StatTile
-                      label="p95"
-                      value={formatMs(metrics.data?.latency_p95_ms ?? 0)}
+                      label="Error rate"
+                      value={metrics.data ? metrics.data.error_rate_pct.toFixed(2) : '—'}
+                      unit="%"
+                      deltaGood={false}
                       state={metricsTileState}
                     />
                     <StatTile
-                      label="p99"
-                      value={formatMs(metrics.data?.latency_p99_ms ?? 0)}
+                      label="Cold starts"
+                      value={metrics.data ? metrics.data.cold_start_pct.toFixed(2) : '—'}
+                      unit="%"
+                      state={metricsTileState}
+                    />
+                    <StatTile
+                      label="Wake p95 (fleet)"
+                      value={metrics.data ? formatMs(metrics.data.wake_p95_ms) : '—'}
                       state={metricsTileState}
                     />
                   </div>
-                )}
-              </Panel>
-              <SloPanel slug={fn.id} />
-            </div>
-          ))}
 
-        {tab === 'Invoke' &&
-          (!hasRunnable ? (
-            <DeploymentGate slug={fn.id} resource="Invoke" />
-          ) : (
-            <InvokePanel slug={fn.id} />
-          ))}
-
-        {tab === 'Deployments' && (
-          <>
-            <Panel title="Deployment history" description={`${deployments.length} deployments`}>
-              {deployments.length === 0 ? (
-                <EmptyState message="No deployments yet. Deploy a Git ref or use the CLI." />
-              ) : (
-                <ul className="flex flex-col divide-y divide-border">
-                  {deployments.map((dep) => (
-                    <li key={dep.id}>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          void navigate({
-                            search: { tab: 'Deployments', deployment: dep.id },
-                            replace: true,
-                          })
-                        }
-                        className="flex w-full flex-wrap items-center gap-3 py-3 text-left transition-colors first:pt-0 last:pb-0 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-                      >
-                        <Pill
-                          label={dep.status ?? dep.state}
-                          color={
-                            dep.state === 'succeeded'
-                              ? 'var(--status-good)'
-                              : dep.state === 'failed'
-                                ? 'var(--status-critical)'
-                                : 'var(--status-warning)'
-                          }
+                  <Panel
+                    title="Response latency"
+                    description="2xx traffic over the selected window"
+                  >
+                    {metricsPhase === 'unreachable' ? (
+                      <UnreachableState onRetry={() => void metrics.refetch()} />
+                    ) : metricsPhase === 'error' ? (
+                      <ErrorState error={metrics.error} onRetry={() => void metrics.refetch()} />
+                    ) : metricsPhase === 'loading' ? (
+                      <LoadingState message="Querying metrics…" />
+                    ) : (
+                      <div className="grid gap-4 p-5 sm:grid-cols-3">
+                        <StatTile
+                          label="p50"
+                          value={formatMs(metrics.data?.latency_p50_ms ?? 0)}
+                          state={metricsTileState}
                         />
-                        <span className="font-mono text-xs text-muted-foreground">
-                          image {dep.version || '—'}
-                        </span>
-                        <span className="min-w-0 flex-1 truncate text-sm">{dep.message}</span>
-                        <span className="w-20 text-right text-xs text-muted-foreground [font-variant-numeric:tabular-nums]">
-                          {(() => {
-                            const seconds = buildTimings.get(dep.id)?.durationSeconds;
-                            return seconds == null ? '—' : `${seconds.toFixed(1)}s`;
-                          })()}
-                        </span>
-                        <span className="w-16 text-right text-xs text-muted-foreground [font-variant-numeric:tabular-nums]">
-                          {formatRelative(dep.createdAt)}
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Panel>
-            {selectedDeployment && (
-              <DeploymentDetailPanel
-                deploymentId={selectedDeployment.id}
-                timing={buildTimings.get(selectedDeployment.id)}
-                onClose={() => void navigate({ search: { tab: 'Deployments' }, replace: true })}
-              />
+                        <StatTile
+                          label="p95"
+                          value={formatMs(metrics.data?.latency_p95_ms ?? 0)}
+                          state={metricsTileState}
+                        />
+                        <StatTile
+                          label="p99"
+                          value={formatMs(metrics.data?.latency_p99_ms ?? 0)}
+                          state={metricsTileState}
+                        />
+                      </div>
+                    )}
+                  </Panel>
+                  <SloPanel slug={fn.id} />
+                </div>
+              ))}
+
+            {tab === 'Invoke' &&
+              (!hasRunnable ? (
+                <DeploymentGate slug={fn.id} resource="Invoke" />
+              ) : (
+                <InvokePanel slug={fn.id} />
+              ))}
+
+            {tab === 'Deployments' && (
+              <>
+                <Panel title="Deployment history" description={`${deployments.length} deployments`}>
+                  {deployments.length === 0 ? (
+                    <EmptyState message="No deployments yet. Deploy a Git ref or use the CLI." />
+                  ) : (
+                    <ul className="flex flex-col divide-y divide-border">
+                      {deployments.map((dep) => (
+                        <li key={dep.id}>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void navigate({
+                                search: { tab: 'Deployments', deployment: dep.id },
+                                replace: true,
+                              })
+                            }
+                            className="flex w-full flex-wrap items-center gap-3 py-3 text-left transition-colors first:pt-0 last:pb-0 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+                          >
+                            <Pill
+                              label={dep.status ?? dep.state}
+                              color={
+                                dep.state === 'succeeded'
+                                  ? 'var(--status-good)'
+                                  : dep.state === 'failed'
+                                    ? 'var(--status-critical)'
+                                    : 'var(--status-warning)'
+                              }
+                            />
+                            <span className="font-mono text-xs text-muted-foreground">
+                              image {dep.version || '—'}
+                            </span>
+                            <span className="min-w-0 flex-1 truncate text-sm">{dep.message}</span>
+                            <span className="w-20 text-right text-xs text-muted-foreground [font-variant-numeric:tabular-nums]">
+                              {(() => {
+                                const seconds = buildTimings.get(dep.id)?.durationSeconds;
+                                return seconds == null ? '—' : `${seconds.toFixed(1)}s`;
+                              })()}
+                            </span>
+                            <span className="w-16 text-right text-xs text-muted-foreground [font-variant-numeric:tabular-nums]">
+                              {formatRelative(dep.createdAt)}
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </Panel>
+                {selectedDeployment && (
+                  <DeploymentDetailPanel
+                    deploymentId={selectedDeployment.id}
+                    timing={buildTimings.get(selectedDeployment.id)}
+                    onClose={() => void navigate({ search: { tab: 'Deployments' }, replace: true })}
+                  />
+                )}
+              </>
             )}
-          </>
-        )}
 
-        {tab === 'Logs' &&
-          (!hasRunnable ? (
-            <DeploymentGate slug={fn.id} resource="Logs" />
-          ) : (
-            <LogsBody slug={fn.id} />
-          ))}
-        {tab === 'Routes' && <RoutesBody slug={fn.id} />}
-        {tab === 'Secrets' && <SecretsBody slug={fn.id} />}
-        {tab === 'Env' && <EnvBody slug={fn.id} />}
-        {tab === 'Queues' && <QueuesBody slug={fn.id} />}
-        {tab === 'Upstreams' && <UpstreamsBody slug={fn.id} />}
-        {tab === 'Alerts' && <AlertsBody slug={fn.id} />}
-        {tab === 'Webhooks' && <WebhooksBody slug={fn.id} />}
-        {tab === 'Edge rules' && <EdgeRulesBody slug={fn.id} />}
+            {tab === 'Logs' &&
+              (!hasRunnable ? (
+                <DeploymentGate slug={fn.id} resource="Logs" />
+              ) : (
+                <LogsBody slug={fn.id} />
+              ))}
+            {tab === 'Routes' && <RoutesBody slug={fn.id} />}
+            {tab === 'Secrets' && <SecretsBody slug={fn.id} />}
+            {tab === 'Env vars' && <EnvBody slug={fn.id} />}
+            {tab === 'Queues' && <QueuesBody slug={fn.id} />}
+            {tab === 'Upstreams' && <UpstreamsBody slug={fn.id} />}
+            {tab === 'Alerts' && <AlertsBody slug={fn.id} />}
+            {tab === 'Webhooks' && <WebhooksBody slug={fn.id} />}
+            {tab === 'Edge rules' && <EdgeRulesBody slug={fn.id} />}
 
-        {tab === 'Configuration' && <AppConfiguration slug={fn.id} />}
+            {tab === 'Configuration' && <AppConfiguration slug={fn.id} />}
+          </div>
+        </Swap>
       </div>
 
       {/* The one deploy the console can start itself: a Git ref, built
@@ -581,11 +605,8 @@ function FunctionDetailPage() {
             </Button>
             <Button
               size="sm"
-              disabled={
-                !/^[^/\s]+\/[^/\s]+$/.test(deployRepo.trim()) ||
-                !deployRef.trim() ||
-                deployFromRef.isPending
-              }
+              disabled={!/^[^/\s]+\/[^/\s]+$/.test(deployRepo.trim()) || !deployRef.trim()}
+              busy={deployFromRef.isPending}
               onClick={() => {
                 setDeploySubmissionError(null);
                 void deployFromRef
@@ -621,7 +642,7 @@ function FunctionDetailPage() {
                   });
               }}
             >
-              {deployFromRef.isPending ? 'Starting…' : 'Deploy'}
+              Deploy
             </Button>
           </>
         }

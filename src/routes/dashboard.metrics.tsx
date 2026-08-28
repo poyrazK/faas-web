@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { WarningTriangle } from 'iconoir-react';
 import {
@@ -11,15 +10,26 @@ import {
   queryPhase,
 } from '@/components/dashboard/primitives';
 import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
+import { Select } from '@/components/ui/field';
+import { Swap } from '@/components/dashboard/motion';
 import { useAppMetrics, type MetricsRange } from '@/lib/api/queries';
 import { useAuth } from '@/lib/auth';
 import { isPaidPlan } from '@/lib/plan';
 import { PlanGate } from '@/components/dashboard/plan-gate';
 import { consoleHead } from '@/lib/seo';
 
+const RANGES: MetricsRange[] = ['5m', '15m', '1h', '6h', '24h', '7d', '15d'];
+
 export const Route = createFileRoute('/dashboard/metrics')({
   component: MetricsPage,
   head: () => consoleHead('metrics'),
+  // The window lives in the URL, so a reload keeps it and a pasted link
+  // shows the same figures. Optional: the default leaves no query string.
+  validateSearch: (search: Record<string, unknown>): { range?: MetricsRange } => ({
+    ...(RANGES.includes(search.range as MetricsRange)
+      ? { range: search.range as MetricsRange }
+      : {}),
+  }),
 });
 
 /**
@@ -34,8 +44,6 @@ export const Route = createFileRoute('/dashboard/metrics')({
  * Changing the range re-queries rather than slicing a cached series, because
  * each window is computed server-side by a separate PromQL query.
  */
-const RANGES: MetricsRange[] = ['5m', '15m', '1h', '6h', '24h', '7d', '15d'];
-
 function formatMs(value: number | undefined): string {
   if (value == null) return '—';
   return value >= 1000 ? `${(value / 1000).toFixed(2)} s` : `${Math.round(value)} ms`;
@@ -54,7 +62,11 @@ function MetricsPage() {
   const appState = useSelectedApp();
   const { slug, select, apps } = appState;
   const { account, loading: authLoading } = useAuth();
-  const [range, setRange] = useState<MetricsRange>('24h');
+  const { range = '24h' } = Route.useSearch();
+  const navigate = Route.useNavigate();
+  // Replace rather than push — flicking through windows is not history.
+  const setRange = (next: MetricsRange) =>
+    navigate({ search: next === '24h' ? {} : { range: next }, replace: true });
   const paidAccess = account !== null && isPaidPlan(account.plan);
   const { data, isPending, error, refetch } = useAppMetrics(slug, range, {
     enabled: paidAccess,
@@ -77,19 +89,19 @@ function MetricsPage() {
             <AppSelect slug={slug} onSelect={select} apps={apps} />
             <label className="flex items-center gap-2">
               <span className="label-mono text-muted-foreground">Window</span>
-              <select
+              <Select
                 value={range}
                 onChange={(e) => setRange(e.target.value as MetricsRange)}
                 disabled={!paidAccess}
                 aria-label="Metrics window"
-                className="h-9 rounded-md border border-border bg-card px-2.5 text-sm outline-none focus:border-brand/50"
+                className="bg-card px-2.5"
               >
                 {RANGES.map((r) => (
                   <option key={r} value={r}>
                     {r}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
           </div>
         }
@@ -124,27 +136,41 @@ function MetricsPage() {
         ) : paidAccess && phase === 'loading' ? (
           <LoadingState message="Querying metrics…" />
         ) : paidAccess ? (
-          <>
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <StatTile label="Requests" value={formatCount(data?.request_count)} state={tile} />
-              <StatTile label="Error rate" value={formatPct(data?.error_rate_pct)} state={tile} />
-              <StatTile label="Cold starts" value={formatPct(data?.cold_start_pct)} state={tile} />
-              <StatTile label="Wake p95 (fleet)" value={formatMs(data?.wake_p95_ms)} state={tile} />
-            </div>
-
-            <Panel title="Latency (2xx only)">
-              <div className="grid gap-4 sm:grid-cols-3">
-                <StatTile label="p50" value={formatMs(data?.latency_p50_ms)} state={tile} />
-                <StatTile label="p95" value={formatMs(data?.latency_p95_ms)} state={tile} />
-                <StatTile label="p99" value={formatMs(data?.latency_p99_ms)} state={tile} />
+          // Keyed cross-fade: a new window (or app) is a different set of
+          // figures, so the block settles in fresh rather than mutating in
+          // place — rolling one p95 into another would imply continuity the
+          // separate PromQL queries do not have.
+          <Swap id={`${slug ?? ''}:${range}`}>
+            <div className="flex flex-col gap-6">
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <StatTile label="Requests" value={formatCount(data?.request_count)} state={tile} />
+                <StatTile label="Error rate" value={formatPct(data?.error_rate_pct)} state={tile} />
+                <StatTile
+                  label="Cold starts"
+                  value={formatPct(data?.cold_start_pct)}
+                  state={tile}
+                />
+                <StatTile
+                  label="Wake p95 (fleet)"
+                  value={formatMs(data?.wake_p95_ms)}
+                  state={tile}
+                />
               </div>
-            </Panel>
 
-            <p className="text-xs text-muted-foreground">
-              Window {data?.range}. Latency percentiles cover 2xx traffic only; wake p95 is the
-              fleet figure, not this app alone.
-            </p>
-          </>
+              <Panel title="Latency (2xx only)">
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <StatTile label="p50" value={formatMs(data?.latency_p50_ms)} state={tile} />
+                  <StatTile label="p95" value={formatMs(data?.latency_p95_ms)} state={tile} />
+                  <StatTile label="p99" value={formatMs(data?.latency_p99_ms)} state={tile} />
+                </div>
+              </Panel>
+
+              <p className="text-xs text-muted-foreground">
+                Window {data?.range}. Latency percentiles cover 2xx traffic only; wake p95 is the
+                fleet figure, not this app alone.
+              </p>
+            </div>
+          </Swap>
         ) : null}
       </AppScope>
     </div>

@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
+import { FIELD as BASE_FIELD, Textarea } from '@/components/ui/field';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
-import { ErrorState, LoadingState, Panel, StatTile } from './primitives';
+import { ErrorState, InlinePhase, LoadingState, Panel, StatTile, queryPhase } from './primitives';
 import {
   useAppRegistryCredentials,
   useAppSlo,
@@ -19,8 +20,7 @@ import { useAuth } from '@/lib/auth';
 import { isPaidPlan } from '@/lib/plan';
 import { PlanGate } from './plan-gate';
 
-const FIELD =
-  'h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-brand/50';
+const FIELD = `${BASE_FIELD} w-full`;
 const CODE_FIELD = `${FIELD} font-mono`;
 
 function parseObject(value: string, label: string): Record<string, unknown> {
@@ -114,7 +114,7 @@ export function InvokePanel({ slug }: { slug: string }) {
               aria-disabled={value === 'sync' && !syncAvailable}
               disabled={value === 'sync' && !syncAvailable}
               onClick={() => setMode(value)}
-              className={`rounded px-2.5 py-1 text-xs transition-colors ${
+              className={`rounded px-2.5 py-1 text-xs pressable ${
                 effectiveMode === value
                   ? 'bg-muted text-foreground'
                   : 'text-muted-foreground hover:text-foreground'
@@ -147,22 +147,22 @@ export function InvokePanel({ slug }: { slug: string }) {
         </label>
         <label className="flex flex-col gap-1.5 sm:col-span-2">
           <span className="label-mono text-muted-foreground">JSON payload</span>
-          <textarea
+          <Textarea
             value={payload}
             onChange={(e) => setPayload(e.target.value)}
             rows={5}
             spellCheck={false}
-            className="rounded-md border border-border bg-background px-3 py-2 font-mono text-sm outline-none focus:border-brand/50"
+            className="font-mono"
           />
         </label>
         <label className="flex flex-col gap-1.5 sm:col-span-2">
           <span className="label-mono text-muted-foreground">Headers (optional JSON)</span>
-          <textarea
+          <Textarea
             value={headers}
             onChange={(e) => setHeaders(e.target.value)}
             rows={3}
             spellCheck={false}
-            className="rounded-md border border-border bg-background px-3 py-2 font-mono text-sm outline-none focus:border-brand/50"
+            className="font-mono"
           />
         </label>
         <div className="flex items-center justify-between gap-3 sm:col-span-2">
@@ -171,8 +171,8 @@ export function InvokePanel({ slug }: { slug: string }) {
               ? 'The request waits for the platform result and may take longer on a cold app.'
               : 'The request returns immediately; its status is polled until it reaches a terminal state.'}
           </p>
-          <Button size="sm" onClick={submit} disabled={busy || authLoading}>
-            {busy ? 'Sending…' : 'Send request'}
+          <Button size="sm" onClick={submit} disabled={authLoading} busy={busy}>
+            Send request
           </Button>
         </div>
         {authLoading ? (
@@ -312,6 +312,11 @@ export function RegistryCredentialsPanel({ slug }: { slug: string }) {
   const { toast } = useToast();
   const confirm = useConfirm();
   const credentials = useAppRegistryCredentials(slug);
+  const credentialsPhase = queryPhase({
+    error: credentials.error,
+    loading: credentials.isPending,
+    isEmpty: (credentials.data?.credentials.length ?? 0) === 0,
+  });
   const setCredential = useSetAppRegistryCredential(slug);
   const deleteCredential = useDeleteAppRegistryCredential(slug);
   const [registry, setRegistry] = useState('https://');
@@ -381,23 +386,21 @@ export function RegistryCredentialsPanel({ slug }: { slug: string }) {
             <Button
               size="sm"
               type="submit"
-              disabled={
-                !registry.trim() || !username.trim() || !password || setCredential.isPending
-              }
+              disabled={!registry.trim() || !username.trim() || !password}
+              busy={setCredential.isPending}
             >
-              {setCredential.isPending ? 'Saving…' : 'Save credential'}
+              Save credential
             </Button>
           </div>
         </form>
 
-        {credentials.error ? (
-          <p className="text-sm text-muted-foreground">{errorMessage(credentials.error)}</p>
-        ) : credentials.isPending ? (
-          <p className="text-sm text-muted-foreground">Reading credentials…</p>
-        ) : (credentials.data?.credentials.length ?? 0) === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No private registry credentials configured.
-          </p>
+        {credentialsPhase !== 'ready' ? (
+          <InlinePhase
+            phase={credentialsPhase}
+            error={credentials.error}
+            loadingMessage="Reading credentials…"
+            emptyMessage="No private registry credentials configured."
+          />
         ) : (
           <ul className="flex flex-col divide-y divide-border border-t border-border">
             {credentials.data?.credentials.map((credential) => (

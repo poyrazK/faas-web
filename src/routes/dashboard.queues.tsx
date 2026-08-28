@@ -79,8 +79,8 @@ function QueueSendPanel({ slug }: { slug: string }) {
       title="Send a message"
       description="Publish a JSON object to this app's FIFO queue. The queue consumer remains responsible for receiving and acknowledging work."
       actions={
-        <Button size="sm" onClick={submit} disabled={send.isPending}>
-          {send.isPending ? 'Sending…' : 'Send message'}
+        <Button size="sm" onClick={submit} busy={send.isPending}>
+          Send message
         </Button>
       }
     >
@@ -216,7 +216,7 @@ function QueuesPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="Queue Jobs"
+        title="Queues"
         description="One FIFO queue per app. Messages here are peeked, not received — browsing never claims work from your consumers."
         actions={<AppSelect slug={slug} onSelect={select} apps={apps} />}
       />

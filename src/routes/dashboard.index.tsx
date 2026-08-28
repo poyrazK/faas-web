@@ -25,6 +25,8 @@ export const Route = createFileRoute('/dashboard/')({
   head: () => consoleHead('overview'),
 });
 
+const formatGbHours = (v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 2 });
+
 /**
  * The console landing page, built from the real account.
  *
@@ -98,18 +100,21 @@ function OverviewPage() {
 
       {!firstRun && (
         <>
+          {/* Numeric values so the tiles roll to fresh figures on refetch
+              instead of jumping. */}
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <StatTile label="Apps" value={String(workflows.length)} state={tile} />
-            <StatTile label="Running" value={String(stats.running)} state={tile} />
+            <StatTile label="Apps" value={workflows.length} state={tile} />
+            <StatTile label="Running" value={stats.running} state={tile} />
             <StatTile
               label="Failing"
-              value={String(stats.failing)}
+              value={stats.failing}
               state={tile}
               tone={stats.failing > 0 ? 'red' : undefined}
             />
             <StatTile
               label="Requests (24h)"
-              value={stats.invocations ? formatCompact(stats.invocations) : '—'}
+              value={stats.invocations || '—'}
+              format={formatCompact}
               state={tile}
             />
           </div>
@@ -118,23 +123,20 @@ function OverviewPage() {
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <StatTile
                 label="GB-hours used"
-                value={usage.data?.used_gb_hours.toLocaleString(undefined, {
-                  maximumFractionDigits: 2,
-                })}
+                value={usage.data?.used_gb_hours}
+                format={formatGbHours}
                 state={usageTile}
               />
               <StatTile
                 label="Included"
-                value={usage.data?.included_gb_hours.toLocaleString(undefined, {
-                  maximumFractionDigits: 2,
-                })}
+                value={usage.data?.included_gb_hours}
+                format={formatGbHours}
                 state={usageTile}
               />
               <StatTile
                 label="Overage"
-                value={usage.data?.overage_gb_hours.toLocaleString(undefined, {
-                  maximumFractionDigits: 2,
-                })}
+                value={usage.data?.overage_gb_hours}
+                format={formatGbHours}
                 state={usageTile}
                 tone={usage.data && usage.data.overage_gb_hours > 0 ? 'orange' : undefined}
               />

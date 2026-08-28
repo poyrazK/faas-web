@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 import type { ReactNode } from 'react';
 
 export const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];

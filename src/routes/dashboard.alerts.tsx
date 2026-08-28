@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { Plus, Refresh, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
+import { FIELD } from '@/components/ui/field';
 import { Switch } from '@/components/ui/switch';
 import { PageHeader, Panel } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
@@ -48,9 +49,6 @@ type Metric = (typeof METRICS)[number][0];
 type Comparison = 'gt' | 'gte' | 'lt' | 'lte';
 const WINDOWS = ['5m', '15m', '1h', '6h', '24h', '7d', '15d'] as const;
 type Window = (typeof WINDOWS)[number];
-
-const FIELD =
-  'h-9 rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-brand/50';
 
 /**
  * The alerts body, without the page chrome around it.
@@ -361,10 +359,11 @@ export function AlertsBody({ slug }: { slug: string }) {
               type="submit"
               size="sm"
               className="gap-1.5"
-              disabled={!valid || createAlert.isPending}
+              disabled={!valid}
+              busy={createAlert.isPending}
             >
               <Plus className="h-3.5 w-3.5" />
-              {createAlert.isPending ? 'Adding…' : 'Add rule'}
+              Add rule
             </Button>
           </div>
         </form>

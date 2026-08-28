@@ -5,6 +5,8 @@ import {
   PageHeader,
   Panel,
   StatTile,
+  UnreachableState,
+  queryPhase,
 } from '@/components/dashboard/primitives';
 import { useUsageSummary } from '@/lib/api/queries';
 import { useAuth } from '@/lib/auth';
@@ -40,6 +42,9 @@ function formatMoney(cents: number | undefined): string {
 function UsagePage() {
   const { data, isPending, error, refetch } = useUsageSummary();
   const { account } = useAuth();
+  // The shared precedence: an unreachable API is an outage to wait out, not a
+  // red error — and never a page of zeros.
+  const phase = queryPhase({ error, loading: isPending });
 
   const used = data?.used_gb_hours ?? 0;
   const included = data?.included_gb_hours ?? 0;
@@ -55,9 +60,11 @@ function UsagePage() {
         description="This billing period. GB-hours are memory × time — a parked app accrues none."
       />
 
-      {error ? (
+      {phase === 'unreachable' ? (
+        <UnreachableState onRetry={() => void refetch()} />
+      ) : phase === 'error' ? (
         <ErrorState error={error} onRetry={() => void refetch()} />
-      ) : isPending ? (
+      ) : phase === 'loading' ? (
         <LoadingState message="Loading usage…" />
       ) : (
         <>

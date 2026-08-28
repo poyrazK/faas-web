@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
-import { Check, Copy, SendMail, Trash } from 'iconoir-react';
+import { SendMail, Trash } from 'iconoir-react';
+import { CopyMorph, useCopy } from '@/components/ui/copy-button';
+import { FIELD } from '@/components/ui/field';
 import { Button } from '@/components/ui/button';
 import { PageHeader, Panel } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
@@ -65,9 +67,6 @@ const ROLE_HINT: Record<(typeof ROLES)[number], string> = {
   billing: 'Invoices and the plan. Nothing else.',
 };
 
-const FIELD =
-  'h-9 rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-brand/50';
-
 function when(value: string | undefined): string {
   if (!value) return '—';
   const ms = Date.parse(value);
@@ -84,7 +83,7 @@ function TokenPanel({
   token: string;
   onDismiss: () => void;
 }) {
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopy();
   return (
     <Panel
       lit
@@ -95,19 +94,9 @@ function TokenPanel({
         <code className="min-w-0 flex-1 select-all break-all rounded-md border border-border bg-background px-3 py-2 font-mono text-sm">
           {token}
         </code>
-        <Button
-          size="sm"
-          variant="outline"
-          className="gap-1.5"
-          onClick={() => {
-            void navigator.clipboard
-              .writeText(token)
-              .then(() => setCopied(true))
-              .catch(() => {});
-          }}
-        >
-          {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-          {copied ? 'Copied' : 'Copy'}
+        <Button size="sm" variant="outline" className="gap-1.5" onClick={() => void copy(token)}>
+          <CopyMorph copied={copied} />
+          <span aria-live="polite">{copied ? 'Copied' : 'Copy'}</span>
         </Button>
         <Button size="sm" onClick={onDismiss}>
           I have sent it
@@ -406,10 +395,11 @@ function TeamPage() {
               type="submit"
               size="sm"
               className="gap-1.5"
-              disabled={!email.includes('@') || !active || invite.isPending}
+              disabled={!email.includes('@') || !active}
+              busy={invite.isPending}
             >
               <SendMail className="h-3.5 w-3.5" />
-              {invite.isPending ? 'Inviting…' : 'Invite'}
+              Invite
             </Button>
             <p className="basis-full text-xs text-muted-foreground">{ROLE_HINT[role]}</p>
           </form>

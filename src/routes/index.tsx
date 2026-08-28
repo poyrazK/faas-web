@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useEffect } from 'react';
-import { MotionConfig } from 'framer-motion';
+import { MotionConfig } from 'motion/react';
 import { Nav } from '@/components/landing/nav';
 import { Hero } from '@/components/landing/hero';
 import { HowItWorks } from '@/components/landing/how-it-works';

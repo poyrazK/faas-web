@@ -1,8 +1,11 @@
 /* Familjen Grotesk type system — see index.html for the font loads. */
 @import 'tailwindcss';
-@import 'tw-animate-css';
 
-@custom-variant dark (&:is(.dark *));
+/* The console's dark surface is `.console`, not `.dark` — bind Tailwind's
+   `dark:` variant to it so a shadcn-scaffolded component's dark styles are
+   live rather than silently inert. (Tokens remain the primary mechanism; a
+   console component should still not need `dark:` for colour.) */
+@custom-variant dark (&:is(.console *));
 
 /* --- Mint ramp ------------------------------------------------------------
    12 steps at hue 165 (oklch.fyi/color-palettes/mint). The single source of
@@ -27,6 +30,35 @@
   --mint-10: oklch(0.565 0.192 165);
   --mint-11: oklch(0.454 0.154 165);
   --mint-12: oklch(0.341 0.102 165);
+}
+
+/* --- Motion ---------------------------------------------------------------
+   One curve, three speeds. The same vocabulary `dashboard/motion.tsx` exports
+   to Framer as EASE / DURATION — CSS transitions and JS-driven motion read
+   the same tokens, so no component invents its own easing. Polarity-
+   independent, hence declared once. */
+:root {
+  --motion-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-fast: 150ms;
+  --motion-base: 240ms;
+  --motion-slow: 380ms;
+}
+
+/* --- Elevation -------------------------------------------------------------
+   Three steps, tinted per polarity (ink-tinted on paper, pure black on the
+   console — a grey shadow on #090909 reads as a smudge). Every lifted
+   surface picks a step; ad-hoc box-shadows fail review the same way literal
+   hex does. 1 = resting card, 2 = raised (hover, sticky bars),
+   3 = floating chrome (menus, dialogs, toasts). */
+:root {
+  --elevation-1: 0 1px 2px rgb(13 21 18 / 0.06);
+  --elevation-2: 0 4px 12px -2px rgb(13 21 18 / 0.1);
+  --elevation-3: 0 16px 40px -12px rgb(13 21 18 / 0.25);
+}
+.console {
+  --elevation-1: 0 1px 2px rgb(0 0 0 / 0.4);
+  --elevation-2: 0 4px 12px -2px rgb(0 0 0 / 0.5);
+  --elevation-3: 0 24px 48px -12px rgb(0 0 0 / 0.7);
 }
 
 /* --- Light surface (marketing, auth, 404) ---------------------------------
@@ -211,6 +243,10 @@
   --color-status-serious: var(--status-serious);
   --color-status-critical: var(--status-critical);
 
+  --shadow-elevation-1: var(--elevation-1);
+  --shadow-elevation-2: var(--elevation-2);
+  --shadow-elevation-3: var(--elevation-3);
+
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -229,11 +265,47 @@
   --font-mono: 'Spline Sans Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   --font-serif: var(--font-sans);
 
+  /* The console curve as a Tailwind easing utility (`ease-console`). */
+  --ease-console: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* A just-created table row announces itself with a brand wash that fades —
+     "this is what you just made". A CSS animation rather than Framer so no
+     inline background lingers to fight the row's hover style. Reduced motion
+     is covered by the blanket `[class*='animate-']` rule (lands transparent). */
+  --animate-row-arrive: row-arrive 1.4s var(--motion-ease);
+
+  @keyframes row-arrive {
+    from {
+      background-color: color-mix(in oklab, var(--brand-fill) 12%, transparent);
+    }
+    to {
+      background-color: transparent;
+    }
+  }
+
+  /* One horizontal shake for a form that just refused — sharp enough to read
+     as "no", short enough not to be slapstick. Reduced motion is covered by
+     the blanket `[class*='animate-']` rule: one 0.01ms iteration lands on the
+     final keyframe, which is translateX(0). */
+  --animate-shake: shake 0.4s ease-in-out;
+
+  /* Floating chrome (tooltip, dropdown) settles in with a short rise on the
+     console curve. One keyframe pair shared by every popover-shaped thing;
+     the blanket reduced-motion rule lands them on the final frame. */
+  --animate-pop-in: pop-in 0.15s var(--motion-ease);
+
+  @keyframes pop-in {
+    from {
+      opacity: 0;
+      transform: translateY(-2px) scale(0.97);
+    }
+  }
+
   --animate-color-cycle: color-cycle 6s ease-in-out infinite;
   --animate-glow-breathe: glow-breathe 7s ease-in-out infinite;
   --animate-dither-drift-a: dither-drift-a 10s linear infinite;
   --animate-dither-drift-b: dither-drift-b 16s linear infinite;
-  /* Magic UI marquee (components/ui/marquee.tsx). Duration and gap are set
+  /* Magic UI marquee (components/landing/marquee.tsx). Duration and gap are set
      per instance as --duration / --gap. */
   --animate-marquee: marquee var(--duration) linear infinite;
   --animate-marquee-vertical: marquee-vertical var(--duration) linear infinite;
@@ -287,6 +359,25 @@
     }
   }
 
+  @keyframes shake {
+    0%,
+    100% {
+      transform: translateX(0);
+    }
+    20% {
+      transform: translateX(-6px);
+    }
+    40% {
+      transform: translateX(6px);
+    }
+    60% {
+      transform: translateX(-4px);
+    }
+    80% {
+      transform: translateX(4px);
+    }
+  }
+
   /* One accent, three depths — the cycle now moves through the mint ramp
      instead of across the category hues, which are console-only. */
   @keyframes color-cycle {
@@ -334,6 +425,44 @@
   :focus-visible {
     outline: 2px solid var(--color-ring);
     outline-offset: 2px;
+    /* The ring settles outward from the control instead of snapping into
+       place. An animation, not a transition, so it runs regardless of what
+       transition properties the focused element already declares. */
+    animation: focus-settle var(--motion-fast) var(--motion-ease);
+  }
+
+  @keyframes focus-settle {
+    from {
+      outline-offset: 0px;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :focus-visible {
+      animation: none;
+    }
+  }
+
+  /* Press feedback for anything button-shaped that is not a <Button> — the
+     same 0.97 dip `dashboard/motion.tsx` exports as TAP, done in CSS so a
+     plain element gets it with one class. Includes the colour properties
+     `transition-colors` would carry, because only one transition declaration
+     wins — use this INSTEAD of `transition-colors`, not alongside it. */
+  .pressable {
+    transition:
+      transform var(--motion-fast) var(--motion-ease),
+      color var(--motion-fast) var(--motion-ease),
+      background-color var(--motion-fast) var(--motion-ease),
+      border-color var(--motion-fast) var(--motion-ease),
+      opacity var(--motion-fast) var(--motion-ease);
+  }
+  .pressable:active {
+    transform: scale(0.97);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .pressable:active {
+      transform: none;
+    }
   }
 
   /* Skip link — first focusable element on the landing page. Visually
@@ -384,24 +513,6 @@
     letter-spacing: -0.024em;
   }
 
-  @keyframes shake {
-    0%,
-    100% {
-      transform: translateX(0);
-    }
-    20% {
-      transform: translateX(-6px);
-    }
-    40% {
-      transform: translateX(6px);
-    }
-    60% {
-      transform: translateX(-4px);
-    }
-    80% {
-      transform: translateX(4px);
-    }
-  }
   @media (prefers-reduced-motion: reduce) {
     [class*='animate-'] {
       /* Duration alone only makes an animation imperceptibly fast — an

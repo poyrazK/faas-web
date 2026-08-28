@@ -1,12 +1,13 @@
 import { useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'motion/react';
 import { createFileRoute, redirect } from '@tanstack/react-router';
 import { useSweepNavigate } from '@/components/sweep-link';
-import { ArrowLeft, ArrowRight, Check, Sparks } from 'iconoir-react';
+import { ArrowLeft, ArrowRight, Check } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
-import { BuildLog } from '@/components/dashboard/build-log';
 import { PixelBeams } from '@/components/landing/shaders/pixel-beams';
+import { INSTALL_COMMAND } from '@/components/landing/install-command';
+import { CopyIconButton } from '@/components/ui/copy-button';
 import { DEFAULT_WORKSPACE, markOnboarded, readSession, saveWorkspace, useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import { pageHead } from '@/lib/seo';
@@ -21,38 +22,21 @@ export const Route = createFileRoute('/onboarding')({
 
 const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
-const STEPS = ['Workspace', 'Region', 'First function'] as const;
+const STEPS = ['Workspace', 'First app'] as const;
 
-const REGIONS = [
-  { id: 'fra-metal-1', city: 'Frankfurt', note: 'Lowest latency in the EU', latency: '12ms' },
-  { id: 'iad-metal-1', city: 'Ashburn', note: 'US East coast', latency: '88ms' },
-  { id: 'sin-metal-1', city: 'Singapore', note: 'APAC coverage', latency: '164ms' },
-];
-
-const TEMPLATES = [
+/* Every command here is one the CLI documents (`content/docs/cli.md`) — the
+ * same script the dashboard's first-run panel shows. Regions and templates
+ * used to be offered here; the API has neither, so onboarding stopped
+ * pretending. */
+const CLI_STEPS: { command: string; caption: string }[] = [
+  { command: INSTALL_COMMAND, caption: 'Install the CLI. Homebrew on macOS and Linux.' },
   {
-    id: 'http',
-    name: 'HTTP endpoint',
-    desc: 'A request handler behind a managed domain.',
-    runtime: 'node22',
+    command: 'gregale connect',
+    caption: 'Link your GitHub account once, in a browser.',
   },
   {
-    id: 'cron',
-    name: 'Scheduled job',
-    desc: 'Runs on a cron expression, scales to zero between runs.',
-    runtime: 'go1.23',
-  },
-  {
-    id: 'queue',
-    name: 'Queue consumer',
-    desc: 'Drains a queue and wakes only when messages land.',
-    runtime: 'python3.12',
-  },
-  {
-    id: 'blank',
-    name: 'Empty function',
-    desc: 'Start from nothing and wire it up yourself.',
-    runtime: 'node22',
+    command: 'gregale deploy --repo <owner>/<repo> --ref main',
+    caption: 'Build and deploy. The app appears in the console as the build starts.',
   },
 ];
 
@@ -98,24 +82,20 @@ function OnboardingPage() {
 
   const [step, setStep] = useState(0);
   const [workspace, setWorkspace] = useState(DEFAULT_WORKSPACE);
-  const [region, setRegion] = useState(REGIONS[0].id);
-  const [template, setTemplate] = useState(TEMPLATES[0].id);
-  const [deploying, setDeploying] = useState(false);
-  const [deployed, setDeployed] = useState(false);
 
   const slugValid = /^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/.test(workspace);
 
-  const finish = () => {
+  // Everything onboarding actually persists: the workspace slug, locally.
+  // The first app is created by the CLI or the New app wizard — both real.
+  const finish = (to: '/dashboard' | '/dashboard/workflows/new') => {
     saveWorkspace(workspace);
     markOnboarded();
-    toast({ kind: 'success', title: 'Workspace ready', description: `${workspace} · ${region}` });
+    toast({ kind: 'success', title: 'Workspace ready', description: workspace });
     // The biggest context switch in the product — setup handing off to the app.
-    sweepNavigate('/dashboard');
+    sweepNavigate(to);
   };
 
-  // The field answers the flow: quiet while the user is deciding, energetic
-  // while the build runs, settled once it lands.
-  const beamIntensity = deployed ? 0.55 : deploying ? 0.95 : 0.22;
+  const beamIntensity = step === 1 ? 0.55 : 0.22;
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-background text-foreground">
@@ -139,7 +119,7 @@ function OnboardingPage() {
       </header>
 
       <div className="relative mx-auto max-w-2xl px-5 py-10 sm:py-16">
-        <StepRail current={deployed ? STEPS.length : step} />
+        <StepRail current={step} />
 
         <div className="mt-10">
           <AnimatePresence mode="wait" initial={false}>
@@ -154,7 +134,7 @@ function OnboardingPage() {
               >
                 <h1 className="text-2xl font-semibold tracking-tight">Name your workspace</h1>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  This becomes the namespace for every project and function you deploy.
+                  This becomes the namespace for every app you deploy.
                 </p>
 
                 <label htmlFor="workspace" className="label-mono mt-8 block text-muted-foreground">
@@ -195,180 +175,67 @@ function OnboardingPage() {
               </motion.div>
             )}
 
-            {/* ---------- Step 2: region ---------- */}
+            {/* ---------- Step 2: first app, the honest version ---------- */}
             {step === 1 && (
               <motion.div
-                key="region"
+                key="first-app"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
                 transition={{ duration: 0.25, ease: EASE }}
               >
-                <h1 className="text-2xl font-semibold tracking-tight">Choose your metal</h1>
+                <h1 className="text-2xl font-semibold tracking-tight">Deploy your first app</h1>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  Where your snapshots live. You can add regions later.
+                  Three commands in a terminal, or the guided flow in the console. Both end with an
+                  app that is live and scaled to zero.
                 </p>
 
-                <div className="mt-8 flex flex-col gap-2">
-                  {REGIONS.map((r) => (
-                    <button
-                      key={r.id}
-                      type="button"
-                      onClick={() => setRegion(r.id)}
-                      aria-pressed={region === r.id}
-                      className={cn(
-                        'flex items-center justify-between gap-4 rounded-lg border p-4 text-left transition-colors',
-                        region === r.id
-                          ? 'border-brand bg-brand/5'
-                          : 'border-border bg-card hover:border-border-secondary'
-                      )}
+                <ol className="mt-8 flex flex-col rounded-xl border border-border bg-card">
+                  {CLI_STEPS.map((cliStep, i) => (
+                    <li
+                      key={cliStep.command}
+                      className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border px-5 py-4 last:border-0"
                     >
-                      <span>
-                        <span className="block text-sm font-medium">{r.city}</span>
-                        <span className="mt-0.5 block font-mono text-xs text-muted-foreground">
-                          {r.id} · {r.note}
-                        </span>
+                      <span
+                        aria-hidden
+                        className="label-mono flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border text-muted-foreground"
+                      >
+                        {i + 1}
                       </span>
-                      <span className="flex items-center gap-3">
-                        <span className="text-xs text-muted-foreground [font-variant-numeric:tabular-nums]">
-                          {r.latency}
-                        </span>
-                        <span
-                          className={cn(
-                            'flex h-4 w-4 items-center justify-center rounded-full border',
-                            region === r.id ? 'border-brand bg-brand' : 'border-border'
-                          )}
-                        >
-                          {region === r.id && <Check className="h-2.5 w-2.5 text-black" />}
-                        </span>
-                      </span>
-                    </button>
+                      <div className="flex min-w-0 flex-1 flex-col gap-1">
+                        <div className="flex items-center gap-2">
+                          <span aria-hidden className="font-mono text-sm text-brand">
+                            $
+                          </span>
+                          <code className="truncate font-mono text-sm text-foreground">
+                            {cliStep.command}
+                          </code>
+                          <CopyIconButton text={cliStep.command} label={cliStep.command} />
+                        </div>
+                        <p className="text-xs text-muted-foreground">{cliStep.caption}</p>
+                      </div>
+                    </li>
                   ))}
-                </div>
+                </ol>
 
                 <div className="mt-8 flex items-center justify-between">
                   <Button variant="ghost" onClick={() => setStep(0)} className="gap-2">
                     <ArrowLeft className="h-4 w-4" />
                     Back
                   </Button>
-                  <Button
-                    variant="cta"
-                    onClick={() => setStep(2)}
-                    className="h-10 gap-2 rounded-lg"
-                  >
-                    Continue
-                    <ArrowRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              </motion.div>
-            )}
-
-            {/* ---------- Step 3: first function ---------- */}
-            {step === 2 && !deployed && (
-              <motion.div
-                key="function"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.25, ease: EASE }}
-              >
-                <h1 className="text-2xl font-semibold tracking-tight">
-                  Deploy your first function
-                </h1>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Pick a starting point. It deploys to {region} and scales to zero when idle.
-                </p>
-
-                {!deploying ? (
-                  <>
-                    <div className="mt-8 grid gap-2 sm:grid-cols-2">
-                      {TEMPLATES.map((t) => (
-                        <button
-                          key={t.id}
-                          type="button"
-                          onClick={() => setTemplate(t.id)}
-                          aria-pressed={template === t.id}
-                          className={cn(
-                            'rounded-lg border p-4 text-left transition-colors',
-                            template === t.id
-                              ? 'border-brand bg-brand/5'
-                              : 'border-border bg-card hover:border-border-secondary'
-                          )}
-                        >
-                          <span className="block text-sm font-medium">{t.name}</span>
-                          <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
-                            {t.desc}
-                          </span>
-                          <span className="label-mono mt-3 block text-muted-foreground">
-                            {t.runtime}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-
-                    <div className="mt-8 flex items-center justify-between">
-                      <Button variant="ghost" onClick={() => setStep(1)} className="gap-2">
-                        <ArrowLeft className="h-4 w-4" />
-                        Back
-                      </Button>
-                      <div className="flex items-center gap-2">
-                        <Button variant="ghost" onClick={finish}>
-                          Skip for now
-                        </Button>
-                        <Button
-                          variant="cta"
-                          onClick={() => setDeploying(true)}
-                          className="h-10 gap-2 rounded-lg"
-                        >
-                          Deploy
-                          <ArrowRight className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <div className="mt-8">
-                    <BuildLog onComplete={() => setDeployed(true)} />
-                    <p className="mt-4 text-center text-xs text-muted-foreground">
-                      This usually takes about eight seconds.
-                    </p>
+                  <div className="flex items-center gap-2">
+                    <Button variant="ghost" onClick={() => finish('/dashboard')}>
+                      Go to dashboard
+                    </Button>
+                    <Button
+                      variant="cta"
+                      onClick={() => finish('/dashboard/workflows/new')}
+                      className="h-10 gap-2 rounded-lg"
+                    >
+                      Create an app in the console
+                      <ArrowRight className="h-4 w-4" />
+                    </Button>
                   </div>
-                )}
-              </motion.div>
-            )}
-
-            {/* ---------- Success ---------- */}
-            {deployed && (
-              <motion.div
-                key="done"
-                initial={{ opacity: 0, scale: 0.97 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.35, ease: EASE }}
-                className="text-center"
-              >
-                <span
-                  className="mx-auto flex h-12 w-12 items-center justify-center rounded-full"
-                  style={{ background: 'color-mix(in oklab, var(--status-good) 18%, transparent)' }}
-                >
-                  <Sparks className="h-5 w-5" style={{ color: 'var(--status-good)' }} />
-                </span>
-                {/* This step used to announce "You are live" and show a URL for
-                    a function that was never created — onboarding writes a
-                    workspace slug locally and nothing else. Creating a real app
-                    here means `POST /v1/apps`, which is what the New app wizard
-                    does; until this flow calls it, the copy has to stop
-                    claiming a deployment happened. */}
-                <h1 className="mt-5 text-2xl font-semibold tracking-tight">Workspace ready.</h1>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  {workspace} is set up. Create your first app from the console — it will be live
-                  and scaled to zero within seconds.
-                </p>
-
-                <div className="mt-8">
-                  <Button variant="cta" onClick={finish} className="h-11 gap-2 rounded-lg px-6">
-                    Go to dashboard
-                    <ArrowRight className="h-4 w-4" />
-                  </Button>
                 </div>
               </motion.div>
             )}

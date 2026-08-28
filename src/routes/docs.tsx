@@ -1,5 +1,5 @@
 import { createFileRoute, Outlet } from '@tanstack/react-router';
-import { MotionConfig } from 'framer-motion';
+import { MotionConfig } from 'motion/react';
 import { Nav } from '@/components/landing/nav';
 import { DocsMobileNav, DocsSidebar } from '@/components/docs/doc-nav';
 import { pageHead } from '@/lib/seo';

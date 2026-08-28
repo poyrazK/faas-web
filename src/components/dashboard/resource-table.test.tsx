@@ -161,6 +161,64 @@ describe('filtering', () => {
   });
 });
 
+describe('row actions', () => {
+  it('renders actions in their own shielded cell — pressing one never fires the row', async () => {
+    const user = userEvent.setup();
+    const onRowClick = vi.fn();
+    const onAction = vi.fn();
+    setup({
+      onRowClick,
+      rowActions: (row) => (
+        <button type="button" onClick={() => onAction(row.id)}>
+          Delete {row.name}
+        </button>
+      ),
+    });
+    await user.click(screen.getByRole('button', { name: 'Delete checkout' }));
+    expect(onAction).toHaveBeenCalledWith('1');
+    expect(onRowClick).not.toHaveBeenCalled();
+  });
+});
+
+describe('bounded rendering', () => {
+  const many = Array.from({ length: 120 }, (_, i) => ({
+    id: String(i),
+    name: `fn-${String(i).padStart(3, '0')}`,
+    calls: i,
+  }));
+
+  it('renders the first page and says how much is not shown', () => {
+    render(<ResourceTable rows={many} columns={COLUMNS} />);
+    expect(names()).toHaveLength(51); // 50 data rows + the show-more row
+    expect(screen.getByRole('button', { name: /70 not shown/i })).toBeInTheDocument();
+  });
+
+  it('reveals another page on demand', async () => {
+    const user = userEvent.setup();
+    render(<ResourceTable rows={many} columns={COLUMNS} />);
+    await user.click(screen.getByRole('button', { name: /not shown/i }));
+    expect(screen.getByRole('button', { name: /20 not shown/i })).toBeInTheDocument();
+  });
+
+  it('never truncates a table that fits', () => {
+    setup();
+    expect(screen.queryByRole('button', { name: /not shown/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('controlled query', () => {
+  it('reads and reports the filter through the controlled pair', async () => {
+    const user = userEvent.setup();
+    const onQueryChange = vi.fn();
+    setup({ searchKeys: ['name'], query: 'web', onQueryChange });
+    // The controlled value filters the rows…
+    expect(names()).toEqual(['webhook']);
+    // …and typing reports upward instead of mutating internal state.
+    await user.type(screen.getByRole('searchbox'), 'x');
+    expect(onQueryChange).toHaveBeenCalledWith('webx');
+  });
+});
+
 describe('row activation', () => {
   it('calls back on click', async () => {
     const user = userEvent.setup();

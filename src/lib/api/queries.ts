@@ -1,4 +1,11 @@
-import { useMutation, useQuery, useQueryClient, type UseQueryOptions } from '@tanstack/react-query';
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+  type QueryFilters,
+  type UseQueryOptions,
+} from '@tanstack/react-query';
 import { api, issueCSRF, unwrap } from './client';
 import { ApiError } from './errors';
 import type { components } from './schema';
@@ -51,6 +58,29 @@ export function retryPolicy(failureCount: number, error: unknown): boolean {
   return failureCount < 2;
 }
 
+/**
+ * The optimistic-write pattern, once: cancel in-flight reads so they cannot
+ * overwrite the prediction, snapshot, apply `update` to every cached entry
+ * matching `filters`, and hand `onError` a rollback. `onSettled` must still
+ * invalidate — the server stays the source of truth.
+ *
+ * Only mutations whose outcome the client can predict exactly use this: a
+ * toggle flips, a deleted row disappears. Creates stay pessimistic, because
+ * the server mints ids and defaults the client cannot invent.
+ */
+async function applyOptimistic<T>(
+  qc: QueryClient,
+  filters: QueryFilters,
+  update: (old: T) => T
+): Promise<() => void> {
+  await qc.cancelQueries(filters);
+  const previous = qc.getQueriesData<T>(filters);
+  qc.setQueriesData<T>(filters, (old) => (old === undefined ? old : update(old)));
+  return () => {
+    for (const [key, data] of previous) qc.setQueryData(key, data);
+  };
+}
+
 type Options<T> = Omit<UseQueryOptions<T, Error>, 'queryKey' | 'queryFn'>;
 
 /* ------------------------------------------------------------------ *
@@ -85,6 +115,8 @@ export function useAppsMetrics(range: MetricsRange = '24h', options?: Options<Ap
   return useQuery({
     queryKey: keys.appsMetrics(range),
     queryFn: () => unwrap(api.GET('/v1/apps/metrics', { params: { query: { range } } })),
+    // Prometheus fan-out — the one family that does not refetch on focus.
+    refetchOnWindowFocus: false,
     ...options,
   });
 }
@@ -100,6 +132,8 @@ export function useAppMetrics(
     queryKey: keys.appMetrics(slug, range),
     queryFn: () =>
       unwrap(api.GET('/v1/apps/{slug}/metrics', { params: { path: { slug }, query: { range } } })),
+    // Prometheus fan-out — the one family that does not refetch on focus.
+    refetchOnWindowFocus: false,
     ...options,
     enabled: Boolean(slug) && options?.enabled !== false,
   });
@@ -114,6 +148,8 @@ export function useAppSlo(
     queryKey: keys.appSlo(slug, window),
     queryFn: () =>
       unwrap(api.GET('/v1/apps/{slug}/slo', { params: { path: { slug }, query: { window } } })),
+    // Prometheus fan-out — the one family that does not refetch on focus.
+    refetchOnWindowFocus: false,
     ...options,
     enabled: Boolean(slug) && options?.enabled !== false,
   });
@@ -249,7 +285,15 @@ export function useUpdateApp(slug: string) {
   return useMutation({
     mutationFn: (body: components['schemas']['UpdateAppRequest']) =>
       unwrap(api.PATCH('/v1/apps/{slug}', { params: { path: { slug } }, body })),
-    onSuccess: () => {
+    // A settings toggle moves the moment it is flipped; a rejected PATCH
+    // rolls it back alongside the error toast.
+    onMutate: (body) =>
+      applyOptimistic<App>(qc, { queryKey: keys.app(slug), exact: true }, (old) => ({
+        ...old,
+        ...(body as Partial<App>),
+      })),
+    onError: (_err, _body, rollback) => rollback?.(),
+    onSettled: () => {
       void qc.invalidateQueries({ queryKey: keys.apps });
       void qc.invalidateQueries({ queryKey: keys.app(slug) });
     },
@@ -393,9 +437,17 @@ export function useDeleteSecret(slug: string) {
   return useMutation({
     mutationFn: (key: string) =>
       unwrap(api.DELETE('/v1/apps/{slug}/secrets/{key}', { params: { path: { slug, key } } })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: keys.appSecrets(slug) }),
+    onMutate: (key) =>
+      applyOptimistic<SecretsList>(qc, { queryKey: keys.appSecrets(slug) }, (old) => ({
+        ...old,
+        secrets: old.secrets?.filter((s) => s.key !== key),
+      })),
+    onError: (_err, _key, rollback) => rollback?.(),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.appSecrets(slug) }),
   });
 }
+
+type SecretsList = NonNullable<ReturnType<typeof useAppSecrets>['data']>;
 
 export function useAppEnv(slug: string) {
   return useQuery({
@@ -421,9 +473,17 @@ export function useDeleteEnv(slug: string) {
   return useMutation({
     mutationFn: (key: string) =>
       unwrap(api.DELETE('/v1/apps/{slug}/env/{key}', { params: { path: { slug, key } } })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: keys.appEnv(slug) }),
+    onMutate: (key) =>
+      applyOptimistic<EnvList>(qc, { queryKey: keys.appEnv(slug) }, (old) => ({
+        ...old,
+        env: old.env?.filter((v) => v.key !== key),
+      })),
+    onError: (_err, _key, rollback) => rollback?.(),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.appEnv(slug) }),
   });
 }
+
+type EnvList = NonNullable<ReturnType<typeof useAppEnv>['data']>;
 
 /* ------------------------------------------------------------------ *
  * Domains, crons, keys — account-level CRUD
@@ -443,9 +503,16 @@ export function useDeleteDomain() {
   return useMutation({
     mutationFn: (domain: string) =>
       unwrap(api.DELETE('/v1/domains/{domain}', { params: { path: { domain } } })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: keys.domains }),
+    onMutate: (domain) =>
+      applyOptimistic<DomainsList>(qc, { queryKey: keys.domains }, (old) =>
+        old.filter((d) => d.domain !== domain)
+      ),
+    onError: (_err, _domain, rollback) => rollback?.(),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.domains }),
   });
 }
+
+type DomainsList = NonNullable<ReturnType<typeof useDomains>['data']>;
 
 export function useInvokeApp() {
   return useMutation({
@@ -473,9 +540,16 @@ export function useDeleteCron() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => unwrap(api.DELETE('/v1/crons/{id}', { params: { path: { id } } })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: keys.crons }),
+    onMutate: (id) =>
+      applyOptimistic<CronsList>(qc, { queryKey: keys.crons }, (old) =>
+        old.filter((c) => c.id !== id)
+      ),
+    onError: (_err, _id, rollback) => rollback?.(),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.crons }),
   });
 }
+
+type CronsList = NonNullable<ReturnType<typeof useCrons>['data']>;
 
 /** Fires a scheduled job now, out of band. */
 export function useRunCron() {
@@ -504,9 +578,16 @@ export function useDeleteApiKey() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => unwrap(api.DELETE('/v1/keys/{id}', { params: { path: { id } } })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: keys.keys }),
+    onMutate: (id) =>
+      applyOptimistic<ApiKeysList>(qc, { queryKey: keys.keys }, (old) =>
+        old.filter((k) => k.id !== id)
+      ),
+    onError: (_err, _id, rollback) => rollback?.(),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.keys }),
   });
 }
+
+type ApiKeysList = NonNullable<ReturnType<typeof useApiKeys>['data']>;
 
 export function useRotateApiKey() {
   const qc = useQueryClient();
@@ -635,12 +716,21 @@ export function useEdgeRules(enabled = true) {
   });
 }
 
+/** Every cache entry holding edge rules — the account list and each per-app
+ * list — so an optimistic write cannot leave the two disagreeing. */
+const edgeRuleFilters: QueryFilters = {
+  predicate: (q) => q.queryKey.includes('edge-rules'),
+};
+
 export function useDeleteEdgeRule() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
       unwrap(api.DELETE('/v1/edge-rules/{id}', { params: { path: { id } } })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['edge-rules'] }),
+    onMutate: (id) =>
+      applyOptimistic<EdgeRule[]>(qc, edgeRuleFilters, (old) => old.filter((r) => r.id !== id)),
+    onError: (_err, _id, rollback) => rollback?.(),
+    onSettled: () => qc.invalidateQueries(edgeRuleFilters),
   });
 }
 
@@ -1166,13 +1256,14 @@ export function useUpdateEdgeRule() {
       ...body
     }: { id: string } & components['schemas']['UpdateEdgeRuleRequest']) =>
       unwrap(api.PATCH('/v1/edge-rules/{id}', { params: { path: { id } }, body })),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['edge-rules'] });
-      void qc.invalidateQueries({
-        queryKey: ['apps'],
-        predicate: (q) => q.queryKey.includes('edge-rules'),
-      });
-    },
+    // The enable/disable switch answers immediately instead of after a
+    // round-trip-plus-refetch; a rejected PATCH flips it back with the toast.
+    onMutate: ({ id, ...patch }) =>
+      applyOptimistic<EdgeRule[]>(qc, edgeRuleFilters, (old) =>
+        old.map((r) => (r.id === id ? ({ ...r, ...patch } as EdgeRule) : r))
+      ),
+    onError: (_err, _vars, rollback) => rollback?.(),
+    onSettled: () => qc.invalidateQueries(edgeRuleFilters),
   });
 }
 

@@ -1,5 +1,6 @@
-import { motion, useReducedMotion } from 'framer-motion';
+import { motion, useReducedMotion } from 'motion/react';
 import { useEffect, useId, useState, type RefObject } from 'react';
+import { EASE } from '@/components/dashboard/motion';
 import { cn } from '@/lib/utils';
 
 /**
@@ -118,7 +119,7 @@ export function AnimatedBeam({
               transition={{
                 delay,
                 duration,
-                ease: [0.16, 1, 0.3, 1],
+                ease: EASE,
                 repeat: Infinity,
                 repeatDelay: 0,
               }}

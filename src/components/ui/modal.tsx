@@ -1,5 +1,6 @@
-import { useEffect, useRef, type ReactNode } from 'react';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { useEffect, useId, useRef, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Xmark } from 'iconoir-react';
 import { useFocusTrap } from '@/lib/use-focus-trap';
 import { EASE } from '@/components/dashboard/motion';
@@ -7,6 +8,11 @@ import { EASE } from '@/components/dashboard/motion';
 /**
  * Dialog primitive. Locks page scroll, closes on Escape or backdrop click,
  * traps focus while open and restores it on close.
+ *
+ * Portalled to `document.body`: a dialog rendered in the calling tree breaks
+ * the moment any ancestor has `overflow: hidden`, a transform, or its own
+ * stacking context — Panel, for one, has all three candidates. The `.console`
+ * class is mirrored onto `<html>` by the shell, so tokens still resolve.
  */
 export function Modal({
   open,
@@ -27,6 +33,7 @@ export function Modal({
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const reduce = useReducedMotion();
+  const descriptionId = useId();
   // Focus in on open, Tab wraps inside, focus restored on close.
   useFocusTrap(panelRef, open);
 
@@ -45,7 +52,13 @@ export function Modal({
     };
   }, [open, onClose]);
 
-  return (
+  // The prerender step server-renders the public routes (and the providers
+  // above them). A dialog is interactive chrome with no crawler value, so on
+  // the server this renders nothing rather than reaching for a document that
+  // does not exist there.
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
     <AnimatePresence>
       {open && (
         <div className="fixed inset-0 z-[95] flex items-center justify-center p-4">
@@ -66,6 +79,7 @@ export function Modal({
             role="dialog"
             aria-modal="true"
             aria-label={title}
+            aria-describedby={description ? descriptionId : undefined}
             initial={reduce ? false : { opacity: 0, scale: 0.98, y: -6 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={
@@ -79,13 +93,16 @@ export function Modal({
                   }
             }
             transition={{ duration: reduce ? 0 : 0.18, ease: EASE }}
-            className={`relative w-full ${width} overflow-hidden rounded-xl border border-border bg-popover shadow-2xl outline-none`}
+            className={`relative w-full ${width} overflow-hidden rounded-xl border border-border bg-popover shadow-elevation-3 outline-none`}
           >
             <header className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
               <div>
                 <h2 className="text-sm font-semibold tracking-tight">{title}</h2>
                 {description && (
-                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  <p
+                    id={descriptionId}
+                    className="mt-1 text-xs leading-relaxed text-muted-foreground"
+                  >
                     {description}
                   </p>
                 )}
@@ -94,7 +111,7 @@ export function Modal({
                 type="button"
                 onClick={onClose}
                 aria-label="Close"
-                className="-mr-1 -mt-1 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                className="pressable -mr-1 -mt-1 rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
               >
                 <Xmark className="h-3.5 w-3.5" />
               </button>
@@ -110,6 +127,7 @@ export function Modal({
           </motion.div>
         </div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 }

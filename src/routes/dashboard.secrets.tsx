@@ -9,6 +9,11 @@ import { useToast } from '@/components/ui/toast';
 import { useConfirm } from '@/components/ui/confirm';
 import { useAppSecrets, useDeleteSecret, useSetSecret } from '@/lib/api/queries';
 import { errorMessage } from '@/lib/api/errors';
+import { FieldError } from '@/components/ui/field';
+import { cn } from '@/lib/utils';
+
+/** Mirrors the API's `^[A-Z][A-Z0-9_]*$` CHECK on secret names. */
+const KEY_RULE = /^[A-Z][A-Z0-9_]*$/;
 import { formatRelative } from '@/lib/mock-data';
 import { consoleHead } from '@/lib/seo';
 
@@ -56,6 +61,11 @@ export function SecretsBody({ slug }: { slug: string }) {
 
   const [key, setKey] = useState('');
   const [value, setValue] = useState('');
+  const [keyTouched, setKeyTouched] = useState(false);
+  // The server's own SQL CHECK for names, stated up front rather than as a
+  // 422 after the round-trip.
+  const keyOk = KEY_RULE.test(key.trim());
+  const showKeyError = keyTouched && key.trim().length > 0 && !keyOk;
 
   const rows = useMemo<SecretRow[]>(
     () =>
@@ -130,12 +140,13 @@ export function SecretsBody({ slug }: { slug: string }) {
           className="flex flex-wrap items-end gap-3"
           onSubmit={(e) => {
             e.preventDefault();
-            if (!key.trim() || !value || setSecret.isPending) return;
+            if (!keyOk || !value || setSecret.isPending) return;
             void setSecret
               .mutateAsync({ key: key.trim(), value })
               .then(() => {
                 setKey('');
                 setValue('');
+                setKeyTouched(false);
                 toast({ kind: 'success', title: 'Secret saved' });
               })
               .catch((err: unknown) =>
@@ -148,9 +159,20 @@ export function SecretsBody({ slug }: { slug: string }) {
             <input
               value={key}
               onChange={(e) => setKey(e.target.value)}
+              onBlur={() => setKeyTouched(true)}
+              aria-invalid={showKeyError || undefined}
+              aria-describedby={showKeyError ? 'secret-key-error' : undefined}
               placeholder="DATABASE_URL"
-              className="h-10 rounded-lg border border-border bg-background px-3 font-mono text-sm outline-none focus:border-brand"
+              className={cn(
+                'h-10 rounded-lg border bg-background px-3 font-mono text-sm outline-none focus:border-brand',
+                showKeyError ? 'border-[color:var(--status-critical)]' : 'border-border'
+              )}
             />
+            {showKeyError && (
+              <FieldError id="secret-key-error">
+                UPPER_SNAKE_CASE: a letter first, then letters, digits, or underscores.
+              </FieldError>
+            )}
           </label>
           <label className="flex min-w-56 flex-[2] flex-col gap-1.5">
             <span className="label-mono text-muted-foreground">Value</span>
@@ -167,10 +189,11 @@ export function SecretsBody({ slug }: { slug: string }) {
             type="submit"
             size="sm"
             className="gap-1.5"
-            disabled={setSecret.isPending || !slug}
+            disabled={!slug}
+            busy={setSecret.isPending}
           >
             <Plus className="h-3.5 w-3.5" />
-            {setSecret.isPending ? 'Saving…' : 'Save secret'}
+            Save secret
           </Button>
         </form>
       </Panel>

@@ -9,8 +9,8 @@ import {
   ShieldCheck,
   Flash,
 } from 'iconoir-react';
-import { motion } from 'framer-motion';
-import { BentoCard, BentoGrid } from '@/components/ui/bento-grid';
+import { motion } from 'motion/react';
+import { BentoCard, BentoGrid } from '@/components/landing/bento-grid';
 import { EASE, Reveal } from './reveal';
 import { TextReveal } from './text-reveal';
 import { FlowLines } from './shapes/flow-lines';

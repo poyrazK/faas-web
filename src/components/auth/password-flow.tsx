@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Link } from '@tanstack/react-router';
 import { useSweepNavigate } from '@/components/sweep-link';
 import {
@@ -94,7 +94,10 @@ function FormError({ message }: { message: string }) {
   return (
     <p
       role="alert"
-      className="mt-3 flex items-start gap-2 rounded-lg border px-3 py-2 text-xs"
+      // Keyed by message where rendered, so a repeated refusal shakes again —
+      // the box saying "no" physically. Reduced motion lands it still.
+      key={message}
+      className="animate-shake mt-3 flex items-start gap-2 rounded-lg border px-3 py-2 text-xs"
       style={{
         color: 'var(--status-critical)',
         borderColor: 'color-mix(in oklab, var(--status-critical) 35%, transparent)',

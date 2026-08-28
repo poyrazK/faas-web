@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useRouterState } from '@tanstack/react-router';
-import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'framer-motion';
+import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'motion/react';
 import {
   IconoirProvider,
   NavArrowDown,
@@ -18,8 +18,19 @@ import { useData } from '@/lib/store';
 import { readWorkspace, useAuth } from '@/lib/auth';
 import { useSweepNavigate } from '@/components/sweep-link';
 import { useToast } from '@/components/ui/toast';
+import { Kbd } from '@/components/ui/kbd';
 import { ConfirmProvider } from '@/components/ui/confirm';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Tooltip, TooltipProvider } from '@/components/ui/tooltip';
 import { CommandPalette } from './command-palette';
+import { EASE, Stagger } from './motion';
 import { NAV_GROUPS, SECTION_LABELS } from './nav-config';
 import { cn } from '@/lib/utils';
 import { useFocusTrap } from '@/lib/use-focus-trap';
@@ -70,55 +81,70 @@ function SidebarBody({
             {group.title && collapsed && <div className="mx-2 mb-2 h-px bg-border" />}
 
             <nav aria-label={group.title ?? 'Main'} className="flex flex-col gap-0.5">
-              {group.items.map(({ to, label, icon: Icon, exact }) => (
-                <Link
-                  key={to}
-                  to={to}
-                  activeOptions={{ exact: exact ?? false }}
-                  onClick={onNavigate}
-                  title={collapsed ? label : undefined}
-                  className={cn(
-                    'relative isolate flex items-center gap-2.5 rounded-md py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
-                    collapsed ? 'justify-center px-0' : 'px-2.5'
-                  )}
-                  activeProps={{
-                    // Reduced motion keeps the plain static fill; otherwise
-                    // the shared pill below carries the background.
-                    className: cn('!text-foreground', reduce && 'bg-muted'),
-                    'aria-current': 'page',
-                  }}
-                >
-                  {({ isActive }) => (
-                    <>
-                      {isActive && !reduce && (
-                        <motion.span
-                          aria-hidden="true"
-                          layoutId="sidebar-active"
-                          className="absolute inset-0 -z-10 rounded-md bg-muted"
-                          transition={{
-                            type: 'spring',
-                            stiffness: 500,
-                            damping: 40,
-                          }}
-                        />
-                      )}
-                      <Icon className="h-4 w-4 shrink-0" />
-                      <AnimatePresence initial={false}>
-                        {!collapsed && (
+              {group.items.map(({ to, label, icon: Icon, exact }) => {
+                const link = (
+                  <Link
+                    key={to}
+                    to={to}
+                    activeOptions={{ exact: exact ?? false }}
+                    onClick={onNavigate}
+                    // Collapsed, the label span unmounts — the accessible name
+                    // must survive on the link itself, and the visual label
+                    // moves into a tooltip (title="" is mouse-only).
+                    aria-label={collapsed ? label : undefined}
+                    className={cn(
+                      'pressable relative isolate flex items-center gap-2.5 rounded-md py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
+                      collapsed ? 'justify-center px-0' : 'px-2.5'
+                    )}
+                    activeProps={{
+                      // Reduced motion keeps the plain static fill; otherwise
+                      // the shared pill below carries the background.
+                      className: cn('!text-foreground', reduce && 'bg-muted'),
+                      'aria-current': 'page',
+                    }}
+                  >
+                    {({ isActive }) => (
+                      <>
+                        {isActive && !reduce && (
                           <motion.span
-                            className="truncate"
-                            initial={reduce ? false : { opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            transition={{ duration: 0.12 }}
-                          >
-                            {label}
-                          </motion.span>
+                            aria-hidden="true"
+                            layoutId="sidebar-active"
+                            className="absolute inset-0 -z-10 rounded-md bg-muted"
+                            transition={{
+                              type: 'spring',
+                              stiffness: 500,
+                              damping: 40,
+                            }}
+                          />
                         )}
-                      </AnimatePresence>
-                    </>
-                  )}
-                </Link>
-              ))}
+                        <Icon className="h-4 w-4 shrink-0" />
+                        <AnimatePresence initial={false}>
+                          {!collapsed && (
+                            <motion.span
+                              className="truncate"
+                              initial={reduce ? false : { opacity: 0 }}
+                              animate={{ opacity: 1 }}
+                              // Collapse mirrors expand: the label fades out as
+                              // the rail narrows instead of popping away.
+                              exit={reduce ? undefined : { opacity: 0 }}
+                              transition={{ duration: 0.12 }}
+                            >
+                              {label}
+                            </motion.span>
+                          )}
+                        </AnimatePresence>
+                      </>
+                    )}
+                  </Link>
+                );
+                return collapsed ? (
+                  <Tooltip key={to} content={label} side="right">
+                    {link}
+                  </Tooltip>
+                ) : (
+                  link
+                );
+              })}
             </nav>
           </div>
         ))}
@@ -160,7 +186,7 @@ function Breadcrumbs() {
     <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-sm">
       <Link
         to="/dashboard"
-        className="flex shrink-0 items-center gap-2 rounded-md px-1.5 py-1 transition-colors hover:bg-muted"
+        className="pressable flex shrink-0 items-center gap-2 rounded-md px-1.5 py-1 hover:bg-muted"
       >
         <span className="flex h-5 w-5 items-center justify-center rounded bg-brand/20 text-[9px] font-semibold uppercase text-brand">
           {workspace.charAt(0)}
@@ -186,76 +212,43 @@ function Breadcrumbs() {
   );
 }
 
-/** Account control — identity and sign-out belong together, in one place. */
+/**
+ * Account control — identity and sign-out belong together, in one place.
+ * A real Radix menu: the previous hand-rolled version declared `role="menu"`
+ * but had no arrow-key model, no focus move, and no focus restore.
+ */
 function AccountMenu({ onSignOut }: { onSignOut: () => void }) {
   const { user } = useAuth();
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onPointer = (e: PointerEvent) => {
-      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
-    document.addEventListener('pointerdown', onPointer);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('pointerdown', onPointer);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
 
   return (
-    <div ref={wrapRef} className="relative">
-      <button
-        type="button"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 rounded-lg py-1 pl-1 pr-1.5 transition-colors hover:bg-muted"
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        aria-label="Account"
+        className="pressable flex items-center gap-1.5 rounded-lg py-1 pl-1 pr-1.5 hover:bg-muted data-[state=open]:bg-muted"
       >
         <span className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-[11px] font-medium">
           {user?.initials ?? 'GG'}
         </span>
         <NavArrowDown className="h-3.5 w-3.5 text-muted-foreground" />
-      </button>
-
-      {open && (
-        <div
-          role="menu"
-          className="absolute right-0 top-full z-50 mt-1.5 w-56 overflow-hidden rounded-lg border border-border bg-popover shadow-2xl"
-        >
-          <div className="border-b border-border px-3 py-2.5">
-            <p className="truncate text-sm font-medium">{user?.name}</p>
-            <p className="truncate text-xs text-muted-foreground">{user?.email}</p>
-          </div>
-          <div className="p-1">
-            <Link
-              to="/dashboard/settings"
-              role="menuitem"
-              onClick={() => setOpen(false)}
-              className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            >
-              <Settings className="h-3.5 w-3.5" />
-              Workspace settings
-            </Link>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setOpen(false);
-                onSignOut();
-              }}
-              className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            >
-              <LogOut className="h-3.5 w-3.5" />
-              Sign out
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuLabel>
+          <p className="truncate text-sm font-medium">{user?.name}</p>
+          <p className="truncate text-xs text-muted-foreground">{user?.email}</p>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link to="/dashboard/settings">
+            <Settings className="h-3.5 w-3.5" />
+            Workspace settings
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={onSignOut}>
+          <LogOut className="h-3.5 w-3.5" />
+          Sign out
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -295,7 +288,7 @@ function UnreachableBanner() {
             .catch(() => {})
             .finally(() => setRetrying(false));
         }}
-        className="ml-auto rounded-full border border-border px-3 py-1 text-xs transition-colors hover:border-border-secondary disabled:opacity-50"
+        className="pressable ml-auto rounded-full border border-border px-3 py-1 text-xs hover:border-border-secondary disabled:opacity-50"
       >
         {retrying ? 'Checking…' : 'Check again'}
       </button>
@@ -310,6 +303,8 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const drawerRef = useRef<HTMLElement>(null);
   useFocusTrap(drawerRef, mobileOpen);
+  const reduce = useReducedMotion();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   const toggleCollapsed = () => setCollapsed((v) => !v);
   useEffect(() => {
@@ -326,7 +321,14 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       const mod = e.metaKey || e.ctrlKey;
       if (mod && e.key.toLowerCase() === 'k') {
         e.preventDefault();
-        setPaletteOpen((v) => !v);
+        setPaletteOpen((v) => {
+          // Never open behind another dialog — a Modal already holds the
+          // focus trap, and a palette underneath it would fight for the
+          // keyboard. (Open palettes still close: they match the selector
+          // themselves, and !v is then false.)
+          if (!v && document.querySelector('[role="dialog"][aria-modal="true"]')) return v;
+          return !v;
+        });
       }
       if (mod && e.key.toLowerCase() === 'b') {
         e.preventDefault();
@@ -381,152 +383,179 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     // works at, on a near-black ground. Set once here rather than per icon;
     // the landing keeps the lighter default, where the sizes are larger.
     <IconoirProvider iconProps={{ strokeWidth: 1.8 }}>
-      <ConfirmProvider>
-        <div className="console min-h-screen bg-background text-foreground">
-          <a
-            href="#main"
-            className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded-md focus:bg-background focus:px-3 focus:py-2 focus:text-sm focus:ring-2 focus:ring-ring"
-          >
-            Skip to content
-          </a>
-          {/* Desktop sidebar */}
-          <aside
-            className={cn(
-              'fixed inset-y-0 left-0 z-30 hidden flex-col border-r border-border bg-card py-5 transition-[width] duration-200 lg:flex',
-              collapsed ? 'w-[4.5rem] px-2' : 'w-60 px-3'
-            )}
-          >
-            <SidebarBody id="desktop" collapsed={collapsed} />
-
-            {/* Identity and sign-out live in the top bar's account menu, so the
-            sidebar footer carries context instead of duplicating them. */}
-            <div className="mt-auto pt-4">
-              {!collapsed && (
-                <div className="mb-2 rounded-lg border border-border bg-background p-3">
-                  <div className="flex items-center gap-2">
-                    <span className="relative flex h-1.5 w-1.5">
-                      <span
-                        className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-75"
-                        style={{ background: 'var(--status-good)' }}
-                      />
-                      <span
-                        className="relative inline-flex h-1.5 w-1.5 rounded-full"
-                        style={{ background: 'var(--status-good)' }}
-                      />
-                    </span>
-                    <p className="font-mono text-xs">fra-metal-1</p>
-                  </div>
-                  <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                    Private beta on single-node metal. Multi-node scaling is on the roadmap.
-                  </p>
-                </div>
+      <TooltipProvider>
+        <ConfirmProvider>
+          <div className="console min-h-screen bg-background text-foreground">
+            <a
+              href="#main"
+              className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded-md focus:bg-background focus:px-3 focus:py-2 focus:text-sm focus:ring-2 focus:ring-ring"
+            >
+              Skip to content
+            </a>
+            {/* Desktop sidebar */}
+            <aside
+              className={cn(
+                // The stored width is applied before first paint (readCollapsed
+                // in the state initializer), so this transition only ever runs
+                // on a real toggle, never on load.
+                'fixed inset-y-0 left-0 z-30 hidden flex-col border-r border-border bg-card py-5 transition-[width] duration-200 ease-console lg:flex',
+                collapsed ? 'w-[4.5rem] px-2' : 'w-60 px-3'
               )}
+            >
+              <SidebarBody id="desktop" collapsed={collapsed} />
 
-              <button
-                type="button"
-                onClick={toggleCollapsed}
-                aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-                aria-keyshortcuts="Meta+B Control+B"
-                title={`${collapsed ? 'Expand' : 'Collapse'} sidebar (⌘B)`}
-                className={cn(
-                  'flex w-full items-center gap-2.5 rounded-md py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
-                  collapsed ? 'justify-center px-0' : 'px-2.5'
+              {/* Identity and sign-out live in the top bar's account menu, so the
+            sidebar footer carries context instead of duplicating them. */}
+              <div className="mt-auto pt-4">
+                {!collapsed && (
+                  <div className="mb-2 rounded-lg border border-border bg-background p-3">
+                    <div className="flex items-center gap-2">
+                      <span className="relative flex h-1.5 w-1.5">
+                        <span
+                          className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-75"
+                          style={{ background: 'var(--status-good)' }}
+                        />
+                        <span
+                          className="relative inline-flex h-1.5 w-1.5 rounded-full"
+                          style={{ background: 'var(--status-good)' }}
+                        />
+                      </span>
+                      <p className="font-mono text-xs">fra-metal-1</p>
+                    </div>
+                    <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                      Private beta on single-node metal. Multi-node scaling is on the roadmap.
+                    </p>
+                  </div>
                 )}
-              >
-                {collapsed ? (
-                  <SidebarExpand className="h-4 w-4 shrink-0" />
-                ) : (
-                  <>
-                    <SidebarCollapse className="h-4 w-4 shrink-0" />
-                    Collapse
-                  </>
-                )}
-              </button>
-            </div>
-          </aside>
 
-          {/* Mobile drawer */}
-          {mobileOpen && (
-            <div className="fixed inset-0 z-50 lg:hidden">
-              <button
-                aria-hidden="true"
-                tabIndex={-1}
-                className="absolute inset-0 bg-mint-12/50 backdrop-blur-sm"
-                onClick={() => setMobileOpen(false)}
-              />
-              <aside
-                ref={drawerRef}
-                role="dialog"
-                aria-modal="true"
-                aria-label="Navigation"
-                className="absolute inset-y-0 left-0 flex w-64 flex-col border-r border-border bg-card px-3 py-5"
-              >
-                <button
-                  aria-label="Close navigation"
-                  className="absolute right-3 top-4 rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                  onClick={() => setMobileOpen(false)}
-                >
-                  <Xmark className="h-4 w-4" />
-                </button>
-                <SidebarBody id="mobile" onNavigate={() => setMobileOpen(false)} />
-              </aside>
-            </div>
-          )}
-
-          <div
-            className={cn(
-              'transition-[padding] duration-200',
-              collapsed ? 'lg:pl-[4.5rem]' : 'lg:pl-60'
-            )}
-          >
-            {/* Top bar */}
-            <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-border bg-background/85 px-4 backdrop-blur-md sm:px-6">
-              <button
-                aria-label="Open navigation"
-                className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden"
-                onClick={() => setMobileOpen(true)}
-              >
-                <Menu className="h-4 w-4" />
-              </button>
-
-              <Breadcrumbs />
-
-              <div className="ml-auto flex items-center gap-1.5">
-                {/* Compact, so identity owns the left rather than a stretched
-                field that only ever opens the palette anyway. */}
-                <button
-                  type="button"
-                  onClick={() => setPaletteOpen(true)}
-                  aria-label="Search or jump to"
-                  className="flex h-8 items-center gap-2 rounded-lg border border-border bg-card px-2.5 text-sm text-muted-foreground transition-colors hover:border-border-secondary hover:text-foreground"
-                >
-                  <Search className="h-3.5 w-3.5 shrink-0" />
-                  <span className="hidden lg:inline">Search</span>
-                  <kbd className="label-mono hidden rounded border border-border px-1 py-0.5 lg:block">
-                    ⌘K
-                  </kbd>
-                </button>
-
-                <span className="mx-1 hidden h-5 w-px bg-border sm:block" />
-
-                <AccountMenu onSignOut={handleSignOut} />
+                <Tooltip content={`${collapsed ? 'Expand' : 'Collapse'} sidebar (⌘B)`} side="right">
+                  <button
+                    type="button"
+                    onClick={toggleCollapsed}
+                    aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                    aria-keyshortcuts="Meta+B Control+B"
+                    className={cn(
+                      'pressable flex w-full items-center gap-2.5 rounded-md py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground',
+                      collapsed ? 'justify-center px-0' : 'px-2.5'
+                    )}
+                  >
+                    {collapsed ? (
+                      <SidebarExpand className="h-4 w-4 shrink-0" />
+                    ) : (
+                      <>
+                        <SidebarCollapse className="h-4 w-4 shrink-0" />
+                        Collapse
+                      </>
+                    )}
+                  </button>
+                </Tooltip>
               </div>
-            </header>
+            </aside>
 
-            <main id="main" tabIndex={-1} className="px-4 py-8 outline-none sm:px-6 lg:px-8">
-              {/* A measure, not the full viewport: past ~1100px a form row or a
+            {/* Mobile drawer. The palette, the modal, and the toasts all move —
+              the drawer matching them is what makes the chrome feel like one
+              surface. Backdrop fades; the panel slides in from the edge it
+              belongs to, or cross-fades under reduced motion. */}
+            <AnimatePresence>
+              {mobileOpen && (
+                <motion.button
+                  key="drawer-backdrop"
+                  aria-hidden="true"
+                  tabIndex={-1}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.15 }}
+                  className="fixed inset-0 z-50 bg-mint-12/50 backdrop-blur-sm lg:hidden"
+                  onClick={() => setMobileOpen(false)}
+                />
+              )}
+              {mobileOpen && (
+                <motion.aside
+                  key="drawer-panel"
+                  ref={drawerRef}
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label="Navigation"
+                  initial={reduce ? { opacity: 0 } : { x: '-100%' }}
+                  animate={reduce ? { opacity: 1 } : { x: 0 }}
+                  exit={reduce ? { opacity: 0 } : { x: '-100%' }}
+                  transition={{ duration: 0.25, ease: EASE }}
+                  className="fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-border bg-card px-3 py-5 lg:hidden"
+                >
+                  <button
+                    aria-label="Close navigation"
+                    className="pressable absolute right-3 top-4 rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                    onClick={() => setMobileOpen(false)}
+                  >
+                    <Xmark className="h-4 w-4" />
+                  </button>
+                  <SidebarBody id="mobile" onNavigate={() => setMobileOpen(false)} />
+                </motion.aside>
+              )}
+            </AnimatePresence>
+
+            <div
+              className={cn(
+                'transition-[padding] duration-200 ease-console',
+                collapsed ? 'lg:pl-[4.5rem]' : 'lg:pl-60'
+              )}
+            >
+              {/* Top bar */}
+              <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-border bg-background/85 px-4 backdrop-blur-md sm:px-6">
+                <button
+                  aria-label="Open navigation"
+                  className="pressable rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden"
+                  onClick={() => setMobileOpen(true)}
+                >
+                  <Menu className="h-4 w-4" />
+                </button>
+
+                <Breadcrumbs />
+
+                <div className="ml-auto flex items-center gap-1.5">
+                  {/* Compact, so identity owns the left rather than a stretched
+                field that only ever opens the palette anyway. */}
+                  <button
+                    type="button"
+                    onClick={() => setPaletteOpen(true)}
+                    aria-label="Search or jump to"
+                    className="pressable flex h-8 items-center gap-2 rounded-lg border border-border bg-card px-2.5 text-sm text-muted-foreground hover:border-border-secondary hover:text-foreground"
+                  >
+                    <Search className="h-3.5 w-3.5 shrink-0" />
+                    <span className="hidden lg:inline">Search</span>
+                    <Kbd className="hidden px-1 lg:block">⌘K</Kbd>
+                  </button>
+
+                  <span className="mx-1 hidden h-5 w-px bg-border sm:block" />
+
+                  <AccountMenu onSignOut={handleSignOut} />
+                </div>
+              </header>
+
+              <main id="main" tabIndex={-1} className="px-4 py-8 outline-none sm:px-6 lg:px-8">
+                {/* A measure, not the full viewport: past ~1100px a form row or a
                 label/value pair stops scanning as a pair. Tables set their own
                 min-width and scroll inside it. */}
-              <div className="mx-auto flex max-w-[1100px] flex-col gap-6">
-                <UnreachableBanner />
-                {children}
-              </div>
-            </main>
-          </div>
+                {/* Keyed by pathname so every page settles in with the shared
+                  stagger: PageHeader, Panel, and StatTile carry ITEM_VARIANTS
+                  and join automatically; anything else renders in place. */}
+                <Stagger key={pathname} className="mx-auto flex max-w-[1100px] flex-col gap-6">
+                  <UnreachableBanner />
+                  {children}
+                </Stagger>
+              </main>
+            </div>
 
-          <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
-        </div>
-      </ConfirmProvider>
+            <CommandPalette
+              open={paletteOpen}
+              onOpenChange={setPaletteOpen}
+              onSignOut={handleSignOut}
+              onToggleSidebar={toggleCollapsed}
+            />
+          </div>
+        </ConfirmProvider>
+      </TooltipProvider>
     </IconoirProvider>
   );
 }

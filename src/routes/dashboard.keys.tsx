@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
-import { WarningTriangle, Copy, Plus, Refresh, Trash } from 'iconoir-react';
+import { WarningTriangle, Plus, Refresh, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
+import { CopyMorph, useCopy } from '@/components/ui/copy-button';
 import { PageHeader, Panel } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { useToast } from '@/components/ui/toast';
@@ -55,6 +56,7 @@ function formatWhen(value: string | null | undefined): string {
 /** The one-time reveal. Dismissing it is the only way out, on purpose. */
 function PlaintextPanel({ value, onDismiss }: { value: string; onDismiss: () => void }) {
   const { toast } = useToast();
+  const { copied, copy } = useCopy();
 
   return (
     <div
@@ -75,14 +77,15 @@ function PlaintextPanel({ value, onDismiss }: { value: string; onDismiss: () => 
           variant="outline"
           className="gap-1.5"
           onClick={() => {
-            void navigator.clipboard
-              .writeText(value)
-              .then(() => toast({ kind: 'success', title: 'Copied to clipboard' }))
-              .catch(() => toast({ kind: 'error', title: 'Could not copy' }));
+            // The check on the button is the success signal; only the failure
+            // needs a toast, because then nothing on screen changed.
+            void copy(value).then((ok) => {
+              if (!ok) toast({ kind: 'error', title: 'Could not copy' });
+            });
           }}
         >
-          <Copy className="h-3.5 w-3.5" />
-          Copy
+          <CopyMorph copied={copied} />
+          <span aria-live="polite">{copied ? 'Copied' : 'Copy'}</span>
         </Button>
         <Button size="sm" variant="ghost" onClick={onDismiss}>
           I have saved it
@@ -285,7 +288,7 @@ function KeysPage() {
                             )
                       )
                     }
-                    className={`h-8 rounded-md border px-2.5 font-mono text-xs transition-colors ${
+                    className={`pressable h-8 rounded-md border px-2.5 font-mono text-xs ${
                       on
                         ? 'border-brand bg-brand/10 text-foreground'
                         : 'border-border text-muted-foreground hover:text-foreground'
@@ -308,10 +311,11 @@ function KeysPage() {
             type="submit"
             size="sm"
             className="gap-1.5"
-            disabled={createKey.isPending || scopes.length === 0}
+            disabled={scopes.length === 0}
+            busy={createKey.isPending}
           >
             <Plus className="h-3.5 w-3.5" />
-            {createKey.isPending ? 'Creating…' : 'Create key'}
+            Create key
           </Button>
         </form>
       </Panel>

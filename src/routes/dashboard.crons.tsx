@@ -2,9 +2,10 @@ import { useMemo, useState } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { Clock, Play, Plus, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
+import { FIELD } from '@/components/ui/field';
 import { Switch } from '@/components/ui/switch';
 import { Modal } from '@/components/ui/modal';
-import { PageHeader, Panel } from '@/components/dashboard/primitives';
+import { InlinePhase, PageHeader, Panel, queryPhase } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { useToast } from '@/components/ui/toast';
 import { useConfirm } from '@/components/ui/confirm';
@@ -59,12 +60,14 @@ const OUTCOME_COLOR: Record<string, string | undefined> = {
   running: 'var(--status-warning)',
 };
 
-const FIELD =
-  'h-9 rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-brand/50';
-
 /** The last runs of one cron — outcome, duration, and the error if any. */
 function RunHistory({ cron, onClose }: { cron: CronRow | null; onClose: () => void }) {
   const runs = useCronRuns(cron?.id ?? '');
+  const runsPhase = queryPhase({
+    error: runs.error,
+    loading: runs.isPending,
+    isEmpty: (runs.data?.runs ?? []).length === 0,
+  });
   return (
     <Modal
       open={cron !== null}
@@ -73,12 +76,13 @@ function RunHistory({ cron, onClose }: { cron: CronRow | null; onClose: () => vo
       description="Recent runs, newest first."
       width="max-w-2xl"
     >
-      {runs.isPending ? (
-        <p className="text-sm text-muted-foreground">Loading runs…</p>
-      ) : runs.error ? (
-        <p className="text-sm text-muted-foreground">{errorMessage(runs.error)}</p>
-      ) : (runs.data?.runs ?? []).length === 0 ? (
-        <p className="text-sm text-muted-foreground">This cron has not run yet.</p>
+      {runsPhase !== 'ready' ? (
+        <InlinePhase
+          phase={runsPhase}
+          error={runs.error}
+          loadingMessage="Loading runs…"
+          emptyMessage="This cron has not run yet."
+        />
       ) : (
         <ul className="flex flex-col divide-y divide-border">
           {(runs.data?.runs ?? []).map((r) => (
@@ -311,10 +315,11 @@ function CronsPage() {
             type="submit"
             size="sm"
             className="gap-1.5"
-            disabled={!targetApp || !scheduleOk || createCron.isPending}
+            disabled={!targetApp || !scheduleOk}
+            busy={createCron.isPending}
           >
             <Plus className="h-3.5 w-3.5" />
-            {createCron.isPending ? 'Adding…' : 'Add cron'}
+            Add cron
           </Button>
           <p className="basis-full text-xs text-muted-foreground">
             Five fields, UTC: minute, hour, day of month, month, day of week. The request is a GET

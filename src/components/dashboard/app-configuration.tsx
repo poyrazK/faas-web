@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
+import { FIELD as BASE_FIELD } from '@/components/ui/field';
 import { Switch } from '@/components/ui/switch';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
 import { errorMessage } from '@/lib/api/errors';
 import { useApp, useDeleteApp, useRenameApp, useUpdateApp, type App } from '@/lib/api/queries';
+import { useUnsavedGuard } from '@/lib/use-unsaved-guard';
 import { ErrorState, LoadingState, Panel, UnreachableState, queryPhase } from './primitives';
 import { RegistryCredentialsPanel } from './app-core-panels';
 
@@ -52,8 +54,7 @@ function draftFrom(app: App): Draft {
   };
 }
 
-const FIELD =
-  'h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-brand/50 [font-variant-numeric:tabular-nums]';
+const FIELD = `${BASE_FIELD} w-full [font-variant-numeric:tabular-nums]`;
 
 function NumberField({
   label,
@@ -112,6 +113,7 @@ function Toggle({
 
 function ConfigForm({ app }: { app: App }) {
   const { toast } = useToast();
+  const confirm = useConfirm();
   const update = useUpdateApp(app.slug);
   const [draft, setDraft] = useState<Draft>(() => draftFrom(app));
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
@@ -137,6 +139,17 @@ function ConfigForm({ app }: { app: App }) {
   }, [app, draft]);
   const dirty = Object.keys(changes).length > 0;
 
+  // Navigating away with unsaved edits asks first — in the same dialog every
+  // other destructive act uses — instead of silently discarding them.
+  useUnsavedGuard(dirty, () =>
+    confirm({
+      title: 'Discard unsaved changes?',
+      description: 'The runtime settings you edited have not been saved.',
+      confirmLabel: 'Discard changes',
+      destructive: true,
+    })
+  );
+
   const save = () => {
     void update
       .mutateAsync(changes)
@@ -160,8 +173,8 @@ function ConfigForm({ app }: { app: App }) {
         title="Runtime"
         description="Applied on the next wake. A running instance keeps what it booted with."
         actions={
-          <Button size="sm" disabled={!dirty || update.isPending} onClick={save}>
-            {update.isPending ? 'Saving…' : 'Save changes'}
+          <Button size="sm" disabled={!dirty} busy={update.isPending} onClick={save}>
+            Save changes
           </Button>
         }
       >
@@ -175,7 +188,7 @@ function ConfigForm({ app }: { app: App }) {
                   type="button"
                   aria-pressed={draft.ram_mb === mb}
                   onClick={() => set('ram_mb', mb)}
-                  className={`h-9 rounded-md border px-3 font-mono text-xs transition-colors ${
+                  className={`h-9 rounded-md border px-3 font-mono text-xs pressable ${
                     draft.ram_mb === mb
                       ? 'border-brand bg-brand/10 text-foreground'
                       : 'border-border text-muted-foreground hover:text-foreground'
@@ -318,8 +331,8 @@ function RenamePanel({ app }: { app: App }) {
             className={FIELD}
           />
         </label>
-        <Button type="submit" size="sm" variant="outline" disabled={!valid || rename.isPending}>
-          {rename.isPending ? 'Renaming…' : 'Rename'}
+        <Button type="submit" size="sm" variant="outline" disabled={!valid} busy={rename.isPending}>
+          Rename
         </Button>
       </form>
     </Panel>
@@ -349,7 +362,7 @@ function DangerZone({ app }: { app: App }) {
         <Button
           size="sm"
           variant="destructive"
-          disabled={remove.isPending}
+          busy={remove.isPending}
           onClick={async () => {
             if (
               !(await confirm({
@@ -373,7 +386,7 @@ function DangerZone({ app }: { app: App }) {
               );
           }}
         >
-          {remove.isPending ? 'Deleting…' : 'Delete app'}
+          Delete app
         </Button>
       </div>
     </Panel>

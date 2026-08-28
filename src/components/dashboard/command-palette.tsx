@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { UTurnArrowLeft, GitBranch, Plus, Search } from 'iconoir-react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { UTurnArrowLeft, GitBranch, LogOut, Plus, Search, SidebarCollapse } from 'iconoir-react';
 import { APP_TABS, NAV_ITEMS, SECTION_LABELS, type NavIcon } from './nav-config';
 import { EASE } from './motion';
+import { Kbd } from '@/components/ui/kbd';
 import { useData } from '@/lib/store';
 import { formatCompact } from '@/lib/mock-data';
 import { cn } from '@/lib/utils';
@@ -30,12 +31,42 @@ interface Result {
   indices: number[];
 }
 
+/* The palette remembers what it ran. Recency is the best signal a launcher
+ * has, so the last few commands surface first when it opens empty-handed. */
+const RECENT_KEY = 'gregale.palette.recent';
+const RECENT_MAX = 5;
+
+function readRecent(): string[] {
+  try {
+    const raw = window.localStorage.getItem(RECENT_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function recordRecent(id: string) {
+  try {
+    const next = [id, ...readRecent().filter((x) => x !== id)].slice(0, RECENT_MAX);
+    window.localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+  } catch {
+    // Storage can be denied; the palette works fine without a memory.
+  }
+}
+
 export function CommandPalette({
   open,
   onOpenChange,
+  onSignOut,
+  onToggleSidebar,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Shell actions surfaced as commands — the palette is how you reach a
+   * thing you know the name of, and that includes leaving. */
+  onSignOut?: () => void;
+  onToggleSidebar?: () => void;
 }) {
   const navigate = useNavigate();
   const { workflows } = useData();
@@ -84,6 +115,41 @@ export function CommandPalette({
         icon: Plus,
         run: go('/dashboard/workflows/new'),
       },
+      {
+        id: 'act-docs',
+        label: 'Documentation',
+        group: 'Actions',
+        icon: Search,
+        run: go('/docs'),
+      },
+      ...(onToggleSidebar
+        ? [
+            {
+              id: 'act-sidebar',
+              label: 'Toggle sidebar',
+              group: 'Actions',
+              icon: SidebarCollapse,
+              run: () => {
+                close();
+                onToggleSidebar();
+              },
+            },
+          ]
+        : []),
+      ...(onSignOut
+        ? [
+            {
+              id: 'act-signout',
+              label: 'Sign out',
+              group: 'Actions',
+              icon: LogOut,
+              run: () => {
+                close();
+                onSignOut();
+              },
+            },
+          ]
+        : []),
       ...workflows.map((fn) => ({
         id: fn.id,
         label: fn.name,
@@ -99,11 +165,25 @@ export function CommandPalette({
         },
       })),
     ];
-  }, [workflows, navigate, close]);
+  }, [workflows, navigate, close, onSignOut, onToggleSidebar]);
+
+  // Ranked results, or — when the palette opens empty-handed — the recent
+  // commands lifted into their own leading group.
+  const withRecent = useMemo<Command[]>(() => {
+    if (!open) return commands;
+    const recent = readRecent();
+    if (recent.length === 0) return commands;
+    const byId = new Map(commands.map((c) => [c.id, c]));
+    const recentCmds = recent
+      .map((id) => byId.get(id))
+      .filter((c): c is Command => Boolean(c))
+      .map((c) => ({ ...c, group: 'Recent' }));
+    return [...recentCmds, ...commands];
+  }, [commands, open]);
 
   const results = useMemo<Result[]>(() => {
     const q = query.trim();
-    if (!q) return commands.map((command) => ({ command, indices: [] }));
+    if (!q) return withRecent.map((command) => ({ command, indices: [] }));
 
     return (
       commands
@@ -130,7 +210,7 @@ export function CommandPalette({
         // order that groups them ("Go to", then "Actions", then workflows).
         .sort((a, b) => b.score - a.score)
     );
-  }, [commands, query]);
+  }, [commands, withRecent, query]);
 
   // Keep the highlight in range as the result set shrinks.
   useEffect(() => setActive(0), [query]);
@@ -173,7 +253,11 @@ export function CommandPalette({
     }
     if (e.key === 'Enter') {
       e.preventDefault();
-      results[active]?.command.run();
+      const cmd = results[active]?.command;
+      if (cmd) {
+        recordRecent(cmd.id);
+        cmd.run();
+      }
     }
     // Long result lists are faster to cross end-to-end than by arrow-holding.
     if (e.key === 'Home') {
@@ -228,7 +312,7 @@ export function CommandPalette({
                   }
             }
             transition={{ duration: reduce ? 0 : 0.18, ease: EASE }}
-            className="relative w-full max-w-lg overflow-hidden rounded-xl border border-border bg-popover shadow-2xl"
+            className="relative w-full max-w-lg overflow-hidden rounded-xl border border-border bg-popover shadow-elevation-3"
           >
             <div className="flex items-center gap-2.5 border-b border-border px-4">
               <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -242,20 +326,27 @@ export function CommandPalette({
                 aria-expanded={results.length > 0}
                 aria-controls={listId}
                 aria-autocomplete="list"
-                aria-activedescendant={
-                  results[active] ? `cmd-${results[active].command.id}` : undefined
-                }
+                aria-activedescendant={results[active] ? `cmd-${active}` : undefined}
                 className="h-12 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
               />
-              <kbd className="label-mono rounded border border-border px-1.5 py-0.5 text-muted-foreground">
-                esc
-              </kbd>
+              <Kbd>esc</Kbd>
             </div>
 
             {results.length === 0 ? (
-              <p className="px-4 py-10 text-center text-sm text-muted-foreground">
-                No matches for “{query}”.
-              </p>
+              <div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
+                <p className="text-sm text-muted-foreground">No matches for “{query}”.</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    close();
+                    navigate({ to: '/dashboard/workflows/new' });
+                  }}
+                  className="pressable inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:border-border-secondary hover:text-foreground"
+                >
+                  <Plus className="h-3 w-3" />
+                  Create a new app instead
+                </button>
+              </div>
             ) : (
               <ul
                 ref={listRef}
@@ -279,13 +370,16 @@ export function CommandPalette({
                       </li>
                     ),
                     <li
-                      key={cmd.id}
-                      id={`cmd-${cmd.id}`}
+                      key={`${cmd.group}-${cmd.id}`}
+                      id={`cmd-${i}`}
                       role="option"
                       aria-selected={i === active}
                       data-active={i === active}
                       onMouseMove={() => setActive(i)}
-                      onClick={cmd.run}
+                      onClick={() => {
+                        recordRecent(cmd.id);
+                        cmd.run();
+                      }}
                       className={cn(
                         'relative isolate flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-2 text-sm transition-colors',
                         i === active

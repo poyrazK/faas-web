@@ -1,18 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { Link } from '@tanstack/react-router';
-import {
-  ArrowDown,
-  ArrowRight,
-  Check,
-  Copy,
-  Download,
-  Pause,
-  Play,
-  Search,
-  Xmark,
-} from 'iconoir-react';
+import { ArrowDown, ArrowRight, Download, Pause, Play, Search, Xmark } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
+import { CopyMorph, useCopy } from '@/components/ui/copy-button';
 import { EmptyState, LevelTag, LoadingState, PageHeader } from '@/components/dashboard/primitives';
 import { Pill } from '@/components/dashboard/resource-table';
 import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
@@ -68,7 +59,7 @@ export function LogsBody({ slug }: { slug: string }) {
   const [instance, setInstance] = useState('');
   const [date, setDate] = useState(() => isoDay(1));
   const [wrap, setWrap] = useState(() => localStorage.getItem(WRAP_KEY) !== '0');
-  const [copied, setCopied] = useState(false);
+  const { copied, copy: copyBuffer } = useCopy(1800);
 
   const { account } = useAuth();
   const retention = RETENTION_DAYS[account?.plan ?? 'free'] ?? 0;
@@ -125,15 +116,7 @@ export function LogsBody({ slug }: { slug: string }) {
 
   const asText = () => lines.map((l) => `${new Date(l.ts).toISOString()} ${l.raw}`).join('\n');
 
-  const copy = () => {
-    void navigator.clipboard
-      .writeText(asText())
-      .then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1800);
-      })
-      .catch(() => {});
-  };
+  const copy = () => void copyBuffer(asText());
 
   const download = () => {
     const blob = new Blob([asText()], { type: 'text/plain' });
@@ -162,7 +145,7 @@ export function LogsBody({ slug }: { slug: string }) {
               aria-pressed={mode === m}
               onClick={() => setMode(m)}
               className={cn(
-                'rounded px-2.5 py-1 text-xs capitalize transition-colors',
+                'rounded px-2.5 py-1 text-xs capitalize pressable',
                 mode === m
                   ? 'bg-muted text-foreground'
                   : 'text-muted-foreground hover:text-foreground'
@@ -201,7 +184,7 @@ export function LogsBody({ slug }: { slug: string }) {
               aria-pressed={level === value}
               onClick={() => setLevel(value)}
               className={cn(
-                'rounded px-2.5 py-1 text-xs transition-colors',
+                'rounded px-2.5 py-1 text-xs pressable',
                 level === value
                   ? 'bg-muted text-foreground'
                   : 'text-muted-foreground hover:text-foreground'
@@ -271,7 +254,7 @@ export function LogsBody({ slug }: { slug: string }) {
               });
             }}
             className={cn(
-              'rounded-md px-2 py-1.5 font-mono text-xs transition-colors',
+              'rounded-md px-2 py-1.5 font-mono text-xs pressable',
               wrap ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
             )}
           >
@@ -282,9 +265,12 @@ export function LogsBody({ slug }: { slug: string }) {
             aria-label="Copy the buffer"
             disabled={!lines.length}
             onClick={copy}
-            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-40"
+            className="pressable rounded-md p-1.5 text-muted-foreground hover:text-foreground disabled:opacity-40"
           >
-            {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+            <CopyMorph copied={copied} />
+            <span aria-live="polite" className="sr-only">
+              {copied ? 'Copied' : ''}
+            </span>
           </button>
           <button
             type="button"
@@ -372,10 +358,14 @@ export function LogsBody({ slug }: { slug: string }) {
             className="max-h-[60vh] overflow-y-auto p-4"
           >
             {lines.map((line) => (
+              // content-visibility lets the browser skip layout and paint for
+              // offscreen lines — 2,000 buffered lines stop costing 2,000
+              // laid-out paragraphs. The intrinsic size keeps the scrollbar
+              // honest while unwrapped; wrapped lines re-measure on approach.
               <p
                 key={line.id}
                 className={cn(
-                  'flex gap-3 font-mono text-xs leading-relaxed',
+                  'flex gap-3 font-mono text-xs leading-relaxed [contain-intrinsic-block-size:auto_1.25rem] [content-visibility:auto]',
                   wrap ? 'break-all' : 'whitespace-nowrap'
                 )}
               >

@@ -180,8 +180,8 @@ function PlansPage() {
             <Button variant="ghost" size="sm" onClick={() => setPending(null)}>
               Cancel
             </Button>
-            <Button size="sm" onClick={confirm} disabled={changePlan.isPending}>
-              {changePlan.isPending ? 'Switching…' : 'Confirm switch'}
+            <Button size="sm" onClick={confirm} busy={changePlan.isPending}>
+              Confirm switch
             </Button>
           </div>
         </div>

@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { useUnsavedGuard } from '@/lib/use-unsaved-guard';
+import { AnimatePresence, motion } from 'motion/react';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { ArrowLeft, ArrowRight, Check, Github, Package } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
@@ -92,6 +93,10 @@ function NewFunctionPage() {
   const [deploymentId, setDeploymentId] = useState<string | null>(null);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
+
+  // A half-filled wizard asks before it is discarded. Once the app exists
+  // (or nothing was typed) leaving is free.
+  useUnsavedGuard(!createdId && Boolean(repo.trim() || name.trim()));
 
   const nameValid = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(name);
   const repoValid = /^[^/\s]+\/[^/\s]+$/.test(repo.trim());

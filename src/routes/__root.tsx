@@ -64,9 +64,11 @@ const queryClient = new QueryClient({
     queries: {
       staleTime: 30_000,
       retry: retryPolicy,
-      // The metrics rollup is a Prometheus query; refetching it every time the
-      // window regains focus is a cost with little payoff at this cadence.
-      refetchOnWindowFocus: false,
+      // Focus refetch stays ON by default: a console left open in a stale
+      // tab should show the fleet as it is when the operator comes back.
+      // The one exception — Prometheus-backed metrics queries, where every
+      // refetch is a PromQL fan-out — opts out per-hook in `queries.ts`,
+      // not here for everything.
     },
     mutations: { retry: false },
   },

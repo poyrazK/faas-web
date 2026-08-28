@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'motion/react';
 import { Check, RefreshDouble } from 'iconoir-react';
+import { ProgressEdge } from './progress-edge';
 import { cn } from '@/lib/utils';
 
 export interface BuildStage {
@@ -63,6 +64,7 @@ export function BuildLog({
   const [lines, setLines] = useState<{ id: number; text: string }[]>([]);
   const scroller = useRef<HTMLDivElement>(null);
   const completed = useRef(false);
+  const reduce = useReducedMotion();
 
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
@@ -114,14 +116,7 @@ export function BuildLog({
 
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card">
-      <div className="h-0.5 w-full bg-muted">
-        <motion.div
-          className="h-full"
-          style={{ background: 'var(--brand)' }}
-          animate={{ width: `${progress}%` }}
-          transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-        />
-      </div>
+      <ProgressEdge progress={progress} state={current >= stages.length ? 'done' : 'running'} />
 
       <p aria-live="polite" aria-atomic="true" className="sr-only">
         {status}
@@ -169,7 +164,7 @@ export function BuildLog({
           lines.map((line) => (
             <motion.p
               key={line.id}
-              initial={{ opacity: 0, y: 4 }}
+              initial={reduce ? false : { opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.2 }}
               className="text-muted-foreground"

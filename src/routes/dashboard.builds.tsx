@@ -112,11 +112,11 @@ function BuildDrawer({ build, onClose }: { build: BuildRow | null; onClose: () =
             size="sm"
             variant="outline"
             className="gap-1.5"
-            disabled={sbom.isPending}
+            busy={sbom.isPending}
             onClick={download}
           >
             <Download className="h-3.5 w-3.5" />
-            {sbom.isPending ? 'Preparing…' : 'Download SBOM'}
+            Download SBOM
           </Button>
         ) : undefined
       }

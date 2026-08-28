@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { motion, useReducedMotion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   WarningTriangle,
   CheckCircle,
@@ -11,7 +11,8 @@ import {
 } from 'iconoir-react';
 import type { LogLevel, RunState } from '@/lib/mock-data';
 import { ApiError, errorMessage } from '@/lib/api/errors';
-import { Sparkline } from './charts';
+import { CountUp, ITEM_VARIANTS } from './motion';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   DitherButton,
   Sparkline as DitherSparkline,
@@ -44,7 +45,10 @@ export function StateBadge({ state, className }: { state: RunState; className?: 
       animate={pulse ? { opacity: [1, 0.6, 1] } : { opacity: 1 }}
       transition={pulse ? { duration: 1.6, repeat: Infinity, ease: 'easeInOut' } : { duration: 0 }}
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs',
+        // Colour eases over a state flip (deploying → live) while the keyed
+        // span below cross-fades the icon and label — the moment reads as a
+        // change of state, not a repaint.
+        'inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs transition-[color,border-color] duration-200 ease-console',
         className
       )}
       style={{
@@ -52,8 +56,19 @@ export function StateBadge({ state, className }: { state: RunState; className?: 
         color: cfg.color,
       }}
     >
-      <Icon className={cn('h-3 w-3', state === 'deploying' && 'animate-spin')} />
-      {cfg.label}
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.span
+          key={state}
+          className="inline-flex items-center gap-1.5"
+          initial={reduce ? false : { opacity: 0, y: -3 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={reduce ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0, y: 3 }}
+          transition={{ duration: 0.15 }}
+        >
+          <Icon className={cn('h-3 w-3', state === 'deploying' && 'animate-spin')} />
+          {cfg.label}
+        </motion.span>
+      </AnimatePresence>
     </motion.span>
   );
 }
@@ -85,17 +100,23 @@ export function LevelTag({ level }: { level: LogLevel }) {
 export function StatTile({
   label,
   value,
+  format,
   state = 'ready',
   unit,
   note,
   delta,
   deltaGood = true,
   series,
-  color = 'var(--chart-1)',
-  tone,
+  tone = 'green',
 }: {
   label: string;
-  value?: string;
+  /** Pass a number and the tile rolls to new values instead of jumping —
+   *  pair it with `format` when the figure is not a plain integer. A string
+   *  renders as-is. */
+  value?: string | number;
+  /** Turns a numeric `value` into text. Keep it monotone (fixed/compact) so
+   *  the width settles. Ignored for string values. */
+  format?: (v: number) => string;
   /**
    * Whether the figure is known.
    *
@@ -112,9 +133,8 @@ export function StatTile({
   /** Whether a rising delta is a good thing (invocations) or bad (errors). */
   deltaGood?: boolean;
   series?: number[];
-  color?: string;
-  /** Set to render the sparkline with Dither Kit in this palette colour
-   * instead of the flat SVG spark. */
+  /** Dither Kit palette colour for the sparkline (and nothing else — the
+   * value itself never rests on hue). */
   tone?: DitherColor;
 }) {
   const positive = (delta ?? 0) >= 0;
@@ -122,7 +142,7 @@ export function StatTile({
   const Arrow = positive ? GraphUp : GraphDown;
 
   return (
-    <div className="rounded-xl border border-border bg-card p-5">
+    <motion.div variants={ITEM_VARIANTS} className="rounded-xl border border-border bg-card p-5">
       <p className="label-mono text-muted-foreground">{label}</p>
 
       <div className="mt-3 flex items-end justify-between gap-4">
@@ -138,7 +158,7 @@ export function StatTile({
             </p>
           ) : (
             <p className="text-3xl leading-none font-semibold tracking-tight [font-variant-numeric:tabular-nums]">
-              {value}
+              {typeof value === 'number' ? <CountUp value={value} format={format} /> : value}
               {unit && <span className="ml-1 text-base text-muted-foreground">{unit}</span>}
             </p>
           )}
@@ -161,22 +181,17 @@ export function StatTile({
           )}
         </div>
 
-        {state === 'ready' &&
-          series &&
-          series.length > 1 &&
-          (tone ? (
-            <DitherSparkline
-              data={series}
-              color={tone}
-              bloom="low"
-              bloomOnHover
-              className="h-9 w-24 shrink-0"
-            />
-          ) : (
-            <Sparkline values={series} color={color} className="h-9 w-24 shrink-0" />
-          ))}
+        {state === 'ready' && series && series.length > 1 && (
+          <DitherSparkline
+            data={series}
+            color={tone}
+            bloom="low"
+            bloomOnHover
+            className="h-9 w-24 shrink-0"
+          />
+        )}
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -194,13 +209,16 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <motion.div
+      variants={ITEM_VARIANTS}
+      className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"
+    >
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
         {description && <p className="mt-1.5 text-sm text-muted-foreground">{description}</p>}
       </div>
       {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
-    </div>
+    </motion.div>
   );
 }
 
@@ -225,7 +243,8 @@ export function Panel({
   padded?: boolean;
 }) {
   return (
-    <section
+    <motion.section
+      variants={ITEM_VARIANTS}
       className={cn('relative overflow-hidden rounded-xl border border-border bg-card', className)}
     >
       {/* The landing's lit edge, brightest at centre. One panel per page at
@@ -252,7 +271,7 @@ export function Panel({
         </header>
       )}
       <div className={cn(padded && 'p-5')}>{children}</div>
-    </section>
+    </motion.section>
   );
 }
 
@@ -308,7 +327,7 @@ export function RangeSelector<T extends string>({
           aria-pressed={value === opt.key}
           onClick={() => onChange(opt.key)}
           className={cn(
-            'rounded px-2.5 py-1 text-xs transition-colors',
+            'pressable rounded px-2.5 py-1 text-xs',
             value === opt.key
               ? 'bg-muted text-foreground'
               : 'text-muted-foreground hover:text-foreground'
@@ -353,26 +372,77 @@ export function queryPhase({
   return isEmpty ? 'empty' : 'ready';
 }
 
-/** A grey bar standing in for text that has not arrived. */
-export function Skeleton({ className }: { className?: string }) {
-  return (
-    <span
-      aria-hidden
-      className={cn('block rounded bg-muted-foreground/15 motion-safe:animate-pulse', className)}
-    />
-  );
+export { Skeleton } from '@/components/ui/skeleton';
+
+/**
+ * Compact one-line rendering of the read phases, for modals and panel
+ * corners where the full dashed-box states would shout. Same precedence as
+ * `queryPhase` — including the unreachable/error distinction the bespoke
+ * `<p>Loading…</p>` lines it replaces always dropped. Renders nothing for
+ * `ready`; renders `emptyMessage` (if given) for `empty`.
+ */
+export function InlinePhase({
+  phase,
+  error,
+  loadingMessage = 'Loading…',
+  emptyMessage,
+}: {
+  phase: QueryPhase;
+  error?: unknown;
+  loadingMessage?: string;
+  emptyMessage?: string;
+}) {
+  if (phase === 'unreachable') {
+    return (
+      <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
+        <CloudXmark className="h-3.5 w-3.5 shrink-0" />
+        Could not reach the API.
+      </p>
+    );
+  }
+  if (phase === 'error') {
+    return (
+      <p
+        role="alert"
+        className="flex items-start gap-2 text-sm"
+        style={{ color: 'var(--status-critical)' }}
+      >
+        <WarningTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        {errorMessage(error)}
+      </p>
+    );
+  }
+  if (phase === 'loading') {
+    return (
+      <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
+        <RefreshDouble className="h-3.5 w-3.5 shrink-0 animate-spin motion-reduce:animate-none" />
+        {loadingMessage}
+      </p>
+    );
+  }
+  if (phase === 'empty' && emptyMessage) {
+    return <p className="text-sm text-muted-foreground">{emptyMessage}</p>;
+  }
+  return null;
 }
 
 export function EmptyState({
   message,
   action,
+  className,
 }: {
   message: string;
   /** A way out of the empty state — usually "create the first one". */
   action?: ReactNode;
+  className?: string;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border px-6 py-14 text-center">
+    <div
+      className={cn(
+        'flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border px-6 py-14 text-center',
+        className
+      )}
+    >
       <Circle className="h-5 w-5 text-muted-foreground" />
       <p className="text-sm text-muted-foreground">{message}</p>
       {action}
@@ -385,11 +455,20 @@ export function EmptyState({
  * API is an outage to wait out, not a fault the reader can act on, and
  * painting it red on every panel of every page reads as catastrophe.
  */
-export function UnreachableState({ onRetry }: { onRetry?: () => void }) {
+export function UnreachableState({
+  onRetry,
+  className,
+}: {
+  onRetry?: () => void;
+  className?: string;
+}) {
   return (
     <div
       role="status"
-      className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border px-6 py-14 text-center"
+      className={cn(
+        'flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border px-6 py-14 text-center',
+        className
+      )}
     >
       <CloudXmark className="h-5 w-5 text-muted-foreground" />
       <p className="max-w-sm text-sm text-muted-foreground">
@@ -414,11 +493,20 @@ export function UnreachableState({ onRetry }: { onRetry?: () => void }) {
  * Deliberately the same box as `EmptyState` so a list does not jump when the
  * response lands and one replaces the other.
  */
-export function LoadingState({ message = 'Loading…' }: { message?: string }) {
+export function LoadingState({
+  message = 'Loading…',
+  className,
+}: {
+  message?: string;
+  className?: string;
+}) {
   return (
     <div
       role="status"
-      className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border px-6 py-14 text-center"
+      className={cn(
+        'flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border px-6 py-14 text-center',
+        className
+      )}
     >
       <RefreshDouble className="h-5 w-5 animate-spin text-muted-foreground motion-reduce:animate-none" />
       <p className="text-sm text-muted-foreground">{message}</p>
@@ -430,11 +518,22 @@ export function LoadingState({ message = 'Loading…' }: { message?: string }) {
  * A failed read. Distinct from empty on purpose — "no functions yet" and "we
  * could not reach the API" are opposite situations and used to look identical.
  */
-export function ErrorState({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
+export function ErrorState({
+  error,
+  onRetry,
+  className,
+}: {
+  error: unknown;
+  onRetry?: () => void;
+  className?: string;
+}) {
   return (
     <div
       role="alert"
-      className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed px-6 py-14 text-center"
+      className={cn(
+        'flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed px-6 py-14 text-center',
+        className
+      )}
       style={{ borderColor: 'color-mix(in oklab, var(--status-critical) 35%, transparent)' }}
     >
       <WarningTriangle className="h-5 w-5" style={{ color: 'var(--status-critical)' }} />

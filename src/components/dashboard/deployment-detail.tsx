@@ -1,6 +1,12 @@
 import { RefreshDouble } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
-import { ErrorState, LoadingState, Panel } from '@/components/dashboard/primitives';
+import {
+  ErrorState,
+  LoadingState,
+  Panel,
+  UnreachableState,
+  queryPhase,
+} from '@/components/dashboard/primitives';
 import { Pill } from '@/components/dashboard/resource-table';
 import { useLogStream } from '@/lib/api/logs';
 import { useDeployment } from '@/lib/api/queries';
@@ -62,6 +68,9 @@ export function DeploymentDetailPanel({
   const buildLog = useLogStream({ kind: 'build', deploymentId, limit: 200 }, Boolean(deploymentId));
   const deployment = detail.data;
   const status = deployment?.status?.toLowerCase() ?? 'unknown';
+  // The shared precedence: an unreachable API renders as the quiet outage
+  // box, matching the tables beside this panel, not as a red fault.
+  const phase = queryPhase({ error: detail.error, loading: detail.isPending });
 
   return (
     <Panel
@@ -73,9 +82,11 @@ export function DeploymentDetailPanel({
         </Button>
       }
     >
-      {detail.isPending ? (
+      {phase === 'unreachable' ? (
+        <UnreachableState onRetry={() => void detail.refetch()} />
+      ) : phase === 'loading' ? (
         <LoadingState message="Loading deployment…" />
-      ) : detail.error || !deployment ? (
+      ) : phase === 'error' || !deployment ? (
         <ErrorState error={detail.error} onRetry={() => void detail.refetch()} />
       ) : (
         <div className="flex flex-col gap-5">

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { Refresh } from 'iconoir-react';
-import { PageHeader } from '@/components/dashboard/primitives';
+import { InlinePhase, PageHeader, queryPhase } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { useToast } from '@/components/ui/toast';
 import { useConfirm } from '@/components/ui/confirm';
@@ -70,6 +70,7 @@ function Json({ value }: { value: unknown }) {
 function InvocationDrawer({ id, onClose }: { id: string | null; onClose: () => void }) {
   const q = useInvocation(id ?? '');
   const inv = q.data;
+  const invPhase = queryPhase({ error: q.error, loading: q.isPending, isEmpty: !inv });
   return (
     <Modal
       open={id !== null}
@@ -78,10 +79,12 @@ function InvocationDrawer({ id, onClose }: { id: string | null; onClose: () => v
       description={id ?? undefined}
       width="max-w-2xl"
     >
-      {q.isPending ? (
-        <p className="text-sm text-muted-foreground">Loading…</p>
-      ) : q.error || !inv ? (
-        <p className="text-sm text-muted-foreground">{errorMessage(q.error)}</p>
+      {invPhase !== 'ready' || !inv ? (
+        <InlinePhase
+          phase={invPhase}
+          error={q.error}
+          emptyMessage="This invocation has no recorded detail."
+        />
       ) : (
         <div className="flex flex-col gap-4">
           <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-3">

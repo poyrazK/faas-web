@@ -10,6 +10,7 @@ import {
 } from 'react';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
+import { CopyMorph, useCopy } from '@/components/ui/copy-button';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import {
   confirmMfa,
@@ -378,15 +379,18 @@ function CopyRow({ label, value }: { label: string; value: string }) {
 }
 
 function CopyButton({ value }: { value: string }) {
+  const { copied, copy } = useCopy();
   return (
     <Button
       type="button"
       size="xs"
       variant="ghost"
-      onClick={() => void navigator.clipboard?.writeText(value)}
+      onClick={() => void copy(value)}
       aria-label="Copy"
+      className="gap-1"
     >
-      Copy
+      <CopyMorph copied={copied} className="h-3 w-3" />
+      <span aria-live="polite">{copied ? 'Copied' : 'Copy'}</span>
     </Button>
   );
 }

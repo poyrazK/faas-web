@@ -1,4 +1,4 @@
-import { motion, useMotionValue, useReducedMotion, useSpring, useTransform } from 'framer-motion';
+import { motion, useMotionValue, useReducedMotion, useSpring, useTransform } from 'motion/react';
 import { useEffect, useState, type ComponentProps, type ReactNode } from 'react';
 
 /**
@@ -10,15 +10,27 @@ import { useEffect, useState, type ComponentProps, type ReactNode } from 'react'
  * get the final state immediately.
  */
 
+/** The console curve. Mirrored in CSS as `--motion-ease` / `ease-console`
+ * (index.css) — change one, change both. */
 export const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
 export const DURATION = 0.38;
-/** Standard press feedback for anything button-shaped. */
+/** Standard press feedback for anything button-shaped. CSS-only consumers
+ * use the `.pressable` class instead. */
 export const TAP = { scale: 0.97 } as const;
 
-const item = {
+/**
+ * The entrance every staggered child shares. Exported so a component that is
+ * not a plain div (a `<section>`, a stat tile) can join a surrounding
+ * `<Stagger>` by putting these variants on its own motion element. Outside a
+ * `<Stagger>` the variants never activate and the element renders static —
+ * safe to leave on shared components.
+ */
+export const ITEM_VARIANTS = {
   hidden: { opacity: 0, y: 10 },
   show: { opacity: 1, y: 0, transition: { duration: DURATION, ease: EASE } },
 };
+
+const item = ITEM_VARIANTS;
 
 /** Staggered entrance for a group of siblings — wrap the group, mark each
  * child with `<Item>`. Reduced motion renders children in place. */

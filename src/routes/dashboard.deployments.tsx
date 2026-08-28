@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
-import { PageHeader } from '@/components/dashboard/primitives';
+import { InlinePhase, PageHeader, queryPhase } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { formatRelative, type Deployment } from '@/lib/mock-data';
 import { useData } from '@/lib/store';
@@ -65,7 +65,8 @@ function DeploymentControls({
             <Button
               size="xs"
               variant="outline"
-              disabled={updateMinInstances.isPending || minInstances === deployment.min_instances}
+              disabled={minInstances === deployment.min_instances}
+              busy={updateMinInstances.isPending}
               onClick={() => {
                 void updateMinInstances
                   .mutateAsync({ id: deployment.id, min_instances: minInstances })
@@ -79,7 +80,7 @@ function DeploymentControls({
                   );
               }}
             >
-              {updateMinInstances.isPending ? 'Saving…' : 'Save'}
+              Save
             </Button>
           </div>
         </label>
@@ -103,7 +104,8 @@ function DeploymentControls({
             <Button
               size="xs"
               variant="outline"
-              disabled={updateTraffic.isPending || trafficPercent === deployment.traffic_percent}
+              disabled={trafficPercent === deployment.traffic_percent}
+              busy={updateTraffic.isPending}
               onClick={async () => {
                 if (
                   !(await confirm({
@@ -126,7 +128,7 @@ function DeploymentControls({
                   );
               }}
             >
-              {updateTraffic.isPending ? 'Saving…' : 'Save'}
+              Save
             </Button>
           </div>
         </label>
@@ -154,6 +156,12 @@ function DeploymentDrawer({
   const detail = useDeployment(deployment?.id ?? '');
   const scan = useDeploymentScan(deployment?.id ?? '');
   const d = detail.data;
+  const detailPhase = queryPhase({ error: detail.error, loading: detail.isPending, isEmpty: !d });
+  const scanPhase = queryPhase({
+    error: scan.error,
+    loading: scan.isPending,
+    isEmpty: !scan.data,
+  });
 
   return (
     <Modal
@@ -168,10 +176,12 @@ function DeploymentDrawer({
         </Button>
       }
     >
-      {detail.isPending ? (
-        <p className="text-sm text-muted-foreground">Loading…</p>
-      ) : detail.error || !d ? (
-        <p className="text-sm text-muted-foreground">{errorMessage(detail.error)}</p>
+      {detailPhase !== 'ready' || !d ? (
+        <InlinePhase
+          phase={detailPhase}
+          error={detail.error}
+          emptyMessage="This deployment has no recorded detail."
+        />
       ) : (
         <div className="flex flex-col gap-5">
           <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
@@ -198,10 +208,13 @@ function DeploymentDrawer({
 
           <div>
             <p className="label-mono mb-2 text-muted-foreground">Vulnerability scan</p>
-            {scan.isPending ? (
-              <p className="text-sm text-muted-foreground">Reading scan…</p>
-            ) : scan.error || !scan.data ? (
-              <p className="text-sm text-muted-foreground">{errorMessage(scan.error)}</p>
+            {scanPhase !== 'ready' || !scan.data ? (
+              <InlinePhase
+                phase={scanPhase}
+                error={scan.error}
+                loadingMessage="Reading scan…"
+                emptyMessage="No scan has been recorded."
+              />
             ) : scan.data.status !== 'complete' ? (
               <p className="text-sm text-muted-foreground">
                 Scan {scan.data.status}

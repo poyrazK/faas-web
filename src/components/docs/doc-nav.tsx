@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Kbd } from '@/components/ui/kbd';
 import { Link, useMatchRoute } from '@tanstack/react-router';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'motion/react';
 import { NavArrowDown, Search, Xmark } from 'iconoir-react';
 import { EASE } from '@/components/landing/reveal';
 import { DOC_SECTIONS, findDoc, type DocEntry } from '@/lib/docs-manifest';
@@ -176,9 +177,7 @@ export function DocsSidebar() {
               <Xmark className="h-3.5 w-3.5" aria-hidden />
             </button>
           ) : (
-            <kbd className="label-mono pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 rounded border border-border px-1.5 py-0.5 text-muted-foreground">
-              /
-            </kbd>
+            <Kbd className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2">/</Kbd>
           )}
         </div>
 

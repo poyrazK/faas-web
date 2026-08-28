@@ -84,6 +84,21 @@ function asTimestamp(value: unknown): number | undefined {
  * present, and the raw string when it is not. A frame this does not understand
  * still renders as a line rather than disappearing.
  */
+/**
+ * ANSI escape sequences mean colours in a terminal and garbage in a `<p>`.
+ * Stripped at parse time, once per line; `raw` keeps the original bytes so
+ * copy and download reproduce what the app actually wrote. Covers CSI (the
+ * colour/cursor family) and OSC-with-BEL (terminal titles); built with the
+ * constructor so no control character sits in a regex literal.
+ */
+const ESC = String.fromCharCode(27);
+const BEL = String.fromCharCode(7);
+const ANSI_PATTERN = new RegExp(`${ESC}(?:\\[[0-9;?]*[ -/]*[@-~]|\\][^${BEL}]*${BEL})`, 'g');
+
+export function stripAnsi(value: string): string {
+  return value.includes(ESC) ? value.replace(ANSI_PATTERN, '') : value;
+}
+
 export function parseFrame(data: string, id: string, receivedAt: number): LogLine {
   const raw = data ?? '';
   const trimmed = raw.trim();
@@ -105,7 +120,7 @@ export function parseFrame(data: string, id: string, receivedAt: number): LogLin
             : typeof parsed.instance === 'string'
               ? parsed.instance
               : undefined,
-        text: String(message),
+        text: stripAnsi(String(message)),
         raw,
       };
     } catch {
@@ -113,7 +128,7 @@ export function parseFrame(data: string, id: string, receivedAt: number): LogLin
     }
   }
 
-  return { id, ts: receivedAt, level: levelFromText(raw), text: raw, raw };
+  return { id, ts: receivedAt, level: levelFromText(raw), text: stripAnsi(raw), raw };
 }
 
 /**

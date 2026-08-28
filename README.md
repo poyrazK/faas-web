@@ -192,6 +192,28 @@ is the rule to preserve: if you find yourself writing a literal hex or a
 The colour ramp, contrast measurements, and chart tokens are documented inline
 at the top of `index.css`.
 
+### Motion
+
+One curve, a few speeds, everywhere. The vocabulary lives in two places that
+mirror each other — change one, change both:
+
+- **TypeScript** — `components/dashboard/motion.tsx` exports `EASE`,
+  `DURATION`, and the components: `Stagger`/`Item` (page entrances — the shell
+  wraps every page in a `Stagger`, and `PageHeader`, `Panel`, `StatTile`, and
+  `ResourceTable` join it automatically via `ITEM_VARIANTS`), `CountUp` (a
+  figure that rolls to its new value), and `Swap` (a keyed cross-fade for a
+  block whose content is replaced, like a metrics window change).
+- **CSS** — `--motion-ease` / `--motion-fast|base|slow` tokens in `index.css`,
+  the `ease-console` Tailwind utility, and the `.pressable` class (the 0.97
+  press dip for anything button-shaped that is not a `<Button>`; use it
+  _instead of_ `transition-colors`, which it includes).
+
+When to reach for which: an element **arriving** joins the page's `Stagger` or
+fades in; a value **updating in place** rolls with `CountUp`; a block being
+**replaced** cross-fades with `Swap`; never two of those at once. Everything
+honours `prefers-reduced-motion` — Framer components via `useReducedMotion()`,
+CSS via the blanket `[class*='animate-']` rule in `index.css`.
+
 ## Deployment
 
 The build output in `dist/` is fully static, but routing happens in the
@@ -346,9 +368,10 @@ calling a function with the wrong type.
 ## Conventions
 
 - **Motion honours `prefers-reduced-motion`, always.** Use `useReducedMotion()`
-  from `framer-motion` and pass `initial={reduce ? false : …}`; for CSS
+  from `motion/react` and pass `initial={reduce ? false : …}`; for CSS
   animations, add a `@media (prefers-reduced-motion: reduce)` rule. This is
-  consistent across the codebase and worth keeping that way.
+  consistent across the codebase and worth keeping that way. The shared
+  vocabulary is described under [Motion](#motion).
 - **Colour is never the only signal.** Status is always colour _plus_ an icon
   _plus_ a text label — see `StateBadge` in `components/dashboard/primitives.tsx`.
 - **Comments explain why, not what.** The existing comments carry real design

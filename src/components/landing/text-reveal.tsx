@@ -1,4 +1,4 @@
-import { motion, useInView, useReducedMotion } from 'framer-motion';
+import { motion, useInView, useReducedMotion } from 'motion/react';
 import { Fragment, useRef, type ElementType } from 'react';
 import { EASE } from './reveal';
 

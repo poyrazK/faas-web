@@ -8,8 +8,9 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { WarningTriangle, CheckCircle, InfoCircle, Xmark } from 'iconoir-react';
+import { EASE } from '@/components/dashboard/motion';
 
 type ToastKind = 'success' | 'error' | 'info';
 
@@ -97,8 +98,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                     ? { opacity: 0, transition: { duration: 0 } }
                     : { opacity: 0, x: 16, scale: 0.97 }
                 }
-                transition={{ duration: reduce ? 0 : 0.22, ease: [0.16, 1, 0.3, 1] }}
-                className="pointer-events-auto flex items-start gap-3 rounded-xl border border-border bg-popover/95 p-3.5 shadow-2xl backdrop-blur-sm"
+                transition={{ duration: reduce ? 0 : 0.22, ease: EASE }}
+                className="pointer-events-auto relative flex items-start gap-3 overflow-hidden rounded-xl border border-border bg-popover/95 p-3.5 shadow-elevation-3 backdrop-blur-sm"
               >
                 <Icon className="mt-0.5 h-4 w-4 shrink-0" style={{ color }} />
                 <div className="min-w-0 flex-1">
@@ -113,10 +114,24 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                   type="button"
                   aria-label="Dismiss"
                   onClick={() => dismiss(t.id)}
-                  className="shrink-0 rounded p-0.5 text-muted-foreground transition-colors hover:text-foreground"
+                  className="pressable shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground"
                 >
                   <Xmark className="h-3.5 w-3.5" />
                 </button>
+                {/* Dwell bar — how long the toast has left, so a 9s error
+                    reads as "still here on purpose" rather than stuck. Runs
+                    on the same clock as the dismiss timer; decorative, so
+                    hidden from AT and dropped under reduced motion. */}
+                {!reduce && (
+                  <motion.span
+                    aria-hidden
+                    initial={{ scaleX: 1 }}
+                    animate={{ scaleX: 0 }}
+                    transition={{ duration: DISMISS_MS[t.kind] / 1000, ease: 'linear' }}
+                    className="absolute inset-x-0 bottom-0 h-0.5 origin-left"
+                    style={{ background: `color-mix(in oklab, ${color} 45%, transparent)` }}
+                  />
+                )}
               </motion.div>
             );
           })}

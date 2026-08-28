@@ -1,0 +1,38 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { expect, it } from 'vitest';
+
+/**
+ * The dev mock (`mock/plugin.ts`) is a second implementation of the API
+ * surface, and nothing else keeps it aligned with `api/openapi.yaml`. This
+ * pins the cheap half of that alignment: every path the mock answers must
+ * exist in the spec, so a renamed or removed endpoint fails here instead of
+ * shipping a fixture for a URL the real API no longer serves.
+ *
+ * The reverse direction is deliberately not asserted — the mock answers a
+ * subset, and an unmocked path already announces itself as `404 not_mocked`
+ * on the dev server.
+ */
+
+// Vitest runs from the repo root; jsdom rewrites `import.meta.url` to an
+// http URL, so plain cwd-relative paths are the reliable route to the files.
+const SPEC = readFileSync(resolve('api/openapi.yaml'), 'utf8');
+const MOCK = readFileSync(resolve('mock/plugin.ts'), 'utf8');
+
+/** Cookie-session flows apid serves same-origin but outside the spec's `paths`. */
+const OUTSIDE_SPEC = new Set(['/login', '/signup', '/login/forgot']);
+
+it('every mocked route exists in the OpenAPI spec', () => {
+  const specPaths = new Set([...SPEC.matchAll(/^ {2}(\/[^\s:]+):/gm)].map((m) => m[1]));
+  // Sanity: both parses actually found things, or the assertion below would
+  // pass vacuously after a format change.
+  expect(specPaths.size).toBeGreaterThan(100);
+
+  const mocked = [...MOCK.matchAll(/^route\('(?:GET|POST|PUT|PATCH|DELETE)', '([^']+)'/gm)].map(
+    (m) => m[1]
+  );
+  expect(mocked.length).toBeGreaterThan(50);
+
+  const missing = mocked.filter((path) => !OUTSIDE_SPEC.has(path) && !specPaths.has(path));
+  expect(missing).toEqual([]);
+});

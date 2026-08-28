@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { useToast } from '@/components/ui/toast';
 import { ApiError, errorMessage } from '@/lib/api/errors';
+import { InlinePhase, queryPhase } from '../primitives';
 import {
   useCreateEdgeRule,
   useThrottleSuggestions,
@@ -426,10 +427,14 @@ function ThrottleSuggest({
 
   return (
     <div className="rounded-md border border-border bg-card p-3">
-      {q.isPending ? (
-        <p className="text-xs text-muted-foreground">Reading traffic…</p>
-      ) : q.error ? (
-        <p className="text-xs text-muted-foreground">{errorMessage(q.error)}</p>
+      {q.isPending || q.error ? (
+        <div className="text-xs">
+          <InlinePhase
+            phase={queryPhase({ error: q.error, loading: q.isPending })}
+            error={q.error}
+            loadingMessage="Reading traffic…"
+          />
+        </div>
       ) : q.data?.route_metrics_disabled ? (
         <p className="text-xs text-muted-foreground">
           Per-route metrics are off for this app, so there is nothing to measure. Turn them on in
