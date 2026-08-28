@@ -36,3 +36,13 @@ it('every mocked route exists in the OpenAPI spec', () => {
   const missing = mocked.filter((path) => !OUTSIDE_SPEC.has(path) && !specPaths.has(path));
   expect(missing).toEqual([]);
 });
+
+it('every route registration is top-level', () => {
+  // Routes register as module-level side effects; a `route(` call that ends
+  // up inside another handler's body (a botched splice) is dead code the dev
+  // server never registers, and the assertion above skips it too — its
+  // regex is anchored to column 0. An indented call is therefore always a
+  // mistake.
+  const buried = [...MOCK.matchAll(/^[ \t]+route\('/gm)];
+  expect(buried).toEqual([]);
+});

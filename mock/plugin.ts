@@ -1046,558 +1046,558 @@ route('DELETE', '/v1/orgs/{slug}/members/{user_id}', ({ params }) => {
 });
 route('DELETE', '/v1/orgs/{slug}/invitations/{token}', ({ params }) => {
   const inv = db.invitations.find((x) => x.id === params.token);
-
-  const hex = (n: number) =>
-    Array.from({ length: n }, () => Math.floor(Math.random() * 16).toString(16)).join('');
-
-  // --- GitHub installation repos + app binding ---
-  route('POST', '/v1/install/repos/list', () => [
-    { id: 1001, full_name: 'acme-corp/storefront', default_branch: 'main', private: true },
-    { id: 1002, full_name: 'acme-corp/checkout', default_branch: 'main', private: true },
-    { id: 1003, full_name: 'acme-corp/webhook-router', default_branch: 'master', private: false },
-    { id: 1004, full_name: 'acme-corp/nightly-etl', default_branch: 'main', private: true },
-  ]);
-  route('POST', '/v1/apps/{slug}/install/bind', async ({ body }) => ({
-    binding_id: hex(32),
-    repo_full_name: String(body.repo_full_name ?? ''),
-    production_branch: String(body.production_branch ?? 'main'),
-  }));
-
-  // --- Organisations, org keys, invitations ---
-  route('GET', '/v1/orgs/{slug}', ({ params }) => ({
-    id: hex(32),
-    slug: params.slug,
-    name: 'Acme Corp',
-    personal: false,
-    plan: db.account.plan,
-    status: 'active',
-    created_at: db.iso(200 * 24),
-    updated_at: db.iso(2 * 24),
-  }));
-  route('PATCH', '/v1/orgs/{slug}', async ({ params, body }) => ({
-    id: hex(32),
-    slug: params.slug,
-    name: String(body.name ?? 'Acme Corp'),
-    personal: false,
-    plan: String(body.plan ?? db.account.plan),
-    status: 'active',
-    created_at: db.iso(200 * 24),
-    updated_at: new Date().toISOString(),
-  }));
-  route('DELETE', '/v1/orgs/{slug}', () => ({}));
-  route('GET', '/v1/orgs/{slug}/seat_usage', () => ({ used: 3, limit: 5, plan: db.account.plan }));
-  route('POST', '/v1/orgs/{slug}/transfer_ownership', ({ params }) => ({
-    id: hex(32),
-    slug: params.slug,
-    name: 'Acme Corp',
-    personal: false,
-    plan: db.account.plan,
-    status: 'active',
-    created_at: db.iso(200 * 24),
-    updated_at: new Date().toISOString(),
-  }));
-  const orgKeys: Record<string, unknown>[] = [
-    {
-      id: hex(32),
-      org_id: hex(32),
-      prefix: 'gk_org_a1b2',
-      label: 'ci-deploy',
-      scopes: ['deploy:write', 'apps:read'],
-      last_used_at: db.iso(5),
-      created_at: db.iso(90 * 24),
-      expires_at: null,
-      status: 'active',
-      revoked_at: null,
-      rotated_from_id: null,
-    },
-  ];
-  route('GET', '/v1/orgs/{slug}/keys', () => ({ keys: orgKeys }));
-  route('POST', '/v1/orgs/{slug}/keys', async ({ body }) => {
-    const key = {
-      id: hex(32),
-      org_id: hex(32),
-      prefix: `gk_org_${hex(4)}`,
-      label: String(body.label ?? ''),
-      scopes: body.scopes ?? [],
-      last_used_at: null,
-      created_at: new Date().toISOString(),
-      expires_at: null,
-      status: 'active',
-      revoked_at: null,
-      rotated_from_id: null,
-      plaintext: `gk_org_${hex(28)}`,
-    };
-    orgKeys.unshift(key);
-    return status(201, key);
-  });
-  route('DELETE', '/v1/orgs/{slug}/keys/{id}', ({ params }) => {
-    const i = orgKeys.findIndex((k) => k.id === params.id);
-    if (i >= 0) orgKeys.splice(i, 1);
-    return {};
-  });
-  route('POST', '/v1/orgs/{slug}/keys/{id}/rotate', ({ params }) => ({
-    key: orgKeys[0],
-    key_plaintext: `gk_org_${hex(28)}`,
-    old_key_id: params.id,
-    old_key_expires_at: new Date(Date.now() + 7 * 86400e3).toISOString(),
-  }));
-  route('GET', '/v1/invitations/{token}', ({ params }) => ({
-    id: hex(32),
-    org_id: hex(32),
-    org_slug: 'acme-corp',
-    email: 'new-teammate@acme-corp.dev',
-    role: 'developer',
-    status: params.token === 'used' ? 'accepted' : 'pending',
-    expires_at: new Date(Date.now() + 6 * 86400e3).toISOString(),
-    created_at: db.iso(24),
-  }));
-  route('POST', '/v1/invitations/{token}/accept', () => ({
-    account_id: hex(32),
-    email: 'new-teammate@acme-corp.dev',
-    role: 'developer',
-    joined_at: new Date().toISOString(),
-  }));
-  route('POST', '/dashboard/account/set-password', ({ res }) => {
-    res.statusCode = 302;
-    res.setHeader('location', '/dashboard/account');
-    return '';
-  });
-
-  // --- Billing & account controls ---
-  route('POST', '/v1/account/overage-cap', () => ({ ...db.account, app_count: db.apps.length }));
-  route('POST', '/v1/billing/cancel', () => ({
-    cancel_scheduled: true,
-    effective_at: new Date(Date.now() + 19 * 86400e3).toISOString(),
-  }));
-  route('POST', '/v1/billing/retry', () => ({
-    attempt_id: `att_${hex(8)}`,
-    provider_ref_id: `txn_${hex(8)}`,
-    status: 'submitted',
-    next_billing_at: new Date(Date.now() + 30 * 86400e3).toISOString(),
-  }));
-  route('GET', '/v1/account/export', () => ({
-    exported_at: new Date().toISOString(),
-    account: db.account,
-    apps: db.apps,
-    deployments: db.deployments,
-    builds: db.builds,
-    instances: db.instances,
-    usage: [],
-    domains: db.domains,
-    crons: db.crons,
-    api_keys: db.keys ?? [],
-  }));
-  route('POST', '/v1/account/restore', () => ({ ...db.account, app_count: db.apps.length }));
-  let graceDays = 7;
-  route('GET', '/v1/account/keys/grace_window_days', () => ({ days: graceDays, plan_default: 7 }));
-  route('PATCH', '/v1/account/keys/grace_window_days', async ({ body }) => {
-    graceDays = Number(body.days ?? graceDays);
-    return { days: graceDays, plan_default: 7 };
-  });
-  let egressExtra = 0;
-  route('GET', '/v1/account/egress_allowlist_extra', () => ({
-    extra: egressExtra,
-    plan_cap: 8,
-    max_extra: 32,
-  }));
-  route('PATCH', '/v1/account/egress_allowlist_extra', async ({ body }) => {
-    egressExtra = Number(body.extra ?? egressExtra);
-    return { extra: egressExtra, plan_cap: 8, max_extra: 32 };
-  });
-  route('GET', '/v1/usage', () =>
-    db.apps.slice(0, 6).map((a, i) => ({
-      app_id: a.id,
-      mb_seconds: Math.round((i + 1) * 3.7e8),
-      requests: Math.round((6 - i) * 140_000),
-      included_gb_hours: 2000,
-      cpu_usec: Math.round((i + 1) * 9e9),
-      tx_bytes: Math.round((i + 1) * 4.1e9),
-      net_tx_bytes: Math.round((i + 1) * 1.2e9),
-      net_rx_bytes: Math.round((i + 1) * 0.8e9),
-      cold_boots: (i + 1) * 12,
-    }))
-  );
-
-  // --- Supply chain & secrets hygiene ---
-  const trustedSigners = new Map<
-    string,
-    { name: string; public_key_pem: string; added_at: string; added_by: string }[]
-  >();
-  route('PATCH', '/v1/apps/{slug}/security', async ({ params, body }) => {
-    const a = db.apps.find((x) => x.slug === params.slug);
-    if (a) (a as unknown as Record<string, unknown>).require_signed = Boolean(body.require_signed);
-    return { require_signed: Boolean(body.require_signed) };
-  });
-  route('GET', '/v1/apps/{slug}/trusted_signers', ({ params }) => ({
-    signers: trustedSigners.get(params.slug) ?? [
-      {
-        name: 'release-ci',
-        public_key_pem: '-----BEGIN PUBLIC KEY-----…',
-        added_at: new Date(Date.now() - 12 * 86400e3).toISOString(),
-        added_by: 'demo@acme-corp.dev',
-      },
-    ],
-  }));
-  route('PUT', '/v1/apps/{slug}/trusted_signers/{name}', async ({ params, body }) => {
-    const list = trustedSigners.get(params.slug) ?? [
-      {
-        name: 'release-ci',
-        public_key_pem: '-----BEGIN PUBLIC KEY-----…',
-        added_at: new Date(Date.now() - 12 * 86400e3).toISOString(),
-        added_by: 'demo@acme-corp.dev',
-      },
-    ];
-    const entry = {
-      name: params.name,
-      public_key_pem: String(body.public_key_pem ?? ''),
-      added_at: new Date().toISOString(),
-      added_by: 'demo@acme-corp.dev',
-    };
-    trustedSigners.set(params.slug, [...list.filter((x) => x.name !== params.name), entry]);
-    return entry;
-  });
-  route('DELETE', '/v1/apps/{slug}/trusted_signers/{name}', ({ params }) => {
-    const list = trustedSigners.get(params.slug) ?? [];
-    trustedSigners.set(
-      params.slug,
-      list.filter((x) => x.name !== params.name)
-    );
-    return {};
-  });
-  route('POST', '/v1/apps/{slug}/secrets/{key}/rotate', ({ params }) => ({
-    key: params.key,
-    rotated_at: new Date().toISOString(),
-    kid: `kid_${hex(6)}`,
-  }));
-  route('GET', '/v1/secrets', () => ({
-    secrets: db.apps.slice(0, 4).flatMap((a, i) => [
-      {
-        app_id: a.id,
-        app_slug: a.slug,
-        key: 'DATABASE_URL',
-        ciphertext: '***',
-        created_at: db.iso((30 + i) * 24),
-        updated_at: db.iso((3 + i) * 24),
-      },
-      ...(i % 2 === 0
-        ? [
-            {
-              app_id: a.id,
-              app_slug: a.slug,
-              key: 'STRIPE_KEY',
-              ciphertext: '***',
-              created_at: db.iso(60 * 24),
-              updated_at: db.iso(45 * 24),
-            },
-          ]
-        : []),
-    ]),
-    next_before: null,
-  }));
-
-  // --- Scheduling: delayed tasks (session-tracked) + cron fire-now state ---
-  const delayedTasks = new Map<string, { id: string; scheduled_at: string; state: string }>();
-  route('POST', '/v1/apps/{slug}/delayed-tasks', async ({ body }) => {
-    const id = `dt_${hex(10)}`;
-    const t = {
-      id,
-      scheduled_at: String(body.scheduled_at ?? new Date().toISOString()),
-      state: 'pending',
-    };
-    delayedTasks.set(id, t);
-    return t;
-  });
-  route('GET', '/v1/delayed-tasks/{id}', ({ params, res }) => {
-    const t = delayedTasks.get(params.id);
-    if (!t) {
-      res.statusCode = 404;
-      return { type: 'about:blank', title: 'not found', code: 'not_found' };
-    }
-    if (t.state === 'pending' && Date.parse(t.scheduled_at) < Date.now()) t.state = 'completed';
-    return t;
-  });
-  route('DELETE', '/v1/delayed-tasks/{id}', ({ params }) => {
-    const t = delayedTasks.get(params.id);
-    if (t) t.state = 'cancelled';
-    return {};
-  });
-  const fireRequests = new Map<string, number>();
-  route('GET', '/v1/cron-fire-now-requests/{request_id}', ({ params }) => {
-    const started = fireRequests.get(params.request_id) ?? Date.now();
-    fireRequests.set(params.request_id, started);
-    const done = Date.now() - started > 4000;
-    return {
-      request_id: params.request_id,
-      cron_id: db.crons[0]?.id ?? 'cron_1',
-      status: done ? 'completed' : 'running',
-      requested_at: new Date(started).toISOString(),
-      finished_at: done ? new Date().toISOString() : null,
-      invocation_id: done ? `inv_${hex(8)}` : null,
-      error: '',
-      account_id: db.account.id,
-    };
-  });
-
-  // --- Observability: error groups, wake timelines, diff preview, build
-  // provenance, secret scan, auth audit events. ---
-  const ERR_FP = 'fp_5c1a9b2e77d34fa0';
-  route('GET', '/v1/apps/{slug}/errors/summary', ({ params }) => {
-    const a = db.apps.find((x) => x.slug === params.slug);
-    const failing = a?.status === 'error';
-    return {
-      generated_at: new Date().toISOString(),
-      app_id: a?.id ?? 'unknown',
-      app_slug: params.slug,
-      window_start: new Date(Date.now() - 24 * 3600e3).toISOString(),
-      window_end: new Date().toISOString(),
-      window_clamped: false,
-      items: failing
-        ? [
-            {
-              fingerprint: ERR_FP,
-              error_class: 'TypeError',
-              route: 'POST /v1/reconcile',
-              http_status: 500,
-              count: 412,
-              request_count: 2001,
-              first_seen_at: new Date(Date.now() - 5 * 3600e3).toISOString(),
-              last_seen_at: new Date(Date.now() - 120e3).toISOString(),
-              sample_message: "Cannot read properties of undefined (reading 'invoice_id')",
-            },
-            {
-              fingerprint: 'fp_88d0c4a1b52e9f13',
-              error_class: 'TimeoutError',
-              route: 'GET /v1/reports/daily',
-              http_status: 504,
-              count: 37,
-              request_count: 400,
-              first_seen_at: new Date(Date.now() - 20 * 3600e3).toISOString(),
-              last_seen_at: new Date(Date.now() - 3600e3).toISOString(),
-              sample_message: 'upstream ledger did not answer within 10s',
-            },
-          ]
-        : [],
-      next_cursor: null,
-      limit: 50,
-    };
-  });
-  route('GET', '/v1/apps/{slug}/errors/{fingerprint}', ({ params }) => ({
-    fingerprint: params.fingerprint,
-    error_class: 'TypeError',
-    route: 'POST /v1/reconcile',
-    http_status: 500,
-    requests: Array.from({ length: 6 }, (_, i) => ({
-      request_id: `req_${hex(8)}`,
-      received_at: new Date(Date.now() - (i + 1) * 900e3).toISOString(),
-      route: 'POST /v1/reconcile',
-      http_status: 500,
-      error_class: 'TypeError',
-      sample_message: "Cannot read properties of undefined (reading 'invoice_id')",
-      deployment_id: db.deployments[0]?.id ?? null,
-    })),
-    next_cursor: null,
-  }));
-  route('GET', '/v1/apps/{slug}/errors/{fingerprint}/first', () => ({
-    request_id: `req_${hex(8)}`,
-    received_at: new Date(Date.now() - 5 * 3600e3).toISOString(),
-    route: 'POST /v1/reconcile',
-    http_status: 500,
-    error_class: 'TypeError',
-    sample_message:
-      "Cannot read properties of undefined (reading 'invoice_id') at reconcile (/app/dist/worker.js:214:31)",
-    deployment_id: db.deployments[0]?.id ?? null,
-    headers_sample: {
-      'content-type': 'application/json',
-      'user-agent': 'stripe-webhooks/2.1',
-      'x-request-id': hex(12),
-    },
-    redactions_applied: ['authorization', 'cookie'],
-  }));
-  route('GET', '/v1/apps/{slug}/wakes/{wake_id}/timeline', ({ params }) => {
-    const t0 = Date.now() - 3600e3;
-    const frames: [number, string][] = [
-      [0, 'wake.requested'],
-      [4, 'admission.granted'],
-      [9, 'snapshot.located'],
-      [31, 'restore.started'],
-      [212, 'restore.completed'],
-      [219, 'resume_hook.entropy_reseeded'],
-      [224, 'resume_hook.clock_stepped'],
-      [281, 'healthz.first_probe'],
-      [304, 'ready'],
-    ];
-    return {
-      wake_id: params.wake_id,
-      app_id: db.apps[0]?.id ?? 'unknown',
-      events: frames.map(([dt, kind]) => ({
-        at: new Date(t0 + dt).toISOString(),
-        kind,
-        actor: 'schedd',
-        data: {},
-      })),
-      next_cursor: '',
-      limit: 100,
-    };
-  });
-  route('POST', '/v1/apps/{slug}/diff', async ({ params, body }) => {
-    const cfg = (body.app_config ?? {}) as Record<string, unknown>;
-    const a = db.apps.find((x) => x.slug === params.slug);
-    const changes = Object.entries(cfg).map(([field, after]) => ({
-      field,
-      kind: 'modify',
-      before: String((a as Record<string, unknown> | undefined)?.[field] ?? '—'),
-      after: String(Array.isArray(after) ? after.join(',') : after),
-    }));
-    return {
-      slug: params.slug,
-      plan: db.account.plan,
-      blocking: false,
-      diff: {
-        slug: params.slug,
-        plan: db.account.plan,
-        changes,
-        breaks:
-          cfg.ram_mb && Number(cfg.ram_mb) < (a?.ram_mb ?? 0)
-            ? ['Shrinking memory invalidates the warm snapshot; the next wake cold-boots.']
-            : [],
-      },
-    };
-  });
-  route('GET', '/v1/builds/{id}/provenance', ({ params }) => ({
-    id: `prov_${hex(6)}`,
-    build_id: params.id,
-    buildkit_version: 'v0.17.2',
-    railpack_version: '0.9.4',
-    base_digest: 'sha256:' + hex(16),
-    source_sha256: hex(16),
-    source_url: '',
-    commit_sha: hex(20),
-    plan: 'railpack-node',
-    runner_digest: 'sha256:' + hex(16),
-    builder_node_id: 'fra-metal-1',
-    started_at: new Date(Date.now() - 7200e3).toISOString(),
-    finished_at: new Date(Date.now() - 7100e3).toISOString(),
-    sbom_storage_key: 'sbom/' + params.id,
-    framework_version: '22.12.0',
-  }));
-  route('GET', '/v1/deployments/{id}/secret-scan', () => ({
-    status: 'complete',
-    scanned_at: new Date(Date.now() - 7000e3).toISOString(),
-    image_digest: 'sha256:' + hex(16),
-    findings: [],
-    error: '',
-  }));
-  route('GET', '/v1/audit-events', () => ({
-    events: [
-      {
-        id: hex(12),
-        at: new Date(Date.now() - 600e3).toISOString(),
-        actor: 'demo@acme-corp.dev',
-        kind: 'session.signed_in',
-        subject: 'google-oauth',
-        severity: 'info',
-        data: {},
-      },
-      {
-        id: hex(12),
-        at: new Date(Date.now() - 86400e3).toISOString(),
-        actor: 'demo@acme-corp.dev',
-        kind: 'api_key.minted',
-        subject: 'ci-deploy',
-        severity: 'info',
-        data: {},
-      },
-      {
-        id: hex(12),
-        at: new Date(Date.now() - 2 * 86400e3).toISOString(),
-        actor: 'demo@acme-corp.dev',
-        kind: 'login.failed_password',
-        subject: '203.0.113.7',
-        severity: 'warn',
-        data: {},
-      },
-    ],
-    limit: 50,
-  }));
-
-  // --- Project import (scan/apply). The dev mock cannot untar a real upload,
-  // so the scan answers a canned Kubernetes-flavoured plan and apply echoes
-  // the applied set; the fixture fleet itself stays static. ---
-  const MOCK_PLAN = {
-    project_slug: 'acme-shop',
-    scan_source: 'k8s',
-    tier: 'workspace',
-    workloads: [
-      {
-        name: 'storefront',
-        root_dir: 'apps/storefront',
-        command: ['node', 'server.js'],
-        class: 'http',
-        ports: [8080],
-        env_keys: ['DATABASE_URL', 'STRIPE_KEY'],
-        source: 'k8s: deployment.yaml',
-        tier: 'workspace',
-      },
-      {
-        name: 'checkout-api',
-        root_dir: 'apps/checkout',
-        command: ['/app/bin/server'],
-        class: 'grpc',
-        ports: [50051],
-        env_keys: ['DATABASE_URL'],
-        source: 'k8s: deployment.yaml',
-        tier: 'workspace',
-      },
-      {
-        name: 'nightly-report',
-        root_dir: 'jobs/report',
-        command: ['python', '-m', 'report'],
-        class: 'job',
-        schedule: '0 3 * * *',
-        ports: [],
-        source: 'k8s: cronjob.yaml',
-        tier: 'workspace',
-      },
-    ],
-    managed: [
-      {
-        name: 'postgres',
-        kind: 'postgres',
-        env_hint: 'DATABASE_URL',
-        source: 'k8s: statefulset.yaml',
-        image: 'postgres:16',
-      },
-      {
-        name: 'redis',
-        kind: 'redis',
-        env_hint: 'REDIS_URL',
-        source: 'k8s: deployment.yaml',
-        image: 'redis:7',
-      },
-    ],
-    crons: [{ workload_name: 'nightly-report', schedule: '0 3 * * *', path: '/', enabled: true }],
-    warnings: ['Ingress annotations were ignored — routing is configured per app after apply.'],
-    observed_apps: 3,
-    observed_crons: 1,
-    limit_apps: 25,
-    limit_crons: 20,
-    can_apply: true,
-    plan_token: 'mock-plan-token',
-  };
-
-  route('POST', '/v1/projects/scan', () => MOCK_PLAN);
-  route('POST', '/v1/projects', () => ({
-    ...MOCK_PLAN,
-    project_id: 'proj_mock01',
-    apps: MOCK_PLAN.workloads
-      .filter((w) => !w.schedule)
-      .map((w, i) => ({ slug: w.name, id: `app_import_${i}` })),
-    builds: [],
-  }));
   if (!inv) throw new Problem(404, 'invitation_not_found');
   inv.status = 'revoked';
   return NO_CONTENT;
 });
+
+const hex = (n: number) =>
+  Array.from({ length: n }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+
+// --- GitHub installation repos + app binding ---
+route('POST', '/v1/install/repos/list', () => [
+  { id: 1001, full_name: 'acme-corp/storefront', default_branch: 'main', private: true },
+  { id: 1002, full_name: 'acme-corp/checkout', default_branch: 'main', private: true },
+  { id: 1003, full_name: 'acme-corp/webhook-router', default_branch: 'master', private: false },
+  { id: 1004, full_name: 'acme-corp/nightly-etl', default_branch: 'main', private: true },
+]);
+route('POST', '/v1/apps/{slug}/install/bind', async ({ body }) => ({
+  binding_id: hex(32),
+  repo_full_name: String(body.repo_full_name ?? ''),
+  production_branch: String(body.production_branch ?? 'main'),
+}));
+
+// --- Organisations, org keys, invitations ---
+route('GET', '/v1/orgs/{slug}', ({ params }) => ({
+  id: hex(32),
+  slug: params.slug,
+  name: 'Acme Corp',
+  personal: false,
+  plan: db.account.plan,
+  status: 'active',
+  created_at: db.iso(200 * 24),
+  updated_at: db.iso(2 * 24),
+}));
+route('PATCH', '/v1/orgs/{slug}', async ({ params, body }) => ({
+  id: hex(32),
+  slug: params.slug,
+  name: String(body.name ?? 'Acme Corp'),
+  personal: false,
+  plan: String(body.plan ?? db.account.plan),
+  status: 'active',
+  created_at: db.iso(200 * 24),
+  updated_at: new Date().toISOString(),
+}));
+route('DELETE', '/v1/orgs/{slug}', () => ({}));
+route('GET', '/v1/orgs/{slug}/seat_usage', () => ({ used: 3, limit: 5, plan: db.account.plan }));
+route('POST', '/v1/orgs/{slug}/transfer_ownership', ({ params }) => ({
+  id: hex(32),
+  slug: params.slug,
+  name: 'Acme Corp',
+  personal: false,
+  plan: db.account.plan,
+  status: 'active',
+  created_at: db.iso(200 * 24),
+  updated_at: new Date().toISOString(),
+}));
+const orgKeys: Record<string, unknown>[] = [
+  {
+    id: hex(32),
+    org_id: hex(32),
+    prefix: 'gk_org_a1b2',
+    label: 'ci-deploy',
+    scopes: ['deploy:write', 'apps:read'],
+    last_used_at: db.iso(5),
+    created_at: db.iso(90 * 24),
+    expires_at: null,
+    status: 'active',
+    revoked_at: null,
+    rotated_from_id: null,
+  },
+];
+route('GET', '/v1/orgs/{slug}/keys', () => ({ keys: orgKeys }));
+route('POST', '/v1/orgs/{slug}/keys', async ({ body }) => {
+  const key = {
+    id: hex(32),
+    org_id: hex(32),
+    prefix: `gk_org_${hex(4)}`,
+    label: String(body.label ?? ''),
+    scopes: body.scopes ?? [],
+    last_used_at: null,
+    created_at: new Date().toISOString(),
+    expires_at: null,
+    status: 'active',
+    revoked_at: null,
+    rotated_from_id: null,
+    plaintext: `gk_org_${hex(28)}`,
+  };
+  orgKeys.unshift(key);
+  return status(201, key);
+});
+route('DELETE', '/v1/orgs/{slug}/keys/{id}', ({ params }) => {
+  const i = orgKeys.findIndex((k) => k.id === params.id);
+  if (i >= 0) orgKeys.splice(i, 1);
+  return {};
+});
+route('POST', '/v1/orgs/{slug}/keys/{id}/rotate', ({ params }) => ({
+  key: orgKeys[0],
+  key_plaintext: `gk_org_${hex(28)}`,
+  old_key_id: params.id,
+  old_key_expires_at: new Date(Date.now() + 7 * 86400e3).toISOString(),
+}));
+route('GET', '/v1/invitations/{token}', ({ params }) => ({
+  id: hex(32),
+  org_id: hex(32),
+  org_slug: 'acme-corp',
+  email: 'new-teammate@acme-corp.dev',
+  role: 'developer',
+  status: params.token === 'used' ? 'accepted' : 'pending',
+  expires_at: new Date(Date.now() + 6 * 86400e3).toISOString(),
+  created_at: db.iso(24),
+}));
+route('POST', '/v1/invitations/{token}/accept', () => ({
+  account_id: hex(32),
+  email: 'new-teammate@acme-corp.dev',
+  role: 'developer',
+  joined_at: new Date().toISOString(),
+}));
+route('POST', '/dashboard/account/set-password', ({ res }) => {
+  res.statusCode = 302;
+  res.setHeader('location', '/dashboard/account');
+  return '';
+});
+
+// --- Billing & account controls ---
+route('POST', '/v1/account/overage-cap', () => ({ ...db.account, app_count: db.apps.length }));
+route('POST', '/v1/billing/cancel', () => ({
+  cancel_scheduled: true,
+  effective_at: new Date(Date.now() + 19 * 86400e3).toISOString(),
+}));
+route('POST', '/v1/billing/retry', () => ({
+  attempt_id: `att_${hex(8)}`,
+  provider_ref_id: `txn_${hex(8)}`,
+  status: 'submitted',
+  next_billing_at: new Date(Date.now() + 30 * 86400e3).toISOString(),
+}));
+route('GET', '/v1/account/export', () => ({
+  exported_at: new Date().toISOString(),
+  account: db.account,
+  apps: db.apps,
+  deployments: db.deployments,
+  builds: db.builds,
+  instances: db.instances,
+  usage: [],
+  domains: db.domains,
+  crons: db.crons,
+  api_keys: db.keys ?? [],
+}));
+route('POST', '/v1/account/restore', () => ({ ...db.account, app_count: db.apps.length }));
+let graceDays = 7;
+route('GET', '/v1/account/keys/grace_window_days', () => ({ days: graceDays, plan_default: 7 }));
+route('PATCH', '/v1/account/keys/grace_window_days', async ({ body }) => {
+  graceDays = Number(body.days ?? graceDays);
+  return { days: graceDays, plan_default: 7 };
+});
+let egressExtra = 0;
+route('GET', '/v1/account/egress_allowlist_extra', () => ({
+  extra: egressExtra,
+  plan_cap: 8,
+  max_extra: 32,
+}));
+route('PATCH', '/v1/account/egress_allowlist_extra', async ({ body }) => {
+  egressExtra = Number(body.extra ?? egressExtra);
+  return { extra: egressExtra, plan_cap: 8, max_extra: 32 };
+});
+route('GET', '/v1/usage', () =>
+  db.apps.slice(0, 6).map((a, i) => ({
+    app_id: a.id,
+    mb_seconds: Math.round((i + 1) * 3.7e8),
+    requests: Math.round((6 - i) * 140_000),
+    included_gb_hours: 2000,
+    cpu_usec: Math.round((i + 1) * 9e9),
+    tx_bytes: Math.round((i + 1) * 4.1e9),
+    net_tx_bytes: Math.round((i + 1) * 1.2e9),
+    net_rx_bytes: Math.round((i + 1) * 0.8e9),
+    cold_boots: (i + 1) * 12,
+  }))
+);
+
+// --- Supply chain & secrets hygiene ---
+const trustedSigners = new Map<
+  string,
+  { name: string; public_key_pem: string; added_at: string; added_by: string }[]
+>();
+route('PATCH', '/v1/apps/{slug}/security', async ({ params, body }) => {
+  const a = db.apps.find((x) => x.slug === params.slug);
+  if (a) (a as unknown as Record<string, unknown>).require_signed = Boolean(body.require_signed);
+  return { require_signed: Boolean(body.require_signed) };
+});
+route('GET', '/v1/apps/{slug}/trusted_signers', ({ params }) => ({
+  signers: trustedSigners.get(params.slug) ?? [
+    {
+      name: 'release-ci',
+      public_key_pem: '-----BEGIN PUBLIC KEY-----…',
+      added_at: new Date(Date.now() - 12 * 86400e3).toISOString(),
+      added_by: 'demo@acme-corp.dev',
+    },
+  ],
+}));
+route('PUT', '/v1/apps/{slug}/trusted_signers/{name}', async ({ params, body }) => {
+  const list = trustedSigners.get(params.slug) ?? [
+    {
+      name: 'release-ci',
+      public_key_pem: '-----BEGIN PUBLIC KEY-----…',
+      added_at: new Date(Date.now() - 12 * 86400e3).toISOString(),
+      added_by: 'demo@acme-corp.dev',
+    },
+  ];
+  const entry = {
+    name: params.name,
+    public_key_pem: String(body.public_key_pem ?? ''),
+    added_at: new Date().toISOString(),
+    added_by: 'demo@acme-corp.dev',
+  };
+  trustedSigners.set(params.slug, [...list.filter((x) => x.name !== params.name), entry]);
+  return entry;
+});
+route('DELETE', '/v1/apps/{slug}/trusted_signers/{name}', ({ params }) => {
+  const list = trustedSigners.get(params.slug) ?? [];
+  trustedSigners.set(
+    params.slug,
+    list.filter((x) => x.name !== params.name)
+  );
+  return {};
+});
+route('POST', '/v1/apps/{slug}/secrets/{key}/rotate', ({ params }) => ({
+  key: params.key,
+  rotated_at: new Date().toISOString(),
+  kid: `kid_${hex(6)}`,
+}));
+route('GET', '/v1/secrets', () => ({
+  secrets: db.apps.slice(0, 4).flatMap((a, i) => [
+    {
+      app_id: a.id,
+      app_slug: a.slug,
+      key: 'DATABASE_URL',
+      ciphertext: '***',
+      created_at: db.iso((30 + i) * 24),
+      updated_at: db.iso((3 + i) * 24),
+    },
+    ...(i % 2 === 0
+      ? [
+          {
+            app_id: a.id,
+            app_slug: a.slug,
+            key: 'STRIPE_KEY',
+            ciphertext: '***',
+            created_at: db.iso(60 * 24),
+            updated_at: db.iso(45 * 24),
+          },
+        ]
+      : []),
+  ]),
+  next_before: null,
+}));
+
+// --- Scheduling: delayed tasks (session-tracked) + cron fire-now state ---
+const delayedTasks = new Map<string, { id: string; scheduled_at: string; state: string }>();
+route('POST', '/v1/apps/{slug}/delayed-tasks', async ({ body }) => {
+  const id = `dt_${hex(10)}`;
+  const t = {
+    id,
+    scheduled_at: String(body.scheduled_at ?? new Date().toISOString()),
+    state: 'pending',
+  };
+  delayedTasks.set(id, t);
+  return t;
+});
+route('GET', '/v1/delayed-tasks/{id}', ({ params, res }) => {
+  const t = delayedTasks.get(params.id);
+  if (!t) {
+    res.statusCode = 404;
+    return { type: 'about:blank', title: 'not found', code: 'not_found' };
+  }
+  if (t.state === 'pending' && Date.parse(t.scheduled_at) < Date.now()) t.state = 'completed';
+  return t;
+});
+route('DELETE', '/v1/delayed-tasks/{id}', ({ params }) => {
+  const t = delayedTasks.get(params.id);
+  if (t) t.state = 'cancelled';
+  return {};
+});
+const fireRequests = new Map<string, number>();
+route('GET', '/v1/cron-fire-now-requests/{request_id}', ({ params }) => {
+  const started = fireRequests.get(params.request_id) ?? Date.now();
+  fireRequests.set(params.request_id, started);
+  const done = Date.now() - started > 4000;
+  return {
+    request_id: params.request_id,
+    cron_id: db.crons[0]?.id ?? 'cron_1',
+    status: done ? 'completed' : 'running',
+    requested_at: new Date(started).toISOString(),
+    finished_at: done ? new Date().toISOString() : null,
+    invocation_id: done ? `inv_${hex(8)}` : null,
+    error: '',
+    account_id: db.account.id,
+  };
+});
+
+// --- Observability: error groups, wake timelines, diff preview, build
+// provenance, secret scan, auth audit events. ---
+const ERR_FP = 'fp_5c1a9b2e77d34fa0';
+route('GET', '/v1/apps/{slug}/errors/summary', ({ params }) => {
+  const a = db.apps.find((x) => x.slug === params.slug);
+  const failing = a?.status === 'error';
+  return {
+    generated_at: new Date().toISOString(),
+    app_id: a?.id ?? 'unknown',
+    app_slug: params.slug,
+    window_start: new Date(Date.now() - 24 * 3600e3).toISOString(),
+    window_end: new Date().toISOString(),
+    window_clamped: false,
+    items: failing
+      ? [
+          {
+            fingerprint: ERR_FP,
+            error_class: 'TypeError',
+            route: 'POST /v1/reconcile',
+            http_status: 500,
+            count: 412,
+            request_count: 2001,
+            first_seen_at: new Date(Date.now() - 5 * 3600e3).toISOString(),
+            last_seen_at: new Date(Date.now() - 120e3).toISOString(),
+            sample_message: "Cannot read properties of undefined (reading 'invoice_id')",
+          },
+          {
+            fingerprint: 'fp_88d0c4a1b52e9f13',
+            error_class: 'TimeoutError',
+            route: 'GET /v1/reports/daily',
+            http_status: 504,
+            count: 37,
+            request_count: 400,
+            first_seen_at: new Date(Date.now() - 20 * 3600e3).toISOString(),
+            last_seen_at: new Date(Date.now() - 3600e3).toISOString(),
+            sample_message: 'upstream ledger did not answer within 10s',
+          },
+        ]
+      : [],
+    next_cursor: null,
+    limit: 50,
+  };
+});
+route('GET', '/v1/apps/{slug}/errors/{fingerprint}', ({ params }) => ({
+  fingerprint: params.fingerprint,
+  error_class: 'TypeError',
+  route: 'POST /v1/reconcile',
+  http_status: 500,
+  requests: Array.from({ length: 6 }, (_, i) => ({
+    request_id: `req_${hex(8)}`,
+    received_at: new Date(Date.now() - (i + 1) * 900e3).toISOString(),
+    route: 'POST /v1/reconcile',
+    http_status: 500,
+    error_class: 'TypeError',
+    sample_message: "Cannot read properties of undefined (reading 'invoice_id')",
+    deployment_id: db.deployments[0]?.id ?? null,
+  })),
+  next_cursor: null,
+}));
+route('GET', '/v1/apps/{slug}/errors/{fingerprint}/first', () => ({
+  request_id: `req_${hex(8)}`,
+  received_at: new Date(Date.now() - 5 * 3600e3).toISOString(),
+  route: 'POST /v1/reconcile',
+  http_status: 500,
+  error_class: 'TypeError',
+  sample_message:
+    "Cannot read properties of undefined (reading 'invoice_id') at reconcile (/app/dist/worker.js:214:31)",
+  deployment_id: db.deployments[0]?.id ?? null,
+  headers_sample: {
+    'content-type': 'application/json',
+    'user-agent': 'stripe-webhooks/2.1',
+    'x-request-id': hex(12),
+  },
+  redactions_applied: ['authorization', 'cookie'],
+}));
+route('GET', '/v1/apps/{slug}/wakes/{wake_id}/timeline', ({ params }) => {
+  const t0 = Date.now() - 3600e3;
+  const frames: [number, string][] = [
+    [0, 'wake.requested'],
+    [4, 'admission.granted'],
+    [9, 'snapshot.located'],
+    [31, 'restore.started'],
+    [212, 'restore.completed'],
+    [219, 'resume_hook.entropy_reseeded'],
+    [224, 'resume_hook.clock_stepped'],
+    [281, 'healthz.first_probe'],
+    [304, 'ready'],
+  ];
+  return {
+    wake_id: params.wake_id,
+    app_id: db.apps[0]?.id ?? 'unknown',
+    events: frames.map(([dt, kind]) => ({
+      at: new Date(t0 + dt).toISOString(),
+      kind,
+      actor: 'schedd',
+      data: {},
+    })),
+    next_cursor: '',
+    limit: 100,
+  };
+});
+route('POST', '/v1/apps/{slug}/diff', async ({ params, body }) => {
+  const cfg = (body.app_config ?? {}) as Record<string, unknown>;
+  const a = db.apps.find((x) => x.slug === params.slug);
+  const changes = Object.entries(cfg).map(([field, after]) => ({
+    field,
+    kind: 'modify',
+    before: String((a as Record<string, unknown> | undefined)?.[field] ?? '—'),
+    after: String(Array.isArray(after) ? after.join(',') : after),
+  }));
+  return {
+    slug: params.slug,
+    plan: db.account.plan,
+    blocking: false,
+    diff: {
+      slug: params.slug,
+      plan: db.account.plan,
+      changes,
+      breaks:
+        cfg.ram_mb && Number(cfg.ram_mb) < (a?.ram_mb ?? 0)
+          ? ['Shrinking memory invalidates the warm snapshot; the next wake cold-boots.']
+          : [],
+    },
+  };
+});
+route('GET', '/v1/builds/{id}/provenance', ({ params }) => ({
+  id: `prov_${hex(6)}`,
+  build_id: params.id,
+  buildkit_version: 'v0.17.2',
+  railpack_version: '0.9.4',
+  base_digest: 'sha256:' + hex(16),
+  source_sha256: hex(16),
+  source_url: '',
+  commit_sha: hex(20),
+  plan: 'railpack-node',
+  runner_digest: 'sha256:' + hex(16),
+  builder_node_id: 'fra-metal-1',
+  started_at: new Date(Date.now() - 7200e3).toISOString(),
+  finished_at: new Date(Date.now() - 7100e3).toISOString(),
+  sbom_storage_key: 'sbom/' + params.id,
+  framework_version: '22.12.0',
+}));
+route('GET', '/v1/deployments/{id}/secret-scan', () => ({
+  status: 'complete',
+  scanned_at: new Date(Date.now() - 7000e3).toISOString(),
+  image_digest: 'sha256:' + hex(16),
+  findings: [],
+  error: '',
+}));
+route('GET', '/v1/audit-events', () => ({
+  events: [
+    {
+      id: hex(12),
+      at: new Date(Date.now() - 600e3).toISOString(),
+      actor: 'demo@acme-corp.dev',
+      kind: 'session.signed_in',
+      subject: 'google-oauth',
+      severity: 'info',
+      data: {},
+    },
+    {
+      id: hex(12),
+      at: new Date(Date.now() - 86400e3).toISOString(),
+      actor: 'demo@acme-corp.dev',
+      kind: 'api_key.minted',
+      subject: 'ci-deploy',
+      severity: 'info',
+      data: {},
+    },
+    {
+      id: hex(12),
+      at: new Date(Date.now() - 2 * 86400e3).toISOString(),
+      actor: 'demo@acme-corp.dev',
+      kind: 'login.failed_password',
+      subject: '203.0.113.7',
+      severity: 'warn',
+      data: {},
+    },
+  ],
+  limit: 50,
+}));
+
+// --- Project import (scan/apply). The dev mock cannot untar a real upload,
+// so the scan answers a canned Kubernetes-flavoured plan and apply echoes
+// the applied set; the fixture fleet itself stays static. ---
+const MOCK_PLAN = {
+  project_slug: 'acme-shop',
+  scan_source: 'k8s',
+  tier: 'workspace',
+  workloads: [
+    {
+      name: 'storefront',
+      root_dir: 'apps/storefront',
+      command: ['node', 'server.js'],
+      class: 'http',
+      ports: [8080],
+      env_keys: ['DATABASE_URL', 'STRIPE_KEY'],
+      source: 'k8s: deployment.yaml',
+      tier: 'workspace',
+    },
+    {
+      name: 'checkout-api',
+      root_dir: 'apps/checkout',
+      command: ['/app/bin/server'],
+      class: 'grpc',
+      ports: [50051],
+      env_keys: ['DATABASE_URL'],
+      source: 'k8s: deployment.yaml',
+      tier: 'workspace',
+    },
+    {
+      name: 'nightly-report',
+      root_dir: 'jobs/report',
+      command: ['python', '-m', 'report'],
+      class: 'job',
+      schedule: '0 3 * * *',
+      ports: [],
+      source: 'k8s: cronjob.yaml',
+      tier: 'workspace',
+    },
+  ],
+  managed: [
+    {
+      name: 'postgres',
+      kind: 'postgres',
+      env_hint: 'DATABASE_URL',
+      source: 'k8s: statefulset.yaml',
+      image: 'postgres:16',
+    },
+    {
+      name: 'redis',
+      kind: 'redis',
+      env_hint: 'REDIS_URL',
+      source: 'k8s: deployment.yaml',
+      image: 'redis:7',
+    },
+  ],
+  crons: [{ workload_name: 'nightly-report', schedule: '0 3 * * *', path: '/', enabled: true }],
+  warnings: ['Ingress annotations were ignored — routing is configured per app after apply.'],
+  observed_apps: 3,
+  observed_crons: 1,
+  limit_apps: 25,
+  limit_crons: 20,
+  can_apply: true,
+  plan_token: 'mock-plan-token',
+};
+
+route('POST', '/v1/projects/scan', () => MOCK_PLAN);
+route('POST', '/v1/projects', () => ({
+  ...MOCK_PLAN,
+  project_id: 'proj_mock01',
+  apps: MOCK_PLAN.workloads
+    .filter((w) => !w.schedule)
+    .map((w, i) => ({ slug: w.name, id: `app_import_${i}` })),
+  builds: [],
+}));
 
 // --- Plumbing ------------------------------------------------------------------
 
