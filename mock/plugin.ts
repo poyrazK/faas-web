@@ -1046,6 +1046,81 @@ route('DELETE', '/v1/orgs/{slug}/members/{user_id}', ({ params }) => {
 });
 route('DELETE', '/v1/orgs/{slug}/invitations/{token}', ({ params }) => {
   const inv = db.invitations.find((x) => x.id === params.token);
+
+  // --- Project import (scan/apply). The dev mock cannot untar a real upload,
+  // so the scan answers a canned Kubernetes-flavoured plan and apply echoes
+  // the applied set; the fixture fleet itself stays static. ---
+  const MOCK_PLAN = {
+    project_slug: 'acme-shop',
+    scan_source: 'k8s',
+    tier: 'workspace',
+    workloads: [
+      {
+        name: 'storefront',
+        root_dir: 'apps/storefront',
+        command: ['node', 'server.js'],
+        class: 'http',
+        ports: [8080],
+        env_keys: ['DATABASE_URL', 'STRIPE_KEY'],
+        source: 'k8s: deployment.yaml',
+        tier: 'workspace',
+      },
+      {
+        name: 'checkout-api',
+        root_dir: 'apps/checkout',
+        command: ['/app/bin/server'],
+        class: 'grpc',
+        ports: [50051],
+        env_keys: ['DATABASE_URL'],
+        source: 'k8s: deployment.yaml',
+        tier: 'workspace',
+      },
+      {
+        name: 'nightly-report',
+        root_dir: 'jobs/report',
+        command: ['python', '-m', 'report'],
+        class: 'job',
+        schedule: '0 3 * * *',
+        ports: [],
+        source: 'k8s: cronjob.yaml',
+        tier: 'workspace',
+      },
+    ],
+    managed: [
+      {
+        name: 'postgres',
+        kind: 'postgres',
+        env_hint: 'DATABASE_URL',
+        source: 'k8s: statefulset.yaml',
+        image: 'postgres:16',
+      },
+      {
+        name: 'redis',
+        kind: 'redis',
+        env_hint: 'REDIS_URL',
+        source: 'k8s: deployment.yaml',
+        image: 'redis:7',
+      },
+    ],
+    crons: [{ workload_name: 'nightly-report', schedule: '0 3 * * *', path: '/', enabled: true }],
+    warnings: ['Ingress annotations were ignored — routing is configured per app after apply.'],
+    observed_apps: 3,
+    observed_crons: 1,
+    limit_apps: 25,
+    limit_crons: 20,
+    can_apply: true,
+    plan_token: 'mock-plan-token',
+  };
+
+  route('POST', '/v1/projects/scan', () => MOCK_PLAN);
+  route('POST', '/v1/projects', () => ({
+    ...MOCK_PLAN,
+    project_id: 'proj_mock01',
+    apps: MOCK_PLAN.workloads
+      .filter((w) => !w.schedule)
+      .map((w, i) => ({ slug: w.name, id: `app_import_${i}` })),
+    builds: [],
+  }));
   if (!inv) throw new Problem(404, 'invitation_not_found');
   inv.status = 'revoked';
   return NO_CONTENT;

@@ -84,6 +84,58 @@ async function applyOptimistic<T>(
 type Options<T> = Omit<UseQueryOptions<T, Error>, 'queryKey' | 'queryFn'>;
 
 /* ------------------------------------------------------------------ *
+ * Project import — scan a repo tarball into a deploy plan, then apply it
+ * ------------------------------------------------------------------ */
+
+export type ProjectPlan = components['schemas']['PlanResponse'];
+
+/** Multipart body shared by scan and apply. */
+function projectForm(input: { file: File; slug?: string; branch?: string }): FormData {
+  const fd = new FormData();
+  fd.append('source', input.file);
+  if (input.slug?.trim()) fd.append('project_slug', input.slug.trim());
+  if (input.branch?.trim()) fd.append('production_branch', input.branch.trim());
+  return fd;
+}
+
+/** Dry-run: upload the tarball, get the plan (workloads, managed services,
+ * crons, quota verdict, and the plan_token apply echoes back). */
+export function useProjectScan() {
+  return useMutation({
+    mutationFn: (input: { file: File; slug?: string; branch?: string }) =>
+      unwrap(
+        api.POST('/v1/projects/scan', {
+          // The typed body is JSON-shaped; the endpoint takes multipart. The
+          // serializer override is openapi-fetch's sanctioned escape hatch.
+          body: undefined as never,
+          bodySerializer: () => projectForm(input),
+        })
+      ),
+  });
+}
+
+/** Apply the plan in one transaction. Echoes the dry-run's plan_token so the
+ * server can skip the second extract. */
+export function useProjectApply() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { file: File; slug?: string; branch?: string; planToken: string }) =>
+      unwrap(
+        api.POST('/v1/projects', {
+          params: { query: { plan_token: input.planToken } },
+          body: undefined as never,
+          bodySerializer: () => projectForm(input),
+        })
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.apps });
+      void qc.invalidateQueries({ queryKey: keys.deployments });
+      void qc.invalidateQueries({ queryKey: keys.crons });
+    },
+  });
+}
+
+/* ------------------------------------------------------------------ *
  * Apps
  * ------------------------------------------------------------------ */
 

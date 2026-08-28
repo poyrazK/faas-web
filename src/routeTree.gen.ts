@@ -27,6 +27,7 @@ import { Route as DashboardDeploymentsRouteImport } from './routes/dashboard.dep
 import { Route as DashboardDomainsRouteImport } from './routes/dashboard.domains'
 import { Route as DashboardEdgeRulesRouteImport } from './routes/dashboard.edge-rules'
 import { Route as DashboardEnvRouteImport } from './routes/dashboard.env'
+import { Route as DashboardImportRouteImport } from './routes/dashboard.import'
 import { Route as DashboardInvoicesRouteImport } from './routes/dashboard.invoices'
 import { Route as DashboardKeysRouteImport } from './routes/dashboard.keys'
 import { Route as DashboardLogsRouteImport } from './routes/dashboard.logs'
@@ -136,6 +137,11 @@ const DashboardEdgeRulesRoute = DashboardEdgeRulesRouteImport.update({
 const DashboardEnvRoute = DashboardEnvRouteImport.update({
   id: '/env',
   path: '/env',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardImportRoute = DashboardImportRouteImport.update({
+  id: '/import',
+  path: '/import',
   getParentRoute: () => DashboardRoute,
 } as any)
 const DashboardInvoicesRoute = DashboardInvoicesRouteImport.update({
@@ -258,6 +264,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/domains': typeof DashboardDomainsRoute
   '/dashboard/edge-rules': typeof DashboardEdgeRulesRoute
   '/dashboard/env': typeof DashboardEnvRoute
+  '/dashboard/import': typeof DashboardImportRoute
   '/dashboard/invoices': typeof DashboardInvoicesRoute
   '/dashboard/keys': typeof DashboardKeysRoute
   '/dashboard/logs': typeof DashboardLogsRoute
@@ -296,6 +303,7 @@ export interface FileRoutesByTo {
   '/dashboard/domains': typeof DashboardDomainsRoute
   '/dashboard/edge-rules': typeof DashboardEdgeRulesRoute
   '/dashboard/env': typeof DashboardEnvRoute
+  '/dashboard/import': typeof DashboardImportRoute
   '/dashboard/invoices': typeof DashboardInvoicesRoute
   '/dashboard/keys': typeof DashboardKeysRoute
   '/dashboard/logs': typeof DashboardLogsRoute
@@ -337,6 +345,7 @@ export interface FileRoutesById {
   '/dashboard/domains': typeof DashboardDomainsRoute
   '/dashboard/edge-rules': typeof DashboardEdgeRulesRoute
   '/dashboard/env': typeof DashboardEnvRoute
+  '/dashboard/import': typeof DashboardImportRoute
   '/dashboard/invoices': typeof DashboardInvoicesRoute
   '/dashboard/keys': typeof DashboardKeysRoute
   '/dashboard/logs': typeof DashboardLogsRoute
@@ -379,6 +388,7 @@ export interface FileRouteTypes {
     | '/dashboard/domains'
     | '/dashboard/edge-rules'
     | '/dashboard/env'
+    | '/dashboard/import'
     | '/dashboard/invoices'
     | '/dashboard/keys'
     | '/dashboard/logs'
@@ -417,6 +427,7 @@ export interface FileRouteTypes {
     | '/dashboard/domains'
     | '/dashboard/edge-rules'
     | '/dashboard/env'
+    | '/dashboard/import'
     | '/dashboard/invoices'
     | '/dashboard/keys'
     | '/dashboard/logs'
@@ -457,6 +468,7 @@ export interface FileRouteTypes {
     | '/dashboard/domains'
     | '/dashboard/edge-rules'
     | '/dashboard/env'
+    | '/dashboard/import'
     | '/dashboard/invoices'
     | '/dashboard/keys'
     | '/dashboard/logs'
@@ -617,6 +629,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardEnvRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/dashboard/import': {
+      id: '/dashboard/import'
+      path: '/import'
+      fullPath: '/dashboard/import'
+      preLoaderRoute: typeof DashboardImportRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/dashboard/invoices': {
       id: '/dashboard/invoices'
       path: '/invoices'
@@ -772,6 +791,7 @@ interface DashboardRouteChildren {
   DashboardDomainsRoute: typeof DashboardDomainsRoute
   DashboardEdgeRulesRoute: typeof DashboardEdgeRulesRoute
   DashboardEnvRoute: typeof DashboardEnvRoute
+  DashboardImportRoute: typeof DashboardImportRoute
   DashboardInvoicesRoute: typeof DashboardInvoicesRoute
   DashboardKeysRoute: typeof DashboardKeysRoute
   DashboardLogsRoute: typeof DashboardLogsRoute
@@ -805,6 +825,7 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardDomainsRoute: DashboardDomainsRoute,
   DashboardEdgeRulesRoute: DashboardEdgeRulesRoute,
   DashboardEnvRoute: DashboardEnvRoute,
+  DashboardImportRoute: DashboardImportRoute,
   DashboardInvoicesRoute: DashboardInvoicesRoute,
   DashboardKeysRoute: DashboardKeysRoute,
   DashboardLogsRoute: DashboardLogsRoute,

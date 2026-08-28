@@ -7,6 +7,7 @@ import {
   HardDrive,
   Key,
   Server,
+  Upload,
   ViewGrid,
   Package,
   Coins,
@@ -52,6 +53,7 @@ export const NAV_GROUPS: NavGroup[] = [
     title: 'Build',
     items: [
       { to: '/dashboard/workflows', label: 'Apps', icon: WorkflowIcon },
+      { to: '/dashboard/import', label: 'Import', icon: Upload },
       { to: '/dashboard/crons', label: 'Cron Jobs', icon: Timer },
       { to: '/dashboard/workers', label: 'Instances', icon: Server },
       { to: '/dashboard/deployments', label: 'Deployments', icon: Rocket },
