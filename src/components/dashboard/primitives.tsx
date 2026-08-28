@@ -226,6 +226,7 @@ export function Panel({
   children,
   className,
   lit = false,
+  elevation = 'flat',
   padded = true,
 }: {
   title?: string;
@@ -235,6 +236,13 @@ export function Panel({
   className?: string;
   /** Mint hairline along the top edge, marking the page's primary panel. */
   lit?: boolean;
+  /**
+   * Lifts the panel a step off the page. `resting` is the quiet default every
+   * existing page keeps; `raised` is for the one panel a composed layout
+   * leads with. Elevation is a hierarchy signal, so a page with two raised
+   * panels has neither.
+   */
+  elevation?: 'flat' | 'resting' | 'raised';
   /** Off for content that runs to the panel's edges — a list or a table whose
    *  own rows carry the padding and whose dividers should span the full width. */
   padded?: boolean;
@@ -243,6 +251,8 @@ export function Panel({
     <section
       className={cn(
         'animate-item-enter relative overflow-hidden rounded-xl border border-border bg-card',
+        elevation === 'resting' && 'shadow-elevation-1',
+        elevation === 'raised' && 'border-border-secondary shadow-elevation-2',
         className
       )}
     >

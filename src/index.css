@@ -540,6 +540,11 @@
          the initial one, which is why the duration stays. */
       animation-duration: 0.01ms !important;
       animation-iteration-count: 1 !important;
+      /* A composed layout staggers its entrances with per-element delays. At
+         a 0.01ms duration those delays would leave each element invisible for
+         the length of its delay — a slow flicker instead of no motion — so
+         the delay goes too. */
+      animation-delay: 0ms !important;
     }
   }
 
@@ -566,6 +571,31 @@
       animation: none;
       opacity: 0.6;
     }
+  }
+
+  /* A soft brand light across a panel's upper corner — depth without a border
+     or a shadow, so it reads as the surface being lit rather than another box
+     stacked on top. One panel per page at most, alongside the `lit` top edge.
+     Token-driven, so it follows the polarity.
+
+     `isolation` is load-bearing: it makes the panel its own stacking context,
+     which is what lets the negative-z pseudo-element paint above the panel's
+     background but below every child. Without it the wash either sits on top
+     of the content or disappears behind the card entirely. */
+  .brand-wash {
+    isolation: isolate;
+  }
+  .brand-wash::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background: radial-gradient(
+      120% 80% at 0% 0%,
+      color-mix(in oklab, var(--brand-fill) 10%, transparent),
+      transparent 60%
+    );
   }
 
   /* Spline Sans Mono as the label voice: eyebrows, section kickers, metrics. */
