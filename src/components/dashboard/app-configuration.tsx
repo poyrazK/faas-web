@@ -6,8 +6,16 @@ import { Switch } from '@/components/ui/switch';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
 import { errorMessage } from '@/lib/api/errors';
-import { useApp, useDeleteApp, useRenameApp, useUpdateApp, type App } from '@/lib/api/queries';
+import {
+  useApp,
+  useAppDiff,
+  useDeleteApp,
+  useRenameApp,
+  useUpdateApp,
+  type App,
+} from '@/lib/api/queries';
 import { useUnsavedGuard } from '@/lib/use-unsaved-guard';
+import { Modal } from '@/components/ui/modal';
 import { ErrorState, LoadingState, Panel, UnreachableState, queryPhase } from './primitives';
 import { RegistryCredentialsPanel } from './app-core-panels';
 
@@ -115,6 +123,8 @@ function ConfigForm({ app }: { app: App }) {
   const { toast } = useToast();
   const confirm = useConfirm();
   const update = useUpdateApp(app.slug);
+  const diff = useAppDiff(app.slug);
+  const [preview, setPreview] = useState<Awaited<ReturnType<typeof diff.mutateAsync>> | null>(null);
   const [draft, setDraft] = useState<Draft>(() => draftFrom(app));
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
     setDraft((d) => ({ ...d, [key]: value }));
@@ -173,9 +183,34 @@ function ConfigForm({ app }: { app: App }) {
         title="Runtime"
         description="Applied on the next wake. A running instance keeps what it booted with."
         actions={
-          <Button size="sm" disabled={!dirty} busy={update.isPending} onClick={save}>
-            Save changes
-          </Button>
+          <>
+            {/* The CLI's deploy --diff, one click before Save: the server
+                says exactly what this PATCH would change, and what it would
+                break, before anything is written. */}
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!dirty}
+              busy={diff.isPending}
+              onClick={() =>
+                void diff
+                  .mutateAsync(changes)
+                  .then(setPreview)
+                  .catch((err: unknown) =>
+                    toast({
+                      kind: 'error',
+                      title: 'Could not preview',
+                      description: errorMessage(err),
+                    })
+                  )
+              }
+            >
+              Preview
+            </Button>
+            <Button size="sm" disabled={!dirty} busy={update.isPending} onClick={save}>
+              Save changes
+            </Button>
+          </>
         }
       >
         <div className="grid gap-5 sm:grid-cols-2">
@@ -277,6 +312,62 @@ function ConfigForm({ app }: { app: App }) {
           />
         </ul>
       </Panel>
+      <Modal
+        open={preview !== null}
+        onClose={() => setPreview(null)}
+        title="What this change would do"
+        description={preview ? `Plan ${preview.plan ?? ''} · ${app.slug}` : undefined}
+        width="max-w-xl"
+      >
+        {preview && (
+          <div className="flex flex-col gap-4">
+            {(preview.diff?.changes?.length ?? 0) === 0 ? (
+              <p className="text-sm text-muted-foreground">No effective changes.</p>
+            ) : (
+              <ul className="flex flex-col divide-y divide-border">
+                {preview.diff?.changes?.map((c) => (
+                  <li
+                    key={c.field}
+                    className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2 text-xs"
+                  >
+                    <span className="w-44 shrink-0 font-mono">{c.field}</span>
+                    <span className="text-muted-foreground line-through">
+                      {String(c.before ?? '—')}
+                    </span>
+                    <span aria-hidden className="text-muted-foreground/50">
+                      →
+                    </span>
+                    <span className="text-foreground">{String(c.after ?? '—')}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {(preview.diff?.breaks?.length ?? 0) > 0 && (
+              <div>
+                <p className="label-mono mb-1.5" style={{ color: 'var(--status-warning)' }}>
+                  Breaking
+                </p>
+                <ul className="flex flex-col gap-1">
+                  {preview.diff?.breaks?.map((b) => (
+                    <li
+                      key={String(b)}
+                      className="text-xs"
+                      style={{ color: 'var(--status-warning)' }}
+                    >
+                      {String(b)}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {preview.blocking && (
+              <p className="text-xs" style={{ color: 'var(--status-critical)' }}>
+                This change is blocking — the deploy path would refuse it.
+              </p>
+            )}
+          </div>
+        )}
+      </Modal>
     </>
   );
 }

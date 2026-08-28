@@ -1047,6 +1047,191 @@ route('DELETE', '/v1/orgs/{slug}/members/{user_id}', ({ params }) => {
 route('DELETE', '/v1/orgs/{slug}/invitations/{token}', ({ params }) => {
   const inv = db.invitations.find((x) => x.id === params.token);
 
+  const hex = (n: number) =>
+    Array.from({ length: n }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+
+  // --- Observability: error groups, wake timelines, diff preview, build
+  // provenance, secret scan, auth audit events. ---
+  const ERR_FP = 'fp_5c1a9b2e77d34fa0';
+  route('GET', '/v1/apps/{slug}/errors/summary', ({ params }) => {
+    const a = db.apps.find((x) => x.slug === params.slug);
+    const failing = a?.status === 'error';
+    return {
+      generated_at: new Date().toISOString(),
+      app_id: a?.id ?? 'unknown',
+      app_slug: params.slug,
+      window_start: new Date(Date.now() - 24 * 3600e3).toISOString(),
+      window_end: new Date().toISOString(),
+      window_clamped: false,
+      items: failing
+        ? [
+            {
+              fingerprint: ERR_FP,
+              error_class: 'TypeError',
+              route: 'POST /v1/reconcile',
+              http_status: 500,
+              count: 412,
+              request_count: 2001,
+              first_seen_at: new Date(Date.now() - 5 * 3600e3).toISOString(),
+              last_seen_at: new Date(Date.now() - 120e3).toISOString(),
+              sample_message: "Cannot read properties of undefined (reading 'invoice_id')",
+            },
+            {
+              fingerprint: 'fp_88d0c4a1b52e9f13',
+              error_class: 'TimeoutError',
+              route: 'GET /v1/reports/daily',
+              http_status: 504,
+              count: 37,
+              request_count: 400,
+              first_seen_at: new Date(Date.now() - 20 * 3600e3).toISOString(),
+              last_seen_at: new Date(Date.now() - 3600e3).toISOString(),
+              sample_message: 'upstream ledger did not answer within 10s',
+            },
+          ]
+        : [],
+      next_cursor: null,
+      limit: 50,
+    };
+  });
+  route('GET', '/v1/apps/{slug}/errors/{fingerprint}', ({ params }) => ({
+    fingerprint: params.fingerprint,
+    error_class: 'TypeError',
+    route: 'POST /v1/reconcile',
+    http_status: 500,
+    requests: Array.from({ length: 6 }, (_, i) => ({
+      request_id: `req_${hex(8)}`,
+      received_at: new Date(Date.now() - (i + 1) * 900e3).toISOString(),
+      route: 'POST /v1/reconcile',
+      http_status: 500,
+      error_class: 'TypeError',
+      sample_message: "Cannot read properties of undefined (reading 'invoice_id')",
+      deployment_id: db.deployments[0]?.id ?? null,
+    })),
+    next_cursor: null,
+  }));
+  route('GET', '/v1/apps/{slug}/errors/{fingerprint}/first', () => ({
+    request_id: `req_${hex(8)}`,
+    received_at: new Date(Date.now() - 5 * 3600e3).toISOString(),
+    route: 'POST /v1/reconcile',
+    http_status: 500,
+    error_class: 'TypeError',
+    sample_message:
+      "Cannot read properties of undefined (reading 'invoice_id') at reconcile (/app/dist/worker.js:214:31)",
+    deployment_id: db.deployments[0]?.id ?? null,
+    headers_sample: {
+      'content-type': 'application/json',
+      'user-agent': 'stripe-webhooks/2.1',
+      'x-request-id': hex(12),
+    },
+    redactions_applied: ['authorization', 'cookie'],
+  }));
+  route('GET', '/v1/apps/{slug}/wakes/{wake_id}/timeline', ({ params }) => {
+    const t0 = Date.now() - 3600e3;
+    const frames: [number, string][] = [
+      [0, 'wake.requested'],
+      [4, 'admission.granted'],
+      [9, 'snapshot.located'],
+      [31, 'restore.started'],
+      [212, 'restore.completed'],
+      [219, 'resume_hook.entropy_reseeded'],
+      [224, 'resume_hook.clock_stepped'],
+      [281, 'healthz.first_probe'],
+      [304, 'ready'],
+    ];
+    return {
+      wake_id: params.wake_id,
+      app_id: db.apps[0]?.id ?? 'unknown',
+      events: frames.map(([dt, kind]) => ({
+        at: new Date(t0 + dt).toISOString(),
+        kind,
+        actor: 'schedd',
+        data: {},
+      })),
+      next_cursor: '',
+      limit: 100,
+    };
+  });
+  route('POST', '/v1/apps/{slug}/diff', async ({ params, body }) => {
+    const cfg = (body.app_config ?? {}) as Record<string, unknown>;
+    const a = db.apps.find((x) => x.slug === params.slug);
+    const changes = Object.entries(cfg).map(([field, after]) => ({
+      field,
+      kind: 'modify',
+      before: String((a as Record<string, unknown> | undefined)?.[field] ?? '—'),
+      after: String(Array.isArray(after) ? after.join(',') : after),
+    }));
+    return {
+      slug: params.slug,
+      plan: db.account.plan,
+      blocking: false,
+      diff: {
+        slug: params.slug,
+        plan: db.account.plan,
+        changes,
+        breaks:
+          cfg.ram_mb && Number(cfg.ram_mb) < (a?.ram_mb ?? 0)
+            ? ['Shrinking memory invalidates the warm snapshot; the next wake cold-boots.']
+            : [],
+      },
+    };
+  });
+  route('GET', '/v1/builds/{id}/provenance', ({ params }) => ({
+    id: `prov_${hex(6)}`,
+    build_id: params.id,
+    buildkit_version: 'v0.17.2',
+    railpack_version: '0.9.4',
+    base_digest: 'sha256:' + hex(16),
+    source_sha256: hex(16),
+    source_url: '',
+    commit_sha: hex(20),
+    plan: 'railpack-node',
+    runner_digest: 'sha256:' + hex(16),
+    builder_node_id: 'fra-metal-1',
+    started_at: new Date(Date.now() - 7200e3).toISOString(),
+    finished_at: new Date(Date.now() - 7100e3).toISOString(),
+    sbom_storage_key: 'sbom/' + params.id,
+    framework_version: '22.12.0',
+  }));
+  route('GET', '/v1/deployments/{id}/secret-scan', () => ({
+    status: 'complete',
+    scanned_at: new Date(Date.now() - 7000e3).toISOString(),
+    image_digest: 'sha256:' + hex(16),
+    findings: [],
+    error: '',
+  }));
+  route('GET', '/v1/audit-events', () => ({
+    events: [
+      {
+        id: hex(12),
+        at: new Date(Date.now() - 600e3).toISOString(),
+        actor: 'demo@acme-corp.dev',
+        kind: 'session.signed_in',
+        subject: 'google-oauth',
+        severity: 'info',
+        data: {},
+      },
+      {
+        id: hex(12),
+        at: new Date(Date.now() - 86400e3).toISOString(),
+        actor: 'demo@acme-corp.dev',
+        kind: 'api_key.minted',
+        subject: 'ci-deploy',
+        severity: 'info',
+        data: {},
+      },
+      {
+        id: hex(12),
+        at: new Date(Date.now() - 2 * 86400e3).toISOString(),
+        actor: 'demo@acme-corp.dev',
+        kind: 'login.failed_password',
+        subject: '203.0.113.7',
+        severity: 'warn',
+        data: {},
+      },
+    ],
+    limit: 50,
+  }));
+
   // --- Project import (scan/apply). The dev mock cannot untar a real upload,
   // so the scan answers a canned Kubernetes-flavoured plan and apply echoes
   // the applied set; the fixture fleet itself stays static. ---

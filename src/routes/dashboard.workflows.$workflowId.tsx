@@ -40,6 +40,7 @@ import { UpstreamsBody } from './dashboard.databases';
 import { AlertsBody } from './dashboard.alerts';
 import { WebhooksBody } from './dashboard.webhooks';
 import { EdgeRulesBody } from './dashboard.edge-rules';
+import { ErrorsBody } from '@/components/dashboard/errors-body';
 import { AppConfiguration } from '@/components/dashboard/app-configuration';
 import { InvokePanel, SloPanel } from '@/components/dashboard/app-core-panels';
 import { Swap } from '@/components/dashboard/motion';
@@ -68,6 +69,7 @@ const TABS = [
   'Invoke',
   'Deployments',
   'Logs',
+  'Errors',
   'Routes',
   'Secrets',
   'Env vars',
@@ -576,6 +578,7 @@ function FunctionDetailPage() {
               ) : (
                 <LogsBody slug={fn.id} />
               ))}
+            {tab === 'Errors' && <ErrorsBody slug={fn.id} />}
             {tab === 'Routes' && <RoutesBody slug={fn.id} />}
             {tab === 'Secrets' && <SecretsBody slug={fn.id} />}
             {tab === 'Env vars' && <EnvBody slug={fn.id} />}

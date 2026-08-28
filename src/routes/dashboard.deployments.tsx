@@ -4,7 +4,12 @@ import { InlinePhase, PageHeader, queryPhase } from '@/components/dashboard/prim
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { formatRelative, type Deployment } from '@/lib/mock-data';
 import { useData } from '@/lib/store';
-import { useBuilds, useDeployment, useDeploymentScan } from '@/lib/api/queries';
+import {
+  useBuilds,
+  useDeployment,
+  useDeploymentScan,
+  useDeploymentSecretScan,
+} from '@/lib/api/queries';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
@@ -155,6 +160,7 @@ function DeploymentDrawer({
 }) {
   const detail = useDeployment(deployment?.id ?? '');
   const scan = useDeploymentScan(deployment?.id ?? '');
+  const secretScan = useDeploymentSecretScan(deployment?.id ?? '');
   const d = detail.data;
   const detailPhase = queryPhase({ error: detail.error, loading: detail.isPending, isEmpty: !d });
   const scanPhase = queryPhase({
@@ -235,6 +241,35 @@ function DeploymentDrawer({
                       {v.package}@{v.version}
                       {v.fixed_in ? ` → ${v.fixed_in}` : ''}
                     </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div>
+            <p className="label-mono mb-2 text-muted-foreground">Secret scan</p>
+            {/* Image-layer secret scan: keys and tokens baked into the image
+                by mistake. A clean pass says so plainly. */}
+            {secretScan.isPending ? (
+              <InlinePhase phase="loading" loadingMessage="Reading secret scan…" />
+            ) : secretScan.error || !secretScan.data ? (
+              <p className="text-sm text-muted-foreground">No secret scan recorded.</p>
+            ) : (secretScan.data.findings?.length ?? 0) === 0 ? (
+              <p className="text-sm text-muted-foreground">No secrets found in the image layers.</p>
+            ) : (
+              <ul className="flex flex-col divide-y divide-border">
+                {secretScan.data.findings?.map((f, i) => (
+                  <li
+                    key={`${f.file}-${f.line}-${i}`}
+                    className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm"
+                  >
+                    <Pill label={f.severity} color="var(--status-critical)" />
+                    <span className="font-mono text-xs">{f.provider}</span>
+                    <span className="font-mono text-xs text-muted-foreground">
+                      {f.file}:{f.line}
+                    </span>
+                    <span className="font-mono text-xs text-muted-foreground">{f.key}</span>
                   </li>
                 ))}
               </ul>

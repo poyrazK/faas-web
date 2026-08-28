@@ -84,6 +84,113 @@ async function applyOptimistic<T>(
 type Options<T> = Omit<UseQueryOptions<T, Error>, 'queryKey' | 'queryFn'>;
 
 /* ------------------------------------------------------------------ *
+ * Observability — error groups, wake anatomy, build provenance, deploy
+ * preview, auth audit trail
+ * ------------------------------------------------------------------ */
+
+/** Automatic error grouping for one app (ADR-096): fingerprints with
+ * counts, routes, and a sample message. */
+export function useAppErrors(slug: string) {
+  return useQuery({
+    queryKey: ['apps', slug, 'errors'],
+    queryFn: () =>
+      unwrap(api.GET('/v1/apps/{slug}/errors/summary', { params: { path: { slug } } })),
+    enabled: Boolean(slug),
+  });
+}
+
+/** Recent requests behind one fingerprint. */
+export function useAppErrorRequests(slug: string, fingerprint: string) {
+  return useQuery({
+    queryKey: ['apps', slug, 'errors', fingerprint],
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/errors/{fingerprint}', {
+          params: { path: { slug, fingerprint } },
+        })
+      ),
+    enabled: Boolean(slug && fingerprint),
+  });
+}
+
+/** The oldest sample for a fingerprint — message plus redacted headers. */
+export function useAppErrorSample(slug: string, fingerprint: string) {
+  return useQuery({
+    queryKey: ['apps', slug, 'errors', fingerprint, 'first'],
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/errors/{fingerprint}/first', {
+          params: { path: { slug, fingerprint } },
+        })
+      ),
+    enabled: Boolean(slug && fingerprint),
+  });
+}
+
+/** Frame-by-frame anatomy of one wake attempt. */
+export function useWakeTimeline(slug: string, wakeId: string) {
+  return useQuery({
+    queryKey: ['apps', slug, 'wakes', wakeId],
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/wakes/{wake_id}/timeline', {
+          params: { path: { slug, wake_id: wakeId } },
+        })
+      ),
+    enabled: Boolean(slug && wakeId),
+  });
+}
+
+/** Read-only preview of what a config change would do — the CLI's
+ * `deploy --diff`, wired to the console's config form. A mutation shape
+ * because it POSTs a proposed config, but it writes nothing. */
+export function useAppDiff(slug: string) {
+  return useMutation({
+    mutationFn: (app_config: Record<string, unknown>) =>
+      unwrap(
+        api.POST('/v1/apps/{slug}/diff', { params: { path: { slug } }, body: { app_config } })
+      ),
+  });
+}
+
+/** One build's record — status, timings, failure class. */
+export function useBuild(id: string) {
+  return useQuery({
+    queryKey: ['builds', id],
+    queryFn: () => unwrap(api.GET('/v1/builds/{id}', { params: { path: { id } } })),
+    enabled: Boolean(id),
+  });
+}
+
+/** The build's provenance: toolchain versions, digests, source identity. */
+export function useBuildProvenance(id: string) {
+  return useQuery({
+    queryKey: ['builds', id, 'provenance'],
+    queryFn: () => unwrap(api.GET('/v1/builds/{id}/provenance', { params: { path: { id } } })),
+    enabled: Boolean(id),
+    retry: false,
+  });
+}
+
+/** Per-deploy image-layer secret scan. */
+export function useDeploymentSecretScan(id: string) {
+  return useQuery({
+    queryKey: ['deployments', id, 'secret-scan'],
+    queryFn: () =>
+      unwrap(api.GET('/v1/deployments/{id}/secret-scan', { params: { path: { id } } })),
+    enabled: Boolean(id),
+  });
+}
+
+/** The account's auth audit trail — sign-ins, key mints, MFA events. */
+export function useAuthAuditEvents() {
+  return useQuery({
+    queryKey: ['audit-events'],
+    queryFn: () => unwrap(api.GET('/v1/audit-events', {})),
+  });
+}
+
+/* ------------------------------------------------------------------ *
  * Project import — scan a repo tarball into a deploy plan, then apply it
  * ------------------------------------------------------------------ */
 

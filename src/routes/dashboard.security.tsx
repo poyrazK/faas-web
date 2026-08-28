@@ -2,11 +2,16 @@ import { useMemo } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { LogOut } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
-import { PageHeader, Panel } from '@/components/dashboard/primitives';
+import { InlinePhase, PageHeader, Panel, queryPhase } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { useToast } from '@/components/ui/toast';
 import { useConfirm } from '@/components/ui/confirm';
-import { useRevokeAllSessions, useRevokeSession, useSessions } from '@/lib/api/queries';
+import {
+  useRevokeAllSessions,
+  useRevokeSession,
+  useSessions,
+  useAuthAuditEvents,
+} from '@/lib/api/queries';
 import { useMfa } from '@/components/auth/mfa-provider';
 import { errorMessage } from '@/lib/api/errors';
 import { formatRelative } from '@/lib/mock-data';
@@ -41,6 +46,46 @@ function formatWhen(value: string | undefined): string {
   if (!value) return '—';
   const ms = Date.parse(value);
   return Number.isNaN(ms) ? '—' : formatRelative(ms);
+}
+
+function AuthEventsPanel() {
+  const q = useAuthAuditEvents();
+  const events = q.data?.events ?? [];
+  const phase = queryPhase({ error: q.error, loading: q.isPending, isEmpty: events.length === 0 });
+  return (
+    <Panel
+      title="Auth events"
+      description="Sign-ins, key mints, and MFA changes — the account's security timeline, distinct from the resource audit log."
+      padded={phase !== 'ready'}
+    >
+      {phase !== 'ready' ? (
+        <InlinePhase
+          phase={phase}
+          error={q.error}
+          loadingMessage="Reading auth events…"
+          emptyMessage="No auth events recorded yet."
+        />
+      ) : (
+        <ul className="flex flex-col divide-y divide-border">
+          {events.slice(0, 12).map((e) => (
+            <li
+              key={e.id}
+              className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-2.5 text-xs"
+            >
+              <span className="font-mono">{e.kind}</span>
+              <span className="text-muted-foreground">{e.actor}</span>
+              {e.severity && e.severity !== 'info' && (
+                <span style={{ color: 'var(--status-warning)' }}>{e.severity}</span>
+              )}
+              <span className="ml-auto text-muted-foreground">
+                {new Date(e.at).toLocaleString()}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Panel>
+  );
 }
 
 function SecurityPage() {
@@ -214,6 +259,7 @@ function SecurityPage() {
           onRetry={() => void refetch()}
         />
       </Panel>
+      <AuthEventsPanel />
     </div>
   );
 }
