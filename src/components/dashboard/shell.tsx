@@ -224,12 +224,13 @@ function AccountMenu({ onSignOut }: { onSignOut: () => void }) {
     <DropdownMenu>
       <DropdownMenuTrigger
         aria-label="Account"
-        className="pressable flex items-center gap-1.5 rounded-lg py-1 pl-1 pr-1.5 hover:bg-muted data-[state=open]:bg-muted"
+        className="pressable group flex items-center gap-1.5 rounded-lg py-1 pl-1 pr-1.5 hover:bg-muted data-[state=open]:bg-muted"
       >
         <span className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-[11px] font-medium">
           {user?.initials ?? 'GG'}
         </span>
-        <NavArrowDown className="h-3.5 w-3.5 text-muted-foreground" />
+        {/* The chevron answers the menu: down when closed, up while open. */}
+        <NavArrowDown className="h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 ease-console group-data-[state=open]:rotate-180 motion-reduce:transition-none" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuLabel>
