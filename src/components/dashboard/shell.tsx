@@ -89,7 +89,9 @@ function SidebarBody({
         />
       </Link>
 
-      <div className="mt-6 flex flex-col gap-4 overflow-x-hidden overflow-y-auto">
+      {/* scrollbar-none: at 40px-wide rows a native scrollbar eats the rail
+          and shoves the icons off-center (it did). */}
+      <div className="scrollbar-none mt-6 flex flex-col gap-4 overflow-x-hidden overflow-y-auto">
         {NAV_GROUPS.map((group, gi) => (
           <div key={group.title ?? `group-${gi}`}>
             {/* One fixed-height slot per group header, whichever face it

@@ -792,6 +792,15 @@
     text-shadow: 0 0 16px color-mix(in oklab, var(--brand-fill) 35%, transparent);
   }
 
+  /* A scroll container with no visible scrollbar — for rails too narrow to
+     give one a gutter (wheel, drag, and keyboard scrolling all still work). */
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+
   /* Glass material for the overview bento: a translucent surface over the
      atmosphere with an etched top highlight — depth without weight. Layered
      onto SpotlightCard, whose border and radius it inherits. */
