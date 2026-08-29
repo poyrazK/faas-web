@@ -137,6 +137,56 @@ function RadialArcs() {
 }
 
 /* ------------------------------------------------------------------ *
+ * Flow Dots at viewport scale — the page's background
+ * ------------------------------------------------------------------ */
+
+/**
+ * The colophon's flow-dot field grown to cover the page: the same swirl,
+ * displacement and mint bias gathering toward the northeast, at a fraction
+ * of the foreground opacity so the data always wins. Deterministic like
+ * the band, and a static SVG — no loop, no canvas, nothing to pause.
+ */
+export function FlowDotsField({ className }: { className?: string }) {
+  const rand = rng(11);
+  const dots: { x: number; y: number; r: number; mint: boolean; o: number }[] = [];
+  for (let gy = 0; gy < 30; gy++) {
+    for (let gx = 0; gx < 48; gx++) {
+      const u = gx / 47;
+      const v = gy / 29;
+      const angle = Math.sin(u * 5.1 + v * 2.4) * 1.6 + Math.cos(v * 3.8 - u * 1.7);
+      const push = 4 + 9 * (u * 0.5 + (1 - v) * 0.5);
+      const ne = u * (1 - v);
+      dots.push({
+        x: 15 + gx * 30 + Math.cos(angle) * push,
+        y: 15 + gy * 30 + Math.sin(angle) * push,
+        r: 1.1 + rand() * 1.5,
+        mint: rand() < 0.1 * (0.25 + ne * 1.5),
+        o: 0.35 + rand() * 0.65,
+      });
+    }
+  }
+  return (
+    <svg
+      viewBox="0 0 1440 900"
+      preserveAspectRatio="xMidYMid slice"
+      aria-hidden
+      className={cn('h-full w-full', className)}
+    >
+      {dots.map((d, i) => (
+        <circle
+          key={i}
+          cx={d.x}
+          cy={d.y}
+          r={d.r}
+          fill={d.mint ? MINT : GREY_SOFT}
+          opacity={d.mint ? 0.5 : d.o * 0.8}
+        />
+      ))}
+    </svg>
+  );
+}
+
+/* ------------------------------------------------------------------ *
  * The band
  * ------------------------------------------------------------------ */
 
