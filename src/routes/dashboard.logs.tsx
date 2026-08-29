@@ -1,8 +1,26 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { Link } from '@tanstack/react-router';
-import { ArrowDown, ArrowRight, Download, Pause, Play, Search, Xmark } from 'iconoir-react';
+import {
+  ArrowDown,
+  ArrowRight,
+  Bookmark,
+  Download,
+  Pause,
+  Play,
+  Search,
+  Xmark,
+} from 'iconoir-react';
 import { Button } from '@/components/ui/button';
+import { Modal } from '@/components/ui/modal';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { CopyMorph, useCopy } from '@/components/ui/copy-button';
 import { EmptyState, LevelTag, LoadingState, PageHeader } from '@/components/dashboard/primitives';
 import { Pill } from '@/components/dashboard/resource-table';
@@ -20,7 +38,24 @@ import { useData } from '@/lib/store';
 export const Route = createFileRoute('/dashboard/logs')({
   component: LogsPage,
   head: () => consoleHead('logs'),
+  // Filters live in the URL, so a pasted link opens the same view — the
+  // shareable log link an on-call handoff actually needs.
+  validateSearch: (search: Record<string, unknown>): LogsSearch => ({
+    ...(typeof search.app === 'string' && search.app ? { app: search.app } : {}),
+    ...(LOG_LEVELS.includes(search.level as LogLevelFilter)
+      ? { level: search.level as LogLevelFilter }
+      : {}),
+    ...(typeof search.q === 'string' && search.q ? { q: search.q } : {}),
+    ...(search.mode === 'archive' ? { mode: 'archive' as const } : {}),
+  }),
 });
+
+interface LogsSearch {
+  app?: string;
+  level?: LogLevelFilter;
+  q?: string;
+  mode?: 'archive';
+}
 
 const STATUS_LABEL: Record<string, { label: string; color?: string }> = {
   idle: { label: 'idle' },
@@ -45,17 +80,43 @@ const ARCHIVE_REASON: Record<string, string> = {
 const isoDay = (offsetDays = 0) =>
   new Date(Date.now() - offsetDays * 86_400_000).toISOString().slice(0, 10);
 
+export interface LogFilters {
+  level: LogLevelFilter | '';
+  grep: string;
+  mode: 'live' | 'archive';
+}
+
 /**
  * The live log view, without the page chrome around it.
  *
- * Rendered both by this route and as a tab on the app detail page.
+ * Rendered both by this route and as a tab on the app detail page. The
+ * route passes `initial` (from the URL) and listens on `onFilters` to keep
+ * the URL shareable; the tab passes neither and behaves as before.
  */
-export function LogsBody({ slug }: { slug: string }) {
+export function LogsBody({
+  slug,
+  initial,
+  onFilters,
+}: {
+  slug: string;
+  initial?: Partial<LogFilters>;
+  onFilters?: (f: LogFilters) => void;
+}) {
   const [connected, setConnected] = useState(true);
-  const [grepInput, setGrepInput] = useState('');
-  const [grep, setGrep] = useState('');
-  const [level, setLevel] = useState<LogLevelFilter | ''>('');
-  const [mode, setMode] = useState<'live' | 'archive'>('live');
+  const [grepInput, setGrepInput] = useState(initial?.grep ?? '');
+  const [grep, setGrep] = useState(initial?.grep ?? '');
+  const [level, setLevel] = useState<LogLevelFilter | ''>(initial?.level ?? '');
+  const [mode, setMode] = useState<'live' | 'archive'>(initial?.mode ?? 'live');
+
+  // Report filter changes upward without ever depending on the callback's
+  // identity — the route recreates it per render.
+  const onFiltersRef = useRef(onFilters);
+  useEffect(() => {
+    onFiltersRef.current = onFilters;
+  });
+  useEffect(() => {
+    onFiltersRef.current?.({ level, grep, mode });
+  }, [level, grep, mode]);
   const [instance, setInstance] = useState('');
   const [date, setDate] = useState(() => isoDay(1));
   const [wrap, setWrap] = useState(() => localStorage.getItem(WRAP_KEY) !== '0');
@@ -400,17 +461,223 @@ export function LogsBody({ slug }: { slug: string }) {
   );
 }
 
+/* ------------------------------------------------------------------ *
+ * Saved views — named filter sets, kept in the browser
+ * ------------------------------------------------------------------ */
+
+interface SavedView {
+  name: string;
+  app: string;
+  level?: LogLevelFilter;
+  q?: string;
+  mode?: 'archive';
+}
+
+const VIEWS_KEY = 'gregale.logs.views';
+
+function readViews(): SavedView[] {
+  try {
+    const parsed: unknown = JSON.parse(window.localStorage.getItem(VIEWS_KEY) ?? '[]');
+    return Array.isArray(parsed)
+      ? parsed.filter(
+          (v): v is SavedView =>
+            typeof v === 'object' &&
+            v !== null &&
+            typeof (v as SavedView).name === 'string' &&
+            typeof (v as SavedView).app === 'string'
+        )
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeViews(views: SavedView[]) {
+  try {
+    window.localStorage.setItem(VIEWS_KEY, JSON.stringify(views));
+  } catch {
+    // Storage can be denied; views simply do not persist.
+  }
+}
+
+function SavedViewsMenu({
+  current,
+  onApply,
+}: {
+  /** Snapshot of the filters as they stand, name not yet chosen. */
+  current: () => Omit<SavedView, 'name'>;
+  onApply: (view: SavedView) => void;
+}) {
+  const [views, setViews] = useState<SavedView[]>(() =>
+    typeof window === 'undefined' ? [] : readViews()
+  );
+  const [naming, setNaming] = useState(false);
+  const [name, setName] = useState('');
+
+  const save = () => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const next = [...views.filter((v) => v.name !== trimmed), { name: trimmed, ...current() }];
+    setViews(next);
+    writeViews(next);
+    setNaming(false);
+    setName('');
+  };
+
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size="sm" className="gap-1.5">
+            <Bookmark className="h-3.5 w-3.5" />
+            Views
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {views.length === 0 && (
+            <DropdownMenuLabel className="text-xs text-muted-foreground">
+              No saved views yet.
+            </DropdownMenuLabel>
+          )}
+          {views.map((v) => (
+            <DropdownMenuItem
+              key={v.name}
+              onSelect={() => onApply(v)}
+              className="flex items-center gap-3"
+            >
+              <span className="truncate">{v.name}</span>
+              <span className="ml-auto truncate font-mono text-xs text-muted-foreground">
+                {v.app}
+                {v.level ? ` · ${v.level}` : ''}
+              </span>
+              <button
+                type="button"
+                aria-label={`Delete view ${v.name}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  const next = views.filter((x) => x.name !== v.name);
+                  setViews(next);
+                  writeViews(next);
+                }}
+                className="pressable rounded p-0.5 text-muted-foreground hover:text-foreground"
+              >
+                <Xmark className="h-3 w-3" />
+              </button>
+            </DropdownMenuItem>
+          ))}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={() => setNaming(true)}>Save current view…</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <Modal
+        open={naming}
+        onClose={() => setNaming(false)}
+        title="Save this view"
+        description="App, level, search, and mode — as they stand now."
+        footer={
+          <Button size="sm" disabled={!name.trim()} onClick={save}>
+            Save view
+          </Button>
+        }
+      >
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') save();
+          }}
+          placeholder="errors on api-gateway"
+          aria-label="View name"
+          className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-brand"
+        />
+      </Modal>
+    </>
+  );
+}
+
 function LogsPage() {
+  const search = Route.useSearch();
+  const navigate = Route.useNavigate();
   const appState = useSelectedApp();
   const { slug, select, apps } = appState;
   const { deployments, loading: loadingData } = useData();
   const selectedDeployments = deployments.filter((deployment) => deployment.workflowId === slug);
+
+  // The URL's app wins over the remembered one, once the list can confirm
+  // it exists. Cheap no-op on every render after it has applied.
+  useEffect(() => {
+    if (search.app && search.app !== slug && apps.some((a) => a.slug === search.app)) {
+      select(search.app);
+    }
+  });
+
+  const filtersRef = useRef<LogFilters>({
+    level: search.level ?? '',
+    grep: search.q ?? '',
+    mode: search.mode ?? 'live',
+  });
+  // Remounts LogsBody when a saved view applies, so its internal state
+  // re-initialises from the fresh URL.
+  const [viewNonce, setViewNonce] = useState(0);
+
+  const syncUrl = (f: LogFilters, app: string) => {
+    void navigate({
+      replace: true,
+      search: {
+        ...(app ? { app } : {}),
+        ...(f.level ? { level: f.level } : {}),
+        ...(f.grep ? { q: f.grep } : {}),
+        ...(f.mode === 'archive' ? { mode: 'archive' as const } : {}),
+      },
+    });
+  };
+
+  const applyView = (v: SavedView) => {
+    if (apps.some((a) => a.slug === v.app)) select(v.app);
+    void navigate({
+      replace: true,
+      search: {
+        app: v.app,
+        ...(v.level ? { level: v.level } : {}),
+        ...(v.q ? { q: v.q } : {}),
+        ...(v.mode ? { mode: v.mode } : {}),
+      },
+    });
+    filtersRef.current = { level: v.level ?? '', grep: v.q ?? '', mode: v.mode ?? 'live' };
+    setViewNonce((n) => n + 1);
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Logs"
-        description="Live output from this app's instances. The stream ends on its own when the app parks."
-        actions={<AppSelect slug={slug} onSelect={select} apps={apps} />}
+        description="Live output from this app's instances. The stream ends on its own when the app parks. Filters live in the URL — the page is a shareable link."
+        actions={
+          <div className="flex items-center gap-2">
+            <SavedViewsMenu
+              current={() => {
+                const f = filtersRef.current;
+                return {
+                  app: slug,
+                  ...(f.level ? { level: f.level } : {}),
+                  ...(f.grep ? { q: f.grep } : {}),
+                  ...(f.mode === 'archive' ? { mode: 'archive' as const } : {}),
+                };
+              }}
+              onApply={applyView}
+            />
+            <AppSelect
+              slug={slug}
+              onSelect={(next) => {
+                select(next);
+                syncUrl(filtersRef.current, next);
+              }}
+              apps={apps}
+            />
+          </div>
+        }
       />
       <AppScope state={appState} resource="logs">
         {loadingData ? (
@@ -418,7 +685,19 @@ function LogsPage() {
         ) : !hasRunnableDeployment(selectedDeployments) ? (
           <DeploymentGate slug={slug} resource="Logs" />
         ) : (
-          <LogsBody slug={slug} />
+          <LogsBody
+            key={viewNonce}
+            slug={slug}
+            initial={{
+              level: search.level ?? '',
+              grep: search.q ?? '',
+              mode: search.mode ?? 'live',
+            }}
+            onFilters={(f) => {
+              filtersRef.current = f;
+              syncUrl(f, slug);
+            }}
+          />
         )}
       </AppScope>
     </div>
