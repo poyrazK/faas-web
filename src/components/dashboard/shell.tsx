@@ -9,7 +9,6 @@ import {
   Menu,
   SidebarCollapse,
   SidebarExpand,
-  Search,
   Settings,
   Xmark,
 } from 'iconoir-react';
@@ -17,7 +16,6 @@ import { useData } from '@/lib/store';
 import { readWorkspace, useAuth } from '@/lib/auth';
 import { useSweepNavigate } from '@/components/sweep-link';
 import { useToast } from '@/components/ui/toast';
-import { Kbd } from '@/components/ui/kbd';
 import { ConfirmProvider } from '@/components/ui/confirm';
 import {
   DropdownMenu,
@@ -31,14 +29,17 @@ import { Tooltip, TooltipProvider } from '@/components/ui/tooltip';
 import { CommandPalette } from './command-palette';
 import { EASE } from './motion';
 import { NAV_GROUPS, SECTION_LABELS } from './nav-config';
+import { recordVisit } from '@/lib/recents';
 import { cn } from '@/lib/utils';
 import { useFocusTrap } from '@/lib/use-focus-trap';
 
 const COLLAPSE_KEY = 'gregale.sidebar.collapsed';
 
 function readCollapsed(): boolean {
-  if (typeof window === 'undefined') return false;
-  return window.localStorage.getItem(COLLAPSE_KEY) === '1';
+  // Collapsed is the default: the rail expands on hover, and pinning it
+  // open (⌘B) is the stored exception.
+  if (typeof window === 'undefined') return true;
+  return window.localStorage.getItem(COLLAPSE_KEY) !== '0';
 }
 
 function SidebarBody({
@@ -309,6 +310,11 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   const [paletteOpen, setPaletteOpen] = useState(false);
   // Persisted, so the sidebar keeps its width across navigations and reloads.
   const [collapsed, setCollapsed] = useState(readCollapsed);
+  // Hovering (or keyboard focus entering) the collapsed rail expands it as
+  // an overlay — the content column does not shift, so it is a peek, not a
+  // relayout. Pinning it open is still ⌘B / the footer toggle.
+  const [railHovered, setRailHovered] = useState(false);
+  const railCollapsed = collapsed && !railHovered;
   const drawerRef = useRef<HTMLElement>(null);
   useFocusTrap(drawerRef, mobileOpen);
   const reduce = useReducedMotion();
@@ -343,9 +349,27 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       }
       if (e.key === 'Escape') setMobileOpen(false);
     };
+    // The overview's search field opens the same palette; it reaches the
+    // shell through this event so the two stay uncoupled.
+    const onOpenPalette = () => {
+      setPaletteOpen((v) => {
+        if (!v && document.querySelector('[role="dialog"][aria-modal="true"]')) return v;
+        return true;
+      });
+    };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('gregale:open-palette', onOpenPalette);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('gregale:open-palette', onOpenPalette);
+    };
   }, []);
+
+  // Every dashboard navigation lands in the overview's Recents column.
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  useEffect(() => {
+    recordVisit(pathname);
+  }, [pathname]);
 
   // Toasts render at the root, outside this tree, so the dark palette has to
   // reach them too: mirror `console` onto <html> while the shell is mounted.
@@ -401,20 +425,30 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             </a>
             {/* Desktop sidebar */}
             <aside
+              onMouseEnter={() => setRailHovered(true)}
+              onMouseLeave={() => setRailHovered(false)}
+              onFocus={() => setRailHovered(true)}
+              onBlur={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node | null))
+                  setRailHovered(false);
+              }}
               className={cn(
                 // The stored width is applied before first paint (readCollapsed
                 // in the state initializer), so this transition only ever runs
-                // on a real toggle, never on load.
+                // on a real hover or toggle, never on load.
                 'fixed inset-y-0 left-0 z-30 hidden flex-col border-r border-border bg-card py-5 transition-[width] duration-200 ease-console lg:flex',
-                collapsed ? 'w-[4.5rem] px-2' : 'w-60 px-3'
+                railCollapsed ? 'w-[4.5rem] px-2' : 'w-60 px-3',
+                // Hover-expanded over pinned-collapsed content: a floating
+                // peek, so it carries elevation the pinned states do not.
+                collapsed && !railCollapsed && 'shadow-elevation-3'
               )}
             >
-              <SidebarBody id="desktop" collapsed={collapsed} />
+              <SidebarBody id="desktop" collapsed={railCollapsed} />
 
               {/* Identity and sign-out live in the top bar's account menu, so the
             sidebar footer carries context instead of duplicating them. */}
               <div className="mt-auto pt-4">
-                {!collapsed && (
+                {!railCollapsed && (
                   <div className="mb-2 rounded-lg border border-border bg-background p-3">
                     <div className="flex items-center gap-2">
                       <span className="relative flex h-1.5 w-1.5">
@@ -435,19 +469,24 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                   </div>
                 )}
 
-                <Tooltip content={`${collapsed ? 'Expand' : 'Collapse'} sidebar (⌘B)`} side="right">
+                <Tooltip content={`${collapsed ? 'Pin sidebar open' : 'Collapse sidebar'} (⌘B)`} side="right">
                   <button
                     type="button"
                     onClick={toggleCollapsed}
-                    aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                    aria-label={collapsed ? 'Pin sidebar open' : 'Collapse sidebar'}
                     aria-keyshortcuts="Meta+B Control+B"
                     className={cn(
                       'pressable flex w-full items-center gap-2.5 rounded-md py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground',
-                      collapsed ? 'justify-center px-0' : 'px-2.5'
+                      railCollapsed ? 'justify-center px-0' : 'px-2.5'
                     )}
                   >
-                    {collapsed ? (
+                    {railCollapsed ? (
                       <SidebarExpand className="h-4 w-4 shrink-0" />
+                    ) : collapsed ? (
+                      <>
+                        <SidebarExpand className="h-4 w-4 shrink-0" />
+                        Pin open
+                      </>
                     ) : (
                       <>
                         <SidebarCollapse className="h-4 w-4 shrink-0" />
@@ -521,21 +560,8 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                 <Breadcrumbs />
 
                 <div className="ml-auto flex items-center gap-1.5">
-                  {/* Compact, so identity owns the left rather than a stretched
-                field that only ever opens the palette anyway. */}
-                  <button
-                    type="button"
-                    onClick={() => setPaletteOpen(true)}
-                    aria-label="Search or jump to"
-                    className="pressable flex h-8 items-center gap-2 rounded-lg border border-border bg-card px-2.5 text-sm text-muted-foreground hover:border-border-secondary hover:text-foreground"
-                  >
-                    <Search className="h-3.5 w-3.5 shrink-0" />
-                    <span className="hidden lg:inline">Search</span>
-                    <Kbd className="hidden px-1 lg:block">⌘K</Kbd>
-                  </button>
-
-                  <span className="mx-1 hidden h-5 w-px bg-border sm:block" />
-
+                  {/* Search lives on the overview as the page's own field;
+                      ⌘K still opens the palette from anywhere. */}
                   <AccountMenu onSignOut={handleSignOut} />
                 </div>
               </header>

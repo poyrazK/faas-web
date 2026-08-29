@@ -807,25 +807,6 @@
     -webkit-backdrop-filter: blur(14px);
   }
 
-  /* Relay beams: a comet of light travelling an SVG route from the edge to
-     an app. The base path is the cable; this dashed overlay's offset loops
-     to move the pulse. Reduced motion stills the pulse and keeps the cable. */
-  .beam-pulse {
-    stroke-dasharray: 44 340;
-    animation: beam-dash 3.8s linear infinite;
-  }
-  @keyframes beam-dash {
-    to {
-      stroke-dashoffset: -384;
-    }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .beam-pulse {
-      animation: none;
-      opacity: 0;
-    }
-  }
-
   /* Progress-ring sweep: the arc enters from empty on insertion and glides
      between values thereafter. `@starting-style` keeps this stateless —
      unsupported browsers simply show the value at once, as do reduced-motion

@@ -1,31 +1,26 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { ArrowRight, Key, Plus, Upload } from 'iconoir-react';
-import { Button } from '@/components/ui/button';
+import { ArrowRight, ClockRotateRight, NavArrowRight, Plus, RefreshDouble, Search } from 'iconoir-react';
 import {
-  EmptyState,
   ErrorState,
-  InlinePhase,
   LoadingState,
   PageHeader,
   UnreachableState,
   queryPhase,
 } from '@/components/dashboard/primitives';
-import { BeamMap, type RelayApp } from '@/components/dashboard/beam-map';
 import { FirstRun } from '@/components/dashboard/first-run';
 import { SpotlightCard } from '@/components/ui/spotlight-card';
-import { BorderBeam } from '@/components/ui/border-beam';
-import { ProgressRing } from '@/components/ui/progress-ring';
 import { LiveDot } from '@/components/ui/live-dot';
 import { WindFlow } from '@/components/dashboard/wind-flow';
-import { CountUp } from '@/components/dashboard/motion';
+import { Kbd } from '@/components/ui/kbd';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Odometer } from '@/components/ui/odometer';
-import { AnimatedList } from '@/components/ui/animated-list';
 import { useData } from '@/lib/store';
 import { useAuth } from '@/lib/auth';
-import { useApps, useAppsMetrics, useInstances, useUsageSummary } from '@/lib/api/queries';
+import { useAppsMetrics, useInstances, useUsageSummary } from '@/lib/api/queries';
 import { formatCompact, formatRelative, type Workflow } from '@/lib/mock-data';
 import type { Deployment } from '@/lib/mock-data';
+import { readRecents, recentLabel } from '@/lib/recents';
 import { consoleHead } from '@/lib/seo';
 import { cn } from '@/lib/utils';
 
@@ -35,36 +30,25 @@ export const Route = createFileRoute('/dashboard/')({
 });
 
 /**
- * The overview as a relay station.
+ * The overview as a launchpad.
  *
- * A glossy bento with one hero: the Relay, the fleet drawn as a live flow
- * map — the edge hub wired to every app, light pulsing along the routes
- * that are awake. Around it, glass surfaces carry the allowance ring, the
- * traffic readouts, the meters, and the log. Everything worth knowing is
- * on the surface; nothing hides behind a hover.
+ * Wireframe borrowed deliberately from the best-tested console layout in
+ * the business: a centred greeting with the system's verdict as a pill
+ * above it, one big search field (the command palette's front door — the
+ * top bar no longer carries one), three resource columns (Apps,
+ * Deployments, Recents), and an analytics grid below.
  *
- * Every figure comes from reads the store already makes, plus the instance
- * list. A degraded Prometheus rollup reads as unknown, never as zero.
+ * The analytics cards carry numbers, not charts: the API returns scalars,
+ * and this console does not draw series it does not have. A degraded
+ * Prometheus rollup reads as unknown, never as zero.
  */
 
 const formatGbHours = (v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 2 });
 
-function formatMoney(cents: number | undefined): string {
-  if (cents == null) return '—';
-  return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'EUR' }).format(
-    cents / 100
-  );
-}
-
-/** The mono eyebrow every card leads with. */
-function CardLabel({ children }: { children: React.ReactNode }) {
-  return <p className="label-mono text-muted-foreground">{children}</p>;
-}
-
 const UNKNOWN = <span className="text-muted-foreground">—</span>;
 
 /* ------------------------------------------------------------------ *
- * The verdict
+ * Verdict pill
  * ------------------------------------------------------------------ */
 
 type Verdict = { text: string; color: string; trouble: boolean };
@@ -91,320 +75,63 @@ function verdictOf(
   return { text: 'All systems normal', color: 'var(--status-good)', trouble: false };
 }
 
-function VerdictHeader({
-  accountStatus,
-  failing,
-  degraded,
-  firstName,
-  appCount,
-  plan,
-}: {
-  accountStatus: string | undefined;
-  failing: Workflow[];
-  degraded: boolean;
-  firstName: string | undefined;
-  appCount: number | undefined;
-  plan: string | undefined;
-}) {
-  const verdict = verdictOf(accountStatus, failing.length, degraded);
-  const billingProblem = accountStatus && accountStatus !== 'active' ? accountStatus : null;
-
-  return (
-    <header
-      role={verdict.trouble ? 'alert' : 'status'}
-      className="animate-item-enter flex flex-wrap items-start justify-between gap-x-6 gap-y-4"
-    >
-      <div className="flex min-w-0 flex-col gap-2">
-        <p className="label-mono flex items-center gap-2.5 text-muted-foreground">
-          <LiveDot color={verdict.color} />
-          {firstName ? `${firstName}'s fleet` : 'Your fleet'}
-          {appCount != null && plan ? (
-            <span className="text-muted-foreground/60">
-              · {appCount} {appCount === 1 ? 'app' : 'apps'} · {plan}
-            </span>
-          ) : null}
-        </p>
-        <h1 className="text-2xl font-medium tracking-[-0.025em] sm:text-3xl">
-          {verdict.text}
-          <span aria-hidden style={{ color: verdict.color }}>
-            .
-          </span>
-        </h1>
-
-        {billingProblem ? (
-          <p className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm text-muted-foreground">
-            {billingProblem === 'past_due'
-              ? 'Settle the outstanding invoice to avoid suspension.'
-              : 'Apps may not serve traffic until it is resolved.'}
-            <Link
-              to="/dashboard/invoices"
-              className="pressable inline-flex items-center gap-1 rounded text-xs text-brand hover:text-brand-hover"
-            >
-              View invoices
-              <ArrowRight className="h-3 w-3" />
-            </Link>
-          </p>
-        ) : failing.length > 0 ? (
-          <p className="flex flex-wrap items-center gap-x-5 gap-y-1.5">
-            {failing.slice(0, 4).map((app) => (
-              <Link
-                key={app.id}
-                to="/dashboard/workflows/$workflowId"
-                params={{ workflowId: app.id }}
-                search={{ tab: 'Logs' }}
-                className="pressable inline-flex items-center gap-1.5 rounded font-mono text-xs hover:text-foreground"
-              >
-                {app.name}
-                <span style={{ color: 'var(--status-critical)' }}>
-                  {app.errorRatePct.toFixed(2)}%
-                </span>
-              </Link>
-            ))}
-            {failing.length > 4 && (
-              <span className="text-xs text-muted-foreground">+{failing.length - 4} more</span>
-            )}
-          </p>
-        ) : degraded ? (
-          <p className="text-sm text-muted-foreground">
-            The metrics rollup is answering from a fallback — traffic figures read as unknown,
-            never as zero.
-          </p>
-        ) : null}
-      </div>
-
-      <Button asChild size="sm" className="gap-1.5">
-        <Link to="/dashboard/workflows/new">
-          <Plus className="h-3.5 w-3.5" />
-          New app
-        </Link>
-      </Button>
-    </header>
-  );
-}
-
 /* ------------------------------------------------------------------ *
- * Cards
+ * Columns
  * ------------------------------------------------------------------ */
 
-function CardLink({ to, children }: { to: string; children: React.ReactNode }) {
+function ColumnHeader({ label, to }: { label: string; to?: string }) {
+  if (!to) return <p className="label-mono text-muted-foreground">{label}</p>;
   return (
     <Link
       to={to}
-      className="pressable inline-flex items-center gap-1 rounded text-xs text-muted-foreground hover:text-foreground"
+      className="pressable label-mono inline-flex items-center gap-1 rounded text-muted-foreground hover:text-foreground"
     >
-      {children}
-      <ArrowRight className="h-3 w-3" />
+      {label}
+      <NavArrowRight className="h-3 w-3" />
     </Link>
   );
 }
 
-function RelayCard({
-  apps,
-  residentMb,
-  residentKnown,
-  darkMb,
-}: {
-  apps: RelayApp[];
-  residentMb: number;
-  residentKnown: boolean;
-  darkMb: number;
-}) {
-  const awake = apps.filter((a) => a.awake).length;
-  const asleep = apps.length - awake;
+const APP_DOT: Record<string, string> = {
+  running: 'var(--status-good)',
+  idle: 'var(--chart-muted)',
+  error: 'var(--status-critical)',
+};
 
+function AppsColumn({ workflows }: { workflows: Workflow[] }) {
+  const shown = workflows.slice(0, 4);
   return (
-    <SpotlightCard elevation="raised" className="glass lg:col-span-8">
-      <BorderBeam />
-      <WindFlow intensity={0.35} />
-      <div className="relative flex h-full flex-col gap-6 p-6">
-        <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1.5">
-          <div className="flex items-baseline gap-4">
-            <CardLabel>Fleet</CardLabel>
-            <p className="text-sm [font-variant-numeric:tabular-nums]">
-              <CountUp value={awake} className="font-semibold" />{' '}
-              <span className="text-muted-foreground">awake</span>
-              <span aria-hidden className="mx-2 text-muted-foreground/40">
-                ·
-              </span>
-              <CountUp value={asleep} className="font-semibold" />{' '}
-              <span className="text-muted-foreground">asleep</span>
-            </p>
-          </div>
-          <CardLink to="/dashboard/workflows">All apps</CardLink>
-        </div>
-
-        <BeamMap apps={apps} className="flex-1" />
-
-        <p className="text-xs text-muted-foreground">
-          <span className="text-foreground [font-variant-numeric:tabular-nums]">
-            {residentKnown ? residentMb.toLocaleString() : '—'} MB
-          </span>{' '}
-          resident
-          {darkMb > 0 && (
-            <>
-              {' · '}
-              <span className="[font-variant-numeric:tabular-nums]">
-                {darkMb.toLocaleString()} MB
-              </span>{' '}
-              parked — held only when a request arrives
-            </>
-          )}
-        </p>
-      </div>
-    </SpotlightCard>
-  );
-}
-
-function AllowanceCard({ usage }: { usage: ReturnType<typeof useUsageSummary> }) {
-  const phase = queryPhase({ error: usage.error, loading: usage.isPending });
-  const data = usage.data;
-  const used = data?.used_gb_hours ?? 0;
-  const included = data?.included_gb_hours ?? 0;
-  const remaining = Math.max(0, included - used);
-  const over = (data?.overage_gb_hours ?? 0) > 0;
-  const usedPct = included > 0 ? Math.min(100, (used / included) * 100) : 0;
-
-  return (
-    <SpotlightCard className="glass flex-1 [animation-delay:60ms]">
-      <div className="flex h-full flex-col p-5">
-        <div className="flex items-baseline justify-between gap-4">
-          <CardLabel>Allowance</CardLabel>
-          <CardLink to="/dashboard/usage">Usage</CardLink>
-        </div>
-
-        {phase !== 'ready' ? (
-          <div className="flex flex-1 items-center justify-center py-8">
-            <InlinePhase phase={phase} error={usage.error} loadingMessage="Reading usage…" />
-          </div>
-        ) : (
-          <div className="mt-4 flex flex-1 flex-col items-center justify-center gap-3">
-            <ProgressRing
-              value={over ? 100 : usedPct}
-              tone={over ? 'warning' : 'brand'}
-              size={132}
-              label="GB-hour allowance used"
+    <section className="flex min-w-0 flex-col gap-1">
+      <ColumnHeader label="Apps" to="/dashboard/workflows" />
+      <Link
+        to="/dashboard/workflows/new"
+        className="pressable mt-2 flex items-center justify-center gap-1.5 rounded-lg border border-border bg-card py-2 text-sm text-muted-foreground hover:border-border-secondary hover:text-foreground"
+      >
+        <Plus className="h-3.5 w-3.5" />
+        New app
+      </Link>
+      <ul className="flex list-none flex-col divide-y divide-border">
+        {shown.map((w) => (
+          <li key={w.id}>
+            <Link
+              to="/dashboard/workflows/$workflowId"
+              params={{ workflowId: w.id }}
+              className="pressable group flex items-center gap-2.5 rounded py-2.5"
             >
-              <span className="flex flex-col items-center">
-                <span className="text-xl leading-none font-semibold tracking-tight [font-variant-numeric:tabular-nums]">
-                  <Odometer
-                    value={over ? (data?.overage_gb_hours ?? 0) : remaining}
-                    format={formatGbHours}
-                  />
-                </span>
-                <span className="label-mono mt-1 text-muted-foreground">
-                  {over ? 'GB-h over' : 'GB-h left'}
-                </span>
-              </span>
-            </ProgressRing>
-            <p className="text-center text-xs text-muted-foreground">
-              <span className="[font-variant-numeric:tabular-nums]">{formatGbHours(used)}</span> of{' '}
-              {formatGbHours(included)} · {data?.month}
-              {over && (
-                <span className="block" style={{ color: 'var(--status-warning)' }}>
-                  {formatMoney(data?.overage_cents)} overage
-                </span>
-              )}
-            </p>
-          </div>
-        )}
-      </div>
-    </SpotlightCard>
-  );
-}
-
-function TrafficCard({ workflows, degraded }: { workflows: Workflow[]; degraded: boolean }) {
-  const { requests, errorPct, wakeP95 } = useMemo(() => {
-    const total = workflows.reduce((sum, w) => sum + w.invocations24h, 0);
-    // Weighted by traffic, not a mean of percentages: one idle app at 100%
-    // must not outweigh a busy one at 0.01%.
-    const errored = workflows.reduce(
-      (sum, w) => sum + w.invocations24h * (w.errorRatePct / 100),
-      0
-    );
-    // The wake histogram is unlabelled upstream — every row carries the same
-    // fleet figure, so the first non-zero one is the figure.
-    const wake = workflows.find((w) => w.coldStartP50Ms > 0)?.coldStartP50Ms ?? 0;
-    return { requests: total, errorPct: total > 0 ? (errored / total) * 100 : 0, wakeP95: wake };
-  }, [workflows]);
-
-  return (
-    <SpotlightCard className="glass flex-1 [animation-delay:90ms]">
-      <div className="flex h-full flex-col">
-        <div className="px-5 pt-4 pb-2">
-          <CardLabel>Traffic · last 24h</CardLabel>
-        </div>
-        <div className="flex flex-1 flex-col divide-y divide-border">
-          <div className="flex flex-1 items-center justify-between gap-4 px-5 py-2.5">
-            <span className="label-mono text-muted-foreground">Requests</span>
-            <span className="text-xl leading-none font-semibold tracking-tight [font-variant-numeric:tabular-nums]">
-              {degraded ? (
-                UNKNOWN
-              ) : (
-                <Odometer value={requests} format={formatCompact} className="metric-glow" />
-              )}
-            </span>
-          </div>
-          <div className="flex flex-1 items-center justify-between gap-4 px-5 py-2.5">
-            <span className="label-mono text-muted-foreground">Error rate</span>
-            <span
-              className="text-xl leading-none font-semibold tracking-tight [font-variant-numeric:tabular-nums]"
-              style={!degraded && errorPct > 1 ? { color: 'var(--status-critical)' } : undefined}
-            >
-              {degraded ? UNKNOWN : `${errorPct.toFixed(2)}%`}
-            </span>
-          </div>
-          <div className="flex flex-1 items-center justify-between gap-4 px-5 py-2.5">
-            <span className="label-mono text-muted-foreground">Wake p95</span>
-            <span className="text-xl leading-none font-semibold tracking-tight [font-variant-numeric:tabular-nums]">
-              {degraded || !wakeP95 ? (
-                UNKNOWN
-              ) : (
-                <>
-                  {Math.round(wakeP95)}
-                  <span className="ml-1 text-xs font-normal text-muted-foreground">ms</span>
-                </>
-              )}
-            </span>
-          </div>
-        </div>
-      </div>
-    </SpotlightCard>
-  );
-}
-
-function MeterTile({
-  label,
-  value,
-  unit,
-  format,
-  delay,
-  hint,
-}: {
-  label: string;
-  value: number | undefined;
-  unit: string;
-  format?: (v: number) => string;
-  delay: number;
-  hint: string;
-}) {
-  return (
-    <SpotlightCard className={cn('glass col-span-6 lg:col-span-3')}>
-      <div className="p-4" title={hint} style={{ animationDelay: `${delay}ms` }}>
-        <CardLabel>{label}</CardLabel>
-        <p className="mt-2.5 text-2xl leading-none font-semibold tracking-tight [font-variant-numeric:tabular-nums]">
-          {value == null ? (
-            UNKNOWN
-          ) : (
-            <>
-              <Odometer value={value} format={format} />
-              <span className="ml-1.5 align-baseline text-sm font-normal text-muted-foreground">
-                {unit}
-              </span>
-            </>
-          )}
-        </p>
-      </div>
-    </SpotlightCard>
+              <span
+                className={cn('h-1.5 w-1.5 shrink-0 rounded-full', w.state === 'running' && 'animate-breathe')}
+                style={{ background: APP_DOT[w.state] ?? 'var(--chart-muted)' }}
+              />
+              <span className="truncate font-mono text-xs">{w.name}</span>
+              <NavArrowRight className="ml-auto h-3 w-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+            </Link>
+          </li>
+        ))}
+      </ul>
+      {workflows.length > 4 && (
+        <p className="text-xs text-muted-foreground">+{workflows.length - 4} more</p>
+      )}
+    </section>
   );
 }
 
@@ -413,80 +140,110 @@ const DEPLOY_STATE: Record<string, { label: string; color: string; live?: boolea
   failed: { label: 'Failed', color: 'var(--status-critical)' },
 };
 
-function DeploymentsCard({ recent }: { recent: Deployment[] }) {
+function DeploymentsColumn({ recent }: { recent: Deployment[] }) {
   return (
-    <SpotlightCard className="glass lg:col-span-8 [animation-delay:180ms]">
-      <div className="flex items-center justify-between gap-4 px-5 py-3.5">
-        <CardLabel>Recent deployments</CardLabel>
-        <CardLink to="/dashboard/deployments">All deployments</CardLink>
-      </div>
-
+    <section className="flex min-w-0 flex-col gap-1">
+      <ColumnHeader label="Deployments" to="/dashboard/deployments" />
       {recent.length === 0 ? (
-        <div className="p-5 pt-0">
-          <EmptyState message="Nothing deployed yet." />
-        </div>
+        <p className="mt-2 text-xs text-muted-foreground">Nothing deployed yet.</p>
       ) : (
-        <AnimatedList
-          items={recent}
-          className="divide-y divide-border border-t border-border"
-          render={(d) => {
+        <ul className="mt-2 flex list-none flex-col divide-y divide-border">
+          {recent.map((d) => {
             const state = DEPLOY_STATE[d.state] ?? {
               label: 'Deploying',
               color: 'var(--status-warning)',
               live: true,
             };
             return (
-              <div className="flex items-center gap-3 px-5 py-2.5">
-                <span className="truncate font-mono text-xs">{d.workflowId}</span>
-                <span className="truncate text-xs text-muted-foreground">
-                  {d.version || 'no image'} · {formatRelative(d.createdAt)}
-                </span>
+              <li key={d.id} className="flex items-center gap-2.5 py-2.5">
                 {/* Colour plus text, never hue alone; in-flight breathes. */}
                 <span
-                  className="ml-auto flex shrink-0 items-center gap-1.5 text-xs"
-                  style={{ color: state.color }}
-                >
-                  <span
-                    className={cn('h-1.5 w-1.5 rounded-full', state.live && 'animate-breathe')}
-                    style={{ background: state.color }}
-                  />
-                  {state.label}
+                  className={cn('h-1.5 w-1.5 shrink-0 rounded-full', state.live && 'animate-breathe')}
+                  style={{ background: state.color }}
+                />
+                <span className="truncate font-mono text-xs">{d.workflowId}</span>
+                <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                  {formatRelative(d.createdAt)}
                 </span>
-              </div>
+              </li>
             );
-          }}
-        />
+          })}
+        </ul>
       )}
-    </SpotlightCard>
+    </section>
   );
 }
 
-const ACTIONS = [
-  { to: '/dashboard/workflows/new', label: 'Deploy a new app', icon: Plus },
-  { to: '/dashboard/import', label: 'Import a project', icon: Upload },
-  { to: '/dashboard/keys', label: 'Mint an API key', icon: Key },
-] as const;
-
-function ActionsCard() {
+function RecentsColumn() {
+  // Read once on mount: the column is a snapshot of where you have been,
+  // and this very visit is already being recorded for the next one.
+  const [recents] = useState(() => readRecents().slice(0, 4));
   return (
-    <SpotlightCard className="glass lg:col-span-4 [animation-delay:210ms]">
-      <div className="px-5 pt-3.5 pb-1">
-        <CardLabel>Shortcuts</CardLabel>
+    <section className="flex min-w-0 flex-col gap-1">
+      <ColumnHeader label="Recents" />
+      {recents.length === 0 ? (
+        <p className="mt-2 text-xs text-muted-foreground">Pages you visit will appear here.</p>
+      ) : (
+        <ul className="mt-2 flex list-none flex-col divide-y divide-border">
+          {recents.map((r) => {
+            const { section, detail } = recentLabel(r.path);
+            return (
+              <li key={r.path}>
+                <Link
+                  to={r.path}
+                  className="pressable group flex items-center gap-2.5 rounded py-2.5"
+                >
+                  <ClockRotateRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <span className="truncate text-xs">
+                    <span className="text-muted-foreground">{section}</span>
+                    {detail && (
+                      <>
+                        <span className="text-muted-foreground/50"> / </span>
+                        <span className="font-mono">{detail}</span>
+                      </>
+                    )}
+                  </span>
+                  <NavArrowRight className="ml-auto h-3 w-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Analytics
+ * ------------------------------------------------------------------ */
+
+function StatCard({
+  label,
+  hint,
+  large,
+  className,
+  children,
+}: {
+  label: string;
+  hint: string;
+  large?: boolean;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <SpotlightCard className={cn('glass', className)}>
+      <div className={cn('flex h-full flex-col gap-2.5 p-5', large && 'min-h-36')} title={hint}>
+        <p className="label-mono text-muted-foreground">{label}</p>
+        <p
+          className={cn(
+            'leading-none font-semibold tracking-tight [font-variant-numeric:tabular-nums]',
+            large ? 'text-4xl' : 'text-2xl'
+          )}
+        >
+          {children}
+        </p>
       </div>
-      <ul className="flex list-none flex-col px-2 pb-2">
-        {ACTIONS.map(({ to, label, icon: Icon }) => (
-          <li key={to}>
-            <Link
-              to={to}
-              className="pressable flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
-            >
-              <Icon className="h-4 w-4" aria-hidden />
-              {label}
-              <ArrowRight className="ml-auto h-3 w-3 opacity-50" />
-            </Link>
-          </li>
-        ))}
-      </ul>
     </SpotlightCard>
   );
 }
@@ -507,56 +264,51 @@ function OverviewPage() {
   const metricsDegraded = Boolean(metrics.data && metrics.data.source !== 'prometheus');
   const failing = useMemo(() => workflows.filter((w) => w.state === 'error'), [workflows]);
 
-  // The relay's data: per-app resident instances (parked rows excluded — a
-  // parked instance's cgroup is gone), joined back to slugs via the raw app
-  // list, which is a cache hit on the store's own query. When the instance
-  // read fails the map falls back to app states rather than an empty fleet.
-  const { data: rawApps } = useApps();
-  const slugById = useMemo(() => new Map((rawApps ?? []).map((a) => [a.id, a.slug])), [rawApps]);
+  // Resident RAM right now: non-parked instances only — a parked instance's
+  // cgroup is gone, so it holds nothing.
   const residentKnown = !instances.isPending && !instances.error;
-  const instRollup = useMemo(() => {
-    const bySlug = new Map<string, { count: number; mb: number }>();
-    for (const row of instances.data?.instances ?? []) {
-      if (row.state.toLowerCase() === 'parked') continue;
-      const slug = slugById.get(row.app_id);
-      if (!slug) continue;
-      const current = bySlug.get(slug) ?? { count: 0, mb: row.ram_mb };
-      bySlug.set(slug, { count: current.count + 1, mb: row.ram_mb });
-    }
-    return bySlug;
-  }, [instances.data, slugById]);
-
-  const relayApps = useMemo<RelayApp[]>(
-    () =>
-      workflows.flatMap((w): RelayApp[] => {
-        const live = instRollup.get(w.id);
-        if (live) return [{ slug: w.id, ramMb: live.mb, instances: live.count, awake: true }];
-        if (w.state === 'running' && !residentKnown)
-          return [{ slug: w.id, ramMb: w.memoryMb, instances: 1, awake: true }];
-        // Active with nothing resident is scale-to-zero doing its job — a
-        // dark route on the map, because that is what it holds.
-        if (w.state === 'running' || w.state === 'idle')
-          return [{ slug: w.id, ramMb: w.memoryMb, instances: 0, awake: false }];
-        return [];
-      }),
-    [workflows, instRollup, residentKnown]
-  );
-
   const residentMb = useMemo(
-    () => [...instRollup.values()].reduce((sum, r) => sum + r.count * r.mb, 0),
-    [instRollup]
+    () =>
+      (instances.data?.instances ?? [])
+        .filter((row) => row.state.toLowerCase() !== 'parked')
+        .reduce((sum, row) => sum + row.ram_mb, 0),
+    [instances.data]
   );
-  const darkMb = useMemo(
-    () => relayApps.filter((a) => !a.awake).reduce((sum, a) => sum + a.ramMb, 0),
-    [relayApps]
-  );
+
+  const { requests, errorPct, wakeP95 } = useMemo(() => {
+    const total = workflows.reduce((sum, w) => sum + w.invocations24h, 0);
+    // Weighted by traffic, not a mean of percentages: one idle app at 100%
+    // must not outweigh a busy one at 0.01%.
+    const errored = workflows.reduce(
+      (sum, w) => sum + w.invocations24h * (w.errorRatePct / 100),
+      0
+    );
+    // The wake histogram is unlabelled upstream — every row carries the same
+    // fleet figure, so the first non-zero one is the figure.
+    const wake = workflows.find((w) => w.coldStartP50Ms > 0)?.coldStartP50Ms ?? 0;
+    return { requests: total, errorPct: total > 0 ? (errored / total) * 100 : 0, wakeP95: wake };
+  }, [workflows]);
+
+  const usageData = usage.data;
+  const included = usageData?.included_gb_hours ?? 0;
+  const remainingGbh = Math.max(0, included - (usageData?.used_gb_hours ?? 0));
+  const overGbh = usageData?.overage_gb_hours ?? 0;
+  const usageFailed = Boolean(usage.error);
 
   const recent = useMemo(
-    () => [...deployments].sort((a, b) => b.createdAt - a.createdAt).slice(0, 5),
+    () => [...deployments].sort((a, b) => b.createdAt - a.createdAt).slice(0, 4),
     [deployments]
   );
 
-  const usageFailed = Boolean(usage.error);
+  const refreshing = usage.isRefetching || metrics.isRefetching || instances.isRefetching;
+  const refreshAll = () => {
+    refresh();
+    void usage.refetch();
+    void metrics.refetch();
+    void instances.refetch();
+  };
+
+  const verdict = verdictOf(account?.status, failing.length, metricsDegraded);
   const firstName = user?.name.split(' ')[0];
   // Nothing deployed and the read succeeded: a page of zeroes is accurate
   // and useless, so the page becomes instructions instead.
@@ -590,72 +342,194 @@ function OverviewPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <VerdictHeader
-        accountStatus={account?.status}
-        failing={failing}
-        degraded={metricsDegraded}
-        firstName={firstName}
-        appCount={account?.app_count}
-        plan={account?.plan}
-      />
-
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-        <RelayCard
-          apps={relayApps}
-          residentMb={residentMb}
-          residentKnown={residentKnown}
-          darkMb={darkMb}
-        />
-
-        <div className="flex flex-col gap-4 lg:col-span-4">
-          <AllowanceCard usage={usage} />
-          <TrafficCard workflows={workflows} degraded={metricsDegraded} />
+    <div className="flex flex-col gap-10">
+      {/* --- Greeting + search ------------------------------------- */}
+      <div className="relative">
+        <div
+          aria-hidden
+          className="absolute inset-x-0 -top-8 h-56 [mask-image:linear-gradient(to_bottom,black_35%,transparent)]"
+        >
+          <WindFlow intensity={0.35} />
         </div>
 
-        <div className="col-span-full grid grid-cols-12 gap-4">
-          <MeterTile
-            label="Memory now"
-            value={residentKnown ? residentMb : undefined}
-            unit="MB"
-            delay={120}
-            hint="RAM held by resident instances at this moment."
-          />
-          <MeterTile
-            label="CPU"
-            value={usageFailed ? undefined : usage.data?.used_cpu_hours}
-            unit="h"
-            format={(v) =>
-              v.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })
-            }
-            delay={140}
-            hint="CPU-hours consumed this billing period. Measured, not billed."
-          />
-          <MeterTile
-            label="Egress"
-            value={usageFailed ? undefined : usage.data?.used_egress_gb}
-            unit="GB"
-            format={(v) =>
-              v.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })
-            }
-            delay={160}
-            hint="Outbound transfer this billing period. Measured, not billed."
-          />
-          <MeterTile
-            label="Ingress"
-            value={usageFailed ? undefined : usage.data?.used_ingress_gb}
-            unit="GB"
-            format={(v) =>
-              v.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })
-            }
-            delay={180}
-            hint="Inbound transfer this billing period. Measured, not billed."
-          />
-        </div>
+        <div className="relative mx-auto flex w-full max-w-3xl flex-col items-center gap-5 pt-2">
+          {/* The verdict rides above the greeting as a pill; when something
+              is wrong it is the page's alert and links to the trouble. */}
+          <p role={verdict.trouble ? 'alert' : 'status'} className="contents">
+            <Link
+              to={verdict.trouble ? '/dashboard/workflows' : '/dashboard/usage'}
+              className="glass pressable label-mono inline-flex items-center gap-2 rounded-full border border-border px-3.5 py-1.5 text-muted-foreground hover:border-border-secondary hover:text-foreground"
+            >
+              <LiveDot color={verdict.color} />
+              {verdict.text}
+            </Link>
+          </p>
 
-        <DeploymentsCard recent={recent} />
-        <ActionsCard />
+          <h1 className="text-center text-3xl font-semibold tracking-[-0.03em] sm:text-4xl">
+            {firstName ? `Let's get to work, ${firstName}` : "Let's get to work"}
+            <span aria-hidden className="text-brand">
+              .
+            </span>
+          </h1>
+
+          {/* The palette's front door — the top bar no longer carries one. */}
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new Event('gregale:open-palette'))}
+            aria-label="Search apps, pages, and actions"
+            aria-keyshortcuts="Meta+K Control+K"
+            className="glass pressable flex h-11 w-full items-center gap-3 rounded-xl border border-border px-4 text-sm text-muted-foreground shadow-elevation-1 hover:border-border-secondary hover:text-foreground"
+          >
+            <Search className="h-4 w-4 shrink-0" />
+            Search
+            <Kbd className="ml-auto px-1.5">⌘K</Kbd>
+          </button>
+
+          {failing.length > 0 && (
+            <p className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5">
+              {failing.slice(0, 4).map((app) => (
+                <Link
+                  key={app.id}
+                  to="/dashboard/workflows/$workflowId"
+                  params={{ workflowId: app.id }}
+                  search={{ tab: 'Logs' }}
+                  className="pressable inline-flex items-center gap-1.5 rounded font-mono text-xs hover:text-foreground"
+                >
+                  {app.name}
+                  <span style={{ color: 'var(--status-critical)' }}>
+                    {app.errorRatePct.toFixed(2)}%
+                  </span>
+                </Link>
+              ))}
+            </p>
+          )}
+        </div>
       </div>
+
+      {/* --- Resource columns -------------------------------------- */}
+      <div className="animate-item-enter grid grid-cols-1 gap-x-10 gap-y-8 sm:grid-cols-2 lg:grid-cols-3 [animation-delay:60ms]">
+        <AppsColumn workflows={workflows} />
+        <DeploymentsColumn recent={recent} />
+        <RecentsColumn />
+      </div>
+
+      {/* --- Analytics --------------------------------------------- */}
+      <section className="animate-item-enter flex flex-col gap-4 [animation-delay:120ms]">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-sm font-medium">Analytics</h2>
+          <div className="flex items-center gap-2">
+            {metricsDegraded && (
+              <span className="text-xs" style={{ color: 'var(--status-warning)' }}>
+                metrics degraded — unknowns read as —
+              </span>
+            )}
+            <span className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">
+              Last 24 hours
+            </span>
+            <button
+              type="button"
+              onClick={refreshAll}
+              disabled={refreshing}
+              aria-label="Refresh analytics"
+              className="pressable rounded-lg border border-border p-1.5 text-muted-foreground hover:border-border-secondary hover:text-foreground disabled:opacity-50"
+            >
+              <RefreshDouble className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} />
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <StatCard
+            label="Total requests"
+            large
+            className="col-span-2"
+            hint="Requests served across the fleet, last 24 hours."
+          >
+            {metricsDegraded ? UNKNOWN : <Odometer value={requests} format={formatCompact} />}
+          </StatCard>
+          <StatCard
+            label="Error rate"
+            large
+            className="col-span-2"
+            hint="Errored share of served requests, weighted by traffic."
+          >
+            {metricsDegraded ? (
+              UNKNOWN
+            ) : (
+              <span style={errorPct > 1 ? { color: 'var(--status-critical)' } : undefined}>
+                {errorPct.toFixed(2)}%
+              </span>
+            )}
+          </StatCard>
+
+          <StatCard label="Wake p95" hint="95th-percentile cold-start time across the fleet.">
+            {metricsDegraded || !wakeP95 ? (
+              UNKNOWN
+            ) : (
+              <>
+                {Math.round(wakeP95)}
+                <span className="ml-1 text-sm font-normal text-muted-foreground">ms</span>
+              </>
+            )}
+          </StatCard>
+          <StatCard label="Memory now" hint="RAM held by resident instances at this moment.">
+            {residentKnown ? (
+              <>
+                <Odometer value={residentMb} />
+                <span className="ml-1 text-sm font-normal text-muted-foreground">MB</span>
+              </>
+            ) : (
+              UNKNOWN
+            )}
+          </StatCard>
+          <StatCard
+            label={overGbh > 0 ? 'GB-h over' : 'GB-h left'}
+            hint="Compute allowance for this billing period."
+          >
+            {usage.isPending ? (
+              <Skeleton className="h-6 w-16" />
+            ) : usageFailed ? (
+              UNKNOWN
+            ) : overGbh > 0 ? (
+              <span style={{ color: 'var(--status-warning)' }}>
+                <Odometer value={overGbh} format={formatGbHours} />
+              </span>
+            ) : (
+              <Odometer value={remainingGbh} format={formatGbHours} />
+            )}
+          </StatCard>
+          <StatCard label="CPU" hint="CPU-hours consumed this billing period. Measured, not billed.">
+            {usage.isPending ? (
+              <Skeleton className="h-6 w-16" />
+            ) : usageFailed || usageData?.used_cpu_hours == null ? (
+              UNKNOWN
+            ) : (
+              <>
+                <Odometer
+                  value={usageData.used_cpu_hours}
+                  format={(v) =>
+                    v.toLocaleString(undefined, {
+                      minimumFractionDigits: 1,
+                      maximumFractionDigits: 1,
+                    })
+                  }
+                />
+                <span className="ml-1 text-sm font-normal text-muted-foreground">h</span>
+              </>
+            )}
+          </StatCard>
+        </div>
+
+        <div className="flex justify-end">
+          <Link
+            to="/dashboard/usage"
+            className="pressable inline-flex items-center gap-1 rounded font-mono text-xs text-muted-foreground hover:text-foreground"
+          >
+            Usage
+            <ArrowRight className="h-3 w-3" />
+          </Link>
+        </div>
+      </section>
     </div>
   );
 }
