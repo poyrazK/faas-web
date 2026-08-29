@@ -83,11 +83,12 @@ void main() {
 
   float a = (streak * 0.5 + body) * mask * u_intensity;
 
-  // Depth in the ramp: deep mint in the body, brand in the flow, a pale
+  // Depth in the ramp, two steps lighter than the brand core: fresh air,
+  // not deep water. Brand in the body, pale mint in the flow, a near-white
   // highlight only where two streak layers cross.
-  vec3 deep = vec3(0.000, 0.588, 0.345);   // mint-10 #009658
-  vec3 mid  = vec3(0.000, 0.808, 0.569);   // brand-fill #00ce91
-  vec3 hi   = vec3(0.318, 0.871, 0.667);   // mint-7 #51deaa
+  vec3 deep = vec3(0.000, 0.808, 0.569);   // brand-fill #00ce91
+  vec3 mid  = vec3(0.317, 0.871, 0.667);   // mint-7 #51deaa
+  vec3 hi   = vec3(0.625, 0.944, 0.804);   // mint-5 #9ff1cd
   vec3 col = mix(deep, mid, smoothstep(0.0, 0.7, streak));
   col = mix(col, hi, smoothstep(0.75, 1.15, streak));
 
