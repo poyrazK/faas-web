@@ -1,6 +1,5 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { Link } from '@tanstack/react-router';
-import { Wind } from 'iconoir-react';
 import { cn } from '@/lib/utils';
 
 /**
@@ -116,7 +115,7 @@ export function BeamMap({ apps, className }: { apps: RelayApp[]; className?: str
             boxShadow: '0 0 26px color-mix(in oklab, var(--brand-fill) 28%, transparent)',
           }}
         >
-          <Wind className="h-6 w-6 text-brand" aria-hidden />
+          <img src="/mark-on-dark.png" alt="" aria-hidden className="h-9 w-9" />
         </div>
         <p className="label-mono text-muted-foreground">edge</p>
       </div>
