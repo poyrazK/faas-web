@@ -99,7 +99,12 @@ function SidebarBody({
                 the rows below never shift vertically during the change. */}
             {group.title && (
               <div className="relative h-6">
-                <p className={cn('label-mono absolute bottom-1 left-2.5 text-muted-foreground/70', labelCls)}>
+                <p
+                  className={cn(
+                    'label-mono absolute bottom-1 left-2.5 text-muted-foreground/70',
+                    labelCls
+                  )}
+                >
                   {group.title}
                 </p>
                 <div
@@ -513,7 +518,10 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                   </div>
                 </div>
 
-                <Tooltip content={`${collapsed ? 'Pin sidebar open' : 'Collapse sidebar'} (⌘B)`} side="right">
+                <Tooltip
+                  content={`${collapsed ? 'Pin sidebar open' : 'Collapse sidebar'} (⌘B)`}
+                  side="right"
+                >
                   <button
                     type="button"
                     onClick={toggleCollapsed}
@@ -529,7 +537,9 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                     <span
                       className={cn(
                         'truncate whitespace-nowrap transition-opacity ease-console',
-                        railCollapsed ? 'opacity-0 duration-100' : 'opacity-100 delay-75 duration-200'
+                        railCollapsed
+                          ? 'opacity-0 duration-100'
+                          : 'opacity-100 delay-75 duration-200'
                       )}
                     >
                       {collapsed ? 'Pin open' : 'Collapse'}

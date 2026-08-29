@@ -52,7 +52,10 @@ export function readRecents(): RecentVisit[] {
 
 /** `/dashboard/workflows/api-gateway` → section "Apps", detail "api-gateway". */
 export function recentLabel(path: string): { section: string; detail?: string } {
-  const segments = path.replace(/^\/dashboard\//, '').split('/').filter(Boolean);
+  const segments = path
+    .replace(/^\/dashboard\//, '')
+    .split('/')
+    .filter(Boolean);
   const base = `/dashboard/${segments[0]}`;
   const section = NAV_ITEMS.find((n) => n.to === base)?.label ?? segments[0];
   return { section, detail: segments[1] };

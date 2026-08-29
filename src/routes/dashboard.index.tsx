@@ -1,6 +1,13 @@
 import { useMemo, useState } from 'react';
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { ArrowRight, ClockRotateRight, NavArrowRight, Plus, RefreshDouble, Search } from 'iconoir-react';
+import {
+  ArrowRight,
+  ClockRotateRight,
+  NavArrowRight,
+  Plus,
+  RefreshDouble,
+  Search,
+} from 'iconoir-react';
 import {
   ErrorState,
   LoadingState,
@@ -66,11 +73,7 @@ const UNKNOWN = <span className="text-muted-foreground">—</span>;
 
 type Verdict = { text: string; color: string; trouble: boolean };
 
-function verdictOf(
-  accountStatus: string | undefined,
-  failing: number,
-  degraded: boolean
-): Verdict {
+function verdictOf(accountStatus: string | undefined, failing: number, degraded: boolean): Verdict {
   if (accountStatus && accountStatus !== 'active')
     return {
       text: `Account ${accountStatus.replace(/_/g, ' ')}`,
@@ -83,8 +86,7 @@ function verdictOf(
       color: 'var(--status-critical)',
       trouble: true,
     };
-  if (degraded)
-    return { text: 'Metrics degraded', color: 'var(--status-warning)', trouble: false };
+  if (degraded) return { text: 'Metrics degraded', color: 'var(--status-warning)', trouble: false };
   return { text: 'All systems normal', color: 'var(--status-good)', trouble: false };
 }
 
@@ -133,7 +135,10 @@ function AppsColumn({ workflows }: { workflows: Workflow[] }) {
               className="pressable group flex items-center gap-2.5 rounded py-2.5"
             >
               <span
-                className={cn('h-1.5 w-1.5 shrink-0 rounded-full', w.state === 'running' && 'animate-breathe')}
+                className={cn(
+                  'h-1.5 w-1.5 shrink-0 rounded-full',
+                  w.state === 'running' && 'animate-breathe'
+                )}
                 style={{ background: APP_DOT[w.state] ?? 'var(--chart-muted)' }}
               />
               <span className="truncate font-mono text-xs">{w.name}</span>
@@ -172,7 +177,10 @@ function DeploymentsColumn({ recent }: { recent: Deployment[] }) {
               <li key={d.id} className="flex items-center gap-2.5 py-2.5">
                 {/* Colour plus text, never hue alone; in-flight breathes. */}
                 <span
-                  className={cn('h-1.5 w-1.5 shrink-0 rounded-full', state.live && 'animate-breathe')}
+                  className={cn(
+                    'h-1.5 w-1.5 shrink-0 rounded-full',
+                    state.live && 'animate-breathe'
+                  )}
                   style={{ background: state.color }}
                 />
                 <span className="truncate font-mono text-xs">{d.workflowId}</span>
@@ -267,9 +275,7 @@ function StatCard({
           >
             {children}
           </p>
-          {sub != null && (
-            <p className="mt-auto pt-1 text-xs text-muted-foreground">{sub}</p>
-          )}
+          {sub != null && <p className="mt-auto pt-1 text-xs text-muted-foreground">{sub}</p>}
         </div>
       </SpotlightCard>
     </Tilt>
@@ -623,7 +629,6 @@ function OverviewPage() {
           </Link>
         </div>
       </section>
-
     </div>
   );
 }
