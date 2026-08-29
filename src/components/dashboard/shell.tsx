@@ -54,31 +54,61 @@ function SidebarBody({
   collapsed?: boolean;
 }) {
   const reduce = useReducedMotion();
+  // Everything below shares one rule: geometry is constant between the two
+  // widths. Icons never change alignment, headings never unmount, rows never
+  // re-pad — only the rail's width moves, and text fades in place. That is
+  // what makes the hover expansion read as one motion instead of a pop.
+  const labelCls = cn(
+    'truncate whitespace-nowrap transition-opacity ease-console',
+    collapsed ? 'opacity-0 duration-100' : 'opacity-100 delay-75 duration-200'
+  );
   return (
     <LayoutGroup id={id}>
       <Link
         to="/"
-        className={cn('flex items-center gap-2.5 py-1', collapsed ? 'justify-center' : 'px-2.5')}
+        className="relative flex h-9 items-center overflow-hidden px-2.5 py-1"
         aria-label="Gregale home"
       >
         {/* Mint recolours of the wordmark: the brand green vanishes on the
-            console's near-black, so the dark surface gets its own step. */}
-        {collapsed ? (
-          <img src="/mark-on-dark.png" alt="Gregale" className="h-7 w-7" />
-        ) : (
-          <img src="/logo-on-dark.png" alt="Gregale" className="h-7 w-auto" />
-        )}
+            console's near-black, so the dark surface gets its own step.
+            Both renditions stay mounted, anchored to the same left edge, and
+            crossfade — an image swap reads as a blink, a crossfade as the
+            wordmark condensing into its mark. */}
+        <img
+          src="/mark-on-dark.png"
+          alt=""
+          className={cn(
+            'absolute h-7 w-7 transition-opacity ease-console',
+            collapsed ? 'opacity-100 delay-75 duration-200' : 'opacity-0 duration-100'
+          )}
+        />
+        <img
+          src="/logo-on-dark.png"
+          alt=""
+          className={cn('absolute h-7 w-auto max-w-none transition-opacity ease-console', labelCls)}
+        />
       </Link>
 
-      <div className="mt-6 flex flex-col gap-5 overflow-y-auto">
+      <div className="mt-6 flex flex-col gap-4 overflow-x-hidden overflow-y-auto">
         {NAV_GROUPS.map((group, gi) => (
           <div key={group.title ?? `group-${gi}`}>
-            {group.title && !collapsed && (
-              <p className="label-mono px-2.5 pb-1.5 text-muted-foreground/70">{group.title}</p>
+            {/* One fixed-height slot per group header, whichever face it
+                wears — the heading when wide, a hairline when narrow — so
+                the rows below never shift vertically during the change. */}
+            {group.title && (
+              <div className="relative h-6">
+                <p className={cn('label-mono absolute bottom-1 left-2.5 text-muted-foreground/70', labelCls)}>
+                  {group.title}
+                </p>
+                <div
+                  aria-hidden
+                  className={cn(
+                    'absolute inset-x-1 top-2.5 h-px bg-border transition-opacity ease-console',
+                    collapsed ? 'opacity-100 delay-75 duration-200' : 'opacity-0 duration-100'
+                  )}
+                />
+              </div>
             )}
-            {/* Collapsed groups still need separating, but a heading would
-                not fit — a hairline carries the same grouping. */}
-            {group.title && collapsed && <div className="mx-2 mb-2 h-px bg-border" />}
 
             <nav aria-label={group.title ?? 'Main'} className="flex flex-col gap-0.5">
               {group.items.map(({ to, label, icon: Icon, exact }) => {
@@ -88,14 +118,11 @@ function SidebarBody({
                     to={to}
                     activeOptions={{ exact: exact ?? false }}
                     onClick={onNavigate}
-                    // Collapsed, the label span unmounts — the accessible name
-                    // must survive on the link itself, and the visual label
-                    // moves into a tooltip (title="" is mouse-only).
+                    // Collapsed, the label span is opacity-0 — the accessible
+                    // name must survive on the link itself, and the visual
+                    // label moves into a tooltip (title="" is mouse-only).
                     aria-label={collapsed ? label : undefined}
-                    className={cn(
-                      'pressable relative isolate flex items-center gap-2.5 rounded-md py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
-                      collapsed ? 'justify-center px-0' : 'px-2.5'
-                    )}
+                    className="pressable relative isolate flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
                     activeProps={{
                       // Reduced motion keeps the plain static fill; otherwise
                       // the shared pill below carries the background.
@@ -118,21 +145,9 @@ function SidebarBody({
                           />
                         )}
                         <Icon className="h-4 w-4 shrink-0" />
-                        <AnimatePresence initial={false}>
-                          {!collapsed && (
-                            <motion.span
-                              className="truncate"
-                              initial={reduce ? false : { opacity: 0 }}
-                              animate={{ opacity: 1 }}
-                              // Collapse mirrors expand: the label fades out as
-                              // the rail narrows instead of popping away.
-                              exit={reduce ? undefined : { opacity: 0 }}
-                              transition={{ duration: 0.12 }}
-                            >
-                              {label}
-                            </motion.span>
-                          )}
-                        </AnimatePresence>
+                        <span aria-hidden={collapsed} className={labelCls}>
+                          {label}
+                        </span>
                       </>
                     )}
                   </Link>
@@ -312,9 +327,22 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(readCollapsed);
   // Hovering (or keyboard focus entering) the collapsed rail expands it as
   // an overlay — the content column does not shift, so it is a peek, not a
-  // relayout. Pinning it open is still ⌘B / the footer toggle.
+  // relayout. Pinning it open is still ⌘B / the footer toggle. Both edges
+  // carry intent delays: a cursor crossing the rail on its way somewhere
+  // else should not flap it open and shut.
   const [railHovered, setRailHovered] = useState(false);
   const railCollapsed = collapsed && !railHovered;
+  const railTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const clearRailTimer = () => clearTimeout(railTimer.current);
+  const enterRail = () => {
+    clearRailTimer();
+    railTimer.current = setTimeout(() => setRailHovered(true), 70);
+  };
+  const leaveRail = () => {
+    clearRailTimer();
+    railTimer.current = setTimeout(() => setRailHovered(false), 240);
+  };
+  useEffect(() => clearRailTimer, []);
   const drawerRef = useRef<HTMLElement>(null);
   useFocusTrap(drawerRef, mobileOpen);
   const reduce = useReducedMotion();
@@ -425,9 +453,12 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             </a>
             {/* Desktop sidebar */}
             <aside
-              onMouseEnter={() => setRailHovered(true)}
-              onMouseLeave={() => setRailHovered(false)}
-              onFocus={() => setRailHovered(true)}
+              onMouseEnter={enterRail}
+              onMouseLeave={leaveRail}
+              onFocus={() => {
+                clearRailTimer();
+                setRailHovered(true);
+              }}
               onBlur={(e) => {
                 if (!e.currentTarget.contains(e.relatedTarget as Node | null))
                   setRailHovered(false);
@@ -435,9 +466,11 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
               className={cn(
                 // The stored width is applied before first paint (readCollapsed
                 // in the state initializer), so this transition only ever runs
-                // on a real hover or toggle, never on load.
-                'fixed inset-y-0 left-0 z-30 hidden flex-col border-r border-border bg-card py-5 transition-[width] duration-200 ease-console lg:flex',
-                railCollapsed ? 'w-[4.5rem] px-2' : 'w-60 px-3',
+                // on a real hover or toggle, never on load. Horizontal padding
+                // is constant across both widths — geometry that never moves
+                // is what keeps the expansion smooth.
+                'fixed inset-y-0 left-0 z-30 hidden flex-col overflow-hidden border-r border-border bg-card px-3 py-5 transition-[width] duration-300 ease-console lg:flex',
+                railCollapsed ? 'w-16' : 'w-60',
                 // Hover-expanded over pinned-collapsed content: a floating
                 // peek, so it carries elevation the pinned states do not.
                 collapsed && !railCollapsed && 'shadow-elevation-3'
@@ -447,27 +480,36 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
               {/* Identity and sign-out live in the top bar's account menu, so the
             sidebar footer carries context instead of duplicating them. */}
-              <div className="mt-auto pt-4">
-                {!railCollapsed && (
-                  <div className="mb-2 rounded-lg border border-border bg-background p-3">
-                    <div className="flex items-center gap-2">
-                      <span className="relative flex h-1.5 w-1.5">
-                        <span
-                          className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-75"
-                          style={{ background: 'var(--status-good)' }}
-                        />
-                        <span
-                          className="relative inline-flex h-1.5 w-1.5 rounded-full"
-                          style={{ background: 'var(--status-good)' }}
-                        />
-                      </span>
-                      <p className="font-mono text-xs">fra-metal-1</p>
+              <div className="mt-auto overflow-hidden pt-4">
+                {/* The beta note folds its height away smoothly (0fr↔1fr) —
+                    an unmount here would jolt the footer as the rail moves. */}
+                <div
+                  className={cn(
+                    'grid transition-[grid-template-rows,opacity] duration-300 ease-console',
+                    railCollapsed ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr] opacity-100'
+                  )}
+                >
+                  <div className="min-h-0 overflow-hidden">
+                    <div className="mb-2 w-[13.5rem] rounded-lg border border-border bg-background p-3">
+                      <div className="flex items-center gap-2">
+                        <span className="relative flex h-1.5 w-1.5">
+                          <span
+                            className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-75"
+                            style={{ background: 'var(--status-good)' }}
+                          />
+                          <span
+                            className="relative inline-flex h-1.5 w-1.5 rounded-full"
+                            style={{ background: 'var(--status-good)' }}
+                          />
+                        </span>
+                        <p className="font-mono text-xs">fra-metal-1</p>
+                      </div>
+                      <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                        Private beta on single-node metal. Multi-node scaling is on the roadmap.
+                      </p>
                     </div>
-                    <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                      Private beta on single-node metal. Multi-node scaling is on the roadmap.
-                    </p>
                   </div>
-                )}
+                </div>
 
                 <Tooltip content={`${collapsed ? 'Pin sidebar open' : 'Collapse sidebar'} (⌘B)`} side="right">
                   <button
@@ -475,24 +517,21 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                     onClick={toggleCollapsed}
                     aria-label={collapsed ? 'Pin sidebar open' : 'Collapse sidebar'}
                     aria-keyshortcuts="Meta+B Control+B"
-                    className={cn(
-                      'pressable flex w-full items-center gap-2.5 rounded-md py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground',
-                      railCollapsed ? 'justify-center px-0' : 'px-2.5'
-                    )}
+                    className="pressable flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
                   >
-                    {railCollapsed ? (
+                    {collapsed ? (
                       <SidebarExpand className="h-4 w-4 shrink-0" />
-                    ) : collapsed ? (
-                      <>
-                        <SidebarExpand className="h-4 w-4 shrink-0" />
-                        Pin open
-                      </>
                     ) : (
-                      <>
-                        <SidebarCollapse className="h-4 w-4 shrink-0" />
-                        Collapse
-                      </>
+                      <SidebarCollapse className="h-4 w-4 shrink-0" />
                     )}
+                    <span
+                      className={cn(
+                        'truncate whitespace-nowrap transition-opacity ease-console',
+                        railCollapsed ? 'opacity-0 duration-100' : 'opacity-100 delay-75 duration-200'
+                      )}
+                    >
+                      {collapsed ? 'Pin open' : 'Collapse'}
+                    </span>
                   </button>
                 </Tooltip>
               </div>
@@ -543,8 +582,8 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
             <div
               className={cn(
-                'console-atmosphere min-h-screen transition-[padding] duration-200 ease-console',
-                collapsed ? 'lg:pl-[4.5rem]' : 'lg:pl-60'
+                'console-atmosphere min-h-screen transition-[padding] duration-300 ease-console',
+                collapsed ? 'lg:pl-16' : 'lg:pl-60'
               )}
             >
               {/* Top bar */}
