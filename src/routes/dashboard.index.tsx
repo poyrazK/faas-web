@@ -5,18 +5,13 @@ import { Button } from '@/components/ui/button';
 import {
   EmptyState,
   ErrorState,
-  InlinePhase,
   LoadingState,
   PageHeader,
   UnreachableState,
   queryPhase,
 } from '@/components/dashboard/primitives';
-import { CountUp } from '@/components/dashboard/motion';
-import { FootprintBand, type FootprintApp } from '@/components/dashboard/footprint-band';
+import { FleetHorizon, type HorizonApp } from '@/components/dashboard/fleet-horizon';
 import { FirstRun } from '@/components/dashboard/first-run';
-import { SpotlightCard } from '@/components/ui/spotlight-card';
-import { BorderBeam } from '@/components/ui/border-beam';
-import { FuelGauge } from '@/components/ui/fuel-gauge';
 import { LiveDot } from '@/components/ui/live-dot';
 import { WindFlow } from '@/components/dashboard/wind-flow';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -36,12 +31,13 @@ export const Route = createFileRoute('/dashboard/')({
 });
 
 /**
- * The console landing page.
+ * The Field — the console landing page as one continuous instrument.
  *
- * One glance answers three questions, in order: is anything wrong (the
- * status line, and an alert card only when there is), what is alive right
- * now (the fleet card and its Footprint band), and what is it costing (the
- * allowance ring). Recent activity and traffic sit below.
+ * No cards. Four zones flow down a single margin spine, the way views sit
+ * on an engineering sheet: the verdict (the system's state as the page's
+ * headline), the horizon (the fleet drawn above and below its ground
+ * line), the figures (a broadsheet ledger of the five numbers that
+ * matter), and the record (the deployment log, flush).
  *
  * Every figure comes from reads the store already makes, plus the instance
  * list. A degraded Prometheus rollup reads as unknown, never as zero.
@@ -56,275 +52,199 @@ function formatMoney(cents: number | undefined): string {
   );
 }
 
-/** The mono eyebrow every card leads with. */
-function CardLabel({ children }: { children: React.ReactNode }) {
-  return <p className="label-mono text-muted-foreground">{children}</p>;
-}
-
 /* ------------------------------------------------------------------ *
- * Status line — the first thing the page says
+ * The spine — the sheet's margin rule, one per zone
  * ------------------------------------------------------------------ */
 
 /**
- * The page's first sentence, and — when something is wrong — the whole
- * alert: the detail rides inline after the verdict instead of duplicating
- * itself in a tinted box below. One line, no chrome; the dot and the words
- * carry it. Billing state outranks failing apps outranks degraded metrics.
+ * A zone on the sheet. The left rail carries the drawing-margin apparatus —
+ * a tick, the view number, the view's name reading downward — and its
+ * border-left fuses with its neighbours' into one continuous rule, which is
+ * what makes the page a single object instead of stacked sections.
  */
-function StatusLine({
+function Zone({
+  index,
+  name,
+  delay,
+  last,
+  children,
+}: {
+  index: string;
+  name: string;
+  delay?: number;
+  last?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <section
+      className="animate-item-enter grid grid-cols-1 md:grid-cols-[3.25rem_minmax(0,1fr)]"
+      style={delay ? { animationDelay: `${delay}ms` } : undefined}
+    >
+      <div aria-hidden className="relative hidden border-l border-border md:block">
+        <span className="absolute top-0 left-0 h-px w-3 bg-border" />
+        <span className="label-mono absolute top-2.5 left-3 text-muted-foreground/60">{index}</span>
+        <span className="label-mono absolute top-9 left-3 text-muted-foreground/40 [writing-mode:vertical-rl]">
+          {name}
+        </span>
+      </div>
+      <div className={cn('min-w-0 pt-1', last ? 'pb-2' : 'pb-14')}>{children}</div>
+    </section>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * 01 — the verdict
+ * ------------------------------------------------------------------ */
+
+type Verdict = {
+  text: string;
+  /** Dot and full-stop color; the words stay ink. */
+  color: string;
+  trouble: boolean;
+};
+
+function verdictOf(
+  accountStatus: string | undefined,
+  failing: number,
+  degraded: boolean
+): Verdict {
+  if (accountStatus && accountStatus !== 'active')
+    return {
+      text: `Account ${accountStatus.replace(/_/g, ' ')}`,
+      color: 'var(--status-critical)',
+      trouble: true,
+    };
+  if (failing > 0)
+    return {
+      text: `${failing} ${failing === 1 ? 'app' : 'apps'} failing`,
+      color: 'var(--status-critical)',
+      trouble: true,
+    };
+  if (degraded)
+    return { text: 'Metrics degraded', color: 'var(--status-warning)', trouble: false };
+  return { text: 'All systems normal', color: 'var(--status-good)', trouble: false };
+}
+
+function VerdictZone({
   accountStatus,
   failing,
   degraded,
+  firstName,
+  appCount,
+  plan,
 }: {
   accountStatus: string | undefined;
   failing: Workflow[];
   degraded: boolean;
+  firstName: string | undefined;
+  appCount: number | undefined;
+  plan: string | undefined;
 }) {
+  const verdict = verdictOf(accountStatus, failing.length, degraded);
   const billingProblem = accountStatus && accountStatus !== 'active' ? accountStatus : null;
-  const trouble = Boolean(billingProblem) || failing.length > 0;
-  const color = trouble
-    ? 'var(--status-critical)'
-    : degraded
-      ? 'var(--status-warning)'
-      : 'var(--status-good)';
 
   return (
-    <p
-      role={trouble ? 'alert' : 'status'}
-      className="animate-item-enter -mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm text-muted-foreground"
-    >
-      <span className="flex items-center gap-2.5">
-        <LiveDot color={color} />
-        {billingProblem ? (
-          <span>
-            Account <span className="text-foreground">{billingProblem.replace(/_/g, ' ')}</span>
-            {billingProblem === 'past_due'
-              ? ' — settle the invoice to avoid suspension'
-              : ' — apps may not serve traffic'}
-          </span>
-        ) : failing.length > 0 ? (
-          <span>
-            {failing.length} {failing.length === 1 ? 'app' : 'apps'} failing
-          </span>
-        ) : degraded ? (
-          <span>Metrics degraded</span>
-        ) : (
-          <span>All systems normal</span>
-        )}
-      </span>
+    <div role={verdict.trouble ? 'alert' : 'status'} className="flex flex-col gap-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="label-mono flex items-center gap-2.5 text-muted-foreground">
+          <LiveDot color={verdict.color} />
+          {firstName ? `${firstName}'s fleet` : 'Your fleet'}
+          {appCount != null && plan ? (
+            <span className="text-muted-foreground/60">
+              — {appCount} {appCount === 1 ? 'app' : 'apps'} on the {plan} plan
+            </span>
+          ) : null}
+        </p>
+        <Button asChild size="sm" className="gap-1.5">
+          <Link to="/dashboard/workflows/new">
+            <Plus className="h-3.5 w-3.5" />
+            New app
+          </Link>
+        </Button>
+      </div>
+
+      {/* The page's headline is the system's state; the full stop is the
+          console's pulse, and it turns with the verdict. */}
+      <h1 className="text-[clamp(2.75rem,6.5vw,4.75rem)] leading-[0.95] font-semibold tracking-[-0.045em] text-balance">
+        {verdict.text}
+        <span aria-hidden style={{ color: verdict.color }}>
+          .
+        </span>
+      </h1>
 
       {billingProblem ? (
-        <Link
-          to="/dashboard/invoices"
-          className="pressable inline-flex items-center gap-1 rounded text-xs text-brand hover:text-brand-hover"
-        >
-          View invoices
-          <ArrowRight className="h-3 w-3" />
-        </Link>
-      ) : (
-        failing.slice(0, 4).map((app) => (
+        <p className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm text-muted-foreground">
+          {billingProblem === 'past_due'
+            ? 'Settle the outstanding invoice to avoid suspension.'
+            : 'Apps may not serve traffic until it is resolved.'}
           <Link
-            key={app.id}
-            to="/dashboard/workflows/$workflowId"
-            params={{ workflowId: app.id }}
-            search={{ tab: 'Logs' }}
-            className="pressable inline-flex items-center gap-1.5 rounded font-mono text-xs hover:text-foreground"
+            to="/dashboard/invoices"
+            className="pressable inline-flex items-center gap-1 rounded text-xs text-brand hover:text-brand-hover"
           >
-            {app.name}
-            <span style={{ color: 'var(--status-critical)' }}>{app.errorRatePct.toFixed(2)}%</span>
-          </Link>
-        ))
-      )}
-      {!billingProblem && failing.length > 4 && (
-        <span className="text-xs">+{failing.length - 4} more</span>
-      )}
-    </p>
-  );
-}
-
-/* ------------------------------------------------------------------ *
- * Fleet — the hero card
- * ------------------------------------------------------------------ */
-
-function FleetCard({ workflows, bandApps }: { workflows: Workflow[]; bandApps: FootprintApp[] }) {
-  const awake = workflows.filter((w) => w.state === 'running').length;
-  const asleep = workflows.filter((w) => w.state === 'idle').length;
-
-  return (
-    <SpotlightCard elevation="raised" className="lg:col-span-10">
-      <BorderBeam />
-      {/* The wind itself — one light source for the hero. Shader-drawn air;
-          falls back to the still SVG ribbons without WebGL. */}
-      <WindFlow intensity={0.9} />
-      <div className="relative flex h-full flex-col gap-7 p-6">
-        <div className="flex items-start justify-between gap-4">
-          <CardLabel>Fleet</CardLabel>
-          <Link
-            to="/dashboard/workflows"
-            className="pressable inline-flex items-center gap-1 rounded text-xs text-muted-foreground hover:text-foreground"
-          >
-            All apps
+            View invoices
             <ArrowRight className="h-3 w-3" />
           </Link>
-        </div>
-
-        <h2 className="text-5xl leading-none font-semibold tracking-[-0.04em] [font-variant-numeric:tabular-nums] sm:text-6xl">
-          <CountUp value={awake} />
-          <span className="ml-2.5 align-baseline text-xl font-medium tracking-normal text-muted-foreground sm:text-2xl">
-            awake
-          </span>
-          <span aria-hidden className="mx-3.5 align-middle text-2xl text-muted-foreground/40">
-            ·
-          </span>
-          <CountUp value={asleep} className="text-muted-foreground" />
-          <span className="ml-2.5 align-baseline text-xl font-medium tracking-normal text-muted-foreground sm:text-2xl">
-            asleep
-          </span>
-        </h2>
-
-        {bandApps.length > 0 && <FootprintBand apps={bandApps} className="mt-auto" />}
-      </div>
-    </SpotlightCard>
-  );
-}
-
-/* ------------------------------------------------------------------ *
- * Allowance — the cost ring
- * ------------------------------------------------------------------ */
-
-function AllowanceCard({ usage }: { usage: ReturnType<typeof useUsageSummary> }) {
-  const phase = queryPhase({ error: usage.error, loading: usage.isPending });
-  const data = usage.data;
-  const used = data?.used_gb_hours ?? 0;
-  const included = data?.included_gb_hours ?? 0;
-  const remaining = Math.max(0, included - used);
-  const remainingPct = included > 0 ? Math.max(0, Math.min(100, (remaining / included) * 100)) : 0;
-  const over = (data?.overage_gb_hours ?? 0) > 0;
-  // Empty-but-alarming: an overrun tank shows a warning residue rather than
-  // nothing, so "over" and "exactly empty" cannot be confused at a glance.
-  const displayPct = over ? 3 : remainingPct;
-
-  return (
-    <SpotlightCard className="lg:col-span-2 [animation-delay:60ms]">
-      <div className="flex h-full flex-col p-5">
-        <CardLabel>Allowance</CardLabel>
-
-        {phase !== 'ready' ? (
-          <div className="flex flex-1 items-center justify-center py-8">
-            <InlinePhase phase={phase} error={usage.error} loadingMessage="Reading usage…" />
-          </div>
-        ) : (
-          <div className="mt-4 flex min-h-0 flex-1 flex-col items-center gap-5">
-            <FuelGauge
-              className="min-h-40 flex-1"
-              pct={displayPct}
-              tone={over ? 'warning' : 'brand'}
-              label="GB-hour allowance remaining"
-              scale={[formatGbHours(included), '0']}
-            />
-            <div className="flex min-w-0 flex-col items-center gap-1.5 text-center">
-              <p className="text-2xl leading-none font-semibold tracking-tight">
-                <Odometer
-                  value={over ? (data?.overage_gb_hours ?? 0) : remaining}
-                  format={formatGbHours}
-                  className="metric-glow"
-                />
-              </p>
-              <p className="text-xs text-muted-foreground">{over ? 'GB-h over' : 'GB-h left'}</p>
-              <p className="text-xs leading-relaxed text-muted-foreground">
-                <span className="[font-variant-numeric:tabular-nums]">{formatGbHours(used)}</span>{' '}
-                of {formatGbHours(included)} · {data?.month}
-              </p>
-              {over && (
-                <p className="text-xs" style={{ color: 'var(--status-warning)' }}>
-                  {formatMoney(data?.overage_cents)} overage
-                </p>
-              )}
-              <Link
-                to="/dashboard/usage"
-                className="pressable mt-1 inline-flex items-center gap-1 rounded text-xs text-muted-foreground hover:text-foreground"
-              >
-                Usage
-                <ArrowRight className="h-3 w-3" />
-              </Link>
-            </div>
-          </div>
-        )}
-      </div>
-    </SpotlightCard>
-  );
-}
-
-/* ------------------------------------------------------------------ *
- * Traffic
- * ------------------------------------------------------------------ */
-
-function TrafficCard({ workflows, degraded }: { workflows: Workflow[]; degraded: boolean }) {
-  const { requests, errorPct, wakeP95 } = useMemo(() => {
-    const total = workflows.reduce((sum, w) => sum + w.invocations24h, 0);
-    // Weighted by traffic, not a mean of percentages: one idle app at 100%
-    // must not outweigh a busy one at 0.01%.
-    const errored = workflows.reduce(
-      (sum, w) => sum + w.invocations24h * (w.errorRatePct / 100),
-      0
-    );
-    // The wake histogram is unlabelled upstream — every row carries the same
-    // fleet figure, so the first non-zero one is the figure.
-    const wake = workflows.find((w) => w.coldStartP50Ms > 0)?.coldStartP50Ms ?? 0;
-    return { requests: total, errorPct: total > 0 ? (errored / total) * 100 : 0, wakeP95: wake };
-  }, [workflows]);
-
-  const unknown = <span className="text-muted-foreground">—</span>;
-
-  // Three readings as ruled rows sharing the card's height — an instrument
-  // column, not a headline floating over boxed leftovers.
-  return (
-    <SpotlightCard className="lg:col-span-5 [animation-delay:120ms]">
-      <div className="flex h-full flex-col">
-        <div className="px-5 pb-3 pt-4">
-          <CardLabel>Traffic · last 24h</CardLabel>
-        </div>
-        <div className="flex flex-1 flex-col divide-y divide-border border-t border-border">
-          <div className="flex flex-1 items-center justify-between gap-4 px-5 py-3">
-            <span className="label-mono text-muted-foreground">Requests</span>
-            <span className="text-2xl leading-none font-semibold tracking-tight [font-variant-numeric:tabular-nums]">
-              {degraded ? (
-                unknown
-              ) : (
-                <Odometer value={requests} format={formatCompact} className="metric-glow" />
-              )}
-            </span>
-          </div>
-          <div className="flex flex-1 items-center justify-between gap-4 px-5 py-3">
-            <span className="label-mono text-muted-foreground">Error rate</span>
-            <span
-              className="text-2xl leading-none font-semibold tracking-tight [font-variant-numeric:tabular-nums]"
-              style={!degraded && errorPct > 1 ? { color: 'var(--status-critical)' } : undefined}
+        </p>
+      ) : failing.length > 0 ? (
+        <p className="flex flex-wrap items-center gap-x-5 gap-y-1.5">
+          {failing.slice(0, 4).map((app) => (
+            <Link
+              key={app.id}
+              to="/dashboard/workflows/$workflowId"
+              params={{ workflowId: app.id }}
+              search={{ tab: 'Logs' }}
+              className="pressable inline-flex items-center gap-1.5 rounded font-mono text-xs hover:text-foreground"
             >
-              {degraded ? unknown : `${errorPct.toFixed(2)}%`}
-            </span>
-          </div>
-          <div className="flex flex-1 items-center justify-between gap-4 px-5 py-3">
-            <span className="label-mono text-muted-foreground">Wake p95</span>
-            <span className="text-2xl leading-none font-semibold tracking-tight [font-variant-numeric:tabular-nums]">
-              {degraded || !wakeP95 ? (
-                unknown
-              ) : (
-                <>
-                  {Math.round(wakeP95)}
-                  <span className="ml-1 text-sm font-normal text-muted-foreground">ms fleet</span>
-                </>
-              )}
-            </span>
-          </div>
-        </div>
-      </div>
-    </SpotlightCard>
+              {app.name}
+              <span style={{ color: 'var(--status-critical)' }}>
+                {app.errorRatePct.toFixed(2)}%
+              </span>
+            </Link>
+          ))}
+          {failing.length > 4 && (
+            <span className="text-xs text-muted-foreground">+{failing.length - 4} more</span>
+          )}
+        </p>
+      ) : degraded ? (
+        <p className="text-sm text-muted-foreground">
+          The metrics rollup is answering from a fallback — traffic figures below read as unknown
+          rather than zero.
+        </p>
+      ) : null}
+    </div>
   );
 }
 
 /* ------------------------------------------------------------------ *
- * Deployments — the live feed
+ * 03 — the figures
+ * ------------------------------------------------------------------ */
+
+function Figure({
+  label,
+  sub,
+  hint,
+  children,
+}: {
+  label: string;
+  sub?: React.ReactNode;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="min-w-0 px-5 py-6 first:pl-0 last:pr-0" title={hint}>
+      <p className="text-3xl leading-none font-semibold tracking-tight [font-variant-numeric:tabular-nums] xl:text-4xl">
+        {children}
+      </p>
+      <p className="label-mono mt-3 text-muted-foreground">{label}</p>
+      {sub != null && <p className="mt-1 text-xs text-muted-foreground">{sub}</p>}
+    </div>
+  );
+}
+
+const UNKNOWN = <span className="text-muted-foreground">—</span>;
+
+/* ------------------------------------------------------------------ *
+ * 04 — the record
  * ------------------------------------------------------------------ */
 
 const DEPLOY_STATE: Record<string, { label: string; color: string; live?: boolean }> = {
@@ -332,163 +252,43 @@ const DEPLOY_STATE: Record<string, { label: string; color: string; live?: boolea
   failed: { label: 'Failed', color: 'var(--status-critical)' },
 };
 
-function DeploymentsCard({ recent }: { recent: Deployment[] }) {
+function RecordRow({ d }: { d: Deployment }) {
+  const state = DEPLOY_STATE[d.state] ?? {
+    label: 'Deploying',
+    color: 'var(--status-warning)',
+    live: true,
+  };
   return (
-    <SpotlightCard className="lg:col-span-7 [animation-delay:180ms]">
-      <div className="flex items-center justify-between gap-4 px-5 py-3.5">
-        <CardLabel>Recent deployments</CardLabel>
-        <Link
-          to="/dashboard/deployments"
-          className="pressable inline-flex items-center gap-1 rounded text-xs text-muted-foreground hover:text-foreground"
-        >
-          All deployments
-          <ArrowRight className="h-3 w-3" />
-        </Link>
-      </div>
-
-      {recent.length === 0 ? (
-        <div className="p-5">
-          <EmptyState message="Nothing deployed yet." />
-        </div>
-      ) : (
-        <AnimatedList
-          items={recent}
-          className="divide-y divide-border border-t border-border"
-          render={(d) => {
-            const state = DEPLOY_STATE[d.state] ?? {
-              label: 'Deploying',
-              color: 'var(--status-warning)',
-              live: true,
-            };
-            return (
-              <div className="flex items-center gap-3 px-5 py-2.5">
-                <span className="truncate font-mono text-xs">{d.workflowId}</span>
-                <span className="truncate text-xs text-muted-foreground">
-                  {d.version || 'no image'} · {formatRelative(d.createdAt)}
-                </span>
-                {/* Colour plus text, never hue alone; in-flight breathes. */}
-                <span
-                  className="ml-auto flex shrink-0 items-center gap-1.5 text-xs"
-                  style={{ color: state.color }}
-                >
-                  <span
-                    className={cn('h-1.5 w-1.5 rounded-full', state.live && 'animate-breathe')}
-                    style={{ background: state.color }}
-                  />
-                  {state.label}
-                </span>
-              </div>
-            );
-          }}
+    <div className="flex items-center gap-3 py-3">
+      <span className="truncate font-mono text-xs">{d.workflowId}</span>
+      <span className="truncate text-xs text-muted-foreground">
+        {d.version || 'no image'} · {formatRelative(d.createdAt)}
+      </span>
+      {/* Colour plus text, never hue alone; in-flight breathes. */}
+      <span
+        className="ml-auto flex shrink-0 items-center gap-1.5 text-xs"
+        style={{ color: state.color }}
+      >
+        <span
+          className={cn('h-1.5 w-1.5 rounded-full', state.live && 'animate-breathe')}
+          style={{ background: state.color }}
         />
-      )}
-    </SpotlightCard>
-  );
-}
-
-/* ------------------------------------------------------------------ *
- * Consumption rail — the meters, as readout modules
- * ------------------------------------------------------------------ */
-
-function MetricCell({
-  label,
-  value,
-  unit,
-  format,
-  loading,
-  hint,
-}: {
-  label: string;
-  value: number | undefined;
-  unit: string;
-  format?: (v: number) => string;
-  loading: boolean;
-  hint: string;
-}) {
-  return (
-    <div className="crop-marks relative px-5 py-4" title={hint}>
-      <i aria-hidden />
-      <i aria-hidden />
-      <i aria-hidden />
-      <i aria-hidden />
-      <p className="label-mono text-muted-foreground">{label}</p>
-      <p className="mt-2 text-3xl leading-none font-semibold tracking-tight">
-        {loading ? (
-          <Skeleton className="h-7 w-16" />
-        ) : value == null ? (
-          <span className="text-muted-foreground">—</span>
-        ) : (
-          <>
-            <Odometer value={value} format={format} className="metric-glow" />
-            <span className="ml-1.5 align-baseline text-sm font-normal text-muted-foreground">
-              {unit}
-            </span>
-          </>
-        )}
-      </p>
+        {state.label}
+      </span>
     </div>
   );
 }
 
-/**
- * The informational meters the platform measures but does not bill —
- * resident memory right now, and the month's CPU, egress, and ingress
- * (ADR-039/046/048). Readout modules rather than cards or a ruled strip:
- * no boxes, just blueprint crop marks measuring each figure, odometer
- * digits that roll up on arrival, and a glow across the numerals.
- * GB-hours stays with the allowance gauge.
- */
-function ConsumptionRail({
-  residentMb,
-  residentKnown,
-  usage,
-}: {
-  residentMb: number;
-  residentKnown: boolean;
-  usage: ReturnType<typeof useUsageSummary>;
-}) {
-  const loading = usage.isPending;
-  const failed = Boolean(usage.error);
+/** A zone's closing line: one quiet mono link, right-aligned on the rule. */
+function ZoneLink({ to, children }: { to: string; children: React.ReactNode }) {
   return (
-    <div className="animate-item-enter grid grid-cols-2 gap-3 sm:grid-cols-4 lg:col-span-12 [animation-delay:90ms]">
-      <MetricCell
-        label="Memory now"
-        value={residentKnown ? residentMb : undefined}
-        unit="MB"
-        loading={false}
-        hint="RAM held by resident instances at this moment."
-      />
-      <MetricCell
-        label="CPU"
-        value={failed ? undefined : usage.data?.used_cpu_hours}
-        unit="h"
-        format={(v) =>
-          v.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })
-        }
-        loading={loading}
-        hint="CPU-hours consumed this billing period. Measured, not billed."
-      />
-      <MetricCell
-        label="Egress"
-        value={failed ? undefined : usage.data?.used_egress_gb}
-        unit="GB"
-        format={(v) =>
-          v.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })
-        }
-        loading={loading}
-        hint="Outbound transfer this billing period. Measured, not billed."
-      />
-      <MetricCell
-        label="Ingress"
-        value={failed ? undefined : usage.data?.used_ingress_gb}
-        unit="GB"
-        format={(v) =>
-          v.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })
-        }
-        loading={loading}
-        hint="Inbound transfer this billing period. Measured, not billed."
-      />
-    </div>
+    <Link
+      to={to}
+      className="pressable inline-flex items-center gap-1 rounded font-mono text-xs text-muted-foreground hover:text-foreground"
+    >
+      {children}
+      <ArrowRight className="h-3 w-3" />
+    </Link>
   );
 }
 
@@ -508,10 +308,10 @@ function OverviewPage() {
   const metricsDegraded = Boolean(metrics.data && metrics.data.source !== 'prometheus');
   const failing = useMemo(() => workflows.filter((w) => w.state === 'error'), [workflows]);
 
-  // The band's data: per-app resident instances (parked rows excluded — a
+  // The horizon's data: per-app resident instances (parked rows excluded — a
   // parked instance's cgroup is gone), joined back to slugs via the raw app
   // list, which is a cache hit on the store's own query. When the instance
-  // read fails the band falls back to app states rather than an empty fleet.
+  // read fails the scene falls back to app states rather than an empty fleet.
   const { data: rawApps } = useApps();
   const slugById = useMemo(() => new Map((rawApps ?? []).map((a) => [a.id, a.slug])), [rawApps]);
   const residentKnown = !instances.isPending && !instances.error;
@@ -527,15 +327,15 @@ function OverviewPage() {
     return bySlug;
   }, [instances.data, slugById]);
 
-  const bandApps = useMemo<FootprintApp[]>(
+  const horizonApps = useMemo<HorizonApp[]>(
     () =>
-      workflows.flatMap((w): FootprintApp[] => {
+      workflows.flatMap((w): HorizonApp[] => {
         const live = instRollup.get(w.id);
         if (live) return [{ slug: w.id, ramMb: live.mb, instances: live.count, awake: true }];
-        // Active with nothing resident is scale-to-zero doing its job — the
-        // app renders dark, like a parked one, because that is what it holds.
         if (w.state === 'running' && !residentKnown)
           return [{ slug: w.id, ramMb: w.memoryMb, instances: 1, awake: true }];
+        // Active with nothing resident is scale-to-zero doing its job — the
+        // app hangs below the line, because that is what it holds.
         if (w.state === 'running' || w.state === 'idle')
           return [{ slug: w.id, ramMb: w.memoryMb, instances: 0, awake: false }];
         return [];
@@ -547,6 +347,36 @@ function OverviewPage() {
     () => [...instRollup.values()].reduce((sum, r) => sum + r.count * r.mb, 0),
     [instRollup]
   );
+  const residentCount = useMemo(
+    () => [...instRollup.values()].reduce((sum, r) => sum + r.count, 0),
+    [instRollup]
+  );
+
+  const { requests, errorPct, wakeP95 } = useMemo(() => {
+    const total = workflows.reduce((sum, w) => sum + w.invocations24h, 0);
+    // Weighted by traffic, not a mean of percentages: one idle app at 100%
+    // must not outweigh a busy one at 0.01%.
+    const errored = workflows.reduce(
+      (sum, w) => sum + w.invocations24h * (w.errorRatePct / 100),
+      0
+    );
+    // The wake histogram is unlabelled upstream — every row carries the same
+    // fleet figure, so the first non-zero one is the figure.
+    const wake = workflows.find((w) => w.coldStartP50Ms > 0)?.coldStartP50Ms ?? 0;
+    return { requests: total, errorPct: total > 0 ? (errored / total) * 100 : 0, wakeP95: wake };
+  }, [workflows]);
+
+  const darkMb = useMemo(
+    () => horizonApps.filter((a) => !a.awake).reduce((sum, a) => sum + a.ramMb, 0),
+    [horizonApps]
+  );
+
+  const usageData = usage.data;
+  const included = usageData?.included_gb_hours ?? 0;
+  const usedGbh = usageData?.used_gb_hours ?? 0;
+  const remainingGbh = Math.max(0, included - usedGbh);
+  const overGbh = usageData?.overage_gb_hours ?? 0;
+  const usageUnknown = Boolean(usage.error);
 
   const recent = useMemo(
     () => [...deployments].sort((a, b) => b.createdAt - a.createdAt).slice(0, 6),
@@ -558,59 +388,157 @@ function OverviewPage() {
   // and useless, so the page becomes instructions instead.
   const firstRun = phase === 'ready' && workflows.length === 0;
 
-  return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        title={firstName ? `Welcome${firstRun ? '' : ' back'}, ${firstName}` : 'Overview'}
-        description={
-          firstRun
-            ? 'Nothing deployed yet. Three commands and you are live.'
-            : account
-              ? `${account.app_count} app${account.app_count === 1 ? '' : 's'} on the ${account.plan} plan.`
-              : 'Your account at a glance.'
-        }
-        actions={
-          <Button asChild size="sm" className="gap-1.5">
-            <Link to="/dashboard/workflows/new">
-              <Plus className="h-3.5 w-3.5" />
-              New app
-            </Link>
-          </Button>
-        }
-      />
+  if (firstRun) {
+    return (
+      <div className="flex flex-col gap-6">
+        <PageHeader
+          title={firstName ? `Welcome, ${firstName}` : 'Overview'}
+          description="Nothing deployed yet. Three commands and you are live."
+        />
+        <FirstRun />
+      </div>
+    );
+  }
 
-      {firstRun && <FirstRun />}
-
-      {!firstRun &&
-        (phase === 'unreachable' ? (
+  if (phase !== 'ready') {
+    return (
+      <div className="flex flex-col gap-6">
+        <PageHeader title="Overview" description="Your account at a glance." />
+        {phase === 'unreachable' ? (
           <UnreachableState onRetry={refresh} />
         ) : phase === 'error' ? (
           <ErrorState error={error} onRetry={refresh} />
-        ) : phase === 'loading' ? (
-          <LoadingState message="Reading your account…" />
         ) : (
-          <>
-            {/* The one-glance answer — and, when needed, the whole alert. */}
-            <StatusLine
-              accountStatus={account?.status}
-              failing={failing}
-              degraded={metricsDegraded}
-            />
+          <LoadingState message="Reading your account…" />
+        )}
+      </div>
+    );
+  }
 
-            {/* Mirrored asymmetry: 7/5 then 5/7. */}
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-              <FleetCard workflows={workflows} bandApps={bandApps} />
-              <AllowanceCard usage={usage} />
-              <ConsumptionRail
-                residentMb={residentMb}
-                residentKnown={residentKnown}
-                usage={usage}
-              />
-              <TrafficCard workflows={workflows} degraded={metricsDegraded} />
-              <DeploymentsCard recent={recent} />
-            </div>
-          </>
-        ))}
+  return (
+    <div className="relative flex flex-col">
+      {/* The wind blows across the sheet's opening — one atmosphere for the
+          verdict and the horizon, gone by the time the ledgers start. */}
+      <div
+        aria-hidden
+        className="absolute inset-x-0 top-0 h-[26rem] [mask-image:linear-gradient(to_bottom,black_30%,transparent)]"
+      >
+        <WindFlow intensity={0.5} />
+      </div>
+
+      <div className="relative flex flex-col">
+        <Zone index="01" name="Verdict">
+          <VerdictZone
+            accountStatus={account?.status}
+            failing={failing}
+            degraded={metricsDegraded}
+            firstName={firstName}
+            appCount={account?.app_count}
+            plan={account?.plan}
+          />
+        </Zone>
+
+        <Zone index="02" name="Fleet" delay={60}>
+          <FleetHorizon apps={horizonApps} />
+          <div className="mt-6 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
+            <p className="text-xs text-muted-foreground">
+              <span className="text-foreground [font-variant-numeric:tabular-nums]">
+                {residentMb.toLocaleString()} MB
+              </span>{' '}
+              above the line
+              {darkMb > 0 && (
+                <>
+                  {' · '}
+                  <span className="[font-variant-numeric:tabular-nums]">
+                    {darkMb.toLocaleString()} MB
+                  </span>{' '}
+                  below — held only when a request arrives
+                </>
+              )}
+            </p>
+            <ZoneLink to="/dashboard/workflows">All apps</ZoneLink>
+          </div>
+        </Zone>
+
+        <Zone index="03" name="Figures" delay={120}>
+          <div className="grid grid-cols-2 border-y border-border sm:grid-cols-3 sm:divide-x sm:divide-border lg:grid-cols-5">
+            <Figure
+              label="MB resident"
+              sub={
+                residentKnown
+                  ? `${residentCount} ${residentCount === 1 ? 'instance' : 'instances'} · now`
+                  : 'instance read failed'
+              }
+              hint="RAM held by resident instances at this moment."
+            >
+              {residentKnown ? <Odometer value={residentMb} /> : UNKNOWN}
+            </Figure>
+            <Figure
+              label={overGbh > 0 ? 'GB-h over' : 'GB-h left'}
+              sub={
+                usage.isPending || usageUnknown
+                  ? 'reading usage'
+                  : overGbh > 0
+                    ? `${formatMoney(usageData?.overage_cents)} overage · ${usageData?.month}`
+                    : `of ${formatGbHours(included)} · ${usageData?.month}`
+              }
+              hint="Compute allowance for this billing period."
+            >
+              {usage.isPending ? (
+                <Skeleton className="h-8 w-20" />
+              ) : usageUnknown ? (
+                UNKNOWN
+              ) : overGbh > 0 ? (
+                <span style={{ color: 'var(--status-warning)' }}>
+                  <Odometer value={overGbh} format={formatGbHours} />
+                </span>
+              ) : (
+                <Odometer value={remainingGbh} format={formatGbHours} />
+              )}
+            </Figure>
+            <Figure label="requests" sub="last 24h" hint="Requests served across the fleet.">
+              {metricsDegraded ? UNKNOWN : <Odometer value={requests} format={formatCompact} />}
+            </Figure>
+            <Figure label="error rate" sub="last 24h" hint="Errored share of served requests.">
+              {metricsDegraded ? (
+                UNKNOWN
+              ) : (
+                <span
+                  style={errorPct > 1 ? { color: 'var(--status-critical)' } : undefined}
+                >{`${errorPct.toFixed(2)}%`}</span>
+              )}
+            </Figure>
+            <Figure label="wake p95" sub="cold start, fleet" hint="95th-percentile wake time.">
+              {metricsDegraded || !wakeP95 ? (
+                UNKNOWN
+              ) : (
+                <>
+                  {Math.round(wakeP95)}
+                  <span className="ml-1 text-sm font-normal text-muted-foreground">ms</span>
+                </>
+              )}
+            </Figure>
+          </div>
+          <div className="mt-4 flex justify-end">
+            <ZoneLink to="/dashboard/usage">Usage</ZoneLink>
+          </div>
+        </Zone>
+
+        <Zone index="04" name="Record" delay={180} last>
+          {recent.length === 0 ? (
+            <EmptyState message="Nothing deployed yet." />
+          ) : (
+            <AnimatedList
+              items={recent}
+              className="divide-y divide-border border-y border-border"
+              render={(d) => <RecordRow d={d} />}
+            />
+          )}
+          <div className="mt-4 flex justify-end">
+            <ZoneLink to="/dashboard/deployments">All deployments</ZoneLink>
+          </div>
+        </Zone>
+      </div>
     </div>
   );
 }

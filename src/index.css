@@ -305,16 +305,6 @@
      animation-delay so a row of segments does not breathe in lockstep. */
   --animate-breathe: breathe 3.4s ease-in-out infinite;
 
-  /* The fuel gauge's drifting surface crest. Seamless: the SVG is 200%
-     wide and slides by half of itself. */
-  --animate-fuel-wave: fuel-wave 6s linear infinite;
-
-  @keyframes fuel-wave {
-    to {
-      transform: translateX(-50%);
-    }
-  }
-
   @keyframes breathe {
     0%,
     100% {
@@ -802,34 +792,35 @@
     text-shadow: 0 0 16px color-mix(in oklab, var(--brand-fill) 35%, transparent);
   }
 
-  /* Fuel gauge: the level rises from empty on insertion (@starting-style,
-     stateless) and glides between readings; the surface crests drift
-     sideways on a seamless 200%-wide loop. The wave is an animate-* class,
-     so the reduced-motion blanket rule freezes it to a still surface. */
-  .fuel-fill {
-    height: var(--fuel-h, 0%);
-    transition: height 1s var(--motion-ease);
-  }
-  @starting-style {
-    .fuel-fill {
-      height: 0%;
-    }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .fuel-fill {
-      transition: none;
-    }
-  }
-
-  /* Footprint band materials. Lit segments carry a vertical mint gradient
-     and a soft under-glow — awake memory reads as warm; parked memory is a
-     dashed socket, present but dark. */
+  /* Fleet materials (the horizon's columns). Lit memory carries a vertical
+     mint gradient and a soft under-glow — awake reads as warm; parked
+     memory is a dashed socket, present but dark. */
   .fp-lit {
     background: linear-gradient(to bottom, var(--mint-7), var(--brand-fill));
     box-shadow: 0 2px 14px -2px color-mix(in oklab, var(--brand-fill) 45%, transparent);
   }
   .fp-dark {
     border: 1px dashed var(--border-secondary);
+  }
+
+  /* The Field's horizon columns: awake memory stands above the ground line,
+     parked memory hangs below it. Heights are pixel values on one shared
+     MB scale set inline; `@starting-style` grows each column out of the
+     line on insertion — stateless, and reduced-motion users see the fleet
+     placed at once. */
+  .hz-col {
+    height: var(--hz-h, 0px);
+    transition: height 0.9s var(--motion-ease);
+  }
+  @starting-style {
+    .hz-col {
+      height: 0px;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .hz-col {
+      transition: none;
+    }
   }
 
   /* Progress-ring sweep: the arc enters from empty on insertion and glides
