@@ -792,22 +792,25 @@
     text-shadow: 0 0 16px color-mix(in oklab, var(--brand-fill) 35%, transparent);
   }
 
-  /* Fleet materials (the horizon's columns). Lit memory carries a vertical
-     mint gradient and a soft under-glow — awake reads as warm; parked
-     memory is a dashed socket, present but dark. */
+  /* Harbor materials. A lit filament carries a vertical mint gradient and
+     a soft glow — awake memory reads as a light standing on the waterline;
+     its reflection fades with depth into the water below. */
   .fp-lit {
     background: linear-gradient(to bottom, var(--mint-7), var(--brand-fill));
     box-shadow: 0 2px 14px -2px color-mix(in oklab, var(--brand-fill) 45%, transparent);
   }
-  .fp-dark {
-    border: 1px dashed var(--border-secondary);
+  .hz-refl {
+    background: linear-gradient(
+      to bottom,
+      color-mix(in oklab, var(--brand-fill) 26%, transparent),
+      transparent
+    );
   }
 
-  /* The Field's horizon columns: awake memory stands above the ground line,
-     parked memory hangs below it. Heights are pixel values on one shared
-     MB scale set inline; `@starting-style` grows each column out of the
-     line on insertion — stateless, and reduced-motion users see the fleet
-     placed at once. */
+  /* Harbor filaments rise out of the waterline. Heights are pixel values
+     on one shared MB scale set inline; `@starting-style` grows each one
+     from the line on insertion — stateless, and reduced-motion users see
+     the harbor placed at once. */
   .hz-col {
     height: var(--hz-h, 0px);
     transition: height 0.9s var(--motion-ease);
