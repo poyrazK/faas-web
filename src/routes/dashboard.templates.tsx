@@ -1,7 +1,6 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { ArrowRight } from 'iconoir-react';
 import { PageHeader } from '@/components/dashboard/primitives';
-import { SpotlightCard } from '@/components/ui/spotlight-card';
 import { Pill } from '@/components/dashboard/resource-table';
 import { TEMPLATES } from '@/lib/templates';
 import { pageHead } from '@/lib/seo';
@@ -29,26 +28,27 @@ function TemplatesPage() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {TEMPLATES.map((t) => (
-          <SpotlightCard key={t.slug} className="glass card-lux">
-            <Link
-              to="/dashboard/workflows/new"
-              search={{ template: t.slug }}
-              className="group flex h-full flex-col gap-3 p-5 focus-visible:outline-none"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <h2 className="text-sm font-semibold">{t.name}</h2>
-                <Pill label={t.runtimeLabel} />
-              </div>
-              <p className="text-xs leading-relaxed text-muted-foreground">{t.tagline}</p>
-              <div className="mt-auto flex items-center justify-between gap-3 pt-2">
-                <span className="font-mono text-xs text-muted-foreground">{t.filename}</span>
-                <span className="inline-flex items-center gap-1 text-xs text-brand group-hover:text-brand-hover">
-                  Use template
-                  <ArrowRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5" />
-                </span>
-              </div>
-            </Link>
-          </SpotlightCard>
+          // The console's plain card, on purpose: a template is a starting
+          // point, not a hero — the quiet surface keeps the gallery scannable.
+          <Link
+            key={t.slug}
+            to="/dashboard/workflows/new"
+            search={{ template: t.slug }}
+            className="group pressable flex h-full flex-col gap-3 rounded-xl border border-border bg-card p-5 transition-colors hover:border-border-secondary"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <h2 className="text-sm font-semibold">{t.name}</h2>
+              <Pill label={t.runtimeLabel} />
+            </div>
+            <p className="text-xs leading-relaxed text-muted-foreground">{t.tagline}</p>
+            <div className="mt-auto flex items-center justify-between gap-3 pt-2">
+              <span className="font-mono text-xs text-muted-foreground">{t.filename}</span>
+              <span className="inline-flex items-center gap-1 text-xs text-brand group-hover:text-brand-hover">
+                Use template
+                <ArrowRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5" />
+              </span>
+            </div>
+          </Link>
         ))}
       </div>
 
