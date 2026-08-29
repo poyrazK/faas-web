@@ -8,6 +8,7 @@ import {
   UnreachableState,
   queryPhase,
 } from '@/components/dashboard/primitives';
+import { BorderBeam } from 'border-beam';
 import { FirstRun } from '@/components/dashboard/first-run';
 import { Magnetic } from '@/components/amicro/magnetic';
 import { PointerGlow } from '@/components/amicro/pointer-glow';
@@ -387,19 +388,32 @@ function OverviewPage() {
             />
           </h1>
 
-          {/* The palette's front door — the top bar no longer carries one. */}
-          <button
-            type="button"
-            onClick={() => window.dispatchEvent(new Event('gregale:open-palette'))}
-            aria-label="Search apps, pages, and actions"
-            aria-keyshortcuts="Meta+K Control+K"
-            className="glass pressable relative flex h-11 w-full items-center gap-3 overflow-hidden rounded-xl border border-border px-4 text-sm text-muted-foreground shadow-elevation-1 hover:border-border-secondary hover:text-foreground"
+          {/* The palette's front door — the top bar no longer carries one.
+              The beam is the npm `border-beam` package: its ocean variant
+              hue-rotated onto the brand mint (~162°) via its --beam-hue-base
+              hook, full strength, swing tightened so it stays mint. */}
+          <BorderBeam
+            size="md"
+            colorVariant="ocean"
+            theme="dark"
+            strength={1}
+            hueRange={10}
+            className="w-full"
+            style={{ ['--beam-hue-base' as string]: '-78deg' }}
           >
-            <PointerGlow />
-            <Search className="h-4 w-4 shrink-0" />
-            Search
-            <Kbd className="ml-auto px-1.5">⌘K</Kbd>
-          </button>
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new Event('gregale:open-palette'))}
+              aria-label="Search apps, pages, and actions"
+              aria-keyshortcuts="Meta+K Control+K"
+              className="glass pressable relative flex h-11 w-full items-center gap-3 overflow-hidden rounded-xl border border-border px-4 text-sm text-muted-foreground shadow-elevation-1 hover:border-border-secondary hover:text-foreground"
+            >
+              <PointerGlow />
+              <Search className="h-4 w-4 shrink-0" />
+              Search
+              <Kbd className="ml-auto px-1.5">⌘K</Kbd>
+            </button>
+          </BorderBeam>
 
           {failing.length > 0 && (
             <p className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5">
