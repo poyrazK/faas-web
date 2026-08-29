@@ -29,7 +29,13 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Odometer } from '@/components/ui/odometer';
 import { useData } from '@/lib/store';
 import { useAuth } from '@/lib/auth';
-import { useAppsMetrics, useInstances, useUsageSummary } from '@/lib/api/queries';
+import {
+  useApps,
+  useAppsMetrics,
+  useDeployments,
+  useInstances,
+  useUsageSummary,
+} from '@/lib/api/queries';
 import { formatCompact, formatRelative, type Workflow } from '@/lib/mock-data';
 import type { Deployment } from '@/lib/mock-data';
 import { FlowDotsField } from '@/components/dashboard/shapes';
@@ -292,7 +298,13 @@ function OverviewPage() {
   const usage = useUsageSummary();
   // Same key the store already reads — a cache hit, here for `source`.
   const metrics = useAppsMetrics('24h');
-  const instances = useInstances();
+  // The overview breathes on a gentle poll while it is on screen: this
+  // observer's interval joins the store's own (TanStack runs the smallest
+  // among observers) and leaves with the page. Real reads on a cadence —
+  // the spec has no general event stream to subscribe to instead.
+  const instances = useInstances({ refetchInterval: 10_000 });
+  useDeployments(50, { refetchInterval: 10_000 });
+  useApps({ refetchInterval: 15_000 });
 
   const phase = queryPhase({ error, loading });
   const metricsDegraded = Boolean(metrics.data && metrics.data.source !== 'prometheus');
