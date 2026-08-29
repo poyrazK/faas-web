@@ -1,8 +1,6 @@
 # Responsible disclosure policy
 
-> **Issue:** [#755](https://github.com/poyrazK/faas/issues/755).
 > **Owner:** Security (single-operator company; founder wears the role).
-> **Mirror:** [`/SECURITY.md`](../../SECURITY.md) — repo-root GitHub convention.
 
 Gregale welcomes coordinated vulnerability disclosure. This page
 sets out the channels, the SLAs, the scope, and the safe-harbour
@@ -15,10 +13,8 @@ language that backs the policy.
 | Email (preferred) | `security@gregale.dev` |
 | PGP-encrypted email | `security@gregale.dev` — see §2 for the current fingerprint |
 | Web form | <https://docs.gregale.dev/security/report> (operator-side, post-launch) |
-| GitHub Security Advisories | <https://github.com/poyrazK/faas/security/advisories/new> |
 
-Email is preferred for sensitive reports. GitHub Security Advisories
-are appropriate for non-sensitive coordination; the platform will
+Email is preferred for sensitive reports; the platform will
 acknowledge via the same channel.
 
 ## 2. PGP fingerprint
@@ -57,7 +53,7 @@ will notify the reporter and explain. The SLAs are NOT a contract.
 
 **In scope:**
 
-- The Gregale platform (`poyrazK/faas` repo), running on a customer
+- The Gregale platform, running on a customer
   deployment. Includes the `apid`, `gatewayd-public`,
   `gatewayd-internal`, `schedd`, `vmmd`, `builderd`, `imaged`,
   `meterd`, `gregale` daemons, plus the `pkg/{api,state,fcvm,netns,
