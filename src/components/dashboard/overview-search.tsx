@@ -184,56 +184,70 @@ export function OverviewSearch({ workflows }: { workflows: Workflow[] }) {
       </BorderBeam>
 
       {open && (
-        <ul
-          id={listId}
-          role="listbox"
-          aria-label="Search results"
-          className="animate-pop-in absolute inset-x-0 top-full z-30 mt-2 max-h-80 overflow-y-auto rounded-xl border border-border bg-popover p-1.5 shadow-elevation-3"
+        // The same mint beam as the field, so the pair reads as one
+        // instrument — the answer wears the question's light.
+        <BorderBeam
+          size="md"
+          colorVariant="ocean"
+          theme="dark"
+          strength={1}
+          hueRange={10}
+          className="absolute inset-x-0 top-full z-30 mt-2"
+          style={{ ['--beam-hue-base' as string]: '-78deg' }}
         >
-          {results.length === 0 ? (
-            <li className="px-2.5 py-3 text-sm text-muted-foreground">No matches for “{query}”.</li>
-          ) : (
-            results.map(({ item, indices }, i) => {
-              const Icon = item.icon;
-              return (
-                <li
-                  key={item.id}
-                  id={`ovs-${i}`}
-                  role="option"
-                  aria-selected={i === active}
-                  onMouseMove={() => setActive(i)}
-                  // Mousedown, so the pick lands before the input's blur closes
-                  // the list out from under the click.
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    pick(item);
-                  }}
-                  className={cn(
-                    'flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors',
-                    i === active ? 'bg-muted text-foreground' : 'text-muted-foreground'
-                  )}
-                >
-                  <Icon className="h-3.5 w-3.5 shrink-0" />
-                  <span className="flex-1 truncate">
-                    {highlightSegments(item.label, indices).map((seg, si) =>
-                      seg.match ? (
-                        <mark
-                          key={si}
-                          className="bg-transparent font-medium text-brand underline decoration-brand/40 underline-offset-2"
-                        >
-                          {seg.text}
-                        </mark>
-                      ) : (
-                        <span key={si}>{seg.text}</span>
-                      )
+          <ul
+            id={listId}
+            role="listbox"
+            aria-label="Search results"
+            className="animate-pop-in max-h-80 w-full overflow-y-auto rounded-xl border border-border bg-popover p-1.5 shadow-elevation-3"
+          >
+            {results.length === 0 ? (
+              <li className="px-2.5 py-3 text-sm text-muted-foreground">
+                No matches for “{query}”.
+              </li>
+            ) : (
+              results.map(({ item, indices }, i) => {
+                const Icon = item.icon;
+                return (
+                  <li
+                    key={item.id}
+                    id={`ovs-${i}`}
+                    role="option"
+                    aria-selected={i === active}
+                    onMouseMove={() => setActive(i)}
+                    // Mousedown, so the pick lands before the input's blur closes
+                    // the list out from under the click.
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      pick(item);
+                    }}
+                    className={cn(
+                      'flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors',
+                      i === active ? 'bg-muted text-foreground' : 'text-muted-foreground'
                     )}
-                  </span>
-                  <span className="shrink-0 text-xs text-muted-foreground/70">{item.group}</span>
-                </li>
-              );
-            })
-          )}
-        </ul>
+                  >
+                    <Icon className="h-3.5 w-3.5 shrink-0" />
+                    <span className="flex-1 truncate">
+                      {highlightSegments(item.label, indices).map((seg, si) =>
+                        seg.match ? (
+                          <mark
+                            key={si}
+                            className="bg-transparent font-medium text-brand underline decoration-brand/40 underline-offset-2"
+                          >
+                            {seg.text}
+                          </mark>
+                        ) : (
+                          <span key={si}>{seg.text}</span>
+                        )
+                      )}
+                    </span>
+                    <span className="shrink-0 text-xs text-muted-foreground/70">{item.group}</span>
+                  </li>
+                );
+              })
+            )}
+          </ul>
+        </BorderBeam>
       )}
     </div>
   );
