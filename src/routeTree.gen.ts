@@ -39,6 +39,7 @@ import { Route as DashboardSecurityRouteImport } from './routes/dashboard.securi
 import { Route as DashboardSettingsRouteImport } from './routes/dashboard.settings'
 import { Route as DashboardStorageRouteImport } from './routes/dashboard.storage'
 import { Route as DashboardTeamRouteImport } from './routes/dashboard.team'
+import { Route as DashboardTemplatesRouteImport } from './routes/dashboard.templates'
 import { Route as DashboardTracesRouteImport } from './routes/dashboard.traces'
 import { Route as DashboardUsageRouteImport } from './routes/dashboard.usage'
 import { Route as DashboardWebhooksRouteImport } from './routes/dashboard.webhooks'
@@ -200,6 +201,11 @@ const DashboardTeamRoute = DashboardTeamRouteImport.update({
   path: '/team',
   getParentRoute: () => DashboardRoute,
 } as any)
+const DashboardTemplatesRoute = DashboardTemplatesRouteImport.update({
+  id: '/templates',
+  path: '/templates',
+  getParentRoute: () => DashboardRoute,
+} as any)
 const DashboardTracesRoute = DashboardTracesRouteImport.update({
   id: '/traces',
   path: '/traces',
@@ -282,6 +288,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/settings': typeof DashboardSettingsRoute
   '/dashboard/storage': typeof DashboardStorageRoute
   '/dashboard/team': typeof DashboardTeamRoute
+  '/dashboard/templates': typeof DashboardTemplatesRoute
   '/dashboard/traces': typeof DashboardTracesRoute
   '/dashboard/usage': typeof DashboardUsageRoute
   '/dashboard/webhooks': typeof DashboardWebhooksRoute
@@ -322,6 +329,7 @@ export interface FileRoutesByTo {
   '/dashboard/settings': typeof DashboardSettingsRoute
   '/dashboard/storage': typeof DashboardStorageRoute
   '/dashboard/team': typeof DashboardTeamRoute
+  '/dashboard/templates': typeof DashboardTemplatesRoute
   '/dashboard/traces': typeof DashboardTracesRoute
   '/dashboard/usage': typeof DashboardUsageRoute
   '/dashboard/webhooks': typeof DashboardWebhooksRoute
@@ -365,6 +373,7 @@ export interface FileRoutesById {
   '/dashboard/settings': typeof DashboardSettingsRoute
   '/dashboard/storage': typeof DashboardStorageRoute
   '/dashboard/team': typeof DashboardTeamRoute
+  '/dashboard/templates': typeof DashboardTemplatesRoute
   '/dashboard/traces': typeof DashboardTracesRoute
   '/dashboard/usage': typeof DashboardUsageRoute
   '/dashboard/webhooks': typeof DashboardWebhooksRoute
@@ -409,6 +418,7 @@ export interface FileRouteTypes {
     | '/dashboard/settings'
     | '/dashboard/storage'
     | '/dashboard/team'
+    | '/dashboard/templates'
     | '/dashboard/traces'
     | '/dashboard/usage'
     | '/dashboard/webhooks'
@@ -449,6 +459,7 @@ export interface FileRouteTypes {
     | '/dashboard/settings'
     | '/dashboard/storage'
     | '/dashboard/team'
+    | '/dashboard/templates'
     | '/dashboard/traces'
     | '/dashboard/usage'
     | '/dashboard/webhooks'
@@ -491,6 +502,7 @@ export interface FileRouteTypes {
     | '/dashboard/settings'
     | '/dashboard/storage'
     | '/dashboard/team'
+    | '/dashboard/templates'
     | '/dashboard/traces'
     | '/dashboard/usage'
     | '/dashboard/webhooks'
@@ -726,6 +738,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardTeamRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/dashboard/templates': {
+      id: '/dashboard/templates'
+      path: '/templates'
+      fullPath: '/dashboard/templates'
+      preLoaderRoute: typeof DashboardTemplatesRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/dashboard/traces': {
       id: '/dashboard/traces'
       path: '/traces'
@@ -823,6 +842,7 @@ interface DashboardRouteChildren {
   DashboardSettingsRoute: typeof DashboardSettingsRoute
   DashboardStorageRoute: typeof DashboardStorageRoute
   DashboardTeamRoute: typeof DashboardTeamRoute
+  DashboardTemplatesRoute: typeof DashboardTemplatesRoute
   DashboardTracesRoute: typeof DashboardTracesRoute
   DashboardUsageRoute: typeof DashboardUsageRoute
   DashboardWebhooksRoute: typeof DashboardWebhooksRoute
@@ -857,6 +877,7 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardSettingsRoute: DashboardSettingsRoute,
   DashboardStorageRoute: DashboardStorageRoute,
   DashboardTeamRoute: DashboardTeamRoute,
+  DashboardTemplatesRoute: DashboardTemplatesRoute,
   DashboardTracesRoute: DashboardTracesRoute,
   DashboardUsageRoute: DashboardUsageRoute,
   DashboardWebhooksRoute: DashboardWebhooksRoute,

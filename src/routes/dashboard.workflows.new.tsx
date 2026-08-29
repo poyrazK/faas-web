@@ -9,6 +9,8 @@ import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/components/ui/toast';
 import { DeploymentProgress } from '@/components/dashboard/deployment-progress';
 import { PageHeader, Panel } from '@/components/dashboard/primitives';
+import { CopyIconButton } from '@/components/ui/copy-button';
+import { templateBySlug } from '@/lib/templates';
 import { type Runtime } from '@/lib/mock-data';
 import { errorMessage } from '@/lib/api/errors';
 import { useData } from '@/lib/store';
@@ -20,6 +22,10 @@ import { pageHead } from '@/lib/seo';
 
 export const Route = createFileRoute('/dashboard/workflows/new')({
   head: () => pageHead({ title: 'New workflow' }),
+  // `?template=<slug>` prefills the wizard from the template gallery; an
+  // unknown slug degrades to the plain wizard rather than an error.
+  validateSearch: (search: Record<string, unknown>): { template?: string } =>
+    typeof search.template === 'string' ? { template: search.template } : {},
   component: NewFunctionPage,
 });
 
@@ -70,23 +76,27 @@ function NewFunctionPage() {
   const { toast } = useToast();
   const { addWorkflow } = useData();
   const { account, loading: authLoading } = useAuth();
+  // A template prefills the wizard: empty source (the scaffold deploys from
+  // the CLI), the template's runtime and memory, and a name suggestion.
+  const { template: templateSlug } = Route.useSearch();
+  const template = templateBySlug(templateSlug);
 
   const [createdId, setCreatedId] = useState<string | null>(null);
   // The endpoint the API assigned. Constructing one from the slug would be a
   // guess about the platform's hostname scheme; this is the real value.
   const [createdUrl, setCreatedUrl] = useState<string | null>(null);
   const [step, setStep] = useState(0);
-  const [source, setSource] = useState('git');
+  const [source, setSource] = useState(template ? 'empty' : 'git');
   const [repo, setRepo] = useState('');
   const [ref, setRef] = useState('main');
-  const [name, setName] = useState('');
+  const [name, setName] = useState(template ? template.slug : '');
   const deployFromRef = useDeployFromRefFor();
   const updateApp = useUpdateAppFor();
   const [appType, setAppType] = useState<'function' | 'app'>('function');
-  const [runtime, setRuntime] = useState<Runtime>('node22');
+  const [runtime, setRuntime] = useState<Runtime>(template ? template.runtime : 'node22');
   // Start at the platform floor. The previous 512 MB default guaranteed a
   // failed Free-plan submission before the customer had seen the limit.
-  const [memoryMb, setMemoryMb] = useState(128);
+  const [memoryMb, setMemoryMb] = useState(template ? template.memoryMb : 128);
   const [scaleToZero, setScaleToZero] = useState(true);
   const githubConnected = Boolean(account?.github_install_id);
 
@@ -96,8 +106,11 @@ function NewFunctionPage() {
   const [retrying, setRetrying] = useState(false);
 
   // A half-filled wizard asks before it is discarded. Once the app exists
-  // (or nothing was typed) leaving is free.
-  useUnsavedGuard(!createdId && Boolean(repo.trim() || name.trim()));
+  // (or nothing was typed) leaving is free. A template's prefilled name is
+  // not the user's typing — only their own edits arm the guard.
+  useUnsavedGuard(
+    !createdId && Boolean(repo.trim() || (name.trim() && name !== (template?.slug ?? '')))
+  );
 
   const nameValid = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(name);
   const repoValid = /^[^/\s]+\/[^/\s]+$/.test(repo.trim());
@@ -222,6 +235,32 @@ function NewFunctionPage() {
             sourceRef={ref}
             submissionError={submissionError}
           />
+        ) : template ? (
+          <Panel
+            title={`${template.name} scaffold`}
+            description="The app exists — this code is its first deployment."
+          >
+            <div className="flex items-center justify-between gap-3">
+              <p className="font-mono text-xs text-muted-foreground">{template.filename}</p>
+              <CopyIconButton text={template.code} label={`Copy ${template.filename}`} />
+            </div>
+            <pre className="mt-2 max-h-72 overflow-auto rounded-lg border border-border bg-background p-3 font-mono text-xs leading-relaxed text-foreground">
+              {template.code}
+            </pre>
+            <ol className="mt-4 flex list-decimal flex-col gap-1.5 pl-5 text-sm text-muted-foreground">
+              {template.steps.map((s) => (
+                <li key={s}>
+                  {s === 'gregale deploy --app' ? (
+                    <code className="rounded bg-background px-1.5 py-0.5 font-mono text-xs text-foreground">
+                      gregale deploy --app {name}
+                    </code>
+                  ) : (
+                    s
+                  )}
+                </li>
+              ))}
+            </ol>
+          </Panel>
         ) : (
           <Panel title="App ready" description="No deployment was started.">
             <p className="text-sm text-muted-foreground">
@@ -308,7 +347,14 @@ function NewFunctionPage() {
         All workflows
       </Link>
 
-      <PageHeader title="New function" description="Deploy a function to bare metal." />
+      <PageHeader
+        title="New function"
+        description={
+          template
+            ? `Starting from the ${template.name} template — source, runtime, and memory are prefilled; the scaffold arrives once the app exists.`
+            : 'Deploy a function to bare metal.'
+        }
+      />
 
       {/* Step rail */}
       <ol className="flex items-center gap-2">
