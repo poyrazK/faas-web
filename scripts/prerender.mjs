@@ -38,16 +38,16 @@ const DIST = 'dist';
 const TEMPLATE = join(DIST, 'index.html');
 
 /**
- * Absolute base URL, e.g. `https://gregale.dev`. Canonical links, `og:url`,
- * and the sitemap all need one, and there is no way to derive it from the
+ * Absolute base URL. Canonical links, `og:url`, the sitemap, and the
+ * structured data all need one, and there is no way to derive it from the
  * build.
  *
- * Deliberately omitted rather than guessed when unset: a canonical pointing at
- * the wrong host is worse than none at all — it tells search engines the real
- * page lives somewhere else. Set `SITE_URL` in the deploy environment to turn
- * these on.
+ * Defaults to the production domain: shipping without canonicals and a
+ * sitemap cost the site its indexation once already ("skipped…" in a CI log
+ * is too easy to miss). `SITE_URL` in the environment still overrides for
+ * previews and forks.
  */
-const SITE_URL = (process.env.SITE_URL ?? '').replace(/\/$/, '');
+const SITE_URL = (process.env.SITE_URL ?? 'https://gregale.dev').replace(/\/$/, '');
 
 /** Social preview card, if one has been added to `public/`. */
 const OG_IMAGE = 'og.png';
@@ -123,6 +123,45 @@ for (const route of ROUTES) {
   // unfurler, which ignores robots meta.
   if (!INDEXABLE.includes(route)) {
     perRoute.push('<meta name="robots" content="noindex, follow" />');
+  }
+
+  // Structured data, home page only: who the organisation is, what the
+  // software is, and that this site is its home. Serialised with `<`
+  // escaped so page content can never break out of the script element.
+  if (route === '/' && SITE_URL) {
+    const ld = {
+      '@context': 'https://schema.org',
+      '@graph': [
+        {
+          '@type': 'Organization',
+          '@id': `${SITE_URL}/#org`,
+          name: 'Gregale',
+          url: `${SITE_URL}/`,
+          logo: `${SITE_URL}/logo.png`,
+          sameAs: ['https://github.com/poyrazK/faas'],
+        },
+        {
+          '@type': 'WebSite',
+          '@id': `${SITE_URL}/#site`,
+          name: 'Gregale',
+          url: `${SITE_URL}/`,
+          publisher: { '@id': `${SITE_URL}/#org` },
+        },
+        {
+          '@type': 'SoftwareApplication',
+          name: 'Gregale',
+          applicationCategory: 'DeveloperApplication',
+          operatingSystem: 'Linux',
+          url: `${SITE_URL}/`,
+          description:
+            'Open-source serverless on Firecracker microVMs. Functions scale to zero when idle and wake from a snapshot in under 350 ms.',
+          softwareHelp: `${SITE_URL}/docs`,
+        },
+      ],
+    };
+    perRoute.push(
+      `<script type="application/ld+json">${JSON.stringify(ld).replaceAll('<', '\\u003c')}</script>`
+    );
   }
   if (perRoute.length) {
     doc = doc.replace('</head>', `  ${perRoute.join('\n    ')}\n  </head>`);
