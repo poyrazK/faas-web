@@ -26,13 +26,6 @@ security and privacy attestations (SOC 2 Type 1, ISO 27001, GDPR DPA).
 - `docs/faas_implementation_spec.md` §5.1 (audit event taxonomy), §11 (security hardening checklist), §12 (observability SLOs), §17 (known gaps register — GDPR G6 lives there).
 - `docs/adr/020-customer-secrets.md` (sealed secrets), `021-account-export-and-staged-deletion.md` (GDPR endpoints), `042-webhook-replay-protection.md` (replay dedupe), `058-cosign-deploy-time-enforcement.md` (code signing), `077-step-up-mfa.md`, `079-liveness-probe-restart-wedged-vm.md`.
 
-## Tracking
-
-The issue that drives this directory is
-[#755 — Compliance attestations: SOC 2 Type 1 + ISO 27001 + GDPR DPA](https://github.com/poyrazK/faas/issues/755).
-A full implementation plan lives at `$CLAUDE_JOB_DIR/tmp/755-plan/plan.md` and
-as a comment on that issue.
-
 ## Conventions
 
 - Every page that touches customer data must link back to one of the GDPR / DPA

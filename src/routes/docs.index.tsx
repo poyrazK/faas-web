@@ -115,8 +115,6 @@ function DocsIndex() {
         </section>
       ))}
 
-      {/* The docs here are a curated slice; the rest of the engineering
-          material stays in the repository, where its audience already is. */}
       <section>
         <SectionRule title="Beyond the guides" />
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -129,21 +127,6 @@ function DocsIndex() {
             <span className="text-xs leading-relaxed text-muted-foreground">
               The OpenAPI document is the contract — every operation, request shape, and error code
               the API answers with.
-            </span>
-          </a>
-          <a
-            href="https://github.com/poyrazK/faas"
-            target="_blank"
-            rel="noopener noreferrer"
-            className={CARD}
-          >
-            <CardHairline />
-            <span className="flex items-center gap-1.5 text-sm font-medium">
-              Source and internals
-              <ArrowUpRight className="h-3.5 w-3.5 text-muted-foreground transition-colors group-hover:text-foreground" />
-            </span>
-            <span className="text-xs leading-relaxed text-muted-foreground">
-              Architecture decisions, runbooks, and the code itself live in the repository.
             </span>
           </a>
         </div>

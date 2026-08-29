@@ -14,11 +14,9 @@ import { SteppedBars } from './shaders/stepped-bars';
  * four plans (free, hobby, pro, scale) and their quotas but no prices — the
  * console's plans page deliberately quotes nothing and links to the billing
  * portal instead. This section names the same four real plans; Enterprise is
- * a sales conversation, not a fifth API plan, so its CTA goes to the repo's
- * issue tracker — the project's actual contact channel.
+ * a sales conversation, not a fifth API plan, so its CTA opens the sales
+ * inbox.
  */
-
-const REPO = 'https://github.com/poyrazK/faas';
 
 interface Tier {
   name: string;
@@ -102,7 +100,7 @@ const TIERS: Tier[] = [
       'Security review & compliance',
     ],
     more: ['Committed-use discounts', 'Onboarding with our engineers'],
-    cta: { label: 'Contact us', href: `${REPO}/issues` },
+    cta: { label: 'Contact us', href: 'mailto:sales@gregale.dev' },
     rule: ['var(--mint-8)', 'var(--mint-11)'],
   },
 ];
