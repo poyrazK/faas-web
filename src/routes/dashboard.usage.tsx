@@ -97,6 +97,85 @@ function SpendCapPanel() {
   );
 }
 
+/**
+ * Where the month ends up if the pace holds. A linear projection over the
+ * metered figure — arithmetic, not a model, and labelled as such. Renders
+ * nothing until the period is the current calendar month and at least a
+ * full day has been metered; a projection from an hour of data is noise
+ * wearing a number.
+ */
+function ForecastPanel({
+  used,
+  included,
+  month,
+}: {
+  used: number;
+  included: number;
+  month: string | undefined;
+}) {
+  const now = new Date();
+  const [y, m] = (month ?? '').split('-').map(Number);
+  const isCurrentMonth = y === now.getUTCFullYear() && m === now.getUTCMonth() + 1;
+  const dayOfMonth = now.getUTCDate();
+  if (!isCurrentMonth || used <= 0 || dayOfMonth < 2) return null;
+
+  const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const projected = (used / dayOfMonth) * daysInMonth;
+  const overBy = projected - included;
+  const pctUsed = included > 0 ? Math.min(100, (used / included) * 100) : 0;
+  const pctProjected = included > 0 ? Math.min(100, (projected / included) * 100) : 0;
+
+  return (
+    <Panel
+      title="Trajectory"
+      description={`Linear projection from ${dayOfMonth} of ${daysInMonth} days.`}
+    >
+      <div className="flex flex-col gap-3">
+        <div
+          className="relative h-2 w-full overflow-hidden rounded-full bg-muted"
+          role="meter"
+          aria-valuenow={Math.round(pctProjected)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label="Projected share of allowance by month end"
+        >
+          {/* The ghost is the projection; the solid bar is what is real. */}
+          <div
+            className="absolute inset-y-0 left-0 rounded-full opacity-40"
+            style={{
+              width: `${pctProjected}%`,
+              background: overBy > 0 ? 'var(--status-warning)' : 'var(--brand)',
+            }}
+          />
+          <div
+            className="absolute inset-y-0 left-0 rounded-full"
+            style={{
+              width: `${pctUsed}%`,
+              background: overBy > 0 ? 'var(--status-warning)' : 'var(--brand)',
+            }}
+          />
+        </div>
+        <p className="text-xs text-muted-foreground">
+          At this pace: ~
+          <span className="text-foreground [font-variant-numeric:tabular-nums]">
+            {formatNumber(projected)}
+          </span>{' '}
+          GB-hours by month end
+          {overBy > 0 ? (
+            <span style={{ color: 'var(--status-warning)' }}>
+              {' '}
+              — ≈{formatNumber(overBy)} past the allowance. The spend cap below decides what happens
+              then.
+            </span>
+          ) : (
+            ' — inside the allowance.'
+          )}
+        </p>
+      </div>
+    </Panel>
+  );
+}
+
 /** The month, app by app — the detail the roll-up hides. */
 function PerAppUsagePanel() {
   const q = usePerAppUsage();
@@ -113,6 +192,7 @@ function PerAppUsagePanel() {
       }))
       .sort((a, b) => b.gbHours - a.gbHours);
   }, [q.data, apps]);
+  const totalGbHours = useMemo(() => rows.reduce((sum, r) => sum + r.gbHours, 0), [rows]);
   const phase = queryPhase({ error: q.error, loading: q.isPending, isEmpty: rows.length === 0 });
 
   return (
@@ -135,6 +215,9 @@ function PerAppUsagePanel() {
                 <th scope="col" className="label-mono px-5 py-2.5 text-right text-muted-foreground">
                   GB-hours
                 </th>
+                <th scope="col" className="label-mono px-5 py-2.5 text-left text-muted-foreground">
+                  Share
+                </th>
                 <th scope="col" className="label-mono px-5 py-2.5 text-right text-muted-foreground">
                   Requests
                 </th>
@@ -152,6 +235,23 @@ function PerAppUsagePanel() {
                   <td className="px-5 py-2.5 font-mono text-xs">{r.slug}</td>
                   <td className="px-5 py-2.5 text-right [font-variant-numeric:tabular-nums]">
                     {r.gbHours.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                  </td>
+                  <td className="px-5 py-2.5">
+                    {/* Share of the month's compute — the ranking, visible. */}
+                    <div className="flex items-center gap-2">
+                      <div className="h-1.5 w-20 overflow-hidden rounded-full bg-muted">
+                        <div
+                          className="h-full rounded-full"
+                          style={{
+                            width: `${totalGbHours > 0 ? (r.gbHours / totalGbHours) * 100 : 0}%`,
+                            background: 'var(--brand)',
+                          }}
+                        />
+                      </div>
+                      <span className="text-xs text-muted-foreground [font-variant-numeric:tabular-nums]">
+                        {totalGbHours > 0 ? Math.round((r.gbHours / totalGbHours) * 100) : 0}%
+                      </span>
+                    </div>
                   </td>
                   <td className="px-5 py-2.5 text-right [font-variant-numeric:tabular-nums]">
                     {r.requests.toLocaleString()}
@@ -240,6 +340,7 @@ function UsagePage() {
             <StatTile label="Apps" value={String(account?.app_count ?? '—')} />
           </div>
 
+          <ForecastPanel used={used} included={included} month={data?.month} />
           <PerAppUsagePanel />
           <SpendCapPanel />
 
