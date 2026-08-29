@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'motion/react';
 import { Link, useRouterState } from '@tanstack/react-router';
 import { ArrowRight, Menu, Xmark } from 'iconoir-react';
 import { SweepLink } from '@/components/sweep-link';

@@ -2,9 +2,19 @@ import { useMemo, useState } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
 import { PageHeader, Panel, StatTile } from '@/components/dashboard/primitives';
+import { FIELD, Textarea } from '@/components/ui/field';
+import { Pill } from '@/components/dashboard/resource-table';
 import { ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
-import { useDeadLetter, useQueuePeek, useQueueSend, useQueueState } from '@/lib/api/queries';
+import {
+  useDeadLetter,
+  useQueuePeek,
+  useQueueSend,
+  useQueueState,
+  useCancelDelayedTask,
+  useDelayedTask,
+  useScheduleDelayedTask,
+} from '@/lib/api/queries';
 import { formatRelative } from '@/lib/mock-data';
 import { useToast } from '@/components/ui/toast';
 import { errorMessage } from '@/lib/api/errors';
@@ -79,8 +89,8 @@ function QueueSendPanel({ slug }: { slug: string }) {
       title="Send a message"
       description="Publish a JSON object to this app's FIFO queue. The queue consumer remains responsible for receiving and acknowledging work."
       actions={
-        <Button size="sm" onClick={submit} disabled={send.isPending}>
-          {send.isPending ? 'Sending…' : 'Send message'}
+        <Button size="sm" onClick={submit} busy={send.isPending}>
+          Send message
         </Button>
       }
     >
@@ -103,6 +113,139 @@ function QueueSendPanel({ slug }: { slug: string }) {
  * the two can never drift into two different implementations of the
  * same resource.
  */
+
+/**
+ * One-shot future work — `/v1/apps/{slug}/delayed-tasks`. The API reads
+ * tasks by id only (there is no list endpoint), so the console shows the
+ * tasks scheduled from this session and refreshes each by id; the copy says
+ * so rather than pretending this is the full ledger.
+ */
+function DelayedTaskRow({ id, onGone }: { id: string; onGone: () => void }) {
+  const { toast } = useToast();
+  const task = useDelayedTask(id, { poll: true });
+  const cancel = useCancelDelayedTask();
+  const t = task.data;
+  return (
+    <li className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2.5 text-xs">
+      <span className="font-mono text-muted-foreground">{id.slice(0, 12)}</span>
+      {t ? (
+        <>
+          <Pill
+            label={t.state ?? 'unknown'}
+            color={
+              t.state === 'pending'
+                ? 'var(--status-warning)'
+                : t.state === 'completed'
+                  ? 'var(--status-good)'
+                  : 'var(--chart-muted)'
+            }
+          />
+          <span className="text-muted-foreground">
+            fires {new Date(t.scheduled_at).toLocaleString()}
+          </span>
+        </>
+      ) : (
+        <span className="text-muted-foreground">…</span>
+      )}
+      {t?.state === 'pending' && (
+        <button
+          type="button"
+          onClick={() =>
+            void cancel
+              .mutateAsync(id)
+              .then(() => {
+                toast({ kind: 'success', title: 'Task cancelled' });
+                onGone();
+              })
+              .catch((err: unknown) =>
+                toast({ kind: 'error', title: 'Could not cancel', description: errorMessage(err) })
+              )
+          }
+          className="pressable ml-auto rounded text-muted-foreground hover:text-foreground"
+        >
+          Cancel
+        </button>
+      )}
+    </li>
+  );
+}
+
+function DelayedTasksPanel({ slug }: { slug: string }) {
+  const { toast } = useToast();
+  const schedule = useScheduleDelayedTask(slug);
+  const [at, setAt] = useState('');
+  const [payload, setPayload] = useState('{}');
+  const [taskIds, setTaskIds] = useState<string[]>([]);
+
+  const submit = () => {
+    if (!at || schedule.isPending) return;
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(payload) as Record<string, unknown>;
+    } catch {
+      toast({ kind: 'error', title: 'Payload must be a JSON object' });
+      return;
+    }
+    void schedule
+      .mutateAsync({ scheduledAt: new Date(at).toISOString(), payload: parsed })
+      .then((t) => {
+        setTaskIds((ids) => [t.id, ...ids]);
+        toast({
+          kind: 'success',
+          title: 'Task scheduled',
+          description: `Fires ${new Date(t.scheduled_at).toLocaleString()}.`,
+        });
+      })
+      .catch((err: unknown) =>
+        toast({ kind: 'error', title: 'Could not schedule', description: errorMessage(err) })
+      );
+  };
+
+  return (
+    <Panel
+      title="Delayed tasks"
+      description="One-shot work fired at a chosen time. The API reads tasks by id, so this lists what was scheduled from this session."
+    >
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="flex flex-col gap-1.5">
+          <span className="label-mono text-muted-foreground">Fire at</span>
+          <input
+            type="datetime-local"
+            value={at}
+            onChange={(e) => setAt(e.target.value)}
+            className={FIELD}
+          />
+        </label>
+        <label className="flex min-w-56 flex-1 flex-col gap-1.5">
+          <span className="label-mono text-muted-foreground">JSON payload</span>
+          <Textarea
+            value={payload}
+            onChange={(e) => setPayload(e.target.value)}
+            rows={2}
+            spellCheck={false}
+            className="min-h-9 font-mono"
+          />
+        </label>
+        <Button size="sm" onClick={submit} disabled={!at} busy={schedule.isPending}>
+          Schedule
+        </Button>
+      </div>
+
+      {taskIds.length > 0 && (
+        <ul className="mt-4 flex flex-col divide-y divide-border border-t border-border">
+          {taskIds.map((id) => (
+            <DelayedTaskRow
+              key={id}
+              id={id}
+              onGone={() => setTaskIds((ids) => ids.filter((x) => x !== id))}
+            />
+          ))}
+        </ul>
+      )}
+    </Panel>
+  );
+}
+
 export function QueuesBody({ slug }: { slug: string }) {
   const state = useQueueState(slug);
   const peek = useQueuePeek(slug);
@@ -182,6 +325,7 @@ export function QueuesBody({ slug }: { slug: string }) {
       </div>
 
       <QueueSendPanel slug={slug} />
+      <DelayedTasksPanel slug={slug} />
 
       <Panel title="Pending">
         <ResourceTable
@@ -216,7 +360,7 @@ function QueuesPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="Queue Jobs"
+        title="Queues"
         description="One FIFO queue per app. Messages here are peeked, not received — browsing never claims work from your consumers."
         actions={<AppSelect slug={slug} onSelect={select} apps={apps} />}
       />

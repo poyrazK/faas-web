@@ -25,6 +25,9 @@ const router = createRouter({
   defaultPendingComponent: RoutePending,
   defaultPendingMs: 200,
   defaultPendingMinMs: 400,
+  // Back/forward returns to where the reader was — a deep-scrolled table into
+  // a detail page and back should not land mid-page or at the top.
+  scrollRestoration: true,
 });
 
 declare module '@tanstack/react-router' {

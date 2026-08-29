@@ -1,4 +1,4 @@
-import { motion, useReducedMotion } from 'framer-motion';
+import { motion, useReducedMotion } from 'motion/react';
 import { ArrowRight } from 'iconoir-react';
 import { DotCutCanvas } from '@/components/dotcut/dot-cut-canvas';
 import type { Scene } from '@/components/dotcut/scenes';

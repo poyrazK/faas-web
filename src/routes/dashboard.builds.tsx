@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { useToast } from '@/components/ui/toast';
 import { errorMessage } from '@/lib/api/errors';
-import { useBuilds, useFetchBuildSbom } from '@/lib/api/queries';
+import { useBuilds, useFetchBuildSbom, useBuildProvenance } from '@/lib/api/queries';
 import { useLogStream } from '@/lib/api/logs';
 import { LogView } from '@/components/dashboard/log-view';
 import { formatRelative } from '@/lib/mock-data';
@@ -78,6 +78,9 @@ function BuildDrawer({ build, onClose }: { build: BuildRow | null; onClose: () =
     [build?.deploymentId]
   );
   const { lines, status } = useLogStream(source, build !== null);
+  // Provenance: what produced this image — toolchain versions, digests, and
+  // the exact source identity. 404s quietly for builds that predate it.
+  const provenance = useBuildProvenance(build?.id ?? '');
 
   const download = () => {
     if (!build) return;
@@ -112,11 +115,11 @@ function BuildDrawer({ build, onClose }: { build: BuildRow | null; onClose: () =
             size="sm"
             variant="outline"
             className="gap-1.5"
-            disabled={sbom.isPending}
+            busy={sbom.isPending}
             onClick={download}
           >
             <Download className="h-3.5 w-3.5" />
-            {sbom.isPending ? 'Preparing…' : 'Download SBOM'}
+            Download SBOM
           </Button>
         ) : undefined
       }
@@ -138,6 +141,34 @@ function BuildDrawer({ build, onClose }: { build: BuildRow | null; onClose: () =
               </div>
             ))}
           </dl>
+
+          {/* Provenance: what produced this image — toolchain versions,
+              digests, source identity. Absent quietly for builds that
+              predate it. */}
+          {provenance.data && (
+            <div>
+              <p className="label-mono mb-2 text-muted-foreground">Provenance</p>
+              <dl className="grid gap-x-6 gap-y-2 sm:grid-cols-2">
+                {(
+                  [
+                    ['Commit', provenance.data.commit_sha?.slice(0, 12)],
+                    ['Source sha256', provenance.data.source_sha256?.slice(0, 16)],
+                    ['BuildKit', provenance.data.buildkit_version],
+                    ['Railpack', provenance.data.railpack_version],
+                    ['Base image', provenance.data.base_digest?.slice(0, 22)],
+                    ['Builder node', provenance.data.builder_node_id],
+                  ] as const
+                )
+                  .filter(([, v]) => v)
+                  .map(([k, v]) => (
+                    <div key={k} className="flex min-w-0 flex-col gap-0.5">
+                      <dt className="label-mono text-muted-foreground">{k}</dt>
+                      <dd className="truncate font-mono text-xs">{v}</dd>
+                    </div>
+                  ))}
+              </dl>
+            </div>
+          )}
 
           <div>
             <p className="label-mono mb-2 text-muted-foreground">Output</p>

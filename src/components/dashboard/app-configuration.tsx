@@ -1,13 +1,24 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
+import { FIELD as BASE_FIELD } from '@/components/ui/field';
 import { Switch } from '@/components/ui/switch';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
 import { errorMessage } from '@/lib/api/errors';
-import { useApp, useDeleteApp, useRenameApp, useUpdateApp, type App } from '@/lib/api/queries';
+import {
+  useApp,
+  useAppDiff,
+  useDeleteApp,
+  useRenameApp,
+  useUpdateApp,
+  type App,
+} from '@/lib/api/queries';
+import { useUnsavedGuard } from '@/lib/use-unsaved-guard';
+import { Modal } from '@/components/ui/modal';
 import { ErrorState, LoadingState, Panel, UnreachableState, queryPhase } from './primitives';
 import { RegistryCredentialsPanel } from './app-core-panels';
+import { SupplyChainPanel } from './supply-chain-panel';
 
 /**
  * The app's own settings, editable.
@@ -35,6 +46,18 @@ type Draft = {
   route_metrics_enabled: boolean;
   maintenance_mode: boolean;
   egress_allowlist: string;
+  require_authn: boolean;
+  cors_default_enabled: boolean;
+  cors_default_origins: string;
+  eviction_priority: 'best_effort' | 'reserved';
+  overflow_node: string;
+  autoscale_target_cpu_pct: number;
+  warm_snapshot_enabled: boolean;
+  warm_snapshot_min_ms: number;
+  warm_snapshot_min_requests: number;
+  public_auth_mode: 'open' | 'bearer' | 'basic';
+  public_auth_user: string;
+  public_auth_pass: string;
 };
 
 function draftFrom(app: App): Draft {
@@ -49,11 +72,23 @@ function draftFrom(app: App): Draft {
     route_metrics_enabled: app.route_metrics_enabled ?? false,
     maintenance_mode: app.maintenance_mode ?? false,
     egress_allowlist: (app.egress_allowlist ?? []).join('\n'),
+    require_authn: app.require_authn ?? false,
+    cors_default_enabled: app.cors_default_enabled ?? false,
+    cors_default_origins: (app.cors_default_origins ?? []).join('\n'),
+    eviction_priority: (app.eviction_priority ?? 'best_effort') as 'best_effort' | 'reserved',
+    overflow_node: app.overflow_node ?? '',
+    autoscale_target_cpu_pct: app.autoscale_target_cpu_pct ?? 0,
+    warm_snapshot_enabled: app.warm_snapshot_enabled ?? false,
+    warm_snapshot_min_ms: app.warm_snapshot_min_ms ?? 1000,
+    warm_snapshot_min_requests: app.warm_snapshot_min_requests ?? 1,
+    // Write-only: the mode reads back, credentials never do.
+    public_auth_mode: (app.public_auth?.mode ?? 'open') as 'open' | 'bearer' | 'basic',
+    public_auth_user: '',
+    public_auth_pass: '',
   };
 }
 
-const FIELD =
-  'h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-brand/50 [font-variant-numeric:tabular-nums]';
+const FIELD = `${BASE_FIELD} w-full [font-variant-numeric:tabular-nums]`;
 
 function NumberField({
   label,
@@ -112,7 +147,10 @@ function Toggle({
 
 function ConfigForm({ app }: { app: App }) {
   const { toast } = useToast();
+  const confirm = useConfirm();
   const update = useUpdateApp(app.slug);
+  const diff = useAppDiff(app.slug);
+  const [preview, setPreview] = useState<Awaited<ReturnType<typeof diff.mutateAsync>> | null>(null);
   const [draft, setDraft] = useState<Draft>(() => draftFrom(app));
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
     setDraft((d) => ({ ...d, [key]: value }));
@@ -122,20 +160,49 @@ function ConfigForm({ app }: { app: App }) {
   const changes = useMemo(() => {
     const base = draftFrom(app);
     const out: Record<string, unknown> = {};
+    const listKeys = new Set(['egress_allowlist', 'cors_default_origins']);
+    const authKeys = new Set(['public_auth_mode', 'public_auth_user', 'public_auth_pass']);
     for (const key of Object.keys(draft) as (keyof Draft)[]) {
+      if (authKeys.has(key)) continue;
       if (draft[key] !== base[key]) {
-        out[key] =
-          key === 'egress_allowlist'
-            ? draft.egress_allowlist
-                .split('\n')
-                .map((l) => l.trim())
-                .filter(Boolean)
-            : draft[key];
+        out[key] = listKeys.has(key)
+          ? String(draft[key])
+              .split('\n')
+              .map((l) => l.trim())
+              .filter(Boolean)
+          : draft[key];
       }
+    }
+    // public_auth is one atomic block: emitted when the mode changes, or
+    // when basic credentials are (re)entered. Credentials never read back.
+    const authDirty =
+      draft.public_auth_mode !== base.public_auth_mode ||
+      (draft.public_auth_mode === 'basic' &&
+        Boolean(draft.public_auth_user || draft.public_auth_pass));
+    if (authDirty) {
+      out.public_auth =
+        draft.public_auth_mode === 'basic'
+          ? {
+              mode: 'basic',
+              basic_user: draft.public_auth_user,
+              basic_pass: draft.public_auth_pass,
+            }
+          : { mode: draft.public_auth_mode };
     }
     return out;
   }, [app, draft]);
   const dirty = Object.keys(changes).length > 0;
+
+  // Navigating away with unsaved edits asks first — in the same dialog every
+  // other destructive act uses — instead of silently discarding them.
+  useUnsavedGuard(dirty, () =>
+    confirm({
+      title: 'Discard unsaved changes?',
+      description: 'The runtime settings you edited have not been saved.',
+      confirmLabel: 'Discard changes',
+      destructive: true,
+    })
+  );
 
   const save = () => {
     void update
@@ -160,9 +227,34 @@ function ConfigForm({ app }: { app: App }) {
         title="Runtime"
         description="Applied on the next wake. A running instance keeps what it booted with."
         actions={
-          <Button size="sm" disabled={!dirty || update.isPending} onClick={save}>
-            {update.isPending ? 'Saving…' : 'Save changes'}
-          </Button>
+          <>
+            {/* The CLI's deploy --diff, one click before Save: the server
+                says exactly what this PATCH would change, and what it would
+                break, before anything is written. */}
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!dirty}
+              busy={diff.isPending}
+              onClick={() =>
+                void diff
+                  .mutateAsync(changes)
+                  .then(setPreview)
+                  .catch((err: unknown) =>
+                    toast({
+                      kind: 'error',
+                      title: 'Could not preview',
+                      description: errorMessage(err),
+                    })
+                  )
+              }
+            >
+              Preview
+            </Button>
+            <Button size="sm" disabled={!dirty} busy={update.isPending} onClick={save}>
+              Save changes
+            </Button>
+          </>
         }
       >
         <div className="grid gap-5 sm:grid-cols-2">
@@ -175,7 +267,7 @@ function ConfigForm({ app }: { app: App }) {
                   type="button"
                   aria-pressed={draft.ram_mb === mb}
                   onClick={() => set('ram_mb', mb)}
-                  className={`h-9 rounded-md border px-3 font-mono text-xs transition-colors ${
+                  className={`h-9 rounded-md border px-3 font-mono text-xs pressable ${
                     draft.ram_mb === mb
                       ? 'border-brand bg-brand/10 text-foreground'
                       : 'border-border text-muted-foreground hover:text-foreground'
@@ -218,6 +310,52 @@ function ConfigForm({ app }: { app: App }) {
             min={1}
             onChange={(n) => set('autoscale_target_rps', n)}
           />
+          <NumberField
+            label="Autoscale target (CPU %)"
+            hint="Scale up when an instance sustains this CPU. 0 disables. Pro and Scale."
+            value={draft.autoscale_target_cpu_pct}
+            min={0}
+            onChange={(n) => set('autoscale_target_cpu_pct', Math.min(100, n))}
+          />
+
+          <label className="flex flex-col gap-1.5">
+            <span className="label-mono text-muted-foreground">Eviction tier</span>
+            <div className="flex gap-1.5">
+              {(['best_effort', 'reserved'] as const).map((tier) => (
+                <button
+                  key={tier}
+                  type="button"
+                  aria-pressed={draft.eviction_priority === tier}
+                  onClick={() => set('eviction_priority', tier)}
+                  className={`pressable h-9 rounded-md border px-3 font-mono text-xs ${
+                    draft.eviction_priority === tier
+                      ? 'border-brand bg-brand/10 text-foreground'
+                      : 'border-border text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {tier === 'best_effort' ? 'best effort' : 'reserved'}
+                </button>
+              ))}
+            </div>
+            <span className="text-xs text-muted-foreground">
+              Reserved apps are parked last under cross-account RAM pressure. Paid plans, capped per
+              account.
+            </span>
+          </label>
+
+          <label className="flex flex-col gap-1.5">
+            <span className="label-mono text-muted-foreground">Overflow node</span>
+            <input
+              value={draft.overflow_node}
+              onChange={(e) => set('overflow_node', e.target.value)}
+              placeholder="fra-metal-2"
+              spellCheck={false}
+              className={FIELD}
+            />
+            <span className="text-xs text-muted-foreground">
+              Preferred spill target under node pressure. Empty leaves placement to the scheduler.
+            </span>
+          </label>
           <label className="flex flex-col gap-1.5 sm:col-span-2">
             <span className="label-mono text-muted-foreground">Egress allowlist</span>
             <textarea
@@ -262,8 +400,161 @@ function ConfigForm({ app }: { app: App }) {
             checked={draft.maintenance_mode}
             onChange={(on) => set('maintenance_mode', on)}
           />
+          <Toggle
+            label="Require deploy tokens"
+            hint="Every deployment call must carry a deploy token. Pro and Scale."
+            checked={draft.require_authn}
+            onChange={(on) => set('require_authn', on)}
+          />
+          <Toggle
+            label="Warm snapshots"
+            hint="Keep a second, post-traffic snapshot tier so a wake restores an already-warm process. Pro and Scale."
+            checked={draft.warm_snapshot_enabled}
+            onChange={(on) => set('warm_snapshot_enabled', on)}
+          />
+          {draft.warm_snapshot_enabled && (
+            <li className="grid gap-5 py-4 sm:grid-cols-2">
+              <NumberField
+                label="Warm capture after (ms)"
+                hint="Time since first-ready before the warm tier is captured. 100–60,000."
+                value={draft.warm_snapshot_min_ms}
+                min={100}
+                onChange={(n) => set('warm_snapshot_min_ms', Math.min(60000, n))}
+              />
+              <NumberField
+                label="Warm capture after (requests)"
+                hint="Requests served before the warm tier is captured. 1–100."
+                value={draft.warm_snapshot_min_requests}
+                min={1}
+                onChange={(n) => set('warm_snapshot_min_requests', Math.min(100, n))}
+              />
+            </li>
+          )}
+          <Toggle
+            label="Default CORS headers"
+            hint="Answer preflights at the edge with the origins below, before the app wakes."
+            checked={draft.cors_default_enabled}
+            onChange={(on) => set('cors_default_enabled', on)}
+          />
+          {draft.cors_default_enabled && (
+            <li className="py-4">
+              <label className="flex flex-col gap-1.5">
+                <span className="label-mono text-muted-foreground">Allowed origins</span>
+                <textarea
+                  value={draft.cors_default_origins}
+                  onChange={(e) => set('cors_default_origins', e.target.value)}
+                  rows={2}
+                  spellCheck={false}
+                  placeholder={'https://app.example.com'}
+                  className="rounded-md border border-border bg-background px-3 py-2 font-mono text-sm outline-none focus:border-brand/50"
+                />
+                <span className="text-xs text-muted-foreground">One origin per line.</span>
+              </label>
+            </li>
+          )}
+          <li className="py-4">
+            <p className="text-sm font-medium">Public URL auth</p>
+            <p className="mt-1 max-w-lg text-xs leading-relaxed text-muted-foreground">
+              Gate the app's public URL before it wakes: bearer needs Hobby+, basic needs Pro+.
+              Basic credentials are sealed at save and never shown again.
+            </p>
+            <div className="mt-3 flex flex-wrap items-end gap-3">
+              <div className="flex gap-1.5">
+                {(['open', 'bearer', 'basic'] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    aria-pressed={draft.public_auth_mode === mode}
+                    onClick={() => set('public_auth_mode', mode)}
+                    className={`pressable h-9 rounded-md border px-3 font-mono text-xs ${
+                      draft.public_auth_mode === mode
+                        ? 'border-brand bg-brand/10 text-foreground'
+                        : 'border-border text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {mode}
+                  </button>
+                ))}
+              </div>
+              {draft.public_auth_mode === 'basic' && (
+                <>
+                  <input
+                    value={draft.public_auth_user}
+                    onChange={(e) => set('public_auth_user', e.target.value)}
+                    placeholder="username"
+                    autoComplete="off"
+                    className={FIELD}
+                  />
+                  <input
+                    type="password"
+                    value={draft.public_auth_pass}
+                    onChange={(e) => set('public_auth_pass', e.target.value)}
+                    placeholder="password"
+                    autoComplete="new-password"
+                    className={FIELD}
+                  />
+                </>
+              )}
+            </div>
+          </li>
         </ul>
       </Panel>
+      <Modal
+        open={preview !== null}
+        onClose={() => setPreview(null)}
+        title="What this change would do"
+        description={preview ? `Plan ${preview.plan ?? ''} · ${app.slug}` : undefined}
+        width="max-w-xl"
+      >
+        {preview && (
+          <div className="flex flex-col gap-4">
+            {(preview.diff?.changes?.length ?? 0) === 0 ? (
+              <p className="text-sm text-muted-foreground">No effective changes.</p>
+            ) : (
+              <ul className="flex flex-col divide-y divide-border">
+                {preview.diff?.changes?.map((c) => (
+                  <li
+                    key={c.field}
+                    className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2 text-xs"
+                  >
+                    <span className="w-44 shrink-0 font-mono">{c.field}</span>
+                    <span className="text-muted-foreground line-through">
+                      {String(c.before ?? '—')}
+                    </span>
+                    <span aria-hidden className="text-muted-foreground/50">
+                      →
+                    </span>
+                    <span className="text-foreground">{String(c.after ?? '—')}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {(preview.diff?.breaks?.length ?? 0) > 0 && (
+              <div>
+                <p className="label-mono mb-1.5" style={{ color: 'var(--status-warning)' }}>
+                  Breaking
+                </p>
+                <ul className="flex flex-col gap-1">
+                  {preview.diff?.breaks?.map((b) => (
+                    <li
+                      key={String(b)}
+                      className="text-xs"
+                      style={{ color: 'var(--status-warning)' }}
+                    >
+                      {String(b)}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {preview.blocking && (
+              <p className="text-xs" style={{ color: 'var(--status-critical)' }}>
+                This change is blocking — the deploy path would refuse it.
+              </p>
+            )}
+          </div>
+        )}
+      </Modal>
     </>
   );
 }
@@ -318,8 +609,8 @@ function RenamePanel({ app }: { app: App }) {
             className={FIELD}
           />
         </label>
-        <Button type="submit" size="sm" variant="outline" disabled={!valid || rename.isPending}>
-          {rename.isPending ? 'Renaming…' : 'Rename'}
+        <Button type="submit" size="sm" variant="outline" disabled={!valid} busy={rename.isPending}>
+          Rename
         </Button>
       </form>
     </Panel>
@@ -349,7 +640,7 @@ function DangerZone({ app }: { app: App }) {
         <Button
           size="sm"
           variant="destructive"
-          disabled={remove.isPending}
+          busy={remove.isPending}
           onClick={async () => {
             if (
               !(await confirm({
@@ -373,7 +664,7 @@ function DangerZone({ app }: { app: App }) {
               );
           }}
         >
-          {remove.isPending ? 'Deleting…' : 'Delete app'}
+          Delete app
         </Button>
       </div>
     </Panel>
@@ -406,6 +697,7 @@ export function AppConfiguration({ slug }: { slug: string }) {
       </Panel>
       {/* Keyed on the id so a rename or a fresh read reseeds the draft. */}
       <ConfigForm key={`${data.id}:${data.slug}`} app={data} />
+      <SupplyChainPanel slug={data.slug} />
       <RegistryCredentialsPanel slug={data.slug} />
       <RenamePanel key={`rename:${data.slug}`} app={data} />
       <DangerZone app={data} />

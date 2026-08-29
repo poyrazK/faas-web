@@ -7,6 +7,7 @@ import {
   HardDrive,
   Key,
   Server,
+  Upload,
   ViewGrid,
   Package,
   Coins,
@@ -52,6 +53,7 @@ export const NAV_GROUPS: NavGroup[] = [
     title: 'Build',
     items: [
       { to: '/dashboard/workflows', label: 'Apps', icon: WorkflowIcon },
+      { to: '/dashboard/import', label: 'Import', icon: Upload },
       { to: '/dashboard/crons', label: 'Cron Jobs', icon: Timer },
       { to: '/dashboard/workers', label: 'Instances', icon: Server },
       { to: '/dashboard/deployments', label: 'Deployments', icon: Rocket },
@@ -111,7 +113,7 @@ export const APP_TABS: { tab: string; segment: string }[] = [
   { tab: 'Logs', segment: 'logs' },
   { tab: 'Routes', segment: 'apis' },
   { tab: 'Secrets', segment: 'secrets' },
-  { tab: 'Env', segment: 'env' },
+  { tab: 'Env vars', segment: 'env' },
   { tab: 'Queues', segment: 'queues' },
   { tab: 'Upstreams', segment: 'databases' },
   { tab: 'Alerts', segment: 'alerts' },
@@ -119,20 +121,12 @@ export const APP_TABS: { tab: string; segment: string }[] = [
   { tab: 'Edge rules', segment: 'edge-rules' },
 ];
 
-const APP_TAB_LABELS: Record<string, string> = {
-  metrics: 'Metrics',
-  logs: 'Logs',
-  apis: 'APIs',
-  secrets: 'Secrets',
-  env: 'Env Vars',
-  queues: 'Queue Jobs',
-  databases: 'Upstreams',
-  alerts: 'Alerts',
-  webhooks: 'Webhooks',
-};
-
 export const SECTION_LABELS: Record<string, string> = {
-  ...APP_TAB_LABELS,
+  // Derived from APP_TABS, so the breadcrumb, the ⌘K palette, and the app
+  // page's tab strip can never call the same page three different names —
+  // they used to ("Routes" vs "APIs", "Env" vs "Env Vars", and `edge-rules`
+  // was missing entirely).
+  ...Object.fromEntries(APP_TABS.map((t) => [t.segment, t.tab])),
   ...Object.fromEntries(
     NAV_ITEMS.filter((i) => i.to !== '/dashboard').map((i) => [i.to.split('/').pop()!, i.label])
   ),

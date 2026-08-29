@@ -197,7 +197,7 @@ export function ChipSet<T extends string>({
               aria-pressed={on}
               onClick={() => onChange(on ? value.filter((x) => x !== opt) : [...value, opt])}
               className={cn(
-                'h-8 rounded-md border px-2.5 font-mono text-xs transition-colors',
+                'h-8 rounded-md border px-2.5 font-mono text-xs pressable',
                 on
                   ? 'border-brand bg-brand/10 text-foreground'
                   : 'border-border text-muted-foreground hover:text-foreground'

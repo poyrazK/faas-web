@@ -11,9 +11,13 @@ npm run check      # typecheck + lint + format check
 npm run build      # the real gate; `build` runs tsc first
 ```
 
-`npm run lint` currently reports **8 warnings and 0 errors**. Those warnings are
+`npm run lint` currently reports **7 warnings and 0 errors**. Those warnings are
 known and deliberate (see the comment block in `eslint.config.js`) — a change
-should not add to that count, and does not need to reduce it.
+should not add to that count, and does not need to reduce it. The script now
+enforces the ceiling (`--max-warnings 8`), so the soft ratchet fails loudly
+instead of drifting. The theming rules (no literal hex, no `dark:` in console
+components) are pinned by `src/lib/conventions.test.ts`, and the dev mock's
+paths are checked against `api/openapi.yaml` by `src/lib/mock-spec-drift.test.ts`.
 
 ## Gotchas
 

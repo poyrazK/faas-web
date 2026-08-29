@@ -8,6 +8,7 @@ import {
 import { useLogStream } from '@/lib/api/logs';
 import { cn } from '@/lib/utils';
 import { LogView } from './log-view';
+import { ProgressEdge } from './progress-edge';
 
 type StepState = 'pending' | 'active' | 'done' | 'failed';
 
@@ -93,12 +94,7 @@ export function DeploymentProgress({
 
   return (
     <section className="overflow-hidden rounded-xl border border-border bg-card">
-      <div className="h-0.5 w-full bg-muted">
-        <div
-          className="h-full bg-brand transition-[width] duration-500"
-          style={{ width: `${progress}%` }}
-        />
-      </div>
+      <ProgressEdge progress={progress} state={live ? 'done' : failed ? 'failed' : 'running'} />
 
       <div className="p-5">
         <div className="flex items-start justify-between gap-4">

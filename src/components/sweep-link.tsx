@@ -11,7 +11,15 @@ import { useGlimm, type SweepOptions } from 'glimm/react';
  */
 
 /** Destinations that warrant a sweep. Keeps TanStack's typed `to` happy. */
-export type SweepTo = '/' | '/login' | '/signup' | '/dashboard' | '/onboarding';
+export type SweepTo =
+  | '/'
+  | '/login'
+  | '/signup'
+  | '/dashboard'
+  // Onboarding can hand off straight into the new-app wizard — the same
+  // setup-to-console switch as '/dashboard', landing one page deeper.
+  | '/dashboard/workflows/new'
+  | '/onboarding';
 
 type SweepLinkProps = Omit<ComponentProps<typeof Link>, 'to'> & {
   to: SweepTo;

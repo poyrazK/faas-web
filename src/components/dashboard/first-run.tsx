@@ -1,9 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
 import { Link } from '@tanstack/react-router';
-import { Check, Copy, NavArrowRight } from 'iconoir-react';
+import { NavArrowRight } from 'iconoir-react';
 import { INSTALL_COMMAND } from '@/components/landing/install-command';
+import { CopyIconButton } from '@/components/ui/copy-button';
 import { Panel } from './primitives';
-import { cn } from '@/lib/utils';
 
 /**
  * What the console says to an account with nothing in it.
@@ -36,42 +35,6 @@ const STEPS: { command: string; caption: string }[] = [
   },
 ];
 
-function CopyButton({ command }: { command: string }) {
-  const [copied, setCopied] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => void (timer.current && clearTimeout(timer.current)), []);
-
-  return (
-    <button
-      type="button"
-      aria-label={`Copy: ${command}`}
-      onClick={() => {
-        void navigator.clipboard
-          .writeText(command)
-          .then(() => {
-            setCopied(true);
-            if (timer.current) clearTimeout(timer.current);
-            timer.current = setTimeout(() => setCopied(false), 1800);
-          })
-          // Clipboard access can be refused; the command is on screen to be
-          // read either way, so there is nothing to report.
-          .catch(() => {});
-      }}
-      className={cn(
-        'flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors',
-        copied
-          ? 'bg-brand-muted text-brand'
-          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-      )}
-    >
-      {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-      <span aria-live="polite" className="sr-only">
-        {copied ? 'Copied' : ''}
-      </span>
-    </button>
-  );
-}
-
 export function FirstRun() {
   return (
     <Panel lit padded={false} title="Deploy your first app">
@@ -94,7 +57,7 @@ export function FirstRun() {
                   $
                 </span>
                 <code className="truncate font-mono text-sm text-foreground">{step.command}</code>
-                <CopyButton command={step.command} />
+                <CopyIconButton text={step.command} label={step.command} />
               </div>
               <p className="text-xs text-muted-foreground">{step.caption}</p>
             </div>

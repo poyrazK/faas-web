@@ -1,0 +1,55 @@
+# Gregale
+
+> Gregale is a serverless platform (FaaS) that runs functions in Firecracker microVMs on bare metal in the EU. Apps scale to zero when idle — holding no memory at all — and wake from a VM snapshot in under 350 ms when a request arrives. Deploy with one CLI command from source or any OCI image.
+
+Gregale is CLI-first (`gregale deploy`), with a full web console for
+everything the API can do.
+
+Key facts:
+
+- Isolation: every instance is a Firecracker microVM, not a container in a
+  shared kernel. Cold starts are snapshot restores, p95 under 350 ms.
+- Scale to zero: idle apps are parked and hold zero RAM; you pay only for
+  GB-hours actually resident. Billing is metered per app.
+- Runtimes: Node 24, Python 3.13, Go 1.24 — or bring any OCI image.
+- Build from source: push a repo or tarball; buildpacks (Railpack) or your
+  Dockerfile, with SBOM, build provenance, and optional signed-deploy
+  enforcement with trusted publisher keys.
+- Batteries included: cron jobs, queues, delayed tasks, edge rules, custom
+  domains, per-PR preview environments, sealed secrets, egress lockdown
+  (deny-by-default outbound), request tracing, structured logs.
+- Kubernetes migration: upload a repo with k8s manifests or a Compose file
+  and the importer maps workloads, managed services, and crons onto Gregale.
+- Hosting: own bare metal (Hetzner, Frankfurt). EU data residency, GDPR
+  export and deletion built into the product.
+- Pricing: metered GB-hours with a plan allowance; spend caps and egress
+  budgets are user-configurable in the console.
+
+## Docs
+
+- [Documentation index](https://gregale.dev/docs): all guides and reference.
+- [How scaling to zero works](https://gregale.dev/docs/scale-to-zero): the
+  park/wake lifecycle, snapshots, and what the sub-350 ms wake means.
+- [Deploying from source](https://gregale.dev/docs/deploy-from-source):
+  repo or tarball to running app, buildpacks and Dockerfiles.
+- [CLI setup](https://gregale.dev/docs/cli): install and authenticate the
+  `gregale` command-line tool.
+- [Node runtime](https://gregale.dev/docs/runtime-node): Node 24 specifics.
+- [Python runtime](https://gregale.dev/docs/runtime-python): Python 3.13 specifics.
+- [Go runtime](https://gregale.dev/docs/runtime-go): Go 1.24 specifics.
+- [Preview environments](https://gregale.dev/docs/preview-environments):
+  per-pull-request deployments.
+- [Storage](https://gregale.dev/docs/storage): persistent volumes and object
+  storage attached to apps.
+- [Trace propagation](https://gregale.dev/docs/tracing): W3C trace context
+  through the platform.
+- [Egress denylist](https://gregale.dev/docs/egress-denylist): outbound
+  network lockdown reference.
+
+## Optional
+
+- [Compliance overview](https://gregale.dev/docs/compliance): certifications
+  and posture.
+- [Data Processing Agreement](https://gregale.dev/docs/dpa)
+- [Sub-processors](https://gregale.dev/docs/subprocessors)
+- [Responsible disclosure](https://gregale.dev/docs/responsible-disclosure)

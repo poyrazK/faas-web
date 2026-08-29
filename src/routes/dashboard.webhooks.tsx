@@ -2,9 +2,10 @@ import { useMemo, useState } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { List, Plus, Refresh, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
+import { FIELD } from '@/components/ui/field';
 import { Switch } from '@/components/ui/switch';
 import { Modal } from '@/components/ui/modal';
-import { PageHeader, Panel } from '@/components/dashboard/primitives';
+import { InlinePhase, PageHeader, Panel, queryPhase } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
 import { useToast } from '@/components/ui/toast';
@@ -53,9 +54,6 @@ const DELIVERY_COLOR: Record<string, string | undefined> = {
   in_flight: 'var(--status-warning)',
 };
 
-const FIELD =
-  'h-9 rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-brand/50';
-
 function when(value: string | undefined): string {
   if (!value) return '—';
   const ms = Date.parse(value);
@@ -80,6 +78,11 @@ function Deliveries({
   const deliveries = useWebhookDeliveries(slug, hook?.id ?? '');
   const retry = useRetryDelivery(slug, hook?.id ?? '');
   const list = deliveries.data?.deliveries ?? [];
+  const deliveriesPhase = queryPhase({
+    error: deliveries.error,
+    loading: deliveries.isPending,
+    isEmpty: list.length === 0,
+  });
 
   return (
     <Modal
@@ -89,12 +92,13 @@ function Deliveries({
       description={hook?.target}
       width="max-w-2xl"
     >
-      {deliveries.isPending ? (
-        <p className="text-sm text-muted-foreground">Loading deliveries…</p>
-      ) : deliveries.error ? (
-        <p className="text-sm text-muted-foreground">{errorMessage(deliveries.error)}</p>
-      ) : list.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Nothing has been delivered yet.</p>
+      {deliveriesPhase !== 'ready' ? (
+        <InlinePhase
+          phase={deliveriesPhase}
+          error={deliveries.error}
+          loadingMessage="Loading deliveries…"
+          emptyMessage="Nothing has been delivered yet."
+        />
       ) : (
         <ul className="flex flex-col divide-y divide-border">
           {list.map((d) => (
@@ -353,7 +357,7 @@ export function WebhooksBody({ slug }: { slug: string }) {
                     onClick={() =>
                       setEvents((prev) => (on ? prev.filter((x) => x !== ev) : [...prev, ev]))
                     }
-                    className={`h-8 rounded-md border px-2.5 font-mono text-xs transition-colors ${
+                    className={`h-8 rounded-md border px-2.5 font-mono text-xs pressable ${
                       on
                         ? 'border-brand bg-brand/10 text-foreground'
                         : 'border-border text-muted-foreground hover:text-foreground'
@@ -383,10 +387,11 @@ export function WebhooksBody({ slug }: { slug: string }) {
               type="submit"
               size="sm"
               className="gap-1.5"
-              disabled={!valid || create.isPending}
+              disabled={!valid}
+              busy={create.isPending}
             >
               <Plus className="h-3.5 w-3.5" />
-              {create.isPending ? 'Adding…' : 'Add webhook'}
+              Add webhook
             </Button>
           </div>
         </form>

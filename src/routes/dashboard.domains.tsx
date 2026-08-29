@@ -9,6 +9,11 @@ import { useConfirm } from '@/components/ui/confirm';
 import { useAddDomain, useApps, useDeleteDomain, useDomains } from '@/lib/api/queries';
 import { slugIndex } from '@/lib/api/adapters';
 import { errorMessage } from '@/lib/api/errors';
+import { FieldError } from '@/components/ui/field';
+import { cn } from '@/lib/utils';
+
+/** A registrable hostname: labels of letters/digits/hyphens, at least one dot. */
+const HOST_RULE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i;
 import { consoleHead } from '@/lib/seo';
 
 export const Route = createFileRoute('/dashboard/domains')({
@@ -49,6 +54,9 @@ function DomainsPage() {
 
   const [host, setHost] = useState('');
   const [appSlug, setAppSlug] = useState('');
+  const [hostTouched, setHostTouched] = useState(false);
+  const hostOk = HOST_RULE.test(host.trim());
+  const showHostError = hostTouched && host.trim().length > 0 && !hostOk;
 
   const rows = useMemo<DomainRow[]>(() => {
     const bySlug = slugIndex(apps ?? []);
@@ -175,7 +183,7 @@ function DomainsPage() {
           className="flex flex-wrap items-end gap-3"
           onSubmit={(e) => {
             e.preventDefault();
-            if (host.trim() && !addDomain.isPending) submit();
+            if (hostOk && !addDomain.isPending) submit();
           }}
         >
           <label className="flex min-w-56 flex-1 flex-col gap-1.5">
@@ -183,9 +191,20 @@ function DomainsPage() {
             <input
               value={host}
               onChange={(e) => setHost(e.target.value)}
+              onBlur={() => setHostTouched(true)}
+              aria-invalid={showHostError || undefined}
+              aria-describedby={showHostError ? 'domain-host-error' : undefined}
               placeholder="api.example.com"
-              className="h-10 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-brand"
+              className={cn(
+                'h-10 rounded-lg border bg-background px-3 text-sm outline-none focus:border-brand',
+                showHostError ? 'border-[color:var(--status-critical)]' : 'border-border'
+              )}
             />
+            {showHostError && (
+              <FieldError id="domain-host-error">
+                A full hostname with at least one dot, like api.example.com.
+              </FieldError>
+            )}
           </label>
 
           <label className="flex flex-col gap-1.5">
@@ -203,9 +222,9 @@ function DomainsPage() {
             </select>
           </label>
 
-          <Button type="submit" size="sm" className="gap-1.5" disabled={addDomain.isPending}>
+          <Button type="submit" size="sm" className="gap-1.5" busy={addDomain.isPending}>
             <Plus className="h-3.5 w-3.5" />
-            {addDomain.isPending ? 'Adding…' : 'Add domain'}
+            Add domain
           </Button>
         </form>
       </Panel>

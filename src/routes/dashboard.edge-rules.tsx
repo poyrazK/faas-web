@@ -160,66 +160,63 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
         </span>
       ),
     },
-    {
-      key: 'id',
-      label: '',
-      width: 'w-28',
-      sortable: false,
-      render: (r) => {
-        const index = rules.findIndex((x) => x.id === r.id);
-        return (
-          <span className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-            <button
-              type="button"
-              aria-label={`Move rule ${r.priority} earlier`}
-              disabled={index === 0}
-              onClick={() => move(r, -1)}
-              className="text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
-            >
-              <ArrowUp className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              aria-label={`Move rule ${r.priority} later`}
-              disabled={index === rules.length - 1}
-              onClick={() => move(r, 1)}
-              className="text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
-            >
-              <ArrowDown className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              aria-label={`Delete rule ${r.id}`}
-              onClick={async () => {
-                if (
-                  !(await confirm({
-                    title: 'Delete this edge rule?',
-                    description: `${r.kind} on ${r.host}${r.path} stops matching immediately.`,
-                    confirmLabel: 'Delete rule',
-                    destructive: true,
-                  }))
-                )
-                  return;
-                void deleteRule
-                  .mutateAsync(r.id)
-                  .then(() => toast({ kind: 'success', title: 'Rule deleted' }))
-                  .catch((err: unknown) =>
-                    toast({
-                      kind: 'error',
-                      title: 'Could not delete',
-                      description: errorMessage(err),
-                    })
-                  );
-              }}
-              className="text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <Trash className="h-3.5 w-3.5" />
-            </button>
-          </span>
-        );
-      },
-    },
   ];
+
+  // The trailing controls, via the table's shielded actions cell — no
+  // hand-written stopPropagation.
+  const rowActionsFor = (r: EdgeRuleRow) => {
+    const index = rules.findIndex((x) => x.id === r.id);
+    return (
+      <>
+        <button
+          type="button"
+          aria-label={`Move rule ${r.priority} earlier`}
+          disabled={index === 0}
+          onClick={() => move(r, -1)}
+          className="text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
+        >
+          <ArrowUp className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          aria-label={`Move rule ${r.priority} later`}
+          disabled={index === rules.length - 1}
+          onClick={() => move(r, 1)}
+          className="text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
+        >
+          <ArrowDown className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          aria-label={`Delete rule ${r.id}`}
+          onClick={async () => {
+            if (
+              !(await confirm({
+                title: 'Delete this edge rule?',
+                description: `${r.kind} on ${r.host}${r.path} stops matching immediately.`,
+                confirmLabel: 'Delete rule',
+                destructive: true,
+              }))
+            )
+              return;
+            void deleteRule
+              .mutateAsync(r.id)
+              .then(() => toast({ kind: 'success', title: 'Rule deleted' }))
+              .catch((err: unknown) =>
+                toast({
+                  kind: 'error',
+                  title: 'Could not delete',
+                  description: errorMessage(err),
+                })
+              );
+          }}
+          className="text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <Trash className="h-3.5 w-3.5" />
+        </button>
+      </>
+    );
+  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -270,6 +267,7 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
           const full = byId.get(r.id);
           if (full) setEditing(full);
         }}
+        rowActions={rowActionsFor}
       />
 
       {(creating || editing) && (

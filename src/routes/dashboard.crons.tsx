@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { Clock, Play, Plus, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
+import { FIELD } from '@/components/ui/field';
 import { Switch } from '@/components/ui/switch';
 import { Modal } from '@/components/ui/modal';
-import { PageHeader, Panel } from '@/components/dashboard/primitives';
+import { InlinePhase, PageHeader, Panel, queryPhase } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { useToast } from '@/components/ui/toast';
 import { useConfirm } from '@/components/ui/confirm';
@@ -16,6 +17,7 @@ import {
   useDeleteCron,
   useRunCron,
   useUpdateCron,
+  useFireNowRequest,
 } from '@/lib/api/queries';
 import { slugIndex } from '@/lib/api/adapters';
 import { errorMessage } from '@/lib/api/errors';
@@ -35,6 +37,35 @@ export const Route = createFileRoute('/dashboard/crons')({
  * nothing could change), and no way to see whether the last run worked —
  * `useCronRuns` had been written and imported nowhere.
  */
+
+/**
+ * "Run now" used to fire and forget — the 202's request id was dropped and
+ * the outcome never reported. This watches one fire-now request and toasts
+ * its terminal state, then clears itself.
+ */
+function FireNowWatcher({ requestId, onDone }: { requestId: string; onDone: () => void }) {
+  const { toast } = useToast();
+  const q = useFireNowRequest(requestId);
+  const status = q.data?.status;
+  const reported = useRef(false);
+  useEffect(() => {
+    if (reported.current || !status || status === 'pending' || status === 'running') return;
+    reported.current = true;
+    if (q.data?.error) {
+      toast({ kind: 'error', title: 'Cron run failed', description: q.data.error });
+    } else {
+      toast({
+        kind: 'success',
+        title: 'Cron run finished',
+        description: q.data?.invocation_id
+          ? `Invocation ${q.data.invocation_id.slice(0, 12)}.`
+          : undefined,
+      });
+    }
+    onDone();
+  }, [status, q.data, toast, onDone]);
+  return null;
+}
 
 interface CronRow {
   id: string;
@@ -59,12 +90,14 @@ const OUTCOME_COLOR: Record<string, string | undefined> = {
   running: 'var(--status-warning)',
 };
 
-const FIELD =
-  'h-9 rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-brand/50';
-
 /** The last runs of one cron — outcome, duration, and the error if any. */
 function RunHistory({ cron, onClose }: { cron: CronRow | null; onClose: () => void }) {
   const runs = useCronRuns(cron?.id ?? '');
+  const runsPhase = queryPhase({
+    error: runs.error,
+    loading: runs.isPending,
+    isEmpty: (runs.data?.runs ?? []).length === 0,
+  });
   return (
     <Modal
       open={cron !== null}
@@ -73,12 +106,13 @@ function RunHistory({ cron, onClose }: { cron: CronRow | null; onClose: () => vo
       description="Recent runs, newest first."
       width="max-w-2xl"
     >
-      {runs.isPending ? (
-        <p className="text-sm text-muted-foreground">Loading runs…</p>
-      ) : runs.error ? (
-        <p className="text-sm text-muted-foreground">{errorMessage(runs.error)}</p>
-      ) : (runs.data?.runs ?? []).length === 0 ? (
-        <p className="text-sm text-muted-foreground">This cron has not run yet.</p>
+      {runsPhase !== 'ready' ? (
+        <InlinePhase
+          phase={runsPhase}
+          error={runs.error}
+          loadingMessage="Loading runs…"
+          emptyMessage="This cron has not run yet."
+        />
       ) : (
         <ul className="flex flex-col divide-y divide-border">
           {(runs.data?.runs ?? []).map((r) => (
@@ -116,6 +150,7 @@ function CronsPage() {
   const [schedule, setSchedule] = useState('');
   const [path, setPath] = useState('/');
   const [history, setHistory] = useState<CronRow | null>(null);
+  const [fireRequest, setFireRequest] = useState<string | null>(null);
 
   const targetApp = appId || apps?.[0]?.id || '';
   const scheduleOk = schedule.trim().split(/\s+/).length === 5;
@@ -198,7 +233,12 @@ function CronsPage() {
             onClick={() => {
               void runCron
                 .mutateAsync(c.id)
-                .then(() => toast({ kind: 'success', title: 'Cron fired' }))
+                .then((fired) => {
+                  toast({ kind: 'success', title: 'Cron fired', description: 'Watching the run…' });
+                  // The 202 carries a request id; the watcher polls it and
+                  // reports the terminal state instead of dropping it.
+                  setFireRequest(fired.request_id);
+                })
                 .catch((err: unknown) =>
                   toast({ kind: 'error', title: 'Could not fire', description: errorMessage(err) })
                 );
@@ -242,6 +282,9 @@ function CronsPage() {
 
   return (
     <div className="flex flex-col gap-6">
+      {fireRequest && (
+        <FireNowWatcher requestId={fireRequest} onDone={() => setFireRequest(null)} />
+      )}
       <PageHeader
         title="Cron Jobs"
         description="Scheduled synthetic requests into your apps. Firing one by hand does not change its schedule."
@@ -311,10 +354,11 @@ function CronsPage() {
             type="submit"
             size="sm"
             className="gap-1.5"
-            disabled={!targetApp || !scheduleOk || createCron.isPending}
+            disabled={!targetApp || !scheduleOk}
+            busy={createCron.isPending}
           >
             <Plus className="h-3.5 w-3.5" />
-            {createCron.isPending ? 'Adding…' : 'Add cron'}
+            Add cron
           </Button>
           <p className="basis-full text-xs text-muted-foreground">
             Five fields, UTC: minute, hour, day of month, month, day of week. The request is a GET

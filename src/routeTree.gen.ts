@@ -27,6 +27,7 @@ import { Route as DashboardDeploymentsRouteImport } from './routes/dashboard.dep
 import { Route as DashboardDomainsRouteImport } from './routes/dashboard.domains'
 import { Route as DashboardEdgeRulesRouteImport } from './routes/dashboard.edge-rules'
 import { Route as DashboardEnvRouteImport } from './routes/dashboard.env'
+import { Route as DashboardImportRouteImport } from './routes/dashboard.import'
 import { Route as DashboardInvoicesRouteImport } from './routes/dashboard.invoices'
 import { Route as DashboardKeysRouteImport } from './routes/dashboard.keys'
 import { Route as DashboardLogsRouteImport } from './routes/dashboard.logs'
@@ -44,6 +45,7 @@ import { Route as DashboardWebhooksRouteImport } from './routes/dashboard.webhoo
 import { Route as DashboardWorkersRouteImport } from './routes/dashboard.workers'
 import { Route as DocsIndexRouteImport } from './routes/docs.index'
 import { Route as DocsSlugRouteImport } from './routes/docs.$slug'
+import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as DashboardWorkflowsIndexRouteImport } from './routes/dashboard.workflows.index'
 import { Route as DashboardWorkflowsWorkflowIdRouteImport } from './routes/dashboard.workflows.$workflowId'
 import { Route as DashboardWorkflowsNewRouteImport } from './routes/dashboard.workflows.new'
@@ -138,6 +140,11 @@ const DashboardEnvRoute = DashboardEnvRouteImport.update({
   path: '/env',
   getParentRoute: () => DashboardRoute,
 } as any)
+const DashboardImportRoute = DashboardImportRouteImport.update({
+  id: '/import',
+  path: '/import',
+  getParentRoute: () => DashboardRoute,
+} as any)
 const DashboardInvoicesRoute = DashboardInvoicesRouteImport.update({
   id: '/invoices',
   path: '/invoices',
@@ -223,6 +230,11 @@ const DocsSlugRoute = DocsSlugRouteImport.update({
   path: '/$slug',
   getParentRoute: () => DocsRoute,
 } as any)
+const InviteTokenRoute = InviteTokenRouteImport.update({
+  id: '/invite/$token',
+  path: '/invite/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DashboardWorkflowsIndexRoute = DashboardWorkflowsIndexRouteImport.update({
   id: '/workflows/',
   path: '/workflows/',
@@ -258,6 +270,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/domains': typeof DashboardDomainsRoute
   '/dashboard/edge-rules': typeof DashboardEdgeRulesRoute
   '/dashboard/env': typeof DashboardEnvRoute
+  '/dashboard/import': typeof DashboardImportRoute
   '/dashboard/invoices': typeof DashboardInvoicesRoute
   '/dashboard/keys': typeof DashboardKeysRoute
   '/dashboard/logs': typeof DashboardLogsRoute
@@ -274,6 +287,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/webhooks': typeof DashboardWebhooksRoute
   '/dashboard/workers': typeof DashboardWorkersRoute
   '/docs/$slug': typeof DocsSlugRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/docs/': typeof DocsIndexRoute
   '/dashboard/workflows/$workflowId': typeof DashboardWorkflowsWorkflowIdRoute
@@ -296,6 +310,7 @@ export interface FileRoutesByTo {
   '/dashboard/domains': typeof DashboardDomainsRoute
   '/dashboard/edge-rules': typeof DashboardEdgeRulesRoute
   '/dashboard/env': typeof DashboardEnvRoute
+  '/dashboard/import': typeof DashboardImportRoute
   '/dashboard/invoices': typeof DashboardInvoicesRoute
   '/dashboard/keys': typeof DashboardKeysRoute
   '/dashboard/logs': typeof DashboardLogsRoute
@@ -312,6 +327,7 @@ export interface FileRoutesByTo {
   '/dashboard/webhooks': typeof DashboardWebhooksRoute
   '/dashboard/workers': typeof DashboardWorkersRoute
   '/docs/$slug': typeof DocsSlugRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/dashboard': typeof DashboardIndexRoute
   '/docs': typeof DocsIndexRoute
   '/dashboard/workflows/$workflowId': typeof DashboardWorkflowsWorkflowIdRoute
@@ -337,6 +353,7 @@ export interface FileRoutesById {
   '/dashboard/domains': typeof DashboardDomainsRoute
   '/dashboard/edge-rules': typeof DashboardEdgeRulesRoute
   '/dashboard/env': typeof DashboardEnvRoute
+  '/dashboard/import': typeof DashboardImportRoute
   '/dashboard/invoices': typeof DashboardInvoicesRoute
   '/dashboard/keys': typeof DashboardKeysRoute
   '/dashboard/logs': typeof DashboardLogsRoute
@@ -353,6 +370,7 @@ export interface FileRoutesById {
   '/dashboard/webhooks': typeof DashboardWebhooksRoute
   '/dashboard/workers': typeof DashboardWorkersRoute
   '/docs/$slug': typeof DocsSlugRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/docs/': typeof DocsIndexRoute
   '/dashboard/workflows/$workflowId': typeof DashboardWorkflowsWorkflowIdRoute
@@ -379,6 +397,7 @@ export interface FileRouteTypes {
     | '/dashboard/domains'
     | '/dashboard/edge-rules'
     | '/dashboard/env'
+    | '/dashboard/import'
     | '/dashboard/invoices'
     | '/dashboard/keys'
     | '/dashboard/logs'
@@ -395,6 +414,7 @@ export interface FileRouteTypes {
     | '/dashboard/webhooks'
     | '/dashboard/workers'
     | '/docs/$slug'
+    | '/invite/$token'
     | '/dashboard/'
     | '/docs/'
     | '/dashboard/workflows/$workflowId'
@@ -417,6 +437,7 @@ export interface FileRouteTypes {
     | '/dashboard/domains'
     | '/dashboard/edge-rules'
     | '/dashboard/env'
+    | '/dashboard/import'
     | '/dashboard/invoices'
     | '/dashboard/keys'
     | '/dashboard/logs'
@@ -433,6 +454,7 @@ export interface FileRouteTypes {
     | '/dashboard/webhooks'
     | '/dashboard/workers'
     | '/docs/$slug'
+    | '/invite/$token'
     | '/dashboard'
     | '/docs'
     | '/dashboard/workflows/$workflowId'
@@ -457,6 +479,7 @@ export interface FileRouteTypes {
     | '/dashboard/domains'
     | '/dashboard/edge-rules'
     | '/dashboard/env'
+    | '/dashboard/import'
     | '/dashboard/invoices'
     | '/dashboard/keys'
     | '/dashboard/logs'
@@ -473,6 +496,7 @@ export interface FileRouteTypes {
     | '/dashboard/webhooks'
     | '/dashboard/workers'
     | '/docs/$slug'
+    | '/invite/$token'
     | '/dashboard/'
     | '/docs/'
     | '/dashboard/workflows/$workflowId'
@@ -487,6 +511,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   OnboardingRoute: typeof OnboardingRoute
   SignupRoute: typeof SignupRoute
+  InviteTokenRoute: typeof InviteTokenRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -617,6 +642,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardEnvRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/dashboard/import': {
+      id: '/dashboard/import'
+      path: '/import'
+      fullPath: '/dashboard/import'
+      preLoaderRoute: typeof DashboardImportRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/dashboard/invoices': {
       id: '/dashboard/invoices'
       path: '/invoices'
@@ -736,6 +768,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DocsSlugRouteImport
       parentRoute: typeof DocsRoute
     }
+    '/invite/$token': {
+      id: '/invite/$token'
+      path: '/invite/$token'
+      fullPath: '/invite/$token'
+      preLoaderRoute: typeof InviteTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/dashboard/workflows/': {
       id: '/dashboard/workflows/'
       path: '/workflows'
@@ -772,6 +811,7 @@ interface DashboardRouteChildren {
   DashboardDomainsRoute: typeof DashboardDomainsRoute
   DashboardEdgeRulesRoute: typeof DashboardEdgeRulesRoute
   DashboardEnvRoute: typeof DashboardEnvRoute
+  DashboardImportRoute: typeof DashboardImportRoute
   DashboardInvoicesRoute: typeof DashboardInvoicesRoute
   DashboardKeysRoute: typeof DashboardKeysRoute
   DashboardLogsRoute: typeof DashboardLogsRoute
@@ -805,6 +845,7 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardDomainsRoute: DashboardDomainsRoute,
   DashboardEdgeRulesRoute: DashboardEdgeRulesRoute,
   DashboardEnvRoute: DashboardEnvRoute,
+  DashboardImportRoute: DashboardImportRoute,
   DashboardInvoicesRoute: DashboardInvoicesRoute,
   DashboardKeysRoute: DashboardKeysRoute,
   DashboardLogsRoute: DashboardLogsRoute,
@@ -849,6 +890,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   OnboardingRoute: OnboardingRoute,
   SignupRoute: SignupRoute,
+  InviteTokenRoute: InviteTokenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

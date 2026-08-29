@@ -32,7 +32,13 @@ export function LogView({
       className={cn('overflow-y-auto rounded-md border border-border bg-background p-3', className)}
     >
       {lines.map((line) => (
-        <p key={line.id} className="flex gap-3 font-mono text-xs leading-relaxed">
+        // content-visibility lets the browser skip layout and paint for
+        // offscreen lines — the cheap version of virtualization, with the
+        // intrinsic size keeping the scrollbar honest.
+        <p
+          key={line.id}
+          className="flex gap-3 font-mono text-xs leading-relaxed [contain-intrinsic-block-size:auto_1.25rem] [content-visibility:auto]"
+        >
           <span className="shrink-0 select-none text-muted-foreground">
             {new Date(line.ts).toLocaleTimeString()}
           </span>

@@ -42,8 +42,8 @@ describe('consoleHead', () => {
     // lookup happened instead of the segment being title-cased.
     expect(titleOf(consoleHead('keys'))).toBe('API Keys · Gregale');
     expect(titleOf(consoleHead('crons'))).toBe('Cron Jobs · Gregale');
-    expect(titleOf(consoleHead('env'))).toBe('Env Vars · Gregale');
-    expect(titleOf(consoleHead('queues'))).toBe('Queue Jobs · Gregale');
+    expect(titleOf(consoleHead('env'))).toBe('Env vars · Gregale');
+    expect(titleOf(consoleHead('queues'))).toBe('Queues · Gregale');
   });
 
   it('falls back to the raw segment for an unknown one', () => {

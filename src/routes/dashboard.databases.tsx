@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { Plus, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
+import { FIELD } from '@/components/ui/field';
 import { PageHeader, Panel } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
@@ -60,9 +61,6 @@ const DEFAULT_PORT: Partial<Record<(typeof KINDS)[number], number>> = {
   s3: 443,
   https_api: 443,
 };
-
-const FIELD =
-  'h-9 rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-brand/50';
 
 /**
  * The upstreams body, without the page chrome around it.
@@ -249,10 +247,11 @@ export function UpstreamsBody({ slug }: { slug: string }) {
             type="submit"
             size="sm"
             className="gap-1.5"
-            disabled={!host.trim() || !Number(port) || add.isPending}
+            disabled={!host.trim() || !Number(port)}
+            busy={add.isPending}
           >
             <Plus className="h-3.5 w-3.5" />
-            {add.isPending ? 'Declaring…' : 'Declare'}
+            Declare
           </Button>
         </form>
       </Panel>

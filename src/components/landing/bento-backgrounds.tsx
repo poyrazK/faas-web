@@ -1,10 +1,10 @@
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 import { Check, GitBranch, GitPullRequest, Lock, Package, Rocket } from 'iconoir-react';
 import { forwardRef, useRef, type ReactNode } from 'react';
-import { AnimatedBeam } from '@/components/ui/animated-beam';
+import { AnimatedBeam } from '@/components/landing/animated-beam';
 import { DotCutCanvas } from '@/components/dotcut/dot-cut-canvas';
 import type { Scene } from '@/components/dotcut/scenes';
-import { Marquee } from '@/components/ui/marquee';
+import { Marquee } from '@/components/landing/marquee';
 import { cn } from '@/lib/utils';
 import { EASE } from './reveal';
 

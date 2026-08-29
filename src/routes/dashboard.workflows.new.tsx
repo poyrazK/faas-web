@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { useUnsavedGuard } from '@/lib/use-unsaved-guard';
+import { RepoPicker } from '@/components/dashboard/repo-picker';
+import { AnimatePresence, motion } from 'motion/react';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { ArrowLeft, ArrowRight, Check, Github, Package } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
@@ -92,6 +94,10 @@ function NewFunctionPage() {
   const [deploymentId, setDeploymentId] = useState<string | null>(null);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
+
+  // A half-filled wizard asks before it is discarded. Once the app exists
+  // (or nothing was typed) leaving is free.
+  useUnsavedGuard(!createdId && Boolean(repo.trim() || name.trim()));
 
   const nameValid = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(name);
   const repoValid = /^[^/\s]+\/[^/\s]+$/.test(repo.trim());
@@ -369,12 +375,13 @@ function NewFunctionPage() {
               <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
                 <label className="flex flex-col gap-1.5">
                   <span className="label-mono text-muted-foreground">Repository</span>
-                  <input
+                  <RepoPicker
                     value={repo}
-                    onChange={(e) => setRepo(e.target.value)}
-                    placeholder="owner/repo"
-                    spellCheck={false}
-                    className="h-10 rounded-lg border border-border bg-card px-3 font-mono text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/25"
+                    onChange={(nextRepo, defaultBranch) => {
+                      setRepo(nextRepo);
+                      if (defaultBranch) setRef(defaultBranch);
+                    }}
+                    className="h-10 rounded-lg bg-card"
                   />
                 </label>
                 <label className="flex flex-col gap-1.5 sm:w-40">

@@ -1,8 +1,11 @@
 /* Familjen Grotesk type system — see index.html for the font loads. */
 @import 'tailwindcss';
-@import 'tw-animate-css';
 
-@custom-variant dark (&:is(.dark *));
+/* The console's dark surface is `.console`, not `.dark` — bind Tailwind's
+   `dark:` variant to it so a shadcn-scaffolded component's dark styles are
+   live rather than silently inert. (Tokens remain the primary mechanism; a
+   console component should still not need `dark:` for colour.) */
+@custom-variant dark (&:is(.console *));
 
 /* --- Mint ramp ------------------------------------------------------------
    12 steps at hue 165 (oklch.fyi/color-palettes/mint). The single source of
@@ -27,6 +30,35 @@
   --mint-10: oklch(0.565 0.192 165);
   --mint-11: oklch(0.454 0.154 165);
   --mint-12: oklch(0.341 0.102 165);
+}
+
+/* --- Motion ---------------------------------------------------------------
+   One curve, three speeds. The same vocabulary `dashboard/motion.tsx` exports
+   to Framer as EASE / DURATION — CSS transitions and JS-driven motion read
+   the same tokens, so no component invents its own easing. Polarity-
+   independent, hence declared once. */
+:root {
+  --motion-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-fast: 150ms;
+  --motion-base: 240ms;
+  --motion-slow: 380ms;
+}
+
+/* --- Elevation -------------------------------------------------------------
+   Three steps, tinted per polarity (ink-tinted on paper, pure black on the
+   console — a grey shadow on #090909 reads as a smudge). Every lifted
+   surface picks a step; ad-hoc box-shadows fail review the same way literal
+   hex does. 1 = resting card, 2 = raised (hover, sticky bars),
+   3 = floating chrome (menus, dialogs, toasts). */
+:root {
+  --elevation-1: 0 1px 2px rgb(13 21 18 / 0.06);
+  --elevation-2: 0 4px 12px -2px rgb(13 21 18 / 0.1);
+  --elevation-3: 0 16px 40px -12px rgb(13 21 18 / 0.25);
+}
+.console {
+  --elevation-1: 0 1px 2px rgb(0 0 0 / 0.4);
+  --elevation-2: 0 4px 12px -2px rgb(0 0 0 / 0.5);
+  --elevation-3: 0 24px 48px -12px rgb(0 0 0 / 0.7);
 }
 
 /* --- Light surface (marketing, auth, 404) ---------------------------------
@@ -114,6 +146,11 @@
    ------------------------------------------------------------------------- */
 .console {
   color-scheme: dark;
+
+  /* The console speaks Satoshi (loaded in index.html); the marketing site
+     keeps Familjen Grotesk. One token flip — every font-sans under the
+     console resolves here, the mono voice is untouched. */
+  --font-sans: 'Satoshi', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 
   --background: #090909;
   --foreground: #ffffff;
@@ -211,6 +248,10 @@
   --color-status-serious: var(--status-serious);
   --color-status-critical: var(--status-critical);
 
+  --shadow-elevation-1: var(--elevation-1);
+  --shadow-elevation-2: var(--elevation-2);
+  --shadow-elevation-3: var(--elevation-3);
+
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -229,11 +270,94 @@
   --font-mono: 'Spline Sans Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   --font-serif: var(--font-sans);
 
+  /* The console curve as a Tailwind easing utility (`ease-console`). */
+  --ease-console: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* The page-settling entrance for PageHeader, Panel, StatTile, and the
+     table — a short rise-and-fade on the console curve. A CSS animation
+     rather than Framer variants deliberately: it replays on every DOM
+     insertion, so content that mounts late (a code-split route landing
+     after navigation, a panel appearing once data arrives) still enters —
+     an orchestrated variant tree left exactly those stranded at opacity 0.
+     Reduced motion is covered by the blanket `[class*='animate-']` rule,
+     which lands the one iteration on the final, visible frame. */
+  --animate-item-enter: item-enter 0.38s var(--motion-ease);
+
+  /* Entrances drift in from the northeast — a gregale is a northeast wind,
+     and every ambient motion in the console honours its direction. */
+  @keyframes item-enter {
+    from {
+      opacity: 0;
+      transform: translate(12px, -8px);
+    }
+  }
+
+  /* A single point of light travelling the hero card's border — our cut of
+     the "border beam" pattern (Magic UI / Aceternity), redrawn in the brand
+     mint and slowed to a patrol rather than a sparkle. One card per page.
+     Infinite, so the reduced-motion blanket rule stops it outright. */
+  --animate-border-beam: border-beam 10s linear infinite;
+
+  @keyframes border-beam {
+    to {
+      --beam-angle: 360deg;
+    }
+  }
+
+  /* State is breath: things that are awake breathe at low amplitude; parked
+     things are still. Infinite, so the reduced-motion blanket rule freezes
+     it entirely rather than shortening it. Stagger phases with a negative
+     animation-delay so a row of segments does not breathe in lockstep. */
+  --animate-breathe: breathe 3.4s ease-in-out infinite;
+
+  @keyframes breathe {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.78;
+    }
+  }
+
+  /* A just-created table row announces itself with a brand wash that fades —
+     "this is what you just made". A CSS animation rather than Framer so no
+     inline background lingers to fight the row's hover style. Reduced motion
+     is covered by the blanket `[class*='animate-']` rule (lands transparent). */
+  --animate-row-arrive: row-arrive 1.4s var(--motion-ease);
+
+  @keyframes row-arrive {
+    from {
+      background-color: color-mix(in oklab, var(--brand-fill) 12%, transparent);
+    }
+    to {
+      background-color: transparent;
+    }
+  }
+
+  /* One horizontal shake for a form that just refused — sharp enough to read
+     as "no", short enough not to be slapstick. Reduced motion is covered by
+     the blanket `[class*='animate-']` rule: one 0.01ms iteration lands on the
+     final keyframe, which is translateX(0). */
+  --animate-shake: shake 0.4s ease-in-out;
+
+  /* Floating chrome (tooltip, dropdown) settles in with a short rise on the
+     console curve. One keyframe pair shared by every popover-shaped thing;
+     the blanket reduced-motion rule lands them on the final frame. */
+  --animate-pop-in: pop-in 0.15s var(--motion-ease);
+
+  @keyframes pop-in {
+    from {
+      opacity: 0;
+      transform: translateY(-2px) scale(0.97);
+    }
+  }
+
   --animate-color-cycle: color-cycle 6s ease-in-out infinite;
   --animate-glow-breathe: glow-breathe 7s ease-in-out infinite;
   --animate-dither-drift-a: dither-drift-a 10s linear infinite;
   --animate-dither-drift-b: dither-drift-b 16s linear infinite;
-  /* Magic UI marquee (components/ui/marquee.tsx). Duration and gap are set
+  /* Magic UI marquee (components/landing/marquee.tsx). Duration and gap are set
      per instance as --duration / --gap. */
   --animate-marquee: marquee var(--duration) linear infinite;
   --animate-marquee-vertical: marquee-vertical var(--duration) linear infinite;
@@ -287,6 +411,25 @@
     }
   }
 
+  @keyframes shake {
+    0%,
+    100% {
+      transform: translateX(0);
+    }
+    20% {
+      transform: translateX(-6px);
+    }
+    40% {
+      transform: translateX(6px);
+    }
+    60% {
+      transform: translateX(-4px);
+    }
+    80% {
+      transform: translateX(4px);
+    }
+  }
+
   /* One accent, three depths — the cycle now moves through the mint ramp
      instead of across the category hues, which are console-only. */
   @keyframes color-cycle {
@@ -301,6 +444,15 @@
       color: var(--mint-12);
     }
   }
+}
+
+/* The travelling border light needs a typed custom property so the angle
+   itself can animate; falls back to a static (invisible) beam where
+   @property is unsupported, which degrades to a plain border. */
+@property --beam-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
 }
 
 @layer base {
@@ -334,6 +486,44 @@
   :focus-visible {
     outline: 2px solid var(--color-ring);
     outline-offset: 2px;
+    /* The ring settles outward from the control instead of snapping into
+       place. An animation, not a transition, so it runs regardless of what
+       transition properties the focused element already declares. */
+    animation: focus-settle var(--motion-fast) var(--motion-ease);
+  }
+
+  @keyframes focus-settle {
+    from {
+      outline-offset: 0px;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :focus-visible {
+      animation: none;
+    }
+  }
+
+  /* Press feedback for anything button-shaped that is not a <Button> — the
+     same 0.97 dip `dashboard/motion.tsx` exports as TAP, done in CSS so a
+     plain element gets it with one class. Includes the colour properties
+     `transition-colors` would carry, because only one transition declaration
+     wins — use this INSTEAD of `transition-colors`, not alongside it. */
+  .pressable {
+    transition:
+      transform var(--motion-fast) var(--motion-ease),
+      color var(--motion-fast) var(--motion-ease),
+      background-color var(--motion-fast) var(--motion-ease),
+      border-color var(--motion-fast) var(--motion-ease),
+      opacity var(--motion-fast) var(--motion-ease);
+  }
+  .pressable:active {
+    transform: scale(0.97);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .pressable:active {
+      transform: none;
+    }
   }
 
   /* Skip link — first focusable element on the landing page. Visually
@@ -384,24 +574,6 @@
     letter-spacing: -0.024em;
   }
 
-  @keyframes shake {
-    0%,
-    100% {
-      transform: translateX(0);
-    }
-    20% {
-      transform: translateX(-6px);
-    }
-    40% {
-      transform: translateX(6px);
-    }
-    60% {
-      transform: translateX(-4px);
-    }
-    80% {
-      transform: translateX(4px);
-    }
-  }
   @media (prefers-reduced-motion: reduce) {
     [class*='animate-'] {
       /* Duration alone only makes an animation imperceptibly fast — an
@@ -412,6 +584,11 @@
          the initial one, which is why the duration stays. */
       animation-duration: 0.01ms !important;
       animation-iteration-count: 1 !important;
+      /* A composed layout staggers its entrances with per-element delays. At
+         a 0.01ms duration those delays would leave each element invisible for
+         the length of its delay — a slow flicker instead of no motion — so
+         the delay goes too. */
+      animation-delay: 0ms !important;
     }
   }
 
@@ -438,6 +615,291 @@
       animation: none;
       opacity: 0.6;
     }
+  }
+
+  /* A soft brand light across a panel's upper corner — depth without a border
+     or a shadow, so it reads as the surface being lit rather than another box
+     stacked on top. One panel per page at most, alongside the `lit` top edge.
+     Token-driven, so it follows the polarity.
+
+     `isolation` is load-bearing: it makes the panel its own stacking context,
+     which is what lets the negative-z pseudo-element paint above the panel's
+     background but below every child. Without it the wash either sits on top
+     of the content or disappears behind the card entirely. */
+  .brand-wash {
+    isolation: isolate;
+  }
+  .brand-wash::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    /* Lit from the northeast, like everything else. */
+    background: radial-gradient(
+      120% 80% at 100% 0%,
+      color-mix(in oklab, var(--brand-fill) 10%, transparent),
+      transparent 60%
+    );
+  }
+
+  /* The border-beam ring: a conic sliver of mint clipped to a 1px border
+     band via the two-layer mask trick. Sits on an absolutely-positioned
+     child that inherits the card's radius. */
+  .border-beam-ring {
+    padding: 1px;
+    background: conic-gradient(
+      from var(--beam-angle),
+      transparent 0deg 322deg,
+      color-mix(in oklab, var(--brand-fill) 85%, transparent) 348deg,
+      transparent 360deg
+    );
+    mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    mask-composite: exclude;
+  }
+
+  /* Spotlight card overlays — our cut of the cursor-tracked glow (Magic
+     Card / Aceternity's glowing effect), in the brand mint. The component
+     drives --spot-x/--spot-y and --spot-o; these classes only paint. The
+     surface glow lights the card body, the ring glow lights the border band
+     nearest the cursor. */
+  .spotlight-glow {
+    opacity: var(--spot-o, 0);
+    transition: opacity var(--motion-base) var(--motion-ease);
+    background: radial-gradient(
+      14rem circle at var(--spot-x, 100%) var(--spot-y, 0%),
+      color-mix(in oklab, var(--brand-fill) 7%, transparent),
+      transparent 70%
+    );
+  }
+  .spotlight-ring {
+    opacity: var(--spot-o, 0);
+    transition: opacity var(--motion-base) var(--motion-ease);
+    padding: 1px;
+    background: radial-gradient(
+      11rem circle at var(--spot-x, 100%) var(--spot-y, 0%),
+      color-mix(in oklab, var(--brand) 55%, transparent),
+      transparent 70%
+    );
+    mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    mask-composite: exclude;
+  }
+
+  /* Wind beams — the gregale made visible. Curved SVG ribbons flowing
+     NE→SW behind the hero: a heavily blurred static ribbon as atmosphere,
+     and a bright pulse travelling the same curve via a normalised
+     dash-offset (pathLength=1000 on every path). Our from-scratch cut of
+     the flowing-gradient-beam pattern, on the console's tokens and wind.
+     Decorative only; reduced motion keeps the still ribbons and stops the
+     travel outright. */
+  .wind-ribbon {
+    filter: blur(22px);
+    opacity: 0.5;
+  }
+  .wind-pulse {
+    stroke-dasharray: 70 930;
+    animation: wind-travel var(--wind-duration, 9s) linear infinite;
+    animation-delay: var(--wind-delay, 0s);
+  }
+  @keyframes wind-travel {
+    to {
+      stroke-dashoffset: -1000;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .wind-pulse {
+      animation: none;
+      opacity: 0;
+    }
+  }
+
+  /* Odometer digits: each column is a strip of 0–9 rolled to its value.
+     `@starting-style` rolls it up from zero on insertion — stateless, like
+     the progress ring — and value changes glide on the same transition.
+     Reduced motion shows the digit at once. */
+  .odo-col {
+    display: inline-block;
+    height: 1em;
+    overflow: hidden;
+  }
+  .odo-strip {
+    display: flex;
+    flex-direction: column;
+    transform: translateY(calc(var(--odo-digit, 0) * -1em));
+    transition: transform 0.9s var(--motion-ease);
+  }
+  .odo-strip > span {
+    display: block;
+    height: 1em;
+    line-height: 1;
+  }
+  @starting-style {
+    .odo-strip {
+      transform: translateY(0);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .odo-strip {
+      transition: none;
+    }
+  }
+
+  /* Readout-module chrome: blueprint crop marks instead of borders — four
+     corner ticks that light toward mint on hover. The module has no box;
+     the marks measure it. */
+  .crop-marks > i {
+    position: absolute;
+    width: 9px;
+    height: 9px;
+    border: 0 solid var(--border-secondary);
+    transition: border-color var(--motion-base) var(--motion-ease);
+    pointer-events: none;
+  }
+  .crop-marks > i:nth-child(1) {
+    top: 0;
+    left: 0;
+    border-top-width: 1px;
+    border-left-width: 1px;
+  }
+  .crop-marks > i:nth-child(2) {
+    top: 0;
+    right: 0;
+    border-top-width: 1px;
+    border-right-width: 1px;
+  }
+  .crop-marks > i:nth-child(3) {
+    bottom: 0;
+    left: 0;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+  }
+  .crop-marks > i:nth-child(4) {
+    bottom: 0;
+    right: 0;
+    border-bottom-width: 1px;
+    border-right-width: 1px;
+  }
+  .crop-marks:hover > i {
+    border-color: color-mix(in oklab, var(--brand) 70%, var(--border-secondary));
+  }
+
+  /* A faint phosphor glow behind a readout figure — the instrument-panel
+     accent that DOES survive the odometer: gradient-text (background-clip)
+     cannot paint through the transformed digit strips, which is why the
+     digits went invisible under the earlier sheen. A text-shadow renders
+     with the glyphs wherever they are. */
+  .metric-glow {
+    color: var(--foreground);
+    text-shadow: 0 0 16px color-mix(in oklab, var(--brand-fill) 35%, transparent);
+  }
+
+  /* A scroll container with no visible scrollbar — for rails too narrow to
+     give one a gutter (wheel, drag, and keyboard scrolling all still work). */
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Glass material for the overview bento: a translucent surface over the
+     atmosphere with an etched top highlight — depth without weight. Layered
+     onto SpotlightCard, whose border and radius it inherits. */
+  .glass {
+    background:
+      radial-gradient(
+        120% 90% at 18% 0%,
+        color-mix(in oklab, var(--foreground) 5%, transparent),
+        transparent 55%
+      ),
+      linear-gradient(
+        to bottom,
+        color-mix(in oklab, var(--foreground) 4%, transparent),
+        transparent 42%
+      ),
+      color-mix(in oklab, var(--card) 72%, transparent);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+
+  /* The premium card material, layered over .glass on a SpotlightCard.
+     The edge is light, not a line: a 1px gradient ring (bright at the top
+     where the light hits, a breath of mint pooling at the bottom) drawn by
+     the mask-composite trick, replacing the flat border. The card sits on
+     real elevation and lifts toward the cursor. */
+  .card-lux {
+    border-color: transparent;
+    box-shadow: var(--elevation-1);
+    transition:
+      transform var(--motion-base) var(--motion-ease),
+      box-shadow var(--motion-base) var(--motion-ease);
+  }
+  .card-lux::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(
+      to bottom,
+      color-mix(in oklab, var(--foreground) 18%, transparent),
+      color-mix(in oklab, var(--foreground) 5%, transparent) 45%,
+      color-mix(in oklab, var(--brand-fill) 12%, transparent)
+    );
+    mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+  .card-lux:hover {
+    transform: translateY(-2px);
+    box-shadow:
+      var(--elevation-3),
+      0 14px 44px -20px color-mix(in oklab, var(--brand-fill) 30%, transparent);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .card-lux,
+    .card-lux:hover {
+      transform: none;
+      transition: none;
+    }
+  }
+
+  /* Progress-ring sweep: the arc enters from empty on insertion and glides
+     between values thereafter. `@starting-style` keeps this stateless —
+     unsupported browsers simply show the value at once, as do reduced-motion
+     users. The custom properties are set inline per instance. */
+  .ring-sweep {
+    stroke-dashoffset: var(--ring-off);
+    transition:
+      stroke-dashoffset 0.9s var(--motion-ease),
+      stroke 0.3s var(--motion-ease);
+  }
+  @starting-style {
+    .ring-sweep {
+      stroke-dashoffset: var(--ring-circ);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ring-sweep {
+      transition: none;
+    }
+  }
+
+  /* The page ground's atmosphere: a barely-there light field in the console's
+     northeast, so content sits in air instead of on flat ink. Applied by the
+     shell to the content column only — the marketing site keeps its paper. */
+  .console-atmosphere {
+    background: radial-gradient(
+      90% 48rem at 100% 0%,
+      color-mix(in oklab, var(--brand-fill) 4%, transparent),
+      transparent 60%
+    );
   }
 
   /* Spline Sans Mono as the label voice: eyebrows, section kickers, metrics. */
