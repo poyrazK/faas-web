@@ -138,7 +138,6 @@ for (const route of ROUTES) {
           name: 'Gregale',
           url: `${SITE_URL}/`,
           logo: `${SITE_URL}/logo.png`,
-          sameAs: ['https://github.com/poyrazK/faas'],
         },
         {
           '@type': 'WebSite',
