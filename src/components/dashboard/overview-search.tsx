@@ -185,13 +185,15 @@ export function OverviewSearch({ workflows }: { workflows: Workflow[] }) {
 
       {open && (
         // The same mint beam as the field, so the pair reads as one
-        // instrument — the answer wears the question's light.
+        // instrument — but at a crawl: the list is where reading happens,
+        // and a fast orbit around prose is a distraction, not a light.
         <BorderBeam
           size="md"
           colorVariant="ocean"
           theme="dark"
           strength={1}
           hueRange={10}
+          duration={7}
           className="absolute inset-x-0 top-full z-30 mt-2"
           style={{ ['--beam-hue-base' as string]: '-78deg' }}
         >
