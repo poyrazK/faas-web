@@ -50,6 +50,13 @@ export const Route = createFileRoute('/dashboard/')({
 
 const formatGbHours = (v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 2 });
 
+function formatMoney(cents: number | undefined): string {
+  if (cents == null) return '—';
+  return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'EUR' }).format(
+    cents / 100
+  );
+}
+
 const UNKNOWN = <span className="text-muted-foreground">—</span>;
 
 /* ------------------------------------------------------------------ *
@@ -227,12 +234,16 @@ function RecentsColumn() {
 function StatCard({
   label,
   hint,
+  sub,
   large,
   className,
   children,
 }: {
   label: string;
   hint: string;
+  /** The quiet last line — real context, so the card ends composed instead
+   * of trailing off into empty surface. */
+  sub?: React.ReactNode;
   large?: boolean;
   className?: string;
   children: React.ReactNode;
@@ -241,17 +252,23 @@ function StatCard({
     // A whisper of tilt — the glass leans toward the cursor. Data cards tip,
     // never flip.
     <Tilt maxTilt={3} className={className}>
-      <SpotlightCard className="glass h-full">
-        <div className={cn('flex h-full flex-col gap-2.5 p-5', large && 'min-h-36')} title={hint}>
+      <SpotlightCard className="glass card-lux h-full">
+        <div
+          className={cn('flex h-full flex-col p-5', large ? 'min-h-36 gap-3 p-6' : 'gap-2.5')}
+          title={hint}
+        >
           <p className="label-mono text-muted-foreground">{label}</p>
           <p
             className={cn(
-              'leading-none font-semibold tracking-tight [font-variant-numeric:tabular-nums]',
-              large ? 'text-4xl' : 'text-2xl'
+              'metric-glow leading-none font-semibold tracking-tight [font-variant-numeric:tabular-nums]',
+              large ? 'text-5xl' : 'text-2xl'
             )}
           >
             {children}
           </p>
+          {sub != null && (
+            <p className="mt-auto pt-1 text-xs text-muted-foreground">{sub}</p>
+          )}
         </div>
       </SpotlightCard>
     </Tilt>
@@ -277,13 +294,15 @@ function OverviewPage() {
   // Resident RAM right now: non-parked instances only — a parked instance's
   // cgroup is gone, so it holds nothing.
   const residentKnown = !instances.isPending && !instances.error;
-  const residentMb = useMemo(
-    () =>
-      (instances.data?.instances ?? [])
-        .filter((row) => row.state.toLowerCase() !== 'parked')
-        .reduce((sum, row) => sum + row.ram_mb, 0),
-    [instances.data]
-  );
+  const { residentMb, residentCount } = useMemo(() => {
+    const resident = (instances.data?.instances ?? []).filter(
+      (row) => row.state.toLowerCase() !== 'parked'
+    );
+    return {
+      residentMb: resident.reduce((sum, row) => sum + row.ram_mb, 0),
+      residentCount: resident.length,
+    };
+  }, [instances.data]);
 
   const { requests, errorPct, wakeP95 } = useMemo(() => {
     const total = workflows.reduce((sum, w) => sum + w.invocations24h, 0);
@@ -474,6 +493,11 @@ function OverviewPage() {
             large
             className="col-span-2"
             hint="Requests served across the fleet, last 24 hours."
+            sub={
+              metricsDegraded
+                ? 'metrics degraded'
+                : `across ${workflows.length} ${workflows.length === 1 ? 'app' : 'apps'} · last 24 hours`
+            }
           >
             {metricsDegraded ? UNKNOWN : <Odometer value={requests} format={formatCompact} />}
           </StatCard>
@@ -482,6 +506,11 @@ function OverviewPage() {
             large
             className="col-span-2"
             hint="Errored share of served requests, weighted by traffic."
+            sub={
+              metricsDegraded
+                ? 'metrics degraded'
+                : `≈ ${formatCompact(Math.round((requests * errorPct) / 100))} errored · weighted by traffic`
+            }
           >
             {metricsDegraded ? (
               UNKNOWN
@@ -492,7 +521,11 @@ function OverviewPage() {
             )}
           </StatCard>
 
-          <StatCard label="Wake p95" hint="95th-percentile cold-start time across the fleet.">
+          <StatCard
+            label="Wake p95"
+            hint="95th-percentile cold-start time across the fleet."
+            sub="cold start · fleet"
+          >
             {metricsDegraded || !wakeP95 ? (
               UNKNOWN
             ) : (
@@ -502,7 +535,15 @@ function OverviewPage() {
               </>
             )}
           </StatCard>
-          <StatCard label="Memory now" hint="RAM held by resident instances at this moment.">
+          <StatCard
+            label="Memory now"
+            hint="RAM held by resident instances at this moment."
+            sub={
+              residentKnown
+                ? `${residentCount} resident ${residentCount === 1 ? 'instance' : 'instances'}`
+                : 'instance read failed'
+            }
+          >
             {residentKnown ? (
               <>
                 <Odometer value={residentMb} />
@@ -515,6 +556,13 @@ function OverviewPage() {
           <StatCard
             label={overGbh > 0 ? 'GB-h over' : 'GB-h left'}
             hint="Compute allowance for this billing period."
+            sub={
+              usage.isPending || usageFailed
+                ? 'reading usage'
+                : overGbh > 0
+                  ? `${formatMoney(usageData?.overage_cents)} overage · ${usageData?.month}`
+                  : `of ${formatGbHours(included)} · ${usageData?.month}`
+            }
           >
             {usage.isPending ? (
               <Skeleton className="h-6 w-16" />
@@ -528,7 +576,11 @@ function OverviewPage() {
               <Odometer value={remainingGbh} format={formatGbHours} />
             )}
           </StatCard>
-          <StatCard label="CPU" hint="CPU-hours consumed this billing period. Measured, not billed.">
+          <StatCard
+            label="CPU"
+            hint="CPU-hours consumed this billing period. Measured, not billed."
+            sub="this period · measured, not billed"
+          >
             {usage.isPending ? (
               <Skeleton className="h-6 w-16" />
             ) : usageFailed || usageData?.used_cpu_hours == null ? (

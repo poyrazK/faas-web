@@ -806,6 +806,11 @@
      onto SpotlightCard, whose border and radius it inherits. */
   .glass {
     background:
+      radial-gradient(
+        120% 90% at 18% 0%,
+        color-mix(in oklab, var(--foreground) 5%, transparent),
+        transparent 55%
+      ),
       linear-gradient(
         to bottom,
         color-mix(in oklab, var(--foreground) 4%, transparent),
@@ -814,6 +819,50 @@
       color-mix(in oklab, var(--card) 72%, transparent);
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
+  }
+
+  /* The premium card material, layered over .glass on a SpotlightCard.
+     The edge is light, not a line: a 1px gradient ring (bright at the top
+     where the light hits, a breath of mint pooling at the bottom) drawn by
+     the mask-composite trick, replacing the flat border. The card sits on
+     real elevation and lifts toward the cursor. */
+  .card-lux {
+    border-color: transparent;
+    box-shadow: var(--elevation-1);
+    transition:
+      transform var(--motion-base) var(--motion-ease),
+      box-shadow var(--motion-base) var(--motion-ease);
+  }
+  .card-lux::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(
+      to bottom,
+      color-mix(in oklab, var(--foreground) 18%, transparent),
+      color-mix(in oklab, var(--foreground) 5%, transparent) 45%,
+      color-mix(in oklab, var(--brand-fill) 12%, transparent)
+    );
+    mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+  .card-lux:hover {
+    transform: translateY(-2px);
+    box-shadow:
+      var(--elevation-3),
+      0 14px 44px -20px color-mix(in oklab, var(--brand-fill) 30%, transparent);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .card-lux,
+    .card-lux:hover {
+      transform: none;
+      transition: none;
+    }
   }
 
   /* Progress-ring sweep: the arc enters from empty on insertion and glides
