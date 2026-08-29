@@ -12,6 +12,7 @@ import {
 import type { LogLevel, RunState } from '@/lib/mock-data';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import { CountUp } from './motion';
+import { BreatheRing } from '@/components/amicro/breathe-ring';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   DitherButton,
@@ -517,8 +518,8 @@ export function LoadingState({
         className
       )}
     >
-      <RefreshDouble className="h-5 w-5 animate-spin text-muted-foreground motion-reduce:animate-none" />
-      <p className="text-sm text-muted-foreground">{message}</p>
+      <BreatheRing />
+      <p className="mt-1 text-sm text-muted-foreground">{message}</p>
     </div>
   );
 }

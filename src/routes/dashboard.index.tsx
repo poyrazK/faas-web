@@ -9,6 +9,10 @@ import {
   queryPhase,
 } from '@/components/dashboard/primitives';
 import { FirstRun } from '@/components/dashboard/first-run';
+import { Magnetic } from '@/components/amicro/magnetic';
+import { PointerGlow } from '@/components/amicro/pointer-glow';
+import { Tilt } from '@/components/amicro/tilt';
+import { WordReveal } from '@/components/amicro/word-reveal';
 import { SpotlightCard } from '@/components/ui/spotlight-card';
 import { LiveDot } from '@/components/ui/live-dot';
 import { WindFlow } from '@/components/dashboard/wind-flow';
@@ -105,8 +109,9 @@ function AppsColumn({ workflows }: { workflows: Workflow[] }) {
       <ColumnHeader label="Apps" to="/dashboard/workflows" />
       <Link
         to="/dashboard/workflows/new"
-        className="pressable mt-2 flex items-center justify-center gap-1.5 rounded-lg border border-border bg-card py-2 text-sm text-muted-foreground hover:border-border-secondary hover:text-foreground"
+        className="pressable relative mt-2 flex items-center justify-center gap-1.5 overflow-hidden rounded-lg border border-border bg-card py-2 text-sm text-muted-foreground hover:border-border-secondary hover:text-foreground"
       >
+        <PointerGlow />
         <Plus className="h-3.5 w-3.5" />
         New app
       </Link>
@@ -232,19 +237,23 @@ function StatCard({
   children: React.ReactNode;
 }) {
   return (
-    <SpotlightCard className={cn('glass', className)}>
-      <div className={cn('flex h-full flex-col gap-2.5 p-5', large && 'min-h-36')} title={hint}>
-        <p className="label-mono text-muted-foreground">{label}</p>
-        <p
-          className={cn(
-            'leading-none font-semibold tracking-tight [font-variant-numeric:tabular-nums]',
-            large ? 'text-4xl' : 'text-2xl'
-          )}
-        >
-          {children}
-        </p>
-      </div>
-    </SpotlightCard>
+    // A whisper of tilt — the glass leans toward the cursor. Data cards tip,
+    // never flip.
+    <Tilt maxTilt={3} className={className}>
+      <SpotlightCard className="glass h-full">
+        <div className={cn('flex h-full flex-col gap-2.5 p-5', large && 'min-h-36')} title={hint}>
+          <p className="label-mono text-muted-foreground">{label}</p>
+          <p
+            className={cn(
+              'leading-none font-semibold tracking-tight [font-variant-numeric:tabular-nums]',
+              large ? 'text-4xl' : 'text-2xl'
+            )}
+          >
+            {children}
+          </p>
+        </div>
+      </SpotlightCard>
+    </Tilt>
   );
 }
 
@@ -356,20 +365,26 @@ function OverviewPage() {
           {/* The verdict rides above the greeting as a pill; when something
               is wrong it is the page's alert and links to the trouble. */}
           <p role={verdict.trouble ? 'alert' : 'status'} className="contents">
-            <Link
-              to={verdict.trouble ? '/dashboard/workflows' : '/dashboard/usage'}
-              className="glass pressable label-mono inline-flex items-center gap-2 rounded-full border border-border px-3.5 py-1.5 text-muted-foreground hover:border-border-secondary hover:text-foreground"
-            >
-              <LiveDot color={verdict.color} />
-              {verdict.text}
-            </Link>
+            <Magnetic range={60} strength={0.2}>
+              <Link
+                to={verdict.trouble ? '/dashboard/workflows' : '/dashboard/usage'}
+                className="glass pressable label-mono inline-flex items-center gap-2 rounded-full border border-border px-3.5 py-1.5 text-muted-foreground hover:border-border-secondary hover:text-foreground"
+              >
+                <LiveDot color={verdict.color} />
+                {verdict.text}
+              </Link>
+            </Magnetic>
           </p>
 
           <h1 className="text-center text-3xl font-semibold tracking-[-0.03em] sm:text-4xl">
-            {firstName ? `Let's get to work, ${firstName}` : "Let's get to work"}
-            <span aria-hidden className="text-brand">
-              .
-            </span>
+            <WordReveal
+              text={firstName ? `Let's get to work, ${firstName}` : "Let's get to work"}
+              suffix={
+                <span aria-hidden className="text-brand">
+                  .
+                </span>
+              }
+            />
           </h1>
 
           {/* The palette's front door — the top bar no longer carries one. */}
@@ -378,8 +393,9 @@ function OverviewPage() {
             onClick={() => window.dispatchEvent(new Event('gregale:open-palette'))}
             aria-label="Search apps, pages, and actions"
             aria-keyshortcuts="Meta+K Control+K"
-            className="glass pressable flex h-11 w-full items-center gap-3 rounded-xl border border-border px-4 text-sm text-muted-foreground shadow-elevation-1 hover:border-border-secondary hover:text-foreground"
+            className="glass pressable relative flex h-11 w-full items-center gap-3 overflow-hidden rounded-xl border border-border px-4 text-sm text-muted-foreground shadow-elevation-1 hover:border-border-secondary hover:text-foreground"
           >
+            <PointerGlow />
             <Search className="h-4 w-4 shrink-0" />
             Search
             <Kbd className="ml-auto px-1.5">⌘K</Kbd>
