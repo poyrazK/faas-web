@@ -16,6 +16,7 @@ import { Tilt } from '@/components/amicro/tilt';
 import { WordReveal } from '@/components/amicro/word-reveal';
 import { SpotlightCard } from '@/components/ui/spotlight-card';
 import { LiveDot } from '@/components/ui/live-dot';
+import { WindFlow } from '@/components/dashboard/wind-flow';
 import { Kbd } from '@/components/ui/kbd';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Odometer } from '@/components/ui/odometer';
@@ -24,7 +25,7 @@ import { useAuth } from '@/lib/auth';
 import { useAppsMetrics, useInstances, useUsageSummary } from '@/lib/api/queries';
 import { formatCompact, formatRelative, type Workflow } from '@/lib/mock-data';
 import type { Deployment } from '@/lib/mock-data';
-import { FlowDotsField, ShapesBand } from '@/components/dashboard/shapes';
+import { FlowDotsField } from '@/components/dashboard/shapes';
 import { readRecents, recentLabel } from '@/lib/recents';
 import { consoleHead } from '@/lib/seo';
 import { cn } from '@/lib/utils';
@@ -372,11 +373,20 @@ function OverviewPage() {
 
   return (
     <div className="flex flex-col gap-10">
-      {/* The ground: the colophon's flow-dot field at viewport scale — the
-          same swirl the footer signs off with, drifting toward the
-          northeast, far below the data's opacity. Fixed layer behind the
-          content; the chromed sidebar and top bar carry higher z. */}
+      {/* The gregale fills the whole background: a fixed viewport layer
+          behind the content (the chromed sidebar and top bar carry higher
+          z and opaque grounds, so it stays the page's air, not theirs). */}
       <div aria-hidden className="fixed inset-0">
+        <WindFlow intensity={0.3} />
+      </div>
+
+      {/* The ground under the wind: the flow-dot field rises from the
+          bottom of the viewport and is gone before mid-page — background,
+          not furniture. */}
+      <div
+        aria-hidden
+        className="fixed inset-x-0 bottom-0 h-[36vh] [mask-image:linear-gradient(to_top,black_25%,transparent)]"
+      >
         <FlowDotsField />
       </div>
 
@@ -614,11 +624,6 @@ function OverviewPage() {
         </div>
       </section>
 
-      {/* The colophon: generative pattern panels closing the page — the
-          quiet ornament after the working sections end. */}
-      <div className="animate-item-enter relative mt-6 border-t border-border pt-10 [animation-delay:280ms]">
-        <ShapesBand />
-      </div>
     </div>
   );
 }

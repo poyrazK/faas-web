@@ -168,7 +168,9 @@ export function FlowDotsField({ className }: { className?: string }) {
   return (
     <svg
       viewBox="0 0 1440 900"
-      preserveAspectRatio="xMidYMid slice"
+      // Anchored to its own bottom edge: in a short strip along the page's
+      // base, the field's lower band is what shows.
+      preserveAspectRatio="xMidYMax slice"
       aria-hidden
       className={cn('h-full w-full', className)}
     >
