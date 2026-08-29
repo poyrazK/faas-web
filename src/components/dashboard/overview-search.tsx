@@ -127,7 +127,17 @@ export function OverviewSearch({ workflows }: { workflows: Workflow[] }) {
         className="w-full"
         style={{ ['--beam-hue-base' as string]: '-78deg' }}
       >
-        <div className="glass relative flex h-11 w-full items-center gap-3 overflow-hidden rounded-xl border border-border px-4 shadow-elevation-1 focus-within:border-border-secondary">
+        {/* The whole field is a click target for the input — padding and
+            icon included, like a real search box. */}
+        <div
+          onMouseDown={(e) => {
+            if (e.target !== inputRef.current) {
+              e.preventDefault();
+              inputRef.current?.focus();
+            }
+          }}
+          className="glass relative flex h-11 w-full cursor-text items-center gap-3 overflow-hidden rounded-xl border border-border px-4 shadow-elevation-1 focus-within:border-border-secondary"
+        >
           <PointerGlow />
           <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
           <input
