@@ -7,8 +7,6 @@ import { Reveal } from './reveal';
 import { TextReveal } from './text-reveal';
 import { FloorGlow } from './floor-glow';
 
-const REPO = 'https://github.com/poyrazK/faas';
-
 /**
  * Footer directory.
  *
@@ -56,9 +54,6 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
       { label: 'Documentation', href: '/docs', doc: true },
       // Served by apid on this same origin, so it needs no absolute URL.
       { label: 'API reference', href: '/v1/openapi.yaml' },
-      { label: 'Source', href: REPO, external: true },
-      { label: 'Issues', href: `${REPO}/issues`, external: true },
-      { label: 'Contributing', href: `${REPO}/blob/main/CONTRIBUTING.md`, external: true },
     ],
   },
   {
@@ -74,8 +69,6 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
         href: '/docs/responsible-disclosure',
         doc: 'responsible-disclosure',
       },
-      { label: 'Security policy', href: `${REPO}/blob/main/SECURITY.md`, external: true },
-      { label: 'License', href: `${REPO}/blob/main/LICENSE`, external: true },
     ],
   },
 ];
@@ -281,18 +274,6 @@ export function Footer() {
           <p className="text-xs text-muted-foreground">
             © {new Date().getFullYear()} Gregale. All rights reserved.
           </p>
-          {/* Was GitHub, Discord, and LinkedIn, all pointing at `#`. Only one of
-              the three exists, so only one is listed. */}
-          <div className="flex items-center gap-5">
-            <a
-              href={REPO}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-muted-foreground transition-colors hover:text-foreground"
-            >
-              GitHub
-            </a>
-          </div>
         </div>
       </div>
     </footer>

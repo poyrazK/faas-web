@@ -25,8 +25,6 @@ export const Route = createFileRoute('/docs/$slug')({
   component: DocPage,
 });
 
-const REPO_BLOB = 'https://github.com/poyrazK/faas/blob/main';
-
 const PAGINATION_CARD =
   'group flex flex-col gap-1 rounded-xl border border-border bg-card px-4 py-3 transition-colors hover:border-brand/40';
 
@@ -90,27 +88,15 @@ function DocPage() {
           )}
         </nav>
 
-        {/* The vendored copy can lag upstream, so every page says where it
-            came from and offers the canonical version. */}
+        {/* Feedback channel: the sales/support inbox, now that the source
+            repository is no longer public-facing. */}
         <p className="mt-10 border-t border-border pt-6 text-xs text-muted-foreground">
-          Vendored from{' '}
+          Spotted a problem on this page?{' '}
           <a
-            href={`${REPO_BLOB}/${entry.source}`}
-            target="_blank"
-            rel="noopener noreferrer"
+            href="mailto:support@gregale.dev"
             className="inline-flex items-center gap-1 text-brand underline-offset-4 hover:underline"
           >
-            {entry.source}
-            <ArrowUpRight className="h-3 w-3" />
-          </a>{' '}
-          — the canonical copy lives upstream. Spotted a problem?{' '}
-          <a
-            href="https://github.com/poyrazK/faas/issues"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-brand underline-offset-4 hover:underline"
-          >
-            Open an issue
+            Tell us
             <ArrowUpRight className="h-3 w-3" />
           </a>
         </p>
