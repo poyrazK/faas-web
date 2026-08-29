@@ -25,6 +25,7 @@ import { useAuth } from '@/lib/auth';
 import { useAppsMetrics, useInstances, useUsageSummary } from '@/lib/api/queries';
 import { formatCompact, formatRelative, type Workflow } from '@/lib/mock-data';
 import type { Deployment } from '@/lib/mock-data';
+import { ShapesBand } from '@/components/dashboard/shapes';
 import { readRecents, recentLabel } from '@/lib/recents';
 import { consoleHead } from '@/lib/seo';
 import { cn } from '@/lib/utils';
@@ -612,6 +613,12 @@ function OverviewPage() {
           </Link>
         </div>
       </section>
+
+      {/* The colophon: generative pattern panels closing the page — the
+          quiet ornament after the working sections end. */}
+      <div className="animate-item-enter relative mt-6 border-t border-border pt-10 [animation-delay:280ms]">
+        <ShapesBand />
+      </div>
     </div>
   );
 }
