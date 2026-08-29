@@ -147,6 +147,11 @@
 .console {
   color-scheme: dark;
 
+  /* The console speaks Satoshi (loaded in index.html); the marketing site
+     keeps Familjen Grotesk. One token flip — every font-sans under the
+     console resolves here, the mono voice is untouched. */
+  --font-sans: 'Satoshi', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
   --background: #090909;
   --foreground: #ffffff;
   --card: #0d0d0d;
