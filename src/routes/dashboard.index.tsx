@@ -16,7 +16,7 @@ import { Tilt } from '@/components/amicro/tilt';
 import { WordReveal } from '@/components/amicro/word-reveal';
 import { SpotlightCard } from '@/components/ui/spotlight-card';
 import { LiveDot } from '@/components/ui/live-dot';
-import { WindFlow } from '@/components/dashboard/wind-flow';
+import { FlickerGrid } from '@/components/dashboard/flicker-grid';
 import { Kbd } from '@/components/ui/kbd';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Odometer } from '@/components/ui/odometer';
@@ -353,11 +353,12 @@ function OverviewPage() {
 
   return (
     <div className="flex flex-col gap-10">
-      {/* The gregale fills the whole background: a fixed viewport layer
-          behind the content (the chromed sidebar and top bar carry higher
-          z and opaque grounds, so it stays the page's air, not theirs). */}
+      {/* The ground fills the whole background: graph-paper rules with mint
+          cells flickering across them, weighted toward the northeast the
+          gregale enters from. Fixed viewport layer behind the content — the
+          chromed sidebar and top bar carry higher z and opaque grounds. */}
       <div aria-hidden className="fixed inset-0">
-        <WindFlow intensity={0.3} />
+        <FlickerGrid />
       </div>
 
       {/* --- Greeting + search ------------------------------------- */}
