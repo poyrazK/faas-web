@@ -352,15 +352,15 @@ function OverviewPage() {
 
   return (
     <div className="flex flex-col gap-10">
+      {/* The gregale fills the whole background: a fixed viewport layer
+          behind the content (the chromed sidebar and top bar carry higher
+          z and opaque grounds, so it stays the page's air, not theirs). */}
+      <div aria-hidden className="fixed inset-0">
+        <WindFlow intensity={0.3} />
+      </div>
+
       {/* --- Greeting + search ------------------------------------- */}
       <div className="relative">
-        <div
-          aria-hidden
-          className="absolute inset-x-0 -top-8 h-56 [mask-image:linear-gradient(to_bottom,black_35%,transparent)]"
-        >
-          <WindFlow intensity={0.35} />
-        </div>
-
         <div className="relative mx-auto flex w-full max-w-3xl flex-col items-center gap-5 pt-2">
           {/* The verdict rides above the greeting as a pill; when something
               is wrong it is the page's alert and links to the trouble. */}
@@ -423,14 +423,14 @@ function OverviewPage() {
       </div>
 
       {/* --- Resource columns -------------------------------------- */}
-      <div className="animate-item-enter grid grid-cols-1 gap-x-10 gap-y-8 sm:grid-cols-2 lg:grid-cols-3 [animation-delay:60ms]">
+      <div className="animate-item-enter relative grid grid-cols-1 gap-x-10 gap-y-8 sm:grid-cols-2 lg:grid-cols-3 [animation-delay:60ms]">
         <AppsColumn workflows={workflows} />
         <DeploymentsColumn recent={recent} />
         <RecentsColumn />
       </div>
 
       {/* --- Analytics --------------------------------------------- */}
-      <section className="animate-item-enter flex flex-col gap-4 [animation-delay:120ms]">
+      <section className="animate-item-enter relative flex flex-col gap-4 [animation-delay:120ms]">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-sm font-medium">Analytics</h2>
           <div className="flex items-center gap-2">
