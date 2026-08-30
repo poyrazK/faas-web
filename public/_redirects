@@ -1,3 +1,8 @@
+# Server-rendered CLI authorization must stay on the public console origin;
+# proxy it to apid before the SPA fallback. This preserves the browser session
+# cookie while keeping the API implementation behind the edge.
+/cli-auth    https://api.gregale.dev/cli-auth   200
+
 # SPA fallback for Netlify and Cloudflare Pages.
 #
 # Routing happens in the browser, so only `/` exists as a real file. Without
