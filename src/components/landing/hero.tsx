@@ -54,8 +54,9 @@ function CopyCommand() {
 
 /**
  * The emblem behind the headline: the frosted-glass Gregale mark, sitting in
- * the light rather than on top of it — at 55% it is unmistakably there and
- * the copy over it stays legible.
+ * the light rather than on top of it. `multiply` is what makes that true —
+ * the field's beam passes through the glass and tints it, so the mark reads
+ * as something the light is going through, not a picture laid on the page.
  */
 function Emblem() {
   return (
@@ -63,7 +64,7 @@ function Emblem() {
       aria-hidden="true"
       data-emblem
       className="pointer-events-none absolute inset-x-0 top-[72px] flex justify-center sm:top-[96px]"
-      style={{ opacity: 0.55 }}
+      style={{ mixBlendMode: 'multiply', opacity: 0.9 }}
     >
       <img
         src="/gregale-frosted.png"
