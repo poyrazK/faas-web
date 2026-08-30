@@ -410,7 +410,11 @@ export function PasswordFlow({
 
       <p className="mt-6 text-sm text-muted-foreground">
         {copy.switchText}{' '}
-        <Link to={copy.switchTo} className="text-brand hover:text-brand-hover">
+        <Link
+          to={copy.switchTo}
+          search={redirectTo ? { next: redirectTo } : undefined}
+          className="text-brand hover:text-brand-hover"
+        >
           {copy.switchLabel}
         </Link>
       </p>
