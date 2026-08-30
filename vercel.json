@@ -10,6 +10,11 @@
       "dest": "https://api.gregale.dev/dashboard/install/connect"
     },
     {
+      "src": "^/cli-auth$",
+      "methods": ["GET", "HEAD", "POST", "OPTIONS"],
+      "dest": "https://api.gregale.dev/cli-auth"
+    },
+    {
       "src": "^/oauth(?:/(.*))?$",
       "methods": ["GET", "HEAD", "OPTIONS"],
       "dest": "https://api.gregale.dev/oauth/$1"

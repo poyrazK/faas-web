@@ -3,10 +3,14 @@ import { useEffect } from 'react';
 import { AuthLayout } from '@/components/auth/auth-layout';
 import { PasswordFlow } from '@/components/auth/password-flow';
 import { clearOAuthPending, hasOAuthPending, hasOnboarded, readSession, useAuth } from '@/lib/auth';
+import { safeInternalPath } from '@/lib/redirect';
 import { pageHead } from '@/lib/seo';
 
 export const Route = createFileRoute('/login')({
   head: () => pageHead({ title: 'Sign in' }),
+  validateSearch: (search: Record<string, unknown>): { next?: string } => ({
+    next: safeInternalPath(search.next),
+  }),
   beforeLoad: () => {
     if (readSession()) throw redirect({ to: hasOnboarded() ? '/dashboard' : '/onboarding' });
     // OAuth returns through a full-page provider redirect. There is no
@@ -19,6 +23,7 @@ export const Route = createFileRoute('/login')({
 
 function LoginPage() {
   const navigate = useNavigate();
+  const { next } = Route.useSearch();
   const { user, loading } = useAuth();
   const oauthPending = hasOAuthPending();
 
@@ -43,7 +48,7 @@ function LoginPage() {
 
   return (
     <AuthLayout>
-      <PasswordFlow mode="signin" />
+      <PasswordFlow mode="signin" redirectTo={next} />
     </AuthLayout>
   );
 }

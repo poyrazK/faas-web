@@ -14,7 +14,7 @@ npm run dev          # http://localhost:3000
 Sign in with a real account on the box — email and password. There is no demo
 code any more; the API has no one-time-code flow, and the console follows it.
 
-`npm run dev` proxies `/v1`, `/login`, `/signup`, and `/auth` to
+`npm run dev` proxies `/v1`, `/login`, `/signup`, `/auth`, and `/cli-auth` to
 `https://api.gregale.dev` so the browser sees one origin and the session cookie
 works. Point it somewhere else with `API_ORIGIN`:
 
@@ -226,8 +226,8 @@ link to it) 404s before the router ever runs. `vite preview` does this
 automatically, which is why the problem only ever shows up in production.
 
 **The API must win over the SPA fallback.** `apid` and this app are served from
-one origin, so whatever fronts the deployment has to send `/v1/*` and `/auth/*`
-to `apid` before the fallback rewrites them to `index.html`.
+one origin, so whatever fronts the deployment has to send `/v1/*`, `/auth/*`,
+and `/cli-auth` to `apid` before the fallback rewrites them to `index.html`.
 
 `/login` and `/signup` are the awkward pair: **both sides own them, split by
 method.** GET must render this app's page; POST must reach `apid` to set the

@@ -109,7 +109,13 @@ function FormError({ message }: { message: string }) {
   );
 }
 
-export function PasswordFlow({ mode }: { mode: 'signin' | 'signup' }) {
+export function PasswordFlow({
+  mode,
+  redirectTo,
+}: {
+  mode: 'signin' | 'signup';
+  redirectTo?: string;
+}) {
   const copy = COPY[mode];
   const sweepNavigate = useSweepNavigate();
   const { toast } = useToast();
@@ -139,6 +145,13 @@ export function PasswordFlow({ mode }: { mode: 'signin' | 'signup' }) {
       const user =
         mode === 'signup' ? await signUp(email, password) : await signIn(email, password);
       toast({ kind: 'success', title: `Welcome, ${user.name.split(' ')[0]}` });
+      if (redirectTo) {
+        // A full navigation is intentional: the CLI authorization page is a
+        // server-rendered endpoint, and must receive the HttpOnly session
+        // cookie through the public-origin proxy before it can be submitted.
+        window.location.assign(redirectTo);
+        return;
+      }
       sweepNavigate(hasOnboarded() ? '/dashboard' : '/onboarding');
     } catch (err) {
       // A weak password on signup is the one case the server does distinguish,
@@ -397,7 +410,11 @@ export function PasswordFlow({ mode }: { mode: 'signin' | 'signup' }) {
 
       <p className="mt-6 text-sm text-muted-foreground">
         {copy.switchText}{' '}
-        <Link to={copy.switchTo} className="text-brand hover:text-brand-hover">
+        <Link
+          to={copy.switchTo}
+          search={redirectTo ? { next: redirectTo } : undefined}
+          className="text-brand hover:text-brand-hover"
+        >
           {copy.switchLabel}
         </Link>
       </p>
