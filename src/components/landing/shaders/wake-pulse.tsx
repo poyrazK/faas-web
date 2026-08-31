@@ -34,12 +34,13 @@ float hash21(vec2 p) {
   return fract(p.x * p.y);
 }
 
-// The mint ramp, pale -> deep. Same steps the CSS tokens carry.
+// The mint ramp, pale -> deep, kept light: it tops out at mint-9 rather
+// than mint-11 so the mound reads as lit glass beside the hero's field.
 vec3 ramp(float x) {
-  vec3 c0 = vec3(0.906, 0.973, 0.937);   // mint-3
-  vec3 c1 = vec3(0.502, 0.914, 0.745);   // mint-6
-  vec3 c2 = vec3(0.000, 0.808, 0.569);   // mint-8
-  vec3 c3 = vec3(0.000, 0.435, 0.251);   // mint-11
+  vec3 c0 = vec3(0.945, 0.988, 0.965);   // mint-2
+  vec3 c1 = vec3(0.655, 0.945, 0.827);   // mint-5
+  vec3 c2 = vec3(0.298, 0.875, 0.686);   // mint-7
+  vec3 c3 = vec3(0.000, 0.643, 0.396);   // mint-9
   vec3 col = mix(c0, c1, smoothstep(0.00, 0.40, x));
   col = mix(col, c2, smoothstep(0.36, 0.74, x));
   col = mix(col, c3, smoothstep(0.70, 1.00, x));
@@ -147,7 +148,7 @@ function PulseFallback() {
       style={{
         backgroundImage: [
           'repeating-linear-gradient(to top, transparent 0 10px, rgba(255, 255, 255, 0.35) 10px 14px)',
-          'linear-gradient(to right, var(--mint-4), var(--mint-8) 45%, var(--mint-9) 65%, var(--mint-5))',
+          'linear-gradient(to right, var(--mint-3), var(--mint-6) 45%, var(--mint-8) 65%, var(--mint-4))',
         ].join(', '),
         clipPath:
           'polygon(0% 93%, 26% 93%, 34% 22%, 37% 17%, 45% 21%, 60% 20%, 70% 22%, 86% 93%, 100% 93%, 100% 100%, 0% 100%)',
