@@ -32,6 +32,7 @@ import { useConfirm } from '@/components/ui/confirm';
 import { errorMessage } from '@/lib/api/errors';
 import { DeployAnnotations } from '@/components/dashboard/deploy-annotations';
 import { TarballDeployForm } from '@/components/dashboard/tarball-deploy';
+import { MirrorsPanel } from '@/components/dashboard/mirrors';
 import { annotationsBody, EMPTY_ANNOTATIONS, type AnnotationDraft } from '@/lib/deploy-annotations';
 import { useAuth } from '@/lib/auth';
 import { isPaidPlan } from '@/lib/plan';
@@ -605,6 +606,13 @@ function FunctionDetailPage() {
                     }
                   />
                 </Panel>
+                <MirrorsPanel
+                  slug={fn.id}
+                  deployments={deployments.map((dep) => ({
+                    id: dep.id,
+                    label: `${dep.id.slice(0, 8)} · ${dep.status ?? dep.state}`,
+                  }))}
+                />
               </>
             )}
 

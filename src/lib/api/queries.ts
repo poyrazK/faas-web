@@ -2007,6 +2007,58 @@ export function useUpdateEdgeRule() {
  * the plan ceiling so whatever it suggests is settable. Advice only — it is
  * the person who confirms, by creating the rule.
  */
+/* ------------------------------------------------------------------ *
+ * Traffic mirrors — shadow a candidate with live traffic, measure drift
+ * ------------------------------------------------------------------ */
+
+export function useMirrors(slug: string) {
+  return useQuery({
+    queryKey: ['apps', slug, 'mirrors'],
+    queryFn: () => unwrap(api.GET('/v1/apps/{slug}/mirrors', { params: { path: { slug } } })),
+    enabled: Boolean(slug),
+  });
+}
+
+export function useCreateMirror(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: components['schemas']['CreateMirrorRuleRequest']) =>
+      unwrap(api.POST('/v1/apps/{slug}/mirrors', { params: { path: { slug } }, body })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['apps', slug, 'mirrors'] }),
+  });
+}
+
+export function useUpdateMirror(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      ...body
+    }: { id: string } & components['schemas']['UpdateMirrorRuleRequest']) =>
+      unwrap(api.PATCH('/v1/apps/{slug}/mirrors/{id}', { params: { path: { slug, id } }, body })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['apps', slug, 'mirrors'] }),
+  });
+}
+
+export function useDeleteMirror(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      unwrap(api.DELETE('/v1/apps/{slug}/mirrors/{id}', { params: { path: { slug, id } } })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['apps', slug, 'mirrors'] }),
+  });
+}
+
+export function useMirrorSummary(slug: string, id: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['apps', slug, 'mirrors', id, 'summary'],
+    queryFn: () =>
+      unwrap(api.GET('/v1/apps/{slug}/mirrors/{id}/summary', { params: { path: { slug, id } } })),
+    enabled: enabled && Boolean(id),
+    refetchInterval: 30_000,
+  });
+}
+
 export function useThrottleSuggestions(slug: string, range: MetricsRange, enabled: boolean) {
   return useQuery({
     queryKey: ['apps', slug, 'throttle-suggestions', range],

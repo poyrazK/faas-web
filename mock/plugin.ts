@@ -1638,6 +1638,89 @@ const MOCK_PLAN = {
 
 route('GET', '/v1/templates', () => db.TEMPLATE_CATALOG);
 
+// --- Traffic mirrors ---------------------------------------------------------
+
+/** Seeded lazily so the app's deployment fixtures already exist. */
+const mirrorsByApp = new Map<string, db.MirrorRule[]>();
+function mirrorsFor(slug: string): db.MirrorRule[] {
+  let held = mirrorsByApp.get(slug);
+  if (!held) {
+    const a = app(slug);
+    const deps = db.deployments.filter((d) => d.app_id === a.id);
+    held =
+      deps.length >= 2
+        ? [
+            {
+              id: db.id(),
+              account_id: db.ACCOUNT_ID,
+              app_id: a.id,
+              source_deployment_id: deps[1].id,
+              mirror_deployment_id: deps[0].id,
+              percent: 25,
+              enabled: true,
+              include_body: false,
+              redact_headers: ['authorization', 'cookie'],
+              always_stripped_headers: ['authorization', 'cookie', 'set-cookie'],
+              created_at: db.iso(3_600_000),
+              updated_at: db.iso(3_600_000),
+            },
+          ]
+        : [];
+    mirrorsByApp.set(slug, held);
+  }
+  return held;
+}
+route('GET', '/v1/apps/{slug}/mirrors', ({ params }) => {
+  const rules = mirrorsFor(params.slug);
+  return { rules, count: rules.length };
+});
+route('POST', '/v1/apps/{slug}/mirrors', ({ params, body }) => {
+  const a = app(params.slug);
+  const b = body as Pick<db.MirrorRule, 'source_deployment_id' | 'mirror_deployment_id'> &
+    Partial<db.MirrorRule>;
+  if (!b.source_deployment_id || !b.mirror_deployment_id)
+    throw new Problem(400, 'missing_field', 'source and mirror deployment ids are required.');
+  const rule: db.MirrorRule = {
+    id: db.id(),
+    account_id: db.ACCOUNT_ID,
+    app_id: a.id,
+    source_deployment_id: b.source_deployment_id,
+    mirror_deployment_id: b.mirror_deployment_id,
+    percent: b.percent ?? 100,
+    enabled: true,
+    include_body: b.include_body ?? false,
+    redact_headers: b.redact_headers ?? [],
+    always_stripped_headers: ['authorization', 'cookie', 'set-cookie'],
+    created_at: db.iso(0),
+    updated_at: db.iso(0),
+  };
+  mirrorsFor(params.slug).unshift(rule);
+  return status(201, rule);
+});
+route('PATCH', '/v1/apps/{slug}/mirrors/{id}', ({ params, body }) => {
+  const rule = mirrorsFor(params.slug).find((r) => r.id === params.id);
+  if (!rule) throw new Problem(404, 'not_found', 'No such mirror rule.');
+  Object.assign(rule, body, { updated_at: db.iso(0) });
+  return rule;
+});
+route('DELETE', '/v1/apps/{slug}/mirrors/{id}', ({ params }) => {
+  const held = mirrorsFor(params.slug);
+  const at = held.findIndex((r) => r.id === params.id);
+  if (at === -1) throw new Problem(404, 'not_found', 'No such mirror rule.');
+  held.splice(at, 1);
+  return NO_CONTENT;
+});
+route('GET', '/v1/apps/{slug}/mirrors/{id}/summary', () => ({
+  total_invocations: 1200,
+  status_diff_count: 3,
+  schema_diff_count: 0,
+  body_diff_count: 12,
+  mean_latency_diff_ms: -4,
+  p99_latency_diff_ms: 31,
+  crash_count: 1,
+  window_seconds: 3600,
+}));
+
 /** Apply the `only` CSV the way apid does: absent = everything. */
 function subsetPlan(only: unknown) {
   const names = typeof only === 'string' && only !== '' ? new Set(only.split(',')) : null;
