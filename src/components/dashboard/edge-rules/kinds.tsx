@@ -45,7 +45,11 @@ export interface ActionMap {
   geo: S['EdgeRuleGeoAction'];
   throttle: S['EdgeRuleThrottleAction'];
   budget: S['EdgeRuleBudgetAction'];
+  cache: S['EdgeRuleCacheAction'];
 }
+
+/** The two non-credential headers the cache may key on (spec: closed vocabulary). */
+const CACHE_VARY = ['Accept-Language', 'Accept-Encoding'] as const;
 
 export type Kind = keyof ActionMap;
 
@@ -598,6 +602,54 @@ export const KINDS = {
           onChange={(allow_override_header) => onChange({ ...value, allow_override_header })}
           placeholder="X-Budget-Ms"
         />
+      </div>
+    ),
+  }),
+  cache: def<'cache'>({
+    label: 'Response cache',
+    desc: 'Serve repeat requests from the edge for a fresh window, and keep serving the last good body while the app is failing.',
+    empty: () => ({ max_age_seconds: 60, stale_if_error_seconds: 300 }),
+    summary: (a) => `fresh ${a.max_age_seconds} s · stale-on-error ${a.stale_if_error_seconds} s`,
+    validate: (a): Record<string, string> => {
+      const errors: Record<string, string> = {};
+      if (!(a.max_age_seconds >= 1 && a.max_age_seconds <= 3600))
+        errors.max_age_seconds = 'At most 3600 s.';
+      if (!(a.stale_if_error_seconds >= 1 && a.stale_if_error_seconds <= 300))
+        errors.stale_if_error_seconds = 'Between 1 and 300 s.';
+      return errors;
+    },
+    Form: ({ value, onChange, errors }) => (
+      <div className="grid gap-4 sm:grid-cols-2">
+        <NumberField
+          label="Fresh for (s)"
+          hint="Repeat requests inside this window never wake the app. Platform cap 3600."
+          error={errors.max_age_seconds}
+          value={value.max_age_seconds}
+          min={1}
+          onChange={(max_age_seconds) =>
+            onChange({ ...value, max_age_seconds: max_age_seconds ?? 0 })
+          }
+        />
+        <NumberField
+          label="Stale on error (s)"
+          hint="While the app answers 5xx, keep serving the cached body this long. Cap 300."
+          error={errors.stale_if_error_seconds}
+          value={value.stale_if_error_seconds}
+          min={1}
+          onChange={(stale_if_error_seconds) =>
+            onChange({ ...value, stale_if_error_seconds: stale_if_error_seconds ?? 0 })
+          }
+        />
+        <div className="sm:col-span-2">
+          <ChipSet
+            label="Vary on"
+            hint="Request headers that split the cache. Leave empty to key on path and query alone."
+            error={errors.vary_on}
+            options={CACHE_VARY}
+            value={(value.vary_on ?? []) as (typeof CACHE_VARY)[number][]}
+            onChange={(vary_on) => onChange({ ...value, vary_on })}
+          />
+        </div>
       </div>
     ),
   }),
