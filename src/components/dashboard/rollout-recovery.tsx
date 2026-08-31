@@ -97,7 +97,7 @@ export function RolloutRecoveryBar({ slug }: { slug: string }) {
 
   return (
     <RolloutRecovery
-      trafficPercent={rollout.traffic_percent ?? 0}
+      trafficPercent={100 - (rollout.traffic_percent ?? 0)}
       busy={recover.isPending}
       onAct={(action, reason) => {
         if (action === 'abort' || action === 'promote') {
