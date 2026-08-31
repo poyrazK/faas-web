@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { Link, useRouterState } from '@tanstack/react-router';
 import { ArrowRight, Menu, Xmark } from 'iconoir-react';
 import { SweepLink } from '@/components/sweep-link';
+import { Button } from '@/components/ui/button';
 import { EASE } from './reveal';
 import { cn } from '@/lib/utils';
 
@@ -14,8 +15,8 @@ import { cn } from '@/lib/utils';
  * and the pill draws in a little, the way a thing does when it lands.
  *
  * Contents left to right: the mark (home), the three links with the sliding
- * active dot, Sign in, and the primary action as the black pill the hero
- * uses. On phones the links fold into a card that drops from the island.
+ * active dot, Sign in, and the primary action in the site's mint — the same
+ * lit, sweeping button the hero and footer use. On phones the links fold into a card that drops from the island.
  */
 
 interface NavLink {
@@ -194,13 +195,16 @@ export function Nav() {
             Sign in
           </SweepLink>
 
-          <SweepLink
-            to="/signup"
-            className="group ml-0.5 inline-flex h-9 items-center gap-1.5 rounded-full bg-[#1c2622] pl-4 pr-3 text-[13.5px] font-semibold text-white shadow-[inset_0_1px_0_0_rgba(255,255,255,0.12),0_6px_18px_-8px_rgba(13,21,18,0.6)] outline-none transition-[background-color,transform] duration-200 hover:bg-[#0d1512] focus-visible:ring-2 focus-visible:ring-ring/50 active:scale-[0.98] motion-reduce:transform-none"
+          <Button
+            asChild
+            variant="cta"
+            className="group ml-0.5 h-9 gap-1.5 rounded-full pl-4 pr-3 text-[13.5px] font-semibold"
           >
-            Get started
-            <ArrowRight className="size-3.5 transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transition-none" />
-          </SweepLink>
+            <SweepLink to="/signup">
+              Get started
+              <ArrowRight className="size-3.5 transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transition-none" />
+            </SweepLink>
+          </Button>
 
           <button
             ref={toggleRef}
