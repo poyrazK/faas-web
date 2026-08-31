@@ -1,12 +1,22 @@
 import { useMemo, useState } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
-import { Plus, Trash } from 'iconoir-react';
+import { HealthShield, Plus, Refresh, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
-import { PageHeader, Panel } from '@/components/dashboard/primitives';
+import { InlinePhase, PageHeader, Panel, queryPhase } from '@/components/dashboard/primitives';
+import { Modal } from '@/components/ui/modal';
+import { DoctorReport } from '@/components/dashboard/domain-doctor';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { useToast } from '@/components/ui/toast';
 import { useConfirm } from '@/components/ui/confirm';
-import { useAddDomain, useApps, useDeleteDomain, useDomains } from '@/lib/api/queries';
+import {
+  useAddDomain,
+  useApps,
+  useDeleteDomain,
+  useDomain,
+  useDomainDoctor,
+  useDomains,
+  useVerifyDomain,
+} from '@/lib/api/queries';
 import { slugIndex } from '@/lib/api/adapters';
 import { errorMessage } from '@/lib/api/errors';
 import { FieldError } from '@/components/ui/field';
@@ -36,6 +46,7 @@ interface DomainRow {
   verified: boolean;
   verifiedAt: string | null;
   txtRecord: string | null;
+  certNotAfter: string | null;
 }
 
 function formatDate(value: string | null | undefined): string {
@@ -51,6 +62,8 @@ function DomainsPage() {
   const { data: apps } = useApps();
   const addDomain = useAddDomain();
   const deleteDomain = useDeleteDomain();
+  const verify = useVerifyDomain();
+  const [doctorFor, setDoctorFor] = useState<string | null>(null);
 
   const [host, setHost] = useState('');
   const [appSlug, setAppSlug] = useState('');
@@ -68,6 +81,7 @@ function DomainsPage() {
       verified: d.verified,
       verifiedAt: d.verified_at ?? null,
       txtRecord: d.txt_record ?? null,
+      certNotAfter: d.cert_not_after ?? null,
     }));
   }, [data, apps]);
 
@@ -112,35 +126,84 @@ function DomainsPage() {
       render: (d) => formatDate(d.verifiedAt),
     },
     {
+      key: 'certNotAfter',
+      label: 'Cert expires',
+      numeric: true,
+      render: (d) => formatDate(d.certNotAfter),
+    },
+    {
       key: 'id',
       label: '',
-      width: 'w-12',
+      width: 'w-28',
       render: (d) => (
-        <button
-          type="button"
-          aria-label={`Remove ${d.domain}`}
-          onClick={async () => {
-            if (
-              !(await confirm({
-                title: `Remove ${d.domain}?`,
-                description:
-                  'Traffic to this hostname stops routing here immediately. The DNS record can stay.',
-                confirmLabel: 'Remove domain',
-                destructive: true,
-              }))
-            )
-              return;
-            void deleteDomain
-              .mutateAsync(d.domain)
-              .then(() => toast({ kind: 'success', title: `Removed ${d.domain}` }))
-              .catch((err: unknown) =>
-                toast({ kind: 'error', title: 'Could not remove', description: errorMessage(err) })
-              );
-          }}
-          className="text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <Trash className="h-3.5 w-3.5" />
-        </button>
+        <span className="flex items-center justify-end gap-2">
+          <button
+            type="button"
+            aria-label={`Re-check ${d.domain}`}
+            title="Re-check DNS and certificate now"
+            onClick={() =>
+              void verify
+                .mutateAsync(d.domain)
+                .then((r) =>
+                  toast({
+                    kind: r.verified ? 'success' : 'info',
+                    title: r.verified ? `${d.domain} verified` : `${d.domain} still pending`,
+                    description: r.verified
+                      ? undefined
+                      : 'DNS has not propagated yet. Run the doctor for the exact record to fix.',
+                  })
+                )
+                .catch((err: unknown) =>
+                  toast({
+                    kind: 'error',
+                    title: 'Could not re-check',
+                    description: errorMessage(err),
+                  })
+                )
+            }
+            className="text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <Refresh className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            aria-label={`Diagnose ${d.domain}`}
+            title="Run the domain doctor"
+            onClick={() => setDoctorFor(d.domain)}
+            className="text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <HealthShield className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            aria-label={`Remove ${d.domain}`}
+            onClick={async () => {
+              if (
+                !(await confirm({
+                  title: `Remove ${d.domain}?`,
+                  description:
+                    'Traffic to this hostname stops routing here immediately. The DNS record can stay.',
+                  confirmLabel: 'Remove domain',
+                  destructive: true,
+                }))
+              )
+                return;
+              void deleteDomain
+                .mutateAsync(d.domain)
+                .then(() => toast({ kind: 'success', title: `Removed ${d.domain}` }))
+                .catch((err: unknown) =>
+                  toast({
+                    kind: 'error',
+                    title: 'Could not remove',
+                    description: errorMessage(err),
+                  })
+                );
+            }}
+            className="text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <Trash className="h-3.5 w-3.5" />
+          </button>
+        </span>
       ),
     },
   ];
@@ -241,6 +304,49 @@ function DomainsPage() {
         error={error}
         onRetry={() => void refetch()}
       />
+
+      <DoctorModal domain={doctorFor} onClose={() => setDoctorFor(null)} />
     </div>
+  );
+}
+
+/**
+ * The doctor for one domain: the five-check report, and — once the domain
+ * has a cert — which names it covers, so a CNAME at a CDN is visible.
+ */
+function DoctorModal({ domain, onClose }: { domain: string | null; onClose: () => void }) {
+  const doctor = useDomainDoctor(domain ?? '', domain !== null);
+  const detail = useDomain(domain ?? '');
+  const phase = queryPhase({
+    error: doctor.error,
+    loading: doctor.isPending,
+    isEmpty: !doctor.data,
+  });
+  return (
+    <Modal
+      open={domain !== null}
+      onClose={onClose}
+      title={domain ? `Doctor · ${domain}` : ''}
+      width="max-w-xl"
+    >
+      {phase !== 'ready' || !doctor.data ? (
+        <InlinePhase
+          phase={phase}
+          error={doctor.error}
+          loadingMessage="Probing DNS, TLS and CAA…"
+          emptyMessage="No report."
+        />
+      ) : (
+        <div className="flex flex-col gap-5">
+          <DoctorReport report={doctor.data} />
+          {detail.data?.cert_sans && detail.data.cert_sans.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              Certificate covers:{' '}
+              <span className="font-mono">{detail.data.cert_sans.join(', ')}</span>
+            </p>
+          )}
+        </div>
+      )}
+    </Modal>
   );
 }

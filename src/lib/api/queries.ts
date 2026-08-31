@@ -1056,6 +1056,43 @@ export function useDeleteDomain() {
   });
 }
 
+export function useDomain(domain: string) {
+  return useQuery({
+    queryKey: [...keys.domains, domain],
+    queryFn: () => unwrap(api.GET('/v1/domains/{domain}', { params: { path: { domain } } })),
+    enabled: Boolean(domain),
+  });
+}
+
+/**
+ * Asks the platform to re-check DNS and re-issue the cert now, instead of
+ * waiting for the next sweep. Answers with the domain as it stands.
+ */
+export function useVerifyDomain() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (domain: string) =>
+      unwrap(api.POST('/v1/domains/{domain}/verify', { params: { path: { domain } } })),
+    onSettled: (_data, _err, domain) => {
+      void qc.invalidateQueries({ queryKey: keys.domains });
+      void qc.invalidateQueries({ queryKey: [...keys.domains, domain] });
+    },
+  });
+}
+
+/**
+ * The five-check report (ADR-120). Cached server-side for five minutes;
+ * `stale: true` on the report means the handler re-probed just now.
+ */
+export function useDomainDoctor(domain: string, enabled: boolean) {
+  return useQuery({
+    queryKey: [...keys.domains, domain, 'doctor'],
+    queryFn: () => unwrap(api.GET('/v1/domains/{domain}/doctor', { params: { path: { domain } } })),
+    enabled: enabled && Boolean(domain),
+    staleTime: 60_000,
+  });
+}
+
 type DomainsList = NonNullable<ReturnType<typeof useDomains>['data']>;
 
 export function useInvokeApp() {
