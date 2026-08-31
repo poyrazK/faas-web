@@ -1040,6 +1040,24 @@ route('GET', '/v1/invoices', () => ({ items: db.invoices, next_before: null }));
 route('GET', '/v1/billing/portal', () => db.billingPortal);
 
 route('GET', '/v1/orgs', () => ({ orgs: db.orgs }));
+route('POST', '/v1/orgs', ({ body }) => {
+  const b = body as { slug?: string; name?: string };
+  if (!b.slug || !b.name) throw new Problem(400, 'missing_field', 'slug and name are required.');
+  if (db.orgs.some((o) => o.slug === b.slug))
+    throw new Problem(409, 'org_exists', `An organisation named ${b.slug} already exists.`);
+  const org = {
+    id: db.id(),
+    slug: b.slug,
+    name: b.name,
+    personal: false,
+    plan: 'free',
+    status: 'active',
+    created_at: db.iso(0),
+    updated_at: db.iso(0),
+  } as (typeof db.orgs)[number];
+  db.orgs.push(org);
+  return status(201, org);
+});
 route('GET', '/v1/orgs/{slug}/members', () => ({ members: db.members }));
 route('GET', '/v1/orgs/{slug}/invitations', () => ({ invitations: db.invitations }));
 route('POST', '/v1/orgs/{slug}/members', ({ params, body }) => {
@@ -1126,7 +1144,14 @@ route('PATCH', '/v1/orgs/{slug}', async ({ params, body }) => ({
   created_at: db.iso(200 * 24),
   updated_at: new Date().toISOString(),
 }));
-route('DELETE', '/v1/orgs/{slug}', () => ({}));
+route('DELETE', '/v1/orgs/{slug}', ({ params }) => {
+  const at = db.orgs.findIndex((o) => o.slug === params.slug);
+  if (at === -1) throw new Problem(404, 'org_not_found', 'No such organisation.');
+  if (db.orgs[at].personal)
+    throw new Problem(409, 'personal_org', 'A personal organisation cannot be deleted.');
+  db.orgs.splice(at, 1);
+  return NO_CONTENT;
+});
 route('GET', '/v1/orgs/{slug}/seat_usage', () => ({ used: 3, limit: 5, plan: db.account.plan }));
 route('POST', '/v1/orgs/{slug}/transfer_ownership', ({ params }) => ({
   id: hex(32),

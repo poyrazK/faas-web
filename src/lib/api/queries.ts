@@ -143,6 +143,16 @@ export function usePatchOrg(slug: string) {
   });
 }
 
+/** Create a shared org; the caller becomes its first owner. */
+export function useCreateOrg() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: components['schemas']['CreateOrgRequest']) =>
+      unwrap(api.POST('/v1/orgs', { body, headers: idem() })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['orgs'] }),
+  });
+}
+
 export function useDeleteOrg() {
   const qc = useQueryClient();
   return useMutation({
