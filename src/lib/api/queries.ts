@@ -632,7 +632,9 @@ export function useProjectScan() {
         api.POST('/v1/projects/scan', {
           // The typed body is JSON-shaped; the endpoint takes multipart. The
           // serializer override is openapi-fetch's sanctioned escape hatch.
-          body: undefined as never,
+          // Must be non-undefined: openapi-fetch skips the serializer for an
+          // undefined body (dist/index.mjs:54) and sends no body at all.
+          body: input as never,
           bodySerializer: () => projectForm(input),
         })
       ),
@@ -654,7 +656,9 @@ export function useProjectApply() {
       unwrap(
         api.POST('/v1/projects', {
           params: { query: { plan_token: input.planToken } },
-          body: undefined as never,
+          // Must be non-undefined: openapi-fetch skips the serializer for an
+          // undefined body (dist/index.mjs:54) and sends no body at all.
+          body: input as never,
           bodySerializer: () => projectForm(input),
         })
       ),
@@ -971,7 +975,9 @@ export function useDeployTarball(slug: string) {
           params: { path: { slug } },
           // The typed body is JSON-shaped; the endpoint takes multipart. The
           // serializer override is openapi-fetch's sanctioned escape hatch.
-          body: undefined as never,
+          // Must be non-undefined: openapi-fetch skips the serializer for an
+          // undefined body (dist/index.mjs:54) and sends no body at all.
+          body: input as never,
           bodySerializer: () => tarballForm(input),
         })
       ),
