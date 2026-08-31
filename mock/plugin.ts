@@ -1647,6 +1647,319 @@ function problem(res: ServerResponse, p: Problem) {
 
 const MOCKED_PREFIXES = ['/v1/', '/login', '/signup'];
 
+// --- Phase-1 parity surfaces --------------------------------------------------
+// The endpoints the console gained when its spec caught up with the CLI. Dev
+// fixtures only; shapes follow the generated types.
+
+const domainOr404 = (name: string) => {
+  const d = db.domains.find((x) => x.domain === name);
+  if (!d) throw new Problem(404, 'domain_not_found');
+  return d;
+};
+
+route('GET', '/v1/domains/{domain}', ({ params }) => domainOr404(params.domain));
+route('POST', '/v1/domains/{domain}/verify', ({ params }) => {
+  const d = domainOr404(params.domain);
+  // The pending fixture verifies on its second re-check, so both toasts show.
+  if (!d.verified) {
+    if (d.challenge_token?.endsWith('!')) {
+      d.verified = true;
+      d.verified_at = db.iso(0);
+      d.txt_record = null;
+      d.cert_not_after = db.iso(-89 * 24 * 3600 * 1000);
+      d.cert_sans = [d.domain];
+    } else {
+      d.challenge_token = `${d.challenge_token ?? ''}!`;
+    }
+  }
+  return d;
+});
+route('GET', '/v1/domains/{domain}/doctor', ({ params }) => {
+  const d = domainOr404(params.domain);
+  const ok = d.verified;
+  const at = db.iso(0);
+  return {
+    domain: d.domain,
+    app_id: d.app_id,
+    stale: false,
+    observed_at: at,
+    healthy: ok,
+    checks: [
+      { name: 'dns_record', status: 'ok', detail: 'CNAME record found', checked_at: at },
+      ok
+        ? {
+            name: 'points_to_gregale',
+            status: 'ok',
+            detail: 'CNAME → edge.gregale.dev',
+            checked_at: at,
+          }
+        : {
+            name: 'points_to_gregale',
+            status: 'fail',
+            detail: 'CNAME does not point at Gregale (observed: parking.example.net.)',
+            observed: 'parking.example.net.',
+            remediation: `Set CNAME ${d.domain} → edge.gregale.dev`,
+            checked_at: at,
+          },
+      ok
+        ? {
+            name: 'tls_certificate',
+            status: 'ok',
+            detail: 'Issued, renews automatically',
+            checked_at: at,
+          }
+        : {
+            name: 'tls_certificate',
+            status: 'pending',
+            detail: 'Waiting for DNS to resolve',
+            checked_at: at,
+          },
+      {
+        name: 'caa_permits',
+        status: 'ok',
+        detail: 'No CAA record restricts issuance',
+        checked_at: at,
+      },
+      { name: 'ipv6_conflict', status: 'na', detail: 'No AAAA record', checked_at: at },
+    ],
+  };
+});
+
+const STAGES = [
+  'source_download',
+  'dependency_restore',
+  'image_build',
+  'security_scan',
+  'snapshot_prepare',
+  'readiness',
+] as const;
+route('GET', '/v1/deployments/{id}/stages', ({ params }) => {
+  const d = db.deployments.find((x) => x.id === params.id);
+  if (!d) throw new Problem(404, 'deployment_not_found');
+  const done = d.status === 'failed' ? 3 : d.status === 'building' ? 2 : STAGES.length;
+  const t0 = Date.parse(d.created_at);
+  const history = STAGES.slice(0, done).map((name, i) => ({
+    name,
+    started_at: new Date(t0 + i * 9000).toISOString(),
+    ended_at: new Date(t0 + i * 9000 + 8000).toISOString(),
+    duration_ms: 1200 + i * 2600,
+    status: 'completed' as const,
+    reason: '',
+  }));
+  if (d.status === 'failed')
+    history.push({
+      name: STAGES[3],
+      started_at: new Date(t0 + 3 * 9000).toISOString(),
+      ended_at: new Date(t0 + 3 * 9000 + 4000).toISOString(),
+      duration_ms: 4000,
+      status: 'failed' as never,
+      reason: d.error ?? 'security scan found a CRITICAL finding',
+    });
+  return {
+    current: d.status === 'building' ? STAGES[2] : undefined,
+    current_started_at: d.status === 'building' ? new Date(t0 + 2 * 9000).toISOString() : null,
+    history,
+  };
+});
+route('POST', '/v1/deployments/{id}/retry', ({ params, body }) => {
+  const d = db.deployments.find((x) => x.id === params.id);
+  if (!d) throw new Problem(404, 'deployment_not_found');
+  if (!STAGES.includes(String(body.from_stage) as (typeof STAGES)[number]))
+    throw new Problem(400, 'from_stage_invalid', 'Unknown stage.');
+  const next: typeof d = {
+    ...d,
+    id: db.id(),
+    status: 'building',
+    error: null,
+    error_code: null,
+    created_at: db.iso(0),
+  };
+  db.deployments.unshift(next);
+  return status(202, next);
+});
+
+route('POST', '/v1/preview/{slug}/destroy', ({ params }) => {
+  const a = app(params.slug);
+  const i = db.apps.findIndex((x) => x.id === a.id);
+  if (i >= 0) db.apps.splice(i, 1);
+  return NO_CONTENT;
+});
+
+const ALERT_PRESETS = [
+  [
+    'error_rate_2pct',
+    'Error rate exceeds 2%',
+    'reliability',
+    'error_rate_pct',
+    'gt',
+    2,
+    '15m',
+    15,
+    'free',
+  ],
+  [
+    'error_rate_5pct',
+    'Error rate exceeds 5%',
+    'reliability',
+    'error_rate_pct',
+    'gt',
+    5,
+    '5m',
+    10,
+    'free',
+  ],
+  [
+    'p95_500ms',
+    'p95 latency over 500 ms',
+    'availability',
+    'latency_p95_ms',
+    'gt',
+    500,
+    '15m',
+    15,
+    'free',
+  ],
+  [
+    'p99_1s',
+    'p99 latency over 1 s',
+    'availability',
+    'latency_p99_ms',
+    'gt',
+    1000,
+    '15m',
+    15,
+    'hobby',
+  ],
+  [
+    'cold_boot_20pct',
+    'Cold boots over 20%',
+    'infrastructure',
+    'cold_boot_pct',
+    'gt',
+    20,
+    '1h',
+    30,
+    'hobby',
+  ],
+  [
+    'failed_invocations',
+    'Any failed background invocation',
+    'reliability',
+    'failed_invocations',
+    'gte',
+    1,
+    '5m',
+    5,
+    'free',
+  ],
+  [
+    'request_surge',
+    'Requests 10× the daily average',
+    'cost',
+    'request_count',
+    'gt',
+    10000,
+    '1h',
+    60,
+    'pro',
+  ],
+  [
+    'deploy_error_spike',
+    'Error rate after a deploy',
+    'deployment',
+    'error_rate_pct',
+    'gt',
+    1,
+    '5m',
+    10,
+    'pro',
+  ],
+].map(([name, display_name, category, metric, comparison, threshold, window_spec, cool, plan]) => ({
+  id: db.id(),
+  name: String(name),
+  display_name: String(display_name),
+  description: `Fires when ${String(metric)} ${String(comparison)} ${String(threshold)} over ${String(window_spec)}.`,
+  category: String(category),
+  metric: String(metric),
+  comparison: String(comparison),
+  threshold: Number(threshold),
+  window_spec: String(window_spec),
+  default_cooldown_minutes: Number(cool),
+  minimum_plan: String(plan),
+  enabled_in_catalog: true,
+}));
+route('GET', '/v1/alert-presets', () => ALERT_PRESETS);
+route('POST', '/v1/apps/{slug}/alert-presets/{name}/enable', ({ params, body }) => {
+  const a = app(params.slug);
+  const preset = ALERT_PRESETS.find((p) => p.name === params.name);
+  if (!preset) throw new Problem(404, 'alert_preset_not_found');
+  if (!body.webhook_url || !body.webhook_secret)
+    throw new Problem(400, 'missing_field', 'webhook_url and webhook_secret are required.');
+  const list = listOf(db.alerts, params.slug);
+  const rule: (typeof list)[number] = {
+    id: db.id(),
+    app_id: a.id,
+    name: preset.display_name,
+    enabled: body.enabled !== false,
+    action: 'webhook',
+    metric: preset.metric as (typeof list)[number]['metric'],
+    comparison: preset.comparison as (typeof list)[number]['comparison'],
+    threshold: preset.threshold,
+    window_spec: preset.window_spec as (typeof list)[number]['window_spec'],
+    webhook_url: String(body.webhook_url),
+    webhook_secret_sealed_masked: '***',
+    cooldown_minutes: Number(body.cooldown_minutes ?? preset.default_cooldown_minutes),
+    state: 'ok',
+    created_at: db.iso(0),
+    updated_at: db.iso(0),
+  };
+  list.push(rule);
+  db.alerts.set(params.slug, list);
+  return status(201, rule);
+});
+
+route('DELETE', '/v1/account', () => {
+  const scheduled_at = db.iso(0);
+  const restore_until = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
+  db.account.status = 'deleted_pending';
+  return { status: 'deleted_pending', scheduled_at, restore_until };
+});
+
+route('GET', '/v1/usage/daily', ({ query }) => {
+  const day = query.get('day');
+  if (!day || !/^\d{4}-\d{2}-\d{2}$/.test(day))
+    throw new Problem(400, 'day_invalid', 'day must be YYYY-MM-DD.');
+  const seed = Number(day.replace(/-/g, '')) % 97;
+  return {
+    items: db.apps.map((a, i) => ({
+      app_id: a.id,
+      day,
+      mb_seconds: (seed + 1) * (i + 1) * 180_000,
+      requests: (seed + 3) * (i + 2) * 41,
+      cpu_usec: (seed + 1) * (i + 1) * 9_000_000,
+      tx_bytes: (i + 1) * 4_200_000,
+      net_tx_bytes: (i + 1) * 4_100_000,
+      net_rx_bytes: (i + 1) * 1_900_000,
+      cold_boots: (seed + i) % 7,
+      builder_seconds: i === 0 ? 140 : 0,
+    })),
+  };
+});
+
+route('GET', '/v1/account/slo', () => ({
+  window: '24h',
+  source: 'prometheus',
+  as_of: db.iso(0),
+  request_duration: { p50_ms: 38, p95_ms: 212, p99_ms: 640 },
+  error_rate_pct: 0.42,
+  cold_boot_rate_pct: 3.1,
+  instance_hours: 118.4,
+  gb_hours: 59.2,
+  wake_queue_p95_ms: 341,
+  requests_total: 184_233,
+  throttled_total: 12,
+}));
+
 export function mockApi(): Plugin {
   return {
     name: 'gregale-mock-api',
