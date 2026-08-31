@@ -1638,6 +1638,33 @@ const MOCK_PLAN = {
 
 route('GET', '/v1/templates', () => db.TEMPLATE_CATALOG);
 
+/**
+ * The account-wide event tail — outside the OpenAPI spec (ticket T4), shape
+ * pinned from the CLI's decoder: unnamed SSE frames of invocation states.
+ */
+route('GET', '/v1/events', ({ res, req }) => {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+  });
+  res.write(': mock account event stream\n\n');
+  const states = ['queued', 'running', 'completed', 'completed', 'failed'];
+  let tick = 0;
+  const timer = setInterval(() => {
+    const a = db.apps[tick % db.apps.length];
+    const frame = {
+      invocation_id: db.id(),
+      app_id: a.id,
+      app_slug: a.slug,
+      state: states[tick % states.length],
+    };
+    res.write(`data: ${JSON.stringify(frame)}\n\n`);
+    tick++;
+  }, 1200);
+  req.on('close', () => clearInterval(timer));
+});
+
 route('GET', '/v1/apps/{slug}/env-diff', ({ params }) => {
   const a = app(params.slug);
   const cell = (present: boolean, hash?: string) => ({ present, value_hash: hash });

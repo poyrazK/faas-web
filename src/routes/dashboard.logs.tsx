@@ -25,6 +25,7 @@ import { CopyMorph, useCopy } from '@/components/ui/copy-button';
 import { EmptyState, LevelTag, LoadingState, PageHeader } from '@/components/dashboard/primitives';
 import { Pill } from '@/components/dashboard/resource-table';
 import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
+import { AccountEventsPanel } from '@/components/dashboard/account-events-panel';
 import { LOG_LEVELS, MAX_LINES, useLogStream, type LogLevelFilter } from '@/lib/api/logs';
 import { useAppInstances } from '@/lib/api/queries';
 import { errorMessage } from '@/lib/api/errors';
@@ -598,6 +599,7 @@ function SavedViewsMenu({
 }
 
 function LogsPage() {
+  const [showAccount, setShowAccount] = useState(false);
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
   const appState = useSelectedApp();
@@ -700,6 +702,17 @@ function LogsPage() {
           />
         )}
       </AppScope>
+
+      {/* `gregale tail` for the browser: mounted on demand so the /v1/events
+          connection is only held while someone is actually watching it. */}
+      <button
+        type="button"
+        onClick={() => setShowAccount((v) => !v)}
+        className="self-start text-xs text-brand transition-colors hover:text-brand-hover"
+      >
+        {showAccount ? 'Hide account activity' : 'Account activity (all apps) →'}
+      </button>
+      {showAccount && <AccountEventsPanel />}
     </div>
   );
 }
