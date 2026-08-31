@@ -1,6 +1,5 @@
 import { motion, useReducedMotion } from 'motion/react';
 import { ArrowRight, Check, Copy } from 'iconoir-react';
-import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { SweepLink } from '@/components/sweep-link';
 import { DeployTerminal } from './deploy-terminal';
@@ -92,23 +91,12 @@ export function Hero() {
     <>
       <section
         aria-label="Gregale serverless platform"
-        className="relative isolate flex min-h-[100svh] w-full flex-col items-center justify-center overflow-hidden px-4 pt-24 pb-36 sm:px-6 sm:pb-44"
+        className="relative isolate flex w-full flex-col items-center justify-center overflow-hidden px-4 pt-36 pb-24 sm:px-6 sm:pt-44 sm:pb-28"
       >
         <LiquidField params={LIQUID_PRESETS.gregale} fadeBottom={0.28} />
         <Emblem />
 
         <div className="relative z-10 flex w-full max-w-[46rem] flex-col items-center text-center">
-          <motion.p
-            {...reveal(0)}
-            className="relative mb-5 flex items-center gap-2.5 text-[13px] font-medium tracking-[0.01em] text-muted-foreground"
-          >
-            <img src="/logo.png" alt="Gregale" className="h-[22px] w-auto opacity-70 grayscale" />
-            <span aria-hidden className="text-brand">
-              ✦
-            </span>
-            <span>microVMs · scale to zero</span>
-          </motion.p>
-
           <motion.h1
             {...reveal(0.06)}
             className="relative text-balance text-[40px] font-semibold leading-[0.98] tracking-[-0.065em] text-[#212121] sm:text-[58px] lg:text-[62px]"
@@ -141,33 +129,6 @@ export function Hero() {
               <ArrowRight className="size-4 transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transition-none" />
             </SweepLink>
           </motion.div>
-
-          <motion.nav
-            {...reveal(0.26)}
-            aria-label="Quick links"
-            className="relative mt-7 flex items-center gap-3 text-[13px] text-[#3d4a45]"
-          >
-            <Link
-              to="/docs"
-              className="rounded-sm transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
-            >
-              Docs
-            </Link>
-            <span aria-hidden className="size-[3px] rounded-full bg-brand/60" />
-            <a
-              href="https://github.com/poyrazK/faas"
-              className="rounded-sm transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
-            >
-              GitHub
-            </a>
-            <span aria-hidden className="size-[3px] rounded-full bg-brand/60" />
-            <a
-              href="#pricing"
-              className="rounded-sm transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
-            >
-              Pricing
-            </a>
-          </motion.nav>
         </div>
       </section>
 
@@ -184,7 +145,7 @@ export function Hero() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: '-40px' }}
           transition={{ duration: 0.9, ease: EASE }}
-          className="relative -mt-24 mb-6 rounded-2xl shadow-[0_0_0_1px_color-mix(in_srgb,var(--foreground)_8%,transparent),0_2px_6px_color-mix(in_srgb,var(--foreground)_10%,transparent),0_24px_60px_-16px_color-mix(in_srgb,var(--foreground)_38%,transparent),0_48px_120px_-40px_color-mix(in_srgb,var(--brand)_30%,transparent)] sm:-mt-32"
+          className="relative -mt-12 mb-6 rounded-2xl shadow-[0_0_0_1px_color-mix(in_srgb,var(--foreground)_8%,transparent),0_2px_6px_color-mix(in_srgb,var(--foreground)_10%,transparent),0_24px_60px_-16px_color-mix(in_srgb,var(--foreground)_38%,transparent),0_48px_120px_-40px_color-mix(in_srgb,var(--brand)_30%,transparent)] sm:-mt-14"
         >
           <DeployTerminal />
         </motion.div>
