@@ -717,6 +717,39 @@ export function useAppRoutes(slug: string) {
  * Deployments
  * ------------------------------------------------------------------ */
 
+/** The closed six-stage pipeline as the server recorded it (ADR-117). */
+export function useDeploymentStages(id: string) {
+  return useQuery({
+    queryKey: ['deployments', id, 'stages'],
+    queryFn: () => unwrap(api.GET('/v1/deployments/{id}/stages', { params: { path: { id } } })),
+    enabled: Boolean(id),
+  });
+}
+
+/**
+ * Resume a failed deployment from a stage; `source_download` re-runs the
+ * whole pipeline. Answers 202 with the new deployment.
+ */
+export function useRetryDeployment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      from_stage,
+    }: {
+      id: string;
+      from_stage: components['schemas']['RetryDeploymentRequest']['from_stage'];
+    }) =>
+      unwrap(
+        api.POST('/v1/deployments/{id}/retry', { params: { path: { id } }, body: { from_stage } })
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.deployments });
+      void qc.invalidateQueries({ queryKey: keys.apps });
+    },
+  });
+}
+
 export function useDeployments(
   limit = 50,
   options?: Options<components['schemas']['DeploymentListResponse']>
