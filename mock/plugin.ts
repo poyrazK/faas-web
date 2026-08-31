@@ -1498,9 +1498,18 @@ route('POST', '/v1/apps/{slug}/diff', async ({ params, body }) => {
       slug: params.slug,
       plan: db.account.plan,
       changes,
+      // DiffBreak objects, as the spec shapes them — the old plain strings
+      // hid a console rendering bug behind String(b).
       breaks:
         cfg.ram_mb && Number(cfg.ram_mb) < (a?.ram_mb ?? 0)
-          ? ['Shrinking memory invalidates the warm snapshot; the next wake cold-boots.']
+          ? [
+              {
+                code: 'snapshot_invalidated',
+                severity: 'warn',
+                reason: 'Shrinking memory invalidates the warm snapshot; the next wake cold-boots.',
+                field: 'ram_mb',
+              },
+            ]
           : [],
     },
   };

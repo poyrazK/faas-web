@@ -543,12 +543,15 @@ export function useWakeTimeline(slug: string, wakeId: string) {
 /** Read-only preview of what a config change would do — the CLI's
  * `deploy --diff`, wired to the console's config form. A mutation shape
  * because it POSTs a proposed config, but it writes nothing. */
+/**
+ * `gregale deploy --diff`: what a write would change, and what would break.
+ * The body is the full DiffRequest, so a caller can preview env, crons and
+ * edge rules alongside the app-config patch — not only the config.
+ */
 export function useAppDiff(slug: string) {
   return useMutation({
-    mutationFn: (app_config: Record<string, unknown>) =>
-      unwrap(
-        api.POST('/v1/apps/{slug}/diff', { params: { path: { slug } }, body: { app_config } })
-      ),
+    mutationFn: (body: components['schemas']['DiffRequest']) =>
+      unwrap(api.POST('/v1/apps/{slug}/diff', { params: { path: { slug } }, body })),
   });
 }
 

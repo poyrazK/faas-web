@@ -7,6 +7,7 @@ import { Switch } from '@/components/ui/switch';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
 import { errorMessage } from '@/lib/api/errors';
+import { breakCounts, isBlocking } from '@/lib/diff-gate';
 import {
   useApp,
   useAppDiff,
@@ -156,6 +157,8 @@ function ConfigForm({ app }: { app: App }) {
   const update = useUpdateApp(app.slug);
   const diff = useAppDiff(app.slug);
   const [preview, setPreview] = useState<Awaited<ReturnType<typeof diff.mutateAsync>> | null>(null);
+  // `deploy --diff --strict`: warnings gate the save too, not only errors.
+  const [strict, setStrict] = useState(false);
   const [draft, setDraft] = useState<Draft>(() => draftFrom(app));
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
     setDraft((d) => ({ ...d, [key]: value }));
@@ -236,6 +239,17 @@ function ConfigForm({ app }: { app: App }) {
             {/* The CLI's deploy --diff, one click before Save: the server
                 says exactly what this PATCH would change, and what it would
                 break, before anything is written. */}
+            <label
+              className="flex items-center gap-1.5 text-xs text-muted-foreground"
+              title="Treat warnings as blocking, like deploy --diff --strict"
+            >
+              <input
+                type="checkbox"
+                checked={strict}
+                onChange={(e) => setStrict(e.target.checked)}
+              />
+              Strict
+            </label>
             <Button
               size="sm"
               variant="outline"
@@ -243,7 +257,7 @@ function ConfigForm({ app }: { app: App }) {
               busy={diff.isPending}
               onClick={() =>
                 void diff
-                  .mutateAsync(changes)
+                  .mutateAsync({ app_config: changes })
                   .then(setPreview)
                   .catch((err: unknown) =>
                     toast({
@@ -256,7 +270,12 @@ function ConfigForm({ app }: { app: App }) {
             >
               Preview
             </Button>
-            <Button size="sm" disabled={!dirty} busy={update.isPending} onClick={save}>
+            <Button
+              size="sm"
+              disabled={!dirty || (preview !== null && isBlocking(preview, strict))}
+              busy={update.isPending}
+              onClick={save}
+            >
               Save changes
             </Button>
           </>
@@ -558,27 +577,37 @@ function ConfigForm({ app }: { app: App }) {
                 ))}
               </ul>
             )}
-            {(preview.diff?.breaks?.length ?? 0) > 0 && (
+            {preview.diff.breaks.length > 0 && (
               <div>
                 <p className="label-mono mb-1.5" style={{ color: 'var(--status-warning)' }}>
-                  Breaking
+                  {breakCounts(preview).error} blocking · {breakCounts(preview).warn}{' '}
+                  {breakCounts(preview).warn === 1 ? 'warning' : 'warnings'}
                 </p>
                 <ul className="flex flex-col gap-1">
-                  {preview.diff?.breaks?.map((b) => (
+                  {preview.diff.breaks.map((b) => (
                     <li
-                      key={String(b)}
+                      key={`${b.code}-${b.field ?? ''}`}
                       className="text-xs"
-                      style={{ color: 'var(--status-warning)' }}
+                      style={{
+                        color:
+                          b.severity === 'error'
+                            ? 'var(--status-critical)'
+                            : 'var(--status-warning)',
+                      }}
                     >
-                      {String(b)}
+                      <span className="font-mono">{b.code}</span>
+                      {b.field ? <span className="font-mono"> · {b.field}</span> : null} —{' '}
+                      {b.reason}
                     </li>
                   ))}
                 </ul>
               </div>
             )}
-            {preview.blocking && (
+            {isBlocking(preview, strict) && (
               <p className="text-xs" style={{ color: 'var(--status-critical)' }}>
-                This change is blocking — the deploy path would refuse it.
+                {preview.blocking
+                  ? 'This change is blocking — the deploy path would refuse it.'
+                  : 'Strict mode: resolve the warnings above, or untick strict to save anyway.'}
               </p>
             )}
           </div>
