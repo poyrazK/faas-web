@@ -1636,6 +1636,8 @@ const MOCK_PLAN = {
   plan_token: 'mock-plan-token',
 };
 
+route('GET', '/v1/templates', () => db.TEMPLATE_CATALOG);
+
 /** Apply the `only` CSV the way apid does: absent = everything. */
 function subsetPlan(only: unknown) {
   const names = typeof only === 'string' && only !== '' ? new Set(only.split(',')) : null;

@@ -19,6 +19,63 @@ export type App = S['AppResponse'];
 export type Deployment = S['DeploymentResponse'];
 export type Build = S['BuildResponse'];
 
+/** The CLI's embedded starter set — cmd/gregale/cli_meta.go::templateNames13 verbatim. */
+export const TEMPLATE_CATALOG: S['TemplateView'][] = [
+  { name: 'hello-node', category: 'hello', description: 'The smallest Node handler that answers.' },
+  {
+    name: 'hello-python',
+    category: 'hello',
+    description: 'The smallest Python handler that answers.',
+  },
+  { name: 'hello-go', category: 'hello', description: 'The smallest Go handler that answers.' },
+  {
+    name: 'cron-example',
+    category: 'hello',
+    description: 'A handler plus the cron that fires it.',
+  },
+  {
+    name: 'function-node',
+    category: 'function',
+    description: 'A Node function on the stdin/stdout envelope.',
+  },
+  {
+    name: 'function-python',
+    category: 'function',
+    description: 'A Python function on the stdin/stdout envelope.',
+  },
+  {
+    name: 'function-go',
+    category: 'function',
+    description: 'A Go function on the stdin/stdout envelope.',
+  },
+  {
+    name: 's3-uploader',
+    category: 'stateless-contract',
+    description: 'Accept an upload, stream it to object storage.',
+  },
+  {
+    name: 'slack-bot',
+    category: 'stateless-contract',
+    description: 'A slash-command bot with signature checks.',
+  },
+  {
+    name: 'rest-api-postgres',
+    category: 'stateless-contract',
+    description: 'A routed JSON API over managed Postgres.',
+  },
+  {
+    name: 'cron-worker',
+    category: 'stateless-contract',
+    description: 'A scheduled worker that drains a queue.',
+  },
+  {
+    name: 'webhook-receiver',
+    category: 'stateless-contract',
+    description: 'Verify, ack fast, process async.',
+  },
+  { name: 'ai-chat', category: 'ai', description: 'A streaming chat endpoint over an LLM API.' },
+];
+
 // --- Seeded randomness ------------------------------------------------------
 
 let seed = 0x9e3779b9;

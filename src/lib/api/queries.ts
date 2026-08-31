@@ -596,6 +596,15 @@ export function useAuthAuditEvents() {
  * Project import — scan a repo tarball into a deploy plan, then apply it
  * ------------------------------------------------------------------ */
 
+/** The 13 embedded starters the CLI can materialise; the console links to the command. */
+export function useTemplates() {
+  return useQuery({
+    queryKey: ['templates'],
+    queryFn: () => unwrap(api.GET('/v1/templates', {})),
+    staleTime: 5 * 60_000,
+  });
+}
+
 export type ProjectPlan = components['schemas']['PlanResponse'];
 
 /** Multipart body shared by scan and apply. `only` is the CSV the CLI builds
