@@ -54,3 +54,23 @@ window.ResizeObserver ??= class {
 
 // Used by the command palette to keep the active row in view.
 Element.prototype.scrollIntoView ??= () => {};
+
+// jsdom implements none of these. motion's `useInView` / `whileInView`
+// construct an IntersectionObserver on mount (nothing ever intersects under
+// this shim, so in-view animations hold their initial frame); the router
+// calls `scrollTo` on navigation; the DotCut engine asks a canvas for a 2D
+// context and already treats `null` as "draw nothing".
+window.IntersectionObserver ??= class {
+  readonly root = null;
+  readonly rootMargin = '';
+  readonly thresholds: readonly number[] = [];
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+  takeRecords(): IntersectionObserverEntry[] {
+    return [];
+  }
+};
+window.scrollTo = () => {};
+HTMLCanvasElement.prototype.getContext = (() =>
+  null) as typeof HTMLCanvasElement.prototype.getContext;
