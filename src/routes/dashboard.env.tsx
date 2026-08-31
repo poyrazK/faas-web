@@ -2,12 +2,14 @@ import { useMemo, useState } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { Plus, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
-import { PageHeader, Panel } from '@/components/dashboard/primitives';
+import { InlinePhase, PageHeader, Panel, queryPhase } from '@/components/dashboard/primitives';
 import { ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
 import { useToast } from '@/components/ui/toast';
 import { useConfirm } from '@/components/ui/confirm';
-import { useAppEnv, useDeleteEnv, useSetEnv } from '@/lib/api/queries';
+import { useAppEnv, useDeleteEnv, useEnvDiff, useSetEnv } from '@/lib/api/queries';
+import { EnvDiffMatrix } from '@/components/dashboard/env-diff-matrix';
+import { diffSummary } from '@/lib/env-diff';
 import { findSecrets } from '@/lib/secret-scan';
 import { SecretFindings } from '@/components/dashboard/secret-findings';
 import { errorMessage } from '@/lib/api/errors';
@@ -228,7 +230,37 @@ export function EnvBody({ slug }: { slug: string }) {
         error={error}
         onRetry={() => void refetch()}
       />
+
+      <EnvDiffPanel slug={slug} />
     </div>
+  );
+}
+
+/**
+ * `gregale env diff` for the browser: which keys exist where, and whether
+ * their values match — by hash, never by value.
+ */
+function EnvDiffPanel({ slug }: { slug: string }) {
+  const q = useEnvDiff(slug);
+  const phase = queryPhase({
+    error: q.error,
+    loading: q.isPending,
+    isEmpty: (q.data?.rows.length ?? 0) === 0,
+  });
+  const summary = q.data ? diffSummary(q.data) : null;
+  return (
+    <Panel
+      title="Across scopes"
+      description={
+        summary ? `${summary.keys} keys · ${summary.uneven} uneven` : 'Comparing scopes…'
+      }
+    >
+      {phase !== 'ready' || !q.data ? (
+        <InlinePhase phase={phase} error={q.error} emptyMessage="No variables in any scope yet." />
+      ) : (
+        <EnvDiffMatrix scopes={q.data.scopes} rows={q.data.rows} />
+      )}
+    </Panel>
   );
 }
 

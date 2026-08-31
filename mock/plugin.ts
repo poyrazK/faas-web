@@ -1638,6 +1638,46 @@ const MOCK_PLAN = {
 
 route('GET', '/v1/templates', () => db.TEMPLATE_CATALOG);
 
+route('GET', '/v1/apps/{slug}/env-diff', ({ params }) => {
+  const a = app(params.slug);
+  const cell = (present: boolean, hash?: string) => ({ present, value_hash: hash });
+  return {
+    app_slug: a.slug,
+    scopes: ['default', 'staging', 'production'],
+    rows: [
+      {
+        key: 'DATABASE_URL',
+        kind: 'secret',
+        cells: {
+          default: cell(true, 'h1'),
+          staging: cell(true, 'h1'),
+          production: cell(true, 'h1'),
+        },
+      },
+      {
+        key: 'STRIPE_KEY',
+        kind: 'secret',
+        cells: {
+          default: cell(true, 'h2'),
+          staging: cell(true, 'h3'),
+          production: cell(true, 'h2'),
+        },
+      },
+      {
+        key: 'LOG_LEVEL',
+        kind: 'env',
+        cells: { default: cell(true, 'h4'), staging: cell(false), production: cell(false) },
+      },
+      {
+        key: 'SENTRY_DSN',
+        kind: 'env',
+        cells: { default: cell(false), staging: cell(true, 'h5'), production: cell(true, 'h5') },
+      },
+    ],
+    generated_at: db.iso(0),
+  };
+});
+
 // --- Rollout recovery --------------------------------------------------------
 
 // Put api-gateway mid-rollout so the recovery banner has something to recover.

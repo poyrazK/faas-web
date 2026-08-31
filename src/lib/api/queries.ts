@@ -2010,6 +2010,15 @@ export function useUpdateEdgeRule() {
 /** Idempotent POSTs (spec: IdempotencyKey) get a fresh key per attempt. */
 const idem = () => ({ 'Idempotency-Key': crypto.randomUUID() });
 
+/** The env-diff matrix: presence and value-equality of every key across scopes. */
+export function useEnvDiff(slug: string) {
+  return useQuery({
+    queryKey: ['apps', slug, 'env-diff'],
+    queryFn: () => unwrap(api.GET('/v1/apps/{slug}/env-diff', { params: { path: { slug } } })),
+    enabled: Boolean(slug),
+  });
+}
+
 /** Manual rollout recovery: advance the canary, promote it, or abort. */
 export function useRecoverRollout(slug: string) {
   const qc = useQueryClient();
