@@ -3,6 +3,7 @@ import { createFileRoute } from '@tanstack/react-router';
 import { HealthShield, Plus, Refresh, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { InlinePhase, PageHeader, Panel, queryPhase } from '@/components/dashboard/primitives';
+import { TenantSurfacesPanel } from '@/components/dashboard/tenant-surfaces';
 import { Modal } from '@/components/ui/modal';
 import { DoctorReport } from '@/components/dashboard/domain-doctor';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
@@ -60,6 +61,10 @@ function DomainsPage() {
   const confirm = useConfirm();
   const { data, isPending, error, refetch } = useDomains();
   const { data: apps } = useApps();
+  // The tenant-surfaces panel picks its own app; defaults to the first one.
+  const [surfaceApp, setSurfaceApp] = useState('');
+  const surfaceSlug = surfaceApp || apps?.[0]?.slug || '';
+  const surfaceAppId = apps?.find((a) => a.slug === surfaceSlug)?.id ?? '';
   const addDomain = useAddDomain();
   const deleteDomain = useDeleteDomain();
   const verify = useVerifyDomain();
@@ -304,6 +309,25 @@ function DomainsPage() {
         error={error}
         onRetry={() => void refetch()}
       />
+
+      <div className="flex flex-col gap-3">
+        <label className="flex items-center gap-2 self-start">
+          <span className="label-mono text-muted-foreground">Tenant surfaces on</span>
+          <select
+            aria-label="Tenant surfaces app"
+            value={surfaceSlug}
+            onChange={(e) => setSurfaceApp(e.target.value)}
+            className="h-9 rounded-md border border-border bg-background px-2 font-mono text-sm outline-none focus:border-brand/50"
+          >
+            {(apps ?? []).map((a) => (
+              <option key={a.slug} value={a.slug}>
+                {a.slug}
+              </option>
+            ))}
+          </select>
+        </label>
+        {surfaceSlug && <TenantSurfacesPanel slug={surfaceSlug} appId={surfaceAppId} />}
+      </div>
 
       <DoctorModal domain={doctorFor} onClose={() => setDoctorFor(null)} />
     </div>

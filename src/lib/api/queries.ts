@@ -2007,6 +2007,76 @@ export function useUpdateEdgeRule() {
  * the plan ceiling so whatever it suggests is settable. Advice only — it is
  * the person who confirms, by creating the rule.
  */
+/** Idempotent POSTs (spec: IdempotencyKey) get a fresh key per attempt. */
+const idem = () => ({ 'Idempotency-Key': crypto.randomUUID() });
+
+/* ------------------------------------------------------------------ *
+ * Tenant surfaces — customer hostnames on a multi-tenant app
+ * ------------------------------------------------------------------ */
+
+export function useTenantSurfaces(slug: string) {
+  return useQuery({
+    queryKey: ['apps', slug, 'tenant-surfaces'],
+    queryFn: () =>
+      unwrap(api.GET('/v1/apps/{slug}/tenant-surfaces', { params: { path: { slug } } })),
+    enabled: Boolean(slug),
+  });
+}
+
+export function useCreateTenantSurface(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: components['schemas']['CreateTenantSurfaceRequest']) =>
+      unwrap(
+        api.POST('/v1/apps/{slug}/tenant-surfaces', {
+          params: { path: { slug } },
+          body,
+          headers: idem(),
+        })
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['apps', slug, 'tenant-surfaces'] }),
+  });
+}
+
+export function useDeleteTenantSurface(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      unwrap(
+        api.DELETE('/v1/apps/{slug}/tenant-surfaces/{id}', { params: { path: { slug, id } } })
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['apps', slug, 'tenant-surfaces'] }),
+  });
+}
+
+export function useAddTenantHostname(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, hostname }: { id: string; hostname: string }) =>
+      unwrap(
+        api.POST('/v1/apps/{slug}/tenant-surfaces/{id}/hostnames', {
+          params: { path: { slug, id } },
+          body: { hostname },
+          headers: idem(),
+        })
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['apps', slug, 'tenant-surfaces'] }),
+  });
+}
+
+export function useRemoveTenantHostname(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, hostname }: { id: string; hostname: string }) =>
+      unwrap(
+        api.DELETE('/v1/apps/{slug}/tenant-surfaces/{id}/hostnames/{hostname}', {
+          params: { path: { slug, id, hostname } },
+        })
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['apps', slug, 'tenant-surfaces'] }),
+  });
+}
+
 /* ------------------------------------------------------------------ *
  * Traffic mirrors — shadow a candidate with live traffic, measure drift
  * ------------------------------------------------------------------ */

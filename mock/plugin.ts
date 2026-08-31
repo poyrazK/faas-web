@@ -1710,6 +1710,80 @@ route('DELETE', '/v1/apps/{slug}/mirrors/{id}', ({ params }) => {
   held.splice(at, 1);
   return NO_CONTENT;
 });
+// --- Tenant surfaces ---------------------------------------------------------
+
+const surfacesByApp = new Map<string, db.TenantSurface[]>();
+const txtFor = (hostname: string): db.TenantHostname => ({
+  hostname,
+  challenge_token: db.id(),
+  verified: false,
+  verified_at: null,
+  last_error: null,
+  txt_record: `_gregale-challenge.${hostname} TXT ${db.id()}`,
+});
+function surfacesFor(slug: string): db.TenantSurface[] {
+  let held = surfacesByApp.get(slug);
+  if (!held) {
+    const a = app(slug);
+    held = [
+      {
+        id: db.id(),
+        account_id: db.ACCOUNT_ID,
+        app_id: a.id,
+        name: 'customers',
+        cert_kind: 'per_host_san',
+        status: 'active',
+        cert_state: 'pending',
+        hostnames: [txtFor('shop.acme.test')],
+      },
+    ];
+    surfacesByApp.set(slug, held);
+  }
+  return held;
+}
+route('GET', '/v1/apps/{slug}/tenant-surfaces', ({ params }) => ({
+  surfaces: surfacesFor(params.slug),
+}));
+route('POST', '/v1/apps/{slug}/tenant-surfaces', ({ params, body }) => {
+  const a = app(params.slug);
+  const b = body as { app_id?: string; name?: string; hostnames?: string[] };
+  if (!b.name) throw new Problem(400, 'missing_field', 'name is required.');
+  const surface: db.TenantSurface = {
+    id: db.id(),
+    account_id: db.ACCOUNT_ID,
+    app_id: b.app_id || a.id,
+    name: b.name,
+    cert_kind: 'per_host_san',
+    status: 'pending',
+    cert_state: 'none',
+    hostnames: (b.hostnames ?? []).map(txtFor),
+  };
+  surfacesFor(params.slug).unshift(surface);
+  return status(202, surface);
+});
+route('DELETE', '/v1/apps/{slug}/tenant-surfaces/{id}', ({ params }) => {
+  const held = surfacesFor(params.slug);
+  const at = held.findIndex((s) => s.id === params.id);
+  if (at === -1) throw new Problem(404, 'not_found', 'No such tenant surface.');
+  held.splice(at, 1);
+  return NO_CONTENT;
+});
+route('POST', '/v1/apps/{slug}/tenant-surfaces/{id}/hostnames', ({ params, body }) => {
+  const surface = surfacesFor(params.slug).find((s) => s.id === params.id);
+  if (!surface) throw new Problem(404, 'not_found', 'No such tenant surface.');
+  const b = body as { hostname?: string };
+  if (!b.hostname) throw new Problem(400, 'missing_field', 'hostname is required.');
+  const row = txtFor(b.hostname);
+  surface.hostnames.push(row);
+  return status(202, row);
+});
+route('DELETE', '/v1/apps/{slug}/tenant-surfaces/{id}/hostnames/{hostname}', ({ params }) => {
+  const surface = surfacesFor(params.slug).find((s) => s.id === params.id);
+  if (!surface) throw new Problem(404, 'not_found', 'No such tenant surface.');
+  surface.hostnames = surface.hostnames.filter((h) => h.hostname !== params.hostname);
+  return NO_CONTENT;
+});
+
 route('GET', '/v1/apps/{slug}/mirrors/{id}/summary', () => ({
   total_invocations: 1200,
   status_diff_count: 3,

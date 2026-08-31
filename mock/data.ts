@@ -19,6 +19,8 @@ export type App = S['AppResponse'];
 export type Deployment = S['DeploymentResponse'];
 export type Build = S['BuildResponse'];
 export type MirrorRule = S['MirrorRuleResponse'];
+export type TenantSurface = S['TenantSurfaceResponse'];
+export type TenantHostname = S['TenantHostnameResponse'];
 
 /** The CLI's embedded starter set — cmd/gregale/cli_meta.go::templateNames13 verbatim. */
 export const TEMPLATE_CATALOG: S['TemplateView'][] = [
