@@ -55,39 +55,24 @@ function CopyCommand() {
 /**
  * The emblem behind the headline: the frosted-glass Gregale mark, overlaid
  * on the light the way the reference overlays its flare. Overlay over paper
- * is paper — the mode only shows where the backdrop has colour — so a soft
- * mint halo sits under the mark to give it something to act on; the shader's
- * beam then brightens it further as it passes. `HALO` is the one knob: 0 is
- * the pure effect (the mark appears only inside the beam).
+ * is paper, so at rest the mark is barely there; it shows where the shader's
+ * beam passes through it, and only then.
  */
-const HALO = 0.55;
-
 function Emblem() {
   return (
     <div
       aria-hidden="true"
       data-emblem
       className="pointer-events-none absolute inset-x-0 top-[72px] flex justify-center sm:top-[96px]"
+      style={{ mixBlendMode: 'overlay', opacity: 0.55 }}
     >
-      <div className="relative h-[300px] w-[300px] sm:h-[520px] sm:w-[520px]">
-        <div
-          className="absolute -inset-[12%] rounded-full"
-          style={{
-            opacity: HALO,
-            background:
-              'radial-gradient(closest-side, color-mix(in oklab, var(--brand-fill) 70%, #00b7d6) 0%, color-mix(in oklab, var(--brand-fill) 45%, transparent) 55%, transparent 100%)',
-            filter: 'blur(24px)',
-          }}
-        />
-        <img
-          src="/gregale-frosted.png"
-          alt=""
-          width={1246}
-          height={1246}
-          className="relative h-full w-full"
-          style={{ mixBlendMode: 'overlay', filter: 'brightness(0.7) contrast(1.8) saturate(1.6)' }}
-        />
-      </div>
+      <img
+        src="/gregale-frosted.png"
+        alt=""
+        width={1246}
+        height={1246}
+        className="h-[300px] w-[300px] sm:h-[520px] sm:w-[520px]"
+      />
     </div>
   );
 }
