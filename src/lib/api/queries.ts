@@ -938,10 +938,11 @@ export function useUsageSummary() {
   });
 }
 
-export function useInstances() {
+export function useInstances(options?: Options<components['schemas']['ListInstancesResponse']>) {
   return useQuery({
     queryKey: keys.instances,
     queryFn: () => unwrap(api.GET('/v1/instances', {})),
+    ...options,
   });
 }
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useRouterState } from '@tanstack/react-router';
+import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'motion/react';
 import {
   IconoirProvider,
@@ -361,12 +361,57 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   const { signOut } = useAuth();
   const { toast } = useToast();
   const sweepNavigate = useSweepNavigate();
+  const navigate = useNavigate();
 
   // ⌘K / Ctrl+K anywhere in the dashboard; ⌘B toggles the rail, the same
-  // binding editors use; Escape closes the mobile drawer.
+  // binding editors use; Escape closes the mobile drawer. `g` then a letter
+  // jumps between sections, vi-style — the CLI-first crowd's home turf.
+  const chordArm = useRef(0);
   useEffect(() => {
+    // The g-chord map: g then one of these. Kept beside the handler so a new
+    // section is one line away from a shortcut.
+    const CHORDS = {
+      o: '/dashboard',
+      a: '/dashboard/workflows',
+      t: '/dashboard/templates',
+      i: '/dashboard/import',
+      d: '/dashboard/deployments',
+      b: '/dashboard/builds',
+      c: '/dashboard/crons',
+      q: '/dashboard/queues',
+      l: '/dashboard/logs',
+      u: '/dashboard/usage',
+      k: '/dashboard/keys',
+      s: '/dashboard/settings',
+    } as const;
+    const typingTarget = (t: EventTarget | null) =>
+      t instanceof HTMLElement &&
+      (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+
     const onKey = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
+
+      // Chords never fire while typing, with modifiers held, or under a
+      // dialog — a palette or modal owns the keyboard while it is up.
+      if (
+        !mod &&
+        !e.altKey &&
+        !typingTarget(e.target) &&
+        !document.querySelector('[role="dialog"][aria-modal="true"]')
+      ) {
+        if (chordArm.current > Date.now()) {
+          chordArm.current = 0;
+          const to = CHORDS[e.key.toLowerCase() as keyof typeof CHORDS];
+          if (to) {
+            e.preventDefault();
+            void navigate({ to });
+            return;
+          }
+        } else if (e.key.toLowerCase() === 'g') {
+          chordArm.current = Date.now() + 900;
+          return;
+        }
+      }
       if (mod && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setPaletteOpen((v) => {
@@ -398,7 +443,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('gregale:open-palette', onOpenPalette);
     };
-  }, []);
+  }, [navigate]);
 
   // Every dashboard navigation lands in the overview's Recents column.
   const pathname = useRouterState({ select: (s) => s.location.pathname });

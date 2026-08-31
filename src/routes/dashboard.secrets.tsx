@@ -10,6 +10,7 @@ import { Modal } from '@/components/ui/modal';
 import { useConfirm } from '@/components/ui/confirm';
 import { useAppSecrets, useDeleteSecret, useSetSecret, useRotateSecret } from '@/lib/api/queries';
 import { errorMessage } from '@/lib/api/errors';
+import { EnvImportButton } from '@/components/dashboard/env-import';
 import { FieldError } from '@/components/ui/field';
 import { cn } from '@/lib/utils';
 
@@ -139,6 +140,11 @@ export function SecretsBody({ slug }: { slug: string }) {
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Migrations arrive as .env files; the importer takes them whole. */}
+      <div className="flex justify-end">
+        <EnvImportButton slug={slug} existingKeys={rows.map((r) => r.key)} />
+      </div>
+
       <Panel lit title="Set a secret">
         <form
           className="flex flex-wrap items-end gap-3"

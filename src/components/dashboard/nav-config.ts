@@ -3,6 +3,7 @@ import {
   Activity,
   Timer,
   CreditCard,
+  Cube,
   Globe,
   HardDrive,
   Key,
@@ -53,6 +54,7 @@ export const NAV_GROUPS: NavGroup[] = [
     title: 'Build',
     items: [
       { to: '/dashboard/workflows', label: 'Apps', icon: WorkflowIcon },
+      { to: '/dashboard/templates', label: 'Templates', icon: Cube },
       { to: '/dashboard/import', label: 'Import', icon: Upload },
       { to: '/dashboard/crons', label: 'Cron Jobs', icon: Timer },
       { to: '/dashboard/workers', label: 'Instances', icon: Server },

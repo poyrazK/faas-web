@@ -116,6 +116,13 @@ export function CommandPalette({
         run: go('/dashboard/workflows/new'),
       },
       {
+        id: 'act-template',
+        label: 'Deploy a template',
+        group: 'Actions',
+        icon: Plus,
+        run: go('/dashboard/templates'),
+      },
+      {
         id: 'act-docs',
         label: 'Documentation',
         group: 'Actions',
@@ -164,6 +171,30 @@ export function CommandPalette({
           });
         },
       })),
+      // Verbs, not just nouns: the two per-app destinations an operator
+      // reaches for mid-incident, addressable as "logs api-gateway". After
+      // the plain app rows so an app search still leads with the app.
+      ...workflows.flatMap((fn) =>
+        (
+          [
+            { tab: 'Logs', verb: 'Tail logs' },
+            { tab: 'Configuration', verb: 'Configure' },
+          ] as const
+        ).map(({ tab, verb }) => ({
+          id: `act-${tab.toLowerCase()}-${fn.id}`,
+          label: `${verb} — ${fn.name}`,
+          group: 'App actions',
+          icon: GitBranch,
+          run: () => {
+            close();
+            navigate({
+              to: '/dashboard/workflows/$workflowId',
+              params: { workflowId: fn.id },
+              search: { tab },
+            });
+          },
+        }))
+      ),
     ];
   }, [workflows, navigate, close, onSignOut, onToggleSidebar]);
 
