@@ -1598,6 +1598,17 @@ export function useStorageUsage(day: string) {
  * Returns a URL to the provider's hosted portal rather than a page we render —
  * card details never touch this app.
  */
+/**
+ * The portal response as a read: the card-on-file summary rides along with
+ * the URL. The mutation below stays for the "open the portal" click.
+ */
+export function useBillingPortalInfo() {
+  return useQuery({
+    queryKey: ['billing', 'portal'],
+    queryFn: () => unwrap(api.GET('/v1/billing/portal', {})),
+  });
+}
+
 export function useBillingPortal() {
   return useMutation({
     mutationFn: () => unwrap(api.GET('/v1/billing/portal', {})),

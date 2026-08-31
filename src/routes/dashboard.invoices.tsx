@@ -2,10 +2,11 @@ import { useMemo } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { OpenNewWindow } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
-import { PageHeader } from '@/components/dashboard/primitives';
+import { InlinePhase, PageHeader, Panel, queryPhase } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { useToast } from '@/components/ui/toast';
-import { useBillingPortal, useInvoices } from '@/lib/api/queries';
+import { useBillingPortal, useBillingPortalInfo, useInvoices } from '@/lib/api/queries';
+import { cardExpiring, cardLabel } from '@/lib/payment-method';
 import { errorMessage } from '@/lib/api/errors';
 import { consoleHead } from '@/lib/seo';
 
@@ -56,6 +57,7 @@ function InvoicesPage() {
   const { toast } = useToast();
   const { data, isPending, error, refetch } = useInvoices();
   const portal = useBillingPortal();
+  const portalInfo = useBillingPortalInfo();
 
   const rows = useMemo<InvoiceRow[]>(
     () =>
@@ -136,6 +138,45 @@ function InvoicesPage() {
           </Button>
         }
       />
+      <Panel
+        title="Payment method"
+        description="The card the provider bills. Updating it happens in the billing portal."
+      >
+        {(() => {
+          const phase = queryPhase({
+            error: portalInfo.error,
+            loading: portalInfo.isPending,
+            isEmpty: false,
+          });
+          if (phase !== 'ready') {
+            return (
+              <InlinePhase
+                phase={phase}
+                error={portalInfo.error}
+                loadingMessage="Reading the card on file…"
+                emptyMessage=""
+              />
+            );
+          }
+          const pm = portalInfo.data?.payment_method;
+          if (!pm) {
+            return (
+              <p className="text-sm text-muted-foreground">
+                No card on file. Paid plans need one before the first invoice.
+              </p>
+            );
+          }
+          return (
+            <div className="flex items-center gap-3">
+              <span className="font-mono text-sm">{cardLabel(pm)}</span>
+              {cardExpiring(pm, new Date()) && (
+                <Pill label="expires soon" color="var(--status-warning)" />
+              )}
+            </div>
+          );
+        })()}
+      </Panel>
+
       <ResourceTable
         rows={rows}
         columns={columns}
