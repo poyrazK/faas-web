@@ -50,6 +50,7 @@ type Draft = {
   cors_default_enabled: boolean;
   cors_default_origins: string;
   eviction_priority: 'best_effort' | 'reserved';
+  app_protocol: 'http1' | 'http2' | 'grpc';
   overflow_node: string;
   autoscale_target_cpu_pct: number;
   warm_snapshot_enabled: boolean;
@@ -60,7 +61,7 @@ type Draft = {
   public_auth_pass: string;
 };
 
-function draftFrom(app: App): Draft {
+export function draftFrom(app: App): Draft {
   return {
     ram_mb: app.ram_mb,
     idle_timeout_s: app.idle_timeout_s ?? 60,
@@ -76,6 +77,8 @@ function draftFrom(app: App): Draft {
     cors_default_enabled: app.cors_default_enabled ?? false,
     cors_default_origins: (app.cors_default_origins ?? []).join('\n'),
     eviction_priority: (app.eviction_priority ?? 'best_effort') as 'best_effort' | 'reserved',
+    // ADR-124: the closed set {http1, http2, grpc}; http1 is the universal default.
+    app_protocol: (app.app_protocol ?? 'http1') as 'http1' | 'http2' | 'grpc',
     overflow_node: app.overflow_node ?? '',
     autoscale_target_cpu_pct: app.autoscale_target_cpu_pct ?? 0,
     warm_snapshot_enabled: app.warm_snapshot_enabled ?? false,
@@ -340,6 +343,30 @@ function ConfigForm({ app }: { app: App }) {
             <span className="text-xs text-muted-foreground">
               Reserved apps are parked last under cross-account RAM pressure. Paid plans, capped per
               account.
+            </span>
+          </label>
+
+          <label className="flex flex-col gap-1.5">
+            <span className="label-mono text-muted-foreground">Wire protocol</span>
+            <div className="flex gap-1.5">
+              {(['http1', 'http2', 'grpc'] as const).map((proto) => (
+                <button
+                  key={proto}
+                  type="button"
+                  aria-pressed={draft.app_protocol === proto}
+                  onClick={() => set('app_protocol', proto)}
+                  className={`pressable h-9 rounded-md border px-3 font-mono text-xs ${
+                    draft.app_protocol === proto
+                      ? 'border-brand bg-brand/10 text-foreground'
+                      : 'border-border text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {proto}
+                </button>
+              ))}
+            </div>
+            <span className="text-xs text-muted-foreground">
+              What the edge speaks to the app. gRPC needs Hobby or above.
             </span>
           </label>
 
