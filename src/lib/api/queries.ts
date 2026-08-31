@@ -595,12 +595,19 @@ export function useAuthAuditEvents() {
 
 export type ProjectPlan = components['schemas']['PlanResponse'];
 
-/** Multipart body shared by scan and apply. */
-function projectForm(input: { file: File; slug?: string; branch?: string }): FormData {
+/** Multipart body shared by scan and apply. `only` is the CSV the CLI builds
+ * from `--only`/`--exclude`; absent means every detected workload. */
+function projectForm(input: {
+  file: File;
+  slug?: string;
+  branch?: string;
+  only?: string;
+}): FormData {
   const fd = new FormData();
   fd.append('source', input.file);
   if (input.slug?.trim()) fd.append('project_slug', input.slug.trim());
   if (input.branch?.trim()) fd.append('production_branch', input.branch.trim());
+  if (input.only !== undefined) fd.append('only', input.only);
   return fd;
 }
 
@@ -608,7 +615,7 @@ function projectForm(input: { file: File; slug?: string; branch?: string }): For
  * crons, quota verdict, and the plan_token apply echoes back). */
 export function useProjectScan() {
   return useMutation({
-    mutationFn: (input: { file: File; slug?: string; branch?: string }) =>
+    mutationFn: (input: { file: File; slug?: string; branch?: string; only?: string }) =>
       unwrap(
         api.POST('/v1/projects/scan', {
           // The typed body is JSON-shaped; the endpoint takes multipart. The
@@ -625,7 +632,13 @@ export function useProjectScan() {
 export function useProjectApply() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { file: File; slug?: string; branch?: string; planToken: string }) =>
+    mutationFn: (input: {
+      file: File;
+      slug?: string;
+      branch?: string;
+      only?: string;
+      planToken: string;
+    }) =>
       unwrap(
         api.POST('/v1/projects', {
           params: { query: { plan_token: input.planToken } },

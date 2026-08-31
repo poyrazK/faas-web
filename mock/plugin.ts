@@ -1627,15 +1627,35 @@ const MOCK_PLAN = {
   plan_token: 'mock-plan-token',
 };
 
-route('POST', '/v1/projects/scan', () => MOCK_PLAN);
-route('POST', '/v1/projects', () => ({
-  ...MOCK_PLAN,
-  project_id: 'proj_mock01',
-  apps: MOCK_PLAN.workloads
-    .filter((w) => !w.schedule)
-    .map((w, i) => ({ slug: w.name, id: `app_import_${i}` })),
-  builds: [],
-}));
+/** Apply the `only` CSV the way apid does: absent = everything. */
+function subsetPlan(only: unknown) {
+  const names = typeof only === 'string' && only !== '' ? new Set(only.split(',')) : null;
+  const workloads = MOCK_PLAN.workloads.filter((w) => !names || names.has(w.name));
+  const skipped = MOCK_PLAN.workloads.filter((w) => names && !names.has(w.name));
+  return {
+    ...MOCK_PLAN,
+    workloads,
+    observed_apps: workloads.filter((w) => !w.schedule).length,
+    will_deploy: workloads.map((w) => ({ slug: w.name, action: 'create' })),
+    unaffected: [],
+    skipped: skipped.map((w) => ({ slug: w.name, action: 'noop' })),
+    can_apply_reasons: [],
+    can_apply_pre_exclude: true,
+    gate_rescued_by_exclude: false,
+  };
+}
+route('POST', '/v1/projects/scan', ({ body }) => subsetPlan(body.only));
+route('POST', '/v1/projects', ({ body }) => {
+  const plan = subsetPlan(body.only);
+  return {
+    ...plan,
+    project_id: 'proj_mock01',
+    apps: plan.workloads
+      .filter((w) => !w.schedule)
+      .map((w, i) => ({ slug: w.name, id: `app_import_${i}` })),
+    builds: [],
+  };
+});
 
 // --- Plumbing ------------------------------------------------------------------
 
@@ -1647,7 +1667,14 @@ function readBody(req: IncomingMessage): Promise<Record<string, unknown>> {
       try {
         resolve(raw ? (JSON.parse(raw) as Record<string, unknown>) : {});
       } catch {
-        resolve({});
+        // Multipart: recover the text fields so handlers can honour form
+        // values (`only`, `project_slug`, the tarball `sidecar`). File parts
+        // are binary noise to this regex and are simply skipped.
+        const fields: Record<string, unknown> = {};
+        for (const m of raw.matchAll(/name="([\w-]+)"\r\n\r\n([\s\S]*?)\r\n--/g)) {
+          fields[m[1]] = m[2];
+        }
+        resolve(fields);
       }
     });
   });
