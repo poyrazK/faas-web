@@ -267,6 +267,20 @@ export function useRetryBilling() {
 }
 
 /** The full GDPR export bundle, as JSON the caller hands to the browser. */
+/**
+ * Stages deletion with a 30-day grace (status → deleted_pending). The client
+ * only auto-keys POSTs, so the Idempotency-Key the endpoint requires is set
+ * here.
+ */
+export function useDeleteAccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      unwrap(api.DELETE('/v1/account', { headers: { 'Idempotency-Key': crypto.randomUUID() } })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.account }),
+  });
+}
+
 export function useAccountExport() {
   return useMutation({
     mutationFn: () => unwrap(api.GET('/v1/account/export', {})),
