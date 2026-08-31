@@ -8,7 +8,14 @@ import {
   UnreachableState,
   queryPhase,
 } from '@/components/dashboard/primitives';
-import { useUsageSummary, useApps, usePerAppUsage, useSetOverageCap } from '@/lib/api/queries';
+import {
+  useUsageSummary,
+  useApps,
+  usePerAppUsage,
+  useSetOverageCap,
+  useUsageDaily,
+} from '@/lib/api/queries';
+import { UsageDailyBars } from '@/components/dashboard/usage-daily';
 import { useAuth } from '@/lib/auth';
 import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -272,6 +279,91 @@ function PerAppUsagePanel() {
   );
 }
 
+/** Today in the API's `YYYY-MM-DD` form, in the browser's local calendar. */
+function today() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/**
+ * One day, by app — the daily rollup `/v1/usage/daily` answers. GB-hours are
+ * derived from the row's MB-seconds; the request and cold-boot counts ride
+ * along as a table under the bars.
+ */
+function DailyUsagePanel() {
+  const [day, setDay] = useState(today);
+  const q = useUsageDaily(day);
+  const { data: apps } = useApps();
+  const rows = useMemo(() => {
+    const bySlug = slugIndex(apps ?? []);
+    return (q.data?.items ?? [])
+      .map((r) => ({
+        label: bySlug.get(r.app_id) ?? r.app_id.slice(0, 8),
+        gb_hours: r.mb_seconds / 1024 / 3600,
+        requests: r.requests,
+        cold_boots: r.cold_boots,
+      }))
+      .sort((a, b) => b.gb_hours - a.gb_hours);
+  }, [q.data, apps]);
+  const phase = queryPhase({ error: q.error, loading: q.isPending, isEmpty: rows.length === 0 });
+
+  return (
+    <Panel
+      title="By day"
+      description="Per-app usage for one day. Pick a date to see that day's rollup."
+    >
+      <div className="flex flex-col gap-4">
+        <label className="flex items-center gap-3 text-sm">
+          <span className="label-mono text-muted-foreground">Day</span>
+          <input
+            type="date"
+            value={day}
+            max={today()}
+            onChange={(e) => e.target.value && setDay(e.target.value)}
+            className="h-9 rounded-md border border-border bg-background px-2 font-mono text-sm outline-none focus:border-brand/50"
+          />
+        </label>
+        {phase !== 'ready' ? (
+          <InlinePhase
+            phase={phase}
+            error={q.error}
+            loadingMessage="Reading the day…"
+            emptyMessage="Nothing metered on this day."
+          />
+        ) : (
+          <>
+            <UsageDailyBars rows={rows} />
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="label-mono text-left text-muted-foreground">
+                  <th className="py-1 font-medium">App</th>
+                  <th className="py-1 text-right font-medium">GB-hours</th>
+                  <th className="py-1 text-right font-medium">Requests</th>
+                  <th className="py-1 text-right font-medium">Cold boots</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.label} className="border-t border-border">
+                    <td className="py-1.5 font-mono text-xs">{r.label}</td>
+                    <td className="py-1.5 text-right font-mono text-xs">{r.gb_hours.toFixed(2)}</td>
+                    <td className="py-1.5 text-right font-mono text-xs">
+                      {r.requests.toLocaleString()}
+                    </td>
+                    <td className="py-1.5 text-right font-mono text-xs">
+                      {r.cold_boots.toLocaleString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
+      </div>
+    </Panel>
+  );
+}
+
 function UsagePage() {
   const { data, isPending, error, refetch } = useUsageSummary();
   const { account } = useAuth();
@@ -342,6 +434,7 @@ function UsagePage() {
 
           <ForecastPanel used={used} included={included} month={data?.month} />
           <PerAppUsagePanel />
+          <DailyUsagePanel />
           <SpendCapPanel />
 
           {account?.limits && (
