@@ -1473,6 +1473,21 @@ export function useQueuePeek(slug: string) {
   });
 }
 
+/** Ack one queue row (idempotent server-side; the header makes retries safe too). */
+export function useAckQueueRow(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      unwrap(
+        api.POST('/v1/apps/{slug}/queues/{id}/ack', {
+          params: { path: { slug, id } },
+          headers: idem(),
+        })
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['apps', slug, 'queues'] }),
+  });
+}
+
 export function useDeadLetter(slug: string) {
   return useQuery({
     queryKey: ['apps', slug, 'queues', 'dead_letter'],

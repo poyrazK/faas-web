@@ -7,6 +7,7 @@ import { Pill } from '@/components/dashboard/resource-table';
 import { ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
 import {
+  useAckQueueRow,
   useDeadLetter,
   useQueuePeek,
   useQueueSend,
@@ -247,9 +248,11 @@ function DelayedTasksPanel({ slug }: { slug: string }) {
 }
 
 export function QueuesBody({ slug }: { slug: string }) {
+  const { toast } = useToast();
   const state = useQueueState(slug);
   const peek = useQueuePeek(slug);
   const dlq = useDeadLetter(slug);
+  const ack = useAckQueueRow(slug);
 
   const pending = useMemo<MessageRow[]>(
     () =>
@@ -285,6 +288,30 @@ export function QueuesBody({ slug }: { slug: string }) {
       numeric: true,
       render: (m) => (
         <span className="text-xs text-muted-foreground">{formatWhen(m.createdAt)}</span>
+      ),
+    },
+    {
+      // `gregale queues ack <id>`: settle a row by hand — a consumer that
+      // crashed after doing the work, say — instead of letting it redeliver.
+      key: 'id',
+      label: '',
+      width: 'w-16',
+      render: (m) => (
+        <Button
+          size="sm"
+          variant="outline"
+          busy={ack.isPending}
+          onClick={() =>
+            void ack
+              .mutateAsync(m.id)
+              .then(() => toast({ kind: 'success', title: 'Acknowledged' }))
+              .catch((err: unknown) =>
+                toast({ kind: 'error', title: 'Ack failed', description: errorMessage(err) })
+              )
+          }
+        >
+          Ack
+        </Button>
       ),
     },
   ];

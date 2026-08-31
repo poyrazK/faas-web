@@ -477,6 +477,12 @@ route('POST', '/v1/apps/{slug}/webhooks/{id}/deliveries/{did}/retry', ({ params 
   return { delivery: d };
 });
 
+// The peek fixture regenerates rows per call, so an ack cannot strike one
+// row visibly — the 204 and the invalidate are what the UI exercises.
+route('POST', '/v1/apps/{slug}/queues/{id}/ack', ({ params }) => {
+  app(params.slug);
+  return NO_CONTENT;
+});
 route('GET', '/v1/apps/{slug}/queues/state', ({ params }) => db.queueState(app(params.slug)));
 route('GET', '/v1/apps/{slug}/queues/peek', ({ params }) => db.queuePeek(app(params.slug)));
 route('GET', '/v1/apps/{slug}/queues/dead_letter', ({ params }) =>
