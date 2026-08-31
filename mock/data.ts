@@ -189,6 +189,9 @@ for (const app of apps) {
             ])
           : null,
       error_code: status === 'failed' ? 'boot_failed' : null,
+      // ADR-129 auto-rollback fields: never triggered in the mock.
+      rollback_on_5xx: false,
+      first_5xx_count: 0,
       created_at: iso(ageMs),
       min_instances: app.min_instances,
       traffic_percent: latest ? 100 : 0,
@@ -292,7 +295,7 @@ export const secrets = new Map<string, S['AppSecretResponse'][]>(
       'STRIPE_SECRET_KEY',
       'JWT_SIGNING_KEY',
       a.type === 'app' ? 'REDIS_URL' : 'S3_SECRET',
-    ].map((key) => ({ key, kid: hex(8), ...stamp() })),
+    ].map((key) => ({ key, scope: 'app', kid: hex(8), ...stamp() })),
   ])
 );
 
@@ -355,6 +358,7 @@ export const alerts = new Map<string, S['AlertRuleResponse'][]>(
       app_id: a.id,
       name: r.name,
       enabled: true,
+      action: 'webhook' as const,
       metric: r.metric as S['AlertRuleResponse']['metric'],
       comparison: r.comparison as S['AlertRuleResponse']['comparison'],
       threshold: r.threshold,
@@ -570,6 +574,7 @@ export const edgeRules: S['EdgeRuleResponse'][] = (
   match_path: r.path,
   match_methods: r.kind === 'cors' ? ['GET', 'OPTIONS'] : [],
   priority: (i + 1) * 10,
+  validate_mode: 'block' as const,
   enabled: r.kind !== 'maintenance',
   kind: r.kind,
   action: r.action,

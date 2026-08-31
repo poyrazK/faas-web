@@ -193,8 +193,11 @@ export function EdgeRuleDialog({
         .then(() => done('updated'))
         .catch(failed);
     } else {
+      // ADR-128: `validate_mode` is the top-level source of truth for validate
+      // rules and the API defaults it to `block`. Sent explicitly so the
+      // request is complete under the generated type; harmless on other kinds.
       void create
-        .mutateAsync({ slug, kind, ...body })
+        .mutateAsync({ slug, kind, validate_mode: 'block', ...body })
         .then(() => done('created'))
         .catch(failed);
     }

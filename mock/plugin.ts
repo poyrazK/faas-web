@@ -204,6 +204,8 @@ route('POST', '/v1/apps/{slug}/deployments/source-ref', ({ params, body }) => {
     status: 'building',
     created_at: db.iso(0),
     traffic_percent: 0,
+    rollback_on_5xx: false,
+    first_5xx_count: 0,
     scan: null,
   };
   db.deployments.unshift(dep);
@@ -244,7 +246,13 @@ route('PUT', '/v1/apps/{slug}/secrets/{key}', ({ params }) => {
     existing.updated_at = now;
     return existing;
   }
-  const created = { key: params.key, kid: db.id().slice(0, 8), created_at: now, updated_at: now };
+  const created = {
+    key: params.key,
+    scope: 'app',
+    kid: db.id().slice(0, 8),
+    created_at: now,
+    updated_at: now,
+  };
   list.push(created);
   db.secrets.set(params.slug, list);
   return created;
@@ -330,6 +338,7 @@ route('POST', '/v1/apps/{slug}/alerts', ({ params, body }) => {
     app_id: a.id,
     name: String(body.name),
     enabled: body.enabled !== false,
+    action: 'webhook',
     metric: body.metric as (typeof list)[number]['metric'],
     comparison: (body.comparison ?? 'gt') as (typeof list)[number]['comparison'],
     threshold: Number(body.threshold ?? 0),
@@ -889,6 +898,7 @@ route('POST', '/v1/apps/{slug}/edge-rules', ({ params, body }) => {
     match_methods: Array.isArray(body.match_methods) ? (body.match_methods as string[]) : [],
     priority: Number(body.priority ?? 100),
     enabled: body.enabled !== false,
+    validate_mode: 'block' as const,
     kind: kind as (typeof db.edgeRules)[number]['kind'],
     action: body.action as (typeof db.edgeRules)[number]['action'],
     created_at: db.iso(0),

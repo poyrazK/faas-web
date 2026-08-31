@@ -238,6 +238,7 @@ export function AlertsBody({ slug }: { slug: string }) {
             void createAlert
               .mutateAsync({
                 name: name.trim(),
+                action: 'webhook',
                 metric,
                 comparison,
                 threshold: Number(threshold),
