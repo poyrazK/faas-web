@@ -218,6 +218,28 @@ route('POST', '/v1/apps/{slug}/deployments/source-ref', ({ params, body }) => {
   a.status = 'deploying';
   return status(202, dep);
 });
+route('POST', '/v1/apps/{slug}/deployments/source-tarball', ({ params }) => {
+  // Multipart arrives here: readBody cannot parse it, so `body` is {} and the
+  // sidecar is not echoed — the real API echoes it, the walkthrough does not
+  // depend on it. The deployment itself behaves like any queued build.
+  const a = app(params.slug);
+  const dep: db.Deployment = {
+    id: db.id(),
+    app_id: a.id,
+    build_id: db.id(),
+    image_digest: `sha256:${db.id()}${db.id()}`,
+    kind: 'tarball',
+    status: 'building',
+    created_at: db.iso(0),
+    traffic_percent: 0,
+    rollback_on_5xx: false,
+    first_5xx_count: 0,
+    scan: null,
+  };
+  db.deployments.unshift(dep);
+  a.status = 'deploying';
+  return status(202, dep);
+});
 route('POST', '/v1/apps/{slug}/rollback', ({ params }) => {
   const a = app(params.slug);
   const previous = db.deployments.filter((d) => d.app_id === a.id && d.status === 'succeeded')[0];

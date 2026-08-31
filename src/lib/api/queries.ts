@@ -9,6 +9,7 @@ import {
 import { api, issueCSRF, unwrap } from './client';
 import { ApiError } from './errors';
 import type { components } from './schema';
+import { tarballForm } from '@/lib/tarball-deploy';
 
 /**
  * Query hooks over the REST surface.
@@ -928,6 +929,35 @@ export function useRenameApp(slug: string) {
  * wants an image reference, which means a registry the browser has no
  * business holding credentials for.
  */
+/**
+ * `gregale deploy` with no flags: pack the directory, upload it. The browser
+ * gets the same endpoint — a .tar.gz the person built themselves — with the
+ * annotations riding along in the `sidecar` part. 202 means queued for build.
+ */
+export function useDeployTarball(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      file: File;
+      sidecar: components['schemas']['SourceTarballDeployRequest'];
+    }) =>
+      unwrap(
+        api.POST('/v1/apps/{slug}/deployments/source-tarball', {
+          params: { path: { slug } },
+          // The typed body is JSON-shaped; the endpoint takes multipart. The
+          // serializer override is openapi-fetch's sanctioned escape hatch.
+          body: undefined as never,
+          bodySerializer: () => tarballForm(input),
+        })
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.app(slug) });
+      void qc.invalidateQueries({ queryKey: keys.deployments });
+      void qc.invalidateQueries({ queryKey: keys.appDeployments(slug) });
+    },
+  });
+}
+
 export function useDeployFromRef(slug: string) {
   const qc = useQueryClient();
   return useMutation({

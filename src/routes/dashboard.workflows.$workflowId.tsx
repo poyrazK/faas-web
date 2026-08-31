@@ -21,6 +21,7 @@ import {
   useBindRepo,
   useBuilds,
   useDeployFromRef,
+  useDeployTarball,
   useParkApp,
   useWakeApp,
   type MetricsRange,
@@ -30,6 +31,7 @@ import { useToast } from '@/components/ui/toast';
 import { useConfirm } from '@/components/ui/confirm';
 import { errorMessage } from '@/lib/api/errors';
 import { DeployAnnotations } from '@/components/dashboard/deploy-annotations';
+import { TarballDeployForm } from '@/components/dashboard/tarball-deploy';
 import { annotationsBody, EMPTY_ANNOTATIONS, type AnnotationDraft } from '@/lib/deploy-annotations';
 import { useAuth } from '@/lib/auth';
 import { isPaidPlan } from '@/lib/plan';
@@ -130,6 +132,7 @@ function FunctionDetailPage() {
   const wake = useWakeApp();
   const deployFromRef = useDeployFromRef(workflowId);
   const [deployAnnotations, setDeployAnnotations] = useState<AnnotationDraft>(EMPTY_ANNOTATIONS);
+  const deployTarball = useDeployTarball(workflowId);
   const bindRepo = useBindRepo(workflowId);
   const [deployOpen, setDeployOpen] = useState(false);
   const [deployRepo, setDeployRepo] = useState('');
@@ -575,6 +578,33 @@ function FunctionDetailPage() {
                     onClose={() => void navigate({ search: { tab: 'Deployments' }, replace: true })}
                   />
                 )}
+                <Panel
+                  title="Deploy an archive"
+                  description="Upload a .tar.gz of the repo root. Same build pipeline as a git deploy."
+                >
+                  <TarballDeployForm
+                    busy={deployTarball.isPending}
+                    onSubmit={(file, sidecar) =>
+                      void deployTarball
+                        .mutateAsync({ file, sidecar })
+                        .then((d) => {
+                          toast({
+                            kind: 'success',
+                            title: 'Archive queued',
+                            description: `Deployment ${d.id.slice(0, 8)} is building.`,
+                          });
+                          void refresh();
+                        })
+                        .catch((err) =>
+                          toast({
+                            kind: 'error',
+                            title: 'Upload failed',
+                            description: errorMessage(err),
+                          })
+                        )
+                    }
+                  />
+                </Panel>
               </>
             )}
 
