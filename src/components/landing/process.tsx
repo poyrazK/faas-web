@@ -127,25 +127,12 @@ export function Process() {
       className="relative scroll-mt-24 border-t border-border"
     >
       <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-28">
-        {/* header: eyebrow + title left, the one sentence right */}
-        <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className={cn(EYEBROW, 'mb-6 flex items-center gap-2.5 text-muted-foreground')}>
-              <span aria-hidden className="size-2.5 rounded-full border border-brand" />
-              Platform
-            </p>
-            <h2
-              id={`${id}-title`}
-              className="text-[40px] font-semibold uppercase leading-none tracking-[-0.03em] text-foreground sm:text-5xl"
-            >
-              The platform
-            </h2>
-          </div>
-          <p className="max-w-[19rem] text-[13px] leading-relaxed text-muted-foreground sm:text-right">
-            Deploys, schedules, domains, secrets, and observability — one CLI, one API, no glue
-            code.
-          </p>
-        </div>
+        <h2
+          id={`${id}-title`}
+          className="text-[40px] font-semibold uppercase leading-none tracking-[-0.03em] text-foreground sm:text-5xl"
+        >
+          The platform
+        </h2>
 
         {/* the stops */}
         <div
