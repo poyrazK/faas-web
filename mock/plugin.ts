@@ -1716,6 +1716,19 @@ route('GET', '/v1/events', ({ res, req }) => {
   req.on('close', () => clearInterval(timer));
 });
 
+route('GET', '/v1/apps/{slug}/streaming-cap', ({ params }) => {
+  const a = app(params.slug);
+  return {
+    app_id: a.id,
+    status: a.streaming_enabled ? 'streaming' : 'flag-disabled',
+    effective_cap_bytes: 5 * 1024 * 1024,
+    plan_cap_bytes: 5 * 1024 * 1024,
+    flag_enabled: Boolean(a.streaming_enabled),
+    plan_allowed: true,
+    cap_kind: 'plan',
+  };
+});
+
 route('GET', '/v1/apps/{slug}/env-diff', ({ params }) => {
   const a = app(params.slug);
   const cell = (present: boolean, hash?: string) => ({ present, value_hash: hash });

@@ -8,9 +8,12 @@ import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
 import { errorMessage } from '@/lib/api/errors';
 import { breakCounts, isBlocking } from '@/lib/diff-gate';
+import { capLabel, STREAMING_STATUS } from '@/lib/streaming-cap';
+import { Pill } from '@/components/dashboard/resource-table';
 import {
   useApp,
   useAppDiff,
+  useStreamingCap,
   useDeleteApp,
   useDestroyPreview,
   useRenameApp,
@@ -390,6 +393,8 @@ function ConfigForm({ app }: { app: App }) {
               What the edge speaks to the app. gRPC needs Hobby or above.
             </span>
           </label>
+
+          <StreamingRow slug={app.slug} />
 
           <label className="flex flex-col gap-1.5">
             <span className="label-mono text-muted-foreground">Overflow node</span>
@@ -802,6 +807,38 @@ export function AppConfiguration({ slug }: { slug: string }) {
       <RegistryCredentialsPanel slug={data.slug} />
       <RenamePanel key={`rename:${data.slug}`} app={data} />
       <DangerZone app={data} />
+    </div>
+  );
+}
+
+const STREAM_TONE_COLOR: Record<string, string | undefined> = {
+  good: 'var(--status-good)',
+  warning: 'var(--status-warning)',
+  bad: 'var(--status-critical)',
+  neutral: undefined,
+};
+
+/**
+ * `gregale streaming-cap` — the read-only classification probe. Typed in the
+ * client since the spec sync; this is its first caller. It answers the "why
+ * is my response buffered?" question without a support ticket.
+ */
+function StreamingRow({ slug }: { slug: string }) {
+  const q = useStreamingCap(slug);
+  const s = q.data;
+  if (!s) return null;
+  const meta = STREAMING_STATUS[s.status];
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="label-mono text-muted-foreground">Streaming</span>
+      <div className="flex flex-wrap items-center gap-2">
+        <Pill label={meta.label} color={STREAM_TONE_COLOR[meta.tone]} />
+        <span className="font-mono text-xs text-muted-foreground">
+          cap {capLabel(s.effective_cap_bytes)} · plan {capLabel(s.plan_cap_bytes)}
+          {s.cap_kind ? ` · ${s.cap_kind}` : ''}
+        </span>
+      </div>
+      <span className="text-xs text-muted-foreground">{meta.hint}</span>
     </div>
   );
 }

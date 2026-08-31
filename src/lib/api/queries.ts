@@ -2041,6 +2041,15 @@ export function useUpdateEdgeRule() {
 /** Idempotent POSTs (spec: IdempotencyKey) get a fresh key per attempt. */
 const idem = () => ({ 'Idempotency-Key': crypto.randomUUID() });
 
+/** The streaming classification probe — typed since phase 0, called by nobody until now. */
+export function useStreamingCap(slug: string) {
+  return useQuery({
+    queryKey: ['apps', slug, 'streaming-cap'],
+    queryFn: () => unwrap(api.GET('/v1/apps/{slug}/streaming-cap', { params: { path: { slug } } })),
+    enabled: Boolean(slug),
+  });
+}
+
 /** The env-diff matrix: presence and value-equality of every key across scopes. */
 export function useEnvDiff(slug: string) {
   return useQuery({
