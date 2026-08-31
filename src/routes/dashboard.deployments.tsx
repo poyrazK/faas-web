@@ -216,6 +216,10 @@ function DeploymentDrawer({
               ['Build', d.build_id ?? '—'],
               ['Created', formatRelative(Date.parse(d.created_at))],
               ['Error', d.error ?? '—'],
+              ['Reason', d.reason ?? '—'],
+              ['Tag', d.tag ? d.tag.replaceAll('_', ' ') : '—'],
+              ['Deployed by', d.deployed_by ?? '—'],
+              ['Pull request', d.pr_number != null ? `#${d.pr_number}` : '—'],
             ].map(([k, v]) => (
               <div key={k} className="flex min-w-0 flex-col gap-0.5">
                 <dt className="label-mono text-muted-foreground">{k}</dt>

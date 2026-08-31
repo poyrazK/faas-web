@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useUnsavedGuard } from '@/lib/use-unsaved-guard';
 import { RepoPicker } from '@/components/dashboard/repo-picker';
+import { DeployAnnotations } from '@/components/dashboard/deploy-annotations';
+import { annotationsBody, EMPTY_ANNOTATIONS, type AnnotationDraft } from '@/lib/deploy-annotations';
 import { AnimatePresence, motion } from 'motion/react';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { ArrowLeft, ArrowRight, Check, Github, Package } from 'iconoir-react';
@@ -89,6 +91,7 @@ function NewFunctionPage() {
   const [source, setSource] = useState(template ? 'empty' : 'git');
   const [repo, setRepo] = useState('');
   const [ref, setRef] = useState('main');
+  const [annotations, setAnnotations] = useState<AnnotationDraft>(EMPTY_ANNOTATIONS);
   const [name, setName] = useState(template ? template.slug : '');
   const deployFromRef = useDeployFromRefFor();
   const updateApp = useUpdateAppFor();
@@ -131,6 +134,7 @@ function NewFunctionPage() {
         repo: repo.trim(),
         ref: ref.trim() || 'main',
         format: 'tarball',
+        ...annotationsBody(annotations),
       });
       setDeploymentId(deployment.id);
       toast({
@@ -171,6 +175,7 @@ function NewFunctionPage() {
               repo: repo.trim(),
               ref: ref.trim() || 'main',
               format: 'tarball',
+              ...annotationsBody(annotations),
             })
           : Promise.resolve(null);
 
@@ -444,6 +449,14 @@ function NewFunctionPage() {
                   The repository has to be reachable by the GitHub installation from{' '}
                   <span className="font-mono">gregale connect</span>.
                 </p>
+                <details className="sm:col-span-2">
+                  <summary className="cursor-pointer text-sm text-muted-foreground">
+                    Annotations (optional)
+                  </summary>
+                  <div className="mt-3">
+                    <DeployAnnotations value={annotations} onChange={setAnnotations} />
+                  </div>
+                </details>
               </div>
             )}
 

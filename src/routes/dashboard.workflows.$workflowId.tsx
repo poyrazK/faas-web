@@ -29,6 +29,8 @@ import { useData } from '@/lib/store';
 import { useToast } from '@/components/ui/toast';
 import { useConfirm } from '@/components/ui/confirm';
 import { errorMessage } from '@/lib/api/errors';
+import { DeployAnnotations } from '@/components/dashboard/deploy-annotations';
+import { annotationsBody, EMPTY_ANNOTATIONS, type AnnotationDraft } from '@/lib/deploy-annotations';
 import { useAuth } from '@/lib/auth';
 import { isPaidPlan } from '@/lib/plan';
 import { cn } from '@/lib/utils';
@@ -127,6 +129,7 @@ function FunctionDetailPage() {
   const park = useParkApp();
   const wake = useWakeApp();
   const deployFromRef = useDeployFromRef(workflowId);
+  const [deployAnnotations, setDeployAnnotations] = useState<AnnotationDraft>(EMPTY_ANNOTATIONS);
   const bindRepo = useBindRepo(workflowId);
   const [deployOpen, setDeployOpen] = useState(false);
   const [deployRepo, setDeployRepo] = useState('');
@@ -620,6 +623,7 @@ function FunctionDetailPage() {
                     repo: deployRepo.trim(),
                     ref: deployRef.trim(),
                     format: 'tarball',
+                    ...annotationsBody(deployAnnotations),
                   })
                   .then((deployment) => {
                     setActiveDeployment({
@@ -691,6 +695,14 @@ function FunctionDetailPage() {
               className="h-9 rounded-md border border-border bg-background px-3 font-mono text-sm outline-none focus:border-brand/50"
             />
           </label>
+          <details>
+            <summary className="cursor-pointer text-sm text-muted-foreground">
+              Annotations (optional)
+            </summary>
+            <div className="mt-3">
+              <DeployAnnotations value={deployAnnotations} onChange={setDeployAnnotations} />
+            </div>
+          </details>
         </div>
       </Modal>
     </div>

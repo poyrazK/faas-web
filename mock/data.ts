@@ -196,6 +196,16 @@ for (const app of apps) {
       min_instances: app.min_instances,
       traffic_percent: latest ? 100 : 0,
       scan: null,
+      // ADR-116 deploy annotations: the newest github deploy carries the
+      // full quartet so the drawer has something real to show.
+      ...(latest && kind === 'github'
+        ? {
+            reason: 'Rotate the payment webhook secret',
+            tag: 'hotfix' as const,
+            deployed_by: 'ada',
+            pr_number: 418,
+          }
+        : {}),
     };
     deployments.push(dep);
     const dur = int(38, 260);

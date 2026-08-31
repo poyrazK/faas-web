@@ -195,6 +195,7 @@ route('POST', '/v1/apps/{slug}/deployments/source-ref', ({ params, body }) => {
   const a = app(params.slug);
   if (!body.repo || !body.ref)
     throw new Problem(400, 'missing_field', 'repo and ref are required.');
+  const ann = body as Pick<db.Deployment, 'reason' | 'tag' | 'deployed_by' | 'pr_number'>;
   const dep: db.Deployment = {
     id: db.id(),
     app_id: a.id,
@@ -207,6 +208,11 @@ route('POST', '/v1/apps/{slug}/deployments/source-ref', ({ params, body }) => {
     rollback_on_5xx: false,
     first_5xx_count: 0,
     scan: null,
+    // The annotation quartet is echoed back exactly as the API does.
+    reason: ann.reason,
+    tag: ann.tag,
+    deployed_by: ann.deployed_by,
+    pr_number: ann.pr_number,
   };
   db.deployments.unshift(dep);
   a.status = 'deploying';
