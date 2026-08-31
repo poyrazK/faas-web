@@ -10,6 +10,11 @@ describe('docs manifest', () => {
     for (const slug of slugs) expect(docSource(slug), slug).toBeTruthy();
   });
 
+  it('keeps local pages out of the upstream pull', () => {
+    const local = DOC_ENTRIES.filter((e) => e.source === 'local').map((e) => e.slug);
+    expect(local).toEqual(['rollouts', 'teams-and-access', 'billing', 'migrate', 'edge-rules']);
+  });
+
   it('publishes the generated CLI reference next to CLI setup', () => {
     const cli = DOC_SECTIONS.find((s) => s.title === 'CLI');
     expect(cli?.entries.map((e) => e.slug)).toEqual(['cli', 'cli-reference']);

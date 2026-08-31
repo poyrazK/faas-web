@@ -62,7 +62,9 @@ mkdirSync(OUT_DIR, { recursive: true });
 let written = 0;
 const failures = [];
 
-for (const entry of DOC_ENTRIES) {
+const pullable = DOC_ENTRIES.filter((entry) => entry.source !== 'local');
+
+for (const entry of pullable) {
   const response = await fetch(url(entry.source), { headers });
 
   if (!response.ok) {
@@ -78,7 +80,7 @@ for (const entry of DOC_ENTRIES) {
   written++;
 }
 
-console.log(`\npulled ${written}/${DOC_ENTRIES.length} docs from ${REPO}@${REF}`);
+console.log(`\npulled ${written}/${pullable.length} docs from ${REPO}@${REF}`);
 
 if (failures.length) {
   console.error(`\n${failures.length} failed:`);

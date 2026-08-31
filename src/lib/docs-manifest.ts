@@ -23,10 +23,13 @@
  * Order within a section is the reading order, and it drives prev/next.
  */
 
+/** A page authored in this repo. `docs:pull` leaves it alone. */
+export const LOCAL = 'local';
+
 export interface DocEntry {
   /** URL segment under /docs. Stable; do not rename once published. */
   slug: string;
-  /** Path in the upstream repository. */
+  /** Path in the upstream repository, or LOCAL for a page that lives only here. */
   source: string;
   title: string;
   /** One line, used on the index and as the meta description. */
@@ -96,6 +99,47 @@ export const DOC_SECTIONS: DocSection[] = [
         title: 'CLI reference',
         summary:
           'Every command, subcommand and flag, rendered from the same manifest that drives gregale help — the binary is the source of truth.',
+      },
+    ],
+  },
+  {
+    title: 'Operating',
+    blurb: 'Rolling out, working as a team, paying, moving in, and shaping traffic at the edge.',
+    entries: [
+      {
+        slug: 'rollouts',
+        source: LOCAL,
+        title: 'Rollouts and rollback',
+        summary:
+          'Canary traffic splits, automatic rollback on 5xx, manual recovery, and shadowing a candidate with mirrors.',
+      },
+      {
+        slug: 'teams-and-access',
+        source: LOCAL,
+        title: 'Teams and access',
+        summary:
+          'Organisations, seats and roles, invitations, MFA, sessions, API keys and the audit trail.',
+      },
+      {
+        slug: 'billing',
+        source: LOCAL,
+        title: 'Billing and spend caps',
+        summary:
+          'Plans, usage, invoices, the card on file, and the overage cap that stops a bill from surprising you.',
+      },
+      {
+        slug: 'migrate',
+        source: LOCAL,
+        title: 'Migrating an existing project',
+        summary:
+          'Import from Docker Compose, a Procfile, Kubernetes manifests, render.yaml, fly.toml or serverless.yml — preview what it creates first.',
+      },
+      {
+        slug: 'edge-rules',
+        source: LOCAL,
+        title: 'Edge rules',
+        summary:
+          'CORS, JWT, IP and geo allow-lists, throttles, budgets, maintenance mode and response caching in front of any app.',
       },
     ],
   },
