@@ -830,6 +830,19 @@ export function useDeleteApp() {
   });
 }
 
+/**
+ * Tears a preview app down — its own action with its own audit kind, not an
+ * app delete: the row is tombstoned and the URL answers 410. 204 on success.
+ */
+export function useDestroyPreview() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (slug: string) =>
+      unwrap(api.POST('/v1/preview/{slug}/destroy', { params: { path: { slug } } })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.apps }),
+  });
+}
+
 /** Wakes a parked app. The platform scales to zero, so this is a real action. */
 export function useWakeApp() {
   const qc = useQueryClient();

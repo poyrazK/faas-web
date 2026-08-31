@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
+import { isPreviewSlug } from '@/lib/preview';
 import { Button } from '@/components/ui/button';
 import { FIELD as BASE_FIELD } from '@/components/ui/field';
 import { Switch } from '@/components/ui/switch';
@@ -10,6 +11,7 @@ import {
   useApp,
   useAppDiff,
   useDeleteApp,
+  useDestroyPreview,
   useRenameApp,
   useUpdateApp,
   type App,
@@ -649,6 +651,7 @@ function DangerZone({ app }: { app: App }) {
   const confirm = useConfirm();
   const navigate = useNavigate();
   const remove = useDeleteApp();
+  const destroyPreview = useDestroyPreview();
 
   return (
     <Panel
@@ -656,6 +659,48 @@ function DangerZone({ app }: { app: App }) {
       description="Permanent. The console asks you to type the slug before it goes through."
       className="border-[color:color-mix(in_oklab,var(--status-critical)_35%,transparent)]"
     >
+      {isPreviewSlug(app.slug) && (
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-4 border-b border-border pb-5">
+          <div>
+            <p className="text-sm font-medium">Tear down this preview</p>
+            <p className="mt-1 max-w-lg text-xs leading-relaxed text-muted-foreground">
+              Stops the preview, frees its URL and snapshot. A reopened pull request gets a fresh
+              preview at the same address.
+            </p>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            busy={destroyPreview.isPending}
+            onClick={async () => {
+              if (
+                !(await confirm({
+                  title: `Tear down ${app.slug}?`,
+                  description: 'Its URL answers 410 Gone from now on. Nothing else is affected.',
+                  confirmLabel: 'Tear down preview',
+                  destructive: true,
+                }))
+              )
+                return;
+              void destroyPreview
+                .mutateAsync(app.slug)
+                .then(() => {
+                  toast({ kind: 'success', title: `Tore down ${app.slug}` });
+                  void navigate({ to: '/dashboard/workflows' });
+                })
+                .catch((err: unknown) =>
+                  toast({
+                    kind: 'error',
+                    title: 'Could not tear down',
+                    description: errorMessage(err),
+                  })
+                );
+            }}
+          >
+            Tear down preview
+          </Button>
+        </div>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <p className="text-sm font-medium">Delete {app.slug}</p>
