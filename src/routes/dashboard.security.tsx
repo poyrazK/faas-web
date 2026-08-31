@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { LogOut } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
@@ -7,12 +7,15 @@ import { Pill, ResourceTable, type Column } from '@/components/dashboard/resourc
 import { useToast } from '@/components/ui/toast';
 import { useConfirm } from '@/components/ui/confirm';
 import {
+  useApps,
   useRevokeAllSessions,
   useRevokeSession,
   useSessions,
   useAuthAuditEvents,
   useAccountSecrets,
 } from '@/lib/api/queries';
+import { auditQuery, DEFAULT_AUDIT_FILTERS } from '@/lib/audit-filters';
+import { AuditEventDrawer } from '@/components/dashboard/audit-event-drawer';
 import { useMfa } from '@/components/auth/mfa-provider';
 import { errorMessage } from '@/lib/api/errors';
 import { formatRelative } from '@/lib/mock-data';
@@ -49,42 +52,125 @@ function formatWhen(value: string | undefined): string {
   return Number.isNaN(ms) ? '—' : formatRelative(ms);
 }
 
+const AUDIT_FIELD =
+  'h-8 rounded-md border border-border bg-background px-2 font-mono text-xs outline-none focus:border-brand/50';
+
 function AuthEventsPanel() {
-  const q = useAuthAuditEvents();
+  const [filters, setFilters] = useState(DEFAULT_AUDIT_FILTERS);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const q = useAuthAuditEvents(auditQuery(filters));
+  const { data: apps } = useApps();
   const events = q.data?.events ?? [];
   const phase = queryPhase({ error: q.error, loading: q.isPending, isEmpty: events.length === 0 });
+  const set = <K extends keyof typeof filters>(k: K, v: (typeof filters)[K]) =>
+    setFilters((f) => ({ ...f, [k]: v }));
   return (
     <Panel
-      title="Auth events"
-      description="Sign-ins, key mints, and MFA changes — the account's security timeline, distinct from the resource audit log."
-      padded={phase !== 'ready'}
+      title="Audit events"
+      description="Sign-ins, key mints, MFA changes and state transitions — the account's security timeline, distinct from the resource audit log. Click a row for the full payload."
+      padded={false}
     >
+      {/* The CLI's audit filters: since / kind prefix / limit / app. */}
+      <div className="flex flex-wrap items-end gap-3 border-b border-border px-5 py-3">
+        <label className="flex flex-col gap-1">
+          <span className="label-mono text-muted-foreground">Since</span>
+          <input
+            aria-label="Since"
+            type="datetime-local"
+            value={filters.since}
+            onChange={(e) => set('since', e.target.value)}
+            className={AUDIT_FIELD}
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="label-mono text-muted-foreground">Kind prefix</span>
+          <input
+            aria-label="Kind prefix"
+            value={filters.kind_prefix}
+            onChange={(e) => set('kind_prefix', e.target.value)}
+            placeholder="auth."
+            className={AUDIT_FIELD}
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="label-mono text-muted-foreground">Limit</span>
+          <select
+            aria-label="Limit"
+            value={filters.limit}
+            onChange={(e) => set('limit', Number(e.target.value))}
+            className={AUDIT_FIELD}
+          >
+            {[50, 100].map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="label-mono text-muted-foreground">App</span>
+          <select
+            aria-label="App"
+            value={filters.app_id}
+            onChange={(e) => set('app_id', e.target.value)}
+            className={AUDIT_FIELD}
+          >
+            <option value="">Any</option>
+            {(apps ?? []).map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.slug}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex items-center gap-1.5 pb-1.5 text-xs">
+          <input
+            type="checkbox"
+            checked={filters.include_anonymous}
+            onChange={(e) => set('include_anonymous', e.target.checked)}
+          />
+          Include anonymous
+        </label>
+      </div>
       {phase !== 'ready' ? (
-        <InlinePhase
-          phase={phase}
-          error={q.error}
-          loadingMessage="Reading auth events…"
-          emptyMessage="No auth events recorded yet."
-        />
+        <div className="px-5 py-3">
+          <InlinePhase
+            phase={phase}
+            error={q.error}
+            loadingMessage="Reading audit events…"
+            emptyMessage="No audit events match these filters."
+          />
+        </div>
       ) : (
         <ul className="flex flex-col divide-y divide-border">
-          {events.slice(0, 12).map((e) => (
-            <li
-              key={e.id}
-              className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-2.5 text-xs"
-            >
-              <span className="font-mono">{e.kind}</span>
-              <span className="text-muted-foreground">{e.actor}</span>
-              {e.severity && e.severity !== 'info' && (
-                <span style={{ color: 'var(--status-warning)' }}>{e.severity}</span>
-              )}
-              <span className="ml-auto text-muted-foreground">
-                {new Date(e.at).toLocaleString()}
-              </span>
+          {events.map((e) => (
+            <li key={e.id}>
+              <button
+                type="button"
+                onClick={() => setOpenId(e.id)}
+                className="flex w-full flex-wrap items-center gap-x-4 gap-y-1 px-5 py-2.5 text-left text-xs transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+              >
+                <span className="font-mono">{e.kind}</span>
+                <span className="text-muted-foreground">{e.actor}</span>
+                {e.severity && e.severity !== 'info' && (
+                  <span
+                    style={{
+                      color:
+                        e.severity === 'high' ? 'var(--status-critical)' : 'var(--status-warning)',
+                    }}
+                  >
+                    {e.severity}
+                  </span>
+                )}
+                <span className="ml-auto text-muted-foreground">
+                  {new Date(e.at).toLocaleString()}
+                </span>
+              </button>
             </li>
           ))}
         </ul>
       )}
+      <AuditEventDrawer id={openId} onClose={() => setOpenId(null)} />
     </Panel>
   );
 }

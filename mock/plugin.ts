@@ -1538,38 +1538,64 @@ route('GET', '/v1/deployments/{id}/secret-scan', () => ({
   findings: [],
   error: '',
 }));
-route('GET', '/v1/audit-events', () => ({
-  events: [
-    {
-      id: hex(12),
-      at: new Date(Date.now() - 600e3).toISOString(),
-      actor: 'demo@acme-corp.dev',
-      kind: 'session.signed_in',
-      subject: 'google-oauth',
-      severity: 'info',
-      data: {},
-    },
-    {
-      id: hex(12),
-      at: new Date(Date.now() - 86400e3).toISOString(),
-      actor: 'demo@acme-corp.dev',
-      kind: 'api_key.minted',
-      subject: 'ci-deploy',
-      severity: 'info',
-      data: {},
-    },
-    {
-      id: hex(12),
-      at: new Date(Date.now() - 2 * 86400e3).toISOString(),
-      actor: 'demo@acme-corp.dev',
-      kind: 'login.failed_password',
-      subject: '203.0.113.7',
-      severity: 'warn',
-      data: {},
-    },
-  ],
-  limit: 50,
-}));
+/** Stable ids so GET /v1/audit-events/{id} can answer for any listed row. */
+const AUDIT_EVENTS = [
+  {
+    id: hex(12),
+    at: new Date(Date.now() - 600e3).toISOString(),
+    actor: 'demo@acme-corp.dev',
+    kind: 'session.signed_in',
+    subject: 'google-oauth',
+    severity: 'info',
+    data: { ip: '203.0.113.9', user_agent: 'Mozilla/5.0' },
+  },
+  {
+    id: hex(12),
+    at: new Date(Date.now() - 86400e3).toISOString(),
+    actor: 'demo@acme-corp.dev',
+    kind: 'api_key.minted',
+    subject: 'ci-deploy',
+    severity: 'info',
+    data: { key_name: 'ci-deploy', scopes: ['deploy'] },
+  },
+  {
+    id: hex(12),
+    at: new Date(Date.now() - 2 * 86400e3).toISOString(),
+    actor: 'demo@acme-corp.dev',
+    kind: 'login.failed_password',
+    subject: '203.0.113.7',
+    severity: 'warn',
+    data: { ip: '203.0.113.7', attempts: 3 },
+  },
+  {
+    id: hex(12),
+    at: new Date(Date.now() - 3 * 86400e3).toISOString(),
+    actor: 'schedd',
+    kind: 'stateless.advisory',
+    subject: 'acct',
+    severity: 'high',
+    data: { app_id: db.apps[0].id, path: '/data', bytes: 1048576 },
+  },
+];
+
+route('GET', '/v1/audit-events', ({ query }) => {
+  const prefix = query.get('kind_prefix') ?? '';
+  const since = query.get('since');
+  const appId = query.get('app_id');
+  const limit = Math.min(Number(query.get('limit') ?? 50) || 50, 100);
+  const events = AUDIT_EVENTS.filter(
+    (e) =>
+      (!prefix || e.kind.startsWith(prefix)) &&
+      (!since || e.at >= since) &&
+      (!appId || (e.data as { app_id?: string }).app_id === appId)
+  ).slice(0, limit);
+  return { events, limit };
+});
+route('GET', '/v1/audit-events/{id}', ({ params }) => {
+  const event = AUDIT_EVENTS.find((e) => e.id === params.id);
+  if (!event) throw new Problem(404, 'not_found', 'No such audit event.');
+  return event;
+});
 
 // --- Project import (scan/apply). The dev mock cannot untar a real upload,
 // so the scan answers a canned Kubernetes-flavoured plan and apply echoes

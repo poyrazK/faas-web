@@ -10,6 +10,7 @@ import { api, issueCSRF, unwrap } from './client';
 import { ApiError } from './errors';
 import type { components } from './schema';
 import { tarballForm } from '@/lib/tarball-deploy';
+import type { AuditQuery } from '@/lib/audit-filters';
 
 /**
  * Query hooks over the REST surface.
@@ -585,10 +586,19 @@ export function useDeploymentSecretScan(id: string) {
 }
 
 /** The account's auth audit trail — sign-ins, key mints, MFA events. */
-export function useAuthAuditEvents() {
+export function useAuthAuditEvents(query: AuditQuery = { limit: 100 }) {
   return useQuery({
-    queryKey: ['audit-events'],
-    queryFn: () => unwrap(api.GET('/v1/audit-events', {})),
+    queryKey: ['audit-events', query],
+    queryFn: () => unwrap(api.GET('/v1/audit-events', { params: { query } })),
+  });
+}
+
+/** One audit row in full — `gregale audit get <id>`. */
+export function useAuditEvent(id: string) {
+  return useQuery({
+    queryKey: ['audit-events', 'one', id],
+    queryFn: () => unwrap(api.GET('/v1/audit-events/{id}', { params: { path: { id } } })),
+    enabled: Boolean(id),
   });
 }
 
