@@ -64,7 +64,7 @@ function Emblem() {
       aria-hidden="true"
       data-emblem
       className="pointer-events-none absolute inset-x-0 top-[72px] flex justify-center sm:top-[96px]"
-      style={{ mixBlendMode: 'overlay', opacity: 0.55 }}
+      style={{ mixBlendMode: 'overlay', opacity: 1 }}
     >
       <img
         src="/gregale-frosted.png"
