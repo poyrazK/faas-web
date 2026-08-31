@@ -6,6 +6,8 @@ import { Textarea } from '@/components/ui/field';
 import { useToast } from '@/components/ui/toast';
 import { useSetSecret } from '@/lib/api/queries';
 import { parseDotEnv } from '@/lib/env-parse';
+import { findSecrets } from '@/lib/secret-scan';
+import { SecretFindings } from '@/components/dashboard/secret-findings';
 import { cn } from '@/lib/utils';
 
 /**
@@ -48,6 +50,11 @@ export function EnvImportButton({ slug, existingKeys }: { slug: string; existing
     [parsed, existing]
   );
   const importable = rows.filter((r) => r.state !== 'invalid');
+  // The CLI's --secret-scan pre-flight, on the same rules. Acknowledgement is
+  // bound to the exact pasted text; any edit re-arms the gate.
+  const findings = useMemo(() => findSecrets(importable), [importable]);
+  const [ackFor, setAckFor] = useState('');
+  const acknowledged = ackFor === text && text !== '';
 
   const close = () => {
     if (importing) return;
@@ -121,7 +128,7 @@ export function EnvImportButton({ slug, existingKeys }: { slug: string; existing
             )}
             <Button
               size="sm"
-              disabled={importable.length === 0}
+              disabled={importable.length === 0 || (findings.length > 0 && !acknowledged)}
               busy={importing}
               onClick={() => void runImport()}
             >
@@ -180,6 +187,12 @@ export function EnvImportButton({ slug, existingKeys }: { slug: string; existing
               ))}
             </ul>
           )}
+
+          <SecretFindings
+            findings={findings}
+            acknowledged={acknowledged}
+            onAcknowledge={(ok) => setAckFor(ok ? text : '')}
+          />
         </div>
       </Modal>
     </>
