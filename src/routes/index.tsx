@@ -4,7 +4,8 @@ import { MotionConfig } from 'motion/react';
 import { Nav } from '@/components/landing/nav';
 import { Hero } from '@/components/landing/hero';
 import { HowItWorks } from '@/components/landing/how-it-works';
-import { ComponentsGrid } from '@/components/landing/components-grid';
+import { Process } from '@/components/landing/process';
+import { Why } from '@/components/landing/why';
 import { Pricing } from '@/components/landing/pricing';
 import { Footer } from '@/components/landing/footer';
 import { clearOAuthPending, hasOAuthPending, hasOnboarded, useAuth } from '@/lib/auth';
@@ -37,7 +38,8 @@ function LandingPage() {
         <main id="main">
           <Hero />
           <HowItWorks />
-          <ComponentsGrid />
+          <Process />
+          <Why />
           <Pricing />
         </main>
         <Footer />
