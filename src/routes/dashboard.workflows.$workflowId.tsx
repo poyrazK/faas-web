@@ -33,6 +33,7 @@ import { errorMessage } from '@/lib/api/errors';
 import { DeployAnnotations } from '@/components/dashboard/deploy-annotations';
 import { TarballDeployForm } from '@/components/dashboard/tarball-deploy';
 import { MirrorsPanel } from '@/components/dashboard/mirrors';
+import { RolloutRecoveryBar } from '@/components/dashboard/rollout-recovery';
 import { annotationsBody, EMPTY_ANNOTATIONS, type AnnotationDraft } from '@/lib/deploy-annotations';
 import { useAuth } from '@/lib/auth';
 import { isPaidPlan } from '@/lib/plan';
@@ -526,6 +527,7 @@ function FunctionDetailPage() {
 
             {tab === 'Deployments' && (
               <>
+                <RolloutRecoveryBar slug={fn.id} />
                 <Panel title="Deployment history" description={`${deployments.length} deployments`}>
                   {deployments.length === 0 ? (
                     <EmptyState message="No deployments yet. Deploy a Git ref or use the CLI." />

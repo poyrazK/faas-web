@@ -1638,6 +1638,40 @@ const MOCK_PLAN = {
 
 route('GET', '/v1/templates', () => db.TEMPLATE_CATALOG);
 
+// --- Rollout recovery --------------------------------------------------------
+
+// Put api-gateway mid-rollout so the recovery banner has something to recover.
+{
+  const a = db.appBySlug('api-gateway');
+  if (a) {
+    const deps = db.deployments.filter((d) => d.app_id === a.id);
+    if (deps.length >= 2) {
+      deps[0].traffic_percent = 25;
+      deps[1].traffic_percent = 75;
+    }
+  }
+}
+route('POST', '/v1/apps/{slug}/rollouts/recover', ({ params, body }) => {
+  const a = app(params.slug);
+  const deps = db.deployments.filter((d) => d.app_id === a.id);
+  const newer = deps.find((d) => d.traffic_percent != null && d.traffic_percent < 100);
+  const older = deps.find((d) => d !== newer && d.traffic_percent != null && d.traffic_percent > 0);
+  const action = (body as { action?: string }).action;
+  if (!newer || !older || !action)
+    throw new Problem(409, 'no_rollout', 'No rollout is in flight on this app.');
+  if (action === 'advance') {
+    newer.traffic_percent = Math.min(100, (newer.traffic_percent ?? 0) + 25);
+    older.traffic_percent = 100 - newer.traffic_percent;
+  } else if (action === 'promote') {
+    newer.traffic_percent = 100;
+    older.traffic_percent = 0;
+  } else {
+    newer.traffic_percent = 0;
+    older.traffic_percent = 100;
+  }
+  return { deployment: newer, audit_id: db.id() };
+});
+
 // --- Traffic mirrors ---------------------------------------------------------
 
 /** Seeded lazily so the app's deployment fixtures already exist. */

@@ -2010,6 +2010,26 @@ export function useUpdateEdgeRule() {
 /** Idempotent POSTs (spec: IdempotencyKey) get a fresh key per attempt. */
 const idem = () => ({ 'Idempotency-Key': crypto.randomUUID() });
 
+/** Manual rollout recovery: advance the canary, promote it, or abort. */
+export function useRecoverRollout(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: components['schemas']['RecoverRolloutRequest']) =>
+      unwrap(
+        api.POST('/v1/apps/{slug}/rollouts/recover', {
+          params: { path: { slug } },
+          body,
+          headers: idem(),
+        })
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.app(slug) });
+      void qc.invalidateQueries({ queryKey: keys.deployments });
+      void qc.invalidateQueries({ queryKey: keys.appDeployments(slug) });
+    },
+  });
+}
+
 /* ------------------------------------------------------------------ *
  * Tenant surfaces — customer hostnames on a multi-tenant app
  * ------------------------------------------------------------------ */
