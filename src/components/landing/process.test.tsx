@@ -5,46 +5,38 @@ import { withRouter } from '@/test/router';
 import { Process, STEPS } from './process';
 
 /**
- * The stepper replaces the platform grid, so it must still carry every docs
- * destination the grid offered, and it must be operable without the mouse
- * and without waiting for the autoplay.
+ * The platform row is the same accordion as "Why": four cards, one open,
+ * hover or focus opens another. It replaces the grid, so every docs
+ * destination the grid offered must still be reachable from the open cards.
  */
 describe('Process', () => {
-  it('lists four steps as tabs and shows the first panel', async () => {
+  it('shows the four stops as cards with the first open by default', async () => {
     render(withRouter(<Process />));
-    const tabs = await screen.findAllByRole('tab');
-    expect(tabs).toHaveLength(4);
-    expect(tabs.map((t) => t.textContent)).toEqual(STEPS.map((s, i) => `0${i + 1}${s.title}`));
-    expect(tabs[0]).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('tabpanel')).toHaveTextContent(STEPS[0].body);
-  });
-
-  it('moves with Next, Prev and the tabs themselves', async () => {
-    const user = userEvent.setup();
-    render(withRouter(<Process />));
-    const shows = (i: number) =>
-      waitFor(() => expect(screen.getByRole('tabpanel')).toHaveTextContent(STEPS[i].body));
-    await user.click(await screen.findByRole('button', { name: /next/i }));
-    await shows(1);
-    await user.click(screen.getByRole('button', { name: /prev/i }));
-    await shows(0);
-    await user.click(screen.getByRole('tab', { name: /observe/i }));
-    await shows(3);
-  });
-
-  it('keeps every docs link the platform grid had, across the steps', async () => {
-    const user = userEvent.setup();
-    render(withRouter(<Process />));
-    await screen.findAllByRole('tab');
-    const hrefs = new Set<string>();
-    for (let i = 0; i < STEPS.length; i++) {
-      if (i > 0) await user.click(screen.getByRole('button', { name: /next/i }));
-      await waitFor(() => expect(screen.getByRole('tabpanel')).toHaveTextContent(STEPS[i].body));
-      for (const a of screen.getAllByRole('link')) {
-        const href = a.getAttribute('href');
-        if (href?.startsWith('/docs/')) hrefs.add(href);
-      }
+    const cards = await screen.findAllByRole('button', { expanded: undefined });
+    expect(cards).toHaveLength(4);
+    for (const s of STEPS) {
+      expect(screen.getByRole('heading', { name: s.title })).toBeInTheDocument();
     }
+    expect(cards[0]).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText(STEPS[0].body)).toBeInTheDocument();
+  });
+
+  it('opens the card under the pointer and keeps it open after leaving', async () => {
+    const user = userEvent.setup();
+    render(withRouter(<Process />));
+    const cards = await screen.findAllByRole('button');
+    await user.hover(cards[2]);
+    await waitFor(() => expect(cards[2]).toHaveAttribute('aria-expanded', 'true'));
+    await user.unhover(cards[2]);
+    expect(cards[2]).toHaveAttribute('aria-expanded', 'true');
+    expect(cards[0]).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('keeps every docs link the platform grid had', async () => {
+    render(withRouter(<Process />));
+    await screen.findAllByRole('button');
+    // jsdom reports no `min-width` match, so every card renders open here.
+    const hrefs = new Set(screen.getAllByRole('link').map((a) => a.getAttribute('href') ?? ''));
     for (const slug of [
       'deploy-from-source',
       'preview-environments',
