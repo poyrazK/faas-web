@@ -91,7 +91,7 @@ export function Hero() {
     <>
       <section
         aria-label="Gregale serverless platform"
-        className="relative isolate flex w-full flex-col items-center justify-center overflow-hidden px-4 pt-36 pb-24 sm:px-6 sm:pt-44 sm:pb-28"
+        className="relative isolate flex min-h-[100svh] w-full flex-col items-center justify-center overflow-hidden px-4 pt-24 pb-36 sm:px-6 sm:pb-44"
       >
         <LiquidField params={LIQUID_PRESETS.gregale} fadeBottom={0.28} />
         <Emblem />
@@ -145,7 +145,7 @@ export function Hero() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: '-40px' }}
           transition={{ duration: 0.9, ease: EASE }}
-          className="relative -mt-12 mb-6 rounded-2xl shadow-[0_0_0_1px_color-mix(in_srgb,var(--foreground)_8%,transparent),0_2px_6px_color-mix(in_srgb,var(--foreground)_10%,transparent),0_24px_60px_-16px_color-mix(in_srgb,var(--foreground)_38%,transparent),0_48px_120px_-40px_color-mix(in_srgb,var(--brand)_30%,transparent)] sm:-mt-14"
+          className="relative -mt-24 mb-6 rounded-2xl shadow-[0_0_0_1px_color-mix(in_srgb,var(--foreground)_8%,transparent),0_2px_6px_color-mix(in_srgb,var(--foreground)_10%,transparent),0_24px_60px_-16px_color-mix(in_srgb,var(--foreground)_38%,transparent),0_48px_120px_-40px_color-mix(in_srgb,var(--brand)_30%,transparent)] sm:-mt-32"
         >
           <DeployTerminal />
         </motion.div>
