@@ -18,9 +18,10 @@ import { EASE } from './reveal';
  * A stepper after the Framer "process section": a row of numbered tabs with a
  * progress rule under each, one panel at a time — eyebrow, title, body, the
  * docs links as chips — and the step's numeral set huge and faint beside it.
- * It plays itself, six seconds a stop, and stops playing the moment you touch
- * it: hover, focus, a click on a tab, PREV/NEXT, or the arrow keys. Off-screen
- * and under reduced motion it holds still.
+ * It plays itself, six seconds a stop. A click on a tab, PREV/NEXT or the
+ * arrow keys jumps and restarts the clock; it does not stop for a hovering
+ * pointer, because a reader's mouse is usually resting on what they read.
+ * Off-screen and under reduced motion it holds still.
  *
  * The nine platform cards this replaces are all here, folded into the stops
  * they belong to, and every docs link they carried is a chip.
@@ -79,7 +80,6 @@ export function Process() {
   const ref = useRef<HTMLElement>(null);
   const inView = useInView(ref, { margin: '-20% 0px' });
   const [index, setIndex] = useState(0);
-  const [held, setHeld] = useState(false);
   // Progress of the current stop, 0→1. A motion value, not state: it drives
   // the rule's scaleX directly and never re-renders the section.
   const progress = useMotionValue(0);
@@ -93,8 +93,8 @@ export function Process() {
   );
 
   // Autoplay: the rule fills over DWELL seconds from wherever it was; when it
-  // reaches the end the next stop begins. Touching the section holds it.
-  const playing = inView && !held && !reduce;
+  // reaches the end the next stop begins.
+  const playing = inView && !reduce;
   useEffect(() => {
     if (!playing) return;
     const remaining = (1 - progress.get()) * DWELL;
@@ -125,10 +125,6 @@ export function Process() {
       id="deploy"
       aria-labelledby={`${id}-title`}
       className="relative scroll-mt-24 border-t border-border"
-      onPointerEnter={() => setHeld(true)}
-      onPointerLeave={() => setHeld(false)}
-      onFocusCapture={() => setHeld(true)}
-      onBlurCapture={() => setHeld(false)}
     >
       <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-28">
         {/* header: eyebrow + title left, the one sentence right */}
