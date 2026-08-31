@@ -375,7 +375,7 @@ function FunctionDetailPage() {
       <div
         role="tablist"
         aria-label="App detail"
-        className="flex gap-1 overflow-x-auto border-b border-border"
+        className="scrollbar-none flex gap-1 overflow-x-auto border-b border-border"
       >
         {TABS.map((t, i) => (
           <button
