@@ -1645,6 +1645,39 @@ export function useUpdateCron() {
   });
 }
 
+/** The system-seeded alert-preset catalog (ADR-123); read-only for customers. */
+export function useAlertPresets() {
+  return useQuery({
+    queryKey: ['alert-presets'],
+    queryFn: () => unwrap(api.GET('/v1/alert-presets', {})),
+    staleTime: 10 * 60_000,
+  });
+}
+
+/**
+ * Clones a catalog row into a rule the app owns from then on; only the
+ * delivery fields are the caller's. Answers 201 with the new rule.
+ */
+export function useEnableAlertPreset(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      name,
+      body,
+    }: {
+      name: string;
+      body: components['schemas']['EnableAlertPresetRequest'];
+    }) =>
+      unwrap(
+        api.POST('/v1/apps/{slug}/alert-presets/{name}/enable', {
+          params: { path: { slug, name } },
+          body,
+        })
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.appAlerts(slug) }),
+  });
+}
+
 export function useCreateAlert(slug: string) {
   const qc = useQueryClient();
   return useMutation({
