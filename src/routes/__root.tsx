@@ -1,4 +1,5 @@
 import { createRootRoute, HeadContent, Link, Outlet } from '@tanstack/react-router';
+import { Analytics } from '@vercel/analytics/react';
 import { hexToRgb, type Palette } from 'glimm';
 import { GlimmProvider } from 'glimm/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -100,6 +101,11 @@ function RootLayout() {
                 {/* Statically false in production, so the button and its
                   module are dropped from the bundle. */}
                 {import.meta.env.DEV && <DevBypassButton />}
+                {/* Vercel Web Analytics. The component is a no-op outside
+                  production (it logs to console in dev instead of sending),
+                  and the script it injects is first-party under
+                  /_vercel/insights — no cookies, no cross-site anything. */}
+                <Analytics />
               </ToastProvider>
             </GlimmProvider>
           </DataProvider>
