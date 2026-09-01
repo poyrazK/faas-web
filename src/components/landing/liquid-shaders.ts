@@ -1,13 +1,39 @@
 /**
- * The liquid-gradient shader behind the WaitlistKit hero.
+ * The liquid-gradient shader behind the landing hero.
  *
- * Recovered verbatim from the live template (waitlistkit.framer.website) by
- * hooking `shaderSource` in the page: a fullscreen pass that stacks four
- * octaves of sine turbulence, maps the result through an OKLCH palette ramp,
- * and reads a second, half-resolution "push" texture that accumulates the
- * cursor's motion so the pattern drags where the pointer went. Attribution:
- * this is the Framer gradient component's GLSL, not ours; it is here for the
- * lab only. Licensing needs checking before any of it ships.
+ * Adapted from the WaitlistKit Framer template's gradient component
+ * (waitlistkit.framer.website), recovered from the live page by hooking
+ * `shaderSource`: a fullscreen pass that stacks four octaves of sine
+ * turbulence, maps the result through an OKLCH palette ramp, and reads a
+ * second, half-resolution "push" texture that accumulates the cursor's
+ * motion so the pattern drags where the pointer went. The `gregale` preset
+ * in liquid-field.tsx retunes the palette and density; the GLSL below is
+ * theirs.
+ *
+ * Licence: the template is published under the MIT License (confirmed
+ * 2026-09-01). MIT requires this notice to accompany the code:
+ *
+ *   Copyright (c) the WaitlistKit template authors
+ *   (waitlistkit.framer.website)
+ *
+ *   Permission is hereby granted, free of charge, to any person obtaining a
+ *   copy of this software and associated documentation files (the
+ *   "Software"), to deal in the Software without restriction, including
+ *   without limitation the rights to use, copy, modify, merge, publish,
+ *   distribute, sublicense, and/or sell copies of the Software, and to
+ *   permit persons to whom the Software is furnished to do so, subject to
+ *   the following conditions:
+ *
+ *   The above copyright notice and this permission notice shall be included
+ *   in all copies or substantial portions of the Software.
+ *
+ *   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+ *   OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ *   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+ *   IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+ *   CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ *   TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ *   SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  *
  * WebGL2 (GLSL ES 3.00) — it uses `floatBitsToUint` and `uvec3` hashing.
  */
