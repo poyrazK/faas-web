@@ -18,6 +18,66 @@ type S = components['schemas'];
 export type App = S['AppResponse'];
 export type Deployment = S['DeploymentResponse'];
 export type Build = S['BuildResponse'];
+export type MirrorRule = S['MirrorRuleResponse'];
+export type TenantSurface = S['TenantSurfaceResponse'];
+export type TenantHostname = S['TenantHostnameResponse'];
+
+/** The CLI's embedded starter set — cmd/gregale/cli_meta.go::templateNames13 verbatim. */
+export const TEMPLATE_CATALOG: S['TemplateView'][] = [
+  { name: 'hello-node', category: 'hello', description: 'The smallest Node handler that answers.' },
+  {
+    name: 'hello-python',
+    category: 'hello',
+    description: 'The smallest Python handler that answers.',
+  },
+  { name: 'hello-go', category: 'hello', description: 'The smallest Go handler that answers.' },
+  {
+    name: 'cron-example',
+    category: 'hello',
+    description: 'A handler plus the cron that fires it.',
+  },
+  {
+    name: 'function-node',
+    category: 'function',
+    description: 'A Node function on the stdin/stdout envelope.',
+  },
+  {
+    name: 'function-python',
+    category: 'function',
+    description: 'A Python function on the stdin/stdout envelope.',
+  },
+  {
+    name: 'function-go',
+    category: 'function',
+    description: 'A Go function on the stdin/stdout envelope.',
+  },
+  {
+    name: 's3-uploader',
+    category: 'stateless-contract',
+    description: 'Accept an upload, stream it to object storage.',
+  },
+  {
+    name: 'slack-bot',
+    category: 'stateless-contract',
+    description: 'A slash-command bot with signature checks.',
+  },
+  {
+    name: 'rest-api-postgres',
+    category: 'stateless-contract',
+    description: 'A routed JSON API over managed Postgres.',
+  },
+  {
+    name: 'cron-worker',
+    category: 'stateless-contract',
+    description: 'A scheduled worker that drains a queue.',
+  },
+  {
+    name: 'webhook-receiver',
+    category: 'stateless-contract',
+    description: 'Verify, ack fast, process async.',
+  },
+  { name: 'ai-chat', category: 'ai', description: 'A streaming chat endpoint over an LLM API.' },
+];
 
 // --- Seeded randomness ------------------------------------------------------
 
@@ -189,10 +249,23 @@ for (const app of apps) {
             ])
           : null,
       error_code: status === 'failed' ? 'boot_failed' : null,
+      // ADR-129 auto-rollback fields: never triggered in the mock.
+      rollback_on_5xx: false,
+      first_5xx_count: 0,
       created_at: iso(ageMs),
       min_instances: app.min_instances,
       traffic_percent: latest ? 100 : 0,
       scan: null,
+      // ADR-116 deploy annotations: the newest github deploy carries the
+      // full quartet so the drawer has something real to show.
+      ...(latest && kind === 'github'
+        ? {
+            reason: 'Rotate the payment webhook secret',
+            tag: 'hotfix' as const,
+            deployed_by: 'ada',
+            pr_number: 418,
+          }
+        : {}),
     };
     deployments.push(dep);
     const dur = int(38, 260);
@@ -292,7 +365,7 @@ export const secrets = new Map<string, S['AppSecretResponse'][]>(
       'STRIPE_SECRET_KEY',
       'JWT_SIGNING_KEY',
       a.type === 'app' ? 'REDIS_URL' : 'S3_SECRET',
-    ].map((key) => ({ key, kid: hex(8), ...stamp() })),
+    ].map((key) => ({ key, scope: 'app', kid: hex(8), ...stamp() })),
   ])
 );
 
@@ -355,6 +428,7 @@ export const alerts = new Map<string, S['AlertRuleResponse'][]>(
       app_id: a.id,
       name: r.name,
       enabled: true,
+      action: 'webhook' as const,
       metric: r.metric as S['AlertRuleResponse']['metric'],
       comparison: r.comparison as S['AlertRuleResponse']['comparison'],
       threshold: r.threshold,
@@ -570,6 +644,7 @@ export const edgeRules: S['EdgeRuleResponse'][] = (
   match_path: r.path,
   match_methods: r.kind === 'cors' ? ['GET', 'OPTIONS'] : [],
   priority: (i + 1) * 10,
+  validate_mode: 'block' as const,
   enabled: r.kind !== 'maintenance',
   kind: r.kind,
   action: r.action,

@@ -195,6 +195,7 @@ route('POST', '/v1/apps/{slug}/deployments/source-ref', ({ params, body }) => {
   const a = app(params.slug);
   if (!body.repo || !body.ref)
     throw new Problem(400, 'missing_field', 'repo and ref are required.');
+  const ann = body as Pick<db.Deployment, 'reason' | 'tag' | 'deployed_by' | 'pr_number'>;
   const dep: db.Deployment = {
     id: db.id(),
     app_id: a.id,
@@ -204,6 +205,35 @@ route('POST', '/v1/apps/{slug}/deployments/source-ref', ({ params, body }) => {
     status: 'building',
     created_at: db.iso(0),
     traffic_percent: 0,
+    rollback_on_5xx: false,
+    first_5xx_count: 0,
+    scan: null,
+    // The annotation quartet is echoed back exactly as the API does.
+    reason: ann.reason,
+    tag: ann.tag,
+    deployed_by: ann.deployed_by,
+    pr_number: ann.pr_number,
+  };
+  db.deployments.unshift(dep);
+  a.status = 'deploying';
+  return status(202, dep);
+});
+route('POST', '/v1/apps/{slug}/deployments/source-tarball', ({ params }) => {
+  // Multipart arrives here: readBody cannot parse it, so `body` is {} and the
+  // sidecar is not echoed — the real API echoes it, the walkthrough does not
+  // depend on it. The deployment itself behaves like any queued build.
+  const a = app(params.slug);
+  const dep: db.Deployment = {
+    id: db.id(),
+    app_id: a.id,
+    build_id: db.id(),
+    image_digest: `sha256:${db.id()}${db.id()}`,
+    kind: 'tarball',
+    status: 'building',
+    created_at: db.iso(0),
+    traffic_percent: 0,
+    rollback_on_5xx: false,
+    first_5xx_count: 0,
     scan: null,
   };
   db.deployments.unshift(dep);
@@ -244,7 +274,13 @@ route('PUT', '/v1/apps/{slug}/secrets/{key}', ({ params }) => {
     existing.updated_at = now;
     return existing;
   }
-  const created = { key: params.key, kid: db.id().slice(0, 8), created_at: now, updated_at: now };
+  const created = {
+    key: params.key,
+    scope: 'app',
+    kid: db.id().slice(0, 8),
+    created_at: now,
+    updated_at: now,
+  };
   list.push(created);
   db.secrets.set(params.slug, list);
   return created;
@@ -330,6 +366,7 @@ route('POST', '/v1/apps/{slug}/alerts', ({ params, body }) => {
     app_id: a.id,
     name: String(body.name),
     enabled: body.enabled !== false,
+    action: 'webhook',
     metric: body.metric as (typeof list)[number]['metric'],
     comparison: (body.comparison ?? 'gt') as (typeof list)[number]['comparison'],
     threshold: Number(body.threshold ?? 0),
@@ -440,6 +477,12 @@ route('POST', '/v1/apps/{slug}/webhooks/{id}/deliveries/{did}/retry', ({ params 
   return { delivery: d };
 });
 
+// The peek fixture regenerates rows per call, so an ack cannot strike one
+// row visibly — the 204 and the invalidate are what the UI exercises.
+route('POST', '/v1/apps/{slug}/queues/{id}/ack', ({ params }) => {
+  app(params.slug);
+  return NO_CONTENT;
+});
 route('GET', '/v1/apps/{slug}/queues/state', ({ params }) => db.queueState(app(params.slug)));
 route('GET', '/v1/apps/{slug}/queues/peek', ({ params }) => db.queuePeek(app(params.slug)));
 route('GET', '/v1/apps/{slug}/queues/dead_letter', ({ params }) =>
@@ -889,6 +932,7 @@ route('POST', '/v1/apps/{slug}/edge-rules', ({ params, body }) => {
     match_methods: Array.isArray(body.match_methods) ? (body.match_methods as string[]) : [],
     priority: Number(body.priority ?? 100),
     enabled: body.enabled !== false,
+    validate_mode: 'block' as const,
     kind: kind as (typeof db.edgeRules)[number]['kind'],
     action: body.action as (typeof db.edgeRules)[number]['action'],
     created_at: db.iso(0),
@@ -1002,6 +1046,24 @@ route('GET', '/v1/invoices', () => ({ items: db.invoices, next_before: null }));
 route('GET', '/v1/billing/portal', () => db.billingPortal);
 
 route('GET', '/v1/orgs', () => ({ orgs: db.orgs }));
+route('POST', '/v1/orgs', ({ body }) => {
+  const b = body as { slug?: string; name?: string };
+  if (!b.slug || !b.name) throw new Problem(400, 'missing_field', 'slug and name are required.');
+  if (db.orgs.some((o) => o.slug === b.slug))
+    throw new Problem(409, 'org_exists', `An organisation named ${b.slug} already exists.`);
+  const org = {
+    id: db.id(),
+    slug: b.slug,
+    name: b.name,
+    personal: false,
+    plan: 'free',
+    status: 'active',
+    created_at: db.iso(0),
+    updated_at: db.iso(0),
+  } as (typeof db.orgs)[number];
+  db.orgs.push(org);
+  return status(201, org);
+});
 route('GET', '/v1/orgs/{slug}/members', () => ({ members: db.members }));
 route('GET', '/v1/orgs/{slug}/invitations', () => ({ invitations: db.invitations }));
 route('POST', '/v1/orgs/{slug}/members', ({ params, body }) => {
@@ -1088,7 +1150,14 @@ route('PATCH', '/v1/orgs/{slug}', async ({ params, body }) => ({
   created_at: db.iso(200 * 24),
   updated_at: new Date().toISOString(),
 }));
-route('DELETE', '/v1/orgs/{slug}', () => ({}));
+route('DELETE', '/v1/orgs/{slug}', ({ params }) => {
+  const at = db.orgs.findIndex((o) => o.slug === params.slug);
+  if (at === -1) throw new Problem(404, 'org_not_found', 'No such organisation.');
+  if (db.orgs[at].personal)
+    throw new Problem(409, 'personal_org', 'A personal organisation cannot be deleted.');
+  db.orgs.splice(at, 1);
+  return NO_CONTENT;
+});
 route('GET', '/v1/orgs/{slug}/seat_usage', () => ({ used: 3, limit: 5, plan: db.account.plan }));
 route('POST', '/v1/orgs/{slug}/transfer_ownership', ({ params }) => ({
   id: hex(32),
@@ -1460,9 +1529,18 @@ route('POST', '/v1/apps/{slug}/diff', async ({ params, body }) => {
       slug: params.slug,
       plan: db.account.plan,
       changes,
+      // DiffBreak objects, as the spec shapes them — the old plain strings
+      // hid a console rendering bug behind String(b).
       breaks:
         cfg.ram_mb && Number(cfg.ram_mb) < (a?.ram_mb ?? 0)
-          ? ['Shrinking memory invalidates the warm snapshot; the next wake cold-boots.']
+          ? [
+              {
+                code: 'snapshot_invalidated',
+                severity: 'warn',
+                reason: 'Shrinking memory invalidates the warm snapshot; the next wake cold-boots.',
+                field: 'ram_mb',
+              },
+            ]
           : [],
     },
   };
@@ -1491,38 +1569,64 @@ route('GET', '/v1/deployments/{id}/secret-scan', () => ({
   findings: [],
   error: '',
 }));
-route('GET', '/v1/audit-events', () => ({
-  events: [
-    {
-      id: hex(12),
-      at: new Date(Date.now() - 600e3).toISOString(),
-      actor: 'demo@acme-corp.dev',
-      kind: 'session.signed_in',
-      subject: 'google-oauth',
-      severity: 'info',
-      data: {},
-    },
-    {
-      id: hex(12),
-      at: new Date(Date.now() - 86400e3).toISOString(),
-      actor: 'demo@acme-corp.dev',
-      kind: 'api_key.minted',
-      subject: 'ci-deploy',
-      severity: 'info',
-      data: {},
-    },
-    {
-      id: hex(12),
-      at: new Date(Date.now() - 2 * 86400e3).toISOString(),
-      actor: 'demo@acme-corp.dev',
-      kind: 'login.failed_password',
-      subject: '203.0.113.7',
-      severity: 'warn',
-      data: {},
-    },
-  ],
-  limit: 50,
-}));
+/** Stable ids so GET /v1/audit-events/{id} can answer for any listed row. */
+const AUDIT_EVENTS = [
+  {
+    id: hex(12),
+    at: new Date(Date.now() - 600e3).toISOString(),
+    actor: 'demo@acme-corp.dev',
+    kind: 'session.signed_in',
+    subject: 'google-oauth',
+    severity: 'info',
+    data: { ip: '203.0.113.9', user_agent: 'Mozilla/5.0' },
+  },
+  {
+    id: hex(12),
+    at: new Date(Date.now() - 86400e3).toISOString(),
+    actor: 'demo@acme-corp.dev',
+    kind: 'api_key.minted',
+    subject: 'ci-deploy',
+    severity: 'info',
+    data: { key_name: 'ci-deploy', scopes: ['deploy'] },
+  },
+  {
+    id: hex(12),
+    at: new Date(Date.now() - 2 * 86400e3).toISOString(),
+    actor: 'demo@acme-corp.dev',
+    kind: 'login.failed_password',
+    subject: '203.0.113.7',
+    severity: 'warn',
+    data: { ip: '203.0.113.7', attempts: 3 },
+  },
+  {
+    id: hex(12),
+    at: new Date(Date.now() - 3 * 86400e3).toISOString(),
+    actor: 'schedd',
+    kind: 'stateless.advisory',
+    subject: 'acct',
+    severity: 'high',
+    data: { app_id: db.apps[0].id, path: '/data', bytes: 1048576 },
+  },
+];
+
+route('GET', '/v1/audit-events', ({ query }) => {
+  const prefix = query.get('kind_prefix') ?? '';
+  const since = query.get('since');
+  const appId = query.get('app_id');
+  const limit = Math.min(Number(query.get('limit') ?? 50) || 50, 100);
+  const events = AUDIT_EVENTS.filter(
+    (e) =>
+      (!prefix || e.kind.startsWith(prefix)) &&
+      (!since || e.at >= since) &&
+      (!appId || (e.data as { app_id?: string }).app_id === appId)
+  ).slice(0, limit);
+  return { events, limit };
+});
+route('GET', '/v1/audit-events/{id}', ({ params }) => {
+  const event = AUDIT_EVENTS.find((e) => e.id === params.id);
+  if (!event) throw new Problem(404, 'not_found', 'No such audit event.');
+  return event;
+});
 
 // --- Project import (scan/apply). The dev mock cannot untar a real upload,
 // so the scan answers a canned Kubernetes-flavoured plan and apply echoes
@@ -1589,15 +1693,308 @@ const MOCK_PLAN = {
   plan_token: 'mock-plan-token',
 };
 
-route('POST', '/v1/projects/scan', () => MOCK_PLAN);
-route('POST', '/v1/projects', () => ({
-  ...MOCK_PLAN,
-  project_id: 'proj_mock01',
-  apps: MOCK_PLAN.workloads
-    .filter((w) => !w.schedule)
-    .map((w, i) => ({ slug: w.name, id: `app_import_${i}` })),
-  builds: [],
+route('GET', '/v1/templates', () => db.TEMPLATE_CATALOG);
+
+/**
+ * The account-wide event tail — outside the OpenAPI spec (ticket T4), shape
+ * pinned from the CLI's decoder: unnamed SSE frames of invocation states.
+ */
+route('GET', '/v1/events', ({ res, req }) => {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+  });
+  res.write(': mock account event stream\n\n');
+  const states = ['queued', 'running', 'completed', 'completed', 'failed'];
+  let tick = 0;
+  const timer = setInterval(() => {
+    const a = db.apps[tick % db.apps.length];
+    const frame = {
+      invocation_id: db.id(),
+      app_id: a.id,
+      app_slug: a.slug,
+      state: states[tick % states.length],
+    };
+    res.write(`data: ${JSON.stringify(frame)}\n\n`);
+    tick++;
+  }, 1200);
+  req.on('close', () => clearInterval(timer));
+});
+
+route('GET', '/v1/apps/{slug}/streaming-cap', ({ params }) => {
+  const a = app(params.slug);
+  return {
+    app_id: a.id,
+    status: a.streaming_enabled ? 'streaming' : 'flag-disabled',
+    effective_cap_bytes: 5 * 1024 * 1024,
+    plan_cap_bytes: 5 * 1024 * 1024,
+    flag_enabled: Boolean(a.streaming_enabled),
+    plan_allowed: true,
+    cap_kind: 'plan',
+  };
+});
+
+route('GET', '/v1/apps/{slug}/env-diff', ({ params }) => {
+  const a = app(params.slug);
+  const cell = (present: boolean, hash?: string) => ({ present, value_hash: hash });
+  return {
+    app_slug: a.slug,
+    scopes: ['default', 'staging', 'production'],
+    rows: [
+      {
+        key: 'DATABASE_URL',
+        kind: 'secret',
+        cells: {
+          default: cell(true, 'h1'),
+          staging: cell(true, 'h1'),
+          production: cell(true, 'h1'),
+        },
+      },
+      {
+        key: 'STRIPE_KEY',
+        kind: 'secret',
+        cells: {
+          default: cell(true, 'h2'),
+          staging: cell(true, 'h3'),
+          production: cell(true, 'h2'),
+        },
+      },
+      {
+        key: 'LOG_LEVEL',
+        kind: 'env',
+        cells: { default: cell(true, 'h4'), staging: cell(false), production: cell(false) },
+      },
+      {
+        key: 'SENTRY_DSN',
+        kind: 'env',
+        cells: { default: cell(false), staging: cell(true, 'h5'), production: cell(true, 'h5') },
+      },
+    ],
+    generated_at: db.iso(0),
+  };
+});
+
+// --- Rollout recovery --------------------------------------------------------
+
+// Put api-gateway mid-rollout so the recovery banner has something to recover.
+{
+  const a = db.appBySlug('api-gateway');
+  if (a) {
+    const deps = db.deployments.filter((d) => d.app_id === a.id);
+    if (deps.length >= 2) {
+      deps[0].traffic_percent = 25;
+      deps[1].traffic_percent = 75;
+    }
+  }
+}
+route('POST', '/v1/apps/{slug}/rollouts/recover', ({ params, body }) => {
+  const a = app(params.slug);
+  const deps = db.deployments.filter((d) => d.app_id === a.id);
+  const newer = deps.find((d) => d.traffic_percent != null && d.traffic_percent < 100);
+  const older = deps.find((d) => d !== newer && d.traffic_percent != null && d.traffic_percent > 0);
+  const action = (body as { action?: string }).action;
+  if (!newer || !older || !action)
+    throw new Problem(409, 'no_rollout', 'No rollout is in flight on this app.');
+  if (action === 'advance') {
+    newer.traffic_percent = Math.min(100, (newer.traffic_percent ?? 0) + 25);
+    older.traffic_percent = 100 - newer.traffic_percent;
+  } else if (action === 'promote') {
+    newer.traffic_percent = 100;
+    older.traffic_percent = 0;
+  } else {
+    newer.traffic_percent = 0;
+    older.traffic_percent = 100;
+  }
+  return { deployment: newer, audit_id: db.id() };
+});
+
+// --- Traffic mirrors ---------------------------------------------------------
+
+/** Seeded lazily so the app's deployment fixtures already exist. */
+const mirrorsByApp = new Map<string, db.MirrorRule[]>();
+function mirrorsFor(slug: string): db.MirrorRule[] {
+  let held = mirrorsByApp.get(slug);
+  if (!held) {
+    const a = app(slug);
+    const deps = db.deployments.filter((d) => d.app_id === a.id);
+    held =
+      deps.length >= 2
+        ? [
+            {
+              id: db.id(),
+              account_id: db.ACCOUNT_ID,
+              app_id: a.id,
+              source_deployment_id: deps[1].id,
+              mirror_deployment_id: deps[0].id,
+              percent: 25,
+              enabled: true,
+              include_body: false,
+              redact_headers: ['authorization', 'cookie'],
+              always_stripped_headers: ['authorization', 'cookie', 'set-cookie'],
+              created_at: db.iso(3_600_000),
+              updated_at: db.iso(3_600_000),
+            },
+          ]
+        : [];
+    mirrorsByApp.set(slug, held);
+  }
+  return held;
+}
+route('GET', '/v1/apps/{slug}/mirrors', ({ params }) => {
+  const rules = mirrorsFor(params.slug);
+  return { rules, count: rules.length };
+});
+route('POST', '/v1/apps/{slug}/mirrors', ({ params, body }) => {
+  const a = app(params.slug);
+  const b = body as Pick<db.MirrorRule, 'source_deployment_id' | 'mirror_deployment_id'> &
+    Partial<db.MirrorRule>;
+  if (!b.source_deployment_id || !b.mirror_deployment_id)
+    throw new Problem(400, 'missing_field', 'source and mirror deployment ids are required.');
+  const rule: db.MirrorRule = {
+    id: db.id(),
+    account_id: db.ACCOUNT_ID,
+    app_id: a.id,
+    source_deployment_id: b.source_deployment_id,
+    mirror_deployment_id: b.mirror_deployment_id,
+    percent: b.percent ?? 100,
+    enabled: true,
+    include_body: b.include_body ?? false,
+    redact_headers: b.redact_headers ?? [],
+    always_stripped_headers: ['authorization', 'cookie', 'set-cookie'],
+    created_at: db.iso(0),
+    updated_at: db.iso(0),
+  };
+  mirrorsFor(params.slug).unshift(rule);
+  return status(201, rule);
+});
+route('PATCH', '/v1/apps/{slug}/mirrors/{id}', ({ params, body }) => {
+  const rule = mirrorsFor(params.slug).find((r) => r.id === params.id);
+  if (!rule) throw new Problem(404, 'not_found', 'No such mirror rule.');
+  Object.assign(rule, body, { updated_at: db.iso(0) });
+  return rule;
+});
+route('DELETE', '/v1/apps/{slug}/mirrors/{id}', ({ params }) => {
+  const held = mirrorsFor(params.slug);
+  const at = held.findIndex((r) => r.id === params.id);
+  if (at === -1) throw new Problem(404, 'not_found', 'No such mirror rule.');
+  held.splice(at, 1);
+  return NO_CONTENT;
+});
+// --- Tenant surfaces ---------------------------------------------------------
+
+const surfacesByApp = new Map<string, db.TenantSurface[]>();
+const txtFor = (hostname: string): db.TenantHostname => ({
+  hostname,
+  challenge_token: db.id(),
+  verified: false,
+  verified_at: null,
+  last_error: null,
+  txt_record: `_gregale-challenge.${hostname} TXT ${db.id()}`,
+});
+function surfacesFor(slug: string): db.TenantSurface[] {
+  let held = surfacesByApp.get(slug);
+  if (!held) {
+    const a = app(slug);
+    held = [
+      {
+        id: db.id(),
+        account_id: db.ACCOUNT_ID,
+        app_id: a.id,
+        name: 'customers',
+        cert_kind: 'per_host_san',
+        status: 'active',
+        cert_state: 'pending',
+        hostnames: [txtFor('shop.acme.test')],
+      },
+    ];
+    surfacesByApp.set(slug, held);
+  }
+  return held;
+}
+route('GET', '/v1/apps/{slug}/tenant-surfaces', ({ params }) => ({
+  surfaces: surfacesFor(params.slug),
 }));
+route('POST', '/v1/apps/{slug}/tenant-surfaces', ({ params, body }) => {
+  const a = app(params.slug);
+  const b = body as { app_id?: string; name?: string; hostnames?: string[] };
+  if (!b.name) throw new Problem(400, 'missing_field', 'name is required.');
+  const surface: db.TenantSurface = {
+    id: db.id(),
+    account_id: db.ACCOUNT_ID,
+    app_id: b.app_id || a.id,
+    name: b.name,
+    cert_kind: 'per_host_san',
+    status: 'pending',
+    cert_state: 'none',
+    hostnames: (b.hostnames ?? []).map(txtFor),
+  };
+  surfacesFor(params.slug).unshift(surface);
+  return status(202, surface);
+});
+route('DELETE', '/v1/apps/{slug}/tenant-surfaces/{id}', ({ params }) => {
+  const held = surfacesFor(params.slug);
+  const at = held.findIndex((s) => s.id === params.id);
+  if (at === -1) throw new Problem(404, 'not_found', 'No such tenant surface.');
+  held.splice(at, 1);
+  return NO_CONTENT;
+});
+route('POST', '/v1/apps/{slug}/tenant-surfaces/{id}/hostnames', ({ params, body }) => {
+  const surface = surfacesFor(params.slug).find((s) => s.id === params.id);
+  if (!surface) throw new Problem(404, 'not_found', 'No such tenant surface.');
+  const b = body as { hostname?: string };
+  if (!b.hostname) throw new Problem(400, 'missing_field', 'hostname is required.');
+  const row = txtFor(b.hostname);
+  surface.hostnames.push(row);
+  return status(202, row);
+});
+route('DELETE', '/v1/apps/{slug}/tenant-surfaces/{id}/hostnames/{hostname}', ({ params }) => {
+  const surface = surfacesFor(params.slug).find((s) => s.id === params.id);
+  if (!surface) throw new Problem(404, 'not_found', 'No such tenant surface.');
+  surface.hostnames = surface.hostnames.filter((h) => h.hostname !== params.hostname);
+  return NO_CONTENT;
+});
+
+route('GET', '/v1/apps/{slug}/mirrors/{id}/summary', () => ({
+  total_invocations: 1200,
+  status_diff_count: 3,
+  schema_diff_count: 0,
+  body_diff_count: 12,
+  mean_latency_diff_ms: -4,
+  p99_latency_diff_ms: 31,
+  crash_count: 1,
+  window_seconds: 3600,
+}));
+
+/** Apply the `only` CSV the way apid does: absent = everything. */
+function subsetPlan(only: unknown) {
+  const names = typeof only === 'string' && only !== '' ? new Set(only.split(',')) : null;
+  const workloads = MOCK_PLAN.workloads.filter((w) => !names || names.has(w.name));
+  const skipped = MOCK_PLAN.workloads.filter((w) => names && !names.has(w.name));
+  return {
+    ...MOCK_PLAN,
+    workloads,
+    observed_apps: workloads.filter((w) => !w.schedule).length,
+    will_deploy: workloads.map((w) => ({ slug: w.name, action: 'create' })),
+    unaffected: [],
+    skipped: skipped.map((w) => ({ slug: w.name, action: 'noop' })),
+    can_apply_reasons: [],
+    can_apply_pre_exclude: true,
+    gate_rescued_by_exclude: false,
+  };
+}
+route('POST', '/v1/projects/scan', ({ body }) => subsetPlan(body.only));
+route('POST', '/v1/projects', ({ body }) => {
+  const plan = subsetPlan(body.only);
+  return {
+    ...plan,
+    project_id: 'proj_mock01',
+    apps: plan.workloads
+      .filter((w) => !w.schedule)
+      .map((w, i) => ({ slug: w.name, id: `app_import_${i}` })),
+    builds: [],
+  };
+});
 
 // --- Plumbing ------------------------------------------------------------------
 
@@ -1609,7 +2006,14 @@ function readBody(req: IncomingMessage): Promise<Record<string, unknown>> {
       try {
         resolve(raw ? (JSON.parse(raw) as Record<string, unknown>) : {});
       } catch {
-        resolve({});
+        // Multipart: recover the text fields so handlers can honour form
+        // values (`only`, `project_slug`, the tarball `sidecar`). File parts
+        // are binary noise to this regex and are simply skipped.
+        const fields: Record<string, unknown> = {};
+        for (const m of raw.matchAll(/name="([\w-]+)"\r\n\r\n([\s\S]*?)\r\n--/g)) {
+          fields[m[1]] = m[2];
+        }
+        resolve(fields);
       }
     });
   });
@@ -1636,6 +2040,319 @@ function problem(res: ServerResponse, p: Problem) {
 }
 
 const MOCKED_PREFIXES = ['/v1/', '/login', '/signup'];
+
+// --- Phase-1 parity surfaces --------------------------------------------------
+// The endpoints the console gained when its spec caught up with the CLI. Dev
+// fixtures only; shapes follow the generated types.
+
+const domainOr404 = (name: string) => {
+  const d = db.domains.find((x) => x.domain === name);
+  if (!d) throw new Problem(404, 'domain_not_found');
+  return d;
+};
+
+route('GET', '/v1/domains/{domain}', ({ params }) => domainOr404(params.domain));
+route('POST', '/v1/domains/{domain}/verify', ({ params }) => {
+  const d = domainOr404(params.domain);
+  // The pending fixture verifies on its second re-check, so both toasts show.
+  if (!d.verified) {
+    if (d.challenge_token?.endsWith('!')) {
+      d.verified = true;
+      d.verified_at = db.iso(0);
+      d.txt_record = null;
+      d.cert_not_after = db.iso(-89 * 24 * 3600 * 1000);
+      d.cert_sans = [d.domain];
+    } else {
+      d.challenge_token = `${d.challenge_token ?? ''}!`;
+    }
+  }
+  return d;
+});
+route('GET', '/v1/domains/{domain}/doctor', ({ params }) => {
+  const d = domainOr404(params.domain);
+  const ok = d.verified;
+  const at = db.iso(0);
+  return {
+    domain: d.domain,
+    app_id: d.app_id,
+    stale: false,
+    observed_at: at,
+    healthy: ok,
+    checks: [
+      { name: 'dns_record', status: 'ok', detail: 'CNAME record found', checked_at: at },
+      ok
+        ? {
+            name: 'points_to_gregale',
+            status: 'ok',
+            detail: 'CNAME → edge.gregale.dev',
+            checked_at: at,
+          }
+        : {
+            name: 'points_to_gregale',
+            status: 'fail',
+            detail: 'CNAME does not point at Gregale (observed: parking.example.net.)',
+            observed: 'parking.example.net.',
+            remediation: `Set CNAME ${d.domain} → edge.gregale.dev`,
+            checked_at: at,
+          },
+      ok
+        ? {
+            name: 'tls_certificate',
+            status: 'ok',
+            detail: 'Issued, renews automatically',
+            checked_at: at,
+          }
+        : {
+            name: 'tls_certificate',
+            status: 'pending',
+            detail: 'Waiting for DNS to resolve',
+            checked_at: at,
+          },
+      {
+        name: 'caa_permits',
+        status: 'ok',
+        detail: 'No CAA record restricts issuance',
+        checked_at: at,
+      },
+      { name: 'ipv6_conflict', status: 'na', detail: 'No AAAA record', checked_at: at },
+    ],
+  };
+});
+
+const STAGES = [
+  'source_download',
+  'dependency_restore',
+  'image_build',
+  'security_scan',
+  'snapshot_prepare',
+  'readiness',
+] as const;
+route('GET', '/v1/deployments/{id}/stages', ({ params }) => {
+  const d = db.deployments.find((x) => x.id === params.id);
+  if (!d) throw new Problem(404, 'deployment_not_found');
+  const done = d.status === 'failed' ? 3 : d.status === 'building' ? 2 : STAGES.length;
+  const t0 = Date.parse(d.created_at);
+  const history = STAGES.slice(0, done).map((name, i) => ({
+    name,
+    started_at: new Date(t0 + i * 9000).toISOString(),
+    ended_at: new Date(t0 + i * 9000 + 8000).toISOString(),
+    duration_ms: 1200 + i * 2600,
+    status: 'completed' as const,
+    reason: '',
+  }));
+  if (d.status === 'failed')
+    history.push({
+      name: STAGES[3],
+      started_at: new Date(t0 + 3 * 9000).toISOString(),
+      ended_at: new Date(t0 + 3 * 9000 + 4000).toISOString(),
+      duration_ms: 4000,
+      status: 'failed' as never,
+      reason: d.error ?? 'security scan found a CRITICAL finding',
+    });
+  return {
+    current: d.status === 'building' ? STAGES[2] : undefined,
+    current_started_at: d.status === 'building' ? new Date(t0 + 2 * 9000).toISOString() : null,
+    history,
+  };
+});
+route('POST', '/v1/deployments/{id}/retry', ({ params, body }) => {
+  const d = db.deployments.find((x) => x.id === params.id);
+  if (!d) throw new Problem(404, 'deployment_not_found');
+  if (!STAGES.includes(String(body.from_stage) as (typeof STAGES)[number]))
+    throw new Problem(400, 'from_stage_invalid', 'Unknown stage.');
+  const next: typeof d = {
+    ...d,
+    id: db.id(),
+    status: 'building',
+    error: null,
+    error_code: null,
+    created_at: db.iso(0),
+  };
+  db.deployments.unshift(next);
+  return status(202, next);
+});
+
+route('POST', '/v1/preview/{slug}/destroy', ({ params }) => {
+  const a = app(params.slug);
+  const i = db.apps.findIndex((x) => x.id === a.id);
+  if (i >= 0) db.apps.splice(i, 1);
+  return NO_CONTENT;
+});
+
+const ALERT_PRESETS = [
+  [
+    'error_rate_2pct',
+    'Error rate exceeds 2%',
+    'reliability',
+    'error_rate_pct',
+    'gt',
+    2,
+    '15m',
+    15,
+    'free',
+  ],
+  [
+    'error_rate_5pct',
+    'Error rate exceeds 5%',
+    'reliability',
+    'error_rate_pct',
+    'gt',
+    5,
+    '5m',
+    10,
+    'free',
+  ],
+  [
+    'p95_500ms',
+    'p95 latency over 500 ms',
+    'availability',
+    'latency_p95_ms',
+    'gt',
+    500,
+    '15m',
+    15,
+    'free',
+  ],
+  [
+    'p99_1s',
+    'p99 latency over 1 s',
+    'availability',
+    'latency_p99_ms',
+    'gt',
+    1000,
+    '15m',
+    15,
+    'hobby',
+  ],
+  [
+    'cold_boot_20pct',
+    'Cold boots over 20%',
+    'infrastructure',
+    'cold_boot_pct',
+    'gt',
+    20,
+    '1h',
+    30,
+    'hobby',
+  ],
+  [
+    'failed_invocations',
+    'Any failed background invocation',
+    'reliability',
+    'failed_invocations',
+    'gte',
+    1,
+    '5m',
+    5,
+    'free',
+  ],
+  [
+    'request_surge',
+    'Requests 10× the daily average',
+    'cost',
+    'request_count',
+    'gt',
+    10000,
+    '1h',
+    60,
+    'pro',
+  ],
+  [
+    'deploy_error_spike',
+    'Error rate after a deploy',
+    'deployment',
+    'error_rate_pct',
+    'gt',
+    1,
+    '5m',
+    10,
+    'pro',
+  ],
+].map(([name, display_name, category, metric, comparison, threshold, window_spec, cool, plan]) => ({
+  id: db.id(),
+  name: String(name),
+  display_name: String(display_name),
+  description: `Fires when ${String(metric)} ${String(comparison)} ${String(threshold)} over ${String(window_spec)}.`,
+  category: String(category),
+  metric: String(metric),
+  comparison: String(comparison),
+  threshold: Number(threshold),
+  window_spec: String(window_spec),
+  default_cooldown_minutes: Number(cool),
+  minimum_plan: String(plan),
+  enabled_in_catalog: true,
+}));
+route('GET', '/v1/alert-presets', () => ALERT_PRESETS);
+route('POST', '/v1/apps/{slug}/alert-presets/{name}/enable', ({ params, body }) => {
+  const a = app(params.slug);
+  const preset = ALERT_PRESETS.find((p) => p.name === params.name);
+  if (!preset) throw new Problem(404, 'alert_preset_not_found');
+  if (!body.webhook_url || !body.webhook_secret)
+    throw new Problem(400, 'missing_field', 'webhook_url and webhook_secret are required.');
+  const list = listOf(db.alerts, params.slug);
+  const rule: (typeof list)[number] = {
+    id: db.id(),
+    app_id: a.id,
+    name: preset.display_name,
+    enabled: body.enabled !== false,
+    action: 'webhook',
+    metric: preset.metric as (typeof list)[number]['metric'],
+    comparison: preset.comparison as (typeof list)[number]['comparison'],
+    threshold: preset.threshold,
+    window_spec: preset.window_spec as (typeof list)[number]['window_spec'],
+    webhook_url: String(body.webhook_url),
+    webhook_secret_sealed_masked: '***',
+    cooldown_minutes: Number(body.cooldown_minutes ?? preset.default_cooldown_minutes),
+    state: 'ok',
+    created_at: db.iso(0),
+    updated_at: db.iso(0),
+  };
+  list.push(rule);
+  db.alerts.set(params.slug, list);
+  return status(201, rule);
+});
+
+route('DELETE', '/v1/account', () => {
+  const scheduled_at = db.iso(0);
+  const restore_until = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
+  db.account.status = 'deleted_pending';
+  return { status: 'deleted_pending', scheduled_at, restore_until };
+});
+
+route('GET', '/v1/usage/daily', ({ query }) => {
+  const day = query.get('day');
+  if (!day || !/^\d{4}-\d{2}-\d{2}$/.test(day))
+    throw new Problem(400, 'day_invalid', 'day must be YYYY-MM-DD.');
+  const seed = Number(day.replace(/-/g, '')) % 97;
+  return {
+    items: db.apps.map((a, i) => ({
+      app_id: a.id,
+      day,
+      mb_seconds: (seed + 1) * (i + 1) * 180_000,
+      requests: (seed + 3) * (i + 2) * 41,
+      cpu_usec: (seed + 1) * (i + 1) * 9_000_000,
+      tx_bytes: (i + 1) * 4_200_000,
+      net_tx_bytes: (i + 1) * 4_100_000,
+      net_rx_bytes: (i + 1) * 1_900_000,
+      cold_boots: (seed + i) % 7,
+      builder_seconds: i === 0 ? 140 : 0,
+    })),
+  };
+});
+
+route('GET', '/v1/account/slo', () => ({
+  window: '24h',
+  source: 'prometheus',
+  as_of: db.iso(0),
+  request_duration: { p50_ms: 38, p95_ms: 212, p99_ms: 640 },
+  error_rate_pct: 0.42,
+  cold_boot_rate_pct: 3.1,
+  instance_hours: 118.4,
+  gb_hours: 59.2,
+  wake_queue_p95_ms: 341,
+  requests_total: 184_233,
+  throttled_total: 12,
+}));
 
 export function mockApi(): Plugin {
   return {

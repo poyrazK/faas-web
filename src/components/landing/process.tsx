@@ -17,7 +17,7 @@ const Tick = () => <Check className="size-3 shrink-0 text-brand" />;
 export const STEPS: readonly Step[] = [
   {
     title: 'Deploy',
-    body: 'One-shot deploys from a Git ref, every build carrying an SBOM and provenance, secrets scanned on the way in and egress denied by default. Each pull request gets its own URL under your domain; custom domains, routes and edge rules sit in front of any app.',
+    body: 'One-shot deploys from a Git ref, every build carrying an SBOM and provenance, secrets scanned on the way in and egress denied by default. Each pull request gets its own URL; custom domains and edge rules sit in front of any app. Ship to a canary slice — a burst of 5xx rolls it back on its own, one click rolls back on purpose. Already on Compose, a Procfile or Kubernetes? Import the project and preview every app it creates first.',
     mosaic: [
       [1, 4, 2],
       [2, 3, 1],
@@ -137,7 +137,7 @@ export const STEPS: readonly Step[] = [
   },
   {
     title: 'Observe',
-    body: 'Streamed logs, per-app metrics, a trace for every invocation and a timeline for every wake — alerts when it matters, and an audit log of every write.',
+    body: 'Streamed logs, per-app metrics, a trace for every invocation and a timeline for every wake — alerts when it matters, and an audit log of every write. Set a spend cap and overage stops before it bills.',
     mosaic: [
       [5, 0, 0],
       [3, 1, 1],

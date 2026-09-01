@@ -9,6 +9,7 @@ import {
   queryPhase,
 } from '@/components/dashboard/primitives';
 import { FirstRun } from '@/components/dashboard/first-run';
+import { AccountSloPanel } from '@/components/dashboard/account-slo';
 import { OverviewSearch } from '@/components/dashboard/overview-search';
 import { Magnetic } from '@/components/amicro/magnetic';
 import { PointerGlow } from '@/components/amicro/pointer-glow';
@@ -600,6 +601,8 @@ function OverviewPage() {
             )}
           </StatCard>
         </div>
+
+        <AccountSloPanel />
 
         <div className="flex justify-end">
           <Link

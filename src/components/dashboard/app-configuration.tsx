@@ -1,15 +1,21 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
+import { isPreviewSlug } from '@/lib/preview';
 import { Button } from '@/components/ui/button';
 import { FIELD as BASE_FIELD } from '@/components/ui/field';
 import { Switch } from '@/components/ui/switch';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
 import { errorMessage } from '@/lib/api/errors';
+import { breakCounts, isBlocking } from '@/lib/diff-gate';
+import { capLabel, STREAMING_STATUS } from '@/lib/streaming-cap';
+import { Pill } from '@/components/dashboard/resource-table';
 import {
   useApp,
   useAppDiff,
+  useStreamingCap,
   useDeleteApp,
+  useDestroyPreview,
   useRenameApp,
   useUpdateApp,
   type App,
@@ -50,6 +56,7 @@ type Draft = {
   cors_default_enabled: boolean;
   cors_default_origins: string;
   eviction_priority: 'best_effort' | 'reserved';
+  app_protocol: 'http1' | 'http2' | 'grpc';
   overflow_node: string;
   autoscale_target_cpu_pct: number;
   warm_snapshot_enabled: boolean;
@@ -60,7 +67,7 @@ type Draft = {
   public_auth_pass: string;
 };
 
-function draftFrom(app: App): Draft {
+export function draftFrom(app: App): Draft {
   return {
     ram_mb: app.ram_mb,
     idle_timeout_s: app.idle_timeout_s ?? 60,
@@ -76,6 +83,8 @@ function draftFrom(app: App): Draft {
     cors_default_enabled: app.cors_default_enabled ?? false,
     cors_default_origins: (app.cors_default_origins ?? []).join('\n'),
     eviction_priority: (app.eviction_priority ?? 'best_effort') as 'best_effort' | 'reserved',
+    // ADR-124: the closed set {http1, http2, grpc}; http1 is the universal default.
+    app_protocol: (app.app_protocol ?? 'http1') as 'http1' | 'http2' | 'grpc',
     overflow_node: app.overflow_node ?? '',
     autoscale_target_cpu_pct: app.autoscale_target_cpu_pct ?? 0,
     warm_snapshot_enabled: app.warm_snapshot_enabled ?? false,
@@ -151,6 +160,8 @@ function ConfigForm({ app }: { app: App }) {
   const update = useUpdateApp(app.slug);
   const diff = useAppDiff(app.slug);
   const [preview, setPreview] = useState<Awaited<ReturnType<typeof diff.mutateAsync>> | null>(null);
+  // `deploy --diff --strict`: warnings gate the save too, not only errors.
+  const [strict, setStrict] = useState(false);
   const [draft, setDraft] = useState<Draft>(() => draftFrom(app));
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
     setDraft((d) => ({ ...d, [key]: value }));
@@ -231,6 +242,17 @@ function ConfigForm({ app }: { app: App }) {
             {/* The CLI's deploy --diff, one click before Save: the server
                 says exactly what this PATCH would change, and what it would
                 break, before anything is written. */}
+            <label
+              className="flex items-center gap-1.5 text-xs text-muted-foreground"
+              title="Treat warnings as blocking, like deploy --diff --strict"
+            >
+              <input
+                type="checkbox"
+                checked={strict}
+                onChange={(e) => setStrict(e.target.checked)}
+              />
+              Strict
+            </label>
             <Button
               size="sm"
               variant="outline"
@@ -238,7 +260,7 @@ function ConfigForm({ app }: { app: App }) {
               busy={diff.isPending}
               onClick={() =>
                 void diff
-                  .mutateAsync(changes)
+                  .mutateAsync({ app_config: changes })
                   .then(setPreview)
                   .catch((err: unknown) =>
                     toast({
@@ -251,7 +273,12 @@ function ConfigForm({ app }: { app: App }) {
             >
               Preview
             </Button>
-            <Button size="sm" disabled={!dirty} busy={update.isPending} onClick={save}>
+            <Button
+              size="sm"
+              disabled={!dirty || (preview !== null && isBlocking(preview, strict))}
+              busy={update.isPending}
+              onClick={save}
+            >
               Save changes
             </Button>
           </>
@@ -342,6 +369,32 @@ function ConfigForm({ app }: { app: App }) {
               account.
             </span>
           </label>
+
+          <label className="flex flex-col gap-1.5">
+            <span className="label-mono text-muted-foreground">Wire protocol</span>
+            <div className="flex gap-1.5">
+              {(['http1', 'http2', 'grpc'] as const).map((proto) => (
+                <button
+                  key={proto}
+                  type="button"
+                  aria-pressed={draft.app_protocol === proto}
+                  onClick={() => set('app_protocol', proto)}
+                  className={`pressable h-9 rounded-md border px-3 font-mono text-xs ${
+                    draft.app_protocol === proto
+                      ? 'border-brand bg-brand/10 text-foreground'
+                      : 'border-border text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {proto}
+                </button>
+              ))}
+            </div>
+            <span className="text-xs text-muted-foreground">
+              What the edge speaks to the app. gRPC needs Hobby or above.
+            </span>
+          </label>
+
+          <StreamingRow slug={app.slug} />
 
           <label className="flex flex-col gap-1.5">
             <span className="label-mono text-muted-foreground">Overflow node</span>
@@ -529,27 +582,37 @@ function ConfigForm({ app }: { app: App }) {
                 ))}
               </ul>
             )}
-            {(preview.diff?.breaks?.length ?? 0) > 0 && (
+            {preview.diff.breaks.length > 0 && (
               <div>
                 <p className="label-mono mb-1.5" style={{ color: 'var(--status-warning)' }}>
-                  Breaking
+                  {breakCounts(preview).error} blocking · {breakCounts(preview).warn}{' '}
+                  {breakCounts(preview).warn === 1 ? 'warning' : 'warnings'}
                 </p>
                 <ul className="flex flex-col gap-1">
-                  {preview.diff?.breaks?.map((b) => (
+                  {preview.diff.breaks.map((b) => (
                     <li
-                      key={String(b)}
+                      key={`${b.code}-${b.field ?? ''}`}
                       className="text-xs"
-                      style={{ color: 'var(--status-warning)' }}
+                      style={{
+                        color:
+                          b.severity === 'error'
+                            ? 'var(--status-critical)'
+                            : 'var(--status-warning)',
+                      }}
                     >
-                      {String(b)}
+                      <span className="font-mono">{b.code}</span>
+                      {b.field ? <span className="font-mono"> · {b.field}</span> : null} —{' '}
+                      {b.reason}
                     </li>
                   ))}
                 </ul>
               </div>
             )}
-            {preview.blocking && (
+            {isBlocking(preview, strict) && (
               <p className="text-xs" style={{ color: 'var(--status-critical)' }}>
-                This change is blocking — the deploy path would refuse it.
+                {preview.blocking
+                  ? 'This change is blocking — the deploy path would refuse it.'
+                  : 'Strict mode: resolve the warnings above, or untick strict to save anyway.'}
               </p>
             )}
           </div>
@@ -622,6 +685,7 @@ function DangerZone({ app }: { app: App }) {
   const confirm = useConfirm();
   const navigate = useNavigate();
   const remove = useDeleteApp();
+  const destroyPreview = useDestroyPreview();
 
   return (
     <Panel
@@ -629,6 +693,48 @@ function DangerZone({ app }: { app: App }) {
       description="Permanent. The console asks you to type the slug before it goes through."
       className="border-[color:color-mix(in_oklab,var(--status-critical)_35%,transparent)]"
     >
+      {isPreviewSlug(app.slug) && (
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-4 border-b border-border pb-5">
+          <div>
+            <p className="text-sm font-medium">Tear down this preview</p>
+            <p className="mt-1 max-w-lg text-xs leading-relaxed text-muted-foreground">
+              Stops the preview, frees its URL and snapshot. A reopened pull request gets a fresh
+              preview at the same address.
+            </p>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            busy={destroyPreview.isPending}
+            onClick={async () => {
+              if (
+                !(await confirm({
+                  title: `Tear down ${app.slug}?`,
+                  description: 'Its URL answers 410 Gone from now on. Nothing else is affected.',
+                  confirmLabel: 'Tear down preview',
+                  destructive: true,
+                }))
+              )
+                return;
+              void destroyPreview
+                .mutateAsync(app.slug)
+                .then(() => {
+                  toast({ kind: 'success', title: `Tore down ${app.slug}` });
+                  void navigate({ to: '/dashboard/workflows' });
+                })
+                .catch((err: unknown) =>
+                  toast({
+                    kind: 'error',
+                    title: 'Could not tear down',
+                    description: errorMessage(err),
+                  })
+                );
+            }}
+          >
+            Tear down preview
+          </Button>
+        </div>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <p className="text-sm font-medium">Delete {app.slug}</p>
@@ -701,6 +807,38 @@ export function AppConfiguration({ slug }: { slug: string }) {
       <RegistryCredentialsPanel slug={data.slug} />
       <RenamePanel key={`rename:${data.slug}`} app={data} />
       <DangerZone app={data} />
+    </div>
+  );
+}
+
+const STREAM_TONE_COLOR: Record<string, string | undefined> = {
+  good: 'var(--status-good)',
+  warning: 'var(--status-warning)',
+  bad: 'var(--status-critical)',
+  neutral: undefined,
+};
+
+/**
+ * `gregale streaming-cap` — the read-only classification probe. Typed in the
+ * client since the spec sync; this is its first caller. It answers the "why
+ * is my response buffered?" question without a support ticket.
+ */
+function StreamingRow({ slug }: { slug: string }) {
+  const q = useStreamingCap(slug);
+  const s = q.data;
+  if (!s) return null;
+  const meta = STREAMING_STATUS[s.status];
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="label-mono text-muted-foreground">Streaming</span>
+      <div className="flex flex-wrap items-center gap-2">
+        <Pill label={meta.label} color={STREAM_TONE_COLOR[meta.tone]} />
+        <span className="font-mono text-xs text-muted-foreground">
+          cap {capLabel(s.effective_cap_bytes)} · plan {capLabel(s.plan_cap_bytes)}
+          {s.cap_kind ? ` · ${s.cap_kind}` : ''}
+        </span>
+      </div>
+      <span className="text-xs text-muted-foreground">{meta.hint}</span>
     </div>
   );
 }

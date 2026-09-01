@@ -1,13 +1,15 @@
 import { useRef, useState } from 'react';
-import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
+import { Link, createFileRoute } from '@tanstack/react-router';
 import { WarningTriangle, ArrowRight } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import { PageHeader, Panel } from '@/components/dashboard/primitives';
 import { FIELD } from '@/components/ui/field';
-import { clearWorkspace, readWorkspace, saveWorkspace, useAuth } from '@/lib/auth';
+import { readWorkspace, saveWorkspace, useAuth } from '@/lib/auth';
+import { deletionMessage } from '@/lib/account-deletion';
 import {
   useAccountExport,
+  useDeleteAccount,
   useEgressExtra,
   useRestoreAccount,
   useSetEgressExtra,
@@ -49,17 +51,19 @@ const ELSEWHERE: { label: string; description: string; to: '/dashboard/workflows
   ];
 
 /** Type-to-confirm dialog for the irreversible action. */
-function DeleteWorkspaceDialog({
-  workspace,
+function DeleteAccountDialog({
+  email,
+  busy,
   onCancel,
   onConfirm,
 }: {
-  workspace: string;
+  email: string;
+  busy: boolean;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
   const [typed, setTyped] = useState('');
-  const matches = typed === workspace;
+  const matches = typed.trim().toLowerCase() === email.toLowerCase();
   const dialogRef = useRef<HTMLDivElement>(null);
   useFocusTrap(dialogRef, true);
 
@@ -89,16 +93,16 @@ function DeleteWorkspaceDialog({
         </span>
 
         <h2 id="delete-title" className="mt-4 text-lg font-semibold tracking-tight">
-          Delete this workspace?
+          Delete this account?
         </h2>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-          This destroys every function, snapshot, and volume in{' '}
-          <span className="font-mono text-foreground">{workspace}</span>. It cannot be undone.
+          Deletion starts a 30-day grace period. Apps keep running until it ends, and you can
+          restore everything from the banner on this page at any time before then.
         </p>
 
         <label className="mt-5 block">
           <span className="text-xs text-muted-foreground">
-            Type <span className="font-mono text-foreground">{workspace}</span> to confirm
+            Type <span className="font-mono text-foreground">{email}</span> to confirm
           </span>
           <input
             autoFocus
@@ -112,8 +116,14 @@ function DeleteWorkspaceDialog({
           <Button variant="ghost" size="sm" onClick={onCancel}>
             Cancel
           </Button>
-          <Button variant="destructive" size="sm" disabled={!matches} onClick={onConfirm}>
-            Delete workspace
+          <Button
+            variant="destructive"
+            size="sm"
+            disabled={!matches}
+            busy={busy}
+            onClick={onConfirm}
+          >
+            Delete account
           </Button>
         </div>
       </div>
@@ -252,8 +262,8 @@ function EgressExtraPanel() {
 
 function SettingsPage() {
   const { toast } = useToast();
-  const { signOut } = useAuth();
-  const navigate = useNavigate();
+  const { account, refreshAccount } = useAuth();
+  const deleteAccount = useDeleteAccount();
 
   const [workspace, setWorkspace] = useState(readWorkspace);
   const [showDelete, setShowDelete] = useState(false);
@@ -270,21 +280,23 @@ function SettingsPage() {
     });
   };
 
-  // Local reset only. Real account deletion is `DELETE /v1/account` — it stages
-  // a 30-day grace period and is restorable — but wiring a destructive endpoint
-  // to this button needs its own decision, not a drive-by. Until then the copy
-  // says what actually happens rather than implying the account is gone.
-  const handleDelete = () => {
-    setShowDelete(false);
-    clearWorkspace();
-    void signOut();
-    toast({
-      kind: 'info',
-      title: 'Local workspace settings cleared',
-      description: 'You have been signed out. Your account was not deleted.',
-    });
-    navigate({ to: '/' });
-  };
+  // The real thing: `DELETE /v1/account` stages a 30-day grace and is
+  // restorable from the banner on this page, so the user stays signed in.
+  const handleDelete = () =>
+    void deleteAccount
+      .mutateAsync()
+      .then((r) => {
+        setShowDelete(false);
+        void refreshAccount();
+        toast({
+          kind: 'info',
+          title: 'Account deletion scheduled',
+          description: deletionMessage(r.restore_until),
+        });
+      })
+      .catch((err: unknown) =>
+        toast({ kind: 'error', title: 'Could not delete account', description: errorMessage(err) })
+      );
 
   return (
     <div className="flex flex-col gap-6">
@@ -357,20 +369,22 @@ function SettingsPage() {
       <Panel title="Danger zone" className="border-destructive/30">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <p className="text-sm font-medium">Delete workspace</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Permanently destroys every function, snapshot, and volume. This cannot be undone.
+            <p className="text-sm font-medium">Delete account</p>
+            <p className="mt-1 max-w-lg text-xs leading-relaxed text-muted-foreground">
+              Schedules deletion with a 30-day grace period. Apps keep running until it ends; the
+              account is restorable from this page any time before then.
             </p>
           </div>
           <Button variant="destructive" size="sm" onClick={() => setShowDelete(true)}>
-            Delete workspace
+            Delete account
           </Button>
         </div>
       </Panel>
 
       {showDelete && (
-        <DeleteWorkspaceDialog
-          workspace={workspace}
+        <DeleteAccountDialog
+          email={account?.email ?? ''}
+          busy={deleteAccount.isPending}
           onCancel={() => setShowDelete(false)}
           onConfirm={handleDelete}
         />

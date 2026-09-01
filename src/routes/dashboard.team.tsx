@@ -15,9 +15,12 @@ import {
   useOrgInvitations,
   useOrgMembers,
   useOrgs,
+  useCreateOrg,
+  useDeleteOrg,
   useRemoveMember,
   useRevokeInvitation,
 } from '@/lib/api/queries';
+import { CreateOrgDialog } from '@/components/dashboard/org-dialogs';
 import { useAuth } from '@/lib/auth';
 import { errorMessage } from '@/lib/api/errors';
 import { formatRelative } from '@/lib/mock-data';
@@ -117,6 +120,10 @@ function TeamPage() {
   // permanently pending — which is why the state passed to the tables has to
   // count the org query itself, not just the ones hanging off it.
   const active = slug || orgs.data?.orgs?.[0]?.slug || '';
+  const activeOrg = orgs.data?.orgs.find((o) => o.slug === active);
+  const createOrg = useCreateOrg();
+  const deleteOrg = useDeleteOrg();
+  const [createOpen, setCreateOpen] = useState(false);
   const members = useOrgMembers(active);
   const invitations = useOrgInvitations(active);
   const invite = useInviteMember(active);
@@ -325,22 +332,27 @@ function TeamPage() {
         title="Team"
         description="Organisation members and their roles. Roles decide who can write what across the console."
         actions={
-          <label className="flex items-center gap-2">
-            <span className="label-mono text-muted-foreground">Org</span>
-            <select
-              value={active}
-              onChange={(e) => setSlug(e.target.value)}
-              aria-label="Select an organisation"
-              className="h-9 rounded-md border border-border bg-card px-2.5 text-sm outline-none focus:border-brand/50"
-            >
-              {(orgs.data?.orgs ?? []).length === 0 && <option value="">No organisations</option>}
-              {(orgs.data?.orgs ?? []).map((o) => (
-                <option key={o.slug} value={o.slug}>
-                  {o.slug}
-                </option>
-              ))}
-            </select>
-          </label>
+          <span className="flex items-center gap-2">
+            <label className="flex items-center gap-2">
+              <span className="label-mono text-muted-foreground">Org</span>
+              <select
+                value={active}
+                onChange={(e) => setSlug(e.target.value)}
+                aria-label="Select an organisation"
+                className="h-9 rounded-md border border-border bg-card px-2.5 text-sm outline-none focus:border-brand/50"
+              >
+                {(orgs.data?.orgs ?? []).length === 0 && <option value="">No organisations</option>}
+                {(orgs.data?.orgs ?? []).map((o) => (
+                  <option key={o.slug} value={o.slug}>
+                    {o.slug}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <Button size="sm" variant="outline" onClick={() => setCreateOpen(true)}>
+              New organisation
+            </Button>
+          </span>
         }
       />
 
@@ -443,8 +455,69 @@ function TeamPage() {
         <>
           <OrgPanel slug={active} />
           <OrgKeysPanel slug={active} />
+          {activeOrg && !activeOrg.personal && (
+            <Panel
+              title="Danger zone"
+              description="Deleting an organisation removes every member's access. Apps inside it stop and their data is scheduled for removal."
+            >
+              <Button
+                size="sm"
+                variant="destructive"
+                busy={deleteOrg.isPending}
+                onClick={() =>
+                  void confirm({
+                    title: `Delete ${activeOrg.name}?`,
+                    description:
+                      'Members lose access immediately. This cannot be undone from the console.',
+                    confirmLabel: 'Delete organisation',
+                    destructive: true,
+                    typeToConfirm: activeOrg.slug,
+                  }).then((ok) => {
+                    if (!ok) return;
+                    void deleteOrg
+                      .mutateAsync(activeOrg.slug)
+                      .then(() => {
+                        toast({ kind: 'success', title: `Deleted ${activeOrg.slug}` });
+                        setSlug('');
+                      })
+                      .catch((err: unknown) =>
+                        toast({
+                          kind: 'error',
+                          title: 'Could not delete',
+                          description: errorMessage(err),
+                        })
+                      );
+                  })
+                }
+              >
+                Delete organisation
+              </Button>
+            </Panel>
+          )}
         </>
       )}
+
+      <CreateOrgDialog
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        busy={createOrg.isPending}
+        onCreate={(body) =>
+          void createOrg
+            .mutateAsync(body)
+            .then((created) => {
+              setCreateOpen(false);
+              setSlug(created.slug);
+              toast({ kind: 'success', title: `Created ${created.slug}` });
+            })
+            .catch((err: unknown) =>
+              toast({
+                kind: 'error',
+                title: 'Could not create organisation',
+                description: errorMessage(err),
+              })
+            )
+        }
+      />
     </div>
   );
 }

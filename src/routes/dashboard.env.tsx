@@ -2,12 +2,16 @@ import { useMemo, useState } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { Plus, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
-import { PageHeader, Panel } from '@/components/dashboard/primitives';
+import { InlinePhase, PageHeader, Panel, queryPhase } from '@/components/dashboard/primitives';
 import { ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
 import { useToast } from '@/components/ui/toast';
 import { useConfirm } from '@/components/ui/confirm';
-import { useAppEnv, useDeleteEnv, useSetEnv } from '@/lib/api/queries';
+import { useAppEnv, useDeleteEnv, useEnvDiff, useSetEnv } from '@/lib/api/queries';
+import { EnvDiffMatrix } from '@/components/dashboard/env-diff-matrix';
+import { diffSummary } from '@/lib/env-diff';
+import { findSecrets } from '@/lib/secret-scan';
+import { SecretFindings } from '@/components/dashboard/secret-findings';
 import { errorMessage } from '@/lib/api/errors';
 import { FieldError } from '@/components/ui/field';
 import { cn } from '@/lib/utils';
@@ -63,6 +67,14 @@ export function EnvBody({ slug }: { slug: string }) {
   const [key, setKey] = useState('');
   const [value, setValue] = useState('');
   const [keyTouched, setKeyTouched] = useState(false);
+  // The CLI's --secret-scan pre-flight on a single value; acknowledging is
+  // bound to this exact value, so an edit re-arms the gate.
+  const [ackValue, setAckValue] = useState('');
+  const findings = useMemo(
+    () => (value ? findSecrets([{ key: key.trim() || 'VALUE', value }]) : []),
+    [key, value]
+  );
+  const acknowledged = ackValue === value && value !== '';
   // The server's own SQL CHECK for names, stated up front rather than as a
   // 422 after the round-trip.
   const keyOk = KEY_RULE.test(key.trim());
@@ -140,12 +152,14 @@ export function EnvBody({ slug }: { slug: string }) {
           onSubmit={(e) => {
             e.preventDefault();
             if (!keyOk || setEnv.isPending) return;
+            if (findings.length > 0 && !acknowledged) return;
             void setEnv
               .mutateAsync({ key: key.trim(), value })
               .then(() => {
                 setKey('');
                 setValue('');
                 setKeyTouched(false);
+                setAckValue('');
                 toast({ kind: 'success', title: 'Variable saved' });
               })
               .catch((err: unknown) =>
@@ -182,11 +196,20 @@ export function EnvBody({ slug }: { slug: string }) {
               className="h-10 rounded-lg border border-border bg-background px-3 font-mono text-sm outline-none focus:border-brand"
             />
           </label>
+          {findings.length > 0 && (
+            <div className="w-full">
+              <SecretFindings
+                findings={findings}
+                acknowledged={acknowledged}
+                onAcknowledge={(ok) => setAckValue(ok ? value : '')}
+              />
+            </div>
+          )}
           <Button
             type="submit"
             size="sm"
             className="gap-1.5"
-            disabled={!slug}
+            disabled={!slug || (findings.length > 0 && !acknowledged)}
             busy={setEnv.isPending}
           >
             <Plus className="h-3.5 w-3.5" />
@@ -207,7 +230,37 @@ export function EnvBody({ slug }: { slug: string }) {
         error={error}
         onRetry={() => void refetch()}
       />
+
+      <EnvDiffPanel slug={slug} />
     </div>
+  );
+}
+
+/**
+ * `gregale env diff` for the browser: which keys exist where, and whether
+ * their values match — by hash, never by value.
+ */
+function EnvDiffPanel({ slug }: { slug: string }) {
+  const q = useEnvDiff(slug);
+  const phase = queryPhase({
+    error: q.error,
+    loading: q.isPending,
+    isEmpty: (q.data?.rows.length ?? 0) === 0,
+  });
+  const summary = q.data ? diffSummary(q.data) : null;
+  return (
+    <Panel
+      title="Across scopes"
+      description={
+        summary ? `${summary.keys} keys · ${summary.uneven} uneven` : 'Comparing scopes…'
+      }
+    >
+      {phase !== 'ready' || !q.data ? (
+        <InlinePhase phase={phase} error={q.error} emptyMessage="No variables in any scope yet." />
+      ) : (
+        <EnvDiffMatrix scopes={q.data.scopes} rows={q.data.rows} />
+      )}
+    </Panel>
   );
 }
 

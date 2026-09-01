@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DOC_ENTRIES, DOC_SECTIONS, docNeighbours, findDoc } from './docs-manifest';
+import { DOC_ENTRIES, DOC_SECTIONS, LOCAL, docNeighbours, findDoc } from './docs-manifest';
 import {
   docSource,
   extractHeadings,
@@ -44,8 +44,11 @@ describe('docs manifest', () => {
     }
   });
 
-  it('points every entry at a markdown file upstream', () => {
+  it('points every entry at a markdown file upstream, or marks it local', () => {
+    // LOCAL entries are authored in this repo (docs-manifest.test.ts pins
+    // exactly which ones); everything else must name an upstream .md file.
     for (const entry of DOC_ENTRIES) {
+      if (entry.source === LOCAL) continue;
       expect(entry.source).toMatch(/\.md$/);
     }
   });

@@ -8,6 +8,8 @@ import { Pill } from '@/components/dashboard/resource-table';
 import { Swap } from '@/components/dashboard/motion';
 import { useToast } from '@/components/ui/toast';
 import { useProjectApply, useProjectScan, type ProjectPlan } from '@/lib/api/queries';
+import { AffectedApps } from '@/components/dashboard/affected-apps';
+import { affectedRows, onlyCsv } from '@/lib/project-subset';
 import { errorMessage } from '@/lib/api/errors';
 import { consoleHead } from '@/lib/seo';
 import { cn } from '@/lib/utils';
@@ -55,16 +57,25 @@ function ImportPage() {
   const [slugTouched, setSlugTouched] = useState(false);
   const [plan, setPlan] = useState<ProjectPlan | null>(null);
   const [applied, setApplied] = useState<{ slug: string; id: string }[] | null>(null);
+  // The CLI's --exclude, staged: unticked workloads feed the next re-scan's
+  // `only` CSV. `lastOnly` is whatever the current plan was scanned with, so
+  // Apply always matches the previewed plan exactly.
+  const [excluded, setExcluded] = useState<Set<string>>(new Set());
+  const [lastOnly, setLastOnly] = useState<string | undefined>(undefined);
 
   const slugOk = slug.trim() === '' || SLUG_RULE.test(slug.trim());
   const showSlugError = slugTouched && !slugOk;
 
-  const runScan = () => {
+  const runScan = (only?: string) => {
     if (!file || !slugOk || scan.isPending) return;
     setApplied(null);
+    setLastOnly(only);
     void scan
-      .mutateAsync({ file, slug, branch })
-      .then(setPlan)
+      .mutateAsync({ file, slug, branch, only })
+      .then((next) => {
+        setPlan(next);
+        setExcluded(new Set());
+      })
       .catch((err: unknown) =>
         toast({ kind: 'error', title: 'Scan failed', description: errorMessage(err) })
       );
@@ -73,7 +84,7 @@ function ImportPage() {
   const runApply = () => {
     if (!file || !plan || apply.isPending) return;
     void apply
-      .mutateAsync({ file, slug, branch, planToken: plan.plan_token })
+      .mutateAsync({ file, slug, branch, only: lastOnly, planToken: plan.plan_token })
       .then((result) => {
         setApplied(result.apps ?? []);
         toast({
@@ -157,7 +168,12 @@ function ImportPage() {
             />
           </label>
 
-          <Button size="sm" onClick={runScan} disabled={!file || !slugOk} busy={scan.isPending}>
+          <Button
+            size="sm"
+            onClick={() => runScan()}
+            disabled={!file || !slugOk}
+            busy={scan.isPending}
+          >
             <Page className="h-3.5 w-3.5" />
             Scan
           </Button>
@@ -186,22 +202,41 @@ function ImportPage() {
                 <table className="w-full min-w-[640px] text-sm">
                   <thead>
                     <tr className="border-b border-border text-left">
-                      {['Workload', 'Class', 'Root', 'Ports', 'Schedule', 'Detected from'].map(
-                        (h) => (
-                          <th
-                            key={h}
-                            scope="col"
-                            className="label-mono px-4 py-2.5 text-muted-foreground"
-                          >
-                            {h}
-                          </th>
-                        )
-                      )}
+                      {[
+                        'Include',
+                        'Workload',
+                        'Class',
+                        'Root',
+                        'Ports',
+                        'Schedule',
+                        'Detected from',
+                      ].map((h) => (
+                        <th
+                          key={h}
+                          scope="col"
+                          className="label-mono px-4 py-2.5 text-muted-foreground"
+                        >
+                          {h}
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
                     {plan.workloads.map((w) => (
                       <tr key={w.name}>
+                        <td className="px-4 py-2.5">
+                          <input
+                            type="checkbox"
+                            aria-label={`Include ${w.name}`}
+                            checked={!excluded.has(w.name)}
+                            onChange={(e) => {
+                              const next = new Set(excluded);
+                              if (e.target.checked) next.delete(w.name);
+                              else next.add(w.name);
+                              setExcluded(next);
+                            }}
+                          />
+                        </td>
                         <td className="px-4 py-2.5 font-mono text-xs">{w.name}</td>
                         <td className="px-4 py-2.5">
                           <Pill label={w.class ?? 'unknown'} color="var(--cat-compute)" />
@@ -222,6 +257,31 @@ function ImportPage() {
                 </table>
               </div>
 
+              {excluded.size > 0 && (
+                <div className="flex items-center gap-3 border-t border-border px-4 py-3">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={excluded.size === plan.workloads.length}
+                    busy={scan.isPending}
+                    onClick={() =>
+                      runScan(
+                        onlyCsv(
+                          plan.workloads.map((w) => w.name),
+                          excluded
+                        )
+                      )
+                    }
+                  >
+                    Re-scan with {excluded.size} excluded
+                  </Button>
+                  {excluded.size === plan.workloads.length && (
+                    <span className="text-xs text-muted-foreground">
+                      Keep at least one workload.
+                    </span>
+                  )}
+                </div>
+              )}
               <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">
                 {plan.observed_apps} of {plan.limit_apps} apps
                 {plan.crons.length > 0 && (
@@ -244,6 +304,29 @@ function ImportPage() {
                 )}
               </p>
             </Panel>
+
+            {affectedRows(plan).length > 0 && (
+              <Panel
+                title="What this apply touches"
+                description="Every existing app in the account, against what the plan would do to it."
+              >
+                <AffectedApps rows={affectedRows(plan)} />
+                {(plan.can_apply_reasons?.length ?? 0) > 0 && (
+                  <ul className="mt-3 flex flex-col gap-1">
+                    {plan.can_apply_reasons?.map((r) => (
+                      <li key={r} className="text-xs" style={{ color: 'var(--status-critical)' }}>
+                        {r}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {plan.gate_rescued_by_exclude && (
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    Excluding those workloads brought this under your plan's limits.
+                  </p>
+                )}
+              </Panel>
+            )}
 
             {(plan.managed.length > 0 || (plan.warnings?.length ?? 0) > 0) && (
               <Panel

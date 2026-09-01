@@ -9,6 +9,8 @@ import {
 import { api, issueCSRF, unwrap } from './client';
 import { ApiError } from './errors';
 import type { components } from './schema';
+import { tarballForm } from '@/lib/tarball-deploy';
+import type { AuditQuery } from '@/lib/audit-filters';
 
 /**
  * Query hooks over the REST surface.
@@ -141,6 +143,16 @@ export function usePatchOrg(slug: string) {
   });
 }
 
+/** Create a shared org; the caller becomes its first owner. */
+export function useCreateOrg() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: components['schemas']['CreateOrgRequest']) =>
+      unwrap(api.POST('/v1/orgs', { body, headers: idem() })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['orgs'] }),
+  });
+}
+
 export function useDeleteOrg() {
   const qc = useQueryClient();
   return useMutation({
@@ -267,6 +279,20 @@ export function useRetryBilling() {
 }
 
 /** The full GDPR export bundle, as JSON the caller hands to the browser. */
+/**
+ * Stages deletion with a 30-day grace (status → deleted_pending). The client
+ * only auto-keys POSTs, so the Idempotency-Key the endpoint requires is set
+ * here.
+ */
+export function useDeleteAccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      unwrap(api.DELETE('/v1/account', { headers: { 'Idempotency-Key': crypto.randomUUID() } })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.account }),
+  });
+}
+
 export function useAccountExport() {
   return useMutation({
     mutationFn: () => unwrap(api.GET('/v1/account/export', {})),
@@ -528,12 +554,15 @@ export function useWakeTimeline(slug: string, wakeId: string) {
 /** Read-only preview of what a config change would do — the CLI's
  * `deploy --diff`, wired to the console's config form. A mutation shape
  * because it POSTs a proposed config, but it writes nothing. */
+/**
+ * `gregale deploy --diff`: what a write would change, and what would break.
+ * The body is the full DiffRequest, so a caller can preview env, crons and
+ * edge rules alongside the app-config patch — not only the config.
+ */
 export function useAppDiff(slug: string) {
   return useMutation({
-    mutationFn: (app_config: Record<string, unknown>) =>
-      unwrap(
-        api.POST('/v1/apps/{slug}/diff', { params: { path: { slug } }, body: { app_config } })
-      ),
+    mutationFn: (body: components['schemas']['DiffRequest']) =>
+      unwrap(api.POST('/v1/apps/{slug}/diff', { params: { path: { slug } }, body })),
   });
 }
 
@@ -567,10 +596,19 @@ export function useDeploymentSecretScan(id: string) {
 }
 
 /** The account's auth audit trail — sign-ins, key mints, MFA events. */
-export function useAuthAuditEvents() {
+export function useAuthAuditEvents(query: AuditQuery = { limit: 100 }) {
   return useQuery({
-    queryKey: ['audit-events'],
-    queryFn: () => unwrap(api.GET('/v1/audit-events', {})),
+    queryKey: ['audit-events', query],
+    queryFn: () => unwrap(api.GET('/v1/audit-events', { params: { query } })),
+  });
+}
+
+/** One audit row in full — `gregale audit get <id>`. */
+export function useAuditEvent(id: string) {
+  return useQuery({
+    queryKey: ['audit-events', 'one', id],
+    queryFn: () => unwrap(api.GET('/v1/audit-events/{id}', { params: { path: { id } } })),
+    enabled: Boolean(id),
   });
 }
 
@@ -578,14 +616,30 @@ export function useAuthAuditEvents() {
  * Project import — scan a repo tarball into a deploy plan, then apply it
  * ------------------------------------------------------------------ */
 
+/** The 13 embedded starters the CLI can materialise; the console links to the command. */
+export function useTemplates() {
+  return useQuery({
+    queryKey: ['templates'],
+    queryFn: () => unwrap(api.GET('/v1/templates', {})),
+    staleTime: 5 * 60_000,
+  });
+}
+
 export type ProjectPlan = components['schemas']['PlanResponse'];
 
-/** Multipart body shared by scan and apply. */
-function projectForm(input: { file: File; slug?: string; branch?: string }): FormData {
+/** Multipart body shared by scan and apply. `only` is the CSV the CLI builds
+ * from `--only`/`--exclude`; absent means every detected workload. */
+function projectForm(input: {
+  file: File;
+  slug?: string;
+  branch?: string;
+  only?: string;
+}): FormData {
   const fd = new FormData();
   fd.append('source', input.file);
   if (input.slug?.trim()) fd.append('project_slug', input.slug.trim());
   if (input.branch?.trim()) fd.append('production_branch', input.branch.trim());
+  if (input.only !== undefined) fd.append('only', input.only);
   return fd;
 }
 
@@ -593,12 +647,14 @@ function projectForm(input: { file: File; slug?: string; branch?: string }): For
  * crons, quota verdict, and the plan_token apply echoes back). */
 export function useProjectScan() {
   return useMutation({
-    mutationFn: (input: { file: File; slug?: string; branch?: string }) =>
+    mutationFn: (input: { file: File; slug?: string; branch?: string; only?: string }) =>
       unwrap(
         api.POST('/v1/projects/scan', {
           // The typed body is JSON-shaped; the endpoint takes multipart. The
           // serializer override is openapi-fetch's sanctioned escape hatch.
-          body: undefined as never,
+          // Must be non-undefined: openapi-fetch skips the serializer for an
+          // undefined body (dist/index.mjs:54) and sends no body at all.
+          body: input as never,
           bodySerializer: () => projectForm(input),
         })
       ),
@@ -610,11 +666,19 @@ export function useProjectScan() {
 export function useProjectApply() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { file: File; slug?: string; branch?: string; planToken: string }) =>
+    mutationFn: (input: {
+      file: File;
+      slug?: string;
+      branch?: string;
+      only?: string;
+      planToken: string;
+    }) =>
       unwrap(
         api.POST('/v1/projects', {
           params: { query: { plan_token: input.planToken } },
-          body: undefined as never,
+          // Must be non-undefined: openapi-fetch skips the serializer for an
+          // undefined body (dist/index.mjs:54) and sends no body at all.
+          body: input as never,
           bodySerializer: () => projectForm(input),
         })
       ),
@@ -717,6 +781,39 @@ export function useAppRoutes(slug: string) {
  * Deployments
  * ------------------------------------------------------------------ */
 
+/** The closed six-stage pipeline as the server recorded it (ADR-117). */
+export function useDeploymentStages(id: string) {
+  return useQuery({
+    queryKey: ['deployments', id, 'stages'],
+    queryFn: () => unwrap(api.GET('/v1/deployments/{id}/stages', { params: { path: { id } } })),
+    enabled: Boolean(id),
+  });
+}
+
+/**
+ * Resume a failed deployment from a stage; `source_download` re-runs the
+ * whole pipeline. Answers 202 with the new deployment.
+ */
+export function useRetryDeployment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      from_stage,
+    }: {
+      id: string;
+      from_stage: components['schemas']['RetryDeploymentRequest']['from_stage'];
+    }) =>
+      unwrap(
+        api.POST('/v1/deployments/{id}/retry', { params: { path: { id } }, body: { from_stage } })
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.deployments });
+      void qc.invalidateQueries({ queryKey: keys.apps });
+    },
+  });
+}
+
 export function useDeployments(
   limit = 50,
   options?: Options<components['schemas']['DeploymentListResponse']>
@@ -797,6 +894,19 @@ export function useDeleteApp() {
   });
 }
 
+/**
+ * Tears a preview app down — its own action with its own audit kind, not an
+ * app delete: the row is tombstoned and the URL answers 410. 204 on success.
+ */
+export function useDestroyPreview() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (slug: string) =>
+      unwrap(api.POST('/v1/preview/{slug}/destroy', { params: { path: { slug } } })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.apps }),
+  });
+}
+
 /** Wakes a parked app. The platform scales to zero, so this is a real action. */
 export function useWakeApp() {
   const qc = useQueryClient();
@@ -868,6 +978,37 @@ export function useRenameApp(slug: string) {
  * wants an image reference, which means a registry the browser has no
  * business holding credentials for.
  */
+/**
+ * `gregale deploy` with no flags: pack the directory, upload it. The browser
+ * gets the same endpoint — a .tar.gz the person built themselves — with the
+ * annotations riding along in the `sidecar` part. 202 means queued for build.
+ */
+export function useDeployTarball(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      file: File;
+      sidecar: components['schemas']['SourceTarballDeployRequest'];
+    }) =>
+      unwrap(
+        api.POST('/v1/apps/{slug}/deployments/source-tarball', {
+          params: { path: { slug } },
+          // The typed body is JSON-shaped; the endpoint takes multipart. The
+          // serializer override is openapi-fetch's sanctioned escape hatch.
+          // Must be non-undefined: openapi-fetch skips the serializer for an
+          // undefined body (dist/index.mjs:54) and sends no body at all.
+          body: input as never,
+          bodySerializer: () => tarballForm(input),
+        })
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.app(slug) });
+      void qc.invalidateQueries({ queryKey: keys.deployments });
+      void qc.invalidateQueries({ queryKey: keys.appDeployments(slug) });
+    },
+  });
+}
+
 export function useDeployFromRef(slug: string) {
   const qc = useQueryClient();
   return useMutation({
@@ -1053,6 +1194,43 @@ export function useDeleteDomain() {
       ),
     onError: (_err, _domain, rollback) => rollback?.(),
     onSettled: () => qc.invalidateQueries({ queryKey: keys.domains }),
+  });
+}
+
+export function useDomain(domain: string) {
+  return useQuery({
+    queryKey: [...keys.domains, domain],
+    queryFn: () => unwrap(api.GET('/v1/domains/{domain}', { params: { path: { domain } } })),
+    enabled: Boolean(domain),
+  });
+}
+
+/**
+ * Asks the platform to re-check DNS and re-issue the cert now, instead of
+ * waiting for the next sweep. Answers with the domain as it stands.
+ */
+export function useVerifyDomain() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (domain: string) =>
+      unwrap(api.POST('/v1/domains/{domain}/verify', { params: { path: { domain } } })),
+    onSettled: (_data, _err, domain) => {
+      void qc.invalidateQueries({ queryKey: keys.domains });
+      void qc.invalidateQueries({ queryKey: [...keys.domains, domain] });
+    },
+  });
+}
+
+/**
+ * The five-check report (ADR-120). Cached server-side for five minutes;
+ * `stale: true` on the report means the handler re-probed just now.
+ */
+export function useDomainDoctor(domain: string, enabled: boolean) {
+  return useQuery({
+    queryKey: [...keys.domains, domain, 'doctor'],
+    queryFn: () => unwrap(api.GET('/v1/domains/{domain}/doctor', { params: { path: { domain } } })),
+    enabled: enabled && Boolean(domain),
+    staleTime: 60_000,
   });
 }
 
@@ -1295,6 +1473,21 @@ export function useQueuePeek(slug: string) {
   });
 }
 
+/** Ack one queue row (idempotent server-side; the header makes retries safe too). */
+export function useAckQueueRow(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      unwrap(
+        api.POST('/v1/apps/{slug}/queues/{id}/ack', {
+          params: { path: { slug, id } },
+          headers: idem(),
+        })
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['apps', slug, 'queues'] }),
+  });
+}
+
 export function useDeadLetter(slug: string) {
   return useQuery({
     queryKey: ['apps', slug, 'queues', 'dead_letter'],
@@ -1420,6 +1613,17 @@ export function useStorageUsage(day: string) {
  * Returns a URL to the provider's hosted portal rather than a page we render —
  * card details never touch this app.
  */
+/**
+ * The portal response as a read: the card-on-file summary rides along with
+ * the URL. The mutation below stays for the "open the portal" click.
+ */
+export function useBillingPortalInfo() {
+  return useQuery({
+    queryKey: ['billing', 'portal'],
+    queryFn: () => unwrap(api.GET('/v1/billing/portal', {})),
+  });
+}
+
 export function useBillingPortal() {
   return useMutation({
     mutationFn: () => unwrap(api.GET('/v1/billing/portal', {})),
@@ -1559,6 +1763,39 @@ export function useUpdateCron() {
     mutationFn: ({ id, ...body }: { id: string } & components['schemas']['UpdateCronRequest']) =>
       unwrap(api.PATCH('/v1/crons/{id}', { params: { path: { id } }, body })),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.crons }),
+  });
+}
+
+/** The system-seeded alert-preset catalog (ADR-123); read-only for customers. */
+export function useAlertPresets() {
+  return useQuery({
+    queryKey: ['alert-presets'],
+    queryFn: () => unwrap(api.GET('/v1/alert-presets', {})),
+    staleTime: 10 * 60_000,
+  });
+}
+
+/**
+ * Clones a catalog row into a rule the app owns from then on; only the
+ * delivery fields are the caller's. Answers 201 with the new rule.
+ */
+export function useEnableAlertPreset(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      name,
+      body,
+    }: {
+      name: string;
+      body: components['schemas']['EnableAlertPresetRequest'];
+    }) =>
+      unwrap(
+        api.POST('/v1/apps/{slug}/alert-presets/{name}/enable', {
+          params: { path: { slug, name } },
+          body,
+        })
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.appAlerts(slug) }),
   });
 }
 
@@ -1816,6 +2053,166 @@ export function useUpdateEdgeRule() {
  * the plan ceiling so whatever it suggests is settable. Advice only — it is
  * the person who confirms, by creating the rule.
  */
+/** Idempotent POSTs (spec: IdempotencyKey) get a fresh key per attempt. */
+const idem = () => ({ 'Idempotency-Key': crypto.randomUUID() });
+
+/** The streaming classification probe — typed since phase 0, called by nobody until now. */
+export function useStreamingCap(slug: string) {
+  return useQuery({
+    queryKey: ['apps', slug, 'streaming-cap'],
+    queryFn: () => unwrap(api.GET('/v1/apps/{slug}/streaming-cap', { params: { path: { slug } } })),
+    enabled: Boolean(slug),
+  });
+}
+
+/** The env-diff matrix: presence and value-equality of every key across scopes. */
+export function useEnvDiff(slug: string) {
+  return useQuery({
+    queryKey: ['apps', slug, 'env-diff'],
+    queryFn: () => unwrap(api.GET('/v1/apps/{slug}/env-diff', { params: { path: { slug } } })),
+    enabled: Boolean(slug),
+  });
+}
+
+/** Manual rollout recovery: advance the canary, promote it, or abort. */
+export function useRecoverRollout(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: components['schemas']['RecoverRolloutRequest']) =>
+      unwrap(
+        api.POST('/v1/apps/{slug}/rollouts/recover', {
+          params: { path: { slug } },
+          body,
+          headers: idem(),
+        })
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.app(slug) });
+      void qc.invalidateQueries({ queryKey: keys.deployments });
+      void qc.invalidateQueries({ queryKey: keys.appDeployments(slug) });
+    },
+  });
+}
+
+/* ------------------------------------------------------------------ *
+ * Tenant surfaces — customer hostnames on a multi-tenant app
+ * ------------------------------------------------------------------ */
+
+export function useTenantSurfaces(slug: string) {
+  return useQuery({
+    queryKey: ['apps', slug, 'tenant-surfaces'],
+    queryFn: () =>
+      unwrap(api.GET('/v1/apps/{slug}/tenant-surfaces', { params: { path: { slug } } })),
+    enabled: Boolean(slug),
+  });
+}
+
+export function useCreateTenantSurface(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: components['schemas']['CreateTenantSurfaceRequest']) =>
+      unwrap(
+        api.POST('/v1/apps/{slug}/tenant-surfaces', {
+          params: { path: { slug } },
+          body,
+          headers: idem(),
+        })
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['apps', slug, 'tenant-surfaces'] }),
+  });
+}
+
+export function useDeleteTenantSurface(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      unwrap(
+        api.DELETE('/v1/apps/{slug}/tenant-surfaces/{id}', { params: { path: { slug, id } } })
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['apps', slug, 'tenant-surfaces'] }),
+  });
+}
+
+export function useAddTenantHostname(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, hostname }: { id: string; hostname: string }) =>
+      unwrap(
+        api.POST('/v1/apps/{slug}/tenant-surfaces/{id}/hostnames', {
+          params: { path: { slug, id } },
+          body: { hostname },
+          headers: idem(),
+        })
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['apps', slug, 'tenant-surfaces'] }),
+  });
+}
+
+export function useRemoveTenantHostname(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, hostname }: { id: string; hostname: string }) =>
+      unwrap(
+        api.DELETE('/v1/apps/{slug}/tenant-surfaces/{id}/hostnames/{hostname}', {
+          params: { path: { slug, id, hostname } },
+        })
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['apps', slug, 'tenant-surfaces'] }),
+  });
+}
+
+/* ------------------------------------------------------------------ *
+ * Traffic mirrors — shadow a candidate with live traffic, measure drift
+ * ------------------------------------------------------------------ */
+
+export function useMirrors(slug: string) {
+  return useQuery({
+    queryKey: ['apps', slug, 'mirrors'],
+    queryFn: () => unwrap(api.GET('/v1/apps/{slug}/mirrors', { params: { path: { slug } } })),
+    enabled: Boolean(slug),
+  });
+}
+
+export function useCreateMirror(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: components['schemas']['CreateMirrorRuleRequest']) =>
+      unwrap(api.POST('/v1/apps/{slug}/mirrors', { params: { path: { slug } }, body })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['apps', slug, 'mirrors'] }),
+  });
+}
+
+export function useUpdateMirror(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      ...body
+    }: { id: string } & components['schemas']['UpdateMirrorRuleRequest']) =>
+      unwrap(api.PATCH('/v1/apps/{slug}/mirrors/{id}', { params: { path: { slug, id } }, body })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['apps', slug, 'mirrors'] }),
+  });
+}
+
+export function useDeleteMirror(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      unwrap(api.DELETE('/v1/apps/{slug}/mirrors/{id}', { params: { path: { slug, id } } })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['apps', slug, 'mirrors'] }),
+  });
+}
+
+export function useMirrorSummary(slug: string, id: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['apps', slug, 'mirrors', id, 'summary'],
+    queryFn: () =>
+      unwrap(api.GET('/v1/apps/{slug}/mirrors/{id}/summary', { params: { path: { slug, id } } })),
+    enabled: enabled && Boolean(id),
+    refetchInterval: 30_000,
+  });
+}
+
 export function useThrottleSuggestions(slug: string, range: MetricsRange, enabled: boolean) {
   return useQuery({
     queryKey: ['apps', slug, 'throttle-suggestions', range],

@@ -1,8 +1,11 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { ArrowRight } from 'iconoir-react';
-import { PageHeader } from '@/components/dashboard/primitives';
+import { InlinePhase, PageHeader, Panel, queryPhase } from '@/components/dashboard/primitives';
 import { Pill } from '@/components/dashboard/resource-table';
+import { CopyIconButton } from '@/components/ui/copy-button';
+import { useTemplates } from '@/lib/api/queries';
 import { TEMPLATES } from '@/lib/templates';
+import { CATEGORY_LABEL, deployCommand, groupTemplates } from '@/lib/templates-catalog';
 import { pageHead } from '@/lib/seo';
 
 export const Route = createFileRoute('/dashboard/templates')({
@@ -56,6 +59,52 @@ function TemplatesPage() {
         Every scaffold is the runtime contract verbatim — the same envelope the runtime docs
         describe — so it runs unmodified on its first deploy.
       </p>
+
+      <CliStarters />
     </div>
+  );
+}
+
+/**
+ * The CLI's embedded catalog — `GET /v1/templates`, thirteen starters the
+ * console previously said nothing about. The console cannot materialise a
+ * directory, so each row hands over the exact command that does.
+ */
+function CliStarters() {
+  const catalog = useTemplates();
+  const phase = queryPhase({
+    error: catalog.error,
+    loading: catalog.isPending,
+    isEmpty: (catalog.data?.length ?? 0) === 0,
+  });
+  return (
+    <Panel
+      title="Starter projects"
+      description="Materialised by the CLI into a new directory, then deployed with one command."
+    >
+      {phase !== 'ready' ? (
+        <InlinePhase phase={phase} error={catalog.error} emptyMessage="No starters published." />
+      ) : (
+        <div className="flex flex-col gap-4">
+          {groupTemplates(catalog.data ?? []).map(([category, rows]) => (
+            <div key={category}>
+              <p className="label-mono mb-2 text-muted-foreground">{CATEGORY_LABEL[category]}</p>
+              <ul className="grid gap-2 sm:grid-cols-2">
+                {rows.map((t) => (
+                  <li key={t.name} className="rounded-lg border border-border p-3">
+                    <p className="text-sm font-medium">{t.name}</p>
+                    <p className="text-xs text-muted-foreground">{t.description}</p>
+                    <div className="mt-2 flex items-center gap-1.5">
+                      <code className="block font-mono text-[11px]">{deployCommand(t.name)}</code>
+                      <CopyIconButton text={deployCommand(t.name)} label={deployCommand(t.name)} />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
+    </Panel>
   );
 }

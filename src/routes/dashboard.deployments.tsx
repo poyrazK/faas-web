@@ -15,7 +15,18 @@ import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
 import { errorMessage } from '@/lib/api/errors';
-import { useUpdateDeploymentMinInstances, useUpdateDeploymentTraffic } from '@/lib/api/queries';
+import {
+  useDeploymentStages,
+  useRetryDeployment,
+  useUpdateDeploymentMinInstances,
+  useUpdateDeploymentTraffic,
+} from '@/lib/api/queries';
+import {
+  STAGE_LABEL,
+  STAGES,
+  StageTimeline,
+  type Stage,
+} from '@/components/dashboard/stage-timeline';
 import type { components } from '@/lib/api/schema';
 import { consoleHead } from '@/lib/seo';
 
@@ -161,6 +172,11 @@ function DeploymentDrawer({
   const detail = useDeployment(deployment?.id ?? '');
   const scan = useDeploymentScan(deployment?.id ?? '');
   const secretScan = useDeploymentSecretScan(deployment?.id ?? '');
+  const stages = useDeploymentStages(deployment?.id ?? '');
+  const retry = useRetryDeployment();
+  const [fromStage, setFromStage] = useState<Stage>('source_download');
+  const { toast } = useToast();
+  const confirm = useConfirm();
   const d = detail.data;
   const detailPhase = queryPhase({ error: detail.error, loading: detail.isPending, isEmpty: !d });
   const scanPhase = queryPhase({
@@ -200,6 +216,10 @@ function DeploymentDrawer({
               ['Build', d.build_id ?? '—'],
               ['Created', formatRelative(Date.parse(d.created_at))],
               ['Error', d.error ?? '—'],
+              ['Reason', d.reason ?? '—'],
+              ['Tag', d.tag ? d.tag.replaceAll('_', ' ') : '—'],
+              ['Deployed by', d.deployed_by ?? '—'],
+              ['Pull request', d.pr_number != null ? `#${d.pr_number}` : '—'],
             ].map(([k, v]) => (
               <div key={k} className="flex min-w-0 flex-col gap-0.5">
                 <dt className="label-mono text-muted-foreground">{k}</dt>
@@ -209,6 +229,76 @@ function DeploymentDrawer({
               </div>
             ))}
           </dl>
+
+          <div>
+            <p className="label-mono mb-2 text-muted-foreground">Pipeline</p>
+            {stages.data ? (
+              <StageTimeline stages={stages.data} />
+            ) : (
+              <InlinePhase
+                phase={queryPhase({
+                  error: stages.error,
+                  loading: stages.isPending,
+                  isEmpty: !stages.data,
+                })}
+                error={stages.error}
+                loadingMessage="Reading stages…"
+                emptyMessage="No stage record."
+              />
+            )}
+            {d.status === 'failed' && (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <select
+                  aria-label="Retry from stage"
+                  value={fromStage}
+                  onChange={(e) => setFromStage(e.target.value as Stage)}
+                  className="h-8 rounded-md border border-border bg-background px-2 font-mono text-xs outline-none focus:border-brand/50"
+                >
+                  {STAGES.map((s) => (
+                    <option key={s} value={s}>
+                      {STAGE_LABEL[s]}
+                    </option>
+                  ))}
+                </select>
+                <Button
+                  size="xs"
+                  variant="outline"
+                  busy={retry.isPending}
+                  onClick={async () => {
+                    if (
+                      !(await confirm({
+                        title: `Retry from ${STAGE_LABEL[fromStage]}?`,
+                        description:
+                          fromStage === 'source_download'
+                            ? 'Re-runs the whole pipeline as a new deployment.'
+                            : 'Resumes from this stage with the earlier inputs copied over, as a new deployment.',
+                        confirmLabel: 'Retry',
+                      }))
+                    )
+                      return;
+                    void retry
+                      .mutateAsync({ id: d.id, from_stage: fromStage })
+                      .then((next) =>
+                        toast({
+                          kind: 'success',
+                          title: 'Retry started',
+                          description: `New deployment ${next.id}`,
+                        })
+                      )
+                      .catch((err: unknown) =>
+                        toast({
+                          kind: 'error',
+                          title: 'Could not retry',
+                          description: errorMessage(err),
+                        })
+                      );
+                  }}
+                >
+                  Retry from stage
+                </Button>
+              </div>
+            )}
+          </div>
 
           <DeploymentControls deployment={d} version={deployment?.version ?? d.id} />
 

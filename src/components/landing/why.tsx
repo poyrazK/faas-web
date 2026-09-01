@@ -88,7 +88,7 @@ export const REASONS: readonly Reason[] = [
   },
   {
     title: 'One CLI, one API',
-    body: 'Deploys, schedules, domains, secrets and logs behind one CLI and one API — the same surface for you and for the agents you run.',
+    body: 'Deploys, schedules, domains, secrets and logs behind one CLI and one API — the same surface for you and for the agents you run. Invite the team with seats and roles; every write lands in the audit log.',
     mosaic: [
       [1, 0, 2],
       [2, 1, 0],

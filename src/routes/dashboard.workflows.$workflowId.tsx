@@ -21,6 +21,7 @@ import {
   useBindRepo,
   useBuilds,
   useDeployFromRef,
+  useDeployTarball,
   useParkApp,
   useWakeApp,
   type MetricsRange,
@@ -29,6 +30,11 @@ import { useData } from '@/lib/store';
 import { useToast } from '@/components/ui/toast';
 import { useConfirm } from '@/components/ui/confirm';
 import { errorMessage } from '@/lib/api/errors';
+import { DeployAnnotations } from '@/components/dashboard/deploy-annotations';
+import { TarballDeployForm } from '@/components/dashboard/tarball-deploy';
+import { MirrorsPanel } from '@/components/dashboard/mirrors';
+import { RolloutRecoveryBar } from '@/components/dashboard/rollout-recovery';
+import { annotationsBody, EMPTY_ANNOTATIONS, type AnnotationDraft } from '@/lib/deploy-annotations';
 import { useAuth } from '@/lib/auth';
 import { isPaidPlan } from '@/lib/plan';
 import { cn } from '@/lib/utils';
@@ -127,6 +133,8 @@ function FunctionDetailPage() {
   const park = useParkApp();
   const wake = useWakeApp();
   const deployFromRef = useDeployFromRef(workflowId);
+  const [deployAnnotations, setDeployAnnotations] = useState<AnnotationDraft>(EMPTY_ANNOTATIONS);
+  const deployTarball = useDeployTarball(workflowId);
   const bindRepo = useBindRepo(workflowId);
   const [deployOpen, setDeployOpen] = useState(false);
   const [deployRepo, setDeployRepo] = useState('');
@@ -519,6 +527,7 @@ function FunctionDetailPage() {
 
             {tab === 'Deployments' && (
               <>
+                <RolloutRecoveryBar slug={fn.id} />
                 <Panel title="Deployment history" description={`${deployments.length} deployments`}>
                   {deployments.length === 0 ? (
                     <EmptyState message="No deployments yet. Deploy a Git ref or use the CLI." />
@@ -572,6 +581,40 @@ function FunctionDetailPage() {
                     onClose={() => void navigate({ search: { tab: 'Deployments' }, replace: true })}
                   />
                 )}
+                <Panel
+                  title="Deploy an archive"
+                  description="Upload a .tar.gz of the repo root. Same build pipeline as a git deploy."
+                >
+                  <TarballDeployForm
+                    busy={deployTarball.isPending}
+                    onSubmit={(file, sidecar) =>
+                      void deployTarball
+                        .mutateAsync({ file, sidecar })
+                        .then((d) => {
+                          toast({
+                            kind: 'success',
+                            title: 'Archive queued',
+                            description: `Deployment ${d.id.slice(0, 8)} is building.`,
+                          });
+                          void refresh();
+                        })
+                        .catch((err) =>
+                          toast({
+                            kind: 'error',
+                            title: 'Upload failed',
+                            description: errorMessage(err),
+                          })
+                        )
+                    }
+                  />
+                </Panel>
+                <MirrorsPanel
+                  slug={fn.id}
+                  deployments={deployments.map((dep) => ({
+                    id: dep.id,
+                    label: `${dep.id.slice(0, 8)} · ${dep.status ?? dep.state}`,
+                  }))}
+                />
               </>
             )}
 
@@ -620,6 +663,7 @@ function FunctionDetailPage() {
                     repo: deployRepo.trim(),
                     ref: deployRef.trim(),
                     format: 'tarball',
+                    ...annotationsBody(deployAnnotations),
                   })
                   .then((deployment) => {
                     setActiveDeployment({
@@ -691,6 +735,14 @@ function FunctionDetailPage() {
               className="h-9 rounded-md border border-border bg-background px-3 font-mono text-sm outline-none focus:border-brand/50"
             />
           </label>
+          <details>
+            <summary className="cursor-pointer text-sm text-muted-foreground">
+              Annotations (optional)
+            </summary>
+            <div className="mt-3">
+              <DeployAnnotations value={deployAnnotations} onChange={setDeployAnnotations} />
+            </div>
+          </details>
         </div>
       </Modal>
     </div>

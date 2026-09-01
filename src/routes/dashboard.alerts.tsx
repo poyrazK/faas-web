@@ -4,15 +4,18 @@ import { Plus, Refresh, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { FIELD } from '@/components/ui/field';
 import { Switch } from '@/components/ui/switch';
-import { PageHeader, Panel } from '@/components/dashboard/primitives';
+import { InlinePhase, PageHeader, Panel, queryPhase } from '@/components/dashboard/primitives';
+import { PresetPicker } from '@/components/dashboard/alert-presets';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
 import { useToast } from '@/components/ui/toast';
 import { useConfirm } from '@/components/ui/confirm';
 import {
+  useAlertPresets,
   useAlerts,
   useCreateAlert,
   useDeleteAlert,
+  useEnableAlertPreset,
   useRotateAlertSecret,
   useUpdateAlert,
 } from '@/lib/api/queries';
@@ -66,6 +69,8 @@ export function AlertsBody({ slug }: { slug: string }) {
   const updateAlert = useUpdateAlert(slug);
   const rotateSecret = useRotateAlertSecret(slug);
   const createAlert = useCreateAlert(slug);
+  const presets = useAlertPresets();
+  const enablePreset = useEnableAlertPreset(slug);
 
   const [name, setName] = useState('');
   const [metric, setMetric] = useState<Metric>('error_rate_pct');
@@ -226,6 +231,41 @@ export function AlertsBody({ slug }: { slug: string }) {
   return (
     <div className="flex flex-col gap-6">
       <Panel
+        title="Start from a preset"
+        description="Eight rules the platform recommends. Enabling one creates a normal rule you can edit below."
+      >
+        {presets.data ? (
+          <PresetPicker
+            presets={presets.data}
+            busy={enablePreset.isPending}
+            onEnable={(name, body) =>
+              void enablePreset
+                .mutateAsync({ name, body })
+                .then((rule) => toast({ kind: 'success', title: `${rule.name} enabled` }))
+                .catch((err: unknown) =>
+                  toast({
+                    kind: 'error',
+                    title: 'Could not enable preset',
+                    description: errorMessage(err),
+                  })
+                )
+            }
+          />
+        ) : (
+          <InlinePhase
+            phase={queryPhase({
+              error: presets.error,
+              loading: presets.isPending,
+              isEmpty: !presets.data,
+            })}
+            error={presets.error}
+            loadingMessage="Reading the catalog…"
+            emptyMessage="No presets in the catalog."
+          />
+        )}
+      </Panel>
+
+      <Panel
         lit
         title="Add a rule"
         description="When the metric crosses the threshold for the window, a signed payload is POSTed to the webhook. The secret is sealed on save and never shown again."
@@ -238,6 +278,7 @@ export function AlertsBody({ slug }: { slug: string }) {
             void createAlert
               .mutateAsync({
                 name: name.trim(),
+                action: 'webhook',
                 metric,
                 comparison,
                 threshold: Number(threshold),
