@@ -1,4 +1,4 @@
-import { issueCSRF, type CSRFAction } from './client';
+import { issueCSRF } from './client';
 import { ApiError, toApiError } from './errors';
 
 /**
@@ -9,9 +9,7 @@ import { ApiError, toApiError } from './errors';
  *
  * The route is a same-site form POST, so apid (ADR-140, poyrazK/faas#1281)
  * demands a `csrf_token` bound to the `set_password` action; it is minted
- * from `/v1/auth/csrf` and double-submitted with the form. Accounts that
- * already have a password will also be asked for `current_password` — that
- * step is a follow-up once `GET /v1/account` reports `has_password`.
+ * from `/v1/auth/csrf` and double-submitted with the form.
  *
  * The path sits under `/dashboard/…`, which the SPA fallback also owns, so a
  * host that has not routed the POST answers it with `index.html` — a 200 that
@@ -22,14 +20,22 @@ import { ApiError, toApiError } from './errors';
 export async function setAccountPassword(
   password: string,
   {
-    mintCSRF = mintSetPasswordCSRF,
-  }: { mintCSRF?: (action: 'set_password') => Promise<string> } = {}
+    currentPassword,
+    mintCSRF = issueCSRF,
+  }: {
+    /** Sent only when non-empty: the server treats a present-but-wrong value
+     *  and an absent one identically (401), so an empty string buys nothing. */
+    currentPassword?: string;
+    mintCSRF?: (action: 'set_password') => Promise<string>;
+  } = {}
 ): Promise<void> {
   const csrf_token = await mintCSRF('set_password');
+  const form = new URLSearchParams({ password, csrf_token });
+  if (currentPassword) form.set('current_password', currentPassword);
   const res = await fetch('/dashboard/account/set-password', {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ password, csrf_token }),
+    body: form,
     redirect: 'follow',
   });
   if (res.redirected) return;
@@ -44,11 +50,4 @@ export async function setAccountPassword(
     });
   }
   throw await toApiError(res);
-}
-
-// `set_password` joins the CSRF action allowlist in poyrazK/faas#1281. The
-// vendored spec predates it, so the generated enum does not know the value
-// yet; drop the cast after the next `npm run api:pull`.
-function mintSetPasswordCSRF(action: 'set_password'): Promise<string> {
-  return issueCSRF(action as unknown as CSRFAction);
 }

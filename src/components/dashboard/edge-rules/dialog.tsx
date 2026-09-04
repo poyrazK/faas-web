@@ -163,6 +163,7 @@ export function EdgeRuleDialog({
       match_methods: match.match_methods,
       priority: match.priority,
       enabled: match.enabled,
+      validate_mode: rule?.validate_mode ?? 'block',
       action,
     };
 

@@ -245,6 +245,7 @@ export function AlertsBody({ slug }: { slug: string }) {
                 webhook_url: webhookUrl.trim(),
                 webhook_secret: secret,
                 cooldown_minutes: Number(cooldown) || 30,
+                action: 'webhook',
               })
               .then((rule) => {
                 setName('');
