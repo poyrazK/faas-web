@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
   type ReactNode,
@@ -24,8 +25,15 @@ import { useQueryClient } from '@tanstack/react-query';
 
 type MfaMode = 'choose' | 'confirm' | 'verify' | 'recover';
 
+interface MfaOpenOptions {
+  /** After a successful confirm / verify / recover — the session now carries a fresh step-up. */
+  onVerified?: () => void;
+  /** The modal closed without success. */
+  onDismissed?: () => void;
+}
+
 interface MfaContextValue {
-  openMfa: (mode?: MfaMode) => void;
+  openMfa: (mode?: MfaMode, opts?: MfaOpenOptions) => void;
 }
 
 const MfaContext = createContext<MfaContextValue | null>(null);
@@ -49,6 +57,7 @@ export function MfaProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [required, setRequired] = useState(false);
+  const pending = useRef<MfaOpenOptions | null>(null);
 
   const resetTransient = useCallback(() => {
     setEnrollment(null);
@@ -57,9 +66,10 @@ export function MfaProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const openMfa = useCallback(
-    (nextMode: MfaMode = 'choose') => {
+    (nextMode: MfaMode = 'choose', opts?: MfaOpenOptions) => {
       resetTransient();
       setRequired(false);
+      pending.current = opts ?? null;
       setMode(nextMode);
       setOpen(true);
     },
@@ -67,6 +77,7 @@ export function MfaProvider({ children }: { children: ReactNode }) {
   );
 
   const handleMfaRequired = useCallback(() => {
+    pending.current = null;
     setError(null);
     setRequired(true);
     setMode('choose');
@@ -79,7 +90,11 @@ export function MfaProvider({ children }: { children: ReactNode }) {
   }, [handleMfaRequired]);
 
   const close = useCallback(() => {
-    if (!busy) setOpen(false);
+    if (busy) return;
+    setOpen(false);
+    const cb = pending.current;
+    pending.current = null;
+    cb?.onDismissed?.();
   }, [busy]);
 
   const startEnrollment = useCallback(async () => {
@@ -114,6 +129,9 @@ export function MfaProvider({ children }: { children: ReactNode }) {
     // the page that triggered the gate recovers immediately after the cookie
     // is re-issued without mfa_pending.
     await queryClient.invalidateQueries();
+    const cb = pending.current;
+    pending.current = null;
+    cb?.onVerified?.();
   }, [queryClient, resetTransient]);
 
   const submit = useCallback(

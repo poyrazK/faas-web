@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   ArrowLeft,
@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import { Panel } from '@/components/dashboard/primitives';
 import { EASE } from '@/components/dashboard/motion';
+import { useMfa } from '@/components/auth/mfa-provider';
 import { MIN_PASSWORD_LENGTH, useAuth } from '@/lib/auth';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import { setAccountPassword } from '@/lib/api/password';
@@ -159,6 +160,7 @@ export function PasswordWizard({
   email,
   setPassword,
   requestReset,
+  stepUp,
   onSet,
 }: {
   email: string;
@@ -166,6 +168,8 @@ export function PasswordWizard({
   setPassword: (password: string, options?: { currentPassword?: string }) => Promise<void>;
   /** Always resolves — the server answers identically for an unknown address. */
   requestReset: (email: string) => Promise<void>;
+  /** Opens the MFA modal and resolves when the session has a fresh step-up. */
+  stepUp?: (reason: 'step_up_required' | 'mfa_required') => Promise<boolean>;
   /** Fired once the password has landed, for the page-level toast. */
   onSet?: () => void;
 }) {
@@ -176,7 +180,16 @@ export function PasswordWizard({
   const [current, setCurrent] = useState('');
   const [touched, setTouched] = useState(false);
   const [pending, setPending] = useState(false);
+  const [cooldown, setCooldown] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const cooldownTimer = useRef<number | null>(null);
+
+  useEffect(
+    () => () => {
+      if (cooldownTimer.current) window.clearTimeout(cooldownTimer.current);
+    },
+    []
+  );
 
   const longEnough = chosen.length >= MIN_PASSWORD_LENGTH;
   const tooShort = chosen.length > 0 && !longEnough;
@@ -192,11 +205,14 @@ export function PasswordWizard({
     setRetyped('');
     setCurrent('');
     setTouched(false);
+    if (cooldownTimer.current) window.clearTimeout(cooldownTimer.current);
+    cooldownTimer.current = null;
+    setCooldown(false);
     go('idle');
   };
 
   const submit = async () => {
-    if (!matches || !longEnough || pending) return;
+    if (!matches || !longEnough || pending || cooldown) return;
     setPending(true);
     setError(null);
     try {
@@ -218,6 +234,32 @@ export function PasswordWizard({
         } else {
           setStep('verify-password');
         }
+      } else if (
+        err instanceof ApiError &&
+        (err.code === 'step_up_required' || err.code === 'mfa_required')
+      ) {
+        if (stepUp && (await stepUp(err.code))) {
+          // Fresh stamp on the cookie: the same form now passes. Re-enter
+          // submit rather than duplicating it; pending is reset first.
+          setPending(false);
+          await submit();
+          return;
+        }
+        setError(
+          err.code === 'mfa_required'
+            ? 'Set up two-factor authentication to change the password.'
+            : 'Verify with your authenticator to change the password.'
+        );
+      } else if (err instanceof ApiError && err.code === 'rate_limited') {
+        setError(errorMessage(err));
+        setCooldown(true);
+        if (cooldownTimer.current) window.clearTimeout(cooldownTimer.current);
+        // The limiter's window is a minute; hold the button for it rather
+        // than letting the person burn the next window immediately.
+        cooldownTimer.current = window.setTimeout(() => {
+          cooldownTimer.current = null;
+          setCooldown(false);
+        }, 60_000);
       } else if (err instanceof ApiError && err.code === 'password_too_weak') {
         setError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
       } else {
@@ -355,7 +397,7 @@ export function PasswordWizard({
                 size="sm"
                 variant="cta"
                 className="gap-1.5"
-                disabled={!matches || retyped.length === 0}
+                disabled={!matches || retyped.length === 0 || cooldown}
                 busy={pending}
               >
                 Set password
@@ -404,7 +446,7 @@ export function PasswordWizard({
                 size="sm"
                 variant="cta"
                 className="gap-1.5"
-                disabled={current.length === 0}
+                disabled={current.length === 0 || cooldown}
                 busy={pending}
               >
                 Change password
@@ -489,12 +531,23 @@ export function PasswordWizard({
 export function PasswordPanel() {
   const { account, user, requestPasswordReset } = useAuth();
   const { toast } = useToast();
+  const { openMfa } = useMfa();
   const email = account?.email ?? user?.email ?? '';
+  const stepUp = (reason: 'step_up_required' | 'mfa_required') =>
+    new Promise<boolean>((resolve) => {
+      // Enrolment ('choose' → 'confirm') also stamps the session, so both
+      // reasons resolve the same way once the modal reports success.
+      openMfa(reason === 'mfa_required' ? 'choose' : 'verify', {
+        onVerified: () => resolve(true),
+        onDismissed: () => resolve(false),
+      });
+    });
   return (
     <PasswordWizard
       email={email}
       setPassword={setAccountPassword}
       requestReset={requestPasswordReset}
+      stepUp={stepUp}
       onSet={() =>
         toast({
           kind: 'success',

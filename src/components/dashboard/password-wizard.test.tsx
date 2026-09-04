@@ -181,4 +181,108 @@ describe('PasswordWizard', () => {
     await waitFor(() => expect(requestReset).toHaveBeenCalledWith(EMAIL));
     expect(await screen.findByText(/is registered/i)).toBeInTheDocument();
   });
+
+  it('runs the MFA step-up on step_up_required and retries once verified', async () => {
+    const gated = new ApiError({ status: 403, code: 'step_up_required', title: 'Step-up' });
+    const setPassword = vi
+      .fn<(password: string, opts?: { currentPassword?: string }) => Promise<void>>()
+      .mockRejectedValueOnce(gated)
+      .mockResolvedValueOnce();
+    const stepUp = vi.fn().mockResolvedValue(true);
+    const { user } = setup({ setPassword, stepUp });
+    const confirm = await reachConfirm(user);
+    await user.type(confirm, STRONG);
+    await user.click(screen.getByRole('button', { name: /set password/i }));
+
+    expect(await screen.findByText(/email sign-in is on/i)).toBeInTheDocument();
+    expect(stepUp).toHaveBeenCalledTimes(1);
+    expect(stepUp).toHaveBeenCalledWith('step_up_required');
+    expect(setPassword).toHaveBeenCalledTimes(2);
+  });
+
+  it('runs MFA enrolment on mfa_required and retries once confirmed', async () => {
+    const policy = new ApiError({ status: 403, code: 'mfa_required', title: 'MFA required' });
+    const setPassword = vi
+      .fn<(password: string, opts?: { currentPassword?: string }) => Promise<void>>()
+      .mockRejectedValueOnce(policy)
+      .mockResolvedValueOnce();
+    const stepUp = vi.fn().mockResolvedValue(true);
+    const { user } = setup({ setPassword, stepUp });
+    const confirm = await reachConfirm(user);
+    await user.type(confirm, STRONG);
+    await user.click(screen.getByRole('button', { name: /set password/i }));
+
+    expect(await screen.findByText(/email sign-in is on/i)).toBeInTheDocument();
+    expect(stepUp).toHaveBeenCalledWith('mfa_required');
+    expect(setPassword).toHaveBeenCalledTimes(2);
+  });
+
+  it('explains when enrolment is dismissed', async () => {
+    const policy = new ApiError({ status: 403, code: 'mfa_required', title: 'MFA required' });
+    const { user } = setup({
+      setPassword: vi.fn().mockRejectedValue(policy),
+      stepUp: vi.fn().mockResolvedValue(false),
+    });
+    const confirm = await reachConfirm(user);
+    await user.type(confirm, STRONG);
+    await user.click(screen.getByRole('button', { name: /set password/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/set up two-factor/i);
+  });
+
+  it('stays on Confirm with a note when the step-up is dismissed', async () => {
+    const gated = new ApiError({ status: 403, code: 'step_up_required', title: 'Step-up' });
+    const setPassword = vi.fn().mockRejectedValue(gated);
+    const stepUp = vi.fn().mockResolvedValue(false);
+    const { user } = setup({ setPassword, stepUp });
+    const confirm = await reachConfirm(user);
+    await user.type(confirm, STRONG);
+    await user.click(screen.getByRole('button', { name: /set password/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/verify with your authenticator/i);
+    expect(screen.getByLabelText(/confirm password/i)).toBeInTheDocument();
+    expect(setPassword).toHaveBeenCalledTimes(1);
+  });
+
+  it('explains when no step-up is available', async () => {
+    const gated = new ApiError({ status: 403, code: 'step_up_required', title: 'Step-up' });
+    const { user } = setup({ setPassword: vi.fn().mockRejectedValue(gated) });
+    const confirm = await reachConfirm(user);
+    await user.type(confirm, STRONG);
+    await user.click(screen.getByRole('button', { name: /set password/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/verify with your authenticator/i);
+  });
+
+  it('tells the user to wait when the limiter answers 429', async () => {
+    const limited = new ApiError({
+      status: 429,
+      code: 'rate_limited',
+      title: 'Too Many Requests',
+      detail: 'Too many attempts. Wait a minute and try again.',
+    });
+    const { user } = setup({ setPassword: vi.fn().mockRejectedValue(limited) });
+    const confirm = await reachConfirm(user);
+    await user.type(confirm, STRONG);
+    await user.click(screen.getByRole('button', { name: /set password/i }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/too many attempts/i);
+    expect(screen.getByRole('button', { name: /set password/i })).toBeDisabled();
+  });
+
+  it('asks for a reload when the CSRF token is stale', async () => {
+    const stale = new ApiError({
+      status: 400,
+      code: 'validation_failed',
+      title: 'Invalid CSRF token',
+      detail: 'please reload the page and try again',
+    });
+    const { user } = setup({ setPassword: vi.fn().mockRejectedValue(stale) });
+    const confirm = await reachConfirm(user);
+    await user.type(confirm, STRONG);
+    await user.click(screen.getByRole('button', { name: /set password/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/reload/i);
+  });
 });
