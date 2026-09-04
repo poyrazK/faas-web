@@ -15,7 +15,9 @@ const EMAIL = 'design@gregale.dev';
 const STRONG = 'correct-horse-battery';
 
 function setup(overrides: Partial<Parameters<typeof PasswordWizard>[0]> = {}) {
-  const setPassword = vi.fn<(password: string) => Promise<void>>().mockResolvedValue();
+  const setPassword = vi
+    .fn<(password: string, opts?: { currentPassword?: string }) => Promise<void>>()
+    .mockResolvedValue();
   const requestReset = vi.fn<(email: string) => Promise<void>>().mockResolvedValue();
   render(
     <PasswordWizard
@@ -77,7 +79,7 @@ describe('PasswordWizard', () => {
     expect(await screen.findByText(/email sign-in is on/i)).toBeInTheDocument();
     expect(screen.getByText(EMAIL)).toBeInTheDocument();
     expect(setPassword).toHaveBeenCalledTimes(1);
-    expect(setPassword).toHaveBeenCalledWith(STRONG);
+    expect(setPassword).toHaveBeenCalledWith(STRONG, { currentPassword: undefined });
   });
 
   it('restates the length rule when the server refuses the password as weak', async () => {
@@ -115,6 +117,68 @@ describe('PasswordWizard', () => {
     await waitFor(() => expect(requestReset).toHaveBeenCalledWith(EMAIL));
     // The server answers identically for an unknown address, so the copy must
     // hedge rather than promise.
+    expect(await screen.findByText(/is registered/i)).toBeInTheDocument();
+  });
+
+  it('asks for the current password after invalid_credentials and retries with it', async () => {
+    const denied = new ApiError({
+      status: 401,
+      code: 'invalid_credentials',
+      title: 'Invalid credentials',
+    });
+    const setPassword = vi
+      .fn<(password: string, opts?: { currentPassword?: string }) => Promise<void>>()
+      .mockRejectedValueOnce(denied)
+      .mockResolvedValueOnce();
+    const { user } = setup({ setPassword });
+    const confirm = await reachConfirm(user);
+    await user.type(confirm, STRONG);
+    await user.click(screen.getByRole('button', { name: /set password/i }));
+
+    const current = await screen.findByLabelText(/current password/i);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    await user.type(current, 'the-old-password-1');
+    await user.click(screen.getByRole('button', { name: /change password/i }));
+
+    expect(await screen.findByText(/email sign-in is on/i)).toBeInTheDocument();
+    expect(setPassword).toHaveBeenCalledTimes(2);
+    expect(setPassword).toHaveBeenNthCalledWith(1, STRONG, { currentPassword: undefined });
+    expect(setPassword).toHaveBeenNthCalledWith(2, STRONG, {
+      currentPassword: 'the-old-password-1',
+    });
+  });
+
+  it('says the current password is wrong when the retry is refused again', async () => {
+    const denied = new ApiError({
+      status: 401,
+      code: 'invalid_credentials',
+      title: 'Invalid credentials',
+    });
+    const { user } = setup({ setPassword: vi.fn().mockRejectedValue(denied) });
+    const confirm = await reachConfirm(user);
+    await user.type(confirm, STRONG);
+    await user.click(screen.getByRole('button', { name: /set password/i }));
+    await user.type(await screen.findByLabelText(/current password/i), 'wrong-guess-here');
+    await user.click(screen.getByRole('button', { name: /change password/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/current password is incorrect/i);
+    expect(screen.getByLabelText(/current password/i)).toHaveValue('');
+  });
+
+  it('offers the reset link from the current-password step', async () => {
+    const denied = new ApiError({
+      status: 401,
+      code: 'invalid_credentials',
+      title: 'Invalid credentials',
+    });
+    const { user, requestReset } = setup({ setPassword: vi.fn().mockRejectedValue(denied) });
+    const confirm = await reachConfirm(user);
+    await user.type(confirm, STRONG);
+    await user.click(screen.getByRole('button', { name: /set password/i }));
+    await screen.findByLabelText(/current password/i);
+    await user.click(screen.getByRole('button', { name: /reset link/i }));
+
+    await waitFor(() => expect(requestReset).toHaveBeenCalledWith(EMAIL));
     expect(await screen.findByText(/is registered/i)).toBeInTheDocument();
   });
 });

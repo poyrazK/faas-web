@@ -24,12 +24,11 @@ import { cn } from '@/lib/utils';
  *
  * The API exposes exactly one write here — set a password — and no way to ask
  * whether the account already has one. So the wizard does not pretend to know:
- * the idle state offers both doors, and the reset link is the honest route for
- * someone who wants to *change* a password, since that is the only server path
- * that re-verifies anything. A "current password" step would be theatre.
+ * the idle state offers both doors. If the server tells us that a password
+ * already exists, the wizard asks for it before allowing the replacement.
  */
 
-type Step = 'idle' | 'choose' | 'confirm' | 'done' | 'reset-sent';
+type Step = 'idle' | 'choose' | 'confirm' | 'verify-password' | 'done' | 'reset-sent';
 
 const STEPS: { key: Step; label: string }[] = [
   { key: 'choose', label: 'Choose' },
@@ -164,7 +163,7 @@ export function PasswordWizard({
 }: {
   email: string;
   /** Rejects with an `ApiError`; a 400 is the length rule. */
-  setPassword: (password: string) => Promise<void>;
+  setPassword: (password: string, options?: { currentPassword?: string }) => Promise<void>;
   /** Always resolves — the server answers identically for an unknown address. */
   requestReset: (email: string) => Promise<void>;
   /** Fired once the password has landed, for the page-level toast. */
@@ -174,6 +173,7 @@ export function PasswordWizard({
   const [step, setStep] = useState<Step>('idle');
   const [chosen, setChosen] = useState('');
   const [retyped, setRetyped] = useState('');
+  const [current, setCurrent] = useState('');
   const [touched, setTouched] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -190,6 +190,7 @@ export function PasswordWizard({
   const reset = () => {
     setChosen('');
     setRetyped('');
+    setCurrent('');
     setTouched(false);
     go('idle');
   };
@@ -199,9 +200,10 @@ export function PasswordWizard({
     setPending(true);
     setError(null);
     try {
-      await setPassword(chosen);
+      await setPassword(chosen, { currentPassword: current || undefined });
       setChosen('');
       setRetyped('');
+      setCurrent('');
       setTouched(false);
       setStep('done');
       onSet?.();
@@ -209,7 +211,14 @@ export function PasswordWizard({
       // The length rule is the one refusal worth restating as a rule rather
       // than a rejection. Branch on the code: a 400 can also be a stale CSRF
       // token, and that one wants the server's "reload and try again".
-      if (err instanceof ApiError && err.code === 'password_too_weak') {
+      if (err instanceof ApiError && err.code === 'invalid_credentials') {
+        if (step === 'verify-password') {
+          setCurrent('');
+          setError('Current password is incorrect.');
+        } else {
+          setStep('verify-password');
+        }
+      } else if (err instanceof ApiError && err.code === 'password_too_weak') {
         setError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
       } else {
         setError(errorMessage(err));
@@ -245,7 +254,7 @@ export function PasswordWizard({
   return (
     <Panel
       title="Email sign-in"
-      description="Accounts created through Google or GitHub have no password. Adding one lets you sign in with email as well, without touching the provider link."
+      description="Set a password to sign in with email, or replace the one you have. Google and GitHub keep working either way."
     >
       <AnimatePresence mode="wait" initial={false}>
         {step === 'idle' && (
@@ -357,6 +366,62 @@ export function PasswordWizard({
                   setRetyped('');
                   setTouched(false);
                   go('choose');
+                }}
+              >
+                Back
+              </BackLink>
+            </div>
+          </motion.form>
+        )}
+
+        {step === 'verify-password' && (
+          <motion.form
+            key="verify-password"
+            {...slide}
+            className="flex flex-col gap-4"
+            noValidate
+            onSubmit={(e) => {
+              e.preventDefault();
+              void submit();
+            }}
+          >
+            <StepRail current="confirm" />
+            <p className="max-w-sm text-sm text-muted-foreground">
+              This account already has a password. Enter it to replace it.
+            </p>
+            <PasswordField
+              id="password-current"
+              label="Current password"
+              value={current}
+              onChange={setCurrent}
+              autoComplete="current-password"
+              invalid={Boolean(error)}
+            />
+            {error && <Refusal message={error} />}
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                type="submit"
+                size="sm"
+                variant="cta"
+                className="gap-1.5"
+                disabled={current.length === 0}
+                busy={pending}
+              >
+                Change password
+                <Check className="h-3.5 w-3.5" />
+              </Button>
+              <button
+                type="button"
+                onClick={() => void sendReset()}
+                disabled={pending}
+                className="text-sm text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+              >
+                Forgot it? Email me a reset link
+              </button>
+              <BackLink
+                onClick={() => {
+                  setCurrent('');
+                  go('confirm');
                 }}
               >
                 Back
