@@ -1254,9 +1254,8 @@ route('POST', '/dashboard/account/set-password', ({ body, res }) => {
       throw new Problem(401, 'invalid_credentials', 'Email or password is incorrect.');
   }
   mockAuth.password = next;
-  res.statusCode = 302;
   res.setHeader('location', '/dashboard/account');
-  return '';
+  return status(302, '');
 });
 
 // --- Billing & account controls ---
