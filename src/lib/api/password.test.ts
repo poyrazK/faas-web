@@ -74,4 +74,48 @@ describe('setAccountPassword', () => {
       code: 'password_too_weak',
     });
   });
+
+  it('sends current_password when the caller supplies one', async () => {
+    const fetchMock = stubFetch(answer({ status: 200, redirected: true }));
+
+    await setAccountPassword('correct-horse-battery', {
+      mintCSRF,
+      currentPassword: 'the-old-password-1',
+    });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(String(init.body)).toBe(
+      'password=correct-horse-battery&csrf_token=tok-1&current_password=the-old-password-1'
+    );
+  });
+
+  it('omits current_password entirely when it is not supplied or empty', async () => {
+    const fetchMock = stubFetch(answer({ status: 200, redirected: true }));
+
+    await setAccountPassword('correct-horse-battery', { mintCSRF, currentPassword: '' });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(String(init.body)).not.toContain('current_password');
+  });
+
+  it('surfaces step_up_required and rate_limited with their codes', async () => {
+    stubFetch(
+      answer({
+        status: 403,
+        type: 'application/problem+json',
+        body: JSON.stringify({ status: 403, code: 'step_up_required', title: 'Step-up required' }),
+      })
+    );
+    await expect(setAccountPassword('correct-horse-battery', { mintCSRF })).rejects.toMatchObject({
+      status: 403,
+      code: 'step_up_required',
+    });
+
+    // The auth limiter answers plain text; toApiError synthesises the code.
+    stubFetch(answer({ status: 429, type: 'text/plain', body: 'rate limited' }));
+    await expect(setAccountPassword('correct-horse-battery', { mintCSRF })).rejects.toMatchObject({
+      status: 429,
+      code: 'rate_limited',
+    });
+  });
 });
