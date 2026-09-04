@@ -262,6 +262,24 @@ export function CommandPalette({
     };
   }, [open]);
 
+  useEffect(() => {
+    if (!open) return;
+
+    // Escape can originate on the opener while the palette is mounting, so an
+    // element handler would never see it. Only the topmost dialog may claim
+    // the key; a Modal rendered above the palette keeps its own dismissal.
+    const onEscape = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      const dialogs = document.querySelectorAll<HTMLElement>('[role="dialog"][aria-modal="true"]');
+      if (dialogs[dialogs.length - 1] !== dialogRef.current) return;
+      e.preventDefault();
+      close();
+    };
+
+    document.addEventListener('keydown', onEscape);
+    return () => document.removeEventListener('keydown', onEscape);
+  }, [open, close]);
+
   // Keep the highlighted row visible while arrowing through a long list.
   useEffect(() => {
     if (!open) return;
@@ -270,10 +288,6 @@ export function CommandPalette({
   }, [active, open]);
 
   const onKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      close();
-    }
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       setActive((i) => (results.length ? (i + 1) % results.length : 0));
