@@ -10,6 +10,11 @@
       "dest": "https://api.gregale.dev/dashboard/install/connect"
     },
     {
+      "src": "^/dashboard/account/set-password$",
+      "methods": ["POST"],
+      "dest": "https://api.gregale.dev/dashboard/account/set-password"
+    },
+    {
       "src": "^/cli-auth$",
       "methods": ["GET", "HEAD", "POST", "OPTIONS"],
       "dest": "https://api.gregale.dev/cli-auth"

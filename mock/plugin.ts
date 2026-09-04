@@ -1161,7 +1161,35 @@ route('POST', '/v1/invitations/{token}/accept', () => ({
   role: 'developer',
   joined_at: new Date().toISOString(),
 }));
-route('POST', '/dashboard/account/set-password', ({ res }) => {
+// The real route double-submits a purpose-bound token (ADR-140): the
+// console mints it from /v1/auth/csrf and posts it back as `csrf_token`.
+// The mock keeps that shape so a wizard that forgets the token fails here
+// the same way it would against apid, with a 400 rather than a 302.
+const MOCK_CSRF_ACTIONS = new Set([
+  'auth.logout',
+  'auth.session.revoke',
+  'auth.sessions.revoke_all',
+  'mfa_confirm',
+  'mfa_recover',
+  'mfa_disable',
+  'set_password',
+]);
+route('GET', '/v1/auth/csrf', ({ query, res }) => {
+  const action = query.get('action') ?? '';
+  if (!MOCK_CSRF_ACTIONS.has(action))
+    throw new Problem(
+      400,
+      'validation_failed',
+      'the requested action is not available to browser clients'
+    );
+  res.setHeader('Set-Cookie', CSRF_COOKIE);
+  return { csrf_token: 'mock-csrf' };
+});
+route('POST', '/dashboard/account/set-password', ({ body, res }) => {
+  if (body.csrf_token !== 'mock-csrf')
+    throw new Problem(400, 'validation_failed', 'Invalid CSRF token');
+  if (String(body.password ?? '').length < 12)
+    throw new Problem(400, 'password_too_weak', 'Password must be at least 12 characters.');
   res.statusCode = 302;
   res.setHeader('location', '/dashboard/account');
   return '';
@@ -1601,13 +1629,21 @@ route('POST', '/v1/projects', () => ({
 
 // --- Plumbing ------------------------------------------------------------------
 
+// JSON for the `/v1` surface; form-encoded for apid's own dashboard posts
+// (`/login`, `/dashboard/account/set-password`), which the console submits
+// the way a browser form would.
 function readBody(req: IncomingMessage): Promise<Record<string, unknown>> {
   return new Promise((resolve) => {
     let raw = '';
     req.on('data', (chunk: Buffer) => (raw += chunk));
     req.on('end', () => {
+      if (!raw) return resolve({});
+      const type = String(req.headers['content-type'] ?? '');
+      if (type.includes('application/x-www-form-urlencoded')) {
+        return resolve(Object.fromEntries(new URLSearchParams(raw)));
+      }
       try {
-        resolve(raw ? (JSON.parse(raw) as Record<string, unknown>) : {});
+        resolve(JSON.parse(raw) as Record<string, unknown>);
       } catch {
         resolve({});
       }
@@ -1635,7 +1671,7 @@ function problem(res: ServerResponse, p: Problem) {
   );
 }
 
-const MOCKED_PREFIXES = ['/v1/', '/login', '/signup'];
+const MOCKED_PREFIXES = ['/v1/', '/login', '/signup', '/dashboard/account/set-password'];
 
 export function mockApi(): Plugin {
   return {
