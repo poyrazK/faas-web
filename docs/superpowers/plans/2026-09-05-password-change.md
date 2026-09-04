@@ -6,7 +6,7 @@
 
 **Goal:** Let a signed-in customer _change_ an existing password from the Account page — not just set one — against the server contract that landed in `poyrazK/faas#1281` (ADR-140), including the MFA step-up and rate-limit answers that contract can give.
 
-**Architecture:** The console already has a three-step inline wizard (Choose → Confirm → Done) that posts to `apid`'s form route with a CSRF token. The server now decides, per account, which proof it needs: nothing (OAuth-only, no MFA), the current password (account has one), or a fresh TOTP step-up (MFA enrolled). The server does **not** tell the console up front which case applies — `GET /v1/account` has no `has_password` field — so the wizard learns it from the refusal: a `401 invalid_credentials` after submit opens a "current password" sub-step and resubmits; a `403 step_up_required` opens the existing MFA modal in verify mode and resubmits once verified; `429 rate_limited` is shown as-is. Nothing is invented client-side.
+**Architecture:** The console already has a three-step inline wizard (Choose → Confirm → Done) that posts to `apid`'s form route with a CSRF token. The server now decides, per account, which proof it needs: nothing (OAuth-only, no MFA), the current password (account has one), or a fresh TOTP step-up (MFA enrolled). The server does **not** tell the console up front which case applies — `GET /v1/account` has no `has_password` field — so the wizard learns it from the refusal: a `401 invalid_credentials` after submit opens a "current password" sub-step and resubmits; a `403 step_up_required` opens the existing MFA modal in verify mode and resubmits once verified; a `403 mfa_required` (an explicit MFA policy that is not yet enrolled) opens the same modal in enrolment mode and resubmits once confirmed; `429 rate_limited` is shown as-is. Nothing is invented client-side.
 
 **Tech Stack:** React 19 + TypeScript, Vite 6, TanStack Router (file routes) + TanStack Query, `openapi-fetch` typed by `src/lib/api/schema.d.ts` (generated from the vendored `api/openapi.yaml`), Vitest + React Testing Library + `@testing-library/user-event`, Tailwind tokens from `src/index.css`, `motion/react`, Prettier, ESLint.
 
@@ -69,20 +69,21 @@ How the wizard is built today (`password-wizard.tsx`): a `Step` union `'idle' | 
 | `csrf_token`       | yes                                                                               | from `GET /v1/auth/csrf?action=set_password`; that call also sets the `faas_csrf` cookie (double-submit) |
 | `current_password` | only when the account already has a password and the session has no fresh step-up | verified with Argon2id                                                                                   |
 
-Proof is decided server-side in this order: fresh TOTP step-up (≤ 5 min, written by `POST /v1/account/mfa/verify`) → accepted; MFA enrolled → `403 step_up_required`; account has a password → `current_password` required, missing **and** wrong both answer `401 invalid_credentials`; otherwise (OAuth-only, no MFA) → accepted.
+Proof is decided server-side in this order: fresh TOTP step-up (≤ 5 min, written by `POST /v1/account/mfa/verify`) → accepted; explicit `mfa_required` policy with no enrolment yet → `403 mfa_required`; MFA enrolled → `403 step_up_required`; account has a password → `current_password` required, missing **and** wrong both answer `401 invalid_credentials`; otherwise (OAuth-only, no MFA) → accepted.
 
 Responses:
 
-| Status                      | `code`                                                                                                                                        | When                                                                   |
-| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| 302 → `/dashboard/account/` | —                                                                                                                                             | success (`fetch` follows it; success is `res.redirected`)              |
-| 400                         | `validation_failed`                                                                                                                           | CSRF token missing/mismatched — "please reload the page and try again" |
-| 400                         | `password_too_weak`                                                                                                                           | new password under 12 chars                                            |
-| 401                         | `invalid_credentials`                                                                                                                         | current password missing or wrong (or no session)                      |
-| 403                         | `step_up_required`                                                                                                                            | MFA enrolled, no step-up in the last 5 min                             |
-| 429                         | `rate_limited` (synthesised by `toApiError` from the limiter's plain-text body; `detail` = "Too many attempts. Wait a minute and try again.") | 10 failures/min/IP, shared with `/login`                               |
+| Status                      | `code`                                                                                                                                        | When                                                                                                                                                      |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 302 → `/dashboard/account/` | —                                                                                                                                             | success (`fetch` follows it; success is `res.redirected`)                                                                                                 |
+| 400                         | `validation_failed`                                                                                                                           | CSRF token missing/mismatched — "please reload the page and try again"                                                                                    |
+| 400                         | `password_too_weak`                                                                                                                           | new password under 12 chars                                                                                                                               |
+| 401                         | `invalid_credentials`                                                                                                                         | current password missing or wrong (or no session)                                                                                                         |
+| 403                         | `mfa_required`                                                                                                                                | the account's MFA policy is required but not enrolled yet — enrol (`POST /v1/account/mfa/enroll` then `…/confirm`); confirm also writes the step-up stamp |
+| 403                         | `step_up_required`                                                                                                                            | MFA enrolled, no step-up in the last 5 min                                                                                                                |
+| 429                         | `rate_limited` (synthesised by `toApiError` from the limiter's plain-text body; `detail` = "Too many attempts. Wait a minute and try again.") | 10 failures/min/IP, shared with `/login`                                                                                                                  |
 
-Step-up: `verifyMfa(totp)` in `src/lib/api/queries.ts` posts `/v1/account/mfa/verify`; success re-issues the session cookie with the stamp, so the _next_ set-password POST passes.
+Step-up: `verifyMfa(totp)` in `src/lib/api/queries.ts` posts `/v1/account/mfa/verify`; success re-issues the session cookie with the stamp, so the _next_ set-password POST passes. Enrolment: `enrollMfa()` then `confirmMfa(totp)` (the modal's `'choose'` → `'confirm'` modes) — confirm also stamps the session.
 
 ---
 
@@ -576,9 +577,9 @@ git commit -m "feat(console): password wizard asks for the current password when
 
 ---
 
-### Task 4: MFA step-up — `openMfa` reports completion, wizard retries after a 403
+### Task 4: MFA step-up and enrolment — `openMfa` reports completion, wizard retries after a 403
 
-`403 step_up_required` means the account has TOTP and the session needs a fresh verification. The console already owns the modal for that (`MfaProvider`, mode `'verify'`), but `openMfa()` fires and forgets. Give it completion callbacks, then let the wizard open it and resubmit once verified. The wizard receives this as an injected `stepUp: () => Promise<boolean>` so tests need no provider.
+`403 step_up_required` means the account has TOTP and the session needs a fresh verification; `403 mfa_required` means an MFA policy is on but the account has not enrolled yet, and enrolling (which also stamps the session) is the way through. The console already owns the modal for that (`MfaProvider`, mode `'verify'`), but `openMfa()` fires and forgets. Give it completion callbacks, then let the wizard open it and resubmit once verified. The wizard receives this as an injected `stepUp: () => Promise<boolean>` so tests need no provider.
 
 **Files:**
 
@@ -590,7 +591,7 @@ git commit -m "feat(console): password wizard asks for the current password when
 **Interfaces:**
 
 - Produces (provider): `openMfa(mode?: MfaMode, opts?: { onVerified?: () => void; onDismissed?: () => void }): void`. `onVerified` fires after a successful `confirm`/`verify`/`recover` submit (after the query invalidation); `onDismissed` fires if the modal is closed without success. Each callback fires at most once per `openMfa` call.
-- Produces (wizard): optional prop `stepUp?: () => Promise<boolean>` — resolves `true` when a fresh step-up exists, `false` if the user backed out.
+- Produces (wizard): optional prop `stepUp?: (reason: 'step_up_required' | 'mfa_required') => Promise<boolean>` — resolves `true` when the session now carries a fresh stamp (verified, or freshly enrolled+confirmed), `false` if the user backed out. `PasswordPanel` maps the reason to the modal mode: `step_up_required` → `'verify'`, `mfa_required` → `'choose'`.
 
 - [ ] **Step 1: Failing provider test**
 
@@ -765,7 +766,38 @@ it('runs the MFA step-up on step_up_required and retries once verified', async (
 
   expect(await screen.findByText(/email sign-in is on/i)).toBeInTheDocument();
   expect(stepUp).toHaveBeenCalledTimes(1);
+  expect(stepUp).toHaveBeenCalledWith('step_up_required');
   expect(setPassword).toHaveBeenCalledTimes(2);
+});
+
+it('runs MFA enrolment on mfa_required and retries once confirmed', async () => {
+  const policy = new ApiError({ status: 403, code: 'mfa_required', title: 'MFA required' });
+  const setPassword = vi
+    .fn<(password: string, opts?: { currentPassword?: string }) => Promise<void>>()
+    .mockRejectedValueOnce(policy)
+    .mockResolvedValueOnce();
+  const stepUp = vi.fn().mockResolvedValue(true);
+  const { user } = setup({ setPassword, stepUp });
+  const confirm = await reachConfirm(user);
+  await user.type(confirm, STRONG);
+  await user.click(screen.getByRole('button', { name: /set password/i }));
+
+  expect(await screen.findByText(/email sign-in is on/i)).toBeInTheDocument();
+  expect(stepUp).toHaveBeenCalledWith('mfa_required');
+  expect(setPassword).toHaveBeenCalledTimes(2);
+});
+
+it('explains when enrolment is dismissed', async () => {
+  const policy = new ApiError({ status: 403, code: 'mfa_required', title: 'MFA required' });
+  const { user } = setup({
+    setPassword: vi.fn().mockRejectedValue(policy),
+    stepUp: vi.fn().mockResolvedValue(false),
+  });
+  const confirm = await reachConfirm(user);
+  await user.type(confirm, STRONG);
+  await user.click(screen.getByRole('button', { name: /set password/i }));
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(/set up two-factor/i);
 });
 
 it('stays on Confirm with a note when the step-up is dismissed', async () => {
@@ -800,24 +832,32 @@ Run `npx vitest run src/components/dashboard/password-wizard.test.tsx` — expec
 Add the prop:
 
 ```ts
-  /** Opens the TOTP step-up; resolves true when the session now carries a
-   *  fresh stamp, false if the person backed out. Absent when no MFA UI is
-   *  mounted (tests), in which case the refusal is explained instead. */
-  stepUp?: () => Promise<boolean>;
+  /** Opens the MFA modal — verify for `step_up_required`, enrol for
+ *  `mfa_required` — and resolves true when the session now carries a fresh
+ *  stamp, false if the person backed out. Absent when no MFA UI is mounted
+ *  (tests), in which case the refusal is explained instead. */
+stepUp?: (reason: 'step_up_required' | 'mfa_required') => Promise<boolean>;
 ```
 
 In `submit`'s `catch`, add a branch **before** the `password_too_weak` one:
 
 ```ts
-      } else if (err instanceof ApiError && err.code === 'step_up_required') {
-        if (stepUp && (await stepUp())) {
+      } else if (
+  err instanceof ApiError &&
+  (err.code === 'step_up_required' || err.code === 'mfa_required')
+) {
+  if (stepUp && (await stepUp(err.code))) {
           // Fresh stamp on the cookie: the same form now passes. Re-enter
           // submit rather than duplicating it; pending is reset in finally.
           setPending(false);
           await submit();
           return;
         }
-        setError('Verify with your authenticator to change the password.');
+        setError(
+    err.code === 'mfa_required'
+      ? 'Set up two-factor authentication to change the password.'
+      : 'Verify with your authenticator to change the password.'
+  );
 ```
 
 (`submit` is an `async` arrow; the recursive call is fine because `pending` is cleared first.)
@@ -830,9 +870,14 @@ export function PasswordPanel() {
   const { toast } = useToast();
   const { openMfa } = useMfa();
   const email = account?.email ?? user?.email ?? '';
-  const stepUp = () =>
+  const stepUp = (reason: 'step_up_required' | 'mfa_required') =>
     new Promise<boolean>((resolve) => {
-      openMfa('verify', { onVerified: () => resolve(true), onDismissed: () => resolve(false) });
+      // Enrolment ('choose' → 'confirm') also stamps the session, so both
+      // reasons resolve the same way once the modal reports success.
+      openMfa(reason === 'mfa_required' ? 'choose' : 'verify', {
+        onVerified: () => resolve(true),
+        onDismissed: () => resolve(false),
+      });
     });
   return (
     <PasswordWizard
@@ -871,7 +916,8 @@ git add src/components/auth/mfa-provider.tsx src/components/auth/mfa-provider.te
 git commit -m "feat(console): password change runs the TOTP step-up when the server requires it
 
 openMfa gains onVerified/onDismissed so a caller can resume after the
-modal; the wizard uses it for 403 step_up_required and retries once."
+modal; the wizard uses it for 403 step_up_required (verify) and 403
+mfa_required (enrol) and retries once."
 ```
 
 ---
@@ -975,6 +1021,7 @@ Under `npm run dev:mock` the account has no password and no MFA, so only the hap
 
 - `MOCK_HAS_PASSWORD=1` boots with the password `mock-current-password` already set.
 - `MOCK_MFA=1` boots MFA-enrolled: set-password answers `403 step_up_required` until `POST /v1/account/mfa/verify` has been called (any six digits) within the last 5 minutes.
+- `MOCK_MFA=required` boots with the policy on but nothing enrolled: set-password answers `403 mfa_required` until `POST /v1/account/mfa/enroll` + `…/confirm` (any six digits) have run; confirm also counts as a step-up.
 
 - [ ] **Step 1: Implement**
 
@@ -986,6 +1033,7 @@ Near the existing `MOCK_CSRF_ACTIONS` in `mock/plugin.ts`:
 const mockAuth = {
   password: process.env.MOCK_HAS_PASSWORD === '1' ? 'mock-current-password' : null,
   mfaEnrolled: process.env.MOCK_MFA === '1',
+  mfaRequired: process.env.MOCK_MFA === 'required',
   steppedUpAt: 0,
 };
 const STEP_UP_TTL_MS = 5 * 60_000;
@@ -995,6 +1043,18 @@ route('POST', '/v1/account/mfa/verify', ({ body }) => {
     throw new Problem(401, 'mfa_invalid_code', 'the TOTP code did not match');
   mockAuth.steppedUpAt = Date.now();
   return { account_id: db.ACCOUNT_ID, mfa_pending: false };
+});
+route('POST', '/v1/account/mfa/enroll', () => ({
+  otpauth_url: 'otpauth://totp/Gregale:design@gregale.dev?secret=JBSWY3DPEHPK3PXP&issuer=Gregale',
+  secret: 'JBSWY3DPEHPK3PXP',
+}));
+route('POST', '/v1/account/mfa/confirm', ({ body }) => {
+  if (!/^\d{6}$/.test(String(body.totp ?? '')))
+    throw new Problem(401, 'mfa_invalid_code', 'the TOTP code did not match');
+  mockAuth.mfaEnrolled = true;
+  mockAuth.mfaRequired = false;
+  mockAuth.steppedUpAt = Date.now();
+  return {};
 });
 ```
 
@@ -1009,6 +1069,8 @@ route('POST', '/dashboard/account/set-password', ({ body, res }) => {
     throw new Problem(400, 'password_too_weak', 'Password must be at least 12 characters.');
   const fresh = Date.now() - mockAuth.steppedUpAt < STEP_UP_TTL_MS;
   if (!fresh) {
+    if (mockAuth.mfaRequired && !mockAuth.mfaEnrolled)
+      throw new Problem(403, 'mfa_required', 'enable two-factor authentication to continue');
     if (mockAuth.mfaEnrolled)
       throw new Problem(403, 'step_up_required', 'verify your authenticator first');
     if (mockAuth.password !== null && body.current_password !== mockAuth.password)
@@ -1043,9 +1105,15 @@ MOCK_MFA=1 npm run dev:mock               # cohort 3: MFA enrolled
 
 Submit → the MFA modal opens in verify mode; enter any six digits → wizard lands on Done without another click. Escape instead → the Confirm step stays with "Verify with your authenticator…".
 
+```bash
+MOCK_MFA=required npm run dev:mock      # cohort 4: policy on, nothing enrolled
+```
+
+Submit → the modal opens in enrolment mode (secret shown); continue, enter any six digits to confirm → wizard lands on Done. Escape → "Set up two-factor authentication…".
+
 - [ ] **Step 3: Docs, format, gate, commit**
 
-Add to `README.md` under "`npm run dev:mock`" and to the `dev:mock` bullet in `CLAUDE.md`: "`MOCK_HAS_PASSWORD=1` boots with a password already set (`mock-current-password`); `MOCK_MFA=1` boots MFA-enrolled so set-password demands a step-up (any six digits verify)."
+Add to `README.md` under "`npm run dev:mock`" and to the `dev:mock` bullet in `CLAUDE.md`: "`MOCK_HAS_PASSWORD=1` boots with a password already set (`mock-current-password`); `MOCK_MFA=1` boots MFA-enrolled so set-password demands a step-up (any six digits verify); `MOCK_MFA=required` boots with the policy on and nothing enrolled, so it demands enrolment first."
 
 ```bash
 npx prettier --write mock/plugin.ts README.md CLAUDE.md
@@ -1067,7 +1135,7 @@ npm run check          # typecheck + lint (7 warnings, 0 errors) + format + test
 npm run build          # the real gate; runs tsc first and prerenders
 ```
 
-Then `npm run dev:mock` once more and repeat Task 6 Step 2's three cohorts end to end.
+Then `npm run dev:mock` once more and repeat Task 6 Step 2's four cohorts end to end.
 
 - [ ] **Step 2: Reduced-motion and a11y spot check**
 
@@ -1086,8 +1154,8 @@ The Account page's password panel becomes a real change-password flow against th
 
 - Vendored spec refreshed from `main`; the `set_password` CSRF cast is gone. Fixtures and edge-rule/alert request builders gain the fields the newer schema requires (no behaviour change).
 - `setAccountPassword` can carry `current_password`.
-- The wizard learns which proof the server wants from the refusal, because the account object has no `has_password`: `401 invalid_credentials` opens a current-password step and retries; `403 step_up_required` opens the MFA modal in verify mode and retries once verified (`openMfa` gained `onVerified`/`onDismissed`); `429 rate_limited` holds the button for the limiter's minute; a stale CSRF token asks for a reload.
-- The mock keeps a set password and has `MOCK_HAS_PASSWORD=1` / `MOCK_MFA=1` cohorts so every branch can be seen without a backend.
+- The wizard learns which proof the server wants from the refusal, because the account object has no `has_password`: `401 invalid_credentials` opens a current-password step and retries; `403 step_up_required` opens the MFA modal in verify mode and `403 mfa_required` opens it in enrolment mode, each retrying once the modal reports success (`openMfa` gained `onVerified`/`onDismissed`); `429 rate_limited` holds the button for the limiter's minute; a stale CSRF token asks for a reload.
+- The mock keeps a set password and has `MOCK_HAS_PASSWORD=1` / `MOCK_MFA=1` / `MOCK_MFA=required` cohorts so every branch can be seen without a backend.
 
 Also in this branch (earlier commits): the wizard itself, the fix that routes the set-password POST to apid in `vercel.json`/dev proxy/mock (it previously fell through to the SPA fallback and reported the `200 index.html` as success), and removal of the `fra-metal-1` sidebar card.
 
@@ -1095,7 +1163,7 @@ Also in this branch (earlier commits): the wizard itself, the fix that routes th
 
 - `npm run check` green (typecheck, ESLint at the 7-warning ceiling, Prettier, Vitest).
 - `npm run build` green.
-- Walked all three cohorts under `dev:mock` (OAuth-only → then has-password; `MOCK_HAS_PASSWORD=1`; `MOCK_MFA=1` verify and dismiss).
+- Walked all four cohorts under `dev:mock` (OAuth-only → then has-password; `MOCK_HAS_PASSWORD=1`; `MOCK_MFA=1` verify and dismiss; `MOCK_MFA=required` enrol and dismiss).
 
 ## Follow-ups (not here)
 
@@ -1107,6 +1175,6 @@ PR
 
 ## Self-review notes (already applied)
 
-- Spec coverage: every server answer in the contract table has a wizard branch and a test (302 → Task 3/4 success paths; 400 ×2, 401, 403, 429 → Tasks 3–5). The "no `has_password`" constraint is honoured by the refusal-driven design; the follow-up is named in the PR body.
-- Names used across tasks: `setAccountPassword(password, { currentPassword, mintCSRF })` (Task 2) is what the wizard's `setPassword` prop mirrors minus `mintCSRF` (Tasks 3–5); `openMfa(mode, { onVerified, onDismissed })` (Task 4) is what `PasswordPanel` calls; `stepUp: () => Promise<boolean>` is the wizard prop; `Step` gains `'verify-password'` only.
+- Spec coverage: every server answer in the contract table has a wizard branch and a test (302 → Task 3/4 success paths; 400 ×2, 401, 403 ×2 (`step_up_required`, `mfa_required`), 429 → Tasks 3–5). The "no `has_password`" constraint is honoured by the refusal-driven design; the follow-up is named in the PR body.
+- Names used across tasks: `setAccountPassword(password, { currentPassword, mintCSRF })` (Task 2) is what the wizard's `setPassword` prop mirrors minus `mintCSRF` (Tasks 3–5); `openMfa(mode, { onVerified, onDismissed })` (Task 4) is what `PasswordPanel` calls; `stepUp: (reason) => Promise<boolean>` is the wizard prop; `Step` gains `'verify-password'` only.
 - Mock state (`mockAuth`) exists only inside `mock/plugin.ts`; nothing in `src/` reads it.
