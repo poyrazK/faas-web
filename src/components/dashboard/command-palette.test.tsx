@@ -69,4 +69,31 @@ describe('CommandPalette', () => {
       modal.remove();
     }
   });
+
+  it('does not trap Tab when another dialog is stacked above it', async () => {
+    renderPalette();
+    await screen.findByRole('combobox', { name: /search commands/i });
+
+    const modal = document.createElement('div');
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    const button = document.createElement('button');
+    modal.append(button);
+    document.body.append(modal);
+    button.focus();
+
+    try {
+      const event = new KeyboardEvent('keydown', {
+        key: 'Tab',
+        bubbles: true,
+        cancelable: true,
+      });
+      document.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(false);
+      expect(document.activeElement).toBe(button);
+    } finally {
+      modal.remove();
+    }
+  });
 });
