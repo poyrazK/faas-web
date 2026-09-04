@@ -14,8 +14,8 @@ export interface paths {
         /**
          * List operator runtime configuration
          * @description Returns the closed configuration catalog together with desired and
-         *     effective values. Sensitive settings are redacted. This is an
-         *     operator-only route and is not part of the customer API.
+         *     effective values. Sensitive bootstrap settings are redacted. This is
+         *     an operator-only route and is not part of the customer API.
          */
         get: operations["listOperatorRuntimeConfig"];
         put?: never;
@@ -41,9 +41,12 @@ export interface paths {
         head?: never;
         /**
          * Update an operator runtime setting
-         * @description Applies a catalogued setting through the zero-downtime runtime
-         *     configuration path. Hot settings return the applied entry; graceful
-         *     and rolling settings return a durable operation.
+         * @description Updates a catalogued setting without an SSH session. Hot settings are
+         *     applied immediately; graceful settings return a durable asynchronous
+         *     operation. The write is versioned, audited, persisted in PostgreSQL,
+         *     and propagated over pg_notify. Bootstrap, rolling, and break-glass
+         *     settings remain deployment-managed until their corresponding
+         *     controller is available.
          */
         patch: operations["updateOperatorRuntimeConfig"];
         trace?: never;
@@ -57,7 +60,9 @@ export interface paths {
         };
         /**
          * Read a runtime configuration apply operation
-         * @description Polls a durable graceful or rolling configuration apply operation.
+         * @description Polls the durable operation created for a graceful, rolling, or
+         *     break-glass configuration change. A terminal status always includes
+         *     the controller phase and any failure/block reason.
          */
         get: operations["getOperatorRuntimeConfigOperation"];
         put?: never;
@@ -78,8 +83,11 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Roll back a runtime setting to a previous revision
-         * @description Applies a historical value as a new version through the hot-apply path.
+         * Roll back a hot runtime setting to a previous revision
+         * @description Applies the selected historical value as a new revision through the
+         *     same zero-downtime hot-apply path as PATCH. Only mutable hot settings
+         *     are eligible. The request is optimistic-concurrency protected and
+         *     the rollback itself is appended to the audit and revision history.
          */
         post: operations["rollbackOperatorRuntimeConfig"];
         delete?: never;
@@ -148,10 +156,12 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Change billing plan.
+         * Change billing plan after provider confirmation.
          * @description Switch the account between `free`, `hobby`, `pro`, and `scale`. The
-         *     Stripe subscription is updated server-side; the response carries the
-         *     new plan only.
+         *     local account moves to a paid tier only after the configured billing
+         *     provider confirms payment. If a new subscription is required, the
+         *     `payment_required` response includes `checkout_url`; if an existing
+         *     subscription must be changed, it includes `billing_portal_url`.
          */
         patch: operations["changePlan"];
         trace?: never;
@@ -272,8 +282,10 @@ export interface paths {
         /**
          * Finish MFA enrollment with the first TOTP code.
          * @description Verifies the 6-digit code against the sealed secret
-         *     and stamps mfa_enrolled_at. Re-issues the session
-         *     cookie without the mfa_pending flag.
+         *     and stamps mfa_enrolled_at. Re-issues the current session
+         *     cookie without the mfa_pending flag; future dashboard logins
+         *     will require a TOTP verification because enrollment is the
+         *     customer's explicit opt-in.
          */
         post: operations["mfaConfirm"];
         delete?: never;
@@ -343,8 +355,8 @@ export interface paths {
          *     mfa_enrolled_at. Body must include exactly one of
          *     `password` (re-verified against account_passwords)
          *     or `recovery_code` (consumed). Leaves mfa_required
-         *     untouched so the plan-upgrade / 2nd-deploy
-         *     chokepoints can re-arm.
+         *     untouched so an explicit operator/workspace policy remains
+         *     in force after disable.
          */
         post: operations["mfaDisable"];
         delete?: never;
@@ -837,6 +849,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/oidc/exchange": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Exchange an IdP-issued JWT for a short-lived deploy bearer
+         * @description ADR-101 / issue #270. CI runners that have an IdP-issued OIDC
+         *     JWT (RFC 8414; e.g. GitHub Actions `ACTIONS_ID_TOKEN_REQUEST_TOKEN`,
+         *     GitLab CI, CircleCI) call this endpoint to exchange it for a
+         *     short-lived opaque bearer (5 min TTL, `fp_oidc_<48 hex>` prefix).
+         *     The bearer is then used in `Authorization: Bearer …` on the
+         *     existing deploy routes.
+         *
+         *     The endpoint is anonymous — the JWT is the auth — so it does
+         *     not require a session or a previous bearer. The first-use
+         *     auto-create flow bootstraps a permissive trust policy on the
+         *     `(account_id, issuer_url)` pair so customers do not have to
+         *     configure the dashboard before their first CI deploy.
+         *
+         *     The AuthLimit surface is the shared per-IP bucket (spec §11
+         *     10/min/IP) — high-volume CI runners may hit the cap; long-lived
+         *     deploy tokens remain the escape hatch.
+         */
+        post: operations["oidcExchange"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/dashboard/account/set-password": {
         parameters: {
             query?: never;
@@ -847,10 +894,35 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Set a password on the authenticated account.
+         * Set or replace the password on the authenticated account.
          * @description Authenticated. Lets OAuth-only customers opt into password
-         *     login. The same Argon2id path as `/auth/reset`, anchored
-         *     to the session's account rather than a reset token.
+         *     login and lets customers who already have a password replace
+         *     it. The same Argon2id path as `/auth/reset`, anchored to the
+         *     session's account rather than a reset token.
+         *
+         *     The form must carry a `csrf_token` minted by
+         *     `GET /v1/auth/csrf?action=set_password` (double-submit with
+         *     the `faas_csrf` cookie); a missing or mismatched token is 400
+         *     `validation_failed`. The route is a same-site form POST, so
+         *     `SameSite=Lax` alone does not protect it from a customer app
+         *     hosted under `*.apps.gregale.dev`.
+         *
+         *     Proof of presence (ADR-140), decided by what the account has:
+         *
+         *     - A step-up verified within the last 5 minutes
+         *       (`POST /v1/account/mfa/verify`) is accepted as-is.
+         *     - Otherwise, if an explicit `mfa_required` policy is armed
+         *       while the account has not enrolled, 403 `mfa_required`.
+         *       This is a policy hook; MFA remains opt-in for ordinary
+         *       accounts.
+         *     - Otherwise, if the account has MFA enrolled, 403
+         *       `step_up_required` — verify TOTP first, whether or not the
+         *       account also has a password.
+         *     - Otherwise, if the account already has a password,
+         *       `current_password` is required and verified. Missing and
+         *       wrong both answer 401 `invalid_credentials`.
+         *     - Otherwise (OAuth-only, no MFA) the request is accepted; the
+         *       session is the only proof the account has.
          */
         post: operations["setPassword"];
         delete?: never;
@@ -899,6 +971,36 @@ export interface paths {
         patch: operations["updateApp"];
         trace?: never;
     };
+    "/v1/preview/{slug}/destroy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Tear down a preview app.
+         * @description One-click destroy of a preview app row (issue #961 Mega-C PR-1,
+         *     leaf 3). Typically fired from a "Tear down this preview" link
+         *     posted to the GitHub PR by `pkg/githubd`. Distinct from
+         *     `DELETE /v1/apps/{slug}` because the preview teardown also
+         *     stamps `apps.preview_pr_state='torn_down'` so the janitor
+         *     doesn't re-process the row on a subsequent tick, and emits a
+         *     distinct audit kind (`preview.destroyed_by_customer` vs
+         *     `app.deleted`).
+         */
+        post: operations["destroyPreview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/apps/{slug}/metrics": {
         parameters: {
             query?: never;
@@ -924,6 +1026,100 @@ export interface paths {
          *     page contract.
          */
         get: operations["getAppMetrics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/wake-timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Per-app wake timeline (JSON mirror of the dashboard page).
+         * @description Wire-friendly mirror of the dashboard's per-app wake-timeline
+         *     HTML page (`/dashboard/apps/{slug}/wake-timeline`,
+         *     cmd/apid/handlers_dashboard.go:2548 renderAppWakeTimeline).
+         *     The HTML page keeps its pre-rendered HTML chips; this endpoint
+         *     emits the same data as JSON so a separate frontend agent can
+         *     render without re-parsing HTML.
+         *
+         *     Returns the 50 most-recent instance rows for the app, joined
+         *     against the events table's `wake.boot_started` rows for the
+         *     per-row telemetry (Trigger, QueuedCount, ConcurrencyAtAdmit,
+         *     AtCapacity, ReadyInMS). The aggregation math is shared with
+         *     the HTML page:
+         *
+         *       - 24h cutoff descending-break: the moment a row's
+         *         `started_at` falls before the trailing-24h instant, the
+         *         loop breaks (no further iteration). Pre-ADR-123 fleet
+         *         rows with no `started_at` are not eligible for the break
+         *         (always in scope).
+         *       - Two-denominator rule for `at_capacity_pct`: numerator is
+         *         the count of rows where the events join succeeded AND
+         *         the at_capacity flag is true; denominator is the count
+         *         of rows where the events join succeeded
+         *         (`wake_count_with_meta`). Pre-PR-A fleet rows contribute
+         *         to `wake_count_24h` but not the denominator — same
+         *         posture as the HTML page.
+         *
+         *     Plan-gated Hobby+ (mirror of /v1/apps/{slug}/metrics —
+         *     same `code` so a downgrade between the two endpoints flips
+         *     both at once).
+         */
+        get: operations["getAppWakeTimeline"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Per-app billing usage summary (trailing 30d by default).
+         * @description Customer-facing billing rollup for one app over a caller-
+         *     supplied window (default: trailing 30d, clamped at 90d upper
+         *     bound). Plan-gated Hobby+ — Free gets 402
+         *     `plan_app_usage_summary_not_allowed`.
+         *
+         *     Window resolution: `since` and `until` are RFC3339 timestamps.
+         *     Both default to UTC midnight snaps; `until` defaults to
+         *     `now()` snapped down, `since` defaults to `until - 30d`. The
+         *     handler clamps `since` to `until - 90d` so a customer cannot
+         *     unbounded-scan `usage_minutes` (ADR-048 retention is 30d; the
+         *     90d ceiling is a forward-compatibility ceiling for when
+         *     `usage_daily` lands).
+         *
+         *     Overage computation: `overage_gb_hours = max(0, gb_hours -
+         *     plan_included_gb_hours)`. The included band is echoed from
+         *     `acct.Plan.PlanIncludedGBHours()`; the overage figure is the
+         *     integer-rounded float the Stripe pusher bills at €0.01/GB-h.
+         *
+         *     Source: `usage_minutes` today (after the 30d retention cap).
+         *     `usage_daily` / `mixed` land with the trail-period reader
+         *     follow-up — same wire shape, no migration needed.
+         */
+        get: operations["getAppUsage"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1156,6 +1352,157 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/apps/{slug}/debug/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Per-app request telemetry (ADR-127 / PR-A).
+         * @description Recent request rows for an app — status, latency_ms, route,
+         *     method, deployment_id, cold_boot, trace_id, received_at.
+         *     PR-A ships the read endpoint only; the write-side (publisher
+         *     → gRPC IncrementRequestTelemetry → apid receiver → sqlc
+         *     INSERT) lands in PR-B. The endpoint is plan-gated by
+         *     `DebugTelemetryEnabled` (Free off; Hobby/Pro/Scale on).
+         *     The window is clamped to `DebugTelemetryRetentionDays`
+         *     (Hobby 3d, Pro 7d, Scale 14d). When the clamp fires, the
+         *     effective `since` is returned in the response so the
+         *     dashboard can render a "you widened past the cap" tile.
+         *     Returns 200 with `requests: []` when no rows exist in the
+         *     window — never 404. Cross-account slug is 404 (IDOR-safe;
+         *     byte-identical to "no such app").
+         */
+        get: operations["listAppDebugRequests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/debug/regressions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Active regression observations (ADR-127 / PR-B).
+         * @description Returns regression observations written by the
+         *     debug_regression_observations table — surfaces per-route
+         *     p95 regressions detected by the regression cron
+         *     (cmd/apid/debug_regression_cron.go). Ordered by
+         *     regression_factor DESC, last_detected_at DESC (worst
+         *     first). Plan-gated by DebugTelemetryEnabled. The window
+         *     is clamped to DebugTelemetryRetentionDays.
+         */
+        get: operations["listAppDebugRegressions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/debug/compare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Per-route latency compare (ADR-127 / PR-B).
+         * @description Compares two deployments' per-route latency
+         *     distributions in a shared time window. Body holds the
+         *     two deployment ids + optional route filter + optional
+         *     since/until bounds. Returns merged per-route stats with
+         *     per-deployment p50/p95/p99 + row counts. Plan-gated by
+         *     DebugTelemetryEnabled.
+         */
+        post: operations["compareAppDebugDeployments"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/debug/requests/{req_id}/replay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Request id from the debug requests list. */
+                req_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Queue replay of a recorded request (ADR-127 / PR-B stub).
+         * @description PR-B returns 202 with `status: "queued"`. The mirror
+         *     invocation pipeline lands in issue #72 PR-A2
+         *     (feat-issue-72-traffic-mirror-pr-a2). The response shape
+         *     is stable across PR-B and PR-A2 so customer tooling can
+         *     wire once. Plan-gated by DebugTelemetryEnabled; requires
+         *     ScopesDeployWriteSurface.
+         */
+        post: operations["replayAppDebugRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/otel/v1/traces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * OTel spans writer (ADR-127 PR-D).
+         * @description Standard OTLP/HTTP endpoint for the OTel spans sidecar
+         *     protocol (POST ExportTraceServiceRequest). Auth via
+         *     Authorization: Bearer <api-key>. Plan-gated by
+         *     DebugTelemetryEnabled; rate-capped by
+         *     DebugTelemetryRequestsPerMinute; span-capped by
+         *     DebugTelemetrySpansPerTrace. Body shape is defined by
+         *     the OpenTelemetry proto — the spec documents the
+         *     endpoint metadata only. The SDK does not model this
+         *     route (routeExclude on sdk-coverage + spec_compliance);
+         *     OTel SDKs speak OTLP/HTTP directly.
+         */
+        post: operations["ingestOtlpSpans"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/apps/{slug}/deployments": {
         parameters: {
             query?: never;
@@ -1174,6 +1521,10 @@ export interface paths {
          *     - `application/json` (`CreateDeploymentRequest` with an `image` field): prebuilt OCI reference.
          *     - `multipart/form-data`: source tarball upload (or Dockerfile escape hatch).
          *     Source size is plan-capped (Free/Hobby 100 MB, Pro/Scale 250 MB).
+         *     The optional `workflows` array is plan-gated and schema-validated;
+         *     until workflow runtime persistence is enabled, a request containing
+         *     workflow definitions returns `501 workflow_deployment_unavailable`
+         *     rather than accepting and dropping them.
          */
         post: operations["createDeployment"];
         delete?: never;
@@ -1212,6 +1563,192 @@ export interface paths {
          *     upload) which goes through the browser + UI bind picker.
          */
         post: operations["createDeploymentFromSourceRef"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/deployments/source-tarball": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a deployment from a CLI-uploaded local tarball (zero-config).
+         * @description Zero-config deploy path (issue #961 / Mega-A PR-1, ADR-115).
+         *     The CLI uploads a gzipped tar via the `tarball` form field and
+         *     an optional informational `{repo, ref}` JSON sidecar. The CLI
+         *     binary is the trust root: apid does NOT consult
+         *     `github_installations` and does NOT attempt a server-side git
+         *     fetch.
+         *
+         *     Distinct from the source-ref path
+         *     (`POST /v1/apps/{slug}/deployments/source-ref`, ADR-092) which
+         *     resolves the GitHub install and pins the tarball to a 40-char
+         *     SHA. The source-ref handler is unchanged; this is a parallel
+         *     trust path for first-deploy customers without the GitHub App
+         *     installed.
+         *
+         *     Wire shape:
+         *       multipart/form-data with two fields:
+         *         - `tarball` (required): the gzipped tar, capped at the
+         *           per-plan `SourceTarballMaxMB`.
+         *         - `sidecar` (optional): JSON `{repo, ref}` recorded on
+         *           the build row for provenance only. The build pipeline
+         *           does NOT use the sidecar to fetch upstream — the tarball
+         *           bytes are the build source, and the sidecar is purely
+         *           informational. Operators relying on source-pinning MUST
+         *           use the source-ref path instead.
+         *
+         *     Lifecycle (issue #1182 fix): the refactored zero-config
+         *     CLI path runs `POST /v1/apps` (CreateApp) BEFORE this endpoint,
+         *     so a brand-new slug gets a 201 from CreateApp and a 202 from
+         *     this endpoint. A direct hit on this endpoint with a slug that
+         *     has never been created returns 404 — pre-#1182 zero-config
+         *     customers hit this with "no such app"; the fix folds the
+         *     path through CreateApp so the slug always exists by the time
+         *     this endpoint is reached.
+         *
+         *     Audit kind: `deploy.local_tarball` (distinct from
+         *     `deploy.source_ref`).
+         */
+        post: operations["createDeploymentFromSourceTarball"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/deployments/{deployment}/openapi": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Deployment UUID. */
+                deployment: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read the captured OpenAPI document for a deployment.
+         * @description Returns the OpenAPI document the cold-boot probe captured from the customer's app (issue #975 item #1, ADR-122). The probe runs unconditionally during cold boot; the apid surfaces the doc only on paid plans (Hobby/Pro/Scale). Free customers receive 402 + openapi_docs_not_allowed. Cache-Control: 5 min. Response headers: X-OpenAPI-Doc-Source (cold_boot or manual_upload), X-OpenAPI-Doc-Truncated (1 if clipped at 128 KiB), X-OpenAPI-Doc-Byte-Size.
+         */
+        get: operations["getDeploymentOpenAPIDoc"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete the captured OpenAPI document for a deployment.
+         * @description Companion to PATCH — explicitly wipes the captured doc (re-applied on next cold boot of the deployment).
+         */
+        delete: operations["deleteDeploymentOpenAPIDoc"];
+        options?: never;
+        head?: never;
+        /** Manually upload. */
+        patch: operations["updateDeploymentOpenAPIDoc"];
+        trace?: never;
+    };
+    "/v1/apps/{slug}/openapi": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read the imported (or auto-generated) OpenAPI document for an app.
+         * @description Two source modes (selected via `?source=`):
+         *
+         *     - `manual_import` (default): returns the customer's uploaded
+         *       doc verbatim. Mirrors item #1's /deployments/{dep}/openapi
+         *       but on the app-keyed `app_openapi_docs` table (ADR-126 D1).
+         *
+         *     - `auto`: runs pkg/openapidiff.GenerateFromApp with the
+         *       imported doc + observed routes (ADR-093 bridge) +
+         *       existing edge rules; the merged spec is cached for 5 min
+         *       per (app_id, sha(doc), sha(routes), sha(rules)). Cache
+         *       headers: X-Faas-Cache: hit|miss, X-OpenAPI-Doc-Source:
+         *       "auto" | "degraded: routes_unavailable" |
+         *       "degraded: rules_unavailable" | "empty: no_import_no_rules".
+         *
+         *     Limits are abuse-surface, not plan-tier — every plan
+         *     including Free can import. Per-account row cap is
+         *     Plan.OpenAPIImportsPerAccount (Free 100, Hobby 1000,
+         *     Pro 10000, Scale 10000). Plan-tier gate is intentionally
+         *     absent on this surface (ADR-126 D6).
+         */
+        get: operations["getAppOpenAPI"];
+        put?: never;
+        /**
+         * Import an OpenAPI document for an app.
+         * @description Customer-facing import (ADR-126 / issue #975 item #2).
+         *     Reads the body, validates via
+         *     pkg/openapiimport.ValidateImport (structural-minimum
+         *     OpenAPI 3.0 / 3.1 check), enforces size + endpoint
+         *     caps, persists via UpsertAppOpenAPIDoc, emits
+         *     app.openapi_import.replaced audit + pg_notify on
+         *     NotifyAppOpenAPIDocChanged. The auto-gen cache
+         *     (NotifyAppOpenAPIDocChanged + NotifyEdgeRuleChanged
+         *     fan-in) is flushed per-app so the next `?source=auto`
+         *     read recomputes.
+         *
+         *     Limits (abuse-surface, not plan-tier): body cap
+         *     state.OpenAPIImportMaxDocBytes (256 KiB), endpoint
+         *     cap state.OpenAPIImportMaxEndpoints (50). Per-account
+         *     row cap is Plan.OpenAPIImportsPerAccount.
+         */
+        post: operations["importAppOpenAPI"];
+        /**
+         * Delete the imported OpenAPI document for an app.
+         * @description Idempotent: returns 204 even if no row existed.
+         *     Emits app.openapi_import.deleted audit + pg_notify
+         *     on NotifyAppOpenAPIDocChanged so the auto-gen cache
+         *     flushes.
+         */
+        delete: operations["deleteAppOpenAPI"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/openapi/dry-run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read-only preview of edge-rule suggestions for an imported doc.
+         * @description POST-only (the body IS the import body). Same auth chain
+         *     as the GET surface minus the MFA requirement (read-only).
+         *     Validates the doc and walks paths, emitting one
+         *     EdgeRuleSuggestion per (path, method) pair NOT already
+         *     covered by an existing validate edge rule. Empty array
+         *     when the doc is fully covered.
+         *
+         *     Customer pastes each suggestion's Path + Methods + Kind
+         *     + Action back into the existing create-edge-rule endpoint
+         *     (item #2 D3). Does NOT persist; does NOT emit pg_notify.
+         */
+        post: operations["dryRunAppOpenAPI"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1268,8 +1805,68 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Roll back to the previous deployment. */
+        /**
+         * Roll back to the previous deployment, or to a specific historical deployment.
+         * @description Without a request body, rolls back to the most-recent superseded
+         *     deployment (the pre-#976 behaviour).
+         *
+         *     With `target_deployment_id` in the body, rolls back to the
+         *     named deployment. The id must belong to this app and the row
+         *     must have `status='superseded'`. Rolling back to the
+         *     already-current live deployment is rejected (409
+         *     `rollback_target_already_live`). A target whose snapshot has
+         *     been garbage-collected is rejected (409
+         *     `rollback_target_snapshot_expired`).
+         */
         post: operations["rollbackApp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/rollouts/recover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Operator manual rollout recovery (SAFE-RELEASES-R, issue
+         * @description The operator escape hatch for a stuck canary rollout. Three
+         *     closed-set actions:
+         *
+         *       - `advance`: bumps `canary_step` by 1, stamps
+         *         `canary_step_started_at = now()`, and redistributes the
+         *         traffic-split (largest-remainder Σ = 100). Requires the
+         *         rollout to be stuck (`canary_step_started_at` older than
+         *         the canned 30-minute stuck-after window). On a healthy
+         *         rollout the handler returns 409 `rollout_not_stuck`
+         *         with the suggestion "use --action promote instead".
+         *
+         *       - `promote`: short-circuits the rollout to
+         *         `canary_step = canary_total_steps` and
+         *         `rollout_state = 'complete'`, with `traffic_percent = 100`
+         *         on the in-flight row + 0 on the siblings. No stuck-check;
+         *         this is the operator's "I'm sure, ship it" path.
+         *
+         *       - `abort`: flips `rollout_state = 'aborted'` with
+         *         `rollout_aborted_reason = reason`. Legal from
+         *         `rollout_state ∈ {pending, rolling_out}`. Emits a
+         *         `deploy.rolled_back` audit row.
+         *
+         *     Returns the post-transition Deployment + the audit row id
+         *     so the operator's terminal can echo `audit_id=…`. Plan-tier
+         *     gated to Pro+ (Hobby / Free get 403
+         *     `plan_traffic_split_not_allowed`).
+         */
+        post: operations["recoverRollout"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1500,7 +2097,17 @@ export interface paths {
     };
     "/v1/apps/{slug}/secrets": {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Env-var scope (ADR-090). A domain-valid slug (3..40 chars,
+                 *     lowercase alnum + dash, no leading/trailing dash) — e.g.
+                 *     `default`, `staging`, `prod-eu`. Or the reserved sentinel
+                 *     `__all__` on GET only, which returns the nested
+                 *     `env_by_scope` response shape (every scope on the app).
+                 *     Omitted = `scope=default` (pre-PR-B behavior).
+                 */
+                scope?: components["parameters"]["EnvScope"];
+            };
             header?: never;
             path: {
                 /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
@@ -1520,7 +2127,17 @@ export interface paths {
     };
     "/v1/apps/{slug}/secrets/{key}": {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Env-var scope (ADR-090). A domain-valid slug (3..40 chars,
+                 *     lowercase alnum + dash, no leading/trailing dash) — e.g.
+                 *     `default`, `staging`, `prod-eu`. Or the reserved sentinel
+                 *     `__all__` on GET only, which returns the nested
+                 *     `env_by_scope` response shape (every scope on the app).
+                 *     Omitted = `scope=default` (pre-PR-B behavior).
+                 */
+                scope?: components["parameters"]["EnvScope"];
+            };
             header?: never;
             path: {
                 /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
@@ -1547,7 +2164,17 @@ export interface paths {
     };
     "/v1/apps/{slug}/secrets/{key}/rotate": {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Env-var scope (ADR-090). A domain-valid slug (3..40 chars,
+                 *     lowercase alnum + dash, no leading/trailing dash) — e.g.
+                 *     `default`, `staging`, `prod-eu`. Or the reserved sentinel
+                 *     `__all__` on GET only, which returns the nested
+                 *     `env_by_scope` response shape (every scope on the app).
+                 *     Omitted = `scope=default` (pre-PR-B behavior).
+                 */
+                scope?: components["parameters"]["EnvScope"];
+            };
             header?: never;
             path: {
                 /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
@@ -1648,6 +2275,66 @@ export interface paths {
         patch: operations["patchAppSecurity"];
         trace?: never;
     };
+    "/v1/apps/{slug}/static-egress-ip": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read the per-app static egress IP pin (ADR-119).
+         * @description Returns the customer's pinned IPv4 + the audit timestamp +
+         *     the per-app quota cap (StaticEgressIPsPerApp, 1 in v1). A
+         *     Scale customer with no pin yet sees `ip=null`,
+         *     `set_at=null`, `plan_cap=1`, `plan_allowed=true`. Free /
+         *     Hobby / Pro return `plan_allowed=false` so the CLI can
+         *     render the upsell without a separate plan lookup.
+         *
+         *     Mounted with the standard auth chain (no MFA, no admin
+         *     scope — the customer owns the pin).
+         */
+        get: operations["getAppStaticEgressIP"];
+        /**
+         * Pin an IPv4 to the app's egress traffic (Scale-only).
+         * @description Customer-supplied IPv4 from their own range. The host
+         *     bridge aliases the IP and a per-host postrouting
+         *     MASQUERADE sibling rewrites matching tenant source
+         *     traffic to the customer's IP. v1 limits:
+         *
+         *     * Plan must be Scale (Plan.StaticEgressIPAllowed).
+         *     * IPv4-only (IPv6 is rejected at the DB CHECK).
+         *     * Not RFC1918, link-local, multicast, or /0.
+         *     * Per-app quota of 1 (StaticEgressIPsPerApp) — two apps
+         *       on the same account cannot pin the same IP.
+         *
+         *     Sending `{"ip": "203.0.113.42", "set": true}` upserts
+         *     the pin. Sending `{"ip": "", "set": false}` clears
+         *     it. The DELETE verb below is a convenience wrapper
+         *     for the clear path.
+         *
+         *     Audit event: `app.static_egress_ip_set` carries the
+         *     account/app/ip triple.
+         */
+        put: operations["setAppStaticEgressIP"];
+        post?: never;
+        /**
+         * Clear the per-app static egress IP pin.
+         * @description Removes the apps.static_egress_ip pin and stamps
+         *     static_egress_ip_set_at=NULL. Survives replay across
+         *     scale-to-zero (the new pin state is read at wake time
+         *     and the per-host egress renderer is re-applied on
+         *     change).
+         */
+        delete: operations["clearAppStaticEgressIP"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/apps/{slug}/trusted_signers": {
         parameters: {
             query?: never;
@@ -1710,6 +2397,137 @@ export interface paths {
          *     Audit event: `app.trusted_signer_removed`.
          */
         delete: operations["deleteAppTrustedSigner"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/tenant-surfaces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List tenant surfaces on an app.
+         * @description Returns every active tenant surface on the app. Soft-deleted
+         *     surfaces are filtered out server-side. Returns 402 when the
+         *     `FAAS_TENANT_SURFACES_ENABLED` flag is off (the cluster ships
+         *     dark until the cert-engine real-mint ADR lands).
+         */
+        get: operations["listTenantSurfaces"];
+        put?: never;
+        /**
+         * Add a tenant surface with seed hostnames.
+         * @description The customer-facing surface for issue #879 / ADR-100. One
+         *     surface holds N hostnames under one SAN bundle. Returns 202
+         *     (the cert engine has to mint; the surface is in pending/active
+         *     state).
+         */
+        post: operations["createTenantSurface"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/tenant-surfaces/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description The tenant surface id. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** Get one tenant surface. */
+        get: operations["getTenantSurface"];
+        put?: never;
+        post?: never;
+        /** Remove a tenant surface (soft-delete + cascade hostnames). */
+        delete: operations["deleteTenantSurface"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/tenant-surfaces/{id}/hostnames": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description The tenant surface id this hostname is being added to. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add a hostname to an existing surface. */
+        post: operations["addTenantHostname"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/tenant-surfaces/{id}/hostnames/{hostname}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description The tenant surface id this hostname is being removed from. */
+                id: string;
+                /** @description The hostname (lowercased canonical form). */
+                hostname: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a hostname from a surface. */
+        delete: operations["removeTenantHostname"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/env-diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Render the env-diff matrix (presence / value-equality across scopes).
+         * @description Returns the (rows × scopes) matrix of env vars + sealed
+         *     secrets on the app. Secrets never reveal plaintext — the
+         *     cell carries {present, value_hash} for secret rows and
+         *     {present, value} for env rows. Two cells with the same
+         *     `value_hash` therefore share byte-identical plaintext
+         *     (collision probability 2^-64). Pre-PR-C rows have
+         *     `value_hash = ''` and emit no `value_hash` key.
+         */
+        get: operations["getAppEnvDiff"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1817,7 +2635,16 @@ export interface paths {
     };
     "/v1/apps/{slug}/upstreams": {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description ADR-098 amendment (issue #954). Optional server-side filter
+                 *     that narrows the list to one deployment. Omitted = return
+                 *     all deployments for the app. Same shape as `scope` (3..40
+                 *     chars, lowercase alnum + dash); empty string is treated as
+                 *     "no filter".
+                 */
+                deployment_scope?: string;
+            };
             header?: never;
             path: {
                 /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
@@ -1835,6 +2662,10 @@ export interface paths {
          *     quota (Free=0, Hobby=3, Pro=10, Scale=50). When FAAS_DATA_PLACEMENT
          *     is on the classifier derives entries on env mutation; when OFF
          *     the table stays empty and the response is `[]`.
+         *
+         *     ADR-098 amendment (issue #954): `?deployment_scope=` narrows
+         *     the list to one deployment so the dashboard can render
+         *     staging-vs-prod independently. Omitted = "all deployments".
          */
         get: operations["listAppDataUpstreams"];
         /**
@@ -1927,7 +2758,14 @@ export interface paths {
         get: operations["getDeployment"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Soft-delete a deployment.
+         * @description ADR-124 deployment queue controls — soft-delete one deployment
+         *     row. Status is intentionally untouched (admin audit trail).
+         *     Live deployments return 409 with the cancel-live hint pointing
+         *     at `gregale deploys rollback`.
+         */
+        delete: operations["clearDeployment"];
         options?: never;
         head?: never;
         /**
@@ -1940,6 +2778,90 @@ export interface paths {
          *     Validated against the parent app's plan MaxMinInstances cap.
          */
         patch: operations["updateDeploymentMinInstances"];
+        trace?: never;
+    };
+    "/v1/deployments/{id}/reorder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reorder a pending deployment.
+         * @description ADR-124 deployment queue controls — update the priority of a
+         *     still-pending deployment. 0 = deploy immediately (top of
+         *     queue), 100 = FIFO default, 1000 = background rebuild.
+         *     Plan-gated (Hobby/Pro/Scale only); Free returns 402
+         *     `plan_reorder_disabled`. 409 if the deployment has already
+         *     moved off the pending queue.
+         */
+        post: operations["reorderDeployment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/deployments/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a deployment.
+         * @description ADR-124 deployment queue controls — flip a deployment in
+         *     {pending, building, imaging, snapshotting} to "cancelled"
+         *     and cascade-cancel its in-flight builds. Live deployments
+         *     return 409 `deployment_cancel_live_forbidden` with the
+         *     rollback hint. Optional reason: user | auto_quota |
+         *     auto_health | system.
+         */
+        post: operations["cancelDeployment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/deployments/clear-obsolete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk soft-delete terminal-but-not-current deployments.
+         * @description ADR-124 deployment queue controls — bulk soft-delete rows
+         *     in {superseded, failed, cancelled} older than the cutoff
+         *     (default 168h). Plan-gated (Free returns 402). Retention
+         *     cap enforced inside the store so INV 3 stays satisfied.
+         */
+        post: operations["clearObsoleteDeployments"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/v1/deployments/{id}/traffic": {
@@ -1974,6 +2896,35 @@ export interface paths {
         patch: operations["updateDeploymentTraffic"];
         trace?: never;
     };
+    "/v1/deployments/{id}/canary/advance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Advance one persisted canary stage.
+         * @description Atomically advances the deployment's canary ladder by one stage.
+         *     The caller supplies the canary_step it observed; APID resolves the
+         *     next percentage from the deployment's persisted preset and rejects
+         *     stale workers with `409 canary_step_conflict`. The state transition,
+         *     sibling traffic rebalance, terminal promotion, and deployment audit
+         *     row are committed together. Pro/Scale only — Free/Hobby are rejected
+         *     at 403 `plan_traffic_split_not_allowed`.
+         */
+        post: operations["advanceDeploymentCanary"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/deployments/{id}/logs": {
         parameters: {
             query?: never;
@@ -1988,8 +2939,67 @@ export interface paths {
          * Stream build logs (SSE).
          * @description Server-Sent Events stream of build logs. `follow=1` holds the
          *     connection open until the build completes.
+         *
+         *     ADR-117: the stream also publishes one `event: stage` frame
+         *     per named pipeline stage the customer's deploy passes
+         *     through. The frame shape is:
+         *
+         *         event: stage
+         *         data: {"name":"<StageName>","started_at":"<RFC3339Nano>","duration_ms":<int64>,"status":"in_progress"|"completed"|"failed"[,"reason":"<string>"]}
+         *
+         *     `name` is one of the closed 6-stage vocabulary:
+         *     `source_download`, `dependency_restore`, `image_build`,
+         *     `security_scan`, `snapshot_prepare`, `readiness`. The CLI
+         *     renders the stream as a live ticker on a TTY (ANSI cursor-up
+         *     redraw) with a static one-line-per-frame fallback when
+         *     stdout is not a TTY / `--json` is set / `NO_COLOR` is
+         *     non-empty. Customers wiring their own consumer should treat
+         *     the frame as additive — the existing `event: log` /
+         *     `event: status` / `event: end` shapes are unchanged.
          */
         get: operations["streamDeploymentLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/deployments/{id}/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List deployment audit timeline.
+         * @description Returns the deployment_audit rows for one deployment in
+         *     reverse-chronological order (issue #976 / ADR-122 /
+         *     SAFE-RELEASES-E.2 + production-leveling Stream A).
+         *
+         *     The wire surface is a paginated JSON list
+         *     (ListDeploymentAuditResponse); for the SSE-streaming
+         *     variant of the build log itself see
+         *     `/v1/deployments/{id}/logs`.
+         *
+         *     IDOR posture: the handler resolves the deployment ID
+         *     via `pkg/state.DeploymentByID` + `pkg/state.AppByID`
+         *     + account match BEFORE returning rows. A
+         *     cross-account probe returns 404 (no
+         *     account-existence leak).
+         *
+         *     Limit defaults to 50, clamped to [1, 500]; the
+         *     server-applied limit is echoed back in the response so
+         *     a paging consumer can distinguish "limit was clamped"
+         *     from "no more rows" (both yield Items of length <
+         *     limit).
+         */
+        get: operations["listDeploymentAudit"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2085,6 +3095,137 @@ export interface paths {
          *     `layer` empty or absent.
          */
         get: operations["getDeploymentSecretScan"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/deployments/{id}/stages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get per-deploy closed-stage summary (ADR-117 follow-up).
+         * @description Returns the closed 6-stage summary for a deployment. Companion
+         *     to `/v1/deployments/{id}/logs` (which streams `event: stage`
+         *     frames during a live deploy) and `/v1/deployments/{id}` (which
+         *     returns the typed deployment row). This endpoint serves the
+         *     post-stream summary use case — `gregale deploys show <id>` and
+         *     the future dashboard widget.
+         *
+         *     The body is the same JSON shape already stored on
+         *     `deployments.stage_state` (ADR-117, migration 00302). The
+         *     handler does NOT add a typed DTO — the column's jsonb IS the
+         *     wire. The closed vocabulary (`source_download` /
+         *     `dependency_restore` / `image_build` / `security_scan` /
+         *     `snapshot_prepare` / `readiness`) is enforced at the
+         *     database layer by `deployments_stage_state_current_check`,
+         *     so a malformed row would never reach the wire. The
+         *     `current` field is the stage the deploy is in right now;
+         *     `history` lists the closed rows in transition order
+         *     (oldest → newest), each carrying server-measured
+         *     `duration_ms` so the CLI / dashboard don't have to trust
+         *     a 2s-tick reconstruction.
+         *
+         *     A 404 is returned when:
+         *       - the deployment row does not exist,
+         *       - the deployment belongs to a different account (IDOR-safe;
+         *         no account-existence leak).
+         */
+        get: operations["getDeploymentStages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/deployments/{id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry a failed deployment from a named stage (ADR-117 production-ready follow-on C2).
+         * @description Closes the production-ready gap exposed by ADR-117 §C4: a
+         *     deployment that fails partway is restorable via
+         *     `POST /v1/deployments/{id}/retry` with a `from_stage` field.
+         *     The deployment row is duplicated (NOT mutated); the new
+         *     row carries a fresh `stage_state.current` and a fresh
+         *     `stage_state.history` so the dashboard's stage-progression
+         *     timeline (and the CLI's `gregale deploys show <id>` summary)
+         *     reflects the retry as a separate event.
+         *
+         *     The closed-6 vocabulary mirrors `state.AllStageNames`
+         *     (ADR-117); the API rejects unknown values with 400.
+         *     Empty strings are rejected for the same reason.
+         *
+         *     Auth chain mirrors `POST /v1/apps/{slug}/deployments`:
+         *     `authLimited → requireMFA → requireScope(ScopesDeployWriteSurface)`.
+         *     Returns 202 Accepted with the new deployment row (same
+         *     shape as `POST /v1/apps/{slug}/deployments`).
+         */
+        post: operations["retryDeployment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/deployments/{id}/url": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get per-deployment preview URL (SAFE-RELEASES-C.2).
+         * @description Returns the per-deployment preview URL shape
+         *     `deploy-{N}.{slug}.gregale.dev` that the cert allowlist will
+         *     mint under for a single deployment (issue #976 / ADR-122).
+         *     `N` is the per-app 1-based ordinal of the deployment row,
+         *     resolved from state.DeploymentOrdinal — the order is
+         *     stable so a previously-issued URL doesn't silently rot when
+         *     a later deploy lands.
+         *
+         *     The `alive` field is the same predicate the cert allowlist
+         *     consults (state.Deployment.DeploymentPreviewActive):
+         *     `true` iff the deployment's status is in
+         *     `{pending, building, imaging, snapshotting, live}`. When
+         *     `alive=false` the handler returns 200 with `host=""` and
+         *     `url=""` so the dashboard renders a "preview closed" chip
+         *     without round-tripping again. When the per-deployment
+         *     preview zone is disabled (`wire.DeployWildcardSuffix == ""`)
+         *     the handler returns the same 200 + Alive=false shape so
+         *     envelopes stay stable across environments.
+         *
+         *     A 404 is returned when:
+         *       - the deployment row does not exist,
+         *       - the deployment belongs to a different account
+         *         (IDOR-safe; no account-existence leak).
+         */
+        get: operations["getDeploymentURL"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2290,11 +3431,85 @@ export interface paths {
             };
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Show a custom domain's cert details (issue
+         * @description Returns the durable domain row + the live cert chain
+         *     (NotAfter, SANs) by dialing port-443 and reading the leaf
+         *     cert. Used by `gregale domains show <domain>`.
+         */
+        get: operations["getDomain"];
         put?: never;
         post?: never;
         /** Remove a custom domain binding. */
         delete: operations["deleteDomain"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/domains/{domain}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The custom domain to re-verify (e.g. `app.example.com`). The same shape as the GET path; verify walks DNS + cert while show returns the durable row. */
+                domain: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Re-verify a domain's DNS + cert (issue
+         * @description Re-runs the DNS verifier + cert dial; returns the canonical
+         *     CustomDomainResponse. Used by `gregale domains verify
+         *     <domain>`. Idempotent: POSTing twice does not change the
+         *     durable verification state.
+         */
+        post: operations["verifyDomain"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/domains/{domain}/doctor": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The custom domain to diagnose (e.g. `app.example.com`). */
+                domain: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Run the 5-check domain doctor (ADR-120).
+         * @description Returns the per-domain doctor report. The five checks map
+         *     1:1 to the Render-style custom-domain check: dns_record,
+         *     points_to_gregale, tls_certificate, caa_permits,
+         *     ipv6_conflict. Each check carries a Status (ok / fail /
+         *     pending / na), Detail, Observed, Remediation, and a
+         *     per-probe CheckedAt. Used by `gregale domains doctor
+         *     <domain>`.
+         *
+         *     The handler reads the latest observation row from
+         *     `domain_doctor_observations` (the dns_poller writes a
+         *     row every 30s). When the row is older than
+         *     FAAS_DOMAIN_DOCTOR_TTL_SECONDS (default 300) or missing,
+         *     the handler triggers a synchronous re-probe with a 5s
+         *     budget. Stale=true is the visible degradation; the
+         *     response is still 200 with the per-check Status.
+         *
+         *     503 CodeDoctorDisabled is returned when the operator
+         *     hasn't set FAAS_DOMAIN_DOCTOR_ENABLED. The route stays
+         *     registered so the CLI gets a deterministic error code
+         *     (matches the pre-#911 pattern in `api/flags.go`).
+         */
+        get: operations["getDomainDoctor"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -2415,6 +3630,198 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List jobs on the account.
+         * @description Page-based pagination via ?limit / ?offset. NextOffset=-1
+         *     signals the last page. Free accounts return an empty
+         *     list (read gate is not in the plan).
+         */
+        get: operations["listJobs"];
+        put?: never;
+        /**
+         * Create a job template.
+         * @description Plan-tier gate (Free → 402 jobs_not_allowed) precedes
+         *     per-plan cap clamping (RAM, task_timeout, parallelism,
+         *     retry_max). The per-account JobMaxPerAccount quota is
+         *     enforced atomically (PR-A → PR-B style follow-up).
+         */
+        post: operations["createJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/jobs/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The job slug (3-40 chars, lowercase letters/digits/hyphens). */
+                name: string;
+            };
+            cookie?: never;
+        };
+        /** Get one job. */
+        get: operations["getJob"];
+        put?: never;
+        post?: never;
+        /**
+         * Soft-delete a job.
+         * @description Returns 409 job_has_live_instances when at least one
+         *     kind='job_task' AND status NOT IN ('parked','destroyed')
+         *     instance still references the job. Cancel pending runs
+         *     first or wait for them to drain.
+         */
+        delete: operations["deleteJob"];
+        options?: never;
+        head?: never;
+        /** Partial-update a job. */
+        patch: operations["updateJob"];
+        trace?: never;
+    };
+    "/v1/jobs/{name}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Unique job name. DNS-label safe (`^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$`). Anchors path `/v1/jobs/{name}/runs`. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        /** List runs of a job. */
+        get: operations["listJobRuns"];
+        put?: never;
+        /**
+         * Fan out N tasks of a job.
+         * @description Atomic fan-out via `generate_series` CTE in pgstore.
+         *     `tasks` clamped against Plan.JobMaxTasksPerRun
+         *     (Hobby=100, Pro=1000, Scale=5000). Per-account
+         *     JobConcurrentPerAccount gate refuses if too many
+         *     live job_task instances exist.
+         */
+        post: operations["createJobRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/jobs/{name}/runs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Job name (path). DNS-label safe. Body creates a run against this template. Anchors path `/v1/jobs/{name}/runs/{id}`. */
+                name: string;
+                /** @description The job_run id (UUID). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** Get one run of a job. */
+        get: operations["getJobRun"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/jobs/{name}/runs/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Unique job name. DNS-label safe (`^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$`). Anchors path `/v1/jobs/{name}/runs/{id}/cancel`. */
+                name: string;
+                /** @description Job-run identifier (UUIDv4, path). Returns the run + aggregated counters. Anchors path `/v1/jobs/{name}/runs/{id}/cancel`. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a run.
+         * @description Transitions every non-terminal task of the run to
+         *     status='cancelled'. For claimed (running) tasks,
+         *     schedd SIGTERMs the guest; the supervisor catches
+         *     SIGTERM, writes job_exit{error_class='cancelled',
+         *     exit_code=143}, then poweroff.
+         */
+        post: operations["cancelJobRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/jobs/{name}/runs/{id}/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Unique job name. DNS-label safe (`^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$`). Anchors path `/v1/jobs/{name}/runs/{id}/tasks`. */
+                name: string;
+                /** @description Job-run identifier (UUIDv4, path). Body cancels this run. Anchors path `/v1/jobs/{name}/runs/{id}/tasks`. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** List tasks of a run. */
+        get: operations["listJobRunTasks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/jobs/{name}/runs/{id}/tasks/{idx}/logs": {
+        parameters: {
+            query?: {
+                /** @description Maximum log payload size to return. Default 64 KiB; capped at 1 MiB. */
+                max_bytes?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Unique job name. DNS-label safe (`^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$`). Anchors path `/v1/jobs/{name}/runs/{id}/tasks/{idx}/logs`. */
+                name: string;
+                /** @description Job-run identifier (UUIDv4, path). Returns a page of tasks. Anchors path `/v1/jobs/{name}/runs/{id}/tasks/{idx}/logs`. */
+                id: string;
+                /** @description The task index within the run (1-indexed). */
+                idx: number;
+            };
+            cookie?: never;
+        };
+        /**
+         * Get tail logs of a task.
+         * @description Proxied from vmmd's tail endpoint on the compute node
+         *     that owns the instance. Empty LogContent with
+         *     Truncated=false means the task never produced output
+         *     (process exited before writing anything — common for
+         *     OOM-killed tasks).
+         */
+        get: operations["getJobTaskLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/cron-fire-now-requests/{request_id}": {
         parameters: {
             query?: never;
@@ -2430,6 +3837,273 @@ export interface paths {
         get: operations["getFireCronRequest"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/triggers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List triggers on the account.
+         * @description Returns every trigger owned by the calling account, optional
+         *     ?app_id filter to scope to one app, ?kind to scope to one
+         *     kind. Newest-first by created_at; result is unbounded but
+         *     the typical account has well under 200.
+         */
+        get: operations["listTriggers"];
+        put?: never;
+        /**
+         * Create a trigger.
+         * @description Idempotent via Idempotency-Key header. Returns 402
+         *     `triggers_not_allowed` for Free plan, 403 `trigger_quota_exceeded`
+         *     on per-app or per-account cap; see ADR-100.
+         */
+        post: operations["createTrigger"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/triggers:batch_create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk-create triggers from a gregale.yaml fragment.
+         * @description Dashboard-only shortcut — fires a `triggers:` fragment at the
+         *     server, validates via the same path the CLI uses, and returns
+         *     per-row ids and any per-row RFC 7807 codes.
+         */
+        post: operations["batchCreateTriggers"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/triggers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        /** Get one trigger. */
+        get: operations["getTrigger"];
+        put?: never;
+        post?: never;
+        /** Delete a trigger. */
+        delete: operations["deleteTrigger"];
+        options?: never;
+        head?: never;
+        /** Partial-update a trigger. */
+        patch: operations["updateTrigger"];
+        trace?: never;
+    };
+    "/v1/triggers/{id}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Disable a trigger without deleting it.
+         * @description Sets `enabled=false` and pg_notify's `trigger_changed`. Schedd
+         *     stops the broker poller on the next tick; in-flight records
+         *     drain normally.
+         */
+        post: operations["pauseTrigger"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/triggers/{id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Re-enable a paused trigger.
+         * @description Sets `enabled=true` and pg_notify's `trigger_changed`.
+         *     Schedd restarts the broker poller on the next tick.
+         */
+        post: operations["resumeTrigger"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/triggers/{id}/records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List records for one trigger.
+         * @description Newest-first by `received_at`. The dashboard uses this to
+         *     build the "Recent fires" view; the CLI uses it for `--tail`.
+         */
+        get: operations["listTriggerRecords"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/triggers/{id}/records/{rid}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+                /** @description Record id (UUID hex, no dashes) — used by retry/drop. */
+                rid: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Force a record back into the dispatch queue.
+         * @description Resets state to `pending`, attempts to 0. Operator-only scope
+         *     — the dashboard surfaces this as "Re-drive from DLQ".
+         */
+        post: operations["retryTriggerRecord"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/triggers/{id}/records/{rid}/drop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+                /** @description Record id (UUID hex, no dashes) — used by drop. */
+                rid: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Drop a record without re-firing.
+         * @description Marks a dead-letter row `routed_to='drop'` (already the
+         *     default; this is the explicit acknowledgement). Operator-only
+         *     scope.
+         */
+        post: operations["dropTriggerRecord"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/triggers/{id}/dlq": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        /** List dead-letter rows for one trigger. */
+        get: operations["listTriggerDeadLetter"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/triggers/{id}/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Per-state aggregate counts for one trigger.
+         * @description Counter roll-up by state. Not a Prometheus surface — that
+         *     is /v1/metrics (issue #684).
+         */
+        get: operations["getTriggerMetrics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/invocations:dispatch_batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Internal — schedd posts a batch envelope to the gateway.
+         * @description Internal-only route. Schedd invokes this once per closed
+         *     batch (size / window / 6MB cap). The function under the
+         *     trigger responds with `{"batchItemFailures":[{"itemIdentifier":"..."}]}`.
+         *     Empty / missing response ⇒ full success. Mirrors AWS Lambda's
+         *     `ReportBatchItemFailures` contract verbatim.
+         */
+        post: operations["dispatchInvocationBatch"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2490,6 +4164,40 @@ export interface paths {
          */
         post: operations["applyProject"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{slug}/exclusions/{slug2}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project slug (the (account, project) namespace owning the persisted exclusion). */
+                slug: string;
+                /** @description Excluded workload slug (the app slug persisted via a prior --persist-exclude deploy). */
+                slug2: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Drop a persisted --exclude row from deployment_scope_exclusions.
+         * @description Operator escape hatch (ADR-124 code-review fix #2) for
+         *     when a persisted slug no longer exists in the repo
+         *     (workload was renamed or deleted) and is blocking
+         *     subsequent deploys via exclude_unknown_slug. Without
+         *     this endpoint the only option was psql + hand-DELETE;
+         *     the CLI's `gregale deployments exclude clear
+         *     --slug=NAME --project-slug=SLUG` calls into here as the
+         *     operator-grade path. Idempotent — DELETE on no row
+         *     returns 404 scope_exclusion_not_found so the CLI can
+         *     render "already clear" without surfacing a hard error.
+         */
+        delete: operations["deleteDeploymentScopeExclusion"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2578,6 +4286,435 @@ export interface paths {
          *     carries the masked constant + rotated_at only.
          */
         post: operations["rotateAlertRuleSecret"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/alerts/{id}/deliveries": {
+        parameters: {
+            query?: {
+                /**
+                 * @description When true, also surface rows written by Dispatcher.DispatchTest
+                 *     (the customer-facing "send test alert" path). Default false
+                 *     hides test rows so the customer's recent-deliveries pane is
+                 *     not polluted by every "send test alert" click. Operators can
+                 *     flip the toggle for post-mortems; the production read stays
+                 *     index-only via the partial index
+                 *     alert_deliveries_rule_fired_production_idx.
+                 */
+                include_test?: boolean;
+                /** @description Max rows to return. Clamped to 100. */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List recent alert_deliveries rows for one rule.
+         * @description Returns the most-recent alert_deliveries rows for the rule,
+         *     newest-first. The default (include_test=false) hides test
+         *     rows; the operator pane is reachable via ?include_test=true.
+         *     IDOR-safe: a 404 is returned when the rule is on another
+         *     account (same posture as GET /v1/apps/{slug}/alerts/{id}).
+         */
+        get: operations["listAlertRuleDeliveries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/cors-presets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List CORS presets visible to the calling account.
+         * @description Lists every cors_presets row the account owns — both
+         *     account-wide (app_id IS NULL) and app-scoped (app_id
+         *     is set). The optional `app_id` query parameter filters
+         *     to a single app's scoped presets; absent = union of
+         *     account-wide + every app-scoped row. No pagination —
+         *     the per-account quota caps the row count (see the
+         *     plan_cors_preset_quota_reached error code).
+         */
+        get: operations["listCorsPresets"];
+        put?: never;
+        /**
+         * Create a CORS preset.
+         * @description Creates a new cors_presets row owned by the caller's
+         *     account. AppID is optional (null = account-wide; UUID =
+         *     app-scoped). The body validation mirrors the storage-
+         *     side CHECK constraints: name 1..64, max_age 0..86400,
+         *     at-least-one allow_origin + allow_method. The
+         *     *+credentials footgun (ADR-091 D12) returns 422
+         *     cors_wildcard_with_credentials when the create body
+         *     combines AllowCredentials: true with AllowOrigins:
+         *     ["*"].
+         *
+         *     Pre-loadApp gates fire in this order: 402
+         *     plan_cors_preset_not_allowed on the Free-tier cap-0 →
+         *     422 cors_preset_invalid on the body shape → 404
+         *     cors_preset_app_not_found on a cross-tenant app_id →
+         *     403 plan_cors_preset_quota_reached on the per-account
+         *     / per-app cap → 409 cors_preset_name_conflict on a
+         *     duplicate (account_id, COALESCE(app_id, '00..00'),
+         *     name) tuple.
+         */
+        post: operations["createCorsPreset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/cors-presets/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Preset UUID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Get a single CORS preset by id.
+         * @description Returns the canonical cors_presets row. Cross-tenant
+         *     IDs collapse to 404 (no slug-leak). The response is
+         *     the same shape as POST /v1/cors-presets.
+         */
+        get: operations["getCorsPreset"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a CORS preset.
+         * @description Removes the cors_presets row. The FK ON DELETE SET
+         *     NULL on edge_rules.cors_preset_id clears every
+         *     referencing rule's FK atomically with the preset's
+         *     deletion; the gatewayd-internal compile path fails
+         *     closed (MergeCorsPresetIntoRule returns ErrNotFound)
+         *     until the customer wires a new preset or inlines
+         *     fallback values. The pgstore trigger fires
+         *     pg_notify('cors_preset_changed', account_id) AFTER
+         *     the DELETE commits.
+         */
+        delete: operations["deleteCorsPreset"];
+        options?: never;
+        head?: never;
+        /**
+         * Partial-update a CORS preset.
+         * @description Applies the partial-update (nil-skip convention) to
+         *     the cors_presets row. The PATCH body must include at
+         *     least one field (an empty body returns 422
+         *     cors_preset_update_requires_field). The wire-level
+         *     Validate enforces the same partial grammar as Create
+         *     (CorsOriginPattern on allow_origins if provided,
+         *     non-empty allow_methods if provided, max_age bound
+         *     0..86400). The handler additionally re-validates the
+         *     post-update merged shape against the *+credentials
+         *     footgun (a PATCH that flips AllowCredentials to true
+         *     while leaving AllowOrigins=["*"] is rejected).
+         *
+         *     The pgstore trigger fires pg_notify
+         *     ('cors_preset_changed', account_id) AFTER the UPDATE
+         *     commits so the gatewayd-internal listener reloads
+         *     the affected account's preset overlay (ADR-129 D4).
+         */
+        patch: operations["patchCorsPreset"];
+        trace?: never;
+    };
+    "/v1/alert-presets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the 8-row alert-preset catalog.
+         * @description The catalog is small (8 rows in PR-A) so no pagination.
+         *     Rows whose enabled_in_catalog=false are returned with the
+         *     flag set so the dashboard can render "coming soon" — the
+         *     enable endpoint rejects them with 400 alert_preset_disabled.
+         *     Rows whose minimum_plan is above the caller's plan are
+         *     returned with enabled_in_catalog unchanged so the dashboard
+         *     can render an "upgrade to <plan>" hint per row.
+         */
+        get: operations["listAlertPresets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/alert-presets/{name}/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Preset name (catalog key — see `listAlertPresets`). */
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Instantiate a preset as an alert rule.
+         * @description Clones the catalog row into a real alert_rules row the
+         *     caller owns from then on. The (metric, comparison,
+         *     threshold, window_spec, default_cooldown_minutes)
+         *     sextuple is pre-filled server-side; the caller supplies
+         *     only webhook_url + webhook_secret (the delivery channel)
+         *     and optional cooldown_minutes / enabled overrides.
+         *
+         *     Pre-loadApp gates fire in this order: 404 on missing
+         *     preset → 400 alert_preset_disabled on disabled-in-catalog
+         *     → 402 plan_alert_presets_not_allowed on below-minimum-plan
+         *     → 400 alert_preset_invalid on body shape → 400
+         *     image_egress_denied on the SSRF egress guard → 402
+         *     plan_alert_rules_not_allowed on the per-plan cap → 403
+         *     plan_alert_rule_quota on the per-app / per-account cap.
+         */
+        post: operations["enableAlertPreset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/dashboard/apps/{slug}/alert-presets/{name}/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Preset name (catalog key — same value the JSON sibling accepts at /v1/apps/{slug}/alert-presets/{name}/enable). */
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Form-POST sibling of enableAlertPreset for the dashboard.
+         * @description Receives application/x-www-form-urlencoded payload from the
+         *     preset-grid form. Coerces the (webhook_url, webhook_secret)
+         *     pair into the same EnableAlertPresetRequest body the JSON
+         *     sibling expects, runs the same plan-tier gate, then 302-redirects
+         *     to /apps/{slug}?just_enabled={rule_id}. The web-cookie auth
+         *     path is sufficient — no MFA challenge (the JSON sibling
+         *     requires MFA via the public-auth middleware).
+         */
+        post: operations["dashboardEnableAlertPreset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/alert-presets/{name}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Preset name (catalog key — same value the `listAlertPresets` and `enableAlertPreset` endpoints accept). */
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a synthetic test alert to the instantiated rule's webhook.
+         * @description Test-fires the customer's instantiated alert_preset rule
+         *     against the webhook URL they configured at enable-time.
+         *     The synthetic Event body carries `payload.test = true`
+         *     so the customer's verifier can branch on the discriminator
+         *     (skip the production alert-write path, log to a quieter
+         *     channel, etc.) and a synthetic `observed` value JUST PAST
+         *     the preset's threshold — `threshold × 1.01` for `gt`
+         *     comparisons, `threshold × 0.99` for `lt` (a naive
+         *     threshold × 1.01 for `lt` would land on the wrong side of
+         *     the threshold; the handler's branch-swap is load-bearing).
+         *
+         *     Pre-loadApp gates fire in this order: 404 on missing
+         *     preset → 400 alert_preset_disabled on disabled-in-catalog
+         *     → 402 plan_alert_presets_not_allowed on below-minimum-plan
+         *     → 404 preset_not_enabled when the customer has not yet
+         *     instantiated this preset for this app → 502 webhook
+         *     delivery failed after retry exhaustion.
+         */
+        post: operations["testAlertPreset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/dashboard/apps/{slug}/alert-presets/{name}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Preset name (catalog key — same value the JSON sibling accepts at /v1/apps/{slug}/alert-presets/{name}/test). */
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Form-POST sibling of testAlertPreset for the dashboard.
+         * @description Receives the per-card "Send test alert" form submission
+         *     from the preset grid on /dashboard/apps/{slug}. No body
+         *     fields — the instantiated rule already carries the
+         *     webhook URL + secret. On success 302-redirects to
+         *     /apps/{slug}?test_alert=ok; on 4xx/5xx 302-redirects to
+         *     /apps/{slug}?test_alert=error so the template's flash
+         *     banner can render. Web-cookie auth is sufficient — no
+         *     MFA challenge.
+         */
+        post: operations["dashboardTestAlertPreset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/mirrors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List every mirror rule for an app.
+         * @description Per-app listing (issue #72 / ADR-124 PR-A2). At most
+         *     `Limits.MirrorTargetsPerApp` rows are returned (Free/Hobby = 0
+         *     blocked at the plan gate before reaching this surface; Pro = 1;
+         *     Scale = 3) — no pagination cursor in A2.
+         */
+        get: operations["listMirrorRules"];
+        put?: never;
+        /**
+         * Create a mirror rule on an app.
+         * @description Binds a source deployment to a mirror deployment for canary-shadow
+         *     comparison (issue #72 / ADR-125 / ADR-124 PR-A2). Both
+         *     deployments must be `live` and belong to the same app. Plan gate
+         *     fires 403 `plan_mirror_not_allowed` for Free/Hobby (cost: 1
+         *     mirror VM per request, billed per running second, capped at
+         *     `MirrorMaxLifetimeSeconds=5`). Per-app quota returns 422
+         *     `mirror_rule_quota_exceeded` once `Limits.MirrorTargetsPerApp`
+         *     is reached. The runtime dispatch (gateway goroutine, redaction,
+         *     schedd stamping) lands in PR-A3 — A2 stores the rule + emits
+         *     `mirror_rule.created` audit + pg_notify `kind="mirror"` so PR-A3
+         *     picks up the change within ~1s.
+         */
+        post: operations["createMirrorRule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/mirrors/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Fetch one mirror rule by id.
+         * @description Cross-account access returns 404 (silent), never 403 — the
+         *     IDOR posture matches traffic-split's deployment-id surface.
+         */
+        get: operations["getMirrorRule"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a mirror rule.
+         * @description Idempotent at the wire level — second DELETE returns 404.
+         *     Cascades to `mirror_invocation_results` rows via FK ON DELETE
+         *     CASCADE (PR-A1 migration 00384_mirror_rules.sql). Emits
+         *     `mirror_rule.deleted` audit + pg_notify `kind="mirror"`.
+         */
+        delete: operations["deleteMirrorRule"];
+        options?: never;
+        head?: never;
+        /**
+         * Patch a mirror rule.
+         * @description Patch semantics — pointer fields distinguish "absent" from
+         *     "set to zero". `percent=0` is a legal value (disable-without-
+         *     removing); a missing `percent` keeps the existing value. The
+         *     plan gate is intentionally NOT enforced on update: a Pro
+         *     customer's existing rule survives an upgrade to Hobby; the
+         *     reaper disables the rule on the next read window so the mirror
+         *     VM doesn't keep waking.
+         */
+        patch: operations["updateMirrorRule"];
+        trace?: never;
+    };
+    "/v1/apps/{slug}/mirrors/{id}/summary": {
+        parameters: {
+            query?: {
+                /** @description Summary window. Defaults to 1h. Window is the inclusive trailing seconds the comparison ledger is aggregated over. */
+                window?: "1h" | "24h" | "7d";
+            };
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Aggregate mirror drift counts over a window.
+         * @description Read-only aggregate. Source: `mirror_invocation_results` rows
+         *     whose `completed_at >= now - window_seconds`. Returns:
+         *     total invocations, status diff count, schema diff count, body
+         *     diff count, mean/p99 latency delta, crash count. PR-A2 returns
+         *     zeros (PR-A1's ledger has no writers until A3 ships the
+         *     runtime); post-A3 this is the dashboard widget's data source.
+         */
+        get: operations["getMirrorRuleSummary"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3014,12 +5151,43 @@ export interface paths {
          *     The drain transitions a row here once it has failed
          *     `MaxQueueAttempts` times for the app's plan (Hobby 3, Pro 10,
          *     Scale 25). NO lease is acquired and no row is mutated. Replaying
-         *     a dead-letter row is out of scope for this endpoint — the
-         *     customer re-sends via `queues/send`.
+         *     a dead-letter row is out of scope for this endpoint — see
+         *     `POST /v1/apps/{slug}/queues/dead_letter/{id}/replay`.
          */
         get: operations["queueDeadLetter"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/queues/dead_letter/{id}/replay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reset a dead-letter queue row back to pending.
+         * @description ADR-134 PR-C. Resets the row's `state` to `pending` with
+         *     `attempts=0`, `last_error=null`, `due_at=now()`,
+         *     `last_replayed_at=now()`. Distinct from
+         *     `POST /v1/invocations/{id}/replay`, which enqueues a NEW row
+         *     tagged Source=InvocationReplay. This endpoint mutates the
+         *     existing row in place so the dashboard's replay history view
+         *     tracks the chain on a single row id.
+         *
+         *     Idempotent: a second POST after the first has succeeded
+         *     finds the row in 'pending' and returns 404. The
+         *     Idempotency-Key middleware (issued automatically by the SDK)
+         *     covers double-POST across network retries.
+         */
+        post: operations["queueDeadLetterReplay"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3652,6 +5820,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Catalog of starter templates the dashboard wizard renders.
+         * @description Cookie-session-authenticated (NOT API-key). Mirrors the
+         *     embed.FS in cmd/gregale/templates/ via cmd/gregale/templates.Names
+         *     without importing the CLI's main package — the dashboard and
+         *     the CLI read the same 13-entry list through independent paths.
+         *     Adding a template means a new entry in cmd/gregale/templates/embed.go
+         *     + the same category + description wiring here.
+         *
+         *     Used by the dashboard's /dashboard/apps/new wizard to populate
+         *     the "Starting template" dropdown. The CLI's `gregale deploy
+         *     --template NAME` and `gregale init --template NAME` validators
+         *     reference the same source on the CLI side.
+         */
+        get: operations["listTemplates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/usage": {
         parameters: {
             query?: never;
@@ -3745,14 +5943,13 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get the operator-configured billing portal URL (and the card-on-file summary).
+         * Get a provider billing portal URL (and the card-on-file summary).
          * @description Returns the URL the customer should be sent to in order to
          *     manage their subscription (update card, view invoices,
-         *     download receipts, cancel). The URL is server-rendered from
-         *     the operator's `FAAS_BILLING_PORTAL_URL` template; the server
-         *     does NOT call Stripe's `BillingPortal.Session` SDK on this
-         *     path (issue #253 acceptance #3 partial — a follow-up PR will
-         *     add the SDK call once the spec defines the contract).
+         *     download receipts, cancel). When the active provider exposes
+         *     customer sessions, the server creates a short-lived authenticated
+         *     portal URL. Otherwise it renders the operator's
+         *     `FAAS_BILLING_PORTAL_URL` template.
          *
          *     The response also carries a `payment_method` block (issue
          *     #242) — the card-on-file summary (brand, last-4, expiry).
@@ -3780,15 +5977,11 @@ export interface paths {
         put?: never;
         /**
          * Retry the latest unpaid invoice / transaction for this account.
-         * @description Stripe path: calls `Invoices.Pay` on the most recent open
-         *     invoice for the customer. The Idempotency-Key header (auto
-         *     UUIDv4 if absent) collapses retries on the same
-         *     `acct.ID / retry / invoice.ID` key.
-         *
-         *     Paddle path: creates a new `Transaction` against the
-         *     existing customer for the same plan + month-to-date overage.
-         *     The CLI forwards the merchant-dashboard URL via the
-         *     response's `provider_ref_id` extension.
+         * @description The configured provider is asked to retry the most recent unpaid
+         *     charge. The Idempotency-Key header (auto UUIDv4 if absent) is
+         *     forwarded where the provider supports it. Providers without a
+         *     direct retry API return 501 and the response includes a portal URL
+         *     for payment-method recovery.
          */
         post: operations["retryLatestCharge"];
         delete?: never;
@@ -3834,6 +6027,29 @@ export interface paths {
         put?: never;
         /** Issue a positive-cents credit to an account (admin-only). */
         post: operations["issueAccountCredit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/accounts/{id}/refunds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refund a paid Polar invoice (admin-only).
+         * @description `invoice_id` must identify a local Gregale invoice belonging to the
+         *     target account. The current public-release implementation supports
+         *     Polar order IDs and integer EUR cents. `Idempotency-Key` is required
+         *     and is sent to the provider unchanged (up to 255 characters).
+         */
+        post: operations["refundAccountInvoice"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4031,6 +6247,238 @@ export interface paths {
         get: operations["getRekeyProgress"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/instances/{id}/force-park": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enqueue a force-park intent for a wedged live instance (admin-only).
+         * @description Operator-side recovery primitive for instances wedged in
+         *     {RUNNING, WAKING, COLD_BOOTING} that the customer can't
+         *     wait for the idle reaper to handle. PR #1099 P2 redesign:
+         *     apid writes a row to `operator_intents` (PR #1099 P2.1)
+         *     and emits `pg_notify('operator_intent', …)`; schedd
+         *     (the ONLY writer to `instances` per CLAUDE.md §6.2) is
+         *     the sole consumer and dispatches via
+         *     `engine.ParkWithReason` so the `pkg/state/machine.go`
+         *     `CanTransition` guard fires. The handler returns 202
+         *     Accepted with an intent_id; the operator polls
+         *     GET /v1/admin/operator-intents/{id} for terminal state.
+         *
+         *     `?confirm=true` is required as a tripwire against
+         *     operator fat-fingering. Optional `?reason=<slug>` defaults
+         *     to `operator_force_park`; values are clamped to the
+         *     `[a-z0-9_]{1,64}` shape.
+         */
+        post: operations["postForceParkInstance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/apps/{slug}/force-cold-boot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enqueue a force-cold-boot intent for an app's latest deployment (admin-only).
+         * @description Operator-side recovery primitive for the case where the
+         *     live instance is fine but the snapshot backing the warm
+         *     tier is suspected to be the carrier of a customer-reported
+         *     wedge. Per ADR-005 ("snapshot of a wedged VM is a wedged
+         *     VM"), the recovery action is `MarkSnapshotStale` on the
+         *     deployment's latest warm + init snapshots — NOT a state-
+         *     machine transition. The instance row is NOT mutated;
+         *     the next customer Wake takes the cold-boot path through
+         *     `engine.go::usableSnapshotForWake` returning `haveSnap=false`.
+         *
+         *     PR #1099 P2 redesign: apid writes a row to `operator_intents`
+         *     and emits `pg_notify('operator_intent', …)`; schedd is the
+         *     sole consumer and dispatches via
+         *     `engine.ForceColdBootNextWake`. The handler returns 202
+         *     Accepted with an intent_id; the operator polls
+         *     GET /v1/admin/operator-intents/{id} for the resolved
+         *     `snap_ids_marked_stale` (unknown at enqueue time).
+         *
+         *     Requires `?confirm=true` as a tripwire. Optional
+         *     `?reason=<slug>` defaults to `operator_force_cold_boot`.
+         */
+        post: operations["postForceColdBootApp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/instances/{id}/force-restart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enqueue a force-restart intent for a wedged RUNNING instance (admin-only).
+         * @description Operator-side recovery primitive for instances wedged in
+         *     {RUNNING} that the customer can't wait for the idle
+         *     reaper to handle AND whose snapshot is suspected to be
+         *     the carrier of the wedge. Composes the two earlier
+         *     primitives: kill the instance (force-park) AND flip the
+         *     deployment's latest warm + init snapshots stale
+         *     (force-cold-boot). Per ADR-005 ("snapshot of a wedged
+         *     VM is a wedged VM"), the recovery action is destroy +
+         *     snap-stale so the next Wake is a guaranteed cold boot.
+         *
+         *     PR #1105 (P2d follow-on to PR #1099): apid writes a row
+         *     to `operator_intents` (kind = `force_restart`, CHECK
+         *     widened by migrations/00446) and emits
+         *     `pg_notify('operator_intent', …)`; schedd (the ONLY
+         *     writer to `instances` per CLAUDE.md §6.2) is the sole
+         *     consumer and dispatches via `engine.ForceRestart` so the
+         *     `pkg/state/machine.go` `CanTransition` guard fires on the
+         *     locked re-read. The handler returns 202 Accepted with an
+         *     intent_id; the operator polls
+         *     GET /v1/admin/operator-intents/{id} for terminal state
+         *     and `snap_ids_marked_stale`.
+         *
+         *     Gate is intentionally TIGHTER than force-park's
+         *     ({RUNNING, WAKING, COLD_BOOTING}): force-restart only
+         *     acts on RUNNING instances because the engine's
+         *     state-machine validation at pkg/sched/engine.go:5299
+         *     rejects non-RUNNING states as
+         *     `state.ErrInstanceNotRunning` (a wedged WAKING /
+         *     COLD_BOOTING instance's nodeID may be empty or its
+         *     destroy path may race with the Wake). Operators targeting
+         *     WAKING / COLD_BOOTING instances get 409
+         *     `instance_not_restartable` with no intent row written.
+         *
+         *     `?confirm=true` is required as a tripwire against
+         *     operator fat-fingering. Optional `?reason=<slug>` defaults
+         *     to `operator_force_restart`; values are clamped to the
+         *     `[a-z0-9_]{1,64}` shape.
+         */
+        post: operations["postForceRestartInstance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/operator-intents/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the current state of an operator intent (admin-only).
+         * @description Returns the row written by the 202 Accepted response of
+         *     POST /v1/admin/instances/{id}/force-park, POST
+         *     /v1/admin/instances/{id}/force-restart, or POST
+         *     /v1/admin/apps/{slug}/force-cold-boot. Status is one of
+         *     "pending" | "running" | "succeeded" | "failed" |
+         *     "cancelled". SnapIDsMarkedStale is populated on terminal
+         *     status for force_cold_boot and force_restart intents
+         *     (warm + init tiers walked). On failure, Error carries
+         *     the bounded dispatch error message (1 KB cap).
+         */
+        get: operations["getOperatorIntent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/obs/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Meta-obs health snapshot — audit write rates, outcome-missing counts, trace_id completeness, alert firing count (admin-only).
+         * @description Operator-side meta-observation endpoint. Composes a single
+         *     JSON snapshot from:
+         *
+         *       - `audit_log_write_total[5m]` / `audit_log_write_failures_total[5m]` /
+         *         `audit_log_coverage_ratio_5m` — apid's own Prometheus
+         *         counters (PR #TBD / C5).
+         *       - `SELECT kind, count(*) FROM operator_intents WHERE
+         *         status = 'running' AND started_at < now() - interval
+         *         '5 minutes' GROUP BY kind` — single SQL query.
+         *       - `SELECT kind, count(*) FILTER (WHERE trace_id IS NOT
+         *         NULL)::float / count(*) FROM events WHERE kind LIKE
+         *         'operator.action.%' AND at > now() - interval '5
+         *         minutes' GROUP BY kind` — reads events (live), NOT
+         *         audit_log (FK-free post-deletion copy).
+         *       - `count(ALERTS{alertstate="firing"})` — Prometheus
+         *         Alertmanager integration.
+         *
+         *     Federation is out of scope (each daemon owns its own
+         *     /metrics); this endpoint is the local apid's view. Kinds
+         *     with zero rows in the SQL-derived fields are seeded to
+         *     0 (counts) or 1.0 (ratios, vacuous truth) so the JSON
+         *     shape stays stable.
+         */
+        get: operations["getObsHealth"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/builds/sweep-stuck": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Flip every build row stuck in 'running' past the threshold to 'failed/timeout' (admin-only).
+         * @description Operator-side recovery primitive for builder microVMs that
+         *     crashed (OOM, kernel panic, host reboot) and left their
+         *     `builds` row in 'running' indefinitely. Mirrors the
+         *     in-process reaper at pkg/builderd/reaper.go:48 — the
+         *     operator-facing endpoint is the manual escape hatch for
+         *     when the reaper's grace period is too long for an
+         *     incident.
+         *
+         *     `?older_than=` is clamped to [1m, 60m] so a fat-fingered
+         *     "1ns" cannot sweep in-flight builds. Default 15m.
+         *
+         *     Audit row: operator.action.reclaim_build with
+         *     account_id=NULL (fleet-level, not tenant-scoped), including
+         *     the normalized operator reason.
+         */
+        post: operations["postSweepStuckBuilds"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4509,210 +6957,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/admin/obs/overview": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Read the fleet operator KPI snapshot. */
-        get: operations["getOperatorObservabilityOverview"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/admin/obs/capacity": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Read fleet capacity and placement counters. */
-        get: operations["getOperatorCapacity"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/admin/obs/tenants": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List tenants for the operator console. */
-        get: operations["listOperatorTenants"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/admin/obs/tenants/{id}/360": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Read the bounded tenant 360 view. */
-        get: operations["getOperatorTenant360"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/admin/obs/tenants/{id}/activity": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Read safe tenant activity metadata. */
-        get: operations["getOperatorTenantActivity"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/admin/obs/nodes": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List compute nodes with live utilization. */
-        get: operations["listOperatorNodes"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/admin/obs/nodes/{name}/detail": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Read the apps and instances placed on one node. */
-        get: operations["getOperatorNodeDetail"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/admin/obs/apps/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Read app, deployment, instance, and health details. */
-        get: operations["getOperatorAppDetail"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/admin/instances/{id}/force-park": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Enqueue a guarded force-park action. */
-        post: operations["postForceParkInstance"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/admin/instances/{id}/force-restart": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Enqueue a guarded force-restart action. */
-        post: operations["postForceRestartInstance"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/admin/apps/{slug}/force-cold-boot": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Enqueue a guarded force-cold-boot action. */
-        post: operations["postForceColdBootApp"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/admin/operator-intents/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Read the state of an accepted operator recovery intent. */
-        get: operations["getOperatorIntent"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -4914,9 +7158,20 @@ export interface components {
             token: string;
             new_password: string;
         };
-        /** @description New password for the authenticated account. Lets OAuth-only customers opt into password login. */
+        /** @description New password for the authenticated account. Lets OAuth-only customers opt into password login, and customers who already have a password replace it. */
         SetPasswordRequest: {
             password: string;
+            /**
+             * @description Double-submit token from `GET /v1/auth/csrf?action=set_password`;
+             *     must equal the `faas_csrf` cookie that call set.
+             */
+            csrf_token: string;
+            /**
+             * @description Required when the account already has a password and the
+             *     session carries no step-up from the last 5 minutes
+             *     (ADR-140). Ignored for OAuth-only accounts.
+             */
+            current_password?: string;
         };
         /**
          * @description Body for both `POST /v1/install/repos/list` and
@@ -4971,6 +7226,11 @@ export interface components {
             usage_gb_hours: number;
             app_count: number;
             github_install_id?: string | null;
+            plan_change_status?: string;
+            /** @enum {string} */
+            requested_plan?: "free" | "hobby" | "pro" | "scale";
+            /** Format: date-time */
+            effective_at?: string;
         };
         /** @description Plan-driven quota and resource caps: max RAM per app, concurrent wakes, total deployed apps, included GB-hours, and max app-layer bytes per build. */
         AccountLimits: {
@@ -5183,6 +7443,217 @@ export interface components {
             last_id?: string;
         };
         /**
+         * @description Wire shape for the 202 Accepted response of POST
+         *     /v1/admin/instances/{id}/force-park, POST
+         *     /v1/admin/instances/{id}/force-restart, and POST
+         *     /v1/admin/apps/{slug}/force-cold-boot (admin scope +
+         *     FAAS_ADMIN_EMAILS allowlist). The audit row is emitted
+         *     under operator.action.{park_instance, restart_instance,
+         *     force_cold_boot} with target_account_id = the instance's /
+         *     app's owning account. StatusURL is the relative path;
+         *     clients prepend the apid base URL.
+         */
+        OperatorIntentAcceptedResponse: {
+            /** @example true */
+            ok: boolean;
+            /**
+             * Format: uuid
+             * @description Operator intent UUID. Used to poll status_url.
+             */
+            intent_id: string;
+            /**
+             * @description Relative path to GET /v1/admin/operator-intents/{intent_id}.
+             * @example /v1/admin/operator-intents/11111111-1111-1111-1111-111111111111
+             */
+            status_url: string;
+            /**
+             * Format: date-time
+             * @description Recommended horizon to stop polling (UTC, RFC 3339).
+             */
+            expires_at: string;
+            /** @enum {string} */
+            kind: "force_park" | "force_cold_boot" | "force_restart";
+            /**
+             * Format: uuid
+             * @description Populated for force_park and force_restart. The instance the operator targeted.
+             */
+            instance_id?: string;
+            /**
+             * @description Populated for force_park and force_restart. Gate-time read of `instances.state`.
+             * @enum {string}
+             */
+            previous_state?: "RUNNING" | "WAKING" | "COLD_BOOTING";
+            /**
+             * Format: uuid
+             * @description Populated for force_cold_boot. The app whose deployment was targeted.
+             */
+            app_id?: string;
+            /**
+             * Format: uuid
+             * @description Populated for force_cold_boot. The latest deployment of the app.
+             */
+            deployment_id?: string;
+            /** @example operator_force_park */
+            reason: string;
+            /**
+             * @description Obs-Meta + Trace-IDs Mega-PR / C4. OTel W3C 32-char
+             *     hex identifier shared with the inbound HTTP request
+             *     and the schedd dispatch context. Always populated for
+             *     the inbound force-action route (the middleware
+             *     generates one when absent); surfaced here so the
+             *     caller can correlate the 202 response with the
+             *     terminal outcome row.
+             */
+            trace_id?: string | null;
+        };
+        /**
+         * @description Wire shape for GET /v1/admin/operator-intents/{id}
+         *     (admin scope + FAAS_ADMIN_EMAILS allowlist; NO MFA —
+         *     mirrors getFireCronRequest). IDOR closure: 404 (not 403)
+         *     on wrong-owner so an admin cannot distinguish "wrong id"
+         *     from "wrong owner".
+         */
+        OperatorIntentResponse: {
+            /** Format: uuid */
+            intent_id: string;
+            /** @enum {string} */
+            kind: "force_park" | "force_cold_boot" | "force_restart";
+            /** @enum {string} */
+            status: "pending" | "running" | "succeeded" | "failed" | "cancelled";
+            /** @description Instance UUID (force_park or force_restart) or deployment UUID (force_cold_boot). */
+            target_id: string;
+            /**
+             * Format: uuid
+             * @description Owning account. NULL for fleet-level intents (e.g. P2c reclaim_build).
+             */
+            account_id?: string;
+            /** Format: date-time */
+            requested_at: string;
+            /**
+             * Format: date-time
+             * @description Set when schedd claims the intent (pending → running).
+             */
+            started_at?: string;
+            /**
+             * Format: date-time
+             * @description Set on terminal status (succeeded/failed/cancelled).
+             */
+            finished_at?: string;
+            /** @description Bounded dispatch error message (1 KB cap) on failed status. */
+            error?: string;
+            /** @description Populated for force_cold_boot and force_restart on succeeded status. Empty when no snapshots existed. */
+            snap_ids_marked_stale?: string[];
+            /**
+             * @description Obs-Meta + Trace-IDs Mega-PR / C4. OTel W3C 32-char
+             *     hex identifier shared with the inbound HTTP request
+             *     and the schedd dispatch context. NULL when the row
+             *     predates C4 or when the inbound request carried no
+             *     trace_id (e.g. cron-fired reaper paths). Joins
+             *     "this alert" ↔ "this operator action" ↔ "this
+             *     schedd dispatch" on one column.
+             */
+            trace_id?: string | null;
+        };
+        /**
+         * @description Wire shape for GET /v1/admin/obs/health (admin scope +
+         *     FAAS_ADMIN_EMAILS allowlist + MFA). Composed from
+         *     apid's own Prometheus counters (audit_log_write_total /
+         *     audit_log_write_failures_total / audit_log_coverage_ratio_5m),
+         *     a single SQL aggregate over operator_intents (stuck-running
+         *     rows), a single SQL aggregate over events (trace_id
+         *     coverage), and a PromQL count of firing alerts. Kinds
+         *     with zero rows in the SQL-derived fields are seeded to
+         *     0 (counts) or 1.0 (ratios, vacuous truth) so the JSON
+         *     shape stays stable on a fresh deploy.
+         */
+        ObsHealthResponse: {
+            /**
+             * Format: date-time
+             * @description Snapshot timestamp (UTC, RFC 3339).
+             */
+            generated_at: string;
+            /**
+             * Format: int64
+             * @description Sum of audit_log_write_total over the trailing 5m
+             *     window. 0 when apid's Prometheus is unreachable or
+             *     the audit pipeline has been silent in the window.
+             */
+            audit_log_write_total_5m: number;
+            /**
+             * Format: int64
+             * @description Sum of audit_log_write_failures_total over the trailing
+             *     5m window. Same nil-promql posture as the success
+             *     counter.
+             */
+            audit_log_write_failures_5m: number;
+            /**
+             * Format: double
+             * @description Ratio of audit_log writes with a non-NULL trace_id
+             *     over all audit_log writes in the window. 1.0
+             *     (vacuous truth) when apid's Prometheus is
+             *     unreachable or the audit pipeline has been silent
+             *     in the window.
+             */
+            audit_log_coverage_ratio_5m: number;
+            /**
+             * @description Per-kind count of operator_intents rows stuck in
+             *     `running` past the 5m threshold. The handler seeds
+             *     every kind in the operator-action vocabulary
+             *     (force_park, force_cold_boot, force_restart) with
+             *     0 so the JSON shape stays stable.
+             * @example {
+             *       "force_park": 0,
+             *       "force_cold_boot": 0,
+             *       "force_restart": 0
+             *     }
+             */
+            operator_intent_outcome_missing_total: {
+                [key: string]: number;
+            };
+            /**
+             * @description Per-kind ratio of operator.action.* events with a
+             *     non-NULL trace_id over all operator.action.* events
+             *     in the window. Kinds with zero rows are seeded to
+             *     1.0 (vacuous truth — see Store interface comment).
+             *     Reads events (live), NOT audit_log (FK-free
+             *     post-deletion copy) — ADR-091 §3.7.4.
+             * @example {
+             *       "force_park": 1,
+             *       "force_cold_boot": 1,
+             *       "force_restart": 1
+             *     }
+             */
+            trace_id_completeness_ratio: {
+                [key: string]: number;
+            };
+            /**
+             * Format: int64
+             * @description Count of Prometheus alert rules in the firing state
+             *     via PromQL ALERTS{alertstate="firing"}. 0 when
+             *     apid's Prometheus is unreachable.
+             */
+            alerts_firing: number;
+        };
+        /**
+         * @description Wire shape for POST /v1/admin/builds/sweep-stuck
+         *     (admin scope + FAAS_ADMIN_EMAILS allowlist). The audit
+         *     row is emitted under operator.action.reclaim_build with
+         *     account_id=NULL (fleet-level sweep, not tenant-scoped).
+         */
+        SweepStuckBuildsResponse: {
+            /** @example true */
+            ok: boolean;
+            /** @description Rows flipped from 'running' to 'failed' with failure_class='timeout'. 0 when none match. */
+            swept_count: number;
+            /** @description Effective threshold after parsing ?older_than=. Clamped to [60, 3600]. */
+            older_than_seconds: number;
+            /**
+             * Format: date-time
+             * @description RFC 3339 cutoff timestamp (now - older_than).
+             */
+            threshold_iso: string;
+        };
+        /**
          * @description One API key in export form: id, prefix (first 8 chars), label, scopes, created/last-used timestamps, and request count. Scopes is the permission set attached to the key at the moment of export (audit trail; IAM-1, ADR-034 rev2).
          * @example {
          *       "id": "0123456789abcdef0123456789abcdef",
@@ -5237,6 +7708,7 @@ export interface components {
             app_id: string;
             /** @example DATABASE_URL */
             key: string;
+            scope: string;
             /** @description base64-encoded age-sealed envelope */
             ciphertext: string;
             /** Format: date-time */
@@ -5368,6 +7840,12 @@ export interface components {
             public_auth?: components["schemas"]["PublicAuthStatus"];
             /** Format: date-time */
             auth_default_flipped_at?: string | null;
+            /**
+             * @description Per-app wire-protocol selector (ADR-124). Closed set {http1, http2, grpc}. Default 'http1' (universal). Setting 'grpc' is plan-gated to Hobby+/Pro/Scale; Free customers see this as 'http1'.
+             * @example http1
+             * @enum {string}
+             */
+            app_protocol?: "http1" | "http2" | "grpc";
         };
         /** @description App creation payload: slug, type (app|function), runtime (only for function), RAM MB, max concurrency, idle timeout, and optional manifest. */
         CreateAppRequest: {
@@ -5384,6 +7862,29 @@ export interface components {
             ram_mb?: number;
             max_concurrency?: number;
             idle_timeout_s?: number;
+            /**
+             * @description Lifecycle contract for the app. Default is request; service/worker/job are plan-gated.
+             * @example service
+             * @enum {string}
+             */
+            execution_mode?: "request" | "service" | "worker" | "job";
+            /**
+             * @description Restart behavior for the workload. Omitted uses the execution-mode default.
+             * @example always
+             * @enum {string}
+             */
+            restart_policy?: "no" | "on-failure" | "always" | "unless-stopped";
+            /**
+             * @description Upper bound on time-to-ready in seconds. 0 uses the plan default.
+             * @example 30
+             */
+            startup_deadline_s?: number;
+            /**
+             * @description Maximum consecutive restart attempts. 0 uses the plan default.
+             * @example 5
+             */
+            max_retries?: number;
+            service_replicas?: components["schemas"]["ServiceReplicas"];
             /**
              * @description Per-app streaming flag. Omitted at create-time → apid applies the plan default (issue #471).
              * @example false
@@ -5404,6 +7905,12 @@ export interface components {
              * @example false
              */
             maintenance_mode?: boolean;
+            /**
+             * @description Per-app wire-protocol selector (ADR-124). Closed set {http1, http2, grpc}. Omit to use the per-plan default ('http1'); set explicitly to opt in to http2 or grpc. Free customers POSTing 'grpc' are rejected with 403 plan_app_protocol_grpc_not_allowed.
+             * @example http1
+             * @enum {string}
+             */
+            app_protocol?: "http1" | "http2" | "grpc";
             /**
              * @description Per-app two-tier snapshot flag (issue #470 / ADR-055). Omitted at create-time → apid applies the plan default. Free/Hobby PATCH-true is rejected.
              * @example true
@@ -5442,6 +7949,30 @@ export interface components {
             ram_mb?: number | null;
             idle_timeout_s?: number | null;
             max_concurrency?: number | null;
+            /**
+             * @description Lifecycle contract for the app. Omit for no change; service/worker/job are plan-gated.
+             * @example service
+             * @enum {string|null}
+             */
+            execution_mode?: "request" | "service" | "worker" | "job" | null;
+            /**
+             * @description Restart behavior for the workload. Omit for no change.
+             * @example always
+             * @enum {string|null}
+             */
+            restart_policy?: "no" | "on-failure" | "always" | "unless-stopped" | null;
+            /**
+             * @description Upper bound on time-to-ready in seconds. Omit for no change; 0 uses the plan default.
+             * @example 30
+             */
+            startup_deadline_s?: number | null;
+            /**
+             * @description Maximum consecutive restart attempts. Omit for no change; 0 uses the plan default.
+             * @example 5
+             */
+            max_retries?: number | null;
+            /** @description Full replacement of the service replica policy. Omit for no change. */
+            service_replicas?: components["schemas"]["ServiceReplicas"];
             min_instances?: number | null;
             /** @description v4 or v6 CIDR allowlist; empty array clears to chain-default-accept. */
             egress_allowlist?: string[];
@@ -5475,6 +8006,12 @@ export interface components {
              * @example false
              */
             maintenance_mode?: boolean | null;
+            /**
+             * @description Per-app wire-protocol selector (ADR-124). Closed set {http1, http2, grpc}. Omit for no change; set explicitly to opt in (http2/grpc) or reset to 'http1'. Free customers PATCHing 'grpc' are rejected with 403 plan_app_protocol_grpc_not_allowed.
+             * @example http1
+             * @enum {string|null}
+             */
+            app_protocol?: "http1" | "http2" | "grpc" | null;
             /** @description Per-app scaling policy. Omitted → no change. Non-null → atomic full-overwrite of the jsonb column. */
             scaling_policy?: null | components["schemas"]["ScalingPolicy"];
             /**
@@ -5565,14 +8102,14 @@ export interface components {
              */
             scale_in_cooldown_s?: number;
         };
-        /** @description Per-app public-URL auth write shape (issue #477 / ADR-077). Sent on PATCH /v1/apps/{slug}; apid seals the basic_user + basic_pass into a single APP_BASIC_AUTH secretbox blob before persistence. The plaintext is never echoed on read (see PublicAuthStatus). */
+        /** @description Per-app public-URL auth write shape (issue #477 / ADR-077 + ADR-118). Sent on PATCH /v1/apps/{slug}; apid seals the basic_user + basic_pass into a single APP_BASIC_AUTH secretbox blob before persistence. The plaintext is never echoed on read (see PublicAuthStatus). For mode='ip_allowlist' (ADR-118), ip_allowlist carries the per-app CIDR allowlist (Pro 16 max, Scale 64 max — Free/Hobby → 403 plan_public_auth_ip_allowlist_not_allowed). */
         PublicAuthBlock: {
             /**
-             * @description Auth mode (closed set). 'open' is the pre-#477 default (every request passes). 'bearer' requires Authorization: Bearer (Hobby+; 402 on Free). 'basic' requires HTTP Basic auth with sealed credentials (Pro+; 402 on Free/Hobby). Unknown values → 422 invalid_public_auth_mode.
+             * @description Auth mode (closed set). 'open' is the pre-#477 default (every request passes). 'bearer' requires Authorization: Bearer (Hobby+; 402 on Free). 'basic' requires HTTP Basic auth with sealed credentials (Pro+; 402 on Free/Hobby). 'ip_allowlist' (ADR-118) restricts the app to requests originating from a client IP inside the per-app CIDR allowlist (Pro+; 402 on Free/Hobby). 'internal_only' (ADR-119) restricts the app to requests carrying an Authorization: Bearer JWT with aud='gregale.internal' signed by a Gregale daemon's Ed25519 key (per-service public-key allowlist is operator-side; available on all plans). Unknown values → 422 invalid_public_auth_mode.
              * @example basic
              * @enum {string}
              */
-            mode: "open" | "bearer" | "basic";
+            mode: "open" | "bearer" | "basic" | "ip_allowlist" | "internal_only";
             /**
              * @description Basic-auth username (RFC 7617 §2). Plaintext at PATCH time; sealed into apps.public_auth_basic under the APP_BASIC_AUTH secretbox namespace. Required when mode='basic'; ignored otherwise. Range [1, 128] bytes after TrimSpace.
              * @example editor
@@ -5584,20 +8121,33 @@ export interface components {
              * @example hunter2
              */
             basic_pass?: string;
+            /**
+             * @description ADR-118: per-app ingress CIDR allowlist. Required when mode='ip_allowlist' (must be non-empty). Each entry is an RFC 4632 CIDR (e.g. '10.0.0.0/8' or '2001:db8::/32'); masklen /0 is rejected at the wire and by the apps_public_auth_ip_allowlist_cidr trigger. v4-mapped-v6 prefixes are rejected at the handler. After canonicalisation, the cap is plan.PublicAuthIPAllowlistMaxEntries (Pro 16, Scale 64). On the audit row, only the entry count is recorded — never the CIDR strings.
+             * @example [
+             *       "10.0.0.0/8",
+             *       "2001:db8::/32"
+             *     ]
+             */
+            ip_allowlist?: string[];
         };
-        /** @description Read-only per-app public-URL auth shape on AppResponse (issue #477 / ADR-077). Mirrors the row contents without the plaintext credentials. The redaction posture is a load-bearing invariant — see ADR-077 §Decision 're-redaction invariant': neither basic_user nor basic_pass is EVER returned on the wire, even when mode='basic'. To rotate credentials, the customer PATCHes a fresh public_auth block. */
+        /** @description Read-only per-app public-URL auth shape on AppResponse (issue #477 / ADR-077 + ADR-118). Mirrors the row contents without the plaintext credentials. The redaction posture is a load-bearing invariant — see ADR-077 §Decision 're-redaction invariant': neither basic_user nor basic_pass is EVER returned on the wire, even when mode='basic'. To rotate credentials, the customer PATCHes a fresh public_auth block. */
         PublicAuthStatus: {
             /**
-             * @description Active auth mode. One of 'open', 'bearer', 'basic'. Matches apps.public_auth_mode on disk; a PATCH 'open' cleared any prior sealed blob so a stale secretbox row never reaches a fresh request.
+             * @description Active auth mode. One of 'open', 'bearer', 'basic', 'ip_allowlist', 'internal_only'. Matches apps.public_auth_mode on disk; a PATCH 'open' cleared any prior sealed blob so a stale secretbox row never reaches a fresh request. 'internal_only' (ADR-119) requires an Authorization: Bearer JWT with aud='gregale.internal' signed by a Gregale daemon's Ed25519 key — see PublicAuthBlock.mode for the write-side description.
              * @example basic
              * @enum {string}
              */
-            mode: "open" | "bearer" | "basic";
+            mode: "open" | "bearer" | "basic" | "ip_allowlist" | "internal_only";
             /**
              * @description True iff the row carries a non-null apps.public_auth_basic blob (i.e. mode='basic' with credentials). A mode='basic' row without creds would 401 every request — has_basic_creds is the operator-greppable signal that the seal succeeded.
              * @example true
              */
             has_basic_creds: boolean;
+            /**
+             * @description ADR-118: integer count of CIDRs in apps.public_auth_ip_allowlist. Returned (not the CIDR strings themselves) so the dashboard can show 'app X has 3 CIDRs configured' without leaking the partner-customer ranges. Always 0 when mode != 'ip_allowlist'.
+             * @example 3
+             */
+            ip_allowlist_entry_count?: number;
         };
         /** @description (metric, value) pair the engine watches for the scale-up trigger. The metric surface is closed; the unset state (null) is the legacy 'engine falls back to autoscale_target_rps' path. */
         ScalingTarget: {
@@ -5612,7 +8162,7 @@ export interface components {
              */
             value?: number;
         };
-        /** @description App manifest: environment variables, build commands, working directory, healthcheck, user, and Dockerfile-as-source flag (§ux 6.3). The optional `env_secrets` field carries sealed-secret refs ("secret:NAME" strings) resolved by the host at wake time against the app_secrets table (issue #460 / ADR-053 §Decision 1). Values are NEVER sealed ciphertext — only refs. */
+        /** @description App manifest: environment variables, build commands, working directory, healthcheck, user, and Dockerfile-as-source flag (§ux 6.3). The optional `env_secrets` field carries sealed-secret refs ("secret:NAME" strings) resolved by the host at wake time against the app_secrets table (issue #460 / ADR-053 §Decision 1). Values are NEVER sealed ciphertext — only refs. M-1 (ADR-136) widens the contract additively with `healthcheck`, `stop_signal`, `stop_grace_period` from the OCI image-config spec; old guest-init ignores unknown fields per JSON semantics, so the widen is wire-compatible. M-2 (ADR-137 + ADR-138) widens additively with `execution_mode`, `restart_policy`, `startup_deadline_s`, `max_retries`, and `service_replicas` — these govern the lifecycle contract (request vs service vs worker vs job) and the per-mode replica scaffold. Defaults preserve today's behaviour (execution_mode=request, restart_policy=on-failure). */
         AppManifest: {
             entrypoint: string[];
             env?: {
@@ -5626,6 +8176,65 @@ export interface components {
             port?: number | null;
             healthz?: string | null;
             user?: string | null;
+            healthcheck?: components["schemas"]["AppManifestHealthcheck"];
+            /** @description OCI STOPSIGNAL (default SIGTERM). Wired into the Engine.StopInstance signal-and-grace flow in M-2. */
+            stop_signal?: string | null;
+            /** @description OCI StopGracePeriod as a Go duration string (e.g. "30s"). Per-plan cap (Hobby 30s, Pro 60s, Scale 120s) enforced by Validate() — ADR-138 §Decision 4. */
+            stop_grace_period?: string | null;
+            /**
+             * @description Lifecycle contract for this app (ADR-137 §Decision 1). Default 'request' preserves today's behaviour.
+             * @example request
+             * @enum {string|null}
+             */
+            execution_mode?: "request" | "service" | "worker" | "job" | null;
+            /**
+             * @description Restart behaviour when the main workload exits (ADR-137 §Decision 2). Default is mode-derived: always for worker/service, no for job, on-failure for request.
+             * @example on-failure
+             * @enum {string|null}
+             */
+            restart_policy?: "no" | "on-failure" | "always" | "unless-stopped" | null;
+            /**
+             * @description Upper bound on time-to-ready (seconds). Per-plan cap enforced by Validate() (ADR-138 §Decision 3). Default 0 means 'use plan default'.
+             * @example 30
+             */
+            startup_deadline_s?: number | null;
+            /**
+             * @description Consecutive restart-attempt cap (ADR-138 §Decision 3). Per-plan cap: Hobby 5, Pro 10, Scale 20. Default 0 means 'use plan default'.
+             * @example 3
+             */
+            max_retries?: number | null;
+            service_replicas?: components["schemas"]["ServiceReplicas"];
+        };
+        /** @description AppManifest-level projection of the OCI HEALTHCHECK shape (ADR-136 §Decision 3-4). Durations are integer seconds at the JSON boundary to match OCI/Docker conventions. Runtime polling lands in M-2 (ADR-X5); M-1 surfaces the field for the registry-pull path. */
+        AppManifestHealthcheck: {
+            /** @description Argv of the check command, prefixed by "CMD", "CMD-SHELL", or "NONE" per Docker semantics. */
+            test?: string[];
+            /** @description Poll cadence after StartPeriodS elapses (Docker default 30s). */
+            interval_s?: number | null;
+            /** @description Per-probe exec timeout (Docker default 30s). */
+            timeout_s?: number | null;
+            /** @description Consecutive failure count to mark unhealthy (Docker default 3). */
+            retries?: number | null;
+            /** @description Startup grace during which failures don't count (Docker 17.05+, default 0s). */
+            start_period_s?: number | null;
+        };
+        /** @description Per-deployment replica scaffold for execution_mode='service' (ADR-137 §Decision 3, M-2 + M-4 workstream E). Replica count is bounded by ServiceReplicasMax per plan (Hobby 3, Pro 5, Scale 20), and desired must also fit the app's max_concurrency ceiling. min ≤ desired ≤ max must hold. Foundation here; rolling-deploy / rollback / image-digest pinning semantics land in M-4. */
+        ServiceReplicas: {
+            /**
+             * @description Minimum desired replicas the Engine keeps alive. 0 = no minimum.
+             * @example 1
+             */
+            min: number;
+            /**
+             * @description Maximum desired replicas (engine-side cap; service autoscale bounds).
+             * @example 3
+             */
+            max: number;
+            /**
+             * @description Desired replica count. Engine wakes replacement instances to maintain this when one fails or is destroyed.
+             * @example 2
+             */
+            desired: number;
         };
         /** @description Reference to a deployment that was parked (issue #554 / ADR-079 follow-up). Returned in AppResponse.parked_deployment when the app has at least one parked deployment. The `parked_reason` field is closed-set (liveness_exhausted | lifecycle_park | admin_park) — enforced at the schema layer via the deployments_parked_reason_check constraint from migration 00157. */
         ParkedDeploymentRef: {
@@ -5642,6 +8251,14 @@ export interface components {
              */
             parked_at: string;
         };
+        /** @description Body for POST /v1/deployments/{id}/retry. Identifies the stage the retry should resume from. The closed-6 vocabulary mirrors `state.AllStageNames` (ADR-117); the API rejects unknown values with 400. Empty strings are rejected for the same reason. */
+        RetryDeploymentRequest: {
+            /**
+             * @description Closed-6 stage vocabulary. `source_download` re-runs the whole pipeline (intentional retry-from-top); any other value resumes from that stage with all prior inputs copied from the source row.
+             * @enum {string}
+             */
+            from_stage: "source_download" | "dependency_restore" | "image_build" | "security_scan" | "snapshot_prepare" | "readiness";
+        };
         /** @description One deployment: id, app, source ref, build status, commit SHA, and lifecycle timestamps. The optional `has_overrides` and `override_*` fields are the persisted echo of the create-time overrides object (issue #460 / ADR-053); they round-trip via `GET /v1/apps/{slug}/deployments/{id}` so a customer can audit what their last deploy pinned. Env values are NEVER echoed — only the keys (`override_env_keys`); env_secrets refs ARE echoed because the ref shape is non-secret by design. */
         DeploymentResponse: {
             /** @example 0123456789abcdef0123456789abcdef */
@@ -5655,6 +8272,14 @@ export interface components {
             status: string;
             error?: string | null;
             error_code?: string | null;
+            /** @description One-line next-action lifted from pkg/whycopy catalog. */
+            error_hint?: string | null;
+            /** @description Human-readable cause with observed value. */
+            error_why?: string | null;
+            /** @description Prescriptive remediation (1-3 lines). */
+            error_fix?: string | null;
+            /** @description Per-line log excerpts explaining the failure (error-explanations cluster). Capped at 20 entries × 512 bytes by the CLI tripwire. */
+            error_relevant_logs?: components["schemas"]["LogExcerpt"][];
             /** Format: date-time */
             created_at: string;
             /** @description True when this deployment carries a non-null override_* column set. */
@@ -5718,11 +8343,163 @@ export interface components {
              *     pre-PR-A rows. See `pkg/imaged/secretscan.go`.
              */
             secret_scan?: components["schemas"]["SecretScanResult"] | null;
+            /** @description Auto-detected build plan (issue #961 / Mega-A PR-2). One-line summary the CLI prints after `gregale deploy`. nil for image deploys. */
+            build_plan?: components["schemas"]["BuildPlan"] | null;
+            /**
+             * Format: uuid
+             * @description UUID of the deploying local account (FK → accounts.id, ON DELETE SET NULL). Empty when the deploy came from a non-local source (e.g. a githubd pusher not bound to a local account).
+             * @example 8a2f4e7c-1234-4abc-9def-0123456789ab
+             */
+            deployed_by_user_id?: string | null;
+            /**
+             * @description Closed-set classifier of how this deployment was submitted. One of `api` (SDK / API key) / `cli` (bearer token) / `dashboard` (session cookie) / `github` (githubd_bridge) / `operator` (admin). Enforced at the schema layer by migrations/00303_deployments_actor.sql's CHECK constraint.
+             * @example cli
+             * @enum {string|null}
+             */
+            deployed_via?: null | "api" | "cli" | "dashboard" | "github" | "operator";
+            /**
+             * @description Trusted remote IP captured by `pkg/middleware.ClientIP` at handler entry (XFF + loopback trust contract). Loopback (127.0.0.1) for the githubd_bridge path. Both IPv4 and IPv6 are accepted at the wire and stored in Postgres' native `inet` type (which canonicalises both families); the OpenAPI schema intentionally omits `format: ipv4` so v6 deployments (which grow as the public gateway picks up AAAA records) do not fail schema validation. v6 is rendered as the bracketed colon-hex form per RFC 5952.
+             * @example 203.0.113.42
+             */
+            deployed_from_ip?: string | null;
+            /**
+             * @description Raw GitHub login of the pusher when `deployed_via == "github"`. Empty for all other via values. Distinct from the human-readable `DeployedBy` text column (issue #977 / PR #984) — pusher_login is the unmodified GH identity, suitable for downstream GitHub-API correlation.
+             * @example poyrazK
+             */
+            pusher_login?: string | null;
+            /** @description Free-form operator note on the source-ref deploy request (≤280 chars). Example: 'Emergency rollback after payment provider incident'. */
+            reason?: string;
+            /**
+             * @description Closed-set annotation tag on the source-ref deploy request for grouping/filtering.
+             * @enum {string}
+             */
+            tag?: "incident_recovery" | "hotfix" | "scheduled_maintenance" | "compliance_hold" | "partner_request";
+            /** @description Human-readable actor label on the source-ref deploy request. CLI auto-captures from `git config user.name`; githubd stamps pusher.name; the GitHub Action defaults to ${{ github.actor }}. */
+            deployed_by?: string;
+            /** @description Pull-request number that drove this source-ref deploy request (githubd pull_request.number; Action ${{ github.event.pull_request.number }}). NULL for push-to-main with no inferred PR. */
+            pr_number?: number;
+            /**
+             * @description Per-deployment auto-rollback opt-in (issue #961 leaf 8 / ADR-118 / Mega-C PR-2). Customer sets this at create time (Pro+ only); schedd fires the rollback when first_5xx_count crosses the per-plan threshold inside first_5xx_window_ends_at.
+             * @default false
+             */
+            rollback_on_5xx: boolean;
+            /**
+             * Format: date-time
+             * @description Wall-clock timestamp of the first customer-visible wake response (anchor for the auto-rollback window). NULL until the gateway stamps it on the first wake.proxy_first_byte event.
+             */
+            first_wake_at?: string | null;
+            /**
+             * Format: date-time
+             * @description Wall-clock timestamp the auto-rollback window closes (first_wake_at + 5 min). NULL until the gateway stamps it on the first wake. The schedd scan checks `now() < first_5xx_window_ends_at` before firing the rollback.
+             */
+            first_5xx_window_ends_at?: string | null;
+            /**
+             * @description Atomic 5xx counter incremented by schedd on every wake.response_5xx event for this row. Default 0; NOT NULL DEFAULT 0 enforced at the schema layer.
+             * @default 0
+             */
+            first_5xx_count: number;
+            /**
+             * Format: date-time
+             * @description Wall-clock timestamp the most recent auto-rollback fired (idempotent across retries; updated by schedd when the rollback tx commits). NULL until the first auto-rollback.
+             */
+            last_auto_rollback_at?: string | null;
+            /**
+             * @description Closed-set classifier for the most recent auto-rollback trigger. `threshold_exceeded` = first_5xx_count crossed the per-plan threshold inside the window. `first_window_expired` = the window expired without crossing the threshold (clean wake window). Closed-set is enforced at the schema layer via deployments_last_auto_rollback_reason_check.
+             * @enum {string|null}
+             */
+            last_auto_rollback_reason?: null | "threshold_exceeded" | "first_window_expired";
+            /**
+             * @description Canary preset used by the deployment's progressive rollout. `none` preserves the default 100% deployment path.
+             * @enum {string}
+             */
+            canary_preset?: "none" | "slow" | "balanced" | "aggressive" | "1-10-50-100";
+            /** @description Current zero-based canary ladder step. */
+            canary_step?: number;
+            /** @description Total number of canary ladder steps; zero means no canary ladder. */
+            canary_total_steps?: number;
+            /**
+             * Format: date-time
+             * @description Wall-clock timestamp at which the current canary step began.
+             */
+            canary_step_started_at?: string | null;
+            /**
+             * @description Durable rollout state used by the canary orchestrator and operator recovery path.
+             * @enum {string}
+             */
+            rollout_state?: "pending" | "rolling_out" | "complete" | "aborted";
+            /**
+             * Format: date-time
+             * @description Wall-clock timestamp at which rollout processing began.
+             */
+            rollout_started_at?: string | null;
+            /**
+             * Format: date-time
+             * @description Wall-clock timestamp at which the rollout reached complete.
+             */
+            rollout_completed_at?: string | null;
+            /**
+             * Format: date-time
+             * @description Wall-clock timestamp at which the rollout was aborted.
+             */
+            rollout_aborted_at?: string | null;
+            /** @description Operator or orchestrator reason recorded when the rollout is aborted. */
+            rollout_aborted_reason?: string;
+        };
+        /** @description Auto-detected build plan surfaced on DeploymentResponse (issue #961 / Mega-A PR-2). Same shape the CLI's pre-ship `Detected:` line prints; populated by apid via `pkg/markers.DetectFromTarball` against the spooled source tarball. Embedded on DeploymentResponse; never returned by a dedicated route. */
+        BuildPlan: {
+            /**
+             * @description Framework detected from the source tarball's top-level markers. `unknown` means no marker was found (monorepo / custom build); the wire renders this as `Detected: …, framework=unknown` rather than dropping the response.
+             * @enum {string}
+             */
+            framework: "node" | "python" | "go" | "docker" | "unknown";
+            /** @description Runtime the app is pinned to (eg `node22`, `python312`). Echoed from app.Runtime. nil for apps without a runtime set (image deploys). */
+            runtime?: string | null;
+            /** @description Framework version extracted from the detected marker (eg `package.json` `engines.node`, `requirements.txt` head pin). nil when the marker has no version or framework is `unknown`. */
+            version?: string | null;
+            /** @description Entrypoint override (create-time only). nil when the customer did not supply one. */
+            entrypoint?: string | null;
+            /** @description Listen-port override (create-time only). nil when the customer did not supply one. */
+            port?: number | null;
+            /**
+             * @description App class from `app.Type` — `app` for plain apps, `function` for function rewrites (spec §4.2).
+             * @enum {string|null}
+             */
+            class?: null | "app" | "function";
+        };
+        /** @description Body for the informational `sidecar` form field on POST /v1/apps/{slug}/deployments/source-tarball (issue #961 / Mega-A PR-1, ADR-115). The CLI is the trust root for this deploy path; apid does NOT consult `github_installations` and does NOT attempt a server-side git fetch. The sidecar fields are recorded on the build row for provenance only — the build pipeline does NOT use them to fetch upstream. */
+        SourceTarballDeployRequest: {
+            /** @description `owner/repo` from the customer's git remote, parsed by `cmd/gregale/git_local.go::parseGitRemoteURL`. nil when the sidecar is omitted entirely. */
+            repo?: string | null;
+            /** @description 40-char lowercase SHA from `git rev-parse HEAD`. Informational only; the build pipeline does NOT pin to this SHA. */
+            ref?: string | null;
+            /** @description Free-form operator note on the tarball deploy request (≤280 chars). Example: 'Emergency rollback after payment provider incident'. */
+            reason?: string;
+            /**
+             * @description Closed-set annotation tag on the tarball deploy request for grouping/filtering.
+             * @enum {string}
+             */
+            tag?: "incident_recovery" | "hotfix" | "scheduled_maintenance" | "compliance_hold" | "partner_request";
+            /** @description Human-readable actor label on the tarball deploy request. CLI auto-captures from `git config user.name`; githubd stamps pusher.name; the GitHub Action defaults to ${{ github.actor }}. */
+            deployed_by?: string;
+            /** @description Pull-request number that drove this tarball deploy request (githubd pull_request.number; Action ${{ github.event.pull_request.number }}). NULL for push-to-main with no inferred PR. */
+            pr_number?: number;
         };
         /** @description Body for PATCH /v1/deployments/{id} (issue #557 closure / ADR-072). The only mutable field post-create is the per-deployment cold-wake floor; image / digest / overrides / sidecars stay immutable. */
         UpdateDeploymentRequest: {
             /** @description Per-deployment cold-wake floor override for PATCH /v1/deployments/{id}. 0 = inherit from parent app; positive value is the deployment's own floor. Effective per-instance floor = max(app, deployment). Validated against the parent app's plan MaxMinInstances cap. */
             min_instances: number;
+        };
+        /** @description Body for POST /v1/apps/{slug}/deployments/{id}/cancel (ADR-124). Optional — empty body defaults to reason='user' server-side. Reason is the closed set user | auto_quota | auto_health | system. */
+        CancelDeploymentRequest: {
+            /** @enum {string} */
+            reason?: "user" | "auto_quota" | "auto_health" | "system";
+        };
+        /** @description Response for POST /v1/apps/{slug}/deployments/clear-obsolete (ADR-124). Count is the number of soft-deleted rows in this call; OlderThan echoes the cutoff the store applied (default 168h). */
+        ClearObsoleteReport: {
+            app_slug: string;
+            count: number;
+            /** @description Echoes the cutoff the store applied to this clear pass (e.g. 168h = 7 days). */
+            older_than: string;
         };
         /** @description Body for PATCH /v1/deployments/{id}/traffic (issue #556 PR-A). Sets the per-deployment traffic-split weight (integer [0, 100]). PR-A uses the zero-siblings rebalance form: setting row R's traffic_percent to N forces every other live row in the same app to 0, keeping Σ = 100 by construction. Pro/Scale only — Free/Hobby are rejected at 403 plan_traffic_split_not_allowed. */
         UpdateDeploymentTrafficRequest: {
@@ -5731,6 +8508,61 @@ export interface components {
              * @example 25
              */
             traffic_percent: number;
+        };
+        /** @description Body for POST /v1/deployments/{id}/canary/advance (issue #976 / ADR-122). expected_step is the persisted canary step observed by the progression worker; APID derives the next traffic percentage and rejects stale observations. */
+        AdvanceCanaryRequest: {
+            /**
+             * @description The canary_step the caller read before requesting the next stage.
+             * @example 1
+             */
+            expected_step: number;
+        };
+        /** @description The atomic canary transition result and the deployment_audit row id. */
+        CanaryAdvanceResponse: {
+            deployment: components["schemas"]["DeploymentResponse"];
+            /**
+             * @description The deployment_audit row id, stringified for SDK portability.
+             * @example 42
+             */
+            audit_id: string;
+        };
+        /** @description Body for POST /v1/apps/{slug}/rollback (SAFE-RELEASES-G, issue #976). All fields optional. Without a body the handler falls back to rolling back to the most-recent superseded deployment (pre-#976 behaviour). With `target_deployment_id` set, the handler validates that the named deployment belongs to this app AND has status='superseded'. */
+        RollbackRequest: {
+            /**
+             * Format: uuid
+             * @description The UUID of the deployment to promote back to 'live'. Must belong to the same app as the URL slug, and must have status='superseded'. Nil/empty falls back to the most-recent superseded deployment (legacy behaviour).
+             * @example 0123456789abcdef0123456789abcdef
+             */
+            target_deployment_id?: string;
+            /**
+             * Format: uuid
+             * @description SAFE-RELEASES-OBS PR-D (issue #976 / ADR-122): when set, the handler stamps the deployment_audit row's alert_rule_id column with this UUID so an operator can cross-link the audit timeline back to /dashboard/alerts/{id}. Wire-additive per ADR-016; the field is ignored when nil/empty. Only privileged in-process callers (meterd ActionDispatcher) set this; the API does not enforce role because the endpoint already requires MFA + ScopesDeployWrite.
+             * @example abcdef0123456789abcdef0123456789
+             */
+            alert_rule_id?: string;
+        };
+        /** @description Body for POST /v1/apps/{slug}/rollouts/recover (SAFE-RELEASES-R, issue #976 / ADR-122). Closed-set `action` ∈ {advance, promote, abort}; `reason` is the operator-supplied free-text captured into the deployment_audit row's data payload. */
+        RecoverRolloutRequest: {
+            /**
+             * @description The recovery action. `advance` requires the rollout to be stuck (>30 min in the same canary step); `promote` short-circuits the rollout to 100% / complete; `abort` flips rollout_state='aborted'.
+             * @example promote
+             * @enum {string}
+             */
+            action: "advance" | "promote" | "abort";
+            /**
+             * @description Operator-supplied reason (≤1024 chars). Lands verbatim in the deployment_audit row's data payload under the `reason` key.
+             * @example manual-test
+             */
+            reason?: string;
+        };
+        /** @description POST /v1/apps/{slug}/rollouts/recover response. The post-recovery Deployment + the audit row id (so the operator's terminal can echo audit_id=…). */
+        RolloutTransitionResponse: {
+            deployment: components["schemas"]["DeploymentResponse"];
+            /**
+             * @description The deployment_audit row id (stringified so JSON-number → int64 → BigInt drift doesn't poison SDK callers).
+             * @example 42
+             */
+            audit_id: string;
         };
         /** @description Paginated deployment list with a `next_before` cursor for backward pagination. */
         DeploymentListResponse: {
@@ -5793,18 +8625,18 @@ export interface components {
             next_before?: string | null;
         };
         /**
-         * @description Operator-configured billing portal URL (issue #253) plus the
+         * @description Provider-authenticated or operator-configured billing portal URL (issue #253) plus the
          *     card-on-file summary (issue #242). The url field is omitted
-         *     when the box has FAAS_BILLING_PORTAL_URL unset — that is the
-         *     "absent" sentinel; the CLI branches on it to print a friendly
-         *     hint instead of opening the browser to "". The payment_method
+         *     when neither a provider session nor FAAS_BILLING_PORTAL_URL is
+         *     available — that is the "absent" sentinel; the CLI branches on it
+         *     to print a friendly hint instead of opening the browser to "". The payment_method
          *     field is omitted when the account has no card on file (Free
          *     plan, or post-checkout before the first paid cycle settles).
          */
         BillingPortalResponse: {
             /**
              * Format: uri
-             * @description Substituted portal URL; absent when the box has no portal configured.
+             * @description Short-lived provider session URL, or substituted operator URL when no provider session is available.
              */
             url?: string | null;
             /**
@@ -5908,36 +8740,34 @@ export interface components {
             mb_seconds: number;
         };
         /**
-         * @description One row in the Paddle price + product catalog (PR-P3).
+         * @description One row in the provider price + product catalog (PR-P3).
          *     Plan values are the billable api.Plan constants
          *     ("hobby", "pro", "scale") — PlanFree is intentionally
          *     absent because it carries no recurring line item.
-         *     Handle is the Paddle-side id (pri_… for monthly / overage,
-         *     pro_… for product). SyncedAt is RFC 3339 UTC from the
-         *     catalog's lastSyncAt.
+         *     Handle is the provider-side product or price ID. SyncedAt is
+         *     RFC 3339 UTC from the catalog's last successful preflight.
          */
         BillingCatalogEntry: {
             /** @enum {string} */
             plan: "hobby" | "pro" | "scale";
             /** @enum {string} */
             kind: "monthly" | "overage" | "product";
-            /** @description Paddle price (pri_…) or product (pro_…) ID. */
+            /** @description Provider price or product ID. */
             handle: string;
             /** Format: date-time */
             synced_at: string;
         };
         /**
          * @description Wire shape for GET / POST / DELETE
-         *     /v1/admin/billing-paddle-catalog (PR-P3). Provider is
-         *     the active billing provider's name (paddle / stripe);
-         *     on a Stripe deployment the handler 501s before
-         *     serializing this struct. SyncedAt is the timestamp of
-         *     the most recent successful EnsurePlanProducts call;
-         *     empty string when no hydration has yet completed
-         *     (POST and DELETE both reset it).
+         *     /v1/admin/billing-paddle-catalog compatibility endpoints
+         *     (PR-P3). Provider is the active billing provider's name
+         *     (polar / paddle); providers without a catalog surface
+         *     return 501. SyncedAt is the timestamp of the most recent
+         *     successful catalog preflight; empty when no hydration has
+         *     completed.
          */
         BillingCatalogResponse: {
-            /** @description Active provider name (paddle / stripe). */
+            /** @description Active provider name (polar / paddle). */
             provider: string;
             /** @description RFC 3339 last-sync timestamp; empty string when never synced. */
             synced_at: string;
@@ -6117,6 +8947,28 @@ export interface components {
             expires_at?: string | null;
         };
         /**
+         * @description Result of an operator-initiated Polar refund. The local invoice and
+         *     provider refund identifiers are both returned for reconciliation.
+         *     Amounts are integer EUR cents.
+         */
+        AdminRefundResponse: {
+            /** Format: uuid */
+            account_id: string;
+            /** Format: uuid */
+            invoice_id: string;
+            /** @enum {string} */
+            provider: "polar";
+            provider_refund_id: string;
+            /** @description Polar order ID used by the refund. */
+            charge_id: string;
+            /** Format: int64 */
+            amount_cents: number;
+            /** @example eur */
+            currency: string;
+            /** @description Provider refund status. */
+            status: string;
+        };
+        /**
          * @description Response shape for POST /v1/admin/github-webhook-secrets
          *     (PR-D / ADR-012 §7 amendment). upgraded_at is the
          *     post-upsert stamp — every successful call bumps it
@@ -6177,6 +9029,111 @@ export interface components {
             delta_cents: number;
             new_balance: number;
         };
+        /** @description How a workflow starts. Manual is the only supported trigger in v1. */
+        WorkflowTriggerSpec: {
+            /** @enum {string} */
+            type: "manual";
+        };
+        /** @description Retry policy for one workflow step. */
+        WorkflowRetrySpec: {
+            max_attempts: number;
+            /** @enum {string} */
+            backoff?: "fixed" | "exponential";
+        };
+        /**
+         * @description One workflow step. The canonical ADR-081 target is `run`; `path`
+         *     and `method` remain accepted for the existing HTTP wake executor
+         *     during the runtime migration. Exactly one of `run`, `path`, or
+         *     `wait_for_event` must be supplied.
+         */
+        WorkflowStepSpec: {
+            name: string;
+            /** @description Named platform operation to invoke. */
+            run?: string;
+            /** @description JSON input passed to the named operation. */
+            input?: {
+                [key: string]: unknown;
+            } | unknown[] | string | number | boolean | null;
+            /** @description HTTP wake path, retained for compatibility with the existing executor. */
+            path?: string;
+            /** @enum {string} */
+            method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
+            depends_on?: string[];
+            wait_for_event?: string;
+            /**
+             * @description Step or wait timeout in time.ParseDuration form, for example `30s`; workflow also accepts fixed 24-hour day suffixes such as `7d`.
+             * @example 30s
+             */
+            timeout?: string;
+            on_timeout?: string;
+            retry?: components["schemas"]["WorkflowRetrySpec"] | null;
+        };
+        /** @description A named workflow DAG submitted with a deployment (ADR-081). */
+        WorkflowSpec: {
+            name: string;
+            trigger?: components["schemas"]["WorkflowTriggerSpec"] | null;
+            steps: components["schemas"]["WorkflowStepSpec"][];
+        };
+        /** @description A persisted durable workflow run (ADR-081). */
+        WorkflowRunResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            app_id: string;
+            workflow_name: string;
+            /** @enum {string} */
+            status: "pending" | "running" | "awaiting_event" | "succeeded" | "failed" | "dead";
+            current_step?: string | null;
+            input?: unknown;
+            output?: unknown;
+            /** Format: date-time */
+            scheduled_for: string;
+            /** Format: date-time */
+            started_at?: string | null;
+            /** Format: date-time */
+            finished_at?: string | null;
+            last_error?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /** @description A paginated list of durable workflow runs. */
+        ListWorkflowRunsResponse: {
+            runs: components["schemas"]["WorkflowRunResponse"][];
+            total: number;
+        };
+        /** @description A step attempt within a durable workflow run. */
+        WorkflowStepResponse: {
+            step_name: string;
+            /** @enum {string} */
+            status: "pending" | "running" | "awaiting_event" | "succeeded" | "failed" | "dead" | "skipped";
+            attempt: number;
+            input?: unknown;
+            output?: unknown;
+            /** Format: date-time */
+            started_at?: string | null;
+            /** Format: date-time */
+            finished_at?: string | null;
+            error?: string | null;
+            /** Format: date-time */
+            created_at: string;
+        };
+        /** @description The ordered steps for a durable workflow run. */
+        ListWorkflowStepsResponse: {
+            steps: components["schemas"]["WorkflowStepResponse"][];
+        };
+        /** @description Acknowledgement that an external workflow event was recorded. */
+        InjectWorkflowEventResponse: {
+            /** @enum {string} */
+            status: "received";
+            event_name: string;
+        };
+        /** @description An external event supplied to resume an awaiting workflow step. */
+        InjectWorkflowEventRequest: {
+            event_name: string;
+            payload?: unknown;
+        };
         /** @description Two content-types accepted (see operation description): prebuilt OCI image reference, or multipart source upload. The optional `overrides` object (issue #460 / ADR-053) lets a customer redeploy the same digest-pinned image with a different entrypoint / cmd / env / env_secrets / port / healthcheck without rebuilding the image. The override field list is FROZEN — six fields, no more — and any extra field on the override object 400s the request (the handler's decoder rejects unknown keys; see ADR-053 §Decision 1). The optional `sidecars` array (issue #463 / ADR-068) attaches up to 2 stateless sidecars (1 init + 1 sidecar) per app — a one-shot DB migrator as `init`, a metrics scraper as `sidecar`. nil/omitted = no sidecars. */
         CreateDeploymentRequest: {
             /** @description registry.gregale.dev/...@sha256:... — digest-pinned OCI reference. */
@@ -6190,6 +9147,8 @@ export interface components {
             require_signed?: boolean | null;
             /** @description Up to 2 stateless sidecars (1 init + 1 sidecar). nil/omitted = no sidecars. See ADR-068 for the hard 2-cap and stateless-only contract. */
             sidecars?: components["schemas"]["Sidecar"][];
+            /** @description Workflow DAG definitions for this deployment. Paid-plan only; runtime deployment persistence is staged separately. */
+            workflows?: components["schemas"]["WorkflowSpec"][];
             /**
              * @description Per-deployment traffic-split weight (issue #556 PR-A). nil = server default 100; explicit 0..100 = opt into canary (Pro/Scale only).
              * @example 10
@@ -6200,6 +9159,24 @@ export interface components {
              * @example prod
              */
             scope?: string | null;
+            /** @description Free-form operator note (issue #977 / ADR-116). DB CHECK enforces length(reason) <= 280. */
+            reason?: string | null;
+            /**
+             * @description Closed-set annotation tag. DB CHECK (deployments_tag_set_chk) enforces the same vocabulary.
+             * @enum {string|null}
+             */
+            tag?: null | "incident_recovery" | "hotfix" | "scheduled_maintenance" | "compliance_hold" | "partner_request";
+            /** @description Operator label. CLI auto-captures from `git config user.name`; githubd stamps pusher.name; Action defaults to ${{ github.actor }}. */
+            deployed_by?: string | null;
+            /** @description PR number (when known). 0 / NULL collapses to NULL on the row (DB CHECK rejects 0). */
+            pr_number?: number | null;
+            /**
+             * @description Per-deployment auto-rollback opt-in (issue #961 leaf 8 / ADR-118 / Mega-C PR-2). Pro+ only. nil = server default false.
+             * @example true
+             */
+            rollback_on_5xx?: boolean | null;
+            /** @description Per-deployment canary ladder (issue #976 / ADR-122 / SAFE-RELEASES-A). nil/omitted = server default 'none'. For preset='custom', stages carries the customer ladder. */
+            canary?: components["schemas"]["CanaryPresetSpec"] | null;
         };
         /**
          * @description Fargate-shaped deploy-time override object on `POST /v1/apps/{slug}/deployments`
@@ -6259,6 +9236,96 @@ export interface components {
             scope?: string | null;
         };
         /**
+         * @description One stage of a customer-supplied canary ladder
+         *     (issue #976 / ADR-122 / SAFE-RELEASES production-leveling
+         *     Stream F). Percent is the traffic share this stage moves
+         *     to (0..100, terminal stage must be 100). Duration is the
+         *     wall-clock dwell time at this stage in time.ParseDuration
+         *     form (e.g. "30s", "2m", "0s" for the terminal hop).
+         */
+        CustomStage: {
+            /** @description Traffic share this stage moves to (0..100). The terminal stage must be 100. */
+            percent: number;
+            /**
+             * @description Wall-clock dwell at this stage, in time.ParseDuration form (e.g. '30s', '2m'). '0s' for the terminal hop.
+             * @example 2m
+             */
+            duration: string;
+        };
+        /**
+         * @description The canary ladder a customer asks for on a deploy (issue
+         *     #976 / ADR-122 / SAFE-RELEASES-A + production-leveling
+         *     Stream F). Preset is the catalog name from
+         *     pkg/api/canary (none/slow/balanced/aggressive/1-10-50-100/
+         *     custom). When Preset is 'custom', Stages is the
+         *     customer-supplied ladder (each entry is percent +
+         *     duration string in time.ParseDuration form, e.g.
+         *     "1% at 30s, 10% at 2m, 100% at 0s").
+         *     The wire-format change (StepDurations removed, Stages
+         *     added) is additive on the consumer side because the
+         *     prior StepDurations field was declared-but-dead — no
+         *     pre-PR client ever sent it.
+         */
+        CanaryPresetSpec: {
+            /**
+             * @description Catalog preset name. 'none' = no canary (server stamps canary_preset='none', canary_total_steps=0). 'custom' requires Stages to be non-empty.
+             * @example balanced
+             * @enum {string}
+             */
+            preset: "none" | "slow" | "balanced" | "aggressive" | "1-10-50-100" | "custom";
+            /** @description Per-stage ladder. Required when preset='custom' (the apid handler 422s otherwise); ignored for catalog presets (the catalog resolution runs server-side). */
+            stages?: components["schemas"]["CustomStage"][];
+        };
+        /**
+         * @description One row of the deployment_audit timeline (issue #976 /
+         *     ADR-122 / SAFE-RELEASES-E.2 + production-leveling Stream
+         *     A). Data is the verbatim jsonb payload at emit time;
+         *     kind-specific shape — DeployTrafficChanged carries
+         *     {from_percent, to_percent, actor_kind}, DeployRolledBack
+         *     carries {target_deployment_id, reason}.
+         */
+        DeploymentAuditResponse: {
+            /**
+             * Format: date-time
+             * @description RFC3339Nano UTC timestamp at which the row was emitted. Sequence-pointed — sorting by (at DESC) gives the canonical timeline order.
+             * @example 2026-08-27T14:23:19.482Z
+             */
+            at: string;
+            /**
+             * @description Closed-set event kind (migrations/00477 enforces the same CHECK on the deployments_audit table).
+             * @enum {string}
+             */
+            kind: "deploy.created" | "deploy.traffic_changed" | "deploy.rolled_back" | "deploy.rolled_forward" | "deploy.stuck" | "deploy.recovered";
+            /**
+             * @description Service-account UUID or operator CLI sentinel (`operator:cli:recover_rollout`, `meterd:safedeploy`, `meterd:canary_progression`). Operators identify who did what from this column.
+             * @example meterd:safedeploy
+             */
+            actor: string;
+            /** @description Verbatim jsonb payload at emit time (kind-specific shape — see description). */
+            data?: unknown;
+            /** @description Owning account UUID (cross-tenant IDOR posture). */
+            account_id?: string;
+            /**
+             * Format: uuid
+             * @description SAFE-RELEASES-OBS PR-D (issue #976 / ADR-122): when the audit row was stamped by an alert-rule-fired action (e.g. auto-rollback via meterd ActionDispatcher), this carries the alert_rules.id UUID. nil for non-rule-triggered rows. Wire-additive per ADR-016 — null for all pre-PR-D rows.
+             * @example abcdef0123456789abcdef0123456789
+             */
+            alert_rule_id?: string;
+        };
+        /**
+         * @description Paginated wrapper for `GET /v1/deployments/{id}/audit`
+         *     (issue #976 / ADR-122 / SAFE-RELEASES-E.2 + production-
+         *     leveling Stream A). Limit is echoed back so a paging
+         *     consumer can distinguish "limit was clamped" from "no
+         *     more rows" — both yield Items of length < limit, but the
+         *     clamping is observable via this field.
+         */
+        ListDeploymentAuditResponse: {
+            items: components["schemas"]["DeploymentAuditResponse"][];
+            /** @description Echo of the server-applied limit (query param ?limit= clamps here). */
+            limit: number;
+        };
+        /**
          * @description Readiness-probe shape on the deploy-time override object (issue #460 /
          *     ADR-053). Today the probe stays a bare TCP accept — `path`, `interval_s`,
          *     `timeout_s`, `retries` are persisted but not yet exercised by `vmm.waitReady`.
@@ -6268,6 +9335,10 @@ export interface components {
          *     - `interval_s`, `timeout_s`, `retries` must be `>= 0`.
          *     - Missing fields default to 0 (interpreted as "use image default" by the
          *       future probe implementation).
+         *
+         *     M-1 (ADR-136) widens additively with `test` (argv of the OCI HEALTHCHECK
+         *     command) and `start_period_s` (Docker 17.05+ startup grace). Runtime
+         *     wiring lands in M-2 (ADR-X5).
          */
         DeploymentHealthcheck: {
             /** @description Path the probe requests from the guest; must start with `/` (e.g. `/healthz`). */
@@ -6278,6 +9349,10 @@ export interface components {
             timeout_s?: number;
             /** @description Consecutive failures before the instance is considered unhealthy; 0 = use image default. */
             retries?: number;
+            /** @description Argv of the OCI HEALTHCHECK command, prefixed by "CMD", "CMD-SHELL", or "NONE". Surfaces onto AppManifest.Healthcheck.Test at apply_overrides time. */
+            test?: string[];
+            /** @description Startup grace during which probe failures don't count (Docker 17.05+, default 0s). Surfaces onto AppManifest.Healthcheck.StartPeriodS. */
+            start_period_s?: number;
         };
         /**
          * @description Liveness-probe shape on the deploy-time override object (issue #554 / ADR-078).
@@ -6449,6 +9524,40 @@ export interface components {
             /** @description Defaults to true. type=init non-zero exit → fail deploy; type=sidecar non-zero exit → restart-loop. PR-B's runtime. */
             essential?: boolean;
         };
+        /**
+         * @description Per-deployment preview URL read seam response.
+         *     Issue #976 / ADR-122 / SAFE-RELEASES-C.2.
+         *     Mirrors the api.DeploymentPreviewURL struct in pkg/api/dto.go.
+         */
+        DeploymentPreviewURL: {
+            /**
+             * Format: uuid
+             * @description Echoed from the path so a batch caller can correlate.
+             */
+            deployment_id: string;
+            /**
+             * Format: uuid
+             * @description Resolved parent app id.
+             */
+            app_id: string;
+            /**
+             * @description Per-deployment preview hostname (`deploy-{N}.{slug}.gregale.dev`). Empty when alive=false OR when wire.DeployWildcardSuffix is "" (zone disabled).
+             * @example deploy-3.url-happy.gregale.dev
+             */
+            host?: string;
+            /**
+             * @description Full request URL (`https://<host>`). Empty when host is empty.
+             * @example https://deploy-3.url-happy.gregale.dev
+             */
+            url?: string;
+            /** @description True iff the deployment exists, belongs to the caller, and has a status in {pending, building, imaging, snapshotting, live} (the same predicate as state.Deployment.DeploymentPreviewActive the cert allowlist consults). */
+            alive: boolean;
+            /**
+             * Format: date-time
+             * @description When certmagic last validated the cert under host. Null for never-touched hostnames. NOT a latency probe — the cert NotAfter is the load-bearing expiry.
+             */
+            last_checked_at?: string | null;
+        };
         /** @description Read-only instance view: id, deployment, state (waking/running/...), lease uid, and host-side internal endpoint (loopback only). */
         InstanceResponse: {
             /** @example 0123456789abcdef0123456789abcdef */
@@ -6468,8 +9577,20 @@ export interface components {
             /** Format: date-time */
             parked_at?: string | null;
             min_instances_target?: number | null;
+            /**
+             * @description Closed-set execution mode for this instance (ADR-137 §Decision 1).
+             * @example normal
+             * @enum {string|null}
+             */
+            execution_mode?: "normal" | "mirror" | "worker" | "service" | "job" | null;
+            /**
+             * @description Reason for the most recent terminal transition (ADR-138 §Decision 2). null when still running.
+             * @example null
+             * @enum {string|null}
+             */
+            lifecycle_failure_reason?: "startup_fail" | "readiness_fail" | "liveness_fail" | "crash_loop" | "oom" | "clean_exit" | "error_exit" | null;
         };
-        /** @description A custom domain binding: domain string, target app, verification status, and TLS provisioning state. */
+        /** @description A custom domain binding: domain string, target app, verification status, and TLS provisioning state. Issue #961 / Mega-A PR-3 adds `default`, `cert_not_after`, and `cert_sans` for the `gregale domains set-default | verify | show` surface. */
         CustomDomainResponse: {
             /** @example app.example.com */
             domain: string;
@@ -6480,6 +9601,17 @@ export interface components {
             /** Format: date-time */
             verified_at?: string | null;
             txt_record?: string | null;
+            /** @description True when this domain is the app's default (issue #961 / Mega-A PR-3). Set via `gregale domains set-default`. */
+            default?: boolean;
+            /**
+             * Format: date-time
+             * @description Issued cert NotAfter (RFC3339 UTC). Populated on verified domains; the `gregale domains show` line below the cert expiry renders against this field.
+             */
+            cert_not_after?: string | null;
+            /** @description Cert subject alt names (DNSNames). Useful for the `gregale domains show` listing — if the customer's CNAME points at a CDN, the SANs reveal which CDN. */
+            cert_sans?: string[];
+            /** @description One of `issued` | `pending` | `dial_failed:<reason>`. The show endpoint surfaces this verbatim so the customer can distinguish DNS-not-propagated from cert-not-yet-issued from TLS-handshake-refused. Issue #961 / Mega-A PR-3 code-review round (MED-4). */
+            cert_status?: string | null;
         };
         /** @description Bind a custom domain to an app. */
         CreateCustomDomainRequest: {
@@ -6487,6 +9619,117 @@ export interface components {
             domain: string;
             /** @example 0123456789abcdef0123456789abcdef */
             app_id: string;
+        };
+        /** @description Per-domain doctor report (ADR-120). Carries 5 Render-style checks (dns_record, points_to_gregale, tls_certificate, caa_permits, ipv6_conflict) plus the durable row's app_id and observed_at. `stale:true` means the cached observation row was older than FAAS_DOMAIN_DOCTOR_TTL_SECONDS (default 300) when the handler ran a synchronous re-probe. */
+        DomainDoctorReport: {
+            /** @example app.example.com */
+            domain: string;
+            app_id: string;
+            /** @default false */
+            stale: boolean;
+            /**
+             * Format: date-time
+             * @example 2026-08-18T14:23:11Z
+             */
+            observed_at: string;
+            /** @example false */
+            healthy: boolean;
+            checks: components["schemas"]["DomainDoctorCheck"][];
+        };
+        /** @description One row of the doctor report. Stable name tokens (dns_record / points_to_gregale / tls_certificate / caa_permits / ipv6_conflict) so the CLI can filter by name without parsing the human Detail field. Remediation is the exact record to change when status is fail — the load-bearing field for the activation drop-off. */
+        DomainDoctorCheck: {
+            /** @enum {string} */
+            name: "dns_record" | "points_to_gregale" | "tls_certificate" | "caa_permits" | "ipv6_conflict";
+            /**
+             * @example fail
+             * @enum {string}
+             */
+            status: "ok" | "fail" | "pending" | "na";
+            /** @example CNAME does not point at Gregale (observed: wrong.example.com.) */
+            detail: string;
+            /** @example wrong.example.com. */
+            observed?: string;
+            /** @example Set CNAME app.example.com → edge.gregale.dev */
+            remediation?: string;
+            /**
+             * Format: date-time
+             * @example 2026-08-18T14:23:11Z
+             */
+            checked_at?: string;
+        };
+        /** @description A starter template entry from GET /v1/templates (issue #961 / Mega-B PR-3). */
+        TemplateView: {
+            /**
+             * @description The template name — matches cmd/gregale/templates/embed.go::Names verbatim.
+             * @example hello-node
+             */
+            name: string;
+            /**
+             * @description Customer-facing group label (templates.CategoryFor).
+             * @enum {string}
+             */
+            category: "hello" | "function" | "stateless-contract" | "ai";
+            /**
+             * @description One-line customer-facing blurb.
+             * @example minimal Node.js HTTP server — first-touch smoke test
+             */
+            description: string;
+        };
+        /** @description A tenant surface: a multi-hostname SAN bundle attached to one app. */
+        TenantSurfaceResponse: {
+            /** @example 0123456789abcdef0123456789abcdef */
+            id: string;
+            /** @example 0123456789abcdef0123456789abcdef */
+            account_id: string;
+            /** @example 0123456789abcdef0123456789abcdef */
+            app_id: string;
+            /** @example customer-zones */
+            name: string;
+            /** @enum {string} */
+            cert_kind: "per_host_san";
+            /** @enum {string} */
+            status: "pending" | "active" | "suspended" | "deleted";
+            /** @enum {string} */
+            cert_state: "none" | "pending" | "issued" | "renewing" | "failed";
+            /** Format: date-time */
+            cert_not_after?: string;
+            cert_last_error?: string | null;
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            updated_at?: string;
+            hostnames: components["schemas"]["TenantHostnameResponse"][];
+        };
+        /** @description A hostname attached to a tenant surface (DNS-01 verified). */
+        TenantHostnameResponse: {
+            /** @example api.customer-a.com */
+            hostname: string;
+            challenge_token?: string | null;
+            verified: boolean;
+            /** Format: date-time */
+            verified_at?: string | null;
+            last_error?: string | null;
+            /** @description TXT record the customer must publish (_faas-verify.<hostname>). */
+            txt_record: string;
+        };
+        /** @description Create a tenant surface with a seed set of hostnames. */
+        CreateTenantSurfaceRequest: {
+            /** @example 0123456789abcdef0123456789abcdef */
+            app_id: string;
+            /** @example customer-zones */
+            name: string;
+            /** @enum {string} */
+            cert_kind?: "per_host_san";
+            hostnames?: string[];
+        };
+        /** @description Surfaces on the app (soft-deleted excluded server-side). */
+        ListTenantSurfacesResponse: {
+            surfaces: components["schemas"]["TenantSurfaceResponse"][];
+        };
+        /** @description Append a hostname to an existing surface. */
+        AddTenantHostnameRequest: {
+            /** @example api.customer-c.com */
+            hostname: string;
         };
         /** @description A cron trigger: schedule (cron expression), target URL, last/next run timestamps, and enabled flag. */
         CronResponse: {
@@ -6593,6 +9836,558 @@ export interface components {
             path?: string | null;
             enabled?: boolean | null;
         };
+        /** @description Job creation payload — name + image + command + caps. */
+        CreateJobRequest: {
+            /** @example nightly-export */
+            name: string;
+            /**
+             * @default batch
+             * @enum {string}
+             */
+            kind: "batch" | "recurring";
+            /** @example ghcr.io/acme/etl:v1.2.3 */
+            image_ref: string;
+            /**
+             * @example [
+             *       "/bin/sh",
+             *       "-c",
+             *       "python -m etl.run"
+             *     ]
+             */
+            command: string[];
+            /**
+             * @example {
+             *       "AWS_REGION": "eu-central-1",
+             *       "LOG_LEVEL": "info"
+             *     }
+             */
+            env_overrides?: {
+                [key: string]: string;
+            };
+            /** @example 2048 */
+            ram_mb?: number;
+            /** @example 1800 */
+            task_timeout_sec?: number;
+            /** @example 25 */
+            max_parallelism?: number;
+            /** @example 5 */
+            retry_max?: number;
+        };
+        /** @description Partial job update. nil pointer fields leave the column untouched. */
+        UpdateJobRequest: {
+            image_ref?: string;
+            command?: string[];
+            env_overrides?: {
+                [key: string]: string;
+            };
+            ram_mb?: number;
+            task_timeout_sec?: number;
+            max_parallelism?: number;
+            retry_max?: number;
+            /** @enum {string} */
+            status?: "active" | "paused";
+        };
+        /**
+         * @description Atomic fan-out via `generate_series` CTE in pgstore; the
+         *     handler validates `tasks` against `Plan.JobMaxTasksPerRun`
+         *     (Hobby=100, Pro=1000, Scale=5000). Per-run overrides
+         *     (parallelism / retry_max / task_timeout_sec) inherit from
+         *     the job when null.
+         */
+        CreateJobRunRequest: {
+            /** @example 100 */
+            tasks: number;
+            /** @example 10 */
+            parallelism?: number;
+            /** @example 3 */
+            retry_max?: number;
+            /** @example 600 */
+            task_timeout_sec?: number;
+            env_overrides?: {
+                [key: string]: string;
+            };
+        };
+        /** @description Wire projection of state.Job. */
+        JobResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            account_id: string;
+            /** @example nightly-export */
+            name: string;
+            /** @enum {string} */
+            kind: "batch" | "recurring";
+            image_ref: string;
+            command: string[];
+            env_overrides?: {
+                [key: string]: string;
+            };
+            /** @example 2048 */
+            ram_mb: number;
+            /** @example 1800 */
+            task_timeout_sec: number;
+            /** @example 25 */
+            max_parallelism: number;
+            /** @example 5 */
+            retry_max: number;
+            /** @enum {string} */
+            status: "active" | "paused" | "deleted";
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /** @description Wire projection of state.JobRun. Aggregate counters are recomputed by schedd after every terminal task transition. */
+        JobRunResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            job_id: string;
+            /** Format: uuid */
+            account_id: string;
+            /** @enum {string} */
+            trigger_kind: "manual" | "scheduled" | "triggered";
+            env_overrides?: {
+                [key: string]: string;
+            };
+            tasks: number;
+            parallelism: number;
+            retry_max?: number;
+            task_timeout_sec?: number;
+            /** @enum {string} */
+            aggregate_status: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "dead_letter";
+            tasks_succeeded: number;
+            tasks_failed: number;
+            tasks_cancelled: number;
+            tasks_running: number;
+            dead_letter_count: number;
+            /** Format: date-time */
+            started_at?: string;
+            /** Format: date-time */
+            finished_at?: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        /** @description Wire projection of state.JobTask. LeaseToken is intentionally omitted (internal dispatch primitive). */
+        JobTaskResponse: {
+            /** Format: uuid */
+            run_id: string;
+            task_index: number;
+            /** @enum {string} */
+            status: "queued" | "claimed" | "succeeded" | "failed" | "timeout" | "cancelled" | "oom";
+            attempt: number;
+            /** Format: uuid */
+            instance_id?: string;
+            /** @enum {string} */
+            error_class?: "succeeded" | "failed" | "timeout" | "oom" | "cancelled" | "infra";
+            error_message?: string;
+            exit_code?: number;
+            /** Format: date-time */
+            started_at?: string;
+            /** Format: date-time */
+            finished_at?: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        /**
+         * @description Per-task log tail. Proxied from vmmd's tail endpoint on
+         *     the compute node that owns the instance. Truncated=true
+         *     means the tail was capped at MaxBytes; clients re-fetch
+         *     with a larger limit to see more.
+         */
+        JobTaskLogResponse: {
+            /** @enum {string} */
+            task_status: "queued" | "claimed" | "succeeded" | "failed" | "timeout" | "cancelled" | "oom";
+            log_content: string;
+            truncated: boolean;
+            max_bytes: number;
+        };
+        /** @description Page of jobs on the account (issue */
+        ListJobsResponse: {
+            jobs: components["schemas"]["JobResponse"][];
+            limit: number;
+            offset: number;
+            /** @description -1 = last page */
+            next_offset: number;
+            total: number;
+        };
+        /** @description Page of runs for a job. */
+        ListJobRunsResponse: {
+            runs: components["schemas"]["JobRunResponse"][];
+            limit: number;
+            offset: number;
+            next_offset: number;
+            total: number;
+        };
+        /** @description Page of tasks for a job-run. */
+        ListJobTasksResponse: {
+            tasks: components["schemas"]["JobTaskResponse"][];
+            limit: number;
+            offset: number;
+            next_offset: number;
+            total: number;
+        };
+        /** @description POST .../runs/{id}/cancel body. Returns the post-cancel run aggregate + cancelled_at timestamp. */
+        JobRunCancelledResponse: {
+            run: components["schemas"]["JobRunResponse"];
+            /** Format: date-time */
+            cancelled_at: string;
+        };
+        /** @description DELETE /v1/jobs/{name} body. */
+        JobDeletedResponse: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: date-time */
+            deleted_at: string;
+        };
+        /**
+         * @description Discriminator for the underlying event source.
+         * @enum {string}
+         */
+        TriggerKind: "cron" | "kafka" | "nats" | "redis_streams" | "sqs_compat" | "queue";
+        /**
+         * @description Read shape returned by GET / POST / PATCH on /v1/triggers.
+         *     The `config` blob is opaque at the wire level — each kind
+         *     decodes its own per-shape struct lazily. The SDK round-trip
+         *     preserves the raw JSON so unknown fields survive client
+         *     versions older than the server.
+         */
+        Trigger: {
+            /** @example 0123456789abcdef0123456789abcdef */
+            id: string;
+            /** @example 0123456789abcdef0123456789abcdef */
+            account_id: string;
+            /** @example 0123456789abcdef0123456789abcdef */
+            app_id: string;
+            kind: components["schemas"]["TriggerKind"];
+            /** @description Unique-per-app handle. Required for non-cron kinds; ignored on cron. */
+            slug?: string;
+            enabled: boolean;
+            /**
+             * @description Per-kind opaque configuration. Decode with the per-kind
+             *     struct (KafkaTriggerConfig, NATSTriggerConfig, etc).
+             * @example {
+             *       "brokers": [
+             *         "broker:9092"
+             *       ],
+             *       "topic": "orders.v1",
+             *       "group": "faas-orders"
+             *     }
+             */
+            config: {
+                [key: string]: unknown;
+            };
+            /** @description Records per batch upper bound (per-plan cap in /v1/limits). */
+            batch_size_max: number;
+            /** @description Milliseconds a partial batch may wait before dispatch. */
+            batch_window_ms: number;
+            max_attempts: number;
+            /**
+             * @description Per-record broker payload byte cap (migration 00274).
+             *     Records above this size are DLQ'd at insert time with
+             *     reason='payload_too_large' rather than silently truncated.
+             *     Plan-level ceiling in /v1/limits TriggerPayloadMaxBytes.
+             *     Default 6291456 (6 MiB) when omitted on create.
+             */
+            payload_max_bytes: number;
+            /**
+             * @description Kafka-only poison-record handling strategy (migration 00275,
+             *     audit #10). "commit" (default) advances the broker offset
+             *     via CommitMessages when the dispatcher dead-letters a
+             *     record — the broker offset and the DB dead-letter state
+             *     are permanently out of sync for that offset; operator
+             *     retry works via the dashboard's "re-drive from DLQ"
+             *     action which mints a fresh trigger_records row from the
+             *     same item_id. "seek-to-offset" calls SetOffset(msg.Offset)
+             *     instead so the next Poll re-fetches the same message —
+             *     operator retry combines a trigger re-enable with a
+             *     dashboard "reset offset" action that re-fetches the
+             *     dead-lettered payload. No effect on non-kafka kinds.
+             * @enum {string}
+             */
+            broker_poison_strategy: "commit" | "seek-to-offset";
+            /**
+             * @description Optional record-level filter (issue #757 §criterion 4,
+             *     ADR-118 §6, migration 00300). Records that fail the
+             *     filter are marked state='skipped' on insert and
+             *     contribute no audit row. Jsonpath evaluator:
+             *     github.com/PaesslerAG/jsonpath (no eval semantics, no
+             *     customer-supplied code execution). See the
+             *     FilterCriteria schema for the full shape.
+             */
+            filter_criteria?: components["schemas"]["FilterCriteria"];
+            /** @example *\/5 * * * * */
+            schedule?: string | null;
+            path?: string | null;
+            cron_id?: string | null;
+            /**
+             * @description Source discriminator for kind=queue rows.
+             * @enum {string|null}
+             */
+            source?: "queue" | "delayed_task" | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /**
+         * @description Trigger create payload. Kind is immutable after create. Per-kind
+         *     gating mirrors pkg/gregalemanifest.validateKindConfig:
+         *       - cron: requires schedule + path (slug ignored)
+         *       - non-cron: requires slug + config
+         */
+        CreateTriggerRequest: {
+            app_id: string;
+            kind: components["schemas"]["TriggerKind"];
+            slug?: string;
+            enabled?: boolean | null;
+            /** @description Per-kind opaque config blob. */
+            config?: {
+                [key: string]: unknown;
+            };
+            batch_size_max?: number | null;
+            batch_window_ms?: number | null;
+            max_attempts?: number | null;
+            payload_max_bytes?: number | null;
+            /**
+             * @description Kafka-only poison-record handling strategy. null/omitted
+             *     falls through to the DB default 'commit'. Same semantics
+             *     as the Trigger read shape.
+             * @enum {string|null}
+             */
+            broker_poison_strategy?: "commit" | "seek-to-offset" | null;
+            /**
+             * @description Optional record-level filter (ADR-118 §6). nil on
+             *     create falls through to the DB default NULL — every
+             *     record passes the filter.
+             */
+            filter_criteria?: components["schemas"]["FilterCriteria"];
+            /** @example *\/5 * * * * */
+            schedule?: string | null;
+            path?: string | null;
+        };
+        /**
+         * @description Partial trigger update. nil means "leave unchanged" (same
+         *     semantics as UpdateCronRequest). Kind is NOT a member — it
+         *     is immutable. To change kind, create a new trigger and
+         *     delete the old one.
+         */
+        UpdateTriggerRequest: {
+            enabled?: boolean | null;
+            config?: {
+                [key: string]: unknown;
+            } | null;
+            batch_size_max?: number | null;
+            batch_window_ms?: number | null;
+            max_attempts?: number | null;
+            payload_max_bytes?: number | null;
+            /**
+             * @description Kafka-only poison-record handling strategy. null/omitted
+             *     means "leave unchanged" (the SQL coalesce() in
+             *     pkg/state/pgstore.go::UpdateTrigger keeps the existing
+             *     value). Same semantics as the Trigger read shape.
+             * @enum {string|null}
+             */
+            broker_poison_strategy?: "commit" | "seek-to-offset" | null;
+            /**
+             * @description Optional record-level filter. nil means "leave
+             *     unchanged" — the SQL coalesce() in
+             *     pkg/state/pgstore.go::UpdateTrigger keeps the existing
+             *     value. Pass {} to clear an existing filter.
+             */
+            filter_criteria?: components["schemas"]["FilterCriteria"];
+            /** @example *\/5 * * * * */
+            schedule?: string | null;
+            path?: string | null;
+        };
+        /**
+         * @description Kafka SASL mechanism (ADR-118 §5). Closed-vocab.
+         * @enum {string}
+         */
+        KafkaSASLMechanism: "PLAIN" | "SCRAM-SHA-256" | "SCRAM-SHA-512";
+        /**
+         * @description Kafka SASL credentials. Required Username + Password for
+         *     every supported mechanism. xdg-go/scram library derives
+         *     SCRAM client keypairs from Username + Password at dial
+         *     time.
+         */
+        KafkaSASLConfig: {
+            mechanism: components["schemas"]["KafkaSASLMechanism"];
+            username: string;
+            /** Format: password */
+            password: string;
+        };
+        /**
+         * @description Kafka TLS material. MinVersion is forced to TLS 1.2 at
+         *     decoder time regardless of what the wire sends
+         *     (pkg/sched/poller_kafka.go::buildKafkaTLSConfig). When
+         *     ClientCert + ClientKey are both set the decoder performs
+         *     a half-wired guard — if only one is set, decode returns
+         *     an error rather than the poller falling through silently
+         *     to PLAINTEXT over an apparent mTLS endpoint.
+         */
+        KafkaTLSConfig: {
+            /** @description PEM-encoded CA bundle. Optional; if omitted the system trust store is used. */
+            ca_cert?: string;
+            /** @description PEM-encoded client cert for mTLS. */
+            client_cert?: string;
+            /**
+             * Format: password
+             * @description PEM-encoded client key for mTLS.
+             */
+            client_key?: string;
+            /**
+             * @description Skip TLS verification. Hobby plan rejects this
+             *     (TLSSkipVerifyAllowed=false in pkg/api/limits.go);
+             *     Pro and Scale accept it for self-signed brokers.
+             * @default false
+             */
+            skip_verify: boolean;
+        };
+        /**
+         * @description Decoded `config` for kind=kafka triggers. The wire-level
+         *     blob lives in Trigger.config; this is the SDK's
+         *     server-side shape.
+         */
+        KafkaTriggerConfig: {
+            /** @description Bootstrap broker list (host:port per entry). */
+            brokers: string[];
+            topic: string;
+            group: string;
+            tls?: components["schemas"]["KafkaTLSConfig"];
+            sasl?: components["schemas"]["KafkaSASLConfig"];
+        };
+        /**
+         * @description Filter operation primitive (ADR-118 §6).
+         * @enum {string}
+         */
+        FilterCriteriaOp: "eq" | "neq" | "exists" | "jsonpath";
+        /**
+         * @description One filter clause. The top-level FilterCriteria carries
+         *     `$or`, `$and`, and `payload` arrays; each clause here
+         *     is one primitive (eq / neq / exists / jsonpath) or a
+         *     nested `$or` / `$and` for compound logic.
+         */
+        FilterCriteriaClause: {
+            op: components["schemas"]["FilterCriteriaOp"];
+            /** @description Header key for eq / neq / exists on the headers map. */
+            field?: string;
+            /** @description Equality target for eq / neq; jsonpath expected type for jsonpath. */
+            value?: unknown;
+            /** @description Jsonpath expression for op=jsonpath. Evaluated against the record payload. */
+            path?: string;
+            /** @description Nested compound clauses for op=$or / $and. */
+            clauses?: components["schemas"]["FilterCriteriaClause"][];
+        };
+        /**
+         * @description FilterCriteria on a trigger (migration 00300,
+         *     pkg/sched/filter.go). nil / omitted matches every record.
+         *     Top-level arrays combine via implicit OR for `$or` and
+         *     AND for `$and`; nested clauses honour the same shape.
+         *     Jsonpath implementation: github.com/PaesslerAG/jsonpath —
+         *     no eval semantics, no customer-supplied code execution.
+         */
+        FilterCriteria: {
+            $or?: components["schemas"]["FilterCriteriaClause"][];
+            $and?: components["schemas"]["FilterCriteriaClause"][];
+            payload?: components["schemas"]["FilterCriteriaClause"][];
+        };
+        /**
+         * @description Lifecycle of one trigger record.
+         * @enum {string}
+         */
+        TriggerRecordState: "pending" | "claimed" | "succeeded" | "retry" | "dead_letter";
+        /**
+         * @description Audit row for one record passing through a trigger.
+         *     Surfaced via GET /v1/triggers/{id}/records so customers can
+         *     answer "did my last N wake-ups succeed?".
+         */
+        TriggerRecord: {
+            id: string;
+            trigger_id: string;
+            /** @description Broker-side identifier (Kafka offset, NATS seq, SQS receipt handle). */
+            item_identifier: string;
+            /** @description Raw JSON body, decoded lazily by the dashboard. */
+            payload: string;
+            /** @description Raw JSON of broker headers. */
+            headers: string;
+            /** @description Raw JSON of broker metadata (delivery count, etc.). */
+            metadata: string;
+            state: components["schemas"]["TriggerRecordState"];
+            attempts: number;
+            /** Format: date-time */
+            next_fire_at: string;
+            /** Format: date-time */
+            received_at: string;
+            last_error?: string | null;
+            /** Format: date-time */
+            last_dispatched_at?: string | null;
+        };
+        /** @description Page of trigger records, newest-first. */
+        ListTriggerRecordsResponse: {
+            records: components["schemas"]["TriggerRecord"][];
+        };
+        /**
+         * @description Reason enum pinned by SQL CHECK on trigger_dead_letter.reason.
+         * @enum {string}
+         */
+        TriggerDeadLetterReason: "rate_limited" | "poison_record" | "max_attempts" | "broker_error" | "plan_quota" | "payload_too_large" | "customer_disabled";
+        /**
+         * @description Where a dead-lettered record was routed.
+         * @enum {string}
+         */
+        TriggerRoutedTo: "drop" | "manual_retry" | "customer_dlq";
+        /** @description Read-only wire shape for one trigger_dead_letter row. */
+        TriggerDeadLetter: {
+            record_id: string;
+            trigger_id: string;
+            reason: components["schemas"]["TriggerDeadLetterReason"];
+            routed_to: components["schemas"]["TriggerRoutedTo"];
+            /** @description Opaque per-reason JSON (broker-error vs poison-record shapes differ). */
+            detail: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            created_at: string;
+        };
+        /** @description Dead-letter rows for a trigger, newest-first. */
+        ListTriggerDeadLetterResponse: {
+            records: components["schemas"]["TriggerDeadLetter"][];
+        };
+        /**
+         * @description Aggregated counters per state for one trigger. NOT a Prometheus
+         *     scrape — /v1/metrics is the Prometheus surface (issue #684).
+         */
+        TriggerMetricsResponse: {
+            trigger_id: string;
+            pending_count: number;
+            claimed_count: number;
+            succeeded_count: number;
+            retry_count: number;
+            dead_letter_count: number;
+        };
+        /**
+         * @description Inline-manifest path (POST /v1/triggers:batch_create) — fire a
+         *     gregale.yaml blob at the server without staging a tarball.
+         *     The handler re-uses validateManifestBytes from the manifest
+         *     apply path.
+         */
+        CreateTriggerBatchRequest: {
+            app_id: string;
+            /** @description Raw gregale.yaml triggers: list. */
+            manifest_yaml: string;
+        };
+        /** @description Bulk-create response — per-row trigger ids and any error codes. */
+        CreateTriggerBatchResponse: {
+            created: {
+                slug: string;
+                kind: components["schemas"]["TriggerKind"];
+                id?: string | null;
+                /** @description RFC 7807 code. */
+                error?: string | null;
+            }[];
+        };
         /** @description Multipart body for POST /v1/projects/scan (dry-run). */
         ProjectScanRequest: {
             /**
@@ -6641,6 +10436,17 @@ export interface components {
              * @enum {string}
              */
             format: "tarball";
+            /** @description Free-form operator note (≤280 chars). Example: 'Emergency rollback after payment provider incident'. */
+            reason?: string;
+            /**
+             * @description Closed-set annotation tag for grouping/filtering.
+             * @enum {string}
+             */
+            tag?: "incident_recovery" | "hotfix" | "scheduled_maintenance" | "compliance_hold" | "partner_request";
+            /** @description Human-readable actor label. CLI auto-captures from `git config user.name`; githubd stamps pusher.name; the GitHub Action defaults to ${{ github.actor }}. */
+            deployed_by?: string;
+            /** @description Pull-request number when the wire offers it (githubd pull_request.number; Action ${{ github.event.pull_request.number }}). NULL for push-to-main with no inferred PR. */
+            pr_number?: number;
         };
         /**
          * @description JSON body for POST /v1/apps/{slug}/diff (PR-1). Slim
@@ -6671,6 +10477,11 @@ export interface components {
             };
             crons?: components["schemas"]["CreateCronRequest"][];
             edge_rules?: components["schemas"]["CreateEdgeRuleRequest"][];
+            /**
+             * @description Pending per-deployment env scope (ADR-091 / SAFE-RELEASES production-leveling Stream E). Compared against Baseline.LatestScope; mismatch emits a scope_mismatch break. Empty = default.
+             * @example prod
+             */
+            scope?: string | null;
         };
         /**
          * @description Per-app scalar patch. Pointer-aware: nil = "don't touch";
@@ -6694,6 +10505,12 @@ export interface components {
             require_authn?: boolean;
             /** @enum {string} */
             eviction_priority?: "normal" | "batch" | "latency";
+            /**
+             * @description Per-app wire-protocol selector (ADR-124). Same closed set + plan gate as UpdateAppRequest.app_protocol. Pointer-aware: omitted → no change; non-null → set to this value.
+             * @example http1
+             * @enum {string|null}
+             */
+            app_protocol?: "http1" | "http2" | "grpc" | null;
         };
         /**
          * @description One would-write env var. Value carries plaintext so the
@@ -6808,6 +10625,13 @@ export interface components {
             source?: string;
             /** @enum {string} */
             tier?: "single" | "convention" | "workspace" | "compose" | "unknown";
+            /**
+             * @description ADR-124 blast-radius projection. create = workload is new to the account; update = existing app matches (root_dir, name).
+             * @enum {string}
+             */
+            action?: "create" | "update";
+            /** @description ADR-124: app row ID the update targets. Empty iff action == create. */
+            existing_app_id?: string;
         };
         /**
          * @description A service the repo declared (compose image:, render.yaml, etc.)
@@ -6823,6 +10647,25 @@ export interface components {
             env_hint: string;
             source: string;
             image: string;
+        };
+        /**
+         * @description One row of the ADR-124 blast-radius partition. action is closed-
+         *     vocabulary:
+         *       create — scan workload, no existing app row matches (root_dir, name).
+         *       update — scan workload, existing app matches.
+         *       remove — existing app, no scan workload, not protected by --exclude.
+         *       noop   — operator excluded via --exclude, or no scan change.
+         *     id is empty for action == create. existing_root_dir is populated
+         *     only when the existing app's root_dir differs from the scan root_dir
+         *     (monorepo collision surface).
+         */
+        PlanAffectedApp: {
+            slug: string;
+            id?: string;
+            /** @enum {string} */
+            action: "create" | "update" | "remove" | "noop";
+            /** @description RootDir of the existing app row. Empty for create. Populated only when it differs from the scan-time RootDir. */
+            existing_root_dir?: string;
         };
         /** @description A cron expression lifted from a workload (k8s CronJob, render.yaml, serverless.yml). */
         PlanCron: {
@@ -6866,6 +10709,15 @@ export interface components {
             crons_not_allowed?: boolean;
             /** @description base64-JSON plan token; pass back as ?plan_token= on /v1/projects to skip the second extract. */
             plan_token: string;
+            can_apply_pre_exclude?: boolean;
+            gate_rescued_by_exclude?: boolean;
+            can_apply_reasons?: string[];
+            will_deploy?: components["schemas"]["PlanAffectedApp"][];
+            unaffected?: components["schemas"]["PlanAffectedApp"][];
+            skipped?: components["schemas"]["PlanAffectedApp"][];
+            removed?: string[];
+            persisted_exclusions?: string[];
+            stale_persisted_exclusions?: string[];
         };
         /** @description Apply response. Carries the inserted project_id and per-app IDs. */
         ApplyResponse: {
@@ -6884,6 +10736,15 @@ export interface components {
             can_apply: boolean;
             crons_not_allowed?: boolean;
             plan_token: string;
+            can_apply_pre_exclude?: boolean;
+            gate_rescued_by_exclude?: boolean;
+            can_apply_reasons?: string[];
+            will_deploy?: components["schemas"]["PlanAffectedApp"][];
+            unaffected?: components["schemas"]["PlanAffectedApp"][];
+            skipped?: components["schemas"]["PlanAffectedApp"][];
+            removed?: string[];
+            persisted_exclusions?: string[];
+            stale_persisted_exclusions?: string[];
             project_id?: string;
             apps?: {
                 slug: string;
@@ -6956,6 +10817,13 @@ export interface components {
             /** @example 15 */
             cooldown_minutes: number;
             /**
+             * @description What to do when the rule fires. webhook = fire the configured webhook only (legacy default). rollback = roll the rule's app back to its last live deployment. demote = pin the current canary step (no traffic advance). promote = short-circuit the canary ladder to 100%.
+             * @default webhook
+             * @example webhook
+             * @enum {string}
+             */
+            action: "webhook" | "rollback" | "demote" | "promote";
+            /**
              * @description Cool-down state machine.
              * @enum {string}
              */
@@ -7003,6 +10871,13 @@ export interface components {
             webhook_secret: string;
             /** @example 15 */
             cooldown_minutes?: number;
+            /**
+             * @description What to do when the rule fires. Omit to default to webhook.
+             * @default webhook
+             * @example webhook
+             * @enum {string}
+             */
+            action: "webhook" | "rollback" | "demote" | "promote";
         };
         /** @description Partial update — every field is optional. Omitted means leave alone. */
         UpdateAlertRuleRequest: {
@@ -7024,6 +10899,11 @@ export interface components {
             /** @description New plaintext HMAC secret. Omit to keep the existing secret. */
             webhook_secret?: string;
             cooldown_minutes?: number;
+            /**
+             * @description Replace the action. Omit to leave the existing action in place.
+             * @enum {string}
+             */
+            action?: "webhook" | "rollback" | "demote" | "promote";
         };
         /** @description rotate-secret response — returns the rotated_at timestamp + the masked constant. */
         RotateAlertRuleSecretResponse: {
@@ -7034,6 +10914,161 @@ export interface components {
             rotated_at: string;
             /** @example *** */
             webhook_secret_sealed_masked: string;
+        };
+        /**
+         * @description One alert_deliveries row as surfaced by
+         *     GET /v1/apps/{slug}/alerts/{id}/deliveries (ADR-123 PR-D).
+         *     Test rows (IsTest=true) are written by Dispatcher.DispatchTest
+         *     (the customer-facing "send test alert" path); the production
+         *     read (include_test=false) hides them, the operator read
+         *     (?include_test=true) surfaces them.
+         */
+        AlertDeliveryResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            rule_id: string;
+            /** Format: uuid */
+            account_id: string;
+            /**
+             * Format: uuid
+             * @description omitted on account-wide rules
+             */
+            app_id?: string;
+            /** @description rule_id + ':' + cooldown bucket (production) or delivery_id + ':test' (test path) */
+            idempotency_key: string;
+            /** @enum {string} */
+            status: "pending" | "delivered" | "failed";
+            attempt_count: number;
+            /** @description 0 when the attempt never reached the wire */
+            last_status_code?: number;
+            /** @description truncated server-side via dashboard.FormatAlertError (log-injection-safe) */
+            last_error?: string;
+            /** Format: double */
+            observed_value: number;
+            /** Format: date-time */
+            fired_at: string;
+            /**
+             * Format: date-time
+             * @description omitted until status=delivered
+             */
+            delivered_at?: string;
+            /** @description true iff the row was written by Dispatcher.DispatchTest */
+            is_test: boolean;
+        };
+        /**
+         * @description One row of the alert-preset catalog (issue #1233, ADR-123).
+         *     The catalog is system-seeded and R/O for customers — the
+         *     enable endpoint clones the row into a real alert_rules row
+         *     the customer owns from then on. No persistent preset_id FK
+         *     lands on alert_rules.
+         */
+        AlertPresetResponse: {
+            /**
+             * Format: uuid
+             * @example 0123456789abcdef0123456789abcdef
+             */
+            id: string;
+            /** @example error_rate_2pct */
+            name: string;
+            /** @example Error rate exceeds 2% */
+            display_name: string;
+            /** @example Fires when the rolling 15-minute error rate exceeds 2%. */
+            description: string;
+            /**
+             * @example reliability
+             * @enum {string}
+             */
+            category: "availability" | "reliability" | "cost" | "deployment" | "infrastructure";
+            /** @example error_rate_pct */
+            metric: string;
+            /**
+             * @example gt
+             * @enum {string}
+             */
+            comparison: "gt" | "gte" | "lt" | "lte";
+            /** @example 2 */
+            threshold: number;
+            /**
+             * @example 15m
+             * @enum {string}
+             */
+            window_spec: "5m" | "15m" | "1h" | "6h" | "24h" | "7d" | "15d";
+            /** @example 15 */
+            default_cooldown_minutes: number;
+            /**
+             * @example hobby
+             * @enum {string}
+             */
+            minimum_plan: "free" | "hobby" | "pro" | "scale";
+            /** @example true */
+            enabled_in_catalog: boolean;
+        };
+        /**
+         * @description Body for POST /v1/apps/{slug}/alert-presets/{name}/enable.
+         *     The (name, metric, comparison, threshold, window_spec,
+         *     default_cooldown_minutes) sextuple is pre-filled from the
+         *     catalog; the caller supplies only the delivery-side fields.
+         */
+        EnableAlertPresetRequest: {
+            /**
+             * Format: uri
+             * @example https://hooks.example.com/alerts
+             */
+            webhook_url: string;
+            /** @example shh */
+            webhook_secret: string;
+            /**
+             * @description Override for the preset's default_cooldown_minutes.
+             *     Omit to use the catalog default.
+             */
+            cooldown_minutes?: number;
+            /**
+             * @description Whether the instantiated rule is enabled. Defaults to
+             *     true; pass false to stage the rule in disabled state.
+             * @default true
+             */
+            enabled: boolean;
+        };
+        /**
+         * @description Response body for POST /v1/apps/{slug}/alert-presets/{name}/test
+         *     (and the sibling dashboard form-POST handler). The handler
+         *     dispatches a synthetic event to the customer's configured
+         *     webhook URL with `payload.test == true`; this shape confirms
+         *     the dispatch completed and surfaces the delivery_id the
+         *     customer's webhook receiver should echo back.
+         *     (issue #1233 / ADR-123 PR-C commit 2)
+         */
+        TestAlertPresetResponse: {
+            /**
+             * @description Always "sent" on 200. A dispatch failure returns 502
+             *     with an RFC 7807 problem document (NOT this shape).
+             * @enum {string}
+             */
+            status: "sent";
+            /**
+             * @description Always true on 200. Discriminator customers can key off
+             *     in their webhook receiver to skip production alerting
+             *     paths (e.g. PagerDuty incidents) for test dispatches.
+             * @enum {boolean}
+             */
+            test: true;
+            /**
+             * @description 32-char lowercase hex identifier for this dispatch
+             *     (16 random bytes from crypto/rand encoded as hex). The
+             *     audit log row (`alert_preset.test_sent`) carries the
+             *     same delivery_id so the customer can correlate by
+             *     timestamp + delivery_id without leaking via UUID dashes.
+             */
+            delivery_id: string;
+            /**
+             * @description Number of dispatch attempts the webhookout.Dispatcher
+             *     made before reaching the final state (1..MaxAttempts).
+             *     Customers can use this to tune their receiver's SLA
+             *     (e.g. a successful first attempt vs. a successful
+             *     retry after a transient 502 from the receiver).
+             */
+            attempts: number;
         };
         /**
          * @description A customer-configurable edge rule. The `action` blob is a
@@ -7067,7 +11102,15 @@ export interface components {
             /** @default true */
             enabled: boolean;
             /** @enum {string} */
-            kind: "route" | "rewrite" | "redirect" | "headers" | "cors" | "jwt" | "ip" | "validate" | "limit" | "maintenance" | "geo" | "throttle" | "budget";
+            kind: "route" | "rewrite" | "redirect" | "headers" | "cors" | "jwt" | "ip" | "validate" | "limit" | "maintenance" | "geo" | "throttle" | "budget" | "cache";
+            /**
+             * @description Top-level source of truth for kind=validate (ADR-128).
+             *     Resolved mode; always present on read. Empty on read
+             *     would be a database invariant violation.
+             * @default block
+             * @enum {string}
+             */
+            validate_mode: "block" | "observe" | "warn";
             /** @description Kind-tagged union — shape varies by `kind`. */
             action: components["schemas"]["EdgeRuleRouteAction"] | components["schemas"]["EdgeRuleRewriteAction"] | components["schemas"]["EdgeRuleRedirectAction"] | components["schemas"]["EdgeRuleHeadersAction"] | components["schemas"]["EdgeRuleCORSAction"] | components["schemas"]["EdgeRuleJWTAction"] | components["schemas"]["EdgeRuleIPAction"] | components["schemas"]["EdgeRuleValidateAction"] | components["schemas"]["EdgeRuleLimitAction"] | components["schemas"]["EdgeRuleMaintenanceAction"] | components["schemas"]["EdgeRuleGeoAction"] | components["schemas"]["EdgeRuleThrottleAction"] | components["schemas"]["EdgeRuleBudgetAction"];
             /** Format: date-time */
@@ -7086,7 +11129,14 @@ export interface components {
             /** @default true */
             enabled: boolean;
             /** @enum {string} */
-            kind: "route" | "rewrite" | "redirect" | "headers" | "cors" | "jwt" | "ip" | "validate" | "limit" | "maintenance" | "geo" | "throttle" | "budget";
+            kind: "route" | "rewrite" | "redirect" | "headers" | "cors" | "jwt" | "ip" | "validate" | "limit" | "maintenance" | "geo" | "throttle" | "budget" | "cache";
+            /**
+             * @description Top-level source of truth for kind=validate (ADR-128).
+             *     Omitted == 'block' (the SQL-side default).
+             * @default block
+             * @enum {string}
+             */
+            validate_mode: "block" | "observe" | "warn";
             /** @description Kind-tagged action body — shape depends on `kind`. */
             action: components["schemas"]["EdgeRuleRouteAction"] | components["schemas"]["EdgeRuleRewriteAction"] | components["schemas"]["EdgeRuleRedirectAction"] | components["schemas"]["EdgeRuleHeadersAction"] | components["schemas"]["EdgeRuleCORSAction"] | components["schemas"]["EdgeRuleJWTAction"] | components["schemas"]["EdgeRuleIPAction"] | components["schemas"]["EdgeRuleValidateAction"] | components["schemas"]["EdgeRuleLimitAction"] | components["schemas"]["EdgeRuleMaintenanceAction"] | components["schemas"]["EdgeRuleGeoAction"] | components["schemas"]["EdgeRuleThrottleAction"] | components["schemas"]["EdgeRuleBudgetAction"];
         };
@@ -7097,6 +11147,12 @@ export interface components {
             match_methods?: string[];
             priority?: number;
             enabled?: boolean;
+            /**
+             * @description Top-level source of truth for kind=validate (ADR-128).
+             *     Omit (do not send) to leave the column untouched.
+             * @enum {string}
+             */
+            validate_mode?: "block" | "observe" | "warn";
             /** @description Replaces the jsonb column whole. */
             action?: components["schemas"]["EdgeRuleRouteAction"] | components["schemas"]["EdgeRuleRewriteAction"] | components["schemas"]["EdgeRuleRedirectAction"] | components["schemas"]["EdgeRuleHeadersAction"] | components["schemas"]["EdgeRuleCORSAction"] | components["schemas"]["EdgeRuleJWTAction"] | components["schemas"]["EdgeRuleIPAction"] | components["schemas"]["EdgeRuleValidateAction"] | components["schemas"]["EdgeRuleLimitAction"] | components["schemas"]["EdgeRuleMaintenanceAction"] | components["schemas"]["EdgeRuleGeoAction"] | components["schemas"]["EdgeRuleThrottleAction"] | components["schemas"]["EdgeRuleBudgetAction"];
         };
@@ -7134,8 +11190,141 @@ export interface components {
             request_headers?: components["schemas"]["EdgeRuleHeaderOp"][];
             response_headers?: components["schemas"]["EdgeRuleHeaderOp"][];
         };
+        /**
+         * @description One cors_presets row (issue #975 #4 PR-B / ADR-129). The
+         *     id is a server-generated UUID; app_id is null on the
+         *     wire for account-wide presets and a UUID for app-scoped
+         *     presets (the SQL NULL marker is the canonical "account-
+         *     wide" encoding; the empty string is not used). The
+         *     allow_origins array accepts the same CorsOriginPattern
+         *     grammar as the inline EdgeRuleCORSAction field. The
+         *     create-time gate enforces AllowCredentials: true +
+         *     AllowOrigins: ["*"] ⇒ 422 (ADR-091 D12). Updated_at is
+         *     bumped on every successful PATCH; the gateway's
+         *     per-account overlay cache invalidates on pg_notify
+         *     (cors_preset_changed).
+         */
+        CorsPresetResponse: {
+            /**
+             * Format: uuid
+             * @example 0123456789abcdef0123456789abcdef
+             */
+            id: string;
+            /** Format: uuid */
+            account_id: string;
+            /**
+             * Format: uuid
+             * @description Optional app scoping (issue #975 #4 PR-B). Null on the
+             *     wire = account-wide preset (visible to every app on
+             *     the account). A UUID = app-scoped preset (visible
+             *     only to that one app; cross-tenant IDOR collapses to
+             *     404).
+             */
+            app_id?: string | null;
+            /** @example public-https */
+            name: string;
+            /** @example Origins allowed on every public-facing endpoint. */
+            description?: string;
+            allow_origins: string[];
+            allow_methods: string[];
+            allow_headers?: string[];
+            expose_headers?: string[];
+            /** @default false */
+            allow_credentials: boolean;
+            max_age_seconds: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /**
+         * @description Body for POST /v1/cors-presets. The customer must supply
+         *     at least one allow_origin and one allow_method. AppID is
+         *     optional on the wire (null pointer = "account-wide",
+         *     non-nil = "app-scoped"); the handler maps the
+         *     pointer-nil case to a SQL NULL on insert. Name length
+         *     is 1..64 characters (cors_presets_name_check). The
+         *     *+credentials footgun (ADR-091 D12) is enforced at
+         *     validate-time.
+         */
+        CreateCorsPresetRequest: {
+            /**
+             * Format: uuid
+             * @description Optional app scoping. Null = account-wide. Set to a
+             *     UUID = app-scoped.
+             */
+            app_id?: string | null;
+            name: string;
+            description?: string;
+            allow_origins: string[];
+            allow_methods: string[];
+            allow_headers?: string[];
+            expose_headers?: string[];
+            /** @default false */
+            allow_credentials: boolean;
+            max_age_seconds: number;
+        };
+        /**
+         * @description Body for PATCH /v1/cors-presets/{id}. Every field is
+         *     optional (PATCH nil-skip convention). At least one field
+         *     must be present (an empty PATCH is rejected with 422
+         *     cors_preset_update_requires_field). The same partial
+         *     grammar check that fires on CreateCorsPresetRequest
+         *     (CorsOriginPattern, *+credentials footgun) fires here
+         *     on the partial payload; the apid handler additionally
+         *     re-validates against the merged post-update shape so a
+         *     PATCH that flips AllowCredentials to true while leaving
+         *     AllowOrigins=["*"] is rejected.
+         *
+         *     app_id uses the **string tri-state: outer null = "do
+         *     not touch", inner null = "set to NULL (account-wide)",
+         *     inner non-null = "set to UUID (app-scoped)".
+         */
+        UpdateCorsPresetRequest: {
+            /**
+             * Format: uuid
+             * @description Optional app scoping. Outer null = do not touch.
+             *     Inner null = set to NULL (account-wide). Inner
+             *     non-null = set to UUID (app-scoped).
+             */
+            app_id?: string | null;
+            name?: string;
+            description?: string;
+            allow_origins?: string[];
+            allow_methods?: string[];
+            allow_headers?: string[];
+            expose_headers?: string[];
+            allow_credentials?: boolean;
+            max_age_seconds?: number;
+        };
+        /**
+         * @description GET /v1/cors-presets list shape. The (account-wide,
+         *     app-scoped) order mirrors ListCorsPresetsForAccount:
+         *     account-wide rows first (app_id IS NULL), then
+         *     app-scoped rows, both ordered by name.
+         */
+        CorsPresetListResponse: {
+            presets: components["schemas"]["CorsPresetResponse"][];
+        };
         /** @description Stamps CORS headers + handles preflight in-process. */
         EdgeRuleCORSAction: {
+            /**
+             * Format: uuid
+             * @description Optional CORS preset reference (issue #975 #4 PR-B /
+             *     ADR-129). When set, the rule's resolved CORS action is
+             *     the merged union of the preset's fields and the rule's
+             *     inline fields — with the rule taking precedence for any
+             *     non-empty inline field. Mutually exclusive with inline
+             *     fields: if cors_preset_id is set, allow_origins,
+             *     allow_methods, allow_headers, expose_headers,
+             *     allow_credentials, and max_age_seconds must all be empty
+             *     / unset. The preset is referenced by id (UUID); an
+             *     invalid id (cross-tenant, deleted) causes the rule to
+             *     be silently dropped from the gateway's compiled slice
+             *     (the request matches no rule, returning 404 from the
+             *     route layer).
+             */
+            cors_preset_id?: string | null;
             allow_origins: string[];
             allow_methods: string[];
             allow_headers?: string[];
@@ -7226,6 +11415,87 @@ export interface components {
              *     be > 0 and <= the platform cap.
              */
             max_body_bytes?: number;
+            /**
+             * @deprecated
+             * @description DEPRECATED (ADR-128 D2). Moved to top-level
+             *     `EdgeRuleResponse.validate_mode` /
+             *     `CreateEdgeRuleRequest.validate_mode` /
+             *     `UpdateEdgeRuleRequest.validate_mode`. Retained on
+             *     the action body for the back-compat read window.
+             *     How the gateway handles a schema mismatch. `block`
+             *     rejects with 422 (the strictest mode; preserves the
+             *     pre-2026 behaviour). `observe` counts via the metric
+             *     and proxies normally. `warn` does the same and stamps
+             *     `X-Validation-Warning: <rule_id>` on the response.
+             *     An empty / omitted value is coerced to `block` at the
+             *     gateway-side handler.
+             * @default block
+             * @enum {string}
+             */
+            validate_mode: "block" | "observe" | "warn";
+        };
+        /**
+         * @description Edge-cache control primitive (ADR-122, kind=cache). Wraps the
+         *     response body in a per-route freshness window so a wake-elision
+         *     cache absorbs repeat traffic without paying a cold-boot cost.
+         *
+         *     Field-by-field:
+         *       * `max_age_seconds` — required. Fresh window in seconds. The
+         *         apid-side default is 60; the absolute platform cap is 3600
+         *         (`api.ResponseCacheMaxAgeMaxSeconds`). The runtime cache
+         *         layer in `pkg/gateway/response_cache.go` re-checks this
+         *         cap as defence-in-depth.
+         *       * `stale_if_error_seconds` — required. Stale-on-error window
+         *         in seconds. Default 300; absolute cap 300
+         *         (`api.ResponseCacheStaleIfErrorMaxSeconds`). During an
+         *         upstream error the gateway returns the cached body within
+         *         this window instead of 502/504.
+         *       * `vary_on` — optional closed vocabulary of non-credential
+         *         request headers that participate in the cache key.
+         *         Allowed values: `Accept-Language`, `Accept-Encoding`.
+         *         Credential-bearing headers (Authorization, Cookie) are
+         *         deliberately excluded — authed requests bypass the cache
+         *         entirely (ADR-122 D3).
+         *       * `methods` — optional closed vocabulary of HTTP methods
+         *         eligible for caching. Allowed values: `GET`, `HEAD`.
+         *         POST/PUT/PATCH/DELETE are deliberately excluded —
+         *         caching their responses is either incorrect (idempotency
+         *         breaks under retry) or unsafe (cross-user state).
+         */
+        EdgeRuleCacheAction: {
+            /**
+             * @description Fresh window in seconds. 0 = inherit the apid-side default
+             *     (60s). Positive values are clamped to the platform cap
+             *     (3600s = 1 hour).
+             * @default 60
+             */
+            max_age_seconds: number;
+            /**
+             * @description Stale-on-error window in seconds. 0 = no stale-on-error
+             *     (errors return 502/504 directly). Positive values are
+             *     clamped to the platform cap (300s = 5 minutes).
+             * @default 300
+             */
+            stale_if_error_seconds: number;
+            /**
+             * @description Non-credential request headers that participate in the
+             *     cache key. Closed vocabulary:
+             *       - `Accept-Language`
+             *       - `Accept-Encoding`
+             *     Empty array (default) collapses to no extra key
+             *     dimensions; the URL path + query alone drives cache
+             *     identity.
+             */
+            vary_on?: ("Accept-Language" | "Accept-Encoding")[];
+            /**
+             * @description HTTP methods eligible for caching. Closed vocabulary:
+             *       - `GET`
+             *       - `HEAD`
+             *     Empty array (default) collapses to the runtime's
+             *     cacheability predicate (GET + HEAD). POST/PUT/PATCH/DELETE
+             *     are deliberately absent.
+             */
+            methods?: ("GET" | "HEAD")[];
         };
         /**
          * @description Standalone per-route body-size cap (ADR-091 D24 / §4.1.2.13).
@@ -7374,6 +11644,14 @@ export interface components {
          *     for the design rationale (memory-bounded limiter +
          *     attacker-controlled IP cardinality = unbounded bucket
          *     growth).
+         *
+         *     Phase 3 (ADR-091 D20.5 amendment 4, ADR-104, issue #881
+         *     Phase 3) extends the wire shape with optional per-consumer
+         *     keying. Default values (`""` for key_by, omitted
+         *     jwt_claim_name, 0 for max_keys_per_rule) preserve PR
+         *     #887's behaviour bit-for-bit. See ADR-104 for the policy
+         *     and `pkg/gateway/ratelimit.go::AllowWithConsumerKey`
+         *     (Phase 3) for the run-time semantics.
          */
         EdgeRuleThrottleAction: {
             /**
@@ -7392,6 +11670,48 @@ export interface components {
              * @example 200
              */
             burst: number;
+            /**
+             * @description Per-consumer keying dimension (ADR-104 / issue #881
+             *     Phase 3). When `""` or `"none"`, the bucket is shared
+             *     across every caller of the route (PR #887 shape).
+             *     When `"api_key"`, one bucket per authenticated API
+             *     key. When `"jwt_subject"`, one bucket per JWT `sub`.
+             *     When `"jwt_claim"`, one bucket per value of the
+             *     claim named by `jwt_claim_name`. Each non-empty
+             *     value activates the bounded design: when the
+             *     per-rule consumer set exceeds
+             *     `max_keys_per_rule`, all over-cap callers collapse
+             *     into a single non-evicting `__other__` bucket that
+             *     still consumes tokens (the load-bearing safety
+             *     property — see ADR-104 §"Consequences").
+             * @default
+             * @example api_key
+             * @enum {string}
+             */
+            key_by: "" | "none" | "api_key" | "jwt_subject" | "jwt_claim";
+            /**
+             * @description Required iff `key_by="jwt_claim"`. Names the JWT
+             *     custom claim to extract (e.g., `"tier"`,
+             *     `"org_id"`). Format is a CodeQL safe-identifier:
+             *     leading letter or underscore, then `[A-Za-z0-9_]`,
+             *     max 64 chars. Anything looser risks label-cardinality
+             *     explosion in metric series or a CodeQL go-clear-
+             *     text-logging finding on a future refactor.
+             * @example tier
+             */
+            jwt_claim_name?: string;
+            /**
+             * @description Caps the cardinality of the per-consumer bucket map
+             *     for this rule. 0 means "use plan default"
+             *     (`Limits.ThrottleMaxKeysPerRule` per plan: Free 100
+             *     / Hobby 1000 / Pro 5000 / Scale 10000). The
+             *     validator rejects values above
+             *     `plan.ThrottleMaxKeysPerRule`. Must be 0 when
+             *     `key_by` is `""` or `"none"` — the cap is moot for
+             *     non-per-consumer rules.
+             * @default 0
+             */
+            max_keys_per_rule: number;
         };
         /**
          * @description Per-route end-to-end request budget (ADR-093 / §4.1.2.16).
@@ -7438,6 +11758,124 @@ export interface components {
             budget_ms: number;
             /** @description Optional RFC 7230 token header name for per-request override (default `x-faas-budget-ms`). Empty = no override. */
             allow_override_header?: string;
+        };
+        /**
+         * @description Body for POST /v1/apps/{slug}/mirrors. Both deployments must
+         *     be `live` and belong to the same app. `include_body` defaults
+         *     to `false` (sensitive headers + bodies must be redacted or
+         *     disabled by default per spec hint). `redact_headers` is the
+         *     customer's additive list on top of the always-stripped list
+         *     (Authorization, Cookie, Set-Cookie, X-API-Key, Proxy-Authorization,
+         *     WWW-Authenticate — applied by PR-A3's redaction layer, NOT by
+         *     A2's storage layer).
+         */
+        CreateMirrorRuleRequest: {
+            /**
+             * Format: uuid
+             * @description Source deployment id (live; must belong to the slug's app).
+             * @example 0123456789abcdef0123456789abcdef
+             */
+            source_deployment_id: string;
+            /**
+             * Format: uuid
+             * @description Mirror deployment id (live; must belong to the slug's app; must differ from source).
+             * @example 0123456789abcdef0123456789abcdf0
+             */
+            mirror_deployment_id: string;
+            /**
+             * @description Fan-out percent. 100 = mirror every customer request; lower = sampled shadow.
+             * @default 100
+             * @example 100
+             */
+            percent: number;
+            /**
+             * @description If true, the comparison ledger captures request/response bodies (heaviest storage cost). Off by default.
+             * @default false
+             */
+            include_body: boolean;
+            /**
+             * @description Customer-supplied additional header names to redact on top of the always-stripped list (Authorization, Cookie, Set-Cookie, X-API-Key, Proxy-Authorization, WWW-Authenticate).
+             * @default []
+             */
+            redact_headers: string[];
+        };
+        /**
+         * @description Body for PATCH /v1/apps/{slug}/mirrors/{id}. All fields are
+         *     optional; pointer-style patches mean an absent key keeps the
+         *     existing value, while an explicit zero/empty overrides. Setting
+         *     `redact_headers` to `[]` clears the customer's list (leaving
+         *     only the always-stripped list).
+         */
+        UpdateMirrorRuleRequest: {
+            /** @description New fan-out percent in [0, 100]. 0 = rule stays but doesn't fire. */
+            percent?: number;
+            /** @description Set false to pause the rule without removing it. */
+            enabled?: boolean;
+            /** @description Toggle body capture in the comparison ledger. */
+            include_body?: boolean;
+            /** @description Replace the customer's redact list. Empty array clears it. */
+            redact_headers?: string[];
+        };
+        /**
+         * @description A persisted mirror rule (issue #72 / ADR-125 / ADR-124 PR-A2).
+         *     `always_stripped_headers` is rendered so the customer can audit
+         *     what the gateway guarantees regardless of their
+         *     `redact_headers` setting.
+         */
+        MirrorRuleResponse: {
+            /** @example 0123456789abcdef0123456789abcdef */
+            id: string;
+            account_id: string;
+            app_id: string;
+            /** Format: uuid */
+            source_deployment_id: string;
+            /** Format: uuid */
+            mirror_deployment_id: string;
+            percent: number;
+            enabled: boolean;
+            include_body: boolean;
+            redact_headers: string[];
+            /** @description Headers the gateway ALWAYS strips regardless of the customer's redact_headers setting. */
+            always_stripped_headers: string[];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /**
+         * @description Wrapper for GET /v1/apps/{slug}/mirrors. Bounded by
+         *     `Limits.MirrorTargetsPerApp` (1-3) — no cursor in A2.
+         */
+        MirrorRuleListResponse: {
+            rules: components["schemas"]["MirrorRuleResponse"][];
+            count: number;
+        };
+        /**
+         * @description Aggregated mirror drift counts over a trailing window. PR-A2
+         *     returns zeros (PR-A1's ledger has no writers until A3 ships
+         *     the runtime dispatch); post-A3 this is the dashboard widget's
+         *     data source.
+         */
+        MirrorSummaryResponse: {
+            /** Format: int64 */
+            total_invocations: number;
+            /** Format: int64 */
+            status_diff_count: number;
+            /** Format: int64 */
+            schema_diff_count: number;
+            /** Format: int64 */
+            body_diff_count: number;
+            /**
+             * Format: int64
+             * @description Signed: mirror - source. Positive = mirror slower.
+             */
+            mean_latency_diff_ms: number;
+            /** Format: int64 */
+            p99_latency_diff_ms: number;
+            /** Format: int64 */
+            crash_count: number;
+            /** @description The window's length in seconds. Matches the requested `?window=` value. */
+            window_seconds: number;
         };
         /**
          * @description API key metadata: id, prefix (first 8 chars), label, scopes, created/last-used timestamps, request count. **Plaintext is returned only on POST**. `org_id` (PR 6 / issue #190 / IAM-6 / ADR-061) is the org the key was minted against; legacy account-scoped responses stamp `org_id = caller's personal org`. See `org.create_api_key` / `org.revoke_api_key` for the new org-scoped verbs.
@@ -7744,8 +12182,9 @@ export interface components {
          *     the producers write — see `pkg/events/wake.go`. The
          *     canonical `wake.*` vocabulary is documented in
          *     `docs/adr/064-wake-timeline-canonical-vocabulary.md`
-         *     (12 success-path kinds + 3 failure-path kinds: build,
-         *     deploy, boot).
+         *     (including `wake.restore_breakdown`, which exposes the
+         *     vmmd snapshot-restore phases in integer milliseconds, plus
+         *     the aggregate `total_ms`; and build/deploy/boot failure kinds).
          */
         WakeTimelineEvent: {
             /**
@@ -7831,10 +12270,12 @@ export interface components {
              */
             kid?: string;
         };
-        /** @description A sealed secret envelope: key name, sealed ciphertext (server can't read it), version, and timestamps. */
+        /** @description A sealed secret envelope: key name, sealed ciphertext (server can't read it), version, and timestamps. Scope is the env-scope the row belongs to (ADR-092 PR-B). Pre-PR-B callers see scope='default' echoed on every row. */
         AppSecretResponse: {
             /** @example DATABASE_URL */
             key: string;
+            /** @example prod */
+            scope: string;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -7844,10 +12285,48 @@ export interface components {
              * @example age1q...
              */
             kid?: string;
+            /**
+             * @description 16-hex HMAC-SHA256(plaintext) keyed by the per-host host.hmac.key (ADR-117 PR-C). Empty for pre-PR-C rows. Same value across scopes = byte-identical plaintext.
+             * @example abcdef0123456789
+             */
+            value_hash?: string;
         };
-        /** @description Paginated list of sealed-secret envelopes (no plaintext). */
+        /**
+         * @description Per-row shape for the nested `secrets_by_scope` response
+         *     (ADR-092 PR-B, mirror of ADR-090 D3's env_by_scope).
+         *     Same posture as AppSecretResponse but with an explicit
+         *     `scope` field that carries the scope name on the wire
+         *     so a CLI / dashboard can render "scope: staging" without
+         *     a second lookup. Value is NEVER echoed (same posture as
+         *     AppSecretResponse).
+         */
+        ScopedAppSecretResponse: {
+            /** @example staging */
+            scope: string;
+            /** @example DATABASE_URL */
+            key: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /**
+             * @description age-1... recipient string of the host identity that sealed this row (ADR-089). Empty for rows sealed before migration 00166. Mirrors the `kid` field on the parent `AppSecretResponse` — see that schema for the cross-reference.
+             * @example age1q...
+             */
+            kid?: string;
+            /**
+             * @description 16-hex HMAC-SHA256(plaintext) keyed by the per-host host.hmac.key (ADR-117 PR-C). Empty for pre-PR-C rows.
+             * @example abcdef0123456789
+             */
+            value_hash?: string;
+        };
+        /** @description Paginated list of sealed-secret envelopes (no plaintext). Discriminated union: `secrets` is the flat arm; `secrets_by_scope` is the `?scope=__all__` arm (ADR-092 PR-B). */
         AppSecretListResponse: {
             secrets: components["schemas"]["AppSecretResponse"][];
+            /** @description Nested per-scope map (ADR-092 PR-B, mirror of ADR-090 PR-B D3). Populated only when `?scope=__all__` is passed; keys are scope names, values are per-scope row lists ordered by key ASC. */
+            secrets_by_scope?: {
+                [key: string]: components["schemas"]["ScopedAppSecretResponse"][];
+            };
             quota_max: number;
             count: number;
         };
@@ -7960,11 +12439,11 @@ export interface components {
             count: number;
         };
         /**
-         * @description Upsert payload for a customer data upstream. The (kind, host, port)
-         *     tuple is the deduplication key — repeating the PUT updates the
-         *     existing row's `last_seen_at` and (if `FAAS_DATA_PLACEMENT=1`) the
-         *     inferred-source tag. Plaintext host is never persisted; the on-disk
-         *     column is `host_redacted_hash`.
+         * @description Upsert payload for a customer data upstream. The (kind, host, port,
+         *     scope, deployment_scope) tuple is the deduplication key — repeating
+         *     the PUT updates the existing row's `last_seen_at` and (if
+         *     `FAAS_DATA_PLACEMENT=1`) the inferred-source tag. Plaintext host is
+         *     never persisted; the on-disk column is `host_redacted_hash`.
          */
         PutDataUpstreamRequest: {
             /**
@@ -7977,6 +12456,8 @@ export interface components {
             port: number;
             /** @description ADR-090 deployment-scope filter (3..40 chars, lowercase alnum + dash). Omitted = default scope. */
             scope?: string;
+            /** @description ADR-098 amendment (issue #954) widens the dedupe key to include `deployment_scope` so staging-vs-prod upstreams don't collide on the same app. Same shape as `scope` (3..40 chars, lowercase alnum + dash). Omitted = default scope, the migration's SQL DEFAULT stamp. */
+            deployment_scope?: string;
         };
         /**
          * @description A single customer data upstream. The plaintext host is replaced by
@@ -8000,6 +12481,8 @@ export interface components {
             port: number;
             /** @description ADR-090 deployment-scope filter (3..40 chars, lowercase alnum + dash). Echoes the value persisted on the row; absent when the default scope applies. */
             scope?: string;
+            /** @description ADR-098 amendment (issue #954) widens the dedupe key to include `deployment_scope` so staging-vs-prod upstreams don't collide on the same app. Echoes the value persisted on the row; absent when the default scope applies. */
+            deployment_scope?: string;
             /** @description Region hint (nullable). Empty on capture; populated by the operator or the classify-flow follow-up. */
             declared_region?: string;
             /** @description Most recent probe RTT (ms). Omitted when no probe yet. */
@@ -8107,6 +12590,19 @@ export interface components {
             wake_p95_ms: number;
             /**
              * Format: int64
+             * @description Current wake-queue depth
+             *     (`gateway_queue_depth{app, account_id}` — `account_id`
+             *     admitted via accountLabelSet, overflow=`__other__`,
+             *     added in PR-D). Backs the `queue_backlog_growing`
+             *     alert preset (ADR-123): comparison `gt 50` over the
+             *     chosen window. Best-effort: absent on Prometheus
+             *     failure (the field is `null`); the evaluator's
+             *     degraded-source contract skips firing rather than
+             *     guessing.
+             */
+            queue_depth?: number;
+            /**
+             * Format: int64
              * @description Per-app egress byte delta over the window (informational; not billed). ADR-046. Source: schedd_egress_net_tx_bytes_total{app} (Prom rollup of usage_minutes.net_tx_bytes — PR-2 wires the rollup; until then this field stays 0).
              */
             egress_bytes?: number;
@@ -8126,6 +12622,53 @@ export interface components {
              *     (pre-rewrite, ADR-093 D6).
              */
             routes?: components["schemas"]["RouteRow"][];
+            /**
+             * Format: int64
+             * @description Count of `wake.boot_started` events the schedd recorded for
+             *     this app in the trailing 24 hours. Sourced from the
+             *     `events` table via the events_wake_id_idx jsonb expression
+             *     index (migration 00114) — sub-second on a healthy app.
+             *     Best-effort: 0 on a degraded store call, an empty app, or
+             *     when the events table predates the post-ADR-123 schema
+             *     (pre-PR-A boot_started rows carry no app_id field, so the
+             *     cast returns NULL which COUNT(*) coerces to 0 — same
+             *     posture as the wake-timeline view's `WakeCountWithMeta`
+             *     denominator at cmd/apid/handlers_dashboard.go:2659). The
+             *     dashboard surfaces this as the "wakes today" line item;
+             *     combined with `cold_start_pct` it answers "is my app
+             *     wake-bound or sleep-bound". Field absent on Free
+             *     (the per-app dashboard is Hobby+ only — see
+             *     pkg/api/limits.go::PerAppMetricsAllowed).
+             */
+            wakes_24h?: number;
+            /**
+             * @description Share of cache-eligible requests served from
+             *     `gateway_response_cache` (ADR-122) over the window.
+             *     ALWAYS present on the wire (the SDK can rely on the
+             *     documented schema) — 0 means either "feature off" (no
+             *     cache rule attached) or "feature on, zero traffic". The
+             *     dashboard distinguishes the two via the existence of the
+             *     `routes` block, not via field absence. The field stays 0
+             *     until the response-cache consumer-facing metric lands
+             *     (the current per-app dashboard surfaces the
+             *     `gateway_response_cache_total{outcome=hit/miss}` rollup
+             *     through the operator-side §12 panel, not this field).
+             */
+            cache_hit_rate_pct?: number;
+            /**
+             * @description Trailing-30d API-availability error budget remaining (0 =
+             *     exhausted, 100 = full). ALWAYS present on the wire so the
+             *     SDK can rely on the documented schema — 0 renders as "—"
+             *     on the dashboard rather than a misleading "budget
+             *     exhausted" message. Computed against the plan's
+             *     API-availability SLO target (99.5% per spec §12). The
+             *     field stays 0 until the per-plan SLO target lands on the
+             *     `Limits` struct (issue TBD); once wired, the field is
+             *     computed against `apid_request_total{account_id, code}`
+             *     over the trailing 30d, scaled by the per-plan SLO
+             *     target.
+             */
+            error_budget_pct?: number;
         };
         /**
          * @description Per-route detail row (ADR-093). The `route` field is the
@@ -8151,6 +12694,84 @@ export interface components {
             p99_ms: number;
             /** @description Share of [45]xx requests with this route in the window. */
             error_pct: number;
+        };
+        /**
+         * @description Response body for `POST /v1/apps/{slug}/openapi` (issue #975
+         *     item #2 / ADR-126). One row per app in `app_openapi_docs`,
+         *     last-write-wins. Source is always `manual_import` — cold-
+         *     boot captures go to `deployment_openapi_docs` (item #1).
+         *     `endpoint_count` is the number of HTTP operations in the
+         *     imported doc's `paths.*`; `byte_size` is the raw body size
+         *     the handler enforced against
+         *     `state.OpenAPIImportMaxDocBytes` (256 KiB).
+         */
+        AppOpenAPIImportResponse: {
+            /**
+             * Format: uuid
+             * @description App UUID the import row is bound to.
+             */
+            app_id: string;
+            /**
+             * @description Row source. Always `manual_import` for this endpoint.
+             * @enum {string}
+             */
+            source: "manual_import";
+            /**
+             * @description OpenAPI spec version the imported doc declares.
+             * @enum {string}
+             */
+            openapi_version: "3.0.0" | "3.0.1" | "3.0.2" | "3.0.3" | "3.0.4" | "3.1.0" | "3.1.1";
+            /** @description Number of HTTP operations in the imported doc. */
+            endpoint_count: number;
+            /** @description Raw body size in bytes (state.OpenAPIImportMaxDocBytes = 256 KiB). */
+            byte_size: number;
+            /**
+             * Format: date-time
+             * @description First-import timestamp; preserved across re-imports.
+             */
+            captured_at: string;
+            /**
+             * Format: date-time
+             * @description Most-recent write timestamp; bumped on every import.
+             */
+            updated_at: string;
+        };
+        /**
+         * @description Single read-only candidate row in the dry-run response
+         *     (issue #975 item #2 D3 / ADR-126). Mirrors the
+         *     create-edge-rule request body fields so the customer can
+         *     copy-paste the suggestion into the existing endpoint.
+         *     `kind` + `action` union shape matches the existing
+         *     `EdgeRule*Action` types in `pkg/api/dto.go`.
+         */
+        EdgeRuleSuggestion: {
+            /** @description Operation path (e.g. `/users/{id}`). */
+            path: string;
+            /** @description HTTP methods the suggestion applies to. */
+            methods: ("get" | "put" | "post" | "delete" | "options" | "head" | "patch" | "trace")[];
+            /**
+             * @description Edge-rule kind the suggestion produces.
+             * @enum {string}
+             */
+            kind: "validate" | "cors" | "throttle" | "jwt" | "headers" | "cache" | "redirect" | "rewrite";
+            /** @description Action payload (matches EdgeRule*Action types). */
+            action: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * @description Response body for `POST /v1/apps/{slug}/openapi/dry-run`
+         *     (issue #975 item #2 D3 / ADR-126). Read-only; no persist,
+         *     no `pg_notify`, no MFA. Empty `suggestions` array when the
+         *     doc is fully covered by existing validate edge rules.
+         */
+        AppOpenAPIImportDryRunResponse: {
+            /** @description Suggested EdgeRuleSuggestion rows. */
+            suggestions: components["schemas"]["EdgeRuleSuggestion"][];
+            /** @description OpenAPI version declared by the dry-run doc. */
+            openapi_version: string;
+            /** @description Number of operations in the dry-run doc. */
+            endpoint_count: number;
         };
         /**
          * @description Per-route label snapshot (ADR-093). The bounded route label
@@ -8242,6 +12863,15 @@ export interface components {
          *     or `degraded: <reason>` on Prometheus failure (response is
          *     still 200 with empty Suggestions — the dashboard's
          *     empty-state branch handles it).
+         *
+         *     Phase 4 D1/D2 (ADR-104 amendment 5): when the request
+         *     supplies `dry_run=true` + `candidate_rps` + (optional)
+         *     `candidate_burst`, the response ALSO carries a per-route
+         *     `would_have_rejected` array + the static
+         *     `per_consumer_limit_note` literal that names the
+         *     `gateway_requests_by_route_total` label gap. Dry-run is a
+         *     guard-rail for the customer's own probe value — not
+         *     auto-apply.
          */
         ThrottleSuggestionsResponse: {
             app_id: string;
@@ -8293,6 +12923,76 @@ export interface components {
              */
             multiplier: number;
             suggestions: components["schemas"]["ThrottleSuggestionRow"][];
+            /**
+             * @description True iff the request supplied `dry_run=true`. The
+             *     `would_have_rejected` + `per_consumer_limit_note`
+             *     fields are only populated when this is true.
+             */
+            dry_run?: boolean;
+            /**
+             * Format: double
+             * @description Echo of the customer's probe value (request
+             *     `candidate_rps`). Surfaced so a customer reading
+             *     the wire doesn't have to correlate the preview
+             *     rows with the request they sent.
+             */
+            candidate_rps?: number;
+            /**
+             * @description Echo of the customer's probe burst (request
+             *     `candidate_burst`, optional).
+             */
+            candidate_burst?: number;
+            /**
+             * @description One row per surviving route with the count of
+             *     sub-windows where observed rps exceeded
+             *     `candidate_rps` over the recommendation window.
+             *     The preview counts at rule scope — see
+             *     `per_consumer_limit_note` for the label-gap
+             *     caveat.
+             */
+            would_have_rejected?: components["schemas"]["ThrottlePreviewRow"][];
+            /**
+             * @description Static literal naming the
+             *     `gateway_requests_by_route_total` label gap (no
+             *     per-consumer labels today). Surfaced so dashboards
+             *     / CLIs reading the preview don't silently
+             *     mis-attribute a rule-scope count to a
+             *     per-consumer scope.
+             */
+            per_consumer_limit_note?: string;
+        };
+        /**
+         * @description One row of the dry-run preview (ADR-104 amendment 5,
+         *     issue #881 Phase 4 D1/D2). For each surviving route we
+         *     report the count of sub-windows where the observed rate
+         *     exceeded the candidate rps — a count of "would-have-
+         *     rejected" requests over the window.
+         */
+        ThrottlePreviewRow: {
+            route: string;
+            /**
+             * Format: double
+             * @description Echo of the candidate rps the preview evaluated against.
+             */
+            candidate_rps: number;
+            /**
+             * Format: double
+             * @description Count of sub-windows in the recommendation window
+             *     where observed rps exceeded the candidate. NaN/Inf
+             *     from Prometheus are coerced to 0 via
+             *     `pkg/appmetrics.SafeFloat`.
+             */
+            over_cap_count: number;
+            /**
+             * Format: date-time
+             * @description RFC 3339 UTC window-start the preview was evaluated against.
+             */
+            window_start: string;
+            /**
+             * Format: date-time
+             * @description RFC 3339 UTC window-end the preview was evaluated against.
+             */
+            window_end: string;
         };
         /**
          * @description Per-app streaming classification (ADR-102 D6). The probe
@@ -8364,19 +13064,88 @@ export interface components {
          *     app (issue #393). Plaintext NEVER appears here: only the
          *     age-sealed envelope (base64). `app_id` and `app_slug` let the
          *     dashboard render "foo-app / DATABASE_URL" without a parallel
-         *     `/v1/apps` round-trip.
+         *     `/v1/apps` round-trip. `scope` (ADR-092 PR-B) carries the
+         *     env-scope the row belongs to; the account-wide list
+         *     crosses scopes.
          */
         AccountAppSecretResponse: {
             /** @example 0123456789abcdef0123456789abcdef */
             app_id: string;
             app_slug: string;
             key: string;
+            scope: string;
             /** @description base64 age-sealed envelope. Plaintext NEVER appears on this wire. */
             ciphertext: string;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
             updated_at: string;
+            /**
+             * @description 16-hex HMAC-SHA256(plaintext) keyed by the per-host host.hmac.key (ADR-117 PR-C). Empty for pre-PR-C rows. Mirror of the AccountAppSecretResponse / ScopedAppSecretResponse field.
+             * @example abcdef0123456789
+             */
+            value_hash?: string;
+        };
+        /**
+         * @description Discriminator for an env-diff matrix row. 'secret' rows carry {present, value_hash}; 'env' rows carry {present, value}. The cell shape is uniform but the field population is kind-aware.
+         * @example secret
+         * @enum {string}
+         */
+        EnvDiffKind: "secret" | "env";
+        /**
+         * @description One (scope, row) cell in the env-diff matrix. The shape is
+         *     closed and uniform across row kinds; the difference is which
+         *     optional fields are populated. Security: secret cells never
+         *     emit a `value` field; env cells never emit a `value_hash`
+         *     field. Pre-PR-C rows have value_hash = '' and emit no field.
+         */
+        EnvDiffCell: {
+            /** @description True if the (row.key, scope) pair is stamped on the app; false if missing. */
+            present: boolean;
+            /**
+             * @description 16-hex HMAC-SHA256(plaintext) keyed by the per-host host.hmac.key. Secret cells only.
+             * @example abcdef0123456789
+             */
+            value_hash?: string;
+            /**
+             * @description Plaintext env var. Env cells only; NEVER populated on secret cells (the load-bearing security property of the endpoint).
+             * @example info
+             */
+            value?: string;
+        };
+        /** @description One (key, kind) row in the env-diff matrix. The Cells map is keyed by scope. */
+        EnvDiffRow: {
+            /** @example DATABASE_URL */
+            key: string;
+            kind: components["schemas"]["EnvDiffKind"];
+            /** @description scope → cell. The handler populates the unioned set of scopes; consumers iterate EnvDiffResponse.Scopes for the canonical order. */
+            cells: {
+                [key: string]: components["schemas"]["EnvDiffCell"];
+            };
+        };
+        /**
+         * @description Top-level response shape for GET /v1/apps/{slug}/env-diff
+         *     (ADR-117 PR-C). The matrix is always full (no `?scope=`
+         *     filter in v1). Rows are sorted ASC by key; scopes are
+         *     sorted ASC. Bounded payload: row count <= SecretCountMax +
+         *     EnvCountMax (200 on Scale), column count = customer's
+         *     scope set (1-3 typical).
+         */
+        EnvDiffResponse: {
+            /**
+             * @description Echoes the URL path parameter so the dashboard can render a header without re-parsing the URL.
+             * @example demo
+             */
+            app_slug: string;
+            /** @description Sorted ASC list of scopes present in the matrix. Consumers iterate this list for column ordering. */
+            scopes: string[];
+            /** @description Sorted ASC (by key) list of env-diff rows. */
+            rows: components["schemas"]["EnvDiffRow"][];
+            /**
+             * Format: date-time
+             * @description RFC3339Nano timestamp the response was built. Dashboards use this to display stale badges.
+             */
+            generated_at: string;
         };
         /**
          * @description Page shape for `GET /v1/secrets` (issue #393). `secrets` is
@@ -8440,6 +13209,175 @@ export interface components {
             p95_ms: number;
             /** @description p99 latency in milliseconds. */
             p99_ms: number;
+        };
+        /**
+         * @description Slim per-app identification embedded in `AppWakeTimelineResponse`.
+         *     Carries only the fields the dashboard SPA needs for the
+         *     wake-timeline header (slug + app_id). The wider
+         *     pkg/dashboard.AppListItem type carries template-specific
+         *     glyph/badge fields (SLO badge, StateBadge*, QuotaLabel) that
+         *     don't belong on the wire.
+         */
+        WakeTimelineApp: {
+            /** Format: uuid */
+            app_id: string;
+            /** @description DNS-safe app slug (matches apps.slug). */
+            slug: string;
+            /** @description Optional deployment status (active/paused). Empty until a deployment is bound. */
+            status?: string;
+            /** @description Optional public URL once a deployment is bound. */
+            url?: string;
+        };
+        /**
+         * @description One row of `AppWakeTimelineResponse.rows`. Mirrors
+         *     pkg/dashboard/views.WakeTimelineRow's fields so the JSON
+         *     mirror can render the same dashboard page 1:1. The
+         *     nullable fields (Trigger / QueuedCount / ConcurrencyAtAdmit
+         *     / ReadyInMS) use omitempty so the dashboard SPA can
+         *     distinguish "absent" (jsonb key missing — pre-PR-A fleet
+         *     row) from "explicit zero" (jsonb key present and 0).
+         *     `ready_in_ms = -1` is the em-dash sentinel for "no
+         *     boot_completed row yet" (still booting or rejected) — the
+         *     dashboard SPA renders "—" on -1, mirroring the HTML page
+         *     cell-empty branch.
+         */
+        WakeTimelineJSONRow: {
+            /**
+             * @description Event kind. Today always wake.boot_started; the field is open for future wake.boot_completed/_failed rows.
+             * @enum {string}
+             */
+            kind: "wake.boot_started";
+            /** @description Mirror of the instance.state column on the per-app-detail recent-wakes table. */
+            state: string;
+            /**
+             * Format: date-time
+             * @description RFC3339 UTC timestamp of the wake.
+             */
+            at?: string;
+            /** @description Closed-enum trigger that admitted the wake (manual.cron / manual.api / scheduled.idle / …). Empty/absent on pre-PR-A fleet rows. */
+            trigger?: string;
+            /**
+             * Format: int32
+             * @description ledger.Concurrency at admit. 0 when absent.
+             */
+            queued_count?: number;
+            /**
+             * Format: int32
+             * @description Same reading; 0 is the cold-start case.
+             */
+            concurrency_at_admit?: number;
+            /** @description True when admitted at the plan's per-app MaxConcurrency ceiling. Only meaningful when at_capacity_present is true. */
+            at_capacity: boolean;
+            /** @description True when the at_capacity key was in jsonb; false = absent (pre-PR-A fleet). The dashboard renders em-dash when false. */
+            at_capacity_present: boolean;
+            /**
+             * Format: int32
+             * @description Wall-clock boot_started → boot_completed delta in ms. -1 when still booting or rejected. 0 is impossible (a 0ms wake would round to a positive integer).
+             */
+            ready_in_ms?: number;
+        };
+        /**
+         * @description JSON mirror of the dashboard per-app wake-timeline page.
+         *     Plan-gated Hobby+ (same code as /v1/apps/{slug}/metrics:
+         *     plan_per_app_metrics_not_allowed).
+         *
+         *     `trigger_histogram` is a JSON object (map[string]int) — empty
+         *     `{}` on a fresh app, never null. The dashboard SPA must
+         *     treat missing keys as 0 (JSON.parse() returns undefined for
+         *     missing keys, not 0 — the render code adds the explicit
+         *     `?? 0` fallback).
+         *
+         *     `at_capacity_pct` is the share of `wake_count_with_meta`
+         *     rows where the events.wake.boot_started join succeeded AND
+         *     the at_capacity flag is true. Pre-PR-A fleet rows
+         *     contribute to `wake_count_24h` but not the denominator.
+         */
+        AppWakeTimelineResponse: {
+            app: components["schemas"]["WakeTimelineApp"];
+            /** @description Number of instance rows in the trailing 24h window (after the descending-cutoff break). */
+            wake_count_24h: number;
+            /** @description Denominator for at_capacity_pct — count of rows where the events.wake.boot_started LEFT JOIN succeeded. */
+            wake_count_with_meta: number;
+            /** @description Numerator for at_capacity_pct. */
+            at_capacity_count: number;
+            /** @description Share of meta-bearing rows admitted at the per-app MaxConcurrency ceiling. */
+            at_capacity_pct: number;
+            /** @description trigger → N count of WakeBootMeta.Trigger values across the meta-bearing rows. Empty {} on a fresh app, never null. */
+            trigger_histogram: {
+                [key: string]: number;
+            };
+            /** @description Wake rows in DESC StartedAt order, truncated at the 24h cutoff (descending-cutoff break). */
+            rows: components["schemas"]["WakeTimelineJSONRow"][];
+            /**
+             * Format: date-time
+             * @description RFC3339Nano UTC timestamp marking the JSON envelope's authoritative 'as of' instant.
+             */
+            as_of: string;
+        };
+        /**
+         * @description Wire shape for `GET /v1/apps/{slug}/usage?since=&until=`
+         *     (commit 4 of the per-app observability PR series).
+         *     Plan-gated Hobby+; Free falls through with
+         *     `plan_app_usage_summary_not_allowed`.
+         *
+         *     `gb_hours` is the rounded float of `mb_seconds / 1024 /
+         *     3600` (mirror of `meter.MonthlyUsageGB`'s 6-decimal
+         *     rounding). `overage_gb_hours = max(0, gb_hours -
+         *     plan_included_gb_hours)` — 0 when the customer is under
+         *     their included band, the billable overage above the band
+         *     otherwise. The Stripe pusher bills overage at €0.01/GB-h
+         *     (CLAUDE.md integer-cents-only rule).
+         */
+        AppUsageSummaryResponse: {
+            slug: string;
+            /**
+             * Format: date-time
+             * @description Half-open [period_start, period_end) window's inclusive lower bound. UTC.
+             */
+            period_start: string;
+            /**
+             * Format: date-time
+             * @description Half-open window's exclusive upper bound. UTC midnight snap (handler defaults).
+             */
+            period_end: string;
+            /**
+             * Format: int64
+             * @description Sum of usage_minutes.mb_seconds for this app in the window (ADR-048 billable unit).
+             */
+            mb_seconds: number;
+            /** @description mb_seconds / 1024 / 3600, rounded to 6 decimal places (mirror of meter.MonthlyUsageGB). */
+            gb_hours: number;
+            /**
+             * Format: int64
+             * @description Cumulative HTTP request count (informational; not billed).
+             */
+            requests: number;
+            /**
+             * Format: int64
+             * @description Cumulative HTTP response body bytes (ADR-046; informational; not billed).
+             */
+            tx_bytes: number;
+            /** @description Cumulative builder-microVM CPU-seconds (informational; surfaced as a sidebar line on the dashboard). */
+            builder_seconds: number;
+            /**
+             * Format: int64
+             * @description WAKE_RESTORE→WAKE_COLD_BOOT transitions in the window.
+             */
+            cold_boot_count: number;
+            /** @description Echoed from acct.Plan.PlanIncludedGBHours() — plan's per-month included band so the dashboard renders the included-band badge without a second round-trip. */
+            plan_included_gb_hours: number;
+            /** @description max(0, gb_hours - plan_included_gb_hours). 0 when the customer is under their included band; the billable overage above the band otherwise. */
+            overage_gb_hours: number;
+            /**
+             * @description Which rollup reader produced this summary. usage_minutes today (30d retention); usage_daily lands with the trail-period follow-up.
+             * @enum {string}
+             */
+            source: "usage_minutes" | "usage_daily" | "mixed";
+            /**
+             * Format: date-time
+             * @description RFC3339Nano UTC stamping the envelope's authoritative 'as of' instant.
+             */
+            as_of: string;
         };
         /**
          * @description Per-app SLO panel returned by `GET /v1/apps/{slug}/slo?window=`
@@ -8824,6 +13762,25 @@ export interface components {
              * @description When the drain first claimed the row; null until claimed.
              */
             received_at?: string | null;
+            /**
+             * Format: date-time
+             * @description ADR-134 PR-B. Optional hard-stop. Drain transitions the row to dead_letter when this time passes while still pending|dispatching.
+             */
+            deadline_at?: string | null;
+            /** @description ADR-134 PR-B. Optional per-row retry curve override; decodes into dispatch.RetryPolicy (max_attempts, base_seconds, max_seconds, jitter_seconds). */
+            retry_policy?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Format: date-time
+             * @description ADR-134 PR-B. Optional explicit retention horizon. NULL means 'use plan default' (Limits.MaxAsyncResultRetentionSeconds).
+             */
+            result_retention_until?: string | null;
+            /**
+             * Format: date-time
+             * @description ADR-134 PR-C. When this row was most recently replayed from dead_letter via POST /v1/apps/{slug}/queues/dead_letter/{id}/replay. NULL until first replay.
+             */
+            last_replayed_at?: string | null;
         };
         /** @description Page of invocations; ordered by created_at DESC, id DESC. Pass the LAST id of the returned slice as the next `?before=` to load older. */
         ListInvocationsResponse: {
@@ -8841,12 +13798,42 @@ export interface components {
             method: string;
             /** @default / */
             path: string;
+            /**
+             * Format: date-time
+             * @description ADR-134 PR-B. Hard-stop timestamp. Must be within now+Limits.MaxAsyncInvocationDeadlineSeconds.
+             */
+            deadline_at?: string | null;
+            /** @description ADR-134 PR-B. Per-row retry curve override. Shape mirrors dispatch.RetryPolicy: { max_attempts, base_seconds, max_seconds, jitter_seconds }. */
+            retry_policy?: ({
+                max_attempts?: number;
+                base_seconds?: number;
+                max_seconds?: number;
+                /** @description Fraction (0..1). 0.2 means ±20%. */
+                jitter_seconds?: number;
+            } & {
+                [key: string]: unknown;
+            }) | null;
+            /** @description ADR-134 PR-B. Retention horizon in seconds. NULL/0 means 'use plan default' (Limits.MaxAsyncResultRetentionSeconds). */
+            retention_seconds?: number | null;
         };
         /** @description Body for POST /v1/apps/{slug}/queues/send. Cap-checked against MaxQueueDepth. */
         QueueSendRequest: {
             payload?: {
                 [key: string]: unknown;
             };
+        };
+        /**
+         * @description ADR-134 PR-B. Wire shape for dispatch.RetryPolicy. The handler
+         *     decodes this DTO into a dispatch.RetryPolicy before persisting
+         *     to invocations.retry_policy JSONB. Lives in pkg/api so the SDK
+         *     can type the override without importing pkg/dispatch directly.
+         */
+        RetryPolicyDTO: {
+            max_attempts?: number;
+            base_seconds?: number;
+            max_seconds?: number;
+            /** @description Fraction (0..1) added to the backoff delay. 0.2 means ±20% jitter on top of the exponential curve. */
+            jitter_seconds?: number;
         };
         /** @description Body for POST /v1/apps/{slug}/delayed-tasks. scheduled_at must be in the future (UTC). */
         DelayedTaskRequest: {
@@ -8900,6 +13887,32 @@ export interface components {
         SessionsRevokeAllResponse: {
             /** @description Number of sibling sessions revoked. The caller's session is NOT included in this count. */
             revoked: number;
+        };
+        /** @description Body for `POST /v1/auth/oidc/exchange` (ADR-101). */
+        OIDCExchangeRequest: {
+            /**
+             * @description IdP identifier (`github`, `gitlab`, `circleci`, or generic `oidc`). Used for audit attribution only — the issuer is pinned in the JWT `iss` claim.
+             * @example github
+             */
+            provider: string;
+            /** @description Raw IdP-issued JWT (the IdP token from `ACTIONS_ID_TOKEN_REQUEST_TOKEN` etc.). */
+            token: string;
+            /** @description The `aud` claim the customer pinned in the action. Must match the trust policy's `audience` array verbatim. */
+            aud: string;
+            /** @description Optional app slug for audit attribution. Empty skips the audit app attribution. */
+            app?: string;
+        };
+        /** @description Body for `POST /v1/auth/oidc/exchange` success response. */
+        OIDCExchangeResponse: {
+            /** @description Opaque bearer, format `fp_oidc_<48 hex>`. Use in `Authorization: Bearer …` on the deploy routes. */
+            bearer: string;
+            /**
+             * @description Seconds until the bearer expires (300 today).
+             * @example 300
+             */
+            expires_in: number;
+            /** @description Opaque row id (UUID). Useful for log correlation / audit reads. */
+            token_id: string;
         };
         /**
          * @description Per-field entry of `Problem.errors`. The shape mirrors
@@ -8999,432 +14012,17 @@ export interface components {
              */
             error?: string;
         };
-        ObsOverviewResponse: {
-            /** Format: date-time */
-            generated_at: string;
-            totals: components["schemas"]["ObsOverviewTotals"];
-            top_rate_limited_accounts_24h: components["schemas"]["ObsOverviewRateLimited"][];
-            node_health: components["schemas"]["ObsOverviewNodeHealth"][];
-            recent_failures_1h: components["schemas"]["ObsOverviewFailureKind"][];
-        };
-        ObsOverviewTotals: {
-            accounts_active: number;
-            accounts_past_due: number;
-            accounts_suspended: number;
-            orgs_total: number;
-            apps_total: number;
-            instances_live: number;
-            instances_waking: number;
-            nodes_active: number;
-            nodes_inactive: number;
-            audit_events_24h: number;
-        };
-        ObsOverviewRateLimited: {
-            /** Format: uuid */
-            account_id: string;
-            hits: number;
-        };
-        ObsOverviewNodeHealth: {
-            name: string;
-            active: boolean;
-            /** Format: date-time */
-            last_heartbeat_at?: string;
-            stale: boolean;
-        };
-        ObsOverviewFailureKind: {
-            kind: string;
-            count: number;
-        };
-        ObsTenantRow: {
-            /** Format: uuid */
-            account_id: string;
-            plan: string;
-            status: string;
-            org_slug?: string;
-            is_personal: boolean;
-            /** Format: date-time */
-            created_at: string;
-            mfa_enrolled: boolean;
-            apps_count: number;
-            deployments_live_count: number;
-            /** Format: email */
-            email?: string;
-        };
-        ObsTenantListResponse: {
-            items: components["schemas"]["ObsTenantRow"][];
-            next_cursor: string;
-            limit: number;
-        };
-        ObsTenantApp: {
-            /** Format: uuid */
-            id: string;
-            slug: string;
-            status: string;
-            deployments: number;
-        };
-        ObsTenantOrg: {
-            /** Format: uuid */
-            id: string;
-            slug: string;
-            role: string;
-        };
-        ObsTenantCounts: {
-            active: number;
-            revoked: number;
-        };
-        ObsTenantUsageApp: {
-            /** Format: uuid */
-            app_id: string;
-            app_slug?: string;
-            /** Format: int64 */
-            mb_seconds: number;
-            /** Format: int64 */
-            cpu_usec: number;
-            /** Format: int64 */
-            requests: number;
-            /** Format: int64 */
-            tx_bytes: number;
-            /** Format: int64 */
-            net_tx_bytes: number;
-            /** Format: int64 */
-            net_rx_bytes: number;
-            /** Format: int64 */
-            cold_boots: number;
-        };
-        ObsTenantUsage: {
-            month: string;
-            used_gb_hours: number;
-            /** Format: int64 */
-            included_gb_hours: number;
-            overage_gb_hours: number;
-            /** Format: int64 */
-            overage_cents: number;
-            used_cpu_hours: number;
-            used_egress_gb: number;
-            used_ingress_gb: number;
-            /** Format: int64 */
-            cold_boots: number;
-            /** Format: int64 */
-            requests: number;
-            apps: components["schemas"]["ObsTenantUsageApp"][];
-        };
-        ObsInvoiceSummary: {
-            /** Format: uuid */
-            id: string;
-            provider: string;
-            number?: string;
-            status: string;
-            currency: string;
-            /** Format: date-time */
-            period_start: string;
-            /** Format: date-time */
-            period_end: string;
-            /** Format: int64 */
-            total_cents: number;
-            /** Format: int64 */
-            amount_paid_cents: number;
-        };
-        ObsTenantBilling: {
-            /** Format: int64 */
-            current_month_overage_cents: number;
-            /** Format: int64 */
-            overage_cap_cents?: number | null;
-            /** Format: int64 */
-            active_credits_cents: number;
-            invoices: components["schemas"]["ObsInvoiceSummary"][];
-        };
-        ObsTenant360Response: {
-            account: components["schemas"]["ObsTenantRow"];
-            apps: components["schemas"]["ObsTenantApp"][];
-            orgs: components["schemas"]["ObsTenantOrg"][];
-            api_keys: components["schemas"]["ObsTenantCounts"];
-            sessions: components["schemas"]["ObsTenantCounts"];
-            usage: components["schemas"]["ObsTenantUsage"];
-            billing: components["schemas"]["ObsTenantBilling"];
-        };
-        ObsInvocationRow: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            app_id: string;
-            app_slug?: string;
-            state: string;
-            source: string;
-            method: string;
-            path: string;
-            outcome?: string;
-            attempts: number;
-            last_error?: string;
-            /** Format: date-time */
-            created_at: string;
-            /** Format: date-time */
-            completed_at?: string | null;
-        };
-        ObsAuditActivityRow: {
-            /** Format: uuid */
-            id: string;
-            /** Format: date-time */
-            at: string;
-            kind: string;
-            actor?: string;
-            subject?: string;
-        };
-        ObsTenantActivityResponse: {
-            /** Format: uuid */
-            account_id: string;
-            /** Format: date-time */
-            generated_at: string;
-            invocations: components["schemas"]["ObsInvocationRow"][];
-            audit_events: components["schemas"]["ObsAuditActivityRow"][];
-            limit: number;
-        };
-        ObsCapacitySummary: {
-            total_nodes: number;
-            active_nodes: number;
-            inactive_nodes: number;
-            /** Format: int64 */
-            total_vcpus: number;
-            /** Format: int64 */
-            total_vcpu_budget: number;
-            /** Format: int64 */
-            total_mem_mb: number;
-            /** Format: int64 */
-            total_admission_ceiling_mb: number;
-            /** Format: int64 */
-            ram_used_mb: number;
-            /** Format: int64 */
-            admission_margin_mb: number;
-            /** Format: int64 */
-            instances_live: number;
-            /** Format: int64 */
-            instances_running: number;
-            /** Format: int64 */
-            instances_waking: number;
-            /** Format: int64 */
-            instances_cold_booting: number;
-            /** Format: int64 */
-            apps_total: number;
-            /** Format: int64 */
-            tenants_total: number;
-            /** Format: int64 */
-            unplaced_apps: number;
-        };
-        ObsCapacityNode: {
-            /** Format: uuid */
-            id: string;
-            name: string;
-            active: boolean;
-            vcpus: number;
-            vcpu_budget: number;
-            mem_mb: number;
-            admission_ceiling_mb: number;
-            /** Format: int64 */
-            instances_live: number;
-            /** Format: int64 */
-            instances_running: number;
-            /** Format: int64 */
-            instances_waking: number;
-            /** Format: int64 */
-            instances_cold_booting: number;
-            /** Format: int64 */
-            ram_used_mb: number;
-            /** Format: int64 */
-            admission_margin_mb: number;
-            /** Format: int64 */
-            apps_count: number;
-            /** Format: int64 */
-            tenants_count: number;
-        };
-        ObsCapacityResponse: {
-            /** Format: date-time */
-            generated_at: string;
-            summary: components["schemas"]["ObsCapacitySummary"];
-            nodes: components["schemas"]["ObsCapacityNode"][];
-        };
-        ObsNodeRow: {
-            /** Format: uuid */
-            id: string;
-            name: string;
-            active: boolean;
-            vcpus: number;
-            mem_mb: number;
-            max_concurrency: number;
-            admission_ceiling_mb: number;
-            overlay_ip?: string;
-            /** Format: date-time */
-            last_heartbeat_at?: string;
-            /** Format: date-time */
-            created_at: string;
-            /** Format: int64 */
-            instances_live: number;
-            /** Format: int64 */
-            instances_running: number;
-            /** Format: int64 */
-            instances_waking: number;
-            /** Format: int64 */
-            instances_cold_booting: number;
-            /** Format: int64 */
-            ram_used_mb: number;
-            /** Format: int64 */
-            admission_margin_mb: number;
-            cpu_pct_60s?: number | null;
-            /** Format: int64 */
-            disk_used_bytes?: number | null;
-        };
-        ObsNodeListResponse: {
-            items: components["schemas"]["ObsNodeRow"][];
-            next_cursor: string;
-            limit: number;
-        };
-        ObsInstanceRow: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            app_id: string;
-            app_slug?: string;
-            /** Format: uuid */
-            account_id?: string;
-            /** Format: uuid */
-            deployment_id: string;
-            /** Format: uuid */
-            node_id?: string;
-            node_name?: string;
-            state: string;
-            ram_mb: number;
-            /** Format: date-time */
-            started_at: string;
-            /** Format: date-time */
-            last_request_at: string;
-            /** Format: date-time */
-            parked_at?: string | null;
-        };
-        ObsNodeApp: {
-            /** Format: uuid */
-            id: string;
-            slug: string;
-            /** Format: uuid */
-            account_id: string;
-            status: string;
-            instances_live: number;
-            instances_running: number;
-            instances_waking: number;
-            instances_cold_booting: number;
-            /** Format: int64 */
-            ram_used_mb: number;
-            /** Format: date-time */
-            last_request_at?: string | null;
-        };
-        ObsNodeDrainStatus: {
-            total_instances: number;
-            live_instances: number;
-            running_instances: number;
-            waking_instances: number;
-            cold_booting_instances: number;
-            drain_safe: boolean;
-            /** Format: date-time */
-            observed_at: string;
-        };
-        ObsNodeDetailResponse: {
-            node: components["schemas"]["ObsNodeRow"];
-            apps: components["schemas"]["ObsNodeApp"][];
-            instances: components["schemas"]["ObsInstanceRow"][];
-            drain: components["schemas"]["ObsNodeDrainStatus"];
-        };
-        ObsDeploymentRow: {
-            /** Format: uuid */
-            id: string;
-            status: string;
-            kind: string;
-            image_digest?: string;
-            source_url?: string;
-            commit_sha?: string;
-            error_code?: string;
-            /** Format: date-time */
-            created_at: string;
-        };
-        ObsAppDetail: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            account_id: string;
-            slug: string;
-            type: string;
-            runtime: string;
-            status: string;
-            ram_mb: number;
-            max_concurrency: number;
-            min_instances: number;
-            /** Format: date-time */
-            created_at: string;
-        };
-        ObsAppHealth: {
-            /** Format: date-time */
-            generated_at: string;
-            metrics: components["schemas"]["AppMetricsResponse"];
-            errors: components["schemas"]["AppErrorSummaryItem"][];
-            /** Format: date-time */
-            errors_window_start: string;
-            /** Format: date-time */
-            errors_window_end: string;
-        };
-        ObsAppDetailResponse: {
-            app: components["schemas"]["ObsAppDetail"];
-            deployments: components["schemas"]["ObsDeploymentRow"][];
-            instances: components["schemas"]["ObsInstanceRow"][];
-            invocations: components["schemas"]["ObsInvocationRow"][];
-            health: components["schemas"]["ObsAppHealth"];
-        };
-        OperatorIntentAcceptedResponse: {
-            ok: boolean;
-            /** Format: uuid */
-            intent_id: string;
-            status_url: string;
-            /** Format: date-time */
-            expires_at: string;
-            /** @enum {string} */
-            kind: "force_park" | "force_cold_boot" | "force_restart";
-            /** Format: uuid */
-            instance_id?: string;
-            previous_state?: string;
-            /** Format: uuid */
-            app_id?: string;
-            /** Format: uuid */
-            deployment_id?: string;
-            reason: string;
-        };
-        OperatorIntentResponse: {
-            /** Format: uuid */
-            intent_id: string;
-            /** @enum {string} */
-            kind: "force_park" | "force_cold_boot" | "force_restart";
-            /** @enum {string} */
-            status: "pending" | "running" | "succeeded" | "failed" | "cancelled";
-            target_id: string;
-            /** Format: uuid */
-            account_id?: string;
-            /** Format: date-time */
-            requested_at: string;
-            /** Format: date-time */
-            started_at?: string | null;
-            /** Format: date-time */
-            finished_at?: string | null;
-            error?: string;
-            snap_ids_marked_stale?: string[];
-        };
         /**
          * @description RFC 7807 problem+json envelope. The `code` field is the stable
          *     machine-readable identifier; clients branch on it. `limit` and
          *     `observed` are populated on quota errors. `docs_url` points the
          *     user at the next action. `billing_portal_url` is populated on
-         *     `code: payment_required` so the dashboard can deep-link the
-         *     customer to the Stripe-hosted billing portal (issue #142).
-         *     `paddle_checkout_url` + `tx_id` are populated instead when the
-         *     box is running on the Paddle billing provider
-         *     (`FAAS_BILLING_PROVIDER=paddle`, ADR-025) — the customer lands
-         *     on a Paddle-hosted checkout page for the target plan and the
-         *     dashboard renders the transaction handle as a confirmation id.
-         *     Exactly one of `billing_portal_url` or `paddle_checkout_url` is
-         *     populated on a given 402 — never both.
+         *     `code: payment_required` when the customer already has a
+         *     provider subscription and must update it in the provider
+         *     portal. `checkout_url` is populated when a new hosted checkout
+         *     is required. `paddle_checkout_url` is retained as a legacy
+         *     alias for Paddle clients, and `tx_id` carries the provider
+         *     checkout handle when one exists.
          *
          *     `errors` carries per-field detail (Cloudflare / Stripe shape)
          *     for 422 sites that emit a list of field-level failures — used
@@ -9460,13 +14058,18 @@ export interface components {
             observed?: number | null;
             /** Format: uri */
             docs_url?: string;
+            /**
+             * Format: uri
+             * @description Provider-neutral hosted checkout URL on a `payment_required`
+             *     402 when a paid plan upgrade requires a new subscription.
+             */
+            checkout_url?: string;
             /** Format: uri */
             billing_portal_url?: string;
             /**
              * Format: uri
-             * @description Paddle-hosted checkout URL on a `payment_required` 402 when
-             *     the box is running on the Paddle billing provider. Mutually
-             *     exclusive with `billing_portal_url`.
+             * @description Legacy Paddle-hosted checkout URL on a `payment_required`
+             *     402. Prefer the provider-neutral `checkout_url` field.
              */
             paddle_checkout_url?: string;
             /**
@@ -9503,6 +14106,77 @@ export interface components {
              * @example move detected secrets to `gregale secrets set` (see https://docs.gregale.dev/cli/secrets)
              */
             secret_hint?: string;
+            /**
+             * @description Single short next-action line lifted from the
+             *     `pkg/whycopy` catalog (error-explanations cluster,
+             *     spec §6.4 amendment 1). Populated by the 9 cluster-
+             *     owned RFC 7807 codes (app_not_listening,
+             *     app_loopback_bound, app_arch_mismatch,
+             *     env_var_missing, app_healthz_unauthorized,
+             *     app_runtime_oom, dep_install_failed,
+             *     app_startup_timeout, stateless_only_violation). The
+             *     CLI renders this as the first line of the 5-line
+             *     error shape (`hint: <hint>`). Optional + omitempty
+             *     so every other problem+json site keeps its existing
+             *     3-line shape unchanged.
+             * @example your app isn't accepting traffic on the port we expect
+             */
+            hint?: string;
+            /**
+             * @description Human-readable cause with the observed value templated
+             *     in (error-explanations cluster, spec §6.4 amendment 1).
+             *     Distinct from `detail`: `detail` is the platform's
+             *     machine-stable message; `why` is the customer-facing
+             *     explanation. Multi-line (≤512 bytes per `pkg/whycopy`
+             *     catalog row). Optional + omitempty.
+             * @example the wake readiness probe found no listener on $PORT after the wake timeout
+             */
+            why?: string;
+            /**
+             * @description Prescriptive remediation (1-3 lines, error-explanations
+             *     cluster, spec §6.4 amendment 1). Distinct from `hint`:
+             *     `hint` is a single line, `fix` is the bulleted
+             *     remediation list. The CLI renders this as
+             *     `→ fix: <fix>` with literal newlines preserved so the
+             *     multi-line shape survives. Optional + omitempty.
+             * @example • make sure your app listens on process.env.PORT (or 8080)
+             *     • if you bind manually, bind to 0.0.0.0 not 127.0.0.1
+             */
+            fix?: string;
+            /**
+             * @description Per-line log excerpts that explain the failure (error-
+             *     explanations cluster, spec §6.4 amendment 1). The
+             *     detection site attaches the last N log lines that
+             *     caused the failure (capped at 20 entries × 512 bytes
+             *     each per CLI tripwire). The CLI renders the first 5
+             *     inline as a fenced block. Optional + omitempty.
+             */
+            relevant_logs?: components["schemas"]["LogExcerpt"][];
+        };
+        /**
+         * @description One log entry attached to a `Problem` (error-explanations
+         *     cluster, spec §6.4 amendment 1) or persisted on
+         *     `deployments.error_relevant_logs`. The shape mirrors the
+         *     cluster's per-line log wire: `ts` is RFC3339 (apids
+         *     stamp format), `level` is one of `info|warn|error`,
+         *     `source` is the cluster's source discriminator
+         *     (build|vm-init|app|gateway), `message` is ≤512 bytes.
+         */
+        LogExcerpt: {
+            /** @example 2026-08-18T10:00:00Z */
+            ts?: string;
+            /**
+             * @example error
+             * @enum {string}
+             */
+            level?: "info" | "warn" | "error";
+            /**
+             * @example app
+             * @enum {string}
+             */
+            source?: "build" | "vm-init" | "app" | "gateway";
+            /** @example the kernel OOM-killer fired on the workload */
+            message?: string;
         };
         /**
          * @description Plain-text body returned ONLY by the authlimiter middleware
@@ -9632,7 +14306,8 @@ export interface components {
         /**
          * @description Empty success body. Side effects: mfa_secret_encrypted,
          *     mfa_recovery_codes_hash, and mfa_enrolled_at are all NULL.
-         *     mfa_required is left as-is so the chokepoints can re-arm.
+         *     mfa_required is left as-is so an explicit policy remains in
+         *     force after disable.
          */
         MFADisableResponse: Record<string, never>;
         /**
@@ -9703,6 +14378,67 @@ export interface components {
              * @example true
              */
             require_signed: boolean;
+        };
+        /**
+         * @description GET /v1/apps/{slug}/static-egress-ip response body (ADR-119).
+         *     IP / SetAt are pointers so the wire shape is stable: a Scale
+         *     customer with no pin yet sees `ip=null`, `set_at=null`,
+         *     `plan_cap=1`, `plan_allowed=true`. PlanCap is the
+         *     Limits.StaticEgressIPsPerApp value (1 in v1) so the dashboard
+         *     can render "you can use 1 static IP per app" without the CLI
+         *     round-tripping the plan table.
+         */
+        AppStaticEgressIPResponse: {
+            /**
+             * Format: ipv4
+             * @description The pinned IPv4 (dotted-quad). `null` when the customer
+             *     has not pinned an IP yet. The DB family=4 CHECK
+             *     guarantees this is never IPv6.
+             * @example 203.0.113.42
+             */
+            ip: string | null;
+            /**
+             * Format: date-time
+             * @description RFC 3339 timestamp for when the customer pinned the IP.
+             *     `null` when IP is `null`.
+             * @example 2026-08-19T12:00:00Z
+             */
+            set_at: string | null;
+            /**
+             * @description Per-app quota cap (Limits.StaticEgressIPsPerApp). 1 in v1
+             *     for Scale; 0 for plans that don't allow static egress IPs.
+             * @example 1
+             */
+            plan_cap: number;
+            /**
+             * @description Whether the account's plan permits static egress IPs
+             *     (Plan.StaticEgressIPAllowed). `true` for Scale; `false`
+             *     for Free / Hobby / Pro so the CLI can render the upsell.
+             * @example true
+             */
+            plan_allowed: boolean;
+        };
+        /**
+         * @description PUT /v1/apps/{slug}/static-egress-ip body (ADR-119). IP is
+         *     the canonical customer-supplied IPv4 (dotted-quad string).
+         *     The handler validates the family=4 + non-RFC1918 +
+         *     non-link-local + non-multicast shape before the column
+         *     write. Set=false with empty IP means "clear" — the same
+         *     wire body covers the DELETE /keep-IP promotion path
+         *     without a third endpoint.
+         */
+        SetAppStaticEgressIPRequest: {
+            /**
+             * @description Customer-supplied IPv4 (dotted-quad). Required when
+             *     `set=true`. Empty string when `set=false`.
+             * @example 203.0.113.42
+             */
+            ip: string;
+            /**
+             * @description `true` to pin the IP; `false` to clear the pin.
+             * @example true
+             */
+            set: boolean;
         };
         /**
          * @description POST /v1/orgs body. Slug matches `OrgSlugPattern`
@@ -10111,6 +14847,109 @@ export interface components {
         AppWebhookRetryDeliveryResponse: {
             delivery: components["schemas"]["AppWebhookDeliveryResponse"];
         };
+        /**
+         * @description Response from GET /v1/apps/{slug}/debug/requests (ADR-127).
+         *     `since` echoes the effective window used (after the plan's
+         *     `DebugTelemetryRetentionDays` clamp) so the dashboard can
+         *     surface a "you widened past the cap" tile.
+         */
+        DebugTelemetryListResponse: {
+            /** @description Effective window applied (e.g. '24h', '72h'). */
+            since: string;
+            requests: components["schemas"]["DebugTelemetryRequestItem"][];
+        };
+        /** @description One row per gateway-served request, persisted by the recorder (PR-A). */
+        DebugTelemetryRequestItem: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            deployment_id: string;
+            /** @description Route template (NOT expanded URL). */
+            route: string;
+            /** @enum {string} */
+            method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
+            status: number;
+            latency_ms: number;
+            cold_boot: boolean;
+            /** @description W3C trace-id hex (32 chars), null when unset. */
+            trace_id?: string | null;
+            /** Format: date-time */
+            received_at: string;
+        };
+        /**
+         * @description Response from GET /v1/apps/{slug}/debug/regressions (ADR-127 / PR-B).
+         *     `since` echoes the effective window applied.
+         */
+        DebugRegressionsResponse: {
+            since: string;
+            regressions: components["schemas"]["DebugRegressionItem"][];
+        };
+        /** @description One regression observation row. */
+        DebugRegressionItem: {
+            /** Format: uuid */
+            deployment_id: string;
+            route: string;
+            p95_ms: number;
+            p95_base_ms: number;
+            affected_count: number;
+            /** @description Decimal string with up to 2 places, NUMERIC(5,2). */
+            regression_factor: string;
+            /** Format: date-time */
+            first_detected_at: string;
+            /** Format: date-time */
+            last_detected_at: string;
+        };
+        /** @description POST body for /v1/apps/{slug}/debug/compare (ADR-127 / PR-B). */
+        DebugCompareRequest: {
+            /**
+             * Format: uuid
+             * @description Source deployment id.
+             */
+            source: string;
+            /**
+             * Format: uuid
+             * @description Mirror deployment id.
+             */
+            mirror: string;
+            /** @description Optional exact-match route filter. */
+            route?: string | null;
+            /** @description Lookback duration (e.g. '24h'). */
+            since?: string | null;
+            /** @description Window end (RFC3339). Empty = now. */
+            until?: string | null;
+        };
+        /** @description POST response from /v1/apps/{slug}/debug/compare (ADR-127 / PR-B). */
+        DebugCompareResponse: {
+            /** Format: uuid */
+            source: string;
+            /** Format: uuid */
+            mirror: string;
+            routes: components["schemas"]["DebugCompareRouteStats"][];
+        };
+        /** @description Per-route latency stats for one side of the compare. */
+        DebugCompareRouteStats: {
+            route: string;
+            source_p50_ms?: number | null;
+            source_p95_ms?: number | null;
+            source_p99_ms?: number | null;
+            /** Format: int64 */
+            source_count?: number | null;
+            mirror_p50_ms?: number | null;
+            mirror_p95_ms?: number | null;
+            mirror_p99_ms?: number | null;
+            /** Format: int64 */
+            mirror_count?: number | null;
+        };
+        /** @description POST response from /v1/apps/{slug}/debug/requests/{req_id}/replay (ADR-127 / PR-B stub). */
+        DebugReplayResponse: {
+            /**
+             * Format: uuid
+             * @description Set when the mirror invocation lands in PR-A2.
+             */
+            mirror_invocation_id?: string | null;
+            /** @enum {string} */
+            status: "queued" | "running" | "completed" | "failed";
+        };
     };
     responses: {
         /** @description code: unauthorized */
@@ -10223,6 +15062,33 @@ export interface components {
         };
         /** @description code: no_rollback_target — there is no superseded deployment to roll back to. */
         NoRollbackTarget: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description code: no_rollback_target | rollback_target_already_live | rollback_target_snapshot_expired — rollback was rejected; see the response body for the specific code and detail. */
+        RollbackConflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description code: rollback_target_not_found — the named target_deployment_id does not match any deployment of this app (or does not exist). */
+        RollbackTargetNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description code: rollback_target_already_live — the named target_deployment_id exists but has status != superseded (typically status=live). Rolling back to the already-current deployment is rejected. */
+        RollbackTargetAlreadyLive: {
             headers: {
                 [name: string]: unknown;
             };
@@ -10378,7 +15244,7 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
-        /** @description code: env_scope_invalid — ?scope= failed the EnvScopePattern check (empty, too long, or out-of-shape slug). */
+        /** @description code: env_scope_invalid — ?scope= failed the EnvScopePattern check (empty, too long, or out-of-shape slug). Applies to both env and secrets surfaces (ADR-090 PR-B, ADR-092 PR-B). */
         EnvScopeInvalid: {
             headers: {
                 [name: string]: unknown;
@@ -10405,8 +15271,70 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
+        /** @description code: trigger_invalid_kind | trigger_invalid_config — kind does not exist, or per-kind validation failed (missing brokers, empty topic, malformed URL, etc.). */
+        TriggerInvalid: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description code: triggers_not_allowed — Free plan cannot create triggers; upgrade required. */
+        TriggerNotAllowed: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description code: trigger_quota_exceeded — per-app or per-account trigger cap reached (see TriggerLimitPerApp / TriggerLimitPerAccount in /v1/limits). */
+        TriggerQuotaExceeded: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description code: trigger_immutable_field — kind and (for cron) trigger_id are immutable after create; changing them requires delete + recreate. */
+        TriggerImmutable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description code: trigger_dlq_retry_failed — record could not be re-driven (state was not retry or dead_letter). */
+        TriggerRecordRetryFailed: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
         /** @description code: alert_rule_invalid | plan_alert_rules_not_allowed | plan_alert_rule_quota | image_egress_denied */
         AlertRuleInvalid: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /**
+         * @description code: cors_preset_invalid | cors_wildcard_with_credentials |
+         *     cors_preset_update_requires_field | cors_preset_name_conflict |
+         *     plan_cors_preset_not_allowed | plan_cors_preset_quota_reached
+         *     (issue #975 #4 PR-B / ADR-129). The body validates the
+         *     same shape as the storage-side CHECK constraints; the
+         *     wire-level codes are 422 for grammar violations and 402
+         *     for plan gates.
+         */
+        CorsPresetInvalid: {
             headers: {
                 [name: string]: unknown;
             };
@@ -10831,6 +15759,15 @@ export interface operations {
         responses: {
             /** @description The updated account profile after the plan change. */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountResponse"];
+                };
+            };
+            /** @description The provider accepted a deferred plan change; the current local entitlement remains active until the provider webhook confirms it. */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -11718,7 +16655,7 @@ export interface operations {
         parameters: {
             query: {
                 /** @description Exact mutation action the token will authorize. */
-                action: "auth.logout" | "auth.session.revoke" | "auth.sessions.revoke_all" | "mfa_confirm" | "mfa_recover" | "mfa_disable";
+                action: "auth.logout" | "auth.session.revoke" | "auth.sessions.revoke_all" | "mfa_confirm" | "mfa_recover" | "mfa_disable" | "set_password";
             };
             header?: never;
             path?: never;
@@ -11923,6 +16860,49 @@ export interface operations {
             429: components["responses"]["TooManyRequests"];
         };
     };
+    oidcExchange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OIDCExchangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Exchanged. The bearer is in the response body. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OIDCExchangeResponse"];
+                };
+            };
+            /** @description Malformed request body or empty fields. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description JWT signature / issuer / audience / subject failed verification, OR no account is bound to the (issuer, subject) pair. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
     setPassword: {
         parameters: {
             query?: never;
@@ -11953,7 +16933,11 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Chosen password is too weak (≥12 chars required). */
+            /**
+             * @description Chosen password is too weak (`password_too_weak`, ≥12
+             *     chars required), or the `csrf_token` is missing or does
+             *     not match the `faas_csrf` cookie (`validation_failed`).
+             */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -11962,7 +16946,34 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            401: components["responses"]["Unauthorized"];
+            /**
+             * @description No session, or the account has a password and
+             *     `current_password` is missing or wrong
+             *     (`invalid_credentials`).
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /**
+             * @description The account has MFA enrolled and the session carries no
+             *     step-up from the last 5 minutes (`step_up_required`), or
+             *     an explicit `mfa_required` policy is pending enrollment
+             *     (`mfa_required`). MFA is opt-in for ordinary accounts.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
         };
     };
     listApps: {
@@ -12131,6 +17142,38 @@ export interface operations {
             429: components["responses"]["TooManyRequests"];
         };
     };
+    destroyPreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No body. The preview was removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description 404 — slug does not identify a preview app. Use DELETE /v1/apps/{slug} to destroy a production app. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
     getAppMetrics: {
         parameters: {
             query?: {
@@ -12164,7 +17207,10 @@ export interface operations {
                      *       "latency_p99_ms": 412.5,
                      *       "error_rate_pct": 0.7,
                      *       "cold_start_pct": 8.5,
-                     *       "wake_p95_ms": 380.2
+                     *       "wake_p95_ms": 380.2,
+                     *       "wakes_24h": 47,
+                     *       "cache_hit_rate_pct": 0,
+                     *       "error_budget_pct": 0
                      *     }
                      */
                     "application/json": components["schemas"]["AppMetricsResponse"];
@@ -12172,6 +17218,204 @@ export interface operations {
             };
             400: components["responses"]["ValidationFailed"];
             401: components["responses"]["Unauthorized"];
+            /**
+             * @description Plan does not unlock the per-app metrics surface. Free
+             *     plan — Hobby or above required. The gate runs BEFORE
+             *     `loadApp` so a Free customer probing a slug never gets a
+             *     404 (slug-leak guard).
+             */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "https://docs.gregale.dev/errors/plan_per_app_metrics_not_allowed",
+                     *       "title": "Per-app metrics unavailable on this plan",
+                     *       "status": 402,
+                     *       "code": "plan_per_app_metrics_not_allowed",
+                     *       "detail": "the free plan does not include per-app metrics; upgrade to Hobby or above.",
+                     *       "docs_url": "https://docs.gregale.dev/plans#per-app-metrics"
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getAppWakeTimeline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The wake-timeline snapshot. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "app": {
+                     *         "app_id": "0123456789abcdef0123456789abcdef",
+                     *         "slug": "my-api"
+                     *       },
+                     *       "wake_count_24h": 24,
+                     *       "wake_count_with_meta": 20,
+                     *       "at_capacity_count": 3,
+                     *       "at_capacity_pct": 15,
+                     *       "trigger_histogram": {
+                     *         "manual.cron": 8,
+                     *         "manual.api": 7,
+                     *         "scheduled.idle": 5
+                     *       },
+                     *       "rows": [
+                     *         {
+                     *           "kind": "wake.boot_started",
+                     *           "state": "RUNNING",
+                     *           "at": "2026-07-28T13:00:00Z",
+                     *           "trigger": "manual.api",
+                     *           "queued_count": 0,
+                     *           "concurrency_at_admit": 2,
+                     *           "at_capacity": false,
+                     *           "at_capacity_present": true,
+                     *           "ready_in_ms": 342
+                     *         },
+                     *         {
+                     *           "kind": "wake.boot_started",
+                     *           "state": "RUNNING",
+                     *           "at": "2026-07-28T12:58:11Z",
+                     *           "at_capacity": false,
+                     *           "at_capacity_present": false,
+                     *           "ready_in_ms": -1
+                     *         }
+                     *       ],
+                     *       "as_of": "2026-07-28T13:00:00.123456Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["AppWakeTimelineResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /**
+             * @description Plan does not unlock the per-app wake-timeline. Free plan —
+             *     Hobby or above required. Same code as /v1/apps/{slug}/metrics
+             *     (plan_per_app_metrics_not_allowed) so a single downgrade
+             *     flips both endpoints at once.
+             */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "https://docs.gregale.dev/errors/plan_per_app_metrics_not_allowed",
+                     *       "title": "Per-app metrics unavailable on this plan",
+                     *       "status": 402,
+                     *       "code": "plan_per_app_metrics_not_allowed",
+                     *       "detail": "the free plan does not include per-app metrics; upgrade to Hobby or above.",
+                     *       "docs_url": "https://docs.gregale.dev/plans#per-app-metrics"
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getAppUsage: {
+        parameters: {
+            query?: {
+                /** @description RFC3339 lower bound. Default: `until - 30d`. */
+                since?: string;
+                /** @description RFC3339 upper bound. Default: `now()` snapped to UTC midnight. */
+                until?: string;
+            };
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The usage summary. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "slug": "my-api",
+                     *       "period_start": "2026-07-28T00:00:00Z",
+                     *       "period_end": "2026-08-27T00:00:00Z",
+                     *       "mb_seconds": 4194304000,
+                     *       "gb_hours": 1.135417,
+                     *       "requests": 8421,
+                     *       "tx_bytes": 94371840,
+                     *       "builder_seconds": 192.5,
+                     *       "cold_boot_count": 14,
+                     *       "plan_included_gb_hours": 50,
+                     *       "overage_gb_hours": 0,
+                     *       "source": "usage_minutes",
+                     *       "as_of": "2026-08-27T13:00:00.123456Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["AppUsageSummaryResponse"];
+                };
+            };
+            /**
+             * @description Invalid window — `since`/`until` not RFC3339, or `since`
+             *     later than `until`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /**
+             * @description Plan does not unlock the per-app usage summary. Free
+             *     plan — Hobby or above required. Same posture as the
+             *     other per-app observability surfaces; the gate runs
+             *     BEFORE `loadApp` so a Free customer probing a slug
+             *     never gets a 404 (slug-leak guard).
+             */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "https://docs.gregale.dev/errors/plan_app_usage_summary_not_allowed",
+                     *       "title": "Per-app usage summary unavailable on this plan",
+                     *       "status": 402,
+                     *       "code": "plan_app_usage_summary_not_allowed",
+                     *       "detail": "the free plan does not include the per-app usage summary; upgrade to Hobby or above.",
+                     *       "docs_url": "https://docs.gregale.dev/plans#usage-summary"
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             404: components["responses"]["NotFound"];
             429: components["responses"]["TooManyRequests"];
         };
@@ -12337,6 +17581,30 @@ export interface operations {
             };
             400: components["responses"]["ValidationFailed"];
             401: components["responses"]["Unauthorized"];
+            /**
+             * @description Plan does not unlock the per-app error surfacing. Free
+             *     plan — Hobby or above required. The gate runs BEFORE
+             *     `loadApp` so a Free customer probing a slug never gets
+             *     a 404 (slug-leak guard).
+             */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "https://docs.gregale.dev/errors/plan_app_errors_not_allowed",
+                     *       "title": "Per-app errors unavailable on this plan",
+                     *       "status": 402,
+                     *       "code": "plan_app_errors_not_allowed",
+                     *       "detail": "the free plan does not include per-app errors; upgrade to Hobby or above.",
+                     *       "docs_url": "https://docs.gregale.dev/plans#app-errors"
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             404: components["responses"]["NotFound"];
             429: components["responses"]["TooManyRequests"];
         };
@@ -12403,6 +17671,152 @@ export interface operations {
             429: components["responses"]["TooManyRequests"];
         };
     };
+    listAppDebugRequests: {
+        parameters: {
+            query?: {
+                /** @description Duration or 'Nd' alias. Defaults to `24h`. Clamped to plan's `DebugTelemetryRetentionDays`. */
+                since?: string | null;
+                /** @description Page size, default 20, max 200. */
+                limit?: number | null;
+            };
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of recent request telemetry rows. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DebugTelemetryListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PaymentRequired"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    listAppDebugRegressions: {
+        parameters: {
+            query?: {
+                /** @description Duration or 'Nd' alias. Defaults to `1h`. */
+                since?: string | null;
+            };
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of active regression observations. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DebugRegressionsResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PaymentRequired"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    compareAppDebugDeployments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DebugCompareRequest"];
+            };
+        };
+        responses: {
+            /** @description Per-route compare stats. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DebugCompareResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PaymentRequired"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    replayAppDebugRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Request id from the debug requests list. */
+                req_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Replay queued (PR-A2 will route it). */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DebugReplayResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PaymentRequired"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    ingestOtlpSpans: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Spans accepted (truncated summary staged in flush accumulator). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PaymentRequired"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
     createDeployment: {
         parameters: {
             query?: never;
@@ -12453,6 +17867,15 @@ export interface operations {
             413: components["responses"]["SourceTooLarge"];
             422: components["responses"]["DeployFailed"];
             429: components["responses"]["TooManyRequests"];
+            /** @description Workflow definitions are valid but workflow runtime deployment persistence is not enabled yet. */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     createDeploymentFromSourceRef: {
@@ -12494,7 +17917,7 @@ export interface operations {
                 };
             };
             /**
-             * @description code: invalid_ref | validation_failed. ref must be a 40-char
+             * @description code: invalid_ref | validation_failed. ref must be a valid 40-char
              *     SHA, branch, or tag.
              */
             400: {
@@ -12531,6 +17954,424 @@ export interface operations {
                 content: {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
+            };
+        };
+    };
+    createDeploymentFromSourceTarball: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description Idempotency key for the POST. Stored for 24h. On replay the server
+                 *     returns the original response with `Idempotent-Replayed: true`.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    tarball: string;
+                    sidecar?: components["schemas"]["SourceTarballDeployRequest"];
+                };
+            };
+        };
+        responses: {
+            /** @description The local-tarball deployment whose build has been accepted and queued. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentResponse"];
+                };
+            };
+            /**
+             * @description code: validation_failed. Missing `tarball` field, malformed
+             *     sidecar JSON, or invalid tarball shape.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /**
+             * @description code: not_found. The slug does not exist OR belongs to
+             *     another account (loadAppAndPreflight's IDOR silent-404 —
+             *     apid deliberately returns the same shape for both cases
+             *     to avoid leaking the existence of other customers'
+             *     apps). The refactored zero-config CLI path (issue #1182)
+             *     runs CreateApp before this endpoint, so a slug should
+             *     always exist by the time the request lands here; a 404
+             *     on the CLI path is the symptom of a misconfigured
+             *     --name pointing at a row the caller doesn't own.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            413: components["responses"]["SourceTooLarge"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getDeploymentOpenAPIDoc: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Deployment UUID. */
+                deployment: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The OpenAPI document. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Free plan cannot access endpoint discovery. MicroVM captures the doc, but the apid refuses to expose it. */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No document captured for this deployment, or the deployment id is not owned by the caller (IDOR floor). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    deleteDeploymentOpenAPIDoc: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Deployment UUID. */
+                deployment: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted (row gone). */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Free plan cannot use endpoint discovery. */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateDeploymentOpenAPIDoc: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Deployment UUID. */
+                deployment: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description The updated row. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        deployment_id: string;
+                        /** Format: uuid */
+                        account_id: string;
+                        /** Format: uuid */
+                        app_id: string;
+                        /** @enum {string} */
+                        source: "cold_boot" | "manual_upload";
+                        byte_size: number;
+                        /** @description Lower-case hex SHA-256 of the stored body. */
+                        doc_sha256?: string;
+                        truncated?: boolean;
+                        /** Format: date-time */
+                        captured_at: string;
+                        /** Format: date-time */
+                        updated_at: string;
+                        /** @description The OpenAPI document body. */
+                        doc?: Record<string, never>;
+                    };
+                };
+            };
+            /** @description Bad request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Two distinct 402 reasons: openapi_docs_not_allowed (Free plan cannot use endpoint discovery), plan_openapi_doc_quota_reached (per-account Plan.OpenAPIDocsPerAccount() cap reached). */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description code: plan_openapi_doc_too_large. Body exceeds Plan.OpenAPIDocMaxBytes() (Hobby 100 KiB, Pro 100 KiB, Scale 100 KiB). */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getAppOpenAPI: {
+        parameters: {
+            query?: {
+                /** @description Source mode. `manual_import` (default) returns the persisted customer doc verbatim. `auto` returns the platform-merged spec (imported doc ∪ observed routes ∪ existing edge rules). */
+                source?: "manual_import" | "auto";
+            };
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The OpenAPI document (imported or auto-generated). */
+            200: {
+                headers: {
+                    /** @description Provenance marker: manual_import, auto, degraded: routes_unavailable, degraded: rules_unavailable, empty: no_import_no_rules. */
+                    "X-OpenAPI-Doc-Source"?: string;
+                    /** @description OpenAPI version declared by the imported doc (3.0.x / 3.1.x). */
+                    "X-OpenAPI-Doc-Version"?: string;
+                    /** @description Raw byte size of the persisted doc body. */
+                    "X-OpenAPI-Doc-Byte-Size"?: number;
+                    /** @description Cache hit/miss on the `?source=auto` path. Omitted on `?source=manual_import`. */
+                    "X-Faas-Cache"?: "hit" | "miss";
+                    /** @description Count of `x-faas-edge-rules` annotations on the auto-gen spec (zero on manual_import). */
+                    "X-OpenAPI-Doc-Annotations-Count"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description code: invalid_source. `source` query value is not in the enum. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description code: not_found. No imported doc exists for this app (manual_import mode), or the app slug is cross-tenant. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description code: dry_run_requires_post. `?source=dry_run` is GET-only 405; dry-run is POST-only. */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    importAppOpenAPI: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description OpenAPI version (3.0.x / 3.1.x). */
+                    openapi: string;
+                    info: Record<string, never>;
+                    paths: Record<string, never>;
+                };
+            };
+        };
+        responses: {
+            /** @description Stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppOpenAPIImportResponse"];
+                };
+            };
+            /** @description code: empty_body. Body is zero bytes. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description code: openapi_import_quota_reached. Plan.OpenAPIImportsPerAccount() cap reached. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description code: openapi_import_too_large. Body exceeds state.OpenAPIImportMaxDocBytes (256 KiB) on the import endpoint. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description code: openapi_import_invalid or openapi_import_too_many_endpoints. Doc fails the structural-minimum validator or declares more than state.OpenAPIImportMaxEndpoints (50) endpoints on the import endpoint. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    deleteAppOpenAPI: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted (row gone from app_openapi_docs). */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    dryRunAppOpenAPI: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    openapi: string;
+                    info: Record<string, never>;
+                    paths: Record<string, never>;
+                };
+            };
+        };
+        responses: {
+            /** @description Dry-run suggestions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppOpenAPIImportDryRunResponse"];
+                };
+            };
+            /** @description code: empty_body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description code: openapi_import_too_large. Body exceeds state.OpenAPIImportMaxDocBytes (256 KiB) on the dry-run endpoint. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description code: openapi_import_invalid or openapi_import_too_many_endpoints. Doc fails the structural-minimum validator or declares more than state.OpenAPIImportMaxEndpoints (50) endpoints on the dry-run endpoint. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -12656,7 +18497,16 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                /**
+                 * @example {
+                 *       "target_deployment_id": "0123456789abcdef0123456789abcdef"
+                 *     }
+                 */
+                "application/json": components["schemas"]["RollbackRequest"];
+            };
+        };
         responses: {
             /** @description The deployment that was created by rolling back to the previous version. */
             202: {
@@ -12667,8 +18517,81 @@ export interface operations {
                     "application/json": components["schemas"]["DeploymentResponse"];
                 };
             };
+            400: components["responses"]["ValidationFailed"];
             401: components["responses"]["Unauthorized"];
-            409: components["responses"]["NoRollbackTarget"];
+            404: components["responses"]["RollbackTargetNotFound"];
+            /** @description one of: no_rollback_target | rollback_target_already_live | rollback_target_snapshot_expired */
+            409: components["responses"]["RollbackConflict"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    recoverRollout: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description Idempotency key for the POST. Stored for 24h. On replay the server
+                 *     returns the original response with `Idempotent-Replayed: true`.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "action": "promote",
+                 *       "reason": "manual-test"
+                 *     }
+                 */
+                "application/json": components["schemas"]["RecoverRolloutRequest"];
+            };
+        };
+        responses: {
+            /** @description The post-recovery deployment + audit row id. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RolloutTransitionResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            /** @description Canary traffic splitting is unavailable on the Hobby / Free plan. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description one of: rollout_not_stuck | rollout_state_invalid */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description action ∉ {advance, promote, abort} (closed-set check). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             429: components["responses"]["TooManyRequests"];
         };
     };
@@ -13040,7 +18963,17 @@ export interface operations {
     };
     listSecrets: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Env-var scope (ADR-090). A domain-valid slug (3..40 chars,
+                 *     lowercase alnum + dash, no leading/trailing dash) — e.g.
+                 *     `default`, `staging`, `prod-eu`. Or the reserved sentinel
+                 *     `__all__` on GET only, which returns the nested
+                 *     `env_by_scope` response shape (every scope on the app).
+                 *     Omitted = `scope=default` (pre-PR-B behavior).
+                 */
+                scope?: components["parameters"]["EnvScope"];
+            };
             header?: never;
             path: {
                 /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
@@ -13066,7 +18999,17 @@ export interface operations {
     };
     setSecret: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Env-var scope (ADR-090). A domain-valid slug (3..40 chars,
+                 *     lowercase alnum + dash, no leading/trailing dash) — e.g.
+                 *     `default`, `staging`, `prod-eu`. Or the reserved sentinel
+                 *     `__all__` on GET only, which returns the nested
+                 *     `env_by_scope` response shape (every scope on the app).
+                 *     Omitted = `scope=default` (pre-PR-B behavior).
+                 */
+                scope?: components["parameters"]["EnvScope"];
+            };
             header?: never;
             path: {
                 /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
@@ -13092,7 +19035,15 @@ export interface operations {
                     "application/json": components["schemas"]["AppSecretResponse"];
                 };
             };
-            400: components["responses"]["ValidationFailed"];
+            /** @description 400 on PUT /v1/apps/{slug}/secrets/{key}?scope=... — any of {secret_invalid_key, env_scope_invalid, env_scope_reserved}. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["PlanLimitSecrets"];
             413: components["responses"]["SecretValueTooLarge"];
@@ -13101,7 +19052,17 @@ export interface operations {
     };
     deleteSecret: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Env-var scope (ADR-090). A domain-valid slug (3..40 chars,
+                 *     lowercase alnum + dash, no leading/trailing dash) — e.g.
+                 *     `default`, `staging`, `prod-eu`. Or the reserved sentinel
+                 *     `__all__` on GET only, which returns the nested
+                 *     `env_by_scope` response shape (every scope on the app).
+                 *     Omitted = `scope=default` (pre-PR-B behavior).
+                 */
+                scope?: components["parameters"]["EnvScope"];
+            };
             header?: never;
             path: {
                 /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
@@ -13120,7 +19081,15 @@ export interface operations {
                 };
                 content?: never;
             };
-            400: components["responses"]["SecretNotFound"];
+            /** @description 400 on DELETE /v1/apps/{slug}/secrets/{key}?scope=... — any of {secret_invalid_key, secret_not_found, env_scope_invalid, env_scope_reserved}. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
             429: components["responses"]["TooManyRequests"];
@@ -13128,7 +19097,17 @@ export interface operations {
     };
     rotateAppSecret: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Env-var scope (ADR-090). A domain-valid slug (3..40 chars,
+                 *     lowercase alnum + dash, no leading/trailing dash) — e.g.
+                 *     `default`, `staging`, `prod-eu`. Or the reserved sentinel
+                 *     `__all__` on GET only, which returns the nested
+                 *     `env_by_scope` response shape (every scope on the app).
+                 *     Omitted = `scope=default` (pre-PR-B behavior).
+                 */
+                scope?: components["parameters"]["EnvScope"];
+            };
             header?: never;
             path: {
                 /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
@@ -13154,7 +19133,15 @@ export interface operations {
                     "application/json": components["schemas"]["RotateAppSecretResponse"];
                 };
             };
-            400: components["responses"]["ValidationFailed"];
+            /** @description 400 on POST /v1/apps/{slug}/secrets/{key}/rotate?scope=... — any of {secret_invalid_key, secret_not_found, env_scope_invalid, env_scope_reserved}. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
             413: components["responses"]["SecretValueTooLarge"];
@@ -13283,6 +19270,112 @@ export interface operations {
             500: components["responses"]["ServerError"];
         };
     };
+    getAppStaticEgressIP: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The current pin state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppStaticEgressIPResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["AppNotFound"];
+            500: components["responses"]["ServerError"];
+        };
+    };
+    setAppStaticEgressIP: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetAppStaticEgressIPRequest"];
+            };
+        };
+        responses: {
+            /** @description The new pin state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppStaticEgressIPResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            /**
+             * @description Plan doesn't allow static egress IPs (Free / Hobby / Pro).
+             *     Stable code: `plan_static_egress_ip_not_allowed`.
+             */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /**
+             * @description Per-app quota exceeded (another app on the same account
+             *     already pins the same IP). Stable code:
+             *     `plan_static_egress_ip_quota`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            404: components["responses"]["AppNotFound"];
+            500: components["responses"]["ServerError"];
+        };
+    };
+    clearAppStaticEgressIP: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Pin cleared. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["AppNotFound"];
+            500: components["responses"]["ServerError"];
+        };
+    };
     listAppTrustedSigners: {
         parameters: {
             query?: never;
@@ -13393,6 +19486,220 @@ export interface operations {
                 };
             };
             500: components["responses"]["ServerError"];
+        };
+    };
+    listTenantSurfaces: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The active surfaces on the app. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListTenantSurfacesResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PaymentRequired"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createTenantSurface: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description Idempotency key for the POST. Stored for 24h. On replay the server
+                 *     returns the original response with `Idempotent-Replayed: true`.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTenantSurfaceRequest"];
+            };
+        };
+        responses: {
+            /** @description The new surface (pending active). */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantSurfaceResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PaymentRequired"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getTenantSurface: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description The tenant surface id. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The surface + its hostnames. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantSurfaceResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PaymentRequired"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteTenantSurface: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description The tenant surface id. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Surface and hostnames removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PaymentRequired"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    addTenantHostname: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description Idempotency key for the POST. Stored for 24h. On replay the server
+                 *     returns the original response with `Idempotent-Replayed: true`.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description The tenant surface id this hostname is being added to. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddTenantHostnameRequest"];
+            };
+        };
+        responses: {
+            /** @description The hostname (pending DNS-01 verification). */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantHostnameResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PaymentRequired"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    removeTenantHostname: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description The tenant surface id this hostname is being removed from. */
+                id: string;
+                /** @description The hostname (lowercased canonical form). */
+                hostname: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Hostname removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PaymentRequired"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getAppEnvDiff: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Env-diff matrix. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvDiffResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
         };
     };
     listEnv: {
@@ -13532,7 +19839,16 @@ export interface operations {
     };
     listAppDataUpstreams: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description ADR-098 amendment (issue #954). Optional server-side filter
+                 *     that narrows the list to one deployment. Omitted = return
+                 *     all deployments for the app. Same shape as `scope` (3..40
+                 *     chars, lowercase alnum + dash); empty string is treated as
+                 *     "no filter".
+                 */
+                deployment_scope?: string;
+            };
             header?: never;
             path: {
                 /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
@@ -13558,7 +19874,16 @@ export interface operations {
     };
     createAppDataUpstream: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description ADR-098 amendment (issue #954). Optional server-side filter
+                 *     that narrows the list to one deployment. Omitted = return
+                 *     all deployments for the app. Same shape as `scope` (3..40
+                 *     chars, lowercase alnum + dash); empty string is treated as
+                 *     "no filter".
+                 */
+                deployment_scope?: string;
+            };
             header?: never;
             path: {
                 /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
@@ -13726,6 +20051,35 @@ export interface operations {
             429: components["responses"]["TooManyRequests"];
         };
     };
+    clearDeployment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Soft-deleted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+            /** @description Live deployments cannot be cleared. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     updateDeploymentMinInstances: {
         parameters: {
             query?: never;
@@ -13784,6 +20138,126 @@ export interface operations {
                 };
             };
             429: components["responses"]["TooManyRequests"];
+        };
+    };
+    reorderDeployment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    priority: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Reordered. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id?: string;
+                        priority?: number;
+                    };
+                };
+            };
+            /** @description Plan does not allow reorder. */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Row is past the pending queue. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    cancelDeployment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CancelDeploymentRequest"];
+            };
+        };
+        responses: {
+            /** @description Cancelled. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id?: string;
+                        status?: string;
+                        /** Format: date-time */
+                        cancelled_at?: string;
+                        cancel_reason?: string;
+                        cancelled_builds?: string[];
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description Live deployment cannot be cancelled. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    clearObsoleteDeployments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** @description Go duration (e.g. 168h). */
+                    older_than?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Cleared. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClearObsoleteReport"];
+                };
+            };
         };
     };
     updateDeploymentTraffic: {
@@ -13865,6 +20339,55 @@ export interface operations {
             429: components["responses"]["TooManyRequests"];
         };
     };
+    advanceDeploymentCanary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdvanceCanaryRequest"];
+            };
+        };
+        responses: {
+            /** @description The atomically advanced deployment and audit row id. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanaryAdvanceResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            /** @description Plan tier gate tripped (Hobby / Free). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description Stale canary step, invalid rollout state, or traffic sum conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
     streamDeploymentLogs: {
         parameters: {
             query?: {
@@ -13895,6 +20418,43 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    listDeploymentAudit: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of audit rows to return. Clamped to [1, 500]; the server-applied limit is echoed back in the response. */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated deployment_audit rows in reverse-chronological order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListDeploymentAuditResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Deployment row missing or cross-account probe (no account-existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             429: components["responses"]["TooManyRequests"];
         };
     };
@@ -13955,6 +20515,154 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             /** @description Deployment row missing, cross-account probe, or secret scan has not been stamped for this deploy yet (pre-PR-A rows return 404 because the `secret_findings` jsonb has never been written). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getDeploymentStages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The raw `deployments.stage_state` jsonb. Shape: {current, current_started_at, history: [{name, started_at, ended_at, duration_ms, status, reason}]}. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        current?: "source_download" | "dependency_restore" | "image_build" | "security_scan" | "snapshot_prepare" | "readiness";
+                        /** Format: date-time */
+                        current_started_at?: string | null;
+                        history?: {
+                            /** @enum {string} */
+                            name?: "source_download" | "dependency_restore" | "image_build" | "security_scan" | "snapshot_prepare" | "readiness";
+                            /** Format: date-time */
+                            started_at?: string | null;
+                            /** Format: date-time */
+                            ended_at?: string | null;
+                            /** Format: int64 */
+                            duration_ms?: number;
+                            /** @enum {string} */
+                            status?: "completed" | "failed";
+                            reason?: string;
+                        }[];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Deployment row missing or cross-account probe (IDOR-safe; never 403). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    retryDeployment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RetryDeploymentRequest"];
+            };
+        };
+        responses: {
+            /** @description The new deployment row (same shape as a fresh deploy). */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentResponse"];
+                };
+            };
+            /**
+             * @description `400 Bad Request` — `from_stage` is empty or
+             *     not in the closed-6 vocabulary.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /**
+             * @description `403 Forbidden` — the caller's MFA factor or scope
+             *     does not satisfy the deploy-write surface.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Retry requested on a missing or cross-account deployment (IDOR-safe; never 403). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getDeploymentURL: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The resolved per-deployment preview URL. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentPreviewURL"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Deployment row missing or cross-account probe on the preview URL seam (IDOR-safe; never 403). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -14212,6 +20920,32 @@ export interface operations {
             429: components["responses"]["TooManyRequests"];
         };
     };
+    getDomain: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The custom domain string (e.g. `app.example.com`). */
+                domain: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The domain row + cert details. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomDomainResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
     deleteDomain: {
         parameters: {
             query?: never;
@@ -14234,6 +20968,87 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
             429: components["responses"]["TooManyRequests"];
+        };
+    };
+    verifyDomain: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description Idempotency key for the POST. Stored for 24h. On replay the server
+                 *     returns the original response with `Idempotent-Replayed: true`.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description The custom domain to re-verify (e.g. `app.example.com`). The same shape as the GET path; verify walks DNS + cert while show returns the durable row. */
+                domain: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The row + cert details. `cert_not_after` / `cert_sans` populated when the cert dial succeeds. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomDomainResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /**
+             * @description code: domain_verification_failed | domain_cert_not_issued.
+             *     DNS walk found a missing/mismatched TXT record, or the
+             *     port-443 cert is a CDN cert whose SANs do not include
+             *     the customer's domain.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getDomainDoctor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The custom domain to diagnose (e.g. `app.example.com`). */
+                domain: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The doctor report. `stale:true` means the cached row was older than the TTL when the handler ran a synchronous re-probe. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainDoctorReport"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+            /** @description Doctor is dark-launched (CodeDoctorDisabled) or the probe pass failed (CodeDoctorUnavailable). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     listCrons: {
@@ -14471,6 +21286,372 @@ export interface operations {
             429: components["responses"]["TooManyRequests"];
         };
     };
+    listJobs: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of jobs to return in this page (1–200, default 50). */
+                limit?: number;
+                /** @description Number of jobs to skip before returning results. NextOffset=-1 in the body signals the last page. */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of jobs. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListJobsResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    createJob: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description Idempotency key for the POST. Stored for 24h. On replay the server
+                 *     returns the original response with `Idempotent-Replayed: true`.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateJobRequest"];
+            };
+        };
+        responses: {
+            /** @description The new job. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            /** @description Plan tier does not include job support (Free plan). */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            403: components["responses"]["PlanLimit"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The job slug (3-40 chars, lowercase letters/digits/hyphens). */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The job. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    deleteJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The job slug (3-40 chars, lowercase letters/digits/hyphens). */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No body. The job was soft-deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanLimit"];
+            404: components["responses"]["NotFound"];
+            /** @description Job has live instances. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    updateJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The job slug (3-40 chars, lowercase letters/digits/hyphens). */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateJobRequest"];
+            };
+        };
+        responses: {
+            /** @description The updated job. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanLimit"];
+            403: components["responses"]["PlanLimit"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    listJobRuns: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of runs to return in this page (1–200, default 50). */
+                limit?: number;
+                /** @description Number of runs to skip before returning results. NextOffset=-1 in the body signals the last page. */
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Unique job name. DNS-label safe (`^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$`). Anchors path `/v1/jobs/{name}/runs`. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of runs for this job. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListJobRunsResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    createJobRun: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description Idempotency key for the POST. Stored for 24h. On replay the server
+                 *     returns the original response with `Idempotent-Replayed: true`.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description Unique job name. DNS-label safe (`^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$`). Anchors path `/v1/jobs/{name}/runs`. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateJobRunRequest"];
+            };
+        };
+        responses: {
+            /** @description The new run + fan-out. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobRunResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanLimit"];
+            403: components["responses"]["PlanLimit"];
+            404: components["responses"]["NotFound"];
+            /** @description Job is paused. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getJobRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Job name (path). DNS-label safe. Body creates a run against this template. Anchors path `/v1/jobs/{name}/runs/{id}`. */
+                name: string;
+                /** @description The job_run id (UUID). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The run aggregate. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobRunResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    cancelJobRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Unique job name. DNS-label safe (`^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$`). Anchors path `/v1/jobs/{name}/runs/{id}/cancel`. */
+                name: string;
+                /** @description Job-run identifier (UUIDv4, path). Returns the run + aggregated counters. Anchors path `/v1/jobs/{name}/runs/{id}/cancel`. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The cancelled run aggregate. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobRunCancelledResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanLimit"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    listJobRunTasks: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of tasks to return in this page (1–200, default 50). */
+                limit?: number;
+                /** @description Number of tasks to skip before returning results. NextOffset=-1 in the body signals the last page. */
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Unique job name. DNS-label safe (`^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$`). Anchors path `/v1/jobs/{name}/runs/{id}/tasks`. */
+                name: string;
+                /** @description Job-run identifier (UUIDv4, path). Body cancels this run. Anchors path `/v1/jobs/{name}/runs/{id}/tasks`. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of tasks for this run. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListJobTasksResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getJobTaskLogs: {
+        parameters: {
+            query?: {
+                /** @description Maximum log payload size to return. Default 64 KiB; capped at 1 MiB. */
+                max_bytes?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Unique job name. DNS-label safe (`^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$`). Anchors path `/v1/jobs/{name}/runs/{id}/tasks/{idx}/logs`. */
+                name: string;
+                /** @description Job-run identifier (UUIDv4, path). Returns a page of tasks. Anchors path `/v1/jobs/{name}/runs/{id}/tasks/{idx}/logs`. */
+                id: string;
+                /** @description The task index within the run (1-indexed). */
+                idx: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The tail log + truncated flag. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobTaskLogResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
     getFireCronRequest: {
         parameters: {
             query?: never;
@@ -14495,6 +21676,433 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
             429: components["responses"]["TooManyRequests"];
+        };
+    };
+    listTriggers: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Optional app UUID to scope the listing to one app; the
+                 *     caller's account is still the authorization boundary.
+                 */
+                app_id?: string;
+                /**
+                 * @description Optional trigger kind filter (kafka / nats / redis_streams
+                 *     / sqs_compat / queue). Invalid values produce an empty list,
+                 *     not 400 — see the trigger list paginator in pkg/apid.
+                 */
+                kind?: components["schemas"]["TriggerKind"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The trigger list. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Trigger"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    createTrigger: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description Idempotency key for the POST. Stored for 24h. On replay the server
+                 *     returns the original response with `Idempotent-Replayed: true`.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTriggerRequest"];
+            };
+        };
+        responses: {
+            /** @description The new trigger. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Trigger"];
+                };
+            };
+            400: components["responses"]["TriggerInvalid"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["TriggerNotAllowed"];
+            403: components["responses"]["TriggerQuotaExceeded"];
+            422: components["responses"]["TriggerImmutable"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    batchCreateTriggers: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description Idempotency key for the POST. Stored for 24h. On replay the server
+                 *     returns the original response with `Idempotent-Replayed: true`.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTriggerBatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Per-row outcome. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateTriggerBatchResponse"];
+                };
+            };
+            400: components["responses"]["TriggerInvalid"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["TriggerNotAllowed"];
+            403: components["responses"]["TriggerQuotaExceeded"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getTrigger: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The trigger. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Trigger"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    deleteTrigger: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No body. The trigger was removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    updateTrigger: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateTriggerRequest"];
+            };
+        };
+        responses: {
+            /** @description The updated trigger. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Trigger"];
+                };
+            };
+            400: components["responses"]["TriggerInvalid"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["TriggerImmutable"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    pauseTrigger: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No body. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    resumeTrigger: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Trigger resumed (no body). */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    listTriggerRecords: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Optional state filter — pending / claimed / succeeded /
+                 *     retry / dead_letter. Lets the dashboard narrow to
+                 *     in-flight or DLQ rows.
+                 */
+                state?: components["schemas"]["TriggerRecordState"];
+                /** @description Page size; default 50, capped at 200. */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Records for this trigger. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListTriggerRecordsResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    retryTriggerRecord: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+                /** @description Record id (UUID hex, no dashes) — used by retry/drop. */
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Record re-driven (no body). */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["TriggerRecordRetryFailed"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    dropTriggerRecord: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+                /** @description Record id (UUID hex, no dashes) — used by drop. */
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Record dropped (no body). */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    listTriggerDeadLetter: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Optional DLQ reason filter (poison_record / max_attempts /
+                 *     broker_error / rate_limited / payload_too_large).
+                 */
+                reason?: components["schemas"]["TriggerDeadLetterReason"];
+                /** @description DLQ page size; default 50, capped at 200. */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Dead-letter rows for this trigger. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListTriggerDeadLetterResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getTriggerMetrics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Aggregated counts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TriggerMetricsResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    dispatchInvocationBatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    trigger_id: string;
+                    /** Format: uuid */
+                    app_id?: string;
+                    kind?: components["schemas"]["TriggerKind"];
+                    records: {
+                        item_identifier: string;
+                        payload_b64: string;
+                        headers?: {
+                            [key: string]: string;
+                        };
+                        metadata?: {
+                            [key: string]: unknown;
+                        };
+                    }[];
+                };
+            };
+        };
+        responses: {
+            /** @description Batch accepted; per-record status derived from response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        succeeded?: string[];
+                        retry?: string[];
+                        dead_letter?: string[];
+                    };
+                };
+            };
         };
     };
     scanProject: {
@@ -14557,7 +22165,39 @@ export interface operations {
                      *       "limit_apps": 5,
                      *       "limit_crons": 5,
                      *       "can_apply": true,
-                     *       "plan_token": "eyJoYXMiOiI..."
+                     *       "plan_token": "eyJoYXMiOiI...",
+                     *       "will_deploy": [
+                     *         {
+                     *           "name": "api",
+                     *           "root_dir": "",
+                     *           "class": "http",
+                     *           "action": "create"
+                     *         },
+                     *         {
+                     *           "name": "worker",
+                     *           "root_dir": "",
+                     *           "class": "http",
+                     *           "action": "update"
+                     *         }
+                     *       ],
+                     *       "unaffected": [
+                     *         {
+                     *           "name": "legacy-job",
+                     *           "root_dir": "jobs/legacy",
+                     *           "class": "http",
+                     *           "action": "noop",
+                     *           "id": "0123456789abcdef0123456789abcdef"
+                     *         }
+                     *       ],
+                     *       "skipped": [
+                     *         {
+                     *           "name": "risky-migration",
+                     *           "root_dir": "jobs/migrate",
+                     *           "class": "http",
+                     *           "action": "noop"
+                     *         }
+                     *       ],
+                     *       "removed": []
                      *     }
                      */
                     "application/json": components["schemas"]["PlanResponse"];
@@ -14613,7 +22253,25 @@ export interface operations {
                      *         }
                      *       ],
                      *       "scan_source": "compose",
-                     *       "can_apply": true
+                     *       "can_apply": true,
+                     *       "will_deploy": [
+                     *         {
+                     *           "name": "api",
+                     *           "root_dir": "",
+                     *           "class": "http",
+                     *           "action": "create"
+                     *         },
+                     *         {
+                     *           "name": "worker",
+                     *           "root_dir": "",
+                     *           "class": "http",
+                     *           "action": "update"
+                     *         }
+                     *       ],
+                     *       "unaffected": [],
+                     *       "skipped": [],
+                     *       "removed": [],
+                     *       "persisted_exclusions": []
                      *     }
                      */
                     "application/json": components["schemas"]["ApplyResponse"];
@@ -14626,6 +22284,48 @@ export interface operations {
             409: components["responses"]["ValidationFailed"];
             413: components["responses"]["SourceTooLarge"];
             429: components["responses"]["TooManyRequests"];
+        };
+    };
+    deleteDeploymentScopeExclusion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project slug (the (account, project) namespace owning the persisted exclusion). */
+                slug: string;
+                /** @description Excluded workload slug (the app slug persisted via a prior --persist-exclude deploy). */
+                slug2: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The exclusion was cleared. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ok?: boolean;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /**
+             * @description Either the project does not exist or no persisted
+             *     exclusion matches the slug. Both surface as
+             *     scope_exclusion_not_found so the existence of a
+             *     project is not leaked via the operator surface.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     listAlertRules: {
@@ -14874,6 +22574,688 @@ export interface operations {
             429: components["responses"]["TooManyRequests"];
         };
     };
+    listAlertRuleDeliveries: {
+        parameters: {
+            query?: {
+                /**
+                 * @description When true, also surface rows written by Dispatcher.DispatchTest
+                 *     (the customer-facing "send test alert" path). Default false
+                 *     hides test rows so the customer's recent-deliveries pane is
+                 *     not polluted by every "send test alert" click. Operators can
+                 *     flip the toggle for post-mortems; the production read stays
+                 *     index-only via the partial index
+                 *     alert_deliveries_rule_fired_production_idx.
+                 */
+                include_test?: boolean;
+                /** @description Max rows to return. Clamped to 100. */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Recent deliveries, newest-first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example [
+                     *       {
+                     *         "id": "9b1c4f8e2d3a4b5c6d7e8f9012345678",
+                     *         "rule_id": "rule-1",
+                     *         "account_id": "acct-1",
+                     *         "app_id": "app-1",
+                     *         "idempotency_key": "rule-1:12345678",
+                     *         "status": "delivered",
+                     *         "attempt_count": 1,
+                     *         "last_status_code": 200,
+                     *         "observed_value": 5.1,
+                     *         "fired_at": "2026-08-30T12:00:00Z",
+                     *         "delivered_at": "2026-08-30T12:00:01Z",
+                     *         "is_test": false
+                     *       }
+                     *     ]
+                     */
+                    "application/json": components["schemas"]["AlertDeliveryResponse"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    listCorsPresets: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Optional app filter. Absent = every preset on the
+                 *     account. Set = only the app-scoped presets for that
+                 *     app. Cross-tenant IDs collapse to 404.
+                 */
+                app_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The list of cors presets. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorsPresetListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    createCorsPreset: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description Idempotency key for the POST. Stored for 24h. On replay the server
+                 *     returns the original response with `Idempotent-Replayed: true`.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCorsPresetRequest"];
+            };
+        };
+        responses: {
+            /** @description The created cors preset. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorsPresetResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["CorsPresetInvalid"];
+            403: components["responses"]["CorsPresetInvalid"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["CorsPresetInvalid"];
+            422: components["responses"]["CorsPresetInvalid"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getCorsPreset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Preset UUID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The cors preset. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorsPresetResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    deleteCorsPreset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Preset UUID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    patchCorsPreset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Preset UUID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateCorsPresetRequest"];
+            };
+        };
+        responses: {
+            /** @description The updated cors preset. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorsPresetResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["CorsPresetInvalid"];
+            422: components["responses"]["CorsPresetInvalid"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    listAlertPresets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The catalog. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example [
+                     *       {
+                     *         "id": "0123456789abcdef0123456789abcdef",
+                     *         "name": "error_rate_2pct",
+                     *         "display_name": "Error rate exceeds 2%",
+                     *         "description": "Fires when the rolling 15-minute error rate exceeds 2%.",
+                     *         "category": "reliability",
+                     *         "metric": "error_rate_pct",
+                     *         "comparison": "gt",
+                     *         "threshold": 2,
+                     *         "window_spec": "15m",
+                     *         "default_cooldown_minutes": 15,
+                     *         "minimum_plan": "hobby",
+                     *         "enabled_in_catalog": true
+                     *       },
+                     *       {
+                     *         "id": "fedcba9876543210fedcba9876543210",
+                     *         "name": "api_down",
+                     *         "display_name": "API is down",
+                     *         "description": "Fires when the app has not served a successful invocation in 5 minutes.",
+                     *         "category": "availability",
+                     *         "metric": "api_up",
+                     *         "comparison": "lt",
+                     *         "threshold": 1,
+                     *         "window_spec": "5m",
+                     *         "default_cooldown_minutes": 5,
+                     *         "minimum_plan": "pro",
+                     *         "enabled_in_catalog": false
+                     *       }
+                     *     ]
+                     */
+                    "application/json": components["schemas"]["AlertPresetResponse"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    enableAlertPreset: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description Idempotency key for the POST. Stored for 24h. On replay the server
+                 *     returns the original response with `Idempotent-Replayed: true`.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Preset name (catalog key — see `listAlertPresets`). */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "webhook_url": "https://hooks.example.com/alerts",
+                 *       "webhook_secret": "shh",
+                 *       "cooldown_minutes": 5,
+                 *       "enabled": true
+                 *     }
+                 */
+                "application/json": components["schemas"]["EnableAlertPresetRequest"];
+            };
+        };
+        responses: {
+            /** @description The instantiated alert rule (carries the masked secret). */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertRuleResponse"];
+                };
+            };
+            400: components["responses"]["AlertRuleInvalid"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["AlertRuleInvalid"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["AlertRuleInvalid"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    dashboardEnableAlertPreset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Preset name (catalog key — same value the JSON sibling accepts at /v1/apps/{slug}/alert-presets/{name}/enable). */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": components["schemas"]["EnableAlertPresetRequest"];
+            };
+        };
+        responses: {
+            /** @description Redirect to /apps/{slug}?just_enabled={rule_id}. */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["AlertRuleInvalid"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["AlertRuleInvalid"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    testAlertPreset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Preset name (catalog key — same value the `listAlertPresets` and `enableAlertPreset` endpoints accept). */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": unknown;
+            };
+        };
+        responses: {
+            /**
+             * @description The test alert was delivered (any 2xx from the
+             *     customer's receiver). Note: 2xx-from-the-receiver is
+             *     the contract — the dispatcher's retry budget may span
+             *     multiple attempts before reporting success.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestAlertPresetResponse"];
+                };
+            };
+            400: components["responses"]["AlertRuleInvalid"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["AlertRuleInvalid"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+            /**
+             * @description Webhook delivery failed after the dispatcher's retry
+             *     budget (5 attempts, 2s/8s/32s/128s backoff). The audit
+             *     log entry (`alert_preset.test_sent`) carries the
+             *     `delivery_status_code` + `delivery_attempts` for the
+             *     investigator; the customer's receiver likely rejected
+             *     the request, was unreachable, or returned 5xx.
+             */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    dashboardTestAlertPreset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Preset name (catalog key — same value the JSON sibling accepts at /v1/apps/{slug}/alert-presets/{name}/test). */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": unknown;
+            };
+        };
+        responses: {
+            /** @description Redirect to /apps/{slug}?test_alert={ok|error}. */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["AlertRuleInvalid"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["AlertRuleInvalid"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    listMirrorRules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Mirror rules for this app, ordered by created_at ASC. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MirrorRuleListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    createMirrorRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "source_deployment_id": "0123456789abcdef0123456789abcdef",
+                 *       "mirror_deployment_id": "0123456789abcdef0123456789abcdf0",
+                 *       "percent": 100,
+                 *       "include_body": false,
+                 *       "redact_headers": [
+                 *         "X-Tenant-Id"
+                 *       ]
+                 *     }
+                 */
+                "application/json": components["schemas"]["CreateMirrorRuleRequest"];
+            };
+        };
+        responses: {
+            /** @description Mirror rule created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MirrorRuleResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            /** @description `403 Forbidden` — Free/Hobby plan; mirror is Pro/Scale only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /**
+             * @description `409 Conflict` — source or mirror deployment is not `live`.
+             *     Code `mirror_deployment_not_live`.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /**
+             * @description `422 Unprocessable Entity` — `percent` out of [0, 100]
+             *     (`invalid_mirror_percent`); source == mirror
+             *     (`mirror_source_target_same`); source/mirror on different
+             *     apps (`mirror_cross_app_mismatch`); per-app quota
+             *     exhausted (`mirror_rule_quota_exceeded`).
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getMirrorRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The mirror rule. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MirrorRuleResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    deleteMirrorRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Rule deleted (no body). */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    updateMirrorRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "percent": 25,
+                 *       "enabled": false
+                 *     }
+                 */
+                "application/json": components["schemas"]["UpdateMirrorRuleRequest"];
+            };
+        };
+        responses: {
+            /** @description The updated mirror rule. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MirrorRuleResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /**
+             * @description `422 Unprocessable Entity` — `percent` out of [0, 100]
+             *     (`invalid_mirror_percent`).
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getMirrorRuleSummary: {
+        parameters: {
+            query?: {
+                /** @description Summary window. Defaults to 1h. Window is the inclusive trailing seconds the comparison ledger is aggregated over. */
+                window?: "1h" | "24h" | "7d";
+            };
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Aggregated drift counts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MirrorSummaryResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /**
+             * @description `422 Unprocessable Entity` — `window` is not one of
+             *     `1h | 24h | 7d` (`invalid_mirror_window`).
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
     listEdgeRules: {
         parameters: {
             query?: never;
@@ -15015,7 +23397,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Deleted. */
+            /** @description The cors preset was deleted. Referencing edge_rules.cors_preset_id was atomically cleared via ON DELETE SET NULL; the gateway compile path fails closed until the customer wires a new preset or inlines fallback values. */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -15625,6 +24007,34 @@ export interface operations {
             429: components["responses"]["TooManyRequests"];
         };
     };
+    queueDeadLetterReplay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description The invocation id of the dead-letter row to replay. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Replay accepted; row is back to pending. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AsyncInvokeResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
     delayedTaskCreate: {
         parameters: {
             query?: never;
@@ -15927,7 +24337,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description No body. */
+            /** @description Cron disabled (no body). */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -16924,6 +25334,41 @@ export interface operations {
             429: components["responses"]["TooManyRequests"];
         };
     };
+    listTemplates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every available template with category + description. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example [
+                     *       {
+                     *         "name": "hello-node",
+                     *         "category": "hello",
+                     *         "description": "minimal Node.js HTTP server — first-touch smoke test"
+                     *       },
+                     *       {
+                     *         "name": "cron-worker",
+                     *         "category": "stateless-contract",
+                     *         "description": "scheduled job worker with retries — bring your own schedule"
+                     *       }
+                     *     ]
+                     */
+                    "application/json": components["schemas"]["TemplateView"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
     getUsage: {
         parameters: {
             query?: {
@@ -17207,7 +25652,16 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Provider-side failure (Stripe API error / Paddle timeout). The CLI surfaces this as 'retry failed'. */
+            /** @description The provider has no direct saved-card retry API; use the billing portal URL in the response. */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Provider-side failure. The CLI surfaces this as 'retry failed'. */
             502: {
                 headers: {
                     [name: string]: unknown;
@@ -17306,6 +25760,89 @@ export interface operations {
             };
             404: components["responses"]["NotFound"];
             429: components["responses"]["TooManyRequests"];
+        };
+    };
+    refundAccountInvoice: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Stable key for this refund operation. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                /** @description Account UUID whose paid invoice will be refunded. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * Format: uuid
+                     * @description Local Gregale invoice UUID.
+                     */
+                    invoice_id: string;
+                    /**
+                     * Format: int64
+                     * @description Refund amount in EUR cents.
+                     */
+                    amount_cents: number;
+                    /** @description Reason recorded with the money-moving operation. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Refund accepted by the provider. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminRefundResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            /** @description code: admin_required or mfa_required — operator scope, email allowlist, and MFA gates apply. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description Invoice is not refundable or has no paid amount/provider identity. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+            /** @description The selected billing provider does not expose this refund surface. */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Provider rejected the refund or returned an incomplete response. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     setGithubWebhookSecret: {
@@ -17635,6 +26172,325 @@ export interface operations {
              *         the flag, then restart apid.
              */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    postForceParkInstance: {
+        parameters: {
+            query: {
+                /** @description Must be the literal string "true" — tripwire on force-park against operator fat-fingering. */
+                confirm: "true";
+                /** @description Audit-log slug. Default `operator_force_park`. Clamped to `[a-z0-9_]{1,64}`. */
+                reason?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Instance UUID returned by /v1/apps/{slug}/instances or /v1/admin/obs/instances. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Intent row written + pg_notify emitted. Poll `status_url` for terminal state. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorIntentAcceptedResponse"];
+                };
+            };
+            /** @description Force-park validation: `?confirm=true` is missing or `?reason=` failed validation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Force-park 403: code: admin_required — caller is not in the FAAS_ADMIN_EMAILS allowlist. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description code: instance_not_found — no instance row with the supplied id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description code: instance_not_parkable — instance state is not in {RUNNING, WAKING, COLD_BOOTING}. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    postForceColdBootApp: {
+        parameters: {
+            query: {
+                /** @description Must be the literal string "true" — tripwire on force-cold-boot against operator fat-fingering. */
+                confirm: "true";
+                /** @description Audit-log slug. Default `operator_force_cold_boot`. Clamped to `[a-z0-9_]{1,64}`. */
+                reason?: string;
+            };
+            header?: never;
+            path: {
+                /** @description App slug (e.g. "my-app"). Resolved to the app's latest deployment by `created_at DESC`. */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Intent row written + pg_notify emitted. Poll `status_url` for terminal state and `snap_ids_marked_stale`. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorIntentAcceptedResponse"];
+                };
+            };
+            /** @description Force-cold-boot validation: `?confirm=true` is missing or `?reason=` failed validation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Force-cold-boot 403: code: admin_required — caller is not in the FAAS_ADMIN_EMAILS allowlist. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description code: app_not_found — no app with the supplied slug; OR code: deployment_not_found — app has no deployments to force-cold-boot. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    postForceRestartInstance: {
+        parameters: {
+            query: {
+                /** @description Must be the literal string "true" — tripwire on force-restart against operator fat-fingering. */
+                confirm: "true";
+                /** @description Audit-log slug. Default `operator_force_restart`. Clamped to `[a-z0-9_]{1,64}`. */
+                reason?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Force-restart target. Instance UUID returned by /v1/apps/{slug}/instances or /v1/admin/obs/instances. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Force-restart 202: intent row written + pg_notify emitted. Poll `status_url` for terminal state and `snap_ids_marked_stale`. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorIntentAcceptedResponse"];
+                };
+            };
+            /** @description Force-restart validation: `?confirm=true` is missing or `?reason=` failed validation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Force-restart 403: code: admin_required — caller is not in the FAAS_ADMIN_EMAILS allowlist. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Force-restart 404: code: instance_not_found — no instance row with the supplied id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Force-restart 409: code: instance_not_restartable — instance state is not RUNNING. WAKING / COLD_BOOTING / PARKED / STOPPED all return this code without writing an intent row. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getOperatorIntent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Operator intent UUID returned in the 202 Accepted body (`intent_id`). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current state of the intent. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorIntentResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description getOperatorIntent 403: code: admin_required — caller is not in the FAAS_ADMIN_EMAILS allowlist. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description code: operator_intent_not_found — no operator intent with the supplied id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getObsHealth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Health snapshot. Every closed-set field is present. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObsHealthResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description obs health 403: code: admin_required — caller is not in the FAAS_ADMIN_EMAILS allowlist. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    postSweepStuckBuilds: {
+        parameters: {
+            query: {
+                /** @description Must be the literal string "true" — tripwire on sweep-stuck against operator fat-fingering. */
+                confirm: "true";
+                /** @description Threshold duration. Clamped to [1m, 60m]. Default 15m. */
+                older_than?: string;
+                /** @description Optional durable audit reason. Lowercase letters, numbers, and underscores only. */
+                reason?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sweep complete. `swept_count` may be 0 when no rows match the threshold. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SweepStuckBuildsResponse"];
+                };
+            };
+            /** @description Sweep-stuck validation: `?confirm=true` is missing or `?older_than=` failed validation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Sweep-stuck 403: code: admin_required — caller is not in the FAAS_ADMIN_EMAILS allowlist. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+            /** @description Store call failed (transient PG hiccup; retry with the same threshold). */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -18645,340 +27501,6 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-        };
-    };
-    getOperatorObservabilityOverview: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Fleet counts, node health, and bounded failure buckets. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ObsOverviewResponse"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            429: components["responses"]["TooManyRequests"];
-        };
-    };
-    getOperatorCapacity: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Aggregate capacity snapshot with per-node headroom. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ObsCapacityResponse"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            429: components["responses"]["TooManyRequests"];
-        };
-    };
-    listOperatorTenants: {
-        parameters: {
-            query?: {
-                limit?: number;
-                cursor?: string;
-                /** @description Opt-in email projection; every use is audited. */
-                include_pii?: boolean;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Cursor-paginated tenant inventory. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ObsTenantListResponse"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            429: components["responses"]["TooManyRequests"];
-        };
-    };
-    getOperatorTenant360: {
-        parameters: {
-            query?: {
-                month?: string;
-                /** @description Opt-in email projection; every use is audited. */
-                include_pii?: boolean;
-            };
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Tenant identity, apps, usage, and bounded billing summary. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ObsTenant360Response"];
-                };
-            };
-            400: components["responses"]["ValidationFailed"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            429: components["responses"]["TooManyRequests"];
-        };
-    };
-    getOperatorTenantActivity: {
-        parameters: {
-            query?: {
-                limit?: number;
-            };
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Invocation and audit metadata without request payloads or results. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ObsTenantActivityResponse"];
-                };
-            };
-            400: components["responses"]["ValidationFailed"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            429: components["responses"]["TooManyRequests"];
-        };
-    };
-    listOperatorNodes: {
-        parameters: {
-            query?: {
-                limit?: number;
-                cursor?: string;
-                include_inactive?: "0" | "1";
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Cursor-paginated node inventory. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ObsNodeListResponse"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            429: components["responses"]["TooManyRequests"];
-        };
-    };
-    getOperatorNodeDetail: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                name: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Node health, workload placement, and drain safety. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ObsNodeDetailResponse"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            429: components["responses"]["TooManyRequests"];
-        };
-    };
-    getOperatorAppDetail: {
-        parameters: {
-            query?: {
-                range?: "5m" | "15m" | "1h" | "6h" | "24h" | "7d" | "15d";
-            };
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Safe workload and health projection for an app. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ObsAppDetailResponse"];
-                };
-            };
-            400: components["responses"]["ValidationFailed"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            429: components["responses"]["TooManyRequests"];
-        };
-    };
-    postForceParkInstance: {
-        parameters: {
-            query: {
-                confirm: "true";
-                reason?: string;
-            };
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The recovery intent was accepted. */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OperatorIntentAcceptedResponse"];
-                };
-            };
-            400: components["responses"]["ValidationFailed"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
-            429: components["responses"]["TooManyRequests"];
-        };
-    };
-    postForceRestartInstance: {
-        parameters: {
-            query: {
-                confirm: "true";
-                reason?: string;
-            };
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The recovery intent was accepted. */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OperatorIntentAcceptedResponse"];
-                };
-            };
-            400: components["responses"]["ValidationFailed"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
-            429: components["responses"]["TooManyRequests"];
-        };
-    };
-    postForceColdBootApp: {
-        parameters: {
-            query: {
-                confirm: "true";
-                reason?: string;
-            };
-            header?: never;
-            path: {
-                slug: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The recovery intent was accepted. */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OperatorIntentAcceptedResponse"];
-                };
-            };
-            400: components["responses"]["ValidationFailed"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            429: components["responses"]["TooManyRequests"];
-        };
-    };
-    getOperatorIntent: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Current intent state. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OperatorIntentResponse"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            429: components["responses"]["TooManyRequests"];
         };
     };
 }

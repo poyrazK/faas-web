@@ -192,6 +192,8 @@ for (const app of apps) {
       created_at: iso(ageMs),
       min_instances: app.min_instances,
       traffic_percent: latest ? 100 : 0,
+      rollback_on_5xx: false,
+      first_5xx_count: 0,
       scan: null,
     };
     deployments.push(dep);
@@ -292,7 +294,7 @@ export const secrets = new Map<string, S['AppSecretResponse'][]>(
       'STRIPE_SECRET_KEY',
       'JWT_SIGNING_KEY',
       a.type === 'app' ? 'REDIS_URL' : 'S3_SECRET',
-    ].map((key) => ({ key, kid: hex(8), ...stamp() })),
+    ].map((key) => ({ key, scope: 'default', kid: hex(8), ...stamp() })),
   ])
 );
 
@@ -362,6 +364,7 @@ export const alerts = new Map<string, S['AlertRuleResponse'][]>(
       webhook_url: 'https://hooks.slack.com/services/T0000/B0000/XXXX',
       webhook_secret_sealed_masked: '***',
       cooldown_minutes: 30,
+      action: 'webhook',
       state: a.status === 'error' && r.metric === 'error_rate_pct' ? 'firing' : 'ok',
       last_fired_at: a.status === 'error' ? iso(22 * 60_000) : undefined,
       last_evaluated_at: iso(60_000),
@@ -572,6 +575,7 @@ export const edgeRules: S['EdgeRuleResponse'][] = (
   priority: (i + 1) * 10,
   enabled: r.kind !== 'maintenance',
   kind: r.kind,
+  validate_mode: 'block',
   action: r.action,
   ...stamp(),
 }));

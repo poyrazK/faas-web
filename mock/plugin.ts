@@ -204,6 +204,8 @@ route('POST', '/v1/apps/{slug}/deployments/source-ref', ({ params, body }) => {
     status: 'building',
     created_at: db.iso(0),
     traffic_percent: 0,
+    rollback_on_5xx: false,
+    first_5xx_count: 0,
     scan: null,
   };
   db.deployments.unshift(dep);
@@ -244,7 +246,13 @@ route('PUT', '/v1/apps/{slug}/secrets/{key}', ({ params }) => {
     existing.updated_at = now;
     return existing;
   }
-  const created = { key: params.key, kid: db.id().slice(0, 8), created_at: now, updated_at: now };
+  const created = {
+    key: params.key,
+    scope: 'default',
+    kid: db.id().slice(0, 8),
+    created_at: now,
+    updated_at: now,
+  };
   list.push(created);
   db.secrets.set(params.slug, list);
   return created;
@@ -337,6 +345,7 @@ route('POST', '/v1/apps/{slug}/alerts', ({ params, body }) => {
     webhook_url: String(body.webhook_url),
     webhook_secret_sealed_masked: '***',
     cooldown_minutes: Number(body.cooldown_minutes ?? 30),
+    action: (body.action ?? 'webhook') as (typeof list)[number]['action'],
     state: 'ok',
     created_at: db.iso(0),
     updated_at: db.iso(0),
@@ -890,6 +899,8 @@ route('POST', '/v1/apps/{slug}/edge-rules', ({ params, body }) => {
     priority: Number(body.priority ?? 100),
     enabled: body.enabled !== false,
     kind: kind as (typeof db.edgeRules)[number]['kind'],
+    validate_mode: (body.validate_mode ??
+      'block') as (typeof db.edgeRules)[number]['validate_mode'],
     action: body.action as (typeof db.edgeRules)[number]['action'],
     created_at: db.iso(0),
     updated_at: db.iso(0),
@@ -1161,10 +1172,90 @@ route('POST', '/v1/invitations/{token}/accept', () => ({
   role: 'developer',
   joined_at: new Date().toISOString(),
 }));
-route('POST', '/dashboard/account/set-password', ({ res }) => {
-  res.statusCode = 302;
+// The real route double-submits a purpose-bound token (ADR-140): the
+// console mints it from /v1/auth/csrf and posts it back as `csrf_token`.
+// The mock keeps that shape so a wizard that forgets the token fails here
+// the same way it would against apid, with a 400 rather than a 302.
+const MOCK_CSRF_ACTIONS = new Set([
+  'auth.logout',
+  'auth.session.revoke',
+  'auth.sessions.revoke_all',
+  'mfa_confirm',
+  'mfa_recover',
+  'mfa_disable',
+  'set_password',
+]);
+route('GET', '/v1/auth/csrf', ({ query, res }) => {
+  const action = query.get('action') ?? '';
+  if (!MOCK_CSRF_ACTIONS.has(action))
+    throw new Problem(
+      400,
+      'validation_failed',
+      'the requested action is not available to browser clients'
+    );
+  res.setHeader('Set-Cookie', CSRF_COOKIE);
+  return { csrf_token: 'mock-csrf' };
+});
+// ADR-140 cohorts. The real server decides the proof from the account; the
+// mock keeps just enough state to show each branch on demand.
+const mockAuth = {
+  password: process.env.MOCK_HAS_PASSWORD === '1' ? 'mock-current-password' : null,
+  mfaEnrolled: process.env.MOCK_MFA === '1',
+  mfaRequired: process.env.MOCK_MFA === 'required',
+  steppedUpAt: 0,
+};
+const STEP_UP_TTL_MS = 5 * 60_000;
+
+route('POST', '/v1/account/mfa/verify', ({ body }) => {
+  if (!/^\d{6}$/.test(String(body.totp ?? '')))
+    throw new Problem(401, 'mfa_invalid_code', 'the TOTP code did not match');
+  mockAuth.steppedUpAt = Date.now();
+  return { account_id: db.ACCOUNT_ID, mfa_pending: false };
+});
+route('POST', '/v1/account/mfa/enroll', () => ({
+  otpauth_url: 'otpauth://totp/Gregale:design@gregale.dev?secret=JBSWY3DPEHPK3PXP&issuer=Gregale',
+  secret: 'JBSWY3DPEHPK3PXP',
+  qr_code_png_base64:
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+  recovery_codes: [
+    'MOCKRECOV1',
+    'MOCKRECOV2',
+    'MOCKRECOV3',
+    'MOCKRECOV4',
+    'MOCKRECOV5',
+    'MOCKRECOV6',
+    'MOCKRECOV7',
+    'MOCKRECOV8',
+    'MOCKRECOV9',
+    'MOCKRECOV0',
+  ],
+}));
+route('POST', '/v1/account/mfa/confirm', ({ body }) => {
+  if (!/^\d{6}$/.test(String(body.totp ?? '')))
+    throw new Problem(401, 'mfa_invalid_code', 'the TOTP code did not match');
+  mockAuth.mfaEnrolled = true;
+  mockAuth.mfaRequired = false;
+  mockAuth.steppedUpAt = Date.now();
+  return {};
+});
+route('POST', '/dashboard/account/set-password', ({ body, res }) => {
+  if (body.csrf_token !== 'mock-csrf')
+    throw new Problem(400, 'validation_failed', 'Invalid CSRF token');
+  const next = String(body.password ?? '');
+  if (next.length < 12)
+    throw new Problem(400, 'password_too_weak', 'Password must be at least 12 characters.');
+  const fresh = Date.now() - mockAuth.steppedUpAt < STEP_UP_TTL_MS;
+  if (!fresh) {
+    if (mockAuth.mfaRequired && !mockAuth.mfaEnrolled)
+      throw new Problem(403, 'mfa_required', 'enable two-factor authentication to continue');
+    if (mockAuth.mfaEnrolled)
+      throw new Problem(403, 'step_up_required', 'verify your authenticator first');
+    if (mockAuth.password !== null && body.current_password !== mockAuth.password)
+      throw new Problem(401, 'invalid_credentials', 'Email or password is incorrect.');
+  }
+  mockAuth.password = next;
   res.setHeader('location', '/dashboard/account');
-  return '';
+  return status(302, '');
 });
 
 // --- Billing & account controls ---
@@ -1601,13 +1692,21 @@ route('POST', '/v1/projects', () => ({
 
 // --- Plumbing ------------------------------------------------------------------
 
+// JSON for the `/v1` surface; form-encoded for apid's own dashboard posts
+// (`/login`, `/dashboard/account/set-password`), which the console submits
+// the way a browser form would.
 function readBody(req: IncomingMessage): Promise<Record<string, unknown>> {
   return new Promise((resolve) => {
     let raw = '';
     req.on('data', (chunk: Buffer) => (raw += chunk));
     req.on('end', () => {
+      if (!raw) return resolve({});
+      const type = String(req.headers['content-type'] ?? '');
+      if (type.includes('application/x-www-form-urlencoded')) {
+        return resolve(Object.fromEntries(new URLSearchParams(raw)));
+      }
       try {
-        resolve(raw ? (JSON.parse(raw) as Record<string, unknown>) : {});
+        resolve(JSON.parse(raw) as Record<string, unknown>);
       } catch {
         resolve({});
       }
@@ -1635,7 +1734,7 @@ function problem(res: ServerResponse, p: Problem) {
   );
 }
 
-const MOCKED_PREFIXES = ['/v1/', '/login', '/signup'];
+const MOCKED_PREFIXES = ['/v1/', '/login', '/signup', '/dashboard/account/set-password'];
 
 export function mockApi(): Plugin {
   return {

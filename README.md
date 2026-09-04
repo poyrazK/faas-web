@@ -22,6 +22,12 @@ works. Point it somewhere else with `API_ORIGIN`:
 API_ORIGIN=http://localhost:8081 npm run dev
 ```
 
+`npm run dev:mock` runs the console without a backend; `MOCK_HAS_PASSWORD=1`
+boots with a password already set (`mock-current-password`), `MOCK_MFA=1` boots
+MFA-enrolled so set-password demands a step-up (any six digits verify), and
+`MOCK_MFA=required` boots with the policy on and nothing enrolled, so it demands
+enrolment first.
+
 ## Scripts
 
 | Command              | What it does                                        |

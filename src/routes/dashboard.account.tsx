@@ -1,11 +1,10 @@
-import { useState } from 'react';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { ArrowRight, Check, Github, OpenNewWindow } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
-import { useToast } from '@/components/ui/toast';
 import { Badge } from '@/components/ui/badge';
 import { PageHeader, Panel } from '@/components/dashboard/primitives';
-import { MIN_PASSWORD_LENGTH, useAuth } from '@/lib/auth';
+import { PasswordPanel } from '@/components/dashboard/password-wizard';
+import { useAuth } from '@/lib/auth';
 import { consoleHead } from '@/lib/seo';
 
 type AccountSearch = {
@@ -31,85 +30,6 @@ export const Route = createFileRoute('/dashboard/account')({
  * turn that redirect into an opaque cross-origin response and leave the user
  * without the provider consent screen.
  */
-
-/**
- * Add a password to an OAuth-only account — POST
- * /dashboard/account/set-password, apid's own form-encoded route (302 on
- * success). After it lands, email + password works alongside the provider.
- */
-function SetPasswordPanel() {
-  const { toast } = useToast();
-  const [password, setPassword] = useState('');
-  const [saving, setSaving] = useState(false);
-  const submit = async () => {
-    if (password.length < MIN_PASSWORD_LENGTH || saving) return;
-    setSaving(true);
-    try {
-      const res = await fetch('/dashboard/account/set-password', {
-        method: 'POST',
-        headers: { 'content-type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ password }),
-        redirect: 'follow',
-      });
-      if (res.ok || res.redirected) {
-        setPassword('');
-        toast({
-          kind: 'success',
-          title: 'Password set',
-          description: 'Email sign-in now works too.',
-        });
-      } else {
-        toast({
-          kind: 'error',
-          title: 'Could not set password',
-          description: `The server answered ${res.status}.`,
-        });
-      }
-    } catch {
-      toast({ kind: 'error', title: 'Could not set password' });
-    } finally {
-      setSaving(false);
-    }
-  };
-  return (
-    <Panel
-      title="Password"
-      description="Accounts created through Google or GitHub have no password. Setting one adds email sign-in without touching the provider link."
-    >
-      <form
-        className="flex flex-wrap items-end gap-3"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void submit();
-        }}
-      >
-        <label className="flex min-w-56 flex-col gap-1.5">
-          <span className="label-mono text-muted-foreground">New password</span>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="new-password"
-            className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-brand/50"
-          />
-        </label>
-        <Button
-          type="submit"
-          size="sm"
-          disabled={password.length < MIN_PASSWORD_LENGTH}
-          busy={saving}
-        >
-          Set password
-        </Button>
-        {password.length > 0 && password.length < MIN_PASSWORD_LENGTH && (
-          <p className="text-xs text-muted-foreground">
-            At least {MIN_PASSWORD_LENGTH} characters.
-          </p>
-        )}
-      </form>
-    </Panel>
-  );
-}
 
 function AccountPage() {
   const { account, apiReachable } = useAuth();
@@ -238,7 +158,7 @@ function AccountPage() {
           </div>
         </dl>
       </Panel>
-      <SetPasswordPanel />
+      <PasswordPanel />
     </div>
   );
 }

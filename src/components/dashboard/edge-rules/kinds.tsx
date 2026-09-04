@@ -393,7 +393,7 @@ export const KINDS = {
   validate: def<'validate'>({
     label: 'Validate the body',
     desc: 'Reject requests whose JSON body does not match a schema.',
-    empty: () => ({ schema: { type: 'object' } }),
+    empty: () => ({ schema: { type: 'object' }, validate_mode: 'block' }),
     summary: (a) =>
       `${Object.keys((a.schema.properties as object) ?? {}).length || '—'} properties${a.reject_on_unknown_fields ? ' · strict' : ''}`,
     validate: (a): Record<string, string> =>
@@ -540,7 +540,7 @@ export const KINDS = {
   throttle: def<'throttle'>({
     label: 'Rate limit',
     desc: 'Shed traffic over a rate, with a burst allowance.',
-    empty: () => ({ requests_per_second: 10, burst: 20 }),
+    empty: () => ({ requests_per_second: 10, burst: 20, key_by: 'none', max_keys_per_rule: 0 }),
     summary: (a) => `${a.requests_per_second} rps · burst ${a.burst}`,
     validate: (a) => ({
       ...(a.requests_per_second > 0 ? {} : { requests_per_second: 'Must be more than zero.' }),

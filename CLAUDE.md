@@ -53,6 +53,10 @@ paths are checked against `api/openapi.yaml` by `src/lib/mock-spec-drift.test.ts
   holds. An unmocked path answers `404 not_mocked` and logs to the dev server.
   `MOCK_EMPTY=1` boots the same account with nothing in it, and `MOCK_LATENCY`
   slows responses — between them every read state can be seen on demand.
+  `MOCK_HAS_PASSWORD=1` boots with a password already set
+  (`mock-current-password`); `MOCK_MFA=1` boots MFA-enrolled so set-password
+  demands a step-up (any six digits verify); `MOCK_MFA=required` boots with the
+  policy on and nothing enrolled, so it demands enrolment first.
 - **`npm run tour` walks the console and fails on what a unit test cannot see** —
   an error boundary, a spinner nothing resolves, a path the mock does not
   answer, a page that threw. Point it at a running dev server

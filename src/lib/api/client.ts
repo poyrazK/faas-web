@@ -81,7 +81,8 @@ export type CSRFAction =
   | 'auth.sessions.revoke_all'
   | 'mfa_confirm'
   | 'mfa_recover'
-  | 'mfa_disable';
+  | 'mfa_disable'
+  | 'set_password';
 
 /**
  * Narrows an `openapi-fetch` result to its data, throwing `ApiError` otherwise.

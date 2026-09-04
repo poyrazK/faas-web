@@ -531,38 +531,8 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
               <SidebarBody id="desktop" collapsed={railCollapsed} />
 
               {/* Identity and sign-out live in the top bar's account menu, so the
-            sidebar footer carries context instead of duplicating them. */}
+            sidebar footer holds only the collapse toggle. */}
               <div className="mt-auto overflow-hidden pt-4">
-                {/* The beta note folds its height away smoothly (0fr↔1fr) —
-                    an unmount here would jolt the footer as the rail moves. */}
-                <div
-                  className={cn(
-                    'grid transition-[grid-template-rows,opacity] duration-300 ease-console',
-                    railCollapsed ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr] opacity-100'
-                  )}
-                >
-                  <div className="min-h-0 overflow-hidden">
-                    <div className="mb-2 w-[13.5rem] rounded-lg border border-border bg-background p-3">
-                      <div className="flex items-center gap-2">
-                        <span className="relative flex h-1.5 w-1.5">
-                          <span
-                            className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-75"
-                            style={{ background: 'var(--status-good)' }}
-                          />
-                          <span
-                            className="relative inline-flex h-1.5 w-1.5 rounded-full"
-                            style={{ background: 'var(--status-good)' }}
-                          />
-                        </span>
-                        <p className="font-mono text-xs">fra-metal-1</p>
-                      </div>
-                      <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                        Private beta on single-node metal. Multi-node scaling is on the roadmap.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
                 <Tooltip
                   content={`${collapsed ? 'Pin sidebar open' : 'Collapse sidebar'} (⌘B)`}
                   side="right"
