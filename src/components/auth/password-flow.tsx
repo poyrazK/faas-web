@@ -52,7 +52,7 @@ const COPY = {
     passwordAutoComplete: 'current-password',
   },
   signup: {
-    title: 'Create your workspace',
+    title: 'Create your account',
     subtitle: 'Start with 1M invocations free every month. No credit card.',
     cta: 'Create account',
     pendingLabel: 'Creating account…',

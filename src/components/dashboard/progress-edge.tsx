@@ -3,11 +3,10 @@ import { EASE } from './motion';
 
 /**
  * The 2px progress bar along a panel's top edge — one implementation for
- * every build/deploy surface (BuildLog and DeploymentProgress each had their
- * own before, one Framer and one CSS, drifting apart).
+ * every build/deploy surface. The legacy simulated BuildLog and the real
+ * DeploymentProgress used to carry separate versions that drifted apart.
  *
- * Decorative: pair it with an `aria-live` status line, which both callers
- * already carry. On `done` the bar fills and gives one brief brand pulse — a
+ * Decorative: pair it with an `aria-live` status line. On `done` the bar fills and gives one brief brand pulse — a
  * settle, not a celebration; `failed` recolours to the critical token.
  */
 export function ProgressEdge({
