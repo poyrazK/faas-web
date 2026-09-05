@@ -7,8 +7,9 @@ import {
   type UseQueryOptions,
 } from '@tanstack/react-query';
 import { api, issueCSRF, unwrap } from './client';
-import { ApiError } from './errors';
 import type { components } from './schema';
+
+export { retryPolicy } from './retry';
 
 /**
  * Query hooks over the REST surface.
@@ -51,12 +52,6 @@ export const keys = {
   appAlerts: (slug: string) => ['apps', slug, 'alerts'] as const,
   appRegistryCredentials: (slug: string) => ['apps', slug, 'registry-credentials'] as const,
 };
-
-/** Shared policy: never retry a settled 4xx, retry the rest twice. */
-export function retryPolicy(failureCount: number, error: unknown): boolean {
-  if (error instanceof ApiError && !error.isRetryable) return false;
-  return failureCount < 2;
-}
 
 /**
  * The optimistic-write pattern, once: cancel in-flight reads so they cannot

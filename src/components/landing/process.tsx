@@ -191,7 +191,7 @@ export function Process() {
     <section
       id="deploy"
       aria-labelledby={`${id}-title`}
-      className="relative scroll-mt-24 border-t border-border"
+      className="landing-deferred relative scroll-mt-24 border-t border-border"
     >
       <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-28">
         <h2

@@ -1,5 +1,53 @@
-/* Familjen Grotesk type system — see index.html for the font loads. */
+/* Local, versioned font files remove two blocking third-party stylesheets.
+   The browser only fetches Satoshi when a `.console` surface actually uses it. */
 @import 'tailwindcss';
+
+@font-face {
+  font-family: 'Familjen Grotesk';
+  src: url('/fonts/familjen-grotesk-latin-v11.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Spline Sans Mono';
+  src: url('/fonts/spline-sans-mono-latin-v13.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Satoshi';
+  src: url('/fonts/satoshi-400.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Satoshi';
+  src: url('/fonts/satoshi-500.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 500 600;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Satoshi';
+  src: url('/fonts/satoshi-700.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
+/* Skip layout and paint for long landing sections until they approach the
+   viewport. `auto` preserves the measured height after the first reveal. */
+.landing-deferred {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 52rem;
+}
 
 /* The console's dark surface is `.console`, not `.dark` — bind Tailwind's
    `dark:` variant to it so a shadcn-scaffolded component's dark styles are

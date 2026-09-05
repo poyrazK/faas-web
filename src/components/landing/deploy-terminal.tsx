@@ -47,8 +47,9 @@ const SCRIPT: Line[] = [
   },
 ];
 
-/** Milliseconds per typed character, and the pause before output appears. */
-const TYPE_MS = 22;
+/** Playback is chunked to 20 React updates/sec instead of one per character. */
+const TYPE_MS = 50;
+const CHARS_PER_TICK = 2;
 const RUN_MS = 520;
 const OUT_MS = 120;
 
@@ -106,7 +107,7 @@ export function DeployTerminal() {
       const current = SCRIPT[pos.line];
       let wait: number;
       if (current.kind === 'cmd' && pos.chars < current.text.length) {
-        pos = { ...pos, chars: pos.chars + 1 };
+        pos = { ...pos, chars: Math.min(current.text.length, pos.chars + CHARS_PER_TICK) };
         wait = TYPE_MS;
       } else {
         // Line complete: a command "runs" before its output shows.
@@ -117,10 +118,26 @@ export function DeployTerminal() {
       timer = setTimeout(step, wait);
     };
 
-    // Reduced motion: the whole session, at once. Both paths set state from
-    // a timer rather than the effect body, so a replay does not cascade.
-    timer = setTimeout(reduced ? () => setCursor(END) : step, reduced ? 0 : 350);
-    return () => clearTimeout(timer);
+    // Do not compete with the hero's LCP work. Playback starts in an idle
+    // period after the terminal is substantially visible; replay uses the
+    // same scheduler. Reduced motion still reveals everything immediately.
+    let idle: number | undefined;
+    if (reduced) {
+      timer = setTimeout(() => setCursor(END), 0);
+    } else if ('requestIdleCallback' in window) {
+      idle = window.requestIdleCallback(
+        () => {
+          timer = setTimeout(step, 250);
+        },
+        { timeout: 2_000 }
+      );
+    } else {
+      timer = setTimeout(step, 750);
+    }
+    return () => {
+      if (timer) clearTimeout(timer);
+      if (idle !== undefined && 'cancelIdleCallback' in window) window.cancelIdleCallback(idle);
+    };
   }, [armed, run]);
 
   return (

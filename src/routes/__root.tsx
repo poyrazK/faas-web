@@ -2,12 +2,7 @@ import { createRootRoute, HeadContent, Link, Outlet } from '@tanstack/react-rout
 import { Analytics } from '@vercel/analytics/react';
 import { hexToRgb, type Palette } from 'glimm';
 import { GlimmProvider } from 'glimm/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { AuthProvider } from '@/lib/auth';
-import { DataProvider } from '@/lib/store';
-import { retryPolicy } from '@/lib/api/queries';
-import { ToastProvider } from '@/components/ui/toast';
-import { MfaProvider } from '@/components/auth/mfa-provider';
+import { useSyncExternalStore } from 'react';
 import { DevBypassButton } from '@/components/dev-bypass-button';
 import { pageHead } from '@/lib/seo';
 
@@ -52,66 +47,40 @@ function rampSegment(hexA: string, hexB: string): Palette {
 
 const MINT_SWEEP = rampSegment('#00ce91', '#006f40');
 
-/**
- * Created once at module scope rather than per render, so a re-render never
- * throws away the cache.
- *
- * `staleTime` of 30s matches the router's own preload staleness: the console is
- * an operations surface, so data should be fresh when you come back to a tab,
- * but not refetch on every incidental focus change.
- */
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 30_000,
-      retry: retryPolicy,
-      // Focus refetch stays ON by default: a console left open in a stale
-      // tab should show the fleet as it is when the operator comes back.
-      // The one exception — Prometheus-backed metrics queries, where every
-      // refetch is a PromQL fan-out — opts out per-hook in `queries.ts`,
-      // not here for everything.
-    },
-    mutations: { retry: false },
-  },
-});
+const subscribeToNothing = () => () => {};
+
+function ClientHeadContent() {
+  // The custom prerenderer writes the router's head data directly into the
+  // document head. Waiting until hydration finishes keeps those elements out
+  // of the root's server/client comparison, then restores normal SPA head
+  // updates for subsequent navigation.
+  const hydrated = useSyncExternalStore(
+    subscribeToNothing,
+    () => true,
+    () => false
+  );
+  return hydrated ? <HeadContent /> : null;
+}
 
 function RootLayout() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <MfaProvider>
-        <AuthProvider>
-          <DataProvider>
-            {/* Tuned for a paper page: the sweep now has to read as a darkening
-              band rather than a glow, so brightness comes up toward neutral —
-              pulling it down was what kept it from blowing out against the old
-              near-black surface, and on white that only made it muddy. */}
-            <GlimmProvider
-              palette={MINT_SWEEP}
-              brightness={0.94}
-              sweepMs={950}
-              outroMs={620}
-              easing="easeInOutCubic"
-              waveAmount={0.6}
-              swellAmount={0.6}
-            >
-              <ToastProvider>
-                {/* Applies each route's `head` to the document. */}
-                <HeadContent />
-                <Outlet />
-                {/* Statically false in production, so the button and its
-                  module are dropped from the bundle. */}
-                {import.meta.env.DEV && <DevBypassButton />}
-                {/* Vercel Web Analytics. The component is a no-op outside
-                  production (it logs to console in dev instead of sending),
-                  and the script it injects is first-party under
-                  /_vercel/insights — no cookies, no cross-site anything. */}
-                <Analytics />
-              </ToastProvider>
-            </GlimmProvider>
-          </DataProvider>
-        </AuthProvider>
-      </MfaProvider>
-    </QueryClientProvider>
+    /* The root stays intentionally light. API/query/auth providers live on
+       only the top-level routes that need them, so a public page cannot boot
+       the authenticated console or start customer-data requests. */
+    <GlimmProvider
+      palette={MINT_SWEEP}
+      brightness={0.94}
+      sweepMs={950}
+      outroMs={620}
+      easing="easeInOutCubic"
+      waveAmount={0.6}
+      swellAmount={0.6}
+    >
+      <ClientHeadContent />
+      <Outlet />
+      {import.meta.env.DEV && <DevBypassButton />}
+      <Analytics />
+    </GlimmProvider>
   );
 }
 

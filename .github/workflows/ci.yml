@@ -33,6 +33,9 @@ jobs:
       # them quietly no-op in the one place they most need to run.
       - run: npm run build
 
+      # Guard the landing route's compiled JS graph and critical image assets.
+      - run: npm run perf:check
+
       # Typecheck, lint, format, tests. Kept as one script so `npm run check`
       # locally and CI can never drift apart.
       - run: npm run check

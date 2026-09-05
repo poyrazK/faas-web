@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { SECTION_LABELS } from '@/components/dashboard/nav-config';
+import { SECTION_LABELS } from './section-labels';
 
 /**
  * Document metadata, in one place.

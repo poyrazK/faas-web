@@ -2,7 +2,15 @@ import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router';
 import { useEffect } from 'react';
 import { AuthLayout } from '@/components/auth/auth-layout';
 import { PasswordFlow } from '@/components/auth/password-flow';
-import { clearOAuthPending, hasOAuthPending, hasOnboarded, readSession, useAuth } from '@/lib/auth';
+import { ToastProvider } from '@/components/ui/toast';
+import {
+  AuthProvider,
+  clearOAuthPending,
+  hasOAuthPending,
+  hasOnboarded,
+  readSession,
+  useAuth,
+} from '@/lib/auth';
 import { safeInternalPath } from '@/lib/redirect';
 import { pageHead } from '@/lib/seo';
 
@@ -22,6 +30,16 @@ export const Route = createFileRoute('/login')({
 });
 
 function LoginPage() {
+  return (
+    <AuthProvider>
+      <ToastProvider>
+        <LoginContent />
+      </ToastProvider>
+    </AuthProvider>
+  );
+}
+
+function LoginContent() {
   const navigate = useNavigate();
   const { next } = Route.useSearch();
   const { user, loading } = useAuth();

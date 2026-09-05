@@ -1,7 +1,8 @@
 import { createFileRoute, redirect } from '@tanstack/react-router';
 import { AuthLayout } from '@/components/auth/auth-layout';
 import { PasswordFlow } from '@/components/auth/password-flow';
-import { hasOnboarded, readSession } from '@/lib/auth';
+import { ToastProvider } from '@/components/ui/toast';
+import { AuthProvider, hasOnboarded, readSession } from '@/lib/auth';
 import { safeInternalPath } from '@/lib/redirect';
 import { pageHead } from '@/lib/seo';
 
@@ -19,8 +20,12 @@ export const Route = createFileRoute('/signup')({
 function SignupPage() {
   const { next } = Route.useSearch();
   return (
-    <AuthLayout>
-      <PasswordFlow mode="signup" redirectTo={next} />
-    </AuthLayout>
+    <AuthProvider>
+      <ToastProvider>
+        <AuthLayout>
+          <PasswordFlow mode="signup" redirectTo={next} />
+        </AuthLayout>
+      </ToastProvider>
+    </AuthProvider>
   );
 }

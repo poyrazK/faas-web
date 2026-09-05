@@ -68,6 +68,7 @@ export function useShaderCanvas({
   const hostRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [supported, setSupported] = useState(true);
+  const [nearViewport, setNearViewport] = useState(false);
 
   // Read the callback through a ref so a new closure each render never tears
   // down and rebuilds the GL context.
@@ -76,7 +77,26 @@ export function useShaderCanvas({
 
   const names = uniformNames.join(',');
 
+  // The landing page contains multiple below-the-fold shaders. Creating their
+  // contexts at mount compiles every program during the critical load even
+  // though the canvases cannot be seen. Arm each one shortly before it enters.
   useEffect(() => {
+    const host = hostRef.current;
+    if (!host || nearViewport) return;
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return;
+        setNearViewport(true);
+        io.disconnect();
+      },
+      { rootMargin: '320px 0px' }
+    );
+    io.observe(host);
+    return () => io.disconnect();
+  }, [nearViewport]);
+
+  useEffect(() => {
+    if (!nearViewport) return;
     const host = hostRef.current;
     const canvas = canvasRef.current;
     if (!host || !canvas) return;
@@ -138,6 +158,7 @@ export function useShaderCanvas({
     let raf = 0;
     let running = false;
     let start = performance.now();
+    let lastFrame = 0;
     let onscreen = true;
     let pageVisible = document.visibilityState === 'visible';
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -163,7 +184,10 @@ export function useShaderCanvas({
 
     const tick = (now: number) => {
       if (!running) return;
-      draw(now - start);
+      if (now - lastFrame >= 1000 / 30) {
+        draw(now - start);
+        lastFrame = now;
+      }
       raf = requestAnimationFrame(tick);
     };
 
@@ -184,6 +208,7 @@ export function useShaderCanvas({
         if (!running) {
           running = true;
           start = performance.now() - 1;
+          lastFrame = 0;
           raf = requestAnimationFrame(tick);
         }
       } else {
@@ -253,7 +278,7 @@ export function useShaderCanvas({
       // program, shaders, and buffer already releases the GPU resources;
       // the context goes when the canvas is collected.
     };
-  }, [frag, label, renderScale, names]);
+  }, [frag, label, renderScale, names, nearViewport]);
 
   return { hostRef, canvasRef, supported };
 }

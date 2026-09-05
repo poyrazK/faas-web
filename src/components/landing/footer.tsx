@@ -95,7 +95,7 @@ function FooterAnchor({ link }: { link: FooterLink }) {
   // reserved for the hand-off from marketing into the product.
   if (link.doc === true) {
     return (
-      <Link to="/docs" className={LINK_CLASS}>
+      <Link to="/docs" reloadDocument className={LINK_CLASS}>
         {link.label}
       </Link>
     );
@@ -103,7 +103,7 @@ function FooterAnchor({ link }: { link: FooterLink }) {
 
   if (typeof link.doc === 'string') {
     return (
-      <Link to="/docs/$slug" params={{ slug: link.doc }} className={LINK_CLASS}>
+      <Link to="/docs/$slug" params={{ slug: link.doc }} reloadDocument className={LINK_CLASS}>
         {link.label}
       </Link>
     );
@@ -111,7 +111,7 @@ function FooterAnchor({ link }: { link: FooterLink }) {
 
   if (link.route) {
     return (
-      <SweepLink to={link.route} className={LINK_CLASS}>
+      <SweepLink to={link.route} reloadDocument className={LINK_CLASS}>
         {link.label}
       </SweepLink>
     );
@@ -133,7 +133,7 @@ function FooterAnchor({ link }: { link: FooterLink }) {
 
 export function Footer() {
   return (
-    <footer className="relative overflow-hidden border-t border-border">
+    <footer className="landing-deferred relative overflow-hidden border-t border-border">
       {/* The floor glow — Dia's footer gradient in the mint ramp. Anchored to
           the very bottom and rising into view; the wordmark and bottom bar
           sit in front of it, the CTA panel above it. */}
@@ -206,7 +206,7 @@ export function Footer() {
                 size="lg"
                 className="group h-11 gap-2 rounded-full px-7"
               >
-                <SweepLink to="/signup">
+                <SweepLink to="/signup" reloadDocument>
                   Start deploying
                   <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
                 </SweepLink>
@@ -232,7 +232,15 @@ export function Footer() {
           {/* Brand column */}
           <div className="md:pr-8">
             <Link to="/" className="inline-flex items-center">
-              <img src="/logo.png" alt="Gregale" className="h-7 w-auto" />
+              <img
+                src="/logo.png"
+                alt="Gregale"
+                width={299}
+                height={112}
+                loading="lazy"
+                decoding="async"
+                className="h-7 w-auto"
+              />
             </Link>
             <p className="mt-4 max-w-[26ch] text-sm leading-relaxed text-muted-foreground">
               Scale-to-zero serverless on real microVMs. Snapshot cold starts under 350ms.
