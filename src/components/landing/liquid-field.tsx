@@ -178,7 +178,14 @@ interface Props {
 export function LiquidField({ params, pixelRatio = 1, fadeBottom = 0, className }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [supported, setSupported] = useState(true);
+  // Coarse-pointer devices start on the static branded field. Deciding in the
+  // initializer avoids constructing a WebGL context — and avoids a second
+  // render — on phones and tablets.
+  const [supported, setSupported] = useState(
+    () =>
+      typeof window === 'undefined' ||
+      window.matchMedia('(hover: hover) and (pointer: fine)').matches
+  );
   // Params flow through a ref so a slider move never rebuilds the GL state.
   const paramsRef = useRef(params);
   useEffect(() => {
@@ -186,6 +193,7 @@ export function LiquidField({ params, pixelRatio = 1, fadeBottom = 0, className 
   }, [params]);
 
   useEffect(() => {
+    if (!supported) return;
     const host = hostRef.current;
     const canvas = canvasRef.current;
     if (!host || !canvas) return;
@@ -267,6 +275,7 @@ export function LiquidField({ params, pixelRatio = 1, fadeBottom = 0, className 
     let raf = 0;
     let running = false;
     let last = performance.now();
+    let lastFrame = 0;
     let elapsed = 0;
     let onscreen = true;
     let visible = document.visibilityState === 'visible';
@@ -346,10 +355,13 @@ export function LiquidField({ params, pixelRatio = 1, fadeBottom = 0, className 
 
     const tick = (now: number) => {
       if (!running) return;
-      const dt = Math.min(0.1, (now - last) / 1000);
-      last = now;
-      elapsed += dt;
-      draw(dt);
+      if (now - lastFrame >= 1000 / 30) {
+        const dt = Math.min(0.1, (now - last) / 1000);
+        last = now;
+        lastFrame = now;
+        elapsed += dt;
+        draw(dt);
+      }
       raf = requestAnimationFrame(tick);
     };
     const stop = () => {
@@ -368,6 +380,7 @@ export function LiquidField({ params, pixelRatio = 1, fadeBottom = 0, className 
         if (!running) {
           running = true;
           last = performance.now();
+          lastFrame = 0;
           raf = requestAnimationFrame(tick);
         }
       } else stop();
@@ -443,7 +456,7 @@ export function LiquidField({ params, pixelRatio = 1, fadeBottom = 0, className 
       gl.deleteProgram(main.prog);
       gl.deleteProgram(push.prog);
     };
-  }, [pixelRatio]);
+  }, [pixelRatio, supported]);
 
   const [c0, c1] = [params.colors[0] ?? '#fff', params.colors[1] ?? '#0099ff'];
   return (

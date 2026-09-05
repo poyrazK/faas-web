@@ -6,6 +6,12 @@ import { DeployTerminal } from './deploy-terminal';
 import { INSTALL_COMMAND } from './install-command';
 import { EASE } from './reveal';
 import { LIQUID_PRESETS, LiquidField } from './liquid-field';
+import {
+  EMBLEM_AVIF_SRC_SET,
+  EMBLEM_SIZES,
+  EMBLEM_WEBP_SRC_SET,
+  emblem600Webp,
+} from '@/assets/landing/emblem';
 
 /**
  * The hero: one full screen of light with the words alone in the middle of
@@ -65,13 +71,20 @@ function Emblem() {
       className="pointer-events-none absolute inset-x-0 top-[72px] flex justify-center sm:top-[96px]"
       style={{ mixBlendMode: 'overlay', opacity: 1 }}
     >
-      <img
-        src="/gregale-frosted.png"
-        alt=""
-        width={1246}
-        height={1246}
-        className="h-[300px] w-[300px] sm:h-[520px] sm:w-[520px]"
-      />
+      <picture>
+        <source type="image/avif" srcSet={EMBLEM_AVIF_SRC_SET} sizes={EMBLEM_SIZES} />
+        <img
+          src={emblem600Webp}
+          srcSet={EMBLEM_WEBP_SRC_SET}
+          sizes={EMBLEM_SIZES}
+          alt=""
+          width={1040}
+          height={1040}
+          fetchPriority="high"
+          decoding="async"
+          className="h-[300px] w-[300px] sm:h-[520px] sm:w-[520px]"
+        />
+      </picture>
     </div>
   );
 }
@@ -82,8 +95,11 @@ export function Hero() {
     reduce
       ? { initial: { opacity: 1 }, animate: { opacity: 1 } }
       : {
-          initial: { opacity: 0, y: 14, filter: 'blur(6px)' },
-          animate: { opacity: 1, y: 0, filter: 'blur(0px)' },
+          // Keep the prerendered hero visible. Hiding it until hydration turns
+          // a decorative entrance into several seconds of delayed first paint
+          // on a throttled device.
+          initial: false as const,
+          animate: { opacity: 1, y: 0 },
           transition: { duration: 0.7, ease: EASE, delay },
         };
 
@@ -93,7 +109,7 @@ export function Hero() {
         aria-label="Gregale serverless platform"
         className="relative isolate flex min-h-[100svh] w-full flex-col items-center justify-center overflow-hidden px-4 pt-24 pb-36 sm:px-6 sm:pb-44"
       >
-        <LiquidField params={LIQUID_PRESETS.gregale} fadeBottom={0.28} />
+        <LiquidField params={LIQUID_PRESETS.gregale} pixelRatio={0.65} fadeBottom={0.28} />
         <Emblem />
 
         <div className="relative z-10 flex w-full max-w-[46rem] flex-col items-center text-center">
@@ -123,6 +139,7 @@ export function Hero() {
             <CopyCommand />
             <SweepLink
               to="/signup"
+              reloadDocument
               className="group inline-flex h-12 shrink-0 items-center gap-2 rounded-full bg-[#1c2622] px-6 text-[15px] font-semibold text-white shadow-[inset_0_1px_0_0_rgba(255,255,255,0.12),0_8px_24px_-10px_rgba(13,21,18,0.6)] outline-none transition-[background-color,transform] duration-200 hover:bg-[#0d1512] focus-visible:ring-[3px] focus-visible:ring-ring/50 active:scale-[0.98] motion-reduce:transform-none"
             >
               Start deploying

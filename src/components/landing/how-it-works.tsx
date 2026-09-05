@@ -11,7 +11,7 @@ import { WakePulse } from './shaders/wake-pulse';
 
 export function HowItWorks() {
   return (
-    <section id="how" className="relative scroll-mt-24 border-t border-border">
+    <section id="how" className="landing-deferred relative scroll-mt-24 border-t border-border">
       <div className="mx-auto max-w-6xl px-4 py-24 sm:px-6">
         <div className="overflow-hidden rounded-lg border border-border bg-card">
           {/* Hero panel: headline left, the lifecycle figure right. */}

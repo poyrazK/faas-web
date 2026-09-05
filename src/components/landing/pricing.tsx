@@ -157,7 +157,9 @@ function PlanColumn({ tier, index }: { tier: Tier; index: number }) {
           className="h-10 w-full rounded-full"
         >
           {tier.cta.to ? (
-            <SweepLink to={tier.cta.to}>{tier.cta.label}</SweepLink>
+            <SweepLink to={tier.cta.to} reloadDocument>
+              {tier.cta.label}
+            </SweepLink>
           ) : (
             <a href={tier.cta.href} target="_blank" rel="noreferrer">
               {tier.cta.label}
@@ -183,7 +185,7 @@ function PlanColumn({ tier, index }: { tier: Tier; index: number }) {
 
 export function Pricing() {
   return (
-    <section id="pricing" className="relative scroll-mt-24 border-t border-border">
+    <section id="pricing" className="landing-deferred relative scroll-mt-24 border-t border-border">
       <div className="mx-auto max-w-6xl px-4 py-24 sm:px-6">
         <div className="overflow-hidden rounded-lg border border-border bg-card">
           {/* Hero panel: headline left, the stepped-bar figure right. */}

@@ -6,6 +6,7 @@ import { SweepLink } from '@/components/sweep-link';
 import { Button } from '@/components/ui/button';
 import { EASE } from './reveal';
 import { cn } from '@/lib/utils';
+import navMark from '@/assets/landing/mark-64.webp';
 
 /**
  * The site nav — one compact glass pill floating top-centre, cut from the
@@ -83,11 +84,13 @@ function NavItem({
   active,
   className,
   onClick,
+  reloadDocument,
 }: {
   link: NavLink;
   active: boolean;
   className: string;
   onClick?: () => void;
+  reloadDocument?: boolean;
 }) {
   const inner = (
     <>
@@ -100,6 +103,7 @@ function NavItem({
   return link.route ? (
     <Link
       to={link.route}
+      reloadDocument={reloadDocument}
       onClick={onClick}
       aria-current={active ? 'page' : undefined}
       className={className}
@@ -118,7 +122,7 @@ function NavItem({
   );
 }
 
-export function Nav() {
+export function Nav({ reloadDocument = false }: { reloadDocument?: boolean }) {
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const toggleRef = useRef<HTMLButtonElement | null>(null);
@@ -151,7 +155,7 @@ export function Nav() {
 
   return (
     <motion.header
-      initial={{ y: -14, opacity: 0 }}
+      initial={false}
       animate={{ y: 0, opacity: 1 }}
       transition={{ duration: 0.7, delay: 0.1, ease: EASE }}
       className="pointer-events-none fixed inset-x-0 top-0 z-50 flex justify-center px-3 pt-4"
@@ -175,7 +179,7 @@ export function Nav() {
             onClick={close}
             className="flex size-9 shrink-0 items-center justify-center rounded-full outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring/50"
           >
-            <img src="/favicon.png" alt="" className="size-7" />
+            <img src={navMark} alt="" width={64} height={64} className="size-7" />
           </Link>
 
           <nav aria-label="Primary" className="hidden items-center lg:flex">
@@ -184,6 +188,7 @@ export function Nav() {
                 key={link.label}
                 link={link}
                 active={active === link.label}
+                reloadDocument={reloadDocument}
                 className={cn(LINK, active === link.label ? 'text-foreground' : 'text-[#3d4a45]')}
               />
             ))}
@@ -191,7 +196,11 @@ export function Nav() {
 
           <span aria-hidden className="mx-1 hidden h-5 w-px bg-border lg:block" />
 
-          <SweepLink to="/login" className={cn(LINK, 'hidden text-[#3d4a45] sm:block')}>
+          <SweepLink
+            to="/login"
+            reloadDocument={reloadDocument}
+            className={cn(LINK, 'hidden text-[#3d4a45] sm:block')}
+          >
             Sign in
           </SweepLink>
 
@@ -200,7 +209,7 @@ export function Nav() {
             variant="cta"
             className="group ml-0.5 h-9 gap-1.5 rounded-full pl-4 pr-3 text-[13.5px] font-semibold"
           >
-            <SweepLink to="/signup">
+            <SweepLink to="/signup" reloadDocument={reloadDocument}>
               Get started
               <ArrowRight className="size-3.5 transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transition-none" />
             </SweepLink>
@@ -237,12 +246,14 @@ export function Nav() {
                   key={link.label}
                   link={link}
                   active={active === link.label}
+                  reloadDocument={reloadDocument}
                   onClick={close}
                   className="flex items-center justify-between rounded-xl px-3 py-2.5 text-[15px] text-foreground transition-colors hover:bg-accent"
                 />
               ))}
               <SweepLink
                 to="/login"
+                reloadDocument={reloadDocument}
                 onClick={close}
                 className="mt-1 border-t border-border px-3 pt-3 pb-1.5 text-[15px] text-[#3d4a45] transition-colors hover:text-foreground sm:hidden"
               >
