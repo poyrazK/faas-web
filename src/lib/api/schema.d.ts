@@ -15734,7 +15734,7 @@ export interface operations {
                     name: string;
                     /** @default default */
                     scope?: string;
-                    /** @description Gregale region */
+                    /** @description Gregale region, not upstream signing region. Omit to use the configured default. */
                     region?: string;
                 };
             };
