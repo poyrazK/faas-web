@@ -1,4 +1,4 @@
-import { useNavigate, useRouterState } from '@tanstack/react-router';
+import { useRouterState } from '@tanstack/react-router';
 import { enterDevBypass } from '@/lib/auth';
 
 /**
@@ -9,7 +9,6 @@ import { enterDevBypass } from '@/lib/auth';
  * it has nothing left to do.
  */
 export function DevBypassButton() {
-  const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   if (pathname.startsWith('/dashboard')) return null;
 
@@ -18,7 +17,7 @@ export function DevBypassButton() {
       type="button"
       onClick={() => {
         enterDevBypass();
-        void navigate({ to: '/dashboard' });
+        window.location.assign('/dashboard');
       }}
       className="label-mono fixed bottom-4 right-4 z-[60] inline-flex h-9 items-center gap-2 rounded-full border border-border bg-card px-4 text-foreground shadow-[0_8px_24px_-12px_rgba(13,21,18,0.3)] transition-colors hover:border-border-secondary"
     >

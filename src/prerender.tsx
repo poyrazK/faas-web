@@ -12,6 +12,8 @@ export interface Rendered {
   html: string;
   /** The route's resolved head tags, for the document `<head>`. */
   meta: Record<string, unknown>[];
+  /** Route-specific resource hints and stylesheets. */
+  links: Record<string, unknown>[];
 }
 
 export async function render(url: string): Promise<Rendered> {
@@ -28,6 +30,9 @@ export async function render(url: string): Promise<Rendered> {
   const meta = router.state.matches.flatMap(
     (match) => (match.meta ?? []) as Record<string, unknown>[]
   );
+  const links = router.state.matches.flatMap(
+    (match) => (match.links ?? []) as Record<string, unknown>[]
+  );
 
-  return { html, meta };
+  return { html, meta, links };
 }

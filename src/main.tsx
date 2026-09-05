@@ -1,5 +1,5 @@
 import { StrictMode } from 'react';
-import ReactDOM from 'react-dom/client';
+import { createRoot, hydrateRoot } from 'react-dom/client';
 import { RouterProvider, createRouter } from '@tanstack/react-router';
 import { routeTree } from './routeTree.gen';
 import { RouteError, RoutePending } from './components/route-status';
@@ -36,22 +36,22 @@ declare module '@tanstack/react-router' {
   }
 }
 
-/**
- * `createRoot`, not `hydrateRoot`, even though public routes ship prerendered
- * markup (see `scripts/prerender.mjs`).
- *
- * Hydration was tried and does not reconcile: the router wraps matches in
- * Suspense on the client, so React finds a boundary where the server wrote
- * real markup and bails out of hydration with a mismatch. Mounting fresh is
- * the same outcome without the warning, and React clears and paints in one
- * task, so there is no visible flash.
- *
- * The prerender is therefore aimed at consumers that never run this file at
- * all — crawlers, social unfurlers, and no-JS readers. That is what it was
- * added for; hydration would only have been a bonus.
- */
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <RouterProvider router={router} />
-  </StrictMode>
-);
+async function start() {
+  const mount = document.getElementById('root')!;
+  await router.load();
+
+  const app = (
+    <StrictMode>
+      <RouterProvider router={router} />
+    </StrictMode>
+  );
+
+  // Prerendered public pages carry their source path. Hydrate only when it
+  // matches the current URL; an SPA fallback serving the home document for a
+  // private or unknown path must be replaced instead.
+  const prerenderedPath = mount.dataset.prerenderPath;
+  if (prerenderedPath === window.location.pathname) hydrateRoot(mount, app);
+  else createRoot(mount).render(app);
+}
+
+void start();

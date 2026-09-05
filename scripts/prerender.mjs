@@ -11,8 +11,7 @@ import { dirname, join } from 'node:path';
  *
  * Each route here is rendered at build time and written to its own
  * `index.html`, so the tags and copy are in the document before any script
- * runs. The SPA then mounts over it (`createRoot`, not `hydrateRoot` — see
- * the note in `src/main.tsx`), and the SPA fallback in `_redirects` /
+ * runs. Matching public routes hydrate this markup, while the SPA fallback in `_redirects` /
  * `vercel.json` continues to serve anything not listed here.
  *
  * Only public routes are prerendered. Everything under /dashboard is behind
@@ -88,6 +87,21 @@ function renderTags(meta) {
     .join('\n    ');
 }
 
+function renderLinks(links) {
+  return links
+    .map((link) => {
+      const attributes = Object.entries(link)
+        .filter(([, value]) => value !== undefined && value !== null && value !== false)
+        .map(([key, value]) => {
+          const name = key === 'crossOrigin' ? 'crossorigin' : key;
+          return value === true ? name : `${name}="${attr(value)}"`;
+        })
+        .join(' ');
+      return `<link ${attributes} />`;
+    })
+    .join('\n    ');
+}
+
 /** Strips the static tags the template ships so they cannot end up duplicated. */
 function stripStaticHead(html) {
   return html
@@ -99,11 +113,13 @@ function stripStaticHead(html) {
 
 let written = 0;
 for (const route of ROUTES) {
-  const { html, meta } = await render(route);
+  const { html, meta, links } = await render(route);
   const tags = renderTags(dedupe(meta));
+  const linkTags = renderLinks(links);
 
   let doc = stripStaticHead(template);
   doc = doc.replace('</head>', `  ${tags}\n  </head>`);
+  if (linkTags) doc = doc.replace('</head>', `  ${linkTags}\n  </head>`);
 
   // Canonical and og:url can only be written here — the router knows the
   // route, but not the host it will be served from.
@@ -166,32 +182,11 @@ for (const route of ROUTES) {
     doc = doc.replace('</head>', `  ${perRoute.join('\n    ')}\n  </head>`);
   }
 
-  // `HeadContent` renders its tags as real elements wherever it sits in the
-  // tree, so `renderToString` emits them inline at the top of #root. They are
-  // already hoisted into <head> above, and a second <title> in the body is
-  // exactly what an SEO audit flags — so drop the inline copies.
-  //
-  // Safe to drop: the client mounts fresh rather than hydrating, and React
-  // re-hoists its own copies into <head> on mount. `src/prerender.test.ts`
-  // asserts the body stays clean.
-  //
-  // React 19 also hoists <link rel="preload"> the same way, and those emit
-  // before the title on the landing page — so the run has to be matched as a
-  // whole. The preloads are worth keeping, just in <head> where they can
-  // actually start a fetch early, so they are moved rather than dropped.
-  const bodyHead = /^(?:<title>[\s\S]*?<\/title>|<meta\b[^>]*?\/?>|<link\b[^>]*?\/?>)+/;
-
   const rootDiv = '<div id="root"></div>';
   if (!doc.includes(rootDiv)) {
     throw new Error('Could not find the #root mount point in dist/index.html');
   }
-  // Keep the hoisted <link>s (preloads), drop the title/meta — those are
-  // already resolved into <head> above, from the router's own state.
-  const hoisted = html.match(bodyHead)?.[0] ?? '';
-  const links = hoisted.match(/<link\b[^>]*?\/?>/g)?.join('\n    ') ?? '';
-  if (links) doc = doc.replace('</head>', `  ${links}\n  </head>`);
-
-  doc = doc.replace(rootDiv, `<div id="root">${html.replace(bodyHead, '')}</div>`);
+  doc = doc.replace(rootDiv, `<div id="root" data-prerender-path="${attr(route)}">${html}</div>`);
 
   const outFile = route === '/' ? TEMPLATE : join(DIST, route, 'index.html');
   mkdirSync(dirname(outFile), { recursive: true });

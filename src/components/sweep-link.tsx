@@ -42,7 +42,11 @@ export function SweepLink({ to, sweepOptions, children, onClick, ...rest }: Swee
         // Let the browser handle modified clicks itself.
         if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
         e.preventDefault();
-        sweep(() => navigate({ to }), sweepOptions);
+        const href = e.currentTarget.href;
+        sweep(
+          () => (rest.reloadDocument ? window.location.assign(href) : navigate({ to })),
+          sweepOptions
+        );
       }}
     >
       {children}
