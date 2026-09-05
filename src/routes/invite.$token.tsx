@@ -1,7 +1,8 @@
 import { createFileRoute, redirect } from '@tanstack/react-router';
 import { useSweepNavigate } from '@/components/sweep-link';
 import { Button } from '@/components/ui/button';
-import { useToast } from '@/components/ui/toast';
+import { AppQueryProvider } from '@/components/query-provider';
+import { ToastProvider, useToast } from '@/components/ui/toast';
 import { useAcceptInvitation, useInvitation } from '@/lib/api/queries';
 import { errorMessage } from '@/lib/api/errors';
 import { readSession } from '@/lib/auth';
@@ -22,6 +23,16 @@ export const Route = createFileRoute('/invite/$token')({
  * what is being joined before anything is consumed; Accept is one press.
  */
 function InvitePage() {
+  return (
+    <AppQueryProvider>
+      <ToastProvider>
+        <InviteContent />
+      </ToastProvider>
+    </AppQueryProvider>
+  );
+}
+
+function InviteContent() {
   const { token } = Route.useParams();
   const { toast } = useToast();
   const sweepNavigate = useSweepNavigate();

@@ -22,6 +22,7 @@ import {
   Github,
   GitFork as WorkflowIcon,
 } from 'iconoir-react';
+export { SECTION_LABELS } from '@/lib/section-labels';
 
 /**
  * Grouped sidebar navigation.
@@ -122,14 +123,3 @@ export const APP_TABS: { tab: string; segment: string }[] = [
   { tab: 'Webhooks', segment: 'webhooks' },
   { tab: 'Edge rules', segment: 'edge-rules' },
 ];
-
-export const SECTION_LABELS: Record<string, string> = {
-  // Derived from APP_TABS, so the breadcrumb, the ⌘K palette, and the app
-  // page's tab strip can never call the same page three different names —
-  // they used to ("Routes" vs "APIs", "Env" vs "Env Vars", and `edge-rules`
-  // was missing entirely).
-  ...Object.fromEntries(APP_TABS.map((t) => [t.segment, t.tab])),
-  ...Object.fromEntries(
-    NAV_ITEMS.filter((i) => i.to !== '/dashboard').map((i) => [i.to.split('/').pop()!, i.label])
-  ),
-};

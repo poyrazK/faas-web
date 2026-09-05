@@ -4,11 +4,18 @@ import { createFileRoute, redirect } from '@tanstack/react-router';
 import { useSweepNavigate } from '@/components/sweep-link';
 import { ArrowLeft, ArrowRight, Check } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
-import { useToast } from '@/components/ui/toast';
+import { ToastProvider, useToast } from '@/components/ui/toast';
 import { PixelBeams } from '@/components/landing/shaders/pixel-beams';
 import { INSTALL_COMMAND } from '@/components/landing/install-command';
 import { CopyIconButton } from '@/components/ui/copy-button';
-import { DEFAULT_WORKSPACE, markOnboarded, readSession, saveWorkspace, useAuth } from '@/lib/auth';
+import {
+  AuthProvider,
+  DEFAULT_WORKSPACE,
+  markOnboarded,
+  readSession,
+  saveWorkspace,
+  useAuth,
+} from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import { pageHead } from '@/lib/seo';
 
@@ -76,6 +83,16 @@ function StepRail({ current }: { current: number }) {
 }
 
 function OnboardingPage() {
+  return (
+    <AuthProvider>
+      <ToastProvider>
+        <OnboardingContent />
+      </ToastProvider>
+    </AuthProvider>
+  );
+}
+
+function OnboardingContent() {
   const sweepNavigate = useSweepNavigate();
   const { toast } = useToast();
   const { user } = useAuth();

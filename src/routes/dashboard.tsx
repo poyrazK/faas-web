@@ -1,6 +1,10 @@
 import { createFileRoute, Outlet, redirect } from '@tanstack/react-router';
+import { MfaProvider } from '@/components/auth/mfa-provider';
 import { DashboardShell } from '@/components/dashboard/shell';
-import { hasOnboarded, readSession } from '@/lib/auth';
+import { AppQueryProvider } from '@/components/query-provider';
+import { ToastProvider } from '@/components/ui/toast';
+import { AuthProvider, hasOnboarded, readSession } from '@/lib/auth';
+import { DataProvider } from '@/lib/store';
 
 export const Route = createFileRoute('/dashboard')({
   // Guards run before the route loads, so a signed-out visitor never sees a
@@ -14,8 +18,18 @@ export const Route = createFileRoute('/dashboard')({
 
 function DashboardLayout() {
   return (
-    <DashboardShell>
-      <Outlet />
-    </DashboardShell>
+    <AppQueryProvider>
+      <MfaProvider>
+        <AuthProvider>
+          <DataProvider>
+            <ToastProvider>
+              <DashboardShell>
+                <Outlet />
+              </DashboardShell>
+            </ToastProvider>
+          </DataProvider>
+        </AuthProvider>
+      </MfaProvider>
+    </AppQueryProvider>
   );
 }
