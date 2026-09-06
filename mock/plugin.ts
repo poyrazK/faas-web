@@ -455,6 +455,18 @@ route('GET', '/v1/apps/{slug}/queues/dead_letter', ({ params }) =>
   db.queueDeadLetter(app(params.slug))
 );
 
+// Replay resets the row in place. A second replay finds it already pending and
+// 404s, matching the real contract the console's "already replayed" branch
+// depends on.
+const replayed = new Set<string>();
+
+route('POST', '/v1/apps/{slug}/queues/dead_letter/{id}/replay', ({ params }) => {
+  const key = `${params.slug}:${params.id}`;
+  if (replayed.has(key)) throw new Problem(404, 'not_found', 'The row is already pending.');
+  replayed.add(key);
+  return NO_CONTENT;
+});
+
 // --- Logs (SSE) ---------------------------------------------------------------
 
 route('GET', '/v1/apps/{slug}/instances', ({ params }) => {
