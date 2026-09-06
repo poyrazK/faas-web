@@ -974,6 +974,128 @@ route('GET', '/v1/domains/{domain}/doctor', ({ params }) => {
   };
 });
 
+// --- Triggers ---------------------------------------------------------------
+// Six kinds so every pill renders, one paused, and a spread of record states
+// and dead-letter reasons so each filter has something to find.
+const triggerSeed = [
+  { kind: 'cron', slug: 'nightly-report', enabled: true, config: { schedule: '0 3 * * *' } },
+  {
+    kind: 'kafka',
+    slug: 'orders',
+    enabled: true,
+    config: { brokers: ['broker-1:9092'], topic: 'orders.v1', group: 'faas-orders' },
+  },
+  {
+    kind: 'nats',
+    slug: 'billing-events',
+    enabled: false,
+    config: { url: 'nats://nats:4222', stream: 'BILLING', subject: 'billing.>', durable: 'faas' },
+  },
+  {
+    kind: 'redis_streams',
+    slug: 'sessions',
+    enabled: true,
+    config: { addr: 'redis:6379', stream: 'sessions', group: 'faas' },
+  },
+  {
+    kind: 'sqs_compat',
+    slug: 'inbound-mail',
+    enabled: true,
+    config: { queue_url: 'http://sqs.local/q/mail', long_poll_secs: 20 },
+  },
+  { kind: 'queue', slug: 'delayed-tasks', enabled: true, config: { mode: 'delayed_task' } },
+];
+
+const triggers = triggerSeed.map((t, i) => ({
+  id: db.id(),
+  account_id: 'acct-1',
+  app_id: db.apps[i % db.apps.length].id,
+  kind: t.kind,
+  slug: t.slug,
+  enabled: t.enabled,
+  config: t.config,
+  batch_size_max: t.kind === 'cron' ? 1 : 500,
+  batch_window_ms: t.kind === 'cron' ? 0 : 30000,
+  max_attempts: 10,
+  max_payload_bytes: 6 * 1024 * 1024,
+  created_at: db.iso(0),
+  updated_at: db.iso(0),
+}));
+
+const RECORD_STATES = ['pending', 'claimed', 'succeeded', 'retry', 'dead_letter'];
+const DLQ_REASONS = ['max_attempts', 'poison_record', 'broker_error', 'rate_limited'];
+
+route('GET', '/v1/triggers', ({ query }) => {
+  const kind = query.get('kind');
+  return triggers.filter((t) => !kind || t.kind === kind);
+});
+
+route('GET', '/v1/triggers/{id}', ({ params }) => {
+  const t = triggers.find((x) => x.id === params.id);
+  if (!t) throw new Problem(404, 'trigger_not_found');
+  return t;
+});
+
+route('POST', '/v1/triggers/{id}/pause', ({ params }) => {
+  const t = triggers.find((x) => x.id === params.id);
+  if (!t) throw new Problem(404, 'trigger_not_found');
+  t.enabled = false;
+  return NO_CONTENT;
+});
+
+route('POST', '/v1/triggers/{id}/resume', ({ params }) => {
+  const t = triggers.find((x) => x.id === params.id);
+  if (!t) throw new Problem(404, 'trigger_not_found');
+  t.enabled = true;
+  return NO_CONTENT;
+});
+
+route('GET', '/v1/triggers/{id}/metrics', ({ params }) => ({
+  trigger_id: params.id,
+  pending_count: 4,
+  claimed_count: 1,
+  succeeded_count: 1284,
+  retry_count: 3,
+  dead_letter_count: 2,
+}));
+
+route('GET', '/v1/triggers/{id}/records', ({ params, query }) => {
+  const want = query.get('state');
+  const records = RECORD_STATES.flatMap((state, i) =>
+    Array.from({ length: state === 'succeeded' ? 3 : 1 }, (_, n) => ({
+      id: db.id(),
+      trigger_id: params.id,
+      item_identifier: `orders.v1@${4200 + i * 10 + n}`,
+      payload: JSON.stringify({ order: 1000 + i, total_cents: 4200 + i }),
+      headers: JSON.stringify({ 'content-type': 'application/json' }),
+      metadata: JSON.stringify({ delivery_count: state === 'retry' ? 3 : 1 }),
+      state,
+      attempts: state === 'retry' ? 3 : state === 'dead_letter' ? 10 : 1,
+      next_fire_at: db.iso(0),
+      received_at: db.iso(i * 900_000),
+      last_error: state === 'retry' || state === 'dead_letter' ? 'handler returned 500' : undefined,
+      last_dispatched_at: state === 'pending' ? undefined : db.iso(i * 800_000),
+    }))
+  );
+  return { records: records.filter((r) => !want || r.state === want) };
+});
+
+route('GET', '/v1/triggers/{id}/dlq', ({ params, query }) => {
+  const want = query.get('reason');
+  const records = DLQ_REASONS.map((reason, i) => ({
+    record_id: db.id(),
+    trigger_id: params.id,
+    reason,
+    routed_to: reason === 'poison_record' ? 'drop' : 'manual_retry',
+    detail:
+      reason === 'broker_error'
+        ? { broker: 'broker-1:9092', error: 'connection reset by peer' }
+        : { attempts: 10, last_status: 500 },
+    created_at: db.iso(i * 3_600_000),
+  }));
+  return { records: records.filter((r) => !want || r.reason === want) };
+});
+
 route('GET', '/v1/crons', () => db.crons);
 route('POST', '/v1/crons', ({ body }) => {
   const a = db.apps.find((x) => x.id === body.app_id);
