@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
-import { Plus, Refresh, Trash } from 'iconoir-react';
+import { ListSelect, Plus, Refresh, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { FIELD } from '@/components/ui/field';
 import { Switch } from '@/components/ui/switch';
 import { PageHeader, Panel } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
+import { AlertDeliveries } from '@/components/dashboard/alert-deliveries';
 import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
 import { useToast } from '@/components/ui/toast';
 import { useConfirm } from '@/components/ui/confirm';
@@ -62,6 +63,10 @@ export function AlertsBody({ slug }: { slug: string }) {
   const { toast } = useToast();
   const confirm = useConfirm();
   const { data, isPending, error, refetch } = useAlerts(slug);
+
+  // Which rule's delivery history is open. The panel sits under the table so
+  // the rule's condition and target stay readable next to what it actually did.
+  const [deliveriesFor, setDeliveriesFor] = useState<AlertRow | null>(null);
   const deleteAlert = useDeleteAlert(slug);
   const updateAlert = useUpdateAlert(slug);
   const rotateSecret = useRotateAlertSecret(slug);
@@ -158,9 +163,17 @@ export function AlertsBody({ slug }: { slug: string }) {
     {
       key: 'id',
       label: '',
-      width: 'w-20',
+      width: 'w-28',
       render: (a) => (
         <span className="flex items-center gap-3">
+          <button
+            type="button"
+            aria-label={`Deliveries for ${a.name}`}
+            onClick={() => setDeliveriesFor((cur) => (cur?.id === a.id ? null : a))}
+            className="text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <ListSelect className="h-3.5 w-3.5" />
+          </button>
           <button
             type="button"
             aria-label={`Rotate secret for ${a.name}`}
@@ -382,6 +395,20 @@ export function AlertsBody({ slug }: { slug: string }) {
         error={error}
         onRetry={() => void refetch()}
       />
+
+      {deliveriesFor && (
+        <Panel
+          title={`Deliveries — ${deliveriesFor.name}`}
+          description="Whether the webhook actually received this rule, newest first."
+          actions={
+            <Button size="sm" variant="secondary" onClick={() => setDeliveriesFor(null)}>
+              Close
+            </Button>
+          }
+        >
+          <AlertDeliveries slug={slug} ruleId={deliveriesFor.id} />
+        </Panel>
+      )}
     </div>
   );
 }

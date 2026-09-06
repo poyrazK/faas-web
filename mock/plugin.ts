@@ -354,6 +354,57 @@ route('POST', '/v1/apps/{slug}/alerts', ({ params, body }) => {
   db.alerts.set(params.slug, list);
   return status(201, rule);
 });
+// Deliveries: one delivered, one failed with a real reason, and one test row
+// that only appears when include_test is set — so both branches of the toggle
+// are visible without a live webhook.
+route('GET', '/v1/apps/{slug}/alerts/{id}/deliveries', ({ params, query }) => {
+  const rule = listOf(db.alerts, params.slug).find((r) => r.id === params.id);
+  if (!rule) throw new Problem(404, 'alert_not_found');
+  const base = {
+    rule_id: rule.id,
+    account_id: 'acct-1',
+    app_id: rule.app_id,
+    observed_value: 12.5,
+  };
+  const rows = [
+    {
+      ...base,
+      id: db.id(),
+      idempotency_key: `${rule.id}:1`,
+      status: 'delivered',
+      attempt_count: 1,
+      last_status_code: 200,
+      fired_at: new Date(Date.now() - 3600_000).toISOString(),
+      delivered_at: new Date(Date.now() - 3599_000).toISOString(),
+      is_test: false,
+    },
+    {
+      ...base,
+      id: db.id(),
+      idempotency_key: `${rule.id}:2`,
+      status: 'failed',
+      attempt_count: 3,
+      last_status_code: 502,
+      last_error: 'upstream refused the connection',
+      observed_value: 31.2,
+      fired_at: new Date(Date.now() - 7200_000).toISOString(),
+      is_test: false,
+    },
+    {
+      ...base,
+      id: db.id(),
+      idempotency_key: `${db.id()}:test`,
+      status: 'delivered',
+      attempt_count: 1,
+      last_status_code: 200,
+      fired_at: new Date(Date.now() - 600_000).toISOString(),
+      delivered_at: new Date(Date.now() - 599_000).toISOString(),
+      is_test: true,
+    },
+  ];
+  return query.get('include_test') === 'true' ? rows : rows.filter((r) => !r.is_test);
+});
+
 route('PATCH', '/v1/apps/{slug}/alerts/{id}', ({ params, body }) => {
   const rule = listOf(db.alerts, params.slug).find((r) => r.id === params.id);
   if (!rule) throw new Problem(404, 'alert_rule_not_found');
