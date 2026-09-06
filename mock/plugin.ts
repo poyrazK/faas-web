@@ -449,6 +449,35 @@ route('POST', '/v1/apps/{slug}/webhooks/{id}/deliveries/{did}/retry', ({ params 
   return { delivery: d };
 });
 
+// Deployment lifecycle. Cancel refuses a live row the way the API does; retry
+// answers with a new row so the console's "it appears as a new deployment"
+// promise is visible in dev.
+route('POST', '/v1/apps/{slug}/deployments/{id}/cancel', ({ params }) => {
+  const d = db.deployments.find((x) => x.id === params.id);
+  if (!d) throw new Problem(404, 'deployment_not_found');
+  if (d.status === 'live')
+    throw new Problem(409, 'conflict', 'Live deployment cannot be cancelled.');
+  d.status = 'cancelled';
+  return d;
+});
+
+route('POST', '/v1/deployments/{id}/retry', ({ params, body }) => {
+  const d = db.deployments.find((x) => x.id === params.id);
+  if (!d) throw new Problem(404, 'deployment_not_found');
+  const stages = [
+    'source_download',
+    'dependency_restore',
+    'image_build',
+    'security_scan',
+    'snapshot_prepare',
+    'readiness',
+  ];
+  if (!stages.includes(String(body.from_stage ?? ''))) throw new Problem(400, 'invalid_from_stage');
+  const copy = { ...d, id: db.id(), status: 'building', created_at: new Date().toISOString() };
+  db.deployments.unshift(copy);
+  return copy;
+});
+
 route('GET', '/v1/apps/{slug}/queues/state', ({ params }) => db.queueState(app(params.slug)));
 route('GET', '/v1/apps/{slug}/queues/peek', ({ params }) => db.queuePeek(app(params.slug)));
 route('GET', '/v1/apps/{slug}/queues/dead_letter', ({ params }) =>

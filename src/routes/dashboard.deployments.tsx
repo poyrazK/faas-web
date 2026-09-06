@@ -17,6 +17,7 @@ import { useToast } from '@/components/ui/toast';
 import { errorMessage } from '@/lib/api/errors';
 import { useUpdateDeploymentMinInstances, useUpdateDeploymentTraffic } from '@/lib/api/queries';
 import type { components } from '@/lib/api/schema';
+import { DeploymentLifecycle } from '@/components/dashboard/deployment-lifecycle';
 import { consoleHead } from '@/lib/seo';
 
 export const Route = createFileRoute('/dashboard/deployments')({
@@ -211,6 +212,8 @@ function DeploymentDrawer({
           </dl>
 
           <DeploymentControls deployment={d} version={deployment?.version ?? d.id} />
+
+          <DeploymentLifecycle deployment={d} />
 
           <div>
             <p className="label-mono mb-2 text-muted-foreground">Vulnerability scan</p>
