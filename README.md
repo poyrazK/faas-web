@@ -46,6 +46,102 @@ enrolment first.
 | `npm run format`     | Prettier, write in place                            |
 | `npm run check`      | typecheck + lint + format + tests — run before a PR |
 
+## Feature flags
+
+The console is regularly built ahead of `apid`. A screen whose endpoint ships
+next week still has to live on `main` without reaching customers — a long-lived
+branch is the worse answer, because it drifts until the work it carries is
+silently obsolete.
+
+Flags are **typed build-time Vite configuration**, declared in
+`src/lib/feature-flags.ts`. They are public client configuration and must never
+carry a secret. Everything fails closed: only the exact strings `1` and `true`
+enable a flag, whitespace is not trimmed, and an unset variable is absent from
+the build rather than empty. Changing a flag needs a redeploy, because Vite
+inlines the value into the compiled client.
+
+| Environment variable   | Default | Effect                                        |
+| ---------------------- | ------- | --------------------------------------------- |
+| `VITE_FEATURE_EXAMPLE` | off     | Reference flag. Gates nothing; proves wiring. |
+
+### Adding a flag
+
+One entry in the registry, and read it from there:
+
+```ts
+export const featureFlags = {
+  consoleQueuesV2: enabled(import.meta.env.VITE_FEATURE_CONSOLE_QUEUES_V2),
+} as const;
+```
+
+```tsx
+import { featureFlags } from '@/lib/feature-flags';
+
+if (!featureFlags.consoleQueuesV2) return <QueuesCurrent />;
+```
+
+**Never read `import.meta.env.VITE_FEATURE_*` outside the registry** —
+`src/lib/feature-flags.test.ts` fails the build and names the offending file.
+(`VITE_API_URL` in `lib/api/client.ts` and `import.meta.env.DEV` elsewhere are
+different things and stay as they are.)
+
+**Keep the access literal, and do not freeze the registry.** Both a lookup
+table (`env[FLAGS[key]]`) and an `Object.freeze` wrapper stop Rollup folding the
+comparison, and the difference is not cosmetic: with either one the code behind
+a _disabled_ flag is still emitted into the production bundle, where anyone can
+read an unreleased feature in devtools. Written longhand it folds to `false` and
+the whole branch is eliminated. A test asserts this shape; the registry is
+immutable through its type instead.
+
+Select the variant at **one boundary component**, not scattered through a tree.
+Anything you change outside that boundary ships to both variants and is not
+covered by the env-var rollback.
+
+### Building ahead of the backend
+
+The typed client makes this less free than it looks: `api` is
+`createClient<paths>` over `src/lib/api/schema.d.ts`, generated from the
+vendored `api/openapi.yaml`. An endpoint `apid` has not shipped is a **compile
+error**, not a runtime 404 — and `src/lib/mock-spec-drift.test.ts` refuses to
+let `mock/plugin.ts` answer a path the spec does not contain. So the contract
+comes first, in this order:
+
+1. The endpoint lands in `api/openapi.yaml` upstream, in `poyrazK/faas`.
+2. `npm run api:pull` — types regenerate; the call now compiles.
+3. Add the flag, default off.
+4. Build the UI behind it. Mock the endpoint in `mock/plugin.ts` and work
+   against `npm run dev:mock`; `MOCK_EMPTY=1` and `MOCK_LATENCY` reach the
+   states seeded data does not.
+5. Merge to `main` with the flag off. Production is unaffected, and the new code
+   is not in the production bundle at all.
+6. When `apid` serves it for real, enable on Preview, verify, then Production.
+7. Remove the flag and the superseded implementation.
+
+If the spec has not landed, the frontend is blocked on the **contract**, not on
+the implementation — landing the OpenAPI change upstream is the unblock. Do not
+route around it by hand-writing a fetch: the no-fixtures rule in `src/` still
+holds, and an invented URL is exactly the drift the typed client exists to
+prevent.
+
+### Running with a flag on
+
+Locally, use the gitignored `.env.local`:
+
+```env
+VITE_FEATURE_CONSOLE_QUEUES_V2=1
+```
+
+Or for one command: `VITE_FEATURE_CONSOLE_QUEUES_V2=1 npm run dev:mock`.
+
+On Vercel, Preview and Production are configured separately — enable on Preview
+first, leave Production unset so it stays fail-closed, and flip Production once
+it is verified. Roll back by removing the Production value and redeploying.
+
+Verify in the browser, not in the build log. `/dashboard` is excluded from
+prerendering, so a green build says nothing about which variant renders — though
+the flagged code's presence or absence in `dist/assets/*.js` is a real signal if
+you need to confirm the elimination.
+
 ## Architecture
 
 ```
