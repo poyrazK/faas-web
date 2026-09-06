@@ -38,6 +38,7 @@ export const keys = {
   deployments: ['deployments'] as const,
   appDeployments: (slug: string) => ['apps', slug, 'deployments'] as const,
   domains: ['domains'] as const,
+  triggers: ['triggers'] as const,
   crons: ['crons'] as const,
   keys: ['keys'] as const,
   invoices: ['invoices'] as const,
@@ -954,6 +955,75 @@ export function useCrons() {
     queryFn: () => unwrap(api.GET('/v1/crons', {})),
   });
 }
+
+/**
+ * Triggers — the unified event-source primitive (spec §4.10, ADR-100).
+ *
+ * Account-wide like crons, not per-app, so this page is a sidebar entry
+ * rather than an app tab even though every trigger names an app.
+ */
+export function useTriggers() {
+  return useQuery({
+    queryKey: keys.triggers,
+    queryFn: () => unwrap(api.GET('/v1/triggers', {})),
+  });
+}
+
+/** The five per-state counts. Scalars, so they stay scalars — no chart. */
+export function useTriggerMetrics(id: string | null) {
+  return useQuery({
+    queryKey: ['triggers', id, 'metrics'],
+    enabled: id !== null,
+    queryFn: () => unwrap(api.GET('/v1/triggers/{id}/metrics', { params: { path: { id: id! } } })),
+  });
+}
+
+export function useTriggerRecords(id: string | null, state: TriggerRecordState | '') {
+  return useQuery({
+    queryKey: ['triggers', id, 'records', state],
+    enabled: id !== null,
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/triggers/{id}/records', {
+          params: { path: { id: id! }, query: state ? { state } : {} },
+        })
+      ),
+  });
+}
+
+export function useTriggerDeadLetter(id: string | null, reason: TriggerDeadLetterReason | '') {
+  return useQuery({
+    queryKey: ['triggers', id, 'dlq', reason],
+    enabled: id !== null,
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/triggers/{id}/dlq', {
+          params: { path: { id: id! }, query: reason ? { reason } : {} },
+        })
+      ),
+  });
+}
+
+/**
+ * Pause and resume are the cheapest way to stop a misbehaving trigger, so
+ * they live on the row rather than behind a detail view.
+ */
+export function useSetTriggerEnabled() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
+      unwrap(
+        enabled
+          ? api.POST('/v1/triggers/{id}/resume', { params: { path: { id } } })
+          : api.POST('/v1/triggers/{id}/pause', { params: { path: { id } } })
+      ),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.triggers }),
+  });
+}
+
+export type TriggerRecordState = components['schemas']['TriggerRecordState'];
+export type TriggerDeadLetterReason = components['schemas']['TriggerDeadLetterReason'];
+export type Trigger = components['schemas']['Trigger'];
 
 export function useApiKeys() {
   return useQuery({

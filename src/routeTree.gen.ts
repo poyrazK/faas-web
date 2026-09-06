@@ -41,6 +41,7 @@ import { Route as DashboardStorageRouteImport } from './routes/dashboard.storage
 import { Route as DashboardTeamRouteImport } from './routes/dashboard.team'
 import { Route as DashboardTemplatesRouteImport } from './routes/dashboard.templates'
 import { Route as DashboardTracesRouteImport } from './routes/dashboard.traces'
+import { Route as DashboardTriggersRouteImport } from './routes/dashboard.triggers'
 import { Route as DashboardUsageRouteImport } from './routes/dashboard.usage'
 import { Route as DashboardWebhooksRouteImport } from './routes/dashboard.webhooks'
 import { Route as DashboardWorkersRouteImport } from './routes/dashboard.workers'
@@ -211,6 +212,11 @@ const DashboardTracesRoute = DashboardTracesRouteImport.update({
   path: '/traces',
   getParentRoute: () => DashboardRoute,
 } as any)
+const DashboardTriggersRoute = DashboardTriggersRouteImport.update({
+  id: '/triggers',
+  path: '/triggers',
+  getParentRoute: () => DashboardRoute,
+} as any)
 const DashboardUsageRoute = DashboardUsageRouteImport.update({
   id: '/usage',
   path: '/usage',
@@ -290,6 +296,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/team': typeof DashboardTeamRoute
   '/dashboard/templates': typeof DashboardTemplatesRoute
   '/dashboard/traces': typeof DashboardTracesRoute
+  '/dashboard/triggers': typeof DashboardTriggersRoute
   '/dashboard/usage': typeof DashboardUsageRoute
   '/dashboard/webhooks': typeof DashboardWebhooksRoute
   '/dashboard/workers': typeof DashboardWorkersRoute
@@ -331,6 +338,7 @@ export interface FileRoutesByTo {
   '/dashboard/team': typeof DashboardTeamRoute
   '/dashboard/templates': typeof DashboardTemplatesRoute
   '/dashboard/traces': typeof DashboardTracesRoute
+  '/dashboard/triggers': typeof DashboardTriggersRoute
   '/dashboard/usage': typeof DashboardUsageRoute
   '/dashboard/webhooks': typeof DashboardWebhooksRoute
   '/dashboard/workers': typeof DashboardWorkersRoute
@@ -375,6 +383,7 @@ export interface FileRoutesById {
   '/dashboard/team': typeof DashboardTeamRoute
   '/dashboard/templates': typeof DashboardTemplatesRoute
   '/dashboard/traces': typeof DashboardTracesRoute
+  '/dashboard/triggers': typeof DashboardTriggersRoute
   '/dashboard/usage': typeof DashboardUsageRoute
   '/dashboard/webhooks': typeof DashboardWebhooksRoute
   '/dashboard/workers': typeof DashboardWorkersRoute
@@ -420,6 +429,7 @@ export interface FileRouteTypes {
     | '/dashboard/team'
     | '/dashboard/templates'
     | '/dashboard/traces'
+    | '/dashboard/triggers'
     | '/dashboard/usage'
     | '/dashboard/webhooks'
     | '/dashboard/workers'
@@ -461,6 +471,7 @@ export interface FileRouteTypes {
     | '/dashboard/team'
     | '/dashboard/templates'
     | '/dashboard/traces'
+    | '/dashboard/triggers'
     | '/dashboard/usage'
     | '/dashboard/webhooks'
     | '/dashboard/workers'
@@ -504,6 +515,7 @@ export interface FileRouteTypes {
     | '/dashboard/team'
     | '/dashboard/templates'
     | '/dashboard/traces'
+    | '/dashboard/triggers'
     | '/dashboard/usage'
     | '/dashboard/webhooks'
     | '/dashboard/workers'
@@ -752,6 +764,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardTracesRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/dashboard/triggers': {
+      id: '/dashboard/triggers'
+      path: '/triggers'
+      fullPath: '/dashboard/triggers'
+      preLoaderRoute: typeof DashboardTriggersRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/dashboard/usage': {
       id: '/dashboard/usage'
       path: '/usage'
@@ -844,6 +863,7 @@ interface DashboardRouteChildren {
   DashboardTeamRoute: typeof DashboardTeamRoute
   DashboardTemplatesRoute: typeof DashboardTemplatesRoute
   DashboardTracesRoute: typeof DashboardTracesRoute
+  DashboardTriggersRoute: typeof DashboardTriggersRoute
   DashboardUsageRoute: typeof DashboardUsageRoute
   DashboardWebhooksRoute: typeof DashboardWebhooksRoute
   DashboardWorkersRoute: typeof DashboardWorkersRoute
@@ -879,6 +899,7 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardTeamRoute: DashboardTeamRoute,
   DashboardTemplatesRoute: DashboardTemplatesRoute,
   DashboardTracesRoute: DashboardTracesRoute,
+  DashboardTriggersRoute: DashboardTriggersRoute,
   DashboardUsageRoute: DashboardUsageRoute,
   DashboardWebhooksRoute: DashboardWebhooksRoute,
   DashboardWorkersRoute: DashboardWorkersRoute,
