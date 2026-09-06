@@ -307,6 +307,61 @@
 
   --animate-nav-enter: nav-enter 0.7s var(--motion-ease) 0.1s backwards;
 
+  /* The hero's rotating accent phrase.
+     
+     One sliding gradient produces the whole effect. The element shows a
+     third of a 300%-wide ramp that runs, left to right, from the settled
+     brand gradient, through a brighter highlight, to transparent. Sliding
+     the window from the transparent end to the settled end means the left
+     of the phrase settles first while the right is still transparent — so
+     the glyphs reveal left to right with a feathered edge, the highlight
+     travels through them, and the phrase lands on the brand ramp it has
+     always used. Reference: Dia's "Never stop …" headline.
+
+     Six phrases share one 12.6s loop; each takes a 2.1s slot via its own
+     animation-delay, so the rotation needs no JS and no timers. */
+  --hero-phrase-count: 6;
+  --hero-phrase-slot: 2.1s;
+
+  --animate-hero-phrase: hero-phrase calc(var(--hero-phrase-count) * var(--hero-phrase-slot)) linear
+    infinite;
+
+  @keyframes hero-phrase {
+    /* Two sweeps at different speeds, which is what the reference does: the
+       glyphs are revealed well before the colour has finished draining, so
+       the highlight travels through text that is already there.
+
+       Slot = 16.667% of the loop = 2.1s. Reveal lands at ~0.75s (6%),
+       colour is settled by ~1.9s (15%). */
+    0% {
+      opacity: 1;
+      mask-position: 100% 0;
+      -webkit-mask-position: 100% 0;
+      background-position: 100% 0;
+      animation-timing-function: ease-in;
+    }
+    6% {
+      mask-position: 0% 0;
+      -webkit-mask-position: 0% 0;
+      animation-timing-function: linear;
+    }
+    15% {
+      opacity: 1;
+      background-position: 0% 0;
+    }
+    16.667% {
+      opacity: 1;
+      background-position: 0% 0;
+    }
+    16.9% {
+      opacity: 0;
+    }
+    100% {
+      opacity: 0;
+      background-position: 0% 0;
+    }
+  }
+
   @keyframes nav-enter {
     from {
       opacity: 0;
@@ -985,5 +1040,83 @@
   kbd {
     font-family: var(--font-mono);
     letter-spacing: 0;
+  }
+}
+
+/* ── Hero rotating phrase ──────────────────────────────────────────────
+   The gradient the sweep slides through. Left third is the resting brand
+   ramp the headline has always used; the middle is a brighter highlight
+   that reads as light passing over the glyphs; the right is transparent,
+   which is what makes the reveal a reveal. Only a third is visible at a
+   time (background-size: 300%).
+
+   Stacked in one grid cell so all six phrases share a box sized to the
+   longest — the headline cannot reflow as they cycle. */
+.hero-phrase-stack {
+  display: inline-grid;
+  vertical-align: baseline;
+}
+
+.hero-phrase {
+  grid-area: 1 / 1;
+  /* Colour: the settled brand ramp in the left third, a brighter band in the
+     middle that reads as light crossing the glyphs. No transparent stop — the
+     mask below owns the reveal now, so the two can run at different speeds. */
+  background-image: linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--brand) 70%, #3987e5) 0%,
+    var(--brand) 14%,
+    #2f9d86 28%,
+    var(--mint-9) 40%,
+    var(--mint-6) 50%,
+    var(--mint-8) 62%,
+    color-mix(in oklab, var(--brand) 60%, #3987e5) 82%,
+    var(--brand) 100%
+  );
+  background-size: 300% 100%;
+  background-position: 0% 0;
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+
+  /* Reveal: a feathered edge wide enough to soften about two glyphs, so the
+     leading character fades up rather than appearing outright. */
+  --hero-mask: linear-gradient(90deg, #000 0%, #000 58%, transparent 80%);
+  mask-image: var(--hero-mask);
+  -webkit-mask-image: var(--hero-mask);
+  mask-size: 260% 100%;
+  -webkit-mask-size: 260% 100%;
+  mask-position: 0% 0;
+  -webkit-mask-position: 0% 0;
+  mask-repeat: no-repeat;
+  -webkit-mask-repeat: no-repeat;
+
+  animation: var(--animate-hero-phrase);
+}
+
+/* The first phrase is what the prerendered HTML paints and what a reader
+   with animation off keeps. The rest wait their turn out of sight. */
+.hero-phrase:not(:first-child) {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* No rotation: the headline is one sentence, settled.
+     
+     `animation: none` is repeated here rather than left to the blanket rule
+     in the base layer: that rule is emitted before `.hero-phrase` declares
+     its animation, and at equal specificity the later declaration wins — so
+     the blanket alone left the loop running, and the phrase spent most of
+     the cycle in its hidden window with the rest display:none. */
+  .hero-phrase {
+    animation: none;
+    opacity: 1;
+    background-position: 0% 0;
+    mask-position: 0% 0;
+    -webkit-mask-position: 0% 0;
+  }
+  .hero-phrase:not(:first-child) {
+    display: none;
   }
 }

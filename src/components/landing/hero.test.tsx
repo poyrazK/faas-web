@@ -24,9 +24,37 @@ describe('Hero', () => {
   it('keeps the landing headline, with the wake time as the accent', async () => {
     renderHero();
     const h1 = await screen.findByRole('heading', { level: 1 });
-    expect(h1).toHaveTextContent(
+    // The accent rotates, but the accessible name does not: the rotating
+    // spans are aria-hidden, so a screen reader gets one stable sentence
+    // rather than all six phrases concatenated.
+    expect(h1).toHaveAccessibleName(
       'Serverless on real microVMs. Scale to zero. Wake in under 350 ms.'
     );
+  });
+
+  it('renders every rotating phrase, with the first one the one that paints', async () => {
+    renderHero();
+    await screen.findByRole('heading', { level: 1 });
+    // All six are in the DOM so the CSS loop needs no JS; the stack sizes
+    // itself to the longest, so the balanced h1 cannot reflow as they cycle.
+    const phrases = document.querySelectorAll('.hero-phrase');
+    expect(phrases).toHaveLength(6);
+    expect(phrases[0]).toHaveTextContent('Wake in under 350 ms.');
+    expect(phrases[0]).not.toHaveClass('opacity-0');
+  });
+
+  it('staggers each phrase by one slot', async () => {
+    renderHero();
+    await screen.findByRole('heading', { level: 1 });
+    const phrases = [...document.querySelectorAll<HTMLElement>('.hero-phrase')];
+    expect(phrases.map((p) => p.style.animationDelay)).toEqual([
+      'calc(0 * var(--hero-phrase-slot))',
+      'calc(1 * var(--hero-phrase-slot))',
+      'calc(2 * var(--hero-phrase-slot))',
+      'calc(3 * var(--hero-phrase-slot))',
+      'calc(4 * var(--hero-phrase-slot))',
+      'calc(5 * var(--hero-phrase-slot))',
+    ]);
   });
 
   it('keeps the primary action and the install command as real controls', async () => {
