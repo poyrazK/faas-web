@@ -1275,6 +1275,27 @@ export function useAlerts(slug: string) {
   });
 }
 
+/**
+ * Recent deliveries for one alert rule — whether it actually reached the
+ * webhook, and what came back when it did not.
+ *
+ * `include_test` defaults to false to match the API: the test-alert button
+ * writes delivery rows too, and a customer checking whether a rule fired in
+ * production does not want their own test clicks in the answer.
+ */
+export function useAlertDeliveries(slug: string, ruleId: string, includeTest: boolean) {
+  return useQuery({
+    queryKey: ['apps', slug, 'alerts', ruleId, 'deliveries', includeTest],
+    enabled: Boolean(slug && ruleId),
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/alerts/{id}/deliveries', {
+          params: { path: { slug, id: ruleId }, query: { include_test: includeTest } },
+        })
+      ),
+  });
+}
+
 export function useDeleteAlert(slug: string) {
   const qc = useQueryClient();
   return useMutation({
