@@ -15,6 +15,7 @@ import {
   Key,
   Package,
   Rocket,
+  Search,
   Server,
   Settings,
   ShieldCheck,
@@ -75,6 +76,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     title: 'Observability',
     items: [
+      { to: '/dashboard/debug', label: 'Debugger', icon: Search },
       { to: '/dashboard/traces', label: 'Invocations', icon: Activity },
       { to: '/dashboard/audit', label: 'Audit Log', icon: Journal },
     ],
@@ -123,6 +125,7 @@ export const APP_TABS: { tab: string; segment: string }[] = [
   { tab: 'Alerts', segment: 'alerts' },
   { tab: 'Webhooks', segment: 'webhooks' },
   { tab: 'Edge rules', segment: 'edge-rules' },
+  { tab: 'Debugger', segment: 'debug' },
 ];
 
 export const SECTION_LABELS: Record<string, string> = {
