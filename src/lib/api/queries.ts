@@ -1058,6 +1058,38 @@ export function useDeleteDomain() {
 
 type DomainsList = NonNullable<ReturnType<typeof useDomains>['data']>;
 
+/**
+ * Re-run DNS + certificate verification for one domain.
+ *
+ * The row is refreshed from the server rather than patched optimistically: the
+ * point of pressing Verify is to learn what the platform observes, so guessing
+ * the outcome locally would defeat it.
+ */
+export function useVerifyDomain() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (domain: string) =>
+      unwrap(api.POST('/v1/domains/{domain}/verify', { params: { path: { domain } } })),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.domains }),
+  });
+}
+
+/**
+ * The five-check domain doctor (ADR-120). Disabled until a domain is selected,
+ * because the probe is synchronous server-side when its cache is cold.
+ */
+export function useDomainDoctor(domain: string | null) {
+  return useQuery({
+    queryKey: ['domains', domain, 'doctor'],
+    enabled: domain !== null,
+    // The report is a live probe; a cached one would misreport a DNS change the
+    // customer just made, which is precisely when they open this.
+    staleTime: 0,
+    queryFn: () =>
+      unwrap(api.GET('/v1/domains/{domain}/doctor', { params: { path: { domain: domain! } } })),
+  });
+}
+
 export function useInvokeApp() {
   return useMutation({
     mutationFn: ({ slug, ...body }: { slug: string } & components['schemas']['InvokeRequest']) =>

@@ -1,12 +1,19 @@
 import { useMemo, useState } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
-import { Plus, Trash } from 'iconoir-react';
+import { Activity, Plus, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { PageHeader, Panel } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { useToast } from '@/components/ui/toast';
 import { useConfirm } from '@/components/ui/confirm';
-import { useAddDomain, useApps, useDeleteDomain, useDomains } from '@/lib/api/queries';
+import {
+  useAddDomain,
+  useApps,
+  useDeleteDomain,
+  useDomains,
+  useVerifyDomain,
+} from '@/lib/api/queries';
+import { DomainDoctor } from '@/components/dashboard/domain-doctor';
 import { slugIndex } from '@/lib/api/adapters';
 import { errorMessage } from '@/lib/api/errors';
 import { FieldError } from '@/components/ui/field';
@@ -51,6 +58,12 @@ function DomainsPage() {
   const { data: apps } = useApps();
   const addDomain = useAddDomain();
   const deleteDomain = useDeleteDomain();
+  const verifyDomain = useVerifyDomain();
+
+  // Which domain the doctor panel is reporting on. Null closes it; the panel
+  // sits under the table rather than in a dialog so the TXT record above stays
+  // readable while the remediation is being applied.
+  const [doctorFor, setDoctorFor] = useState<string | null>(null);
 
   const [host, setHost] = useState('');
   const [appSlug, setAppSlug] = useState('');
@@ -114,33 +127,80 @@ function DomainsPage() {
     {
       key: 'id',
       label: '',
-      width: 'w-12',
+      width: 'w-56',
       render: (d) => (
-        <button
-          type="button"
-          aria-label={`Remove ${d.domain}`}
-          onClick={async () => {
-            if (
-              !(await confirm({
-                title: `Remove ${d.domain}?`,
-                description:
-                  'Traffic to this hostname stops routing here immediately. The DNS record can stay.',
-                confirmLabel: 'Remove domain',
-                destructive: true,
-              }))
-            )
-              return;
-            void deleteDomain
-              .mutateAsync(d.domain)
-              .then(() => toast({ kind: 'success', title: `Removed ${d.domain}` }))
-              .catch((err: unknown) =>
-                toast({ kind: 'error', title: 'Could not remove', description: errorMessage(err) })
-              );
-          }}
-          className="text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <Trash className="h-3.5 w-3.5" />
-        </button>
+        <div className="flex items-center justify-end gap-1.5">
+          {!d.verified && (
+            <Button
+              size="sm"
+              variant="secondary"
+              busy={verifyDomain.isPending && verifyDomain.variables === d.domain}
+              onClick={() => {
+                void verifyDomain
+                  .mutateAsync(d.domain)
+                  .then((row) =>
+                    toast(
+                      row.verified
+                        ? { kind: 'success', title: `${d.domain} verified` }
+                        : {
+                            kind: 'info',
+                            title: 'Not verified yet',
+                            description: 'DNS has not propagated. Run the doctor to see why.',
+                          }
+                    )
+                  )
+                  .catch((err: unknown) =>
+                    toast({
+                      kind: 'error',
+                      title: 'Could not verify',
+                      description: errorMessage(err),
+                    })
+                  );
+              }}
+            >
+              Verify
+            </Button>
+          )}
+
+          <button
+            type="button"
+            aria-label={`Diagnose ${d.domain}`}
+            onClick={() => setDoctorFor((current) => (current === d.domain ? null : d.domain))}
+            className="text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <Activity className="h-3.5 w-3.5" />
+          </button>
+
+          <button
+            type="button"
+            aria-label={`Remove ${d.domain}`}
+            onClick={async () => {
+              if (
+                !(await confirm({
+                  title: `Remove ${d.domain}?`,
+                  description:
+                    'Traffic to this hostname stops routing here immediately. The DNS record can stay.',
+                  confirmLabel: 'Remove domain',
+                  destructive: true,
+                }))
+              )
+                return;
+              void deleteDomain
+                .mutateAsync(d.domain)
+                .then(() => toast({ kind: 'success', title: `Removed ${d.domain}` }))
+                .catch((err: unknown) =>
+                  toast({
+                    kind: 'error',
+                    title: 'Could not remove',
+                    description: errorMessage(err),
+                  })
+                );
+            }}
+            className="text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <Trash className="h-3.5 w-3.5" />
+          </button>
+        </div>
       ),
     },
   ];
@@ -241,6 +301,20 @@ function DomainsPage() {
         error={error}
         onRetry={() => void refetch()}
       />
+
+      {doctorFor && (
+        <Panel
+          title={`Doctor — ${doctorFor}`}
+          description="What the platform observes for this hostname right now."
+          actions={
+            <Button size="sm" variant="secondary" onClick={() => setDoctorFor(null)}>
+              Close
+            </Button>
+          }
+        >
+          <DomainDoctor domain={doctorFor} />
+        </Panel>
+      )}
     </div>
   );
 }
