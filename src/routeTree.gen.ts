@@ -23,6 +23,7 @@ import { Route as DashboardAuditRouteImport } from './routes/dashboard.audit'
 import { Route as DashboardBuildsRouteImport } from './routes/dashboard.builds'
 import { Route as DashboardCronsRouteImport } from './routes/dashboard.crons'
 import { Route as DashboardDatabasesRouteImport } from './routes/dashboard.databases'
+import { Route as DashboardDebugRouteImport } from './routes/dashboard.debug'
 import { Route as DashboardDeploymentsRouteImport } from './routes/dashboard.deployments'
 import { Route as DashboardDomainsRouteImport } from './routes/dashboard.domains'
 import { Route as DashboardEdgeRulesRouteImport } from './routes/dashboard.edge-rules'
@@ -120,6 +121,11 @@ const DashboardCronsRoute = DashboardCronsRouteImport.update({
 const DashboardDatabasesRoute = DashboardDatabasesRouteImport.update({
   id: '/databases',
   path: '/databases',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardDebugRoute = DashboardDebugRouteImport.update({
+  id: '/debug',
+  path: '/debug',
   getParentRoute: () => DashboardRoute,
 } as any)
 const DashboardDeploymentsRoute = DashboardDeploymentsRouteImport.update({
@@ -278,6 +284,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/builds': typeof DashboardBuildsRoute
   '/dashboard/crons': typeof DashboardCronsRoute
   '/dashboard/databases': typeof DashboardDatabasesRoute
+  '/dashboard/debug': typeof DashboardDebugRoute
   '/dashboard/deployments': typeof DashboardDeploymentsRoute
   '/dashboard/domains': typeof DashboardDomainsRoute
   '/dashboard/edge-rules': typeof DashboardEdgeRulesRoute
@@ -320,6 +327,7 @@ export interface FileRoutesByTo {
   '/dashboard/builds': typeof DashboardBuildsRoute
   '/dashboard/crons': typeof DashboardCronsRoute
   '/dashboard/databases': typeof DashboardDatabasesRoute
+  '/dashboard/debug': typeof DashboardDebugRoute
   '/dashboard/deployments': typeof DashboardDeploymentsRoute
   '/dashboard/domains': typeof DashboardDomainsRoute
   '/dashboard/edge-rules': typeof DashboardEdgeRulesRoute
@@ -365,6 +373,7 @@ export interface FileRoutesById {
   '/dashboard/builds': typeof DashboardBuildsRoute
   '/dashboard/crons': typeof DashboardCronsRoute
   '/dashboard/databases': typeof DashboardDatabasesRoute
+  '/dashboard/debug': typeof DashboardDebugRoute
   '/dashboard/deployments': typeof DashboardDeploymentsRoute
   '/dashboard/domains': typeof DashboardDomainsRoute
   '/dashboard/edge-rules': typeof DashboardEdgeRulesRoute
@@ -411,6 +420,7 @@ export interface FileRouteTypes {
     | '/dashboard/builds'
     | '/dashboard/crons'
     | '/dashboard/databases'
+    | '/dashboard/debug'
     | '/dashboard/deployments'
     | '/dashboard/domains'
     | '/dashboard/edge-rules'
@@ -453,6 +463,7 @@ export interface FileRouteTypes {
     | '/dashboard/builds'
     | '/dashboard/crons'
     | '/dashboard/databases'
+    | '/dashboard/debug'
     | '/dashboard/deployments'
     | '/dashboard/domains'
     | '/dashboard/edge-rules'
@@ -497,6 +508,7 @@ export interface FileRouteTypes {
     | '/dashboard/builds'
     | '/dashboard/crons'
     | '/dashboard/databases'
+    | '/dashboard/debug'
     | '/dashboard/deployments'
     | '/dashboard/domains'
     | '/dashboard/edge-rules'
@@ -636,6 +648,13 @@ declare module '@tanstack/react-router' {
       path: '/databases'
       fullPath: '/dashboard/databases'
       preLoaderRoute: typeof DashboardDatabasesRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/debug': {
+      id: '/dashboard/debug'
+      path: '/debug'
+      fullPath: '/dashboard/debug'
+      preLoaderRoute: typeof DashboardDebugRouteImport
       parentRoute: typeof DashboardRoute
     }
     '/dashboard/deployments': {
@@ -845,6 +864,7 @@ interface DashboardRouteChildren {
   DashboardBuildsRoute: typeof DashboardBuildsRoute
   DashboardCronsRoute: typeof DashboardCronsRoute
   DashboardDatabasesRoute: typeof DashboardDatabasesRoute
+  DashboardDebugRoute: typeof DashboardDebugRoute
   DashboardDeploymentsRoute: typeof DashboardDeploymentsRoute
   DashboardDomainsRoute: typeof DashboardDomainsRoute
   DashboardEdgeRulesRoute: typeof DashboardEdgeRulesRoute
@@ -881,6 +901,7 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardBuildsRoute: DashboardBuildsRoute,
   DashboardCronsRoute: DashboardCronsRoute,
   DashboardDatabasesRoute: DashboardDatabasesRoute,
+  DashboardDebugRoute: DashboardDebugRoute,
   DashboardDeploymentsRoute: DashboardDeploymentsRoute,
   DashboardDomainsRoute: DashboardDomainsRoute,
   DashboardEdgeRulesRoute: DashboardEdgeRulesRoute,

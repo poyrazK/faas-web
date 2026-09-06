@@ -969,6 +969,59 @@ export function useTriggers() {
   });
 }
 
+/**
+ * The production debugger (ADR-127).
+ *
+ * Plan-gated: `DebugTelemetryEnabled` is false on Free, so every one of these
+ * answers `402 plan_feature_gated` there. That is a fact about the plan, not a
+ * failure, and the page says so rather than showing an error.
+ *
+ * The window is clamped server-side to `DebugTelemetryRetentionDays`, so the
+ * UI offers only windows the plan actually retains — asking for 7 days on a
+ * 3-day plan silently returns 3, and a console that showed "7 days" over that
+ * would be lying about what it drew.
+ */
+export function useDebugRequests(slug: string, since: string) {
+  return useQuery({
+    queryKey: ['apps', slug, 'debug', 'requests', since],
+    enabled: Boolean(slug),
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/debug/requests', {
+          params: { path: { slug }, query: { since } },
+        })
+      ),
+  });
+}
+
+export function useDebugRegressions(slug: string, since: string) {
+  return useQuery({
+    queryKey: ['apps', slug, 'debug', 'regressions', since],
+    enabled: Boolean(slug),
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/debug/regressions', {
+          params: { path: { slug }, query: { since } },
+        })
+      ),
+  });
+}
+
+/**
+ * Per-route latency for two deployments over one window.
+ *
+ * The body calls them `source` and `mirror`, but the handler simply runs the
+ * same per-route query against each deployment id — there is no mirror
+ * relationship required, so this compares any two deployments. That is what
+ * makes it answer "did the last deploy make this route slower?".
+ */
+export function useCompareDeployments(slug: string) {
+  return useMutation({
+    mutationFn: (body: components['schemas']['DebugCompareRequest']) =>
+      unwrap(api.POST('/v1/apps/{slug}/debug/compare', { params: { path: { slug } }, body })),
+  });
+}
+
 /** The five per-state counts. Scalars, so they stay scalars — no chart. */
 export function useTriggerMetrics(id: string | null) {
   return useQuery({

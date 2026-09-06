@@ -974,6 +974,129 @@ route('GET', '/v1/domains/{domain}/doctor', ({ params }) => {
   };
 });
 
+// --- Debugger (ADR-127) -----------------------------------------------------
+// MOCK_PLAN=free reproduces the plan gate, which is the branch that decides
+// whether the page reads as broken or as "not on your plan".
+const debugGated = process.env.MOCK_PLAN === 'free';
+
+function gateDebug() {
+  if (debugGated) {
+    throw new Problem(
+      402,
+      'plan_feature_gated',
+      "the free plan doesn't unlock debugger; upgrade to Hobby or higher to use event-driven features."
+    );
+  }
+}
+
+const DEBUG_ROUTES = ['/orders/{id}', '/health', '/webhooks/stripe', '/search'];
+
+route('GET', '/v1/apps/{slug}/debug/requests', ({ query }) => {
+  gateDebug();
+  const asked = query.get('since') || '1h';
+  // The server clamps to the plan's retention; 72h comes back as 24h so the
+  // console's "capped" notice is reachable.
+  const since = asked === '72h' ? '24h' : asked;
+  const requests = Array.from({ length: 18 }, (_, i) => ({
+    id: db.id(),
+    deployment_id: db.deployments[i % db.deployments.length].id,
+    route: DEBUG_ROUTES[i % DEBUG_ROUTES.length],
+    method: (['GET', 'POST', 'GET', 'PUT'] as const)[i % 4],
+    status: i % 7 === 0 ? 500 : i % 5 === 0 ? 404 : 200,
+    latency_ms: i % 7 === 0 ? 2400 : 40 + i * 11,
+    cold_boot: i % 6 === 0,
+    trace_id: db.id() + db.id(),
+    received_at: db.iso(i * 120_000),
+  }));
+  return { since, requests };
+});
+
+route('GET', '/v1/apps/{slug}/debug/regressions', ({ query }) => {
+  gateDebug();
+  return {
+    since: query.get('since') || '24h',
+    regressions: [
+      {
+        deployment_id: db.deployments[0].id,
+        route: '/orders/{id}',
+        p95_ms: 1840,
+        p95_base_ms: 260,
+        affected_count: 412,
+        regression_factor: '7.08',
+        first_detected_at: db.iso(5_400_000),
+        last_detected_at: db.iso(120_000),
+      },
+      {
+        deployment_id: db.deployments[0].id,
+        route: '/search',
+        p95_ms: 390,
+        p95_base_ms: 300,
+        affected_count: 27,
+        regression_factor: '1.30',
+        first_detected_at: db.iso(9_000_000),
+        last_detected_at: db.iso(600_000),
+      },
+    ],
+  };
+});
+
+route('POST', '/v1/apps/{slug}/debug/compare', ({ body }) => {
+  gateDebug();
+  if (!body.source || !body.mirror) throw new Problem(400, 'validation_failed');
+  return {
+    source: String(body.source),
+    mirror: String(body.mirror),
+    // The last route has traffic on one side only — the API does not
+    // synthesise the missing percentiles, and neither should the console.
+    routes: [
+      {
+        route: '/orders/{id}',
+        source_p50_ms: 120,
+        source_p95_ms: 260,
+        source_p99_ms: 410,
+        source_count: 5120,
+        mirror_p50_ms: 640,
+        mirror_p95_ms: 1840,
+        mirror_p99_ms: 2600,
+        mirror_count: 4980,
+      },
+      {
+        route: '/health',
+        source_p50_ms: 4,
+        source_p95_ms: 9,
+        source_p99_ms: 14,
+        source_count: 20400,
+        mirror_p50_ms: 4,
+        mirror_p95_ms: 9,
+        mirror_p99_ms: 15,
+        mirror_count: 20110,
+      },
+      {
+        route: '/search',
+        source_p50_ms: 210,
+        source_p95_ms: 480,
+        source_p99_ms: 700,
+        source_count: 880,
+        mirror_p50_ms: 150,
+        mirror_p95_ms: 300,
+        mirror_p99_ms: 460,
+        mirror_count: 910,
+      },
+      {
+        route: '/webhooks/stripe',
+        source_p50_ms: 88,
+        source_p95_ms: 140,
+        source_p99_ms: 190,
+        source_count: 310,
+        mirror_p50_ms: null,
+        mirror_p95_ms: null,
+        mirror_p99_ms: null,
+        mirror_count: null,
+      },
+    ],
+  };
+});
+
 // --- Triggers ---------------------------------------------------------------
 // Six kinds so every pill renders, one paused, and a spread of record states
 // and dead-letter reasons so each filter has something to find.
