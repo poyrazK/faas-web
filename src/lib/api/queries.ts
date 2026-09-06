@@ -771,6 +771,44 @@ export function useUpdateDeploymentTraffic() {
   });
 }
 
+/**
+ * Cancel a deployment that is still in flight.
+ *
+ * The API answers 409 once the deployment has gone live — by then there is
+ * nothing to cancel, which is an outcome to explain rather than an error.
+ */
+export function useCancelDeployment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ slug, id }: { slug: string; id: string }) =>
+      unwrap(
+        api.POST('/v1/apps/{slug}/deployments/{id}/cancel', { params: { path: { slug, id } } })
+      ),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.deployments }),
+  });
+}
+
+/**
+ * Retry a failed deployment from a named stage.
+ *
+ * The API duplicates the row rather than mutating it and answers 202 with a new
+ * deployment, so this invalidates the list instead of patching the failed row —
+ * the retry is a separate event and the timeline is supposed to show both.
+ */
+export function useRetryDeployment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, from_stage }: { id: string; from_stage: RetryStage }) =>
+      unwrap(
+        api.POST('/v1/deployments/{id}/retry', { params: { path: { id } }, body: { from_stage } })
+      ),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.deployments }),
+  });
+}
+
+/** The closed-6 stage vocabulary the retry endpoint accepts (ADR-117). */
+export type RetryStage = components['schemas']['RetryDeploymentRequest']['from_stage'];
+
 /* ------------------------------------------------------------------ *
  * Mutations
  *
