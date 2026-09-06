@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { InlinePhase, queryPhase } from '@/components/dashboard/primitives';
 import { Pill } from '@/components/dashboard/resource-table';
 import { useTriggerRecords, type TriggerRecordState } from '@/lib/api/queries';
+import { TriggerRecordActions } from './trigger-record-actions';
 import { formatRelative } from '@/lib/mock-data';
 
 /**
@@ -102,6 +103,15 @@ export function TriggerRecords({ triggerId }: { triggerId: string }) {
                     {r.attempts} attempt{r.attempts === 1 ? '' : 's'}
                   </span>
                 )}
+                <span className="ml-auto">
+                  {/* The API accepts a re-drive only from these two states, so
+                      the button is offered only from them. */}
+                  <TriggerRecordActions
+                    triggerId={triggerId}
+                    recordId={r.id}
+                    retryable={r.state === 'retry' || r.state === 'dead_letter'}
+                  />
+                </span>
               </div>
 
               {r.last_error && (

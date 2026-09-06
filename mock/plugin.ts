@@ -1096,6 +1096,26 @@ route('GET', '/v1/triggers/{id}/dlq', ({ params, query }) => {
   return { records: records.filter((r) => !want || r.reason === want) };
 });
 
+// Retry mirrors the real contract: only a record in retry or dead_letter can
+// be re-driven, everything else answers 409 trigger_dlq_retry_failed. The
+// console decides from the record's state, so this is the backstop for the
+// dead-letter list, where the state is implied rather than shown.
+const retriedRecords = new Set<string>();
+
+route('POST', '/v1/triggers/{id}/records/{rid}/retry', ({ params }) => {
+  if (retriedRecords.has(params.rid)) {
+    throw new Problem(
+      409,
+      'trigger_dlq_retry_failed',
+      'Record state was not retry or dead_letter.'
+    );
+  }
+  retriedRecords.add(params.rid);
+  return NO_CONTENT;
+});
+
+route('POST', '/v1/triggers/{id}/records/{rid}/drop', () => NO_CONTENT);
+
 route('GET', '/v1/crons', () => db.crons);
 route('POST', '/v1/crons', ({ body }) => {
   const a = db.apps.find((x) => x.id === body.app_id);

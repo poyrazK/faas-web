@@ -7,6 +7,14 @@ vi.mock('@/lib/api/queries', () => ({
   useTriggerDeadLetter: (id: string, reason: string) => useTriggerDeadLetter(id, reason) as unknown,
 }));
 
+// The actions have their own suite; here they are a boundary, so this keeps
+// these tests about the list and out of toast/confirm provider setup.
+vi.mock('./trigger-record-actions', () => ({
+  TriggerRecordActions: ({ recordId, retryable }: { recordId: string; retryable?: boolean }) => (
+    <div data-testid="actions" data-record={recordId} data-retryable={String(retryable ?? true)} />
+  ),
+}));
+
 const { TriggerDeadLetter } = await import('./trigger-dlq');
 
 function row(over: Record<string, unknown> = {}) {
@@ -57,5 +65,10 @@ describe('TriggerDeadLetter', () => {
     useTriggerDeadLetter.mockReturnValue(ok([]));
     render(<TriggerDeadLetter triggerId="t1" />);
     expect(screen.getByText(/nothing has been dead-lettered/i)).toBeInTheDocument();
+  });
+
+  it('offers recovery on every dead-lettered row', () => {
+    render(<TriggerDeadLetter triggerId="t1" />);
+    expect(screen.getByTestId('actions')).toHaveAttribute('data-record', 'r1');
   });
 });

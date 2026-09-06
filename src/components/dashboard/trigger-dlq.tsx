@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { InlinePhase, queryPhase } from '@/components/dashboard/primitives';
 import { Pill } from '@/components/dashboard/resource-table';
 import { useTriggerDeadLetter, type TriggerDeadLetterReason } from '@/lib/api/queries';
+import { TriggerRecordActions } from './trigger-record-actions';
 import { formatRelative } from '@/lib/mock-data';
 
 /**
@@ -87,6 +88,11 @@ export function TriggerDeadLetter({ triggerId }: { triggerId: string }) {
                   {r.record_id}
                 </button>
                 <span className="text-xs text-muted-foreground">{when(r.created_at)}</span>
+                <span className="ml-auto">
+                  {/* Every row here is dead-lettered, which is one of the two
+                      states a re-drive is accepted from. */}
+                  <TriggerRecordActions triggerId={triggerId} recordId={r.record_id} />
+                </span>
               </div>
 
               {open === r.record_id && (
