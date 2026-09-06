@@ -1296,6 +1296,56 @@ export function useAlertDeliveries(slug: string, ruleId: string, includeTest: bo
   });
 }
 
+/** The system-seeded alert-preset catalog (ADR-123). Read-only for customers. */
+export function useAlertPresets() {
+  return useQuery({
+    queryKey: ['alert-presets'],
+    // The catalog is seeded server-side and changes on deploys, not on use.
+    staleTime: 5 * 60_000,
+    queryFn: () => unwrap(api.GET('/v1/alert-presets', {})),
+  });
+}
+
+/** Instantiate a preset as a real alert rule on one app. */
+export function useEnableAlertPreset() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      slug,
+      name,
+      body,
+    }: {
+      slug: string;
+      name: string;
+      body: components['schemas']['EnableAlertPresetRequest'];
+    }) =>
+      unwrap(
+        api.POST('/v1/apps/{slug}/alert-presets/{name}/enable', {
+          params: { path: { slug, name } },
+          body,
+        })
+      ),
+    onSettled: (_d, _e, vars) => qc.invalidateQueries({ queryKey: ['apps', vars.slug, 'alerts'] }),
+  });
+}
+
+/**
+ * Fire a synthetic alert at the rule this preset instantiated.
+ *
+ * 404 means the preset was never enabled here — there is no rule to dispatch
+ * to, which is a prerequisite to state rather than a failure to report.
+ */
+export function useTestAlertPreset() {
+  return useMutation({
+    mutationFn: ({ slug, name }: { slug: string; name: string }) =>
+      unwrap(
+        api.POST('/v1/apps/{slug}/alert-presets/{name}/test', {
+          params: { path: { slug, name } },
+        })
+      ),
+  });
+}
+
 export function useDeleteAlert(slug: string) {
   const qc = useQueryClient();
   return useMutation({

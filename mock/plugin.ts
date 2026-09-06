@@ -327,6 +327,92 @@ route('DELETE', '/v1/apps/{slug}/upstreams/{id}', ({ params }) => {
   list.splice(i, 1);
   return NO_CONTENT;
 });
+const alertPresets = [
+  {
+    id: 'preset-error-rate',
+    name: 'error_rate_2pct',
+    display_name: 'Error rate exceeds 2%',
+    description: 'Fires when the rolling 15-minute error rate exceeds 2%.',
+    category: 'reliability',
+    metric: 'error_rate_pct',
+    comparison: 'gt',
+    threshold: 2,
+    window_spec: '15m',
+    default_cooldown_minutes: 15,
+    minimum_plan: 'hobby',
+    enabled_in_catalog: true,
+  },
+  {
+    id: 'preset-latency',
+    name: 'latency_p99_1s',
+    display_name: 'p99 latency over 1s',
+    description: 'Fires when the 99th percentile stays above one second for an hour.',
+    category: 'availability',
+    metric: 'latency_p99_ms',
+    comparison: 'gt',
+    threshold: 1000,
+    window_spec: '1h',
+    default_cooldown_minutes: 30,
+    minimum_plan: 'pro',
+    enabled_in_catalog: true,
+  },
+  {
+    id: 'preset-cold-starts',
+    name: 'cold_start_50pct',
+    display_name: 'Cold starts over 50%',
+    description: 'Most requests are waking the app; consider a warm instance.',
+    category: 'cost',
+    metric: 'cold_start_pct',
+    comparison: 'gt',
+    threshold: 50,
+    window_spec: '6h',
+    default_cooldown_minutes: 60,
+    minimum_plan: 'free',
+    enabled_in_catalog: true,
+  },
+];
+
+route('GET', '/v1/alert-presets', () => alertPresets);
+
+route('POST', '/v1/apps/{slug}/alert-presets/{name}/enable', ({ params, body }) => {
+  const preset = alertPresets.find((p) => p.name === params.name);
+  if (!preset) throw new Problem(404, 'preset_not_found');
+  // The account is on hobby in the mock, so a pro preset shows the plan gate.
+  if (preset.minimum_plan === 'pro' || preset.minimum_plan === 'scale') {
+    throw new Problem(402, 'plan_required', `This preset needs the ${preset.minimum_plan} plan.`);
+  }
+  const a = app(params.slug);
+  const list = listOf(db.alerts, params.slug);
+  const rule: (typeof list)[number] = {
+    id: db.id(),
+    app_id: a.id,
+    name: preset.display_name,
+    enabled: body.enabled !== false,
+    metric: preset.metric as (typeof list)[number]['metric'],
+    comparison: preset.comparison as (typeof list)[number]['comparison'],
+    threshold: preset.threshold,
+    window_spec: preset.window_spec as (typeof list)[number]['window_spec'],
+    webhook_url: String(body.webhook_url ?? ''),
+    webhook_secret_sealed_masked: '***',
+    cooldown_minutes: preset.default_cooldown_minutes,
+    action: 'webhook',
+    state: 'ok',
+    created_at: db.iso(0),
+    updated_at: db.iso(0),
+  };
+  list.push(rule);
+  db.alerts.set(params.slug, list);
+  return status(201, rule);
+});
+
+route('POST', '/v1/apps/{slug}/alert-presets/{name}/test', ({ params }) => {
+  const preset = alertPresets.find((p) => p.name === params.name);
+  if (!preset) throw new Problem(404, 'preset_not_found');
+  const exists = listOf(db.alerts, params.slug).some((r) => r.name === preset.display_name);
+  if (!exists) throw new Problem(404, 'not_found', 'This preset is not enabled on the app.');
+  return { status: 'sent', is_test: true };
+});
+
 route('GET', '/v1/apps/{slug}/alerts', ({ params }) => listOf(db.alerts, params.slug));
 route('POST', '/v1/apps/{slug}/alerts', ({ params, body }) => {
   const a = app(params.slug);
