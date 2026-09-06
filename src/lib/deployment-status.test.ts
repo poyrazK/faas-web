@@ -24,6 +24,29 @@ describe('deploymentPhase', () => {
     expect(isDeploymentTerminal('error')).toBe(true);
   });
 
+  /**
+   * The vocabulary `apid` actually emits, from `pkg/state/types.go`. The
+   * OpenAPI types `status` as a bare string with `example: "active"`, which is
+   * a value the API has never produced — so this is pinned against the source
+   * rather than the spec.
+   */
+  it('covers every status apid emits', () => {
+    expect(deploymentPhase('pending')).toBe('queued');
+    expect(deploymentPhase('building')).toBe('building');
+    expect(deploymentPhase('imaging')).toBe('building');
+    expect(deploymentPhase('snapshotting')).toBe('building');
+    expect(deploymentPhase('live')).toBe('live');
+    expect(deploymentPhase('failed')).toBe('failed');
+    expect(deploymentPhase('superseded')).toBe('superseded');
+    expect(deploymentPhase('cancelled')).toBe('failed');
+  });
+
+  it('treats a superseded deployment as finished, so nothing polls it', () => {
+    // It deployed, then a newer one replaced it. Every redeploy makes one, so
+    // reading it as unfinished kept the deployments list polling forever.
+    expect(isDeploymentTerminal('superseded')).toBe(true);
+  });
+
   it('keeps unknown statuses safe and non-terminal', () => {
     expect(deploymentPhase('future_status')).toBe('queued');
     expect(isDeploymentTerminal('future_status')).toBe(false);

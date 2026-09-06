@@ -1,5 +1,6 @@
 import type { Deployment as ApiDeployment, App, AppsMetrics } from './queries';
 import type { Deployment, RunState, Workflow } from '../mock-data';
+import { deploymentPhase } from '@/lib/deployment-status';
 
 /**
  * Projects the REST shapes onto the view models the console already renders.
@@ -114,14 +115,26 @@ export function toDeployment(deployment: ApiDeployment, slugById: Map<string, st
   };
 }
 
+/**
+ * The list's three-value pill, derived from `deploymentPhase` rather than from
+ * a second copy of the vocabulary.
+ *
+ * It used to switch on `active` / `succeeded` / `complete` — none of which
+ * `apid` emits. It serialises `state.DeploymentStatus`, so the real values are
+ * pending / building / imaging / snapshotting / live / failed / superseded /
+ * cancelled. `live` therefore fell through to the default and a deployment
+ * that was serving traffic was labelled "building"; `cancelled` was too.
+ *
+ * `superseded` reads as succeeded: it shipped, and was then replaced. Anything
+ * unrecognised reads as building, never succeeded — `succeeded` is what gates
+ * rollback and invoke, so a status we do not know must not unlock them.
+ */
 function toDeployState(status: string | undefined): Deployment['state'] {
-  switch ((status ?? '').toLowerCase()) {
-    case 'active':
-    case 'succeeded':
-    case 'complete':
+  switch (deploymentPhase(status)) {
+    case 'live':
+    case 'superseded':
       return 'succeeded';
     case 'failed':
-    case 'error':
       return 'failed';
     default:
       return 'building';
