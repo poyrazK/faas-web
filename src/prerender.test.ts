@@ -145,6 +145,21 @@ describeBuilt('prerendered pages', () => {
       expect(openingTag('h1')).not.toMatch(/opacity:\s*0/);
     });
 
+    it('does not hide the headline accent behind a transparent gradient', () => {
+      // A second way to ship invisible text, and the one the opacity check
+      // above does not see: `color: transparent` with a background-clip:text
+      // gradient whose visible range is entirely transparent. DiaText's sweep
+      // starts there, so an un-patched copy renders the accent blank until
+      // the bundle hydrates.
+      const h1 = landing.match(/<h1[^>]*>[\s\S]*?<\/h1>/)?.[0] ?? '';
+      expect(h1).not.toMatch(/transparent 0(\.0+)?%,\s*transparent 100%/);
+    });
+
+    it('paints the first accent phrase, not an empty slot', () => {
+      const h1 = landing.match(/<h1[^>]*>[\s\S]*?<\/h1>/)?.[0] ?? '';
+      expect(h1).toContain('Wake in under 350');
+    });
+
     it('does not let the emblem be the only thing painted', () => {
       // The emblem renders at opacity 1. If the headline needs JS to become
       // visible and the emblem does not, the mark flashes on its own.

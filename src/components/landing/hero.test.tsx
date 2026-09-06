@@ -32,29 +32,12 @@ describe('Hero', () => {
     );
   });
 
-  it('renders every rotating phrase, with the first one the one that paints', async () => {
+  it('shows the first phrase, so the headline is never blank', async () => {
     renderHero();
-    await screen.findByRole('heading', { level: 1 });
-    // All six are in the DOM so the CSS loop needs no JS; the stack sizes
-    // itself to the longest, so the balanced h1 cannot reflow as they cycle.
-    const phrases = document.querySelectorAll('.hero-phrase');
-    expect(phrases).toHaveLength(6);
-    expect(phrases[0]).toHaveTextContent('Wake in under 350 ms.');
-    expect(phrases[0]).not.toHaveClass('opacity-0');
-  });
-
-  it('staggers each phrase by one slot', async () => {
-    renderHero();
-    await screen.findByRole('heading', { level: 1 });
-    const phrases = [...document.querySelectorAll<HTMLElement>('.hero-phrase')];
-    expect(phrases.map((p) => p.style.animationDelay)).toEqual([
-      'calc(0 * var(--hero-phrase-slot))',
-      'calc(1 * var(--hero-phrase-slot))',
-      'calc(2 * var(--hero-phrase-slot))',
-      'calc(3 * var(--hero-phrase-slot))',
-      'calc(4 * var(--hero-phrase-slot))',
-      'calc(5 * var(--hero-phrase-slot))',
-    ]);
+    const h1 = await screen.findByRole('heading', { level: 1 });
+    // DiaText renders one phrase at a time and rotates; the first is what a
+    // reader sees before any rotation has happened.
+    expect(h1).toHaveTextContent('Wake in under 350 ms.');
   });
 
   it('keeps the primary action and the install command as real controls', async () => {

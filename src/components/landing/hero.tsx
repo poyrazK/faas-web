@@ -5,6 +5,7 @@ import { SweepLink } from '@/components/sweep-link';
 import { DeployTerminal } from './deploy-terminal';
 import { INSTALL_COMMAND } from './install-command';
 import { EASE } from './reveal';
+import { DiaText } from '@/components/ui/dia-text';
 import { LIQUID_PRESETS, LiquidField } from './liquid-field';
 
 /**
@@ -90,6 +91,8 @@ function Emblem() {
  * The first is what the prerendered HTML paints, so it is also the one the
  * accessible name and a no-animation reader keep.
  */
+const SWEEP_COLORS = ['#3987e5', '#2f9d86', '#51deaa', '#2f9d86', '#006f40'];
+
 const HERO_PHRASES = [
   'Wake in under 350\u00a0ms.',
   'Idle costs you nothing.',
@@ -118,20 +121,19 @@ export function Hero() {
             style={{ animationDelay: '0.06s' }}
           >
             Serverless on real microVMs. Scale to zero.{' '}
-            {/* The rotation is decorative: the h1's accessible name is fixed
-                by aria-label above, so a screen reader gets one stable
-                sentence instead of all six phrases run together. */}
-            <span className="hero-phrase-stack" aria-hidden="true">
-              {HERO_PHRASES.map((phrase, i) => (
-                <span
-                  key={phrase}
-                  className="hero-phrase"
-                  style={{ animationDelay: `calc(${i} * var(--hero-phrase-slot))` }}
-                >
-                  {phrase}
-                </span>
-              ))}
-            </span>
+            {/* The h1's accessible name is pinned by aria-label above, so a
+                screen reader gets one stable sentence rather than a headline
+                that renames itself every 2.1s. That supersedes the component's
+                own sr-only copy, which is why it is not doubled up here. */}
+            <DiaText
+              text={[...HERO_PHRASES]}
+              colors={SWEEP_COLORS}
+              textColor="var(--brand)"
+              duration={2.1}
+              repeat
+              repeatDelay={0.35}
+              fixedWidth
+            />
           </h1>
 
           <p
