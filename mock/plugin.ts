@@ -739,6 +739,63 @@ route('DELETE', '/v1/domains/{domain}', ({ params }) => {
   return NO_CONTENT;
 });
 
+// Verify flips the row on the second press, so the console's "not verified
+// yet" branch is reachable without waiting on real DNS. The attempt count
+// lives beside the row rather than on it: the rows are schema-typed.
+const verifyAttempts = new Map<string, number>();
+
+route('POST', '/v1/domains/{domain}/verify', ({ params }) => {
+  const d = db.domains.find((x) => x.domain === params.domain);
+  if (!d) throw new Problem(404, 'domain_not_found');
+  const n = (verifyAttempts.get(d.domain) ?? 0) + 1;
+  verifyAttempts.set(d.domain, n);
+  if (n > 1) {
+    d.verified = true;
+    d.verified_at = new Date().toISOString();
+  }
+  return d;
+});
+
+route('GET', '/v1/domains/{domain}/doctor', ({ params }) => {
+  const d = db.domains.find((x) => x.domain === params.domain);
+  if (!d) throw new Problem(404, 'domain_not_found');
+  const ok = (name: string, detail: string) => ({
+    name,
+    status: 'ok',
+    detail,
+    checked_at: new Date().toISOString(),
+  });
+  return {
+    domain: d.domain,
+    app_id: d.app_id,
+    stale: false,
+    healthy: Boolean(d.verified),
+    observed_at: new Date().toISOString(),
+    checks: d.verified
+      ? [
+          ok('dns_record', 'CNAME resolves.'),
+          ok('points_to_gregale', 'Points at edge.gregale.dev.'),
+          ok('tls_certificate', 'Issued and valid.'),
+          ok('caa_permits', 'No CAA record restricts issuance.'),
+          ok('ipv6_conflict', 'No conflicting AAAA record.'),
+        ]
+      : [
+          {
+            name: 'dns_record',
+            status: 'fail',
+            detail: 'No CNAME found for this hostname.',
+            observed: 'NXDOMAIN',
+            remediation: `Set CNAME ${d.domain} -> edge.gregale.dev`,
+            checked_at: new Date().toISOString(),
+          },
+          { name: 'points_to_gregale', status: 'pending', detail: 'Waiting on the DNS record.' },
+          { name: 'tls_certificate', status: 'pending', detail: 'Issued once DNS resolves.' },
+          ok('caa_permits', 'No CAA record restricts issuance.'),
+          { name: 'ipv6_conflict', status: 'na', detail: 'No AAAA record published.' },
+        ],
+  };
+});
+
 route('GET', '/v1/crons', () => db.crons);
 route('POST', '/v1/crons', ({ body }) => {
   const a = db.apps.find((x) => x.id === body.app_id);
