@@ -149,13 +149,13 @@ export function Nav() {
 
   const close = () => setMenuOpen(false);
 
+  // The header's entrance is CSS, not Motion: the prerender serialises
+  // Motion's `initial` as inline `opacity:0`, which left the nav invisible
+  // until the bundle hydrated. `animate-nav-enter` carries the same 0.7s
+  // curve and 0.1s delay on the same easing token, off the render-blocking
+  // stylesheet.
   return (
-    <motion.header
-      initial={{ y: -14, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      transition={{ duration: 0.7, delay: 0.1, ease: EASE }}
-      className="pointer-events-none fixed inset-x-0 top-0 z-50 flex justify-center px-3 pt-4"
-    >
+    <header className="animate-nav-enter pointer-events-none fixed inset-x-0 top-0 z-50 flex justify-center px-3 pt-4">
       <div className="pointer-events-auto relative">
         {/* the island */}
         <motion.div
@@ -252,6 +252,6 @@ export function Nav() {
           )}
         </AnimatePresence>
       </div>
-    </motion.header>
+    </header>
   );
 }

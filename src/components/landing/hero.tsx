@@ -78,14 +78,6 @@ function Emblem() {
 
 export function Hero() {
   const reduce = useReducedMotion();
-  const reveal = (delay: number) =>
-    reduce
-      ? { initial: { opacity: 1 }, animate: { opacity: 1 } }
-      : {
-          initial: { opacity: 0, y: 14, filter: 'blur(6px)' },
-          animate: { opacity: 1, y: 0, filter: 'blur(0px)' },
-          transition: { duration: 0.7, ease: EASE, delay },
-        };
 
   return (
     <>
@@ -97,28 +89,28 @@ export function Hero() {
         <Emblem />
 
         <div className="relative z-10 flex w-full max-w-[46rem] flex-col items-center text-center">
-          <motion.h1
-            {...reveal(0.06)}
-            className="relative text-balance text-[40px] font-semibold leading-[0.98] tracking-[-0.065em] text-[#212121] sm:text-[58px] lg:text-[62px]"
+          <h1
+            className="animate-hero-enter relative text-balance text-[40px] font-semibold leading-[0.98] tracking-[-0.065em] text-[#212121] sm:text-[58px] lg:text-[62px]"
+            style={{ animationDelay: '0.06s' }}
           >
             Serverless on real microVMs. Scale to zero.{' '}
             <span className="bg-gradient-to-r from-[color-mix(in_oklab,var(--brand)_70%,#3987e5)] via-brand to-[#2f9d86] bg-clip-text text-transparent">
               Wake in under 350&nbsp;ms.
             </span>
-          </motion.h1>
+          </h1>
 
-          <motion.p
-            {...reveal(0.12)}
-            className="relative mt-6 max-w-[30rem] text-pretty text-[15px] leading-[1.5] text-[#3d4a45] sm:text-[17px]"
+          <p
+            className="animate-hero-enter relative mt-6 max-w-[30rem] text-pretty text-[15px] leading-[1.5] text-[#3d4a45] sm:text-[17px]"
+            style={{ animationDelay: '0.12s' }}
           >
             Deploy functions to Firecracker microVMs on bare metal. They snapshot when idle and
             restore on the next request — one CLI and one API for humans and the agents they run.
-          </motion.p>
+          </p>
 
           {/* the pill: install command on the left, the action on the right */}
-          <motion.div
-            {...reveal(0.18)}
-            className="relative mt-8 flex w-full max-w-[29rem] items-center rounded-full bg-[color-mix(in_srgb,var(--secondary)_78%,transparent)] p-1 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.7),0_1px_2px_rgba(13,21,18,0.05)] backdrop-blur-md"
+          <div
+            className="animate-hero-enter relative mt-8 flex w-full max-w-[29rem] items-center rounded-full bg-[color-mix(in_srgb,var(--secondary)_78%,transparent)] p-1 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.7),0_1px_2px_rgba(13,21,18,0.05)] backdrop-blur-md"
+            style={{ animationDelay: '0.18s' }}
           >
             <CopyCommand />
             <SweepLink
@@ -128,7 +120,7 @@ export function Hero() {
               Start deploying
               <ArrowRight className="size-4 transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transition-none" />
             </SweepLink>
-          </motion.div>
+          </div>
         </div>
       </section>
 
