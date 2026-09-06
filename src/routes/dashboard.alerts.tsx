@@ -7,6 +7,7 @@ import { Switch } from '@/components/ui/switch';
 import { PageHeader, Panel } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { AlertDeliveries } from '@/components/dashboard/alert-deliveries';
+import { AlertPresets } from '@/components/dashboard/alert-presets';
 import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
 import { useToast } from '@/components/ui/toast';
 import { useConfirm } from '@/components/ui/confirm';
@@ -409,6 +410,12 @@ export function AlertsBody({ slug }: { slug: string }) {
           <AlertDeliveries slug={slug} ruleId={deliveriesFor.id} />
         </Panel>
       )}
+      <Panel
+        title="Presets"
+        description="Rules worth having, already written. Enabling one creates a normal rule — the preset supplies the metric and threshold, you supply the webhook."
+      >
+        <AlertPresets slug={slug} />
+      </Panel>
     </div>
   );
 }
