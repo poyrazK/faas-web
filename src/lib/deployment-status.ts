@@ -1,7 +1,15 @@
 /** The small, stable vocabulary the customer UI needs from an open API status. */
-export type DeploymentPhase = 'queued' | 'building' | 'live' | 'failed';
+export type DeploymentPhase = 'queued' | 'building' | 'live' | 'superseded' | 'failed';
 
 const LIVE_STATUSES = new Set(['active', 'complete', 'completed', 'live', 'succeeded']);
+
+/**
+ * Replaced by a newer deployment. It shipped, so it is not a failure, and it
+ * is finished, so nothing should poll it — every redeploy leaves one behind,
+ * and treating them as unfinished kept the deployments list refreshing for the
+ * lifetime of the tab.
+ */
+const SUPERSEDED_STATUSES = new Set(['superseded']);
 const FAILED_STATUSES = new Set(['cancelled', 'crashed', 'error', 'failed']);
 const BUILDING_STATUSES = new Set([
   'building',
@@ -19,6 +27,7 @@ const BUILDING_STATUSES = new Set([
 export function deploymentPhase(status: string | undefined): DeploymentPhase {
   const normalized = (status ?? '').toLowerCase();
   if (LIVE_STATUSES.has(normalized)) return 'live';
+  if (SUPERSEDED_STATUSES.has(normalized)) return 'superseded';
   if (FAILED_STATUSES.has(normalized)) return 'failed';
   if (BUILDING_STATUSES.has(normalized)) return 'building';
   return 'queued';
@@ -26,7 +35,7 @@ export function deploymentPhase(status: string | undefined): DeploymentPhase {
 
 export function isDeploymentTerminal(status: string | undefined): boolean {
   const phase = deploymentPhase(status);
-  return phase === 'live' || phase === 'failed';
+  return phase === 'live' || phase === 'superseded' || phase === 'failed';
 }
 
 /** A rollback is useful only when there is an earlier successful deployment. */
