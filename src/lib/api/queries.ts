@@ -1347,6 +1347,26 @@ export function useQueueSend(slug: string) {
   });
 }
 
+/**
+ * Reset one dead-lettered row back to pending.
+ *
+ * Invalidates the whole queue family, not just the dead-letter list: a replayed
+ * row leaves one table and appears in the other, and seeing it move is the
+ * confirmation that the action worked.
+ */
+export function useReplayDeadLetter(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      unwrap(
+        api.POST('/v1/apps/{slug}/queues/dead_letter/{id}/replay', {
+          params: { path: { slug, id } },
+        })
+      ),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['apps', slug, 'queues'] }),
+  });
+}
+
 export function useAppRegistryCredentials(slug: string) {
   return useQuery({
     queryKey: keys.appRegistryCredentials(slug),
