@@ -20,6 +20,14 @@ import {
 } from '@/lib/api/object-storage';
 
 const FIELD = 'h-9 rounded-md border border-border bg-background px-3 text-sm';
+const MAX_SINGLE_PUT_BYTES = 5 * 1024 ** 3;
+
+function formatUploadLimit(bytes: number): string {
+  if (bytes >= 1024 ** 3 && bytes % 1024 ** 3 === 0) return `${bytes / 1024 ** 3} GiB`;
+  if (bytes >= 1024 ** 2) return `${Math.floor(bytes / 1024 ** 2)} MiB`;
+  if (bytes >= 1024) return `${Math.floor(bytes / 1024)} KiB`;
+  return `${bytes} B`;
+}
 
 export function ObjectStorage() {
   const app = useSelectedApp();
@@ -73,6 +81,7 @@ function BucketManager({ slug }: { slug: string }) {
   if (query.error) return <ErrorState error={query.error} onRetry={() => void query.refetch()} />;
   const data = query.data!;
   const bucket = data.items.find((b) => b.id === selected);
+  const directUploadMaxBytes = Math.min(data.max_upload_bytes, MAX_SINGLE_PUT_BYTES);
   return (
     <div className="flex flex-col gap-4">
       {!data.enabled ? (
@@ -82,9 +91,8 @@ function BucketManager({ slug }: { slug: string }) {
       ) : (
         <>
           <p className="text-sm text-muted-foreground">
-            Preview · Up to {data.max_buckets_per_app} buckets per app. Single uploads up to{' '}
-            {Math.round(data.max_upload_bytes / 1024 / 1024)} MiB. Storage billing is not integrated
-            yet.
+            Preview · Up to {data.max_buckets_per_app} buckets per app. Direct uploads up to{' '}
+            {formatUploadLimit(directUploadMaxBytes)}. Storage billing is not integrated yet.
           </p>
           <form onSubmit={create} className="flex flex-wrap items-end gap-3">
             <label className="flex flex-col gap-1 text-sm">
@@ -158,7 +166,7 @@ function BucketManager({ slug }: { slug: string }) {
               className="ml-auto"
               variant="outline"
               size="sm"
-              disabled={!data.enabled || mutation.isPending}
+              disabled={mutation.isPending}
               onClick={async () => {
                 if (
                   await confirm({
@@ -177,12 +185,13 @@ function BucketManager({ slug }: { slug: string }) {
           </div>
         ))}
       </div>
-      {data.enabled && bucket?.state === 'ready' && (
+      {bucket?.state === 'ready' && (
         <ObjectBrowser
           key={bucket.id}
           slug={slug}
           bucket={bucket}
-          maxBytes={data.max_upload_bytes}
+          maxBytes={directUploadMaxBytes}
+          signingEnabled={data.enabled}
         />
       )}
       {bucket && bucket.state !== 'ready' && (
@@ -198,10 +207,12 @@ function ObjectBrowser({
   slug,
   bucket,
   maxBytes,
+  signingEnabled,
 }: {
   slug: string;
   bucket: ObjectBucket;
   maxBytes: number;
+  signingEnabled: boolean;
 }) {
   const [prefix, setPrefix] = useState('');
   const [cursor, setCursor] = useState('');
@@ -221,9 +232,12 @@ function ObjectBrowser({
   });
   const upload = async (event: FormEvent) => {
     event.preventDefault();
-    if (!file) return;
+    if (!file || !signingEnabled) return;
     if (file.size > maxBytes) {
-      toast({ kind: 'error', title: 'File exceeds the upload limit' });
+      toast({
+        kind: 'error',
+        title: `File exceeds the ${formatUploadLimit(maxBytes)} direct upload limit`,
+      });
       return;
     }
     if (
@@ -255,6 +269,7 @@ function ObjectBrowser({
           <input
             type="file"
             required
+            disabled={!signingEnabled}
             onChange={(e) => {
               const f = e.target.files?.[0] ?? null;
               setFile(f);
@@ -264,9 +279,15 @@ function ObjectBrowser({
         </label>
         <label className="flex flex-col gap-1 text-sm">
           Object key
-          <input className={FIELD} required value={key} onChange={(e) => setKey(e.target.value)} />
+          <input
+            className={FIELD}
+            required
+            disabled={!signingEnabled}
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+          />
         </label>
-        <Button type="submit" disabled={!file || mutation.isPending}>
+        <Button type="submit" disabled={!signingEnabled || !file || mutation.isPending}>
           {mutation.isPending ? 'Working…' : 'Upload'}
         </Button>
       </form>
@@ -301,7 +322,7 @@ function ObjectBrowser({
                 <Button
                   size="sm"
                   variant="ghost"
-                  disabled={mutation.isPending}
+                  disabled={!signingEnabled || mutation.isPending}
                   onClick={() =>
                     mutation.mutate(async () => {
                       const signed = await signStoredObject(slug, bucket.id, {

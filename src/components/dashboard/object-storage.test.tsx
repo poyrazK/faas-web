@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { ObjectStorage } from './object-storage';
@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   buckets: vi.fn(),
   objects: vi.fn(),
   create: vi.fn(),
+  sign: vi.fn(),
   toast: vi.fn(),
 }));
 vi.mock('./app-select', () => ({
@@ -23,6 +24,7 @@ vi.mock('@/lib/api/object-storage', async (original) => ({
   useObjectBuckets: mocks.buckets,
   useBucketObjects: mocks.objects,
   createObjectBucket: mocks.create,
+  signStoredObject: mocks.sign,
 }));
 const bucket = {
   id: 'bucket-one',
@@ -69,6 +71,36 @@ it('does not offer creation when the operator disables storage', () => {
   ).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Create bucket' })).not.toBeInTheDocument();
 });
+it('keeps cleanup available when the operator disables storage', async () => {
+  const user = userEvent.setup();
+  mocks.buckets.mockReturnValue({
+    data: {
+      ...capabilities,
+      enabled: false,
+      items: [bucket, { ...bucket, id: 'bucket-two', name: 'pending', state: 'provisioning' }],
+    },
+    isPending: false,
+    error: null,
+  });
+  show();
+  await user.click(screen.getByRole('button', { name: 'assets' }));
+  expect(screen.getByRole('region', { name: 'Objects in assets' })).toBeInTheDocument();
+  for (const button of screen.getAllByRole('button', { name: 'Delete bucket' }))
+    expect(button).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Retry setup' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Delete' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Download' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Upload' })).toBeDisabled();
+});
+it('describes a custom direct-upload limit without rounding it upward', () => {
+  mocks.buckets.mockReturnValue({
+    data: { ...capabilities, max_upload_bytes: 1088 * 1024 ** 2 },
+    isPending: false,
+    error: null,
+  });
+  show();
+  expect(screen.getByText(/Direct uploads up to 1088 MiB\./)).toBeInTheDocument();
+});
 it('creates a bucket using the selected app, scope and region', async () => {
   const user = userEvent.setup();
   show();
@@ -85,4 +117,28 @@ it('opens a ready bucket and exposes object actions', async () => {
   expect(screen.getByRole('region', { name: 'Objects in assets' })).toBeInTheDocument();
   expect(screen.getByText('folder/file.txt')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Download' })).toBeInTheDocument();
+});
+it('rejects files above the single-PUT limit before requesting a signed URL', async () => {
+  const user = userEvent.setup();
+  mocks.buckets.mockReturnValue({
+    data: { ...capabilities, max_upload_bytes: 5 * 1024 ** 4 },
+    isPending: false,
+    error: null,
+  });
+  show();
+  await user.click(screen.getByRole('button', { name: 'assets' }));
+  expect(screen.getByText(/Direct uploads up to 5 GiB\./)).toBeInTheDocument();
+  const file = new File(['x'], 'large.img');
+  Object.defineProperty(file, 'size', { value: 5 * 1024 ** 3 + 1 });
+  const input = screen.getByLabelText('File') as HTMLInputElement;
+  fireEvent.change(input, { target: { files: [file] } });
+  expect(input.files?.[0].size).toBe(5 * 1024 ** 3 + 1);
+  const upload = screen.getByRole('button', { name: 'Upload' });
+  expect(upload).toBeEnabled();
+  fireEvent.submit(upload.closest('form')!);
+  expect(mocks.toast).toHaveBeenCalledWith({
+    kind: 'error',
+    title: 'File exceeds the 5 GiB direct upload limit',
+  });
+  expect(mocks.sign).not.toHaveBeenCalled();
 });
