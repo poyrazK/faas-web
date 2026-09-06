@@ -7,6 +7,14 @@ vi.mock('@/lib/api/queries', () => ({
   useTriggerRecords: (id: string, state: string) => useTriggerRecords(id, state) as unknown,
 }));
 
+// The actions have their own suite; here they are a boundary, so this keeps
+// these tests about the list and out of toast/confirm provider setup.
+vi.mock('./trigger-record-actions', () => ({
+  TriggerRecordActions: ({ recordId, retryable }: { recordId: string; retryable?: boolean }) => (
+    <div data-testid="actions" data-record={recordId} data-retryable={String(retryable ?? true)} />
+  ),
+}));
+
 const { TriggerRecords } = await import('./trigger-records');
 
 function record(over: Record<string, unknown> = {}) {
@@ -60,5 +68,14 @@ describe('TriggerRecords', () => {
     render(<TriggerRecords triggerId="t1" />);
     await userEvent.click(screen.getByRole('button', { name: /orders.v1@4213/i }));
     expect(screen.getByText(/"order": 7/)).toBeInTheDocument();
+  });
+
+  it('offers a retry only from the states the API accepts', () => {
+    useTriggerRecords.mockReturnValue(
+      ok([record({ id: 'a', state: 'succeeded' }), record({ id: 'b', state: 'dead_letter' })])
+    );
+    render(<TriggerRecords triggerId="t1" />);
+    const actions = screen.getAllByTestId('actions');
+    expect(actions.map((el) => el.dataset.retryable)).toEqual(['false', 'true']);
   });
 });

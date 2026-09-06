@@ -1021,6 +1021,45 @@ export function useSetTriggerEnabled() {
   });
 }
 
+/**
+ * Push one record back into the dispatch queue.
+ *
+ * The API answers 409 `trigger_dlq_retry_failed` when the record's state was
+ * neither `retry` nor `dead_letter` — a record that already succeeded, or is
+ * mid-flight, has nothing to re-drive. That is a state to explain, not a
+ * failure to report.
+ *
+ * Invalidates the whole trigger family: a retried record leaves the dead-letter
+ * list and changes the per-state counts, and seeing both move is the
+ * confirmation the action worked.
+ */
+export function useRetryTriggerRecord() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ triggerId, recordId }: { triggerId: string; recordId: string }) =>
+      unwrap(
+        api.POST('/v1/triggers/{id}/records/{rid}/retry', {
+          params: { path: { id: triggerId, rid: recordId } },
+        })
+      ),
+    onSettled: (_d, _e, vars) => qc.invalidateQueries({ queryKey: ['triggers', vars.triggerId] }),
+  });
+}
+
+/** Discard a record without re-firing it. Irreversible, hence the confirm. */
+export function useDropTriggerRecord() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ triggerId, recordId }: { triggerId: string; recordId: string }) =>
+      unwrap(
+        api.POST('/v1/triggers/{id}/records/{rid}/drop', {
+          params: { path: { id: triggerId, rid: recordId } },
+        })
+      ),
+    onSettled: (_d, _e, vars) => qc.invalidateQueries({ queryKey: ['triggers', vars.triggerId] }),
+  });
+}
+
 export type TriggerRecordState = components['schemas']['TriggerRecordState'];
 export type TriggerDeadLetterReason = components['schemas']['TriggerDeadLetterReason'];
 export type Trigger = components['schemas']['Trigger'];
