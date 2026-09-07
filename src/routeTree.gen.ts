@@ -30,6 +30,7 @@ import { Route as DashboardEdgeRulesRouteImport } from './routes/dashboard.edge-
 import { Route as DashboardEnvRouteImport } from './routes/dashboard.env'
 import { Route as DashboardImportRouteImport } from './routes/dashboard.import'
 import { Route as DashboardInvoicesRouteImport } from './routes/dashboard.invoices'
+import { Route as DashboardJobsRouteImport } from './routes/dashboard.jobs'
 import { Route as DashboardKeysRouteImport } from './routes/dashboard.keys'
 import { Route as DashboardLogsRouteImport } from './routes/dashboard.logs'
 import { Route as DashboardMetricsRouteImport } from './routes/dashboard.metrics'
@@ -156,6 +157,11 @@ const DashboardImportRoute = DashboardImportRouteImport.update({
 const DashboardInvoicesRoute = DashboardInvoicesRouteImport.update({
   id: '/invoices',
   path: '/invoices',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardJobsRoute = DashboardJobsRouteImport.update({
+  id: '/jobs',
+  path: '/jobs',
   getParentRoute: () => DashboardRoute,
 } as any)
 const DashboardKeysRoute = DashboardKeysRouteImport.update({
@@ -291,6 +297,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/env': typeof DashboardEnvRoute
   '/dashboard/import': typeof DashboardImportRoute
   '/dashboard/invoices': typeof DashboardInvoicesRoute
+  '/dashboard/jobs': typeof DashboardJobsRoute
   '/dashboard/keys': typeof DashboardKeysRoute
   '/dashboard/logs': typeof DashboardLogsRoute
   '/dashboard/metrics': typeof DashboardMetricsRoute
@@ -334,6 +341,7 @@ export interface FileRoutesByTo {
   '/dashboard/env': typeof DashboardEnvRoute
   '/dashboard/import': typeof DashboardImportRoute
   '/dashboard/invoices': typeof DashboardInvoicesRoute
+  '/dashboard/jobs': typeof DashboardJobsRoute
   '/dashboard/keys': typeof DashboardKeysRoute
   '/dashboard/logs': typeof DashboardLogsRoute
   '/dashboard/metrics': typeof DashboardMetricsRoute
@@ -380,6 +388,7 @@ export interface FileRoutesById {
   '/dashboard/env': typeof DashboardEnvRoute
   '/dashboard/import': typeof DashboardImportRoute
   '/dashboard/invoices': typeof DashboardInvoicesRoute
+  '/dashboard/jobs': typeof DashboardJobsRoute
   '/dashboard/keys': typeof DashboardKeysRoute
   '/dashboard/logs': typeof DashboardLogsRoute
   '/dashboard/metrics': typeof DashboardMetricsRoute
@@ -427,6 +436,7 @@ export interface FileRouteTypes {
     | '/dashboard/env'
     | '/dashboard/import'
     | '/dashboard/invoices'
+    | '/dashboard/jobs'
     | '/dashboard/keys'
     | '/dashboard/logs'
     | '/dashboard/metrics'
@@ -470,6 +480,7 @@ export interface FileRouteTypes {
     | '/dashboard/env'
     | '/dashboard/import'
     | '/dashboard/invoices'
+    | '/dashboard/jobs'
     | '/dashboard/keys'
     | '/dashboard/logs'
     | '/dashboard/metrics'
@@ -515,6 +526,7 @@ export interface FileRouteTypes {
     | '/dashboard/env'
     | '/dashboard/import'
     | '/dashboard/invoices'
+    | '/dashboard/jobs'
     | '/dashboard/keys'
     | '/dashboard/logs'
     | '/dashboard/metrics'
@@ -699,6 +711,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardInvoicesRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/dashboard/jobs': {
+      id: '/dashboard/jobs'
+      path: '/jobs'
+      fullPath: '/dashboard/jobs'
+      preLoaderRoute: typeof DashboardJobsRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/dashboard/keys': {
       id: '/dashboard/keys'
       path: '/keys'
@@ -871,6 +890,7 @@ interface DashboardRouteChildren {
   DashboardEnvRoute: typeof DashboardEnvRoute
   DashboardImportRoute: typeof DashboardImportRoute
   DashboardInvoicesRoute: typeof DashboardInvoicesRoute
+  DashboardJobsRoute: typeof DashboardJobsRoute
   DashboardKeysRoute: typeof DashboardKeysRoute
   DashboardLogsRoute: typeof DashboardLogsRoute
   DashboardMetricsRoute: typeof DashboardMetricsRoute
@@ -908,6 +928,7 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardEnvRoute: DashboardEnvRoute,
   DashboardImportRoute: DashboardImportRoute,
   DashboardInvoicesRoute: DashboardInvoicesRoute,
+  DashboardJobsRoute: DashboardJobsRoute,
   DashboardKeysRoute: DashboardKeysRoute,
   DashboardLogsRoute: DashboardLogsRoute,
   DashboardMetricsRoute: DashboardMetricsRoute,
