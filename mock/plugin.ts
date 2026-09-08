@@ -1097,6 +1097,135 @@ route('POST', '/v1/apps/{slug}/debug/compare', ({ body }) => {
   };
 });
 
+// --- Jobs (spec 14.A) -------------------------------------------------------
+// MOCK_PLAN=free reproduces the 402 jobs_not_allowed gate. Run and task states
+// cover the whole enum so every badge and every empty state is reachable.
+const jobsGated = process.env.MOCK_PLAN === 'free';
+
+function gateJobs() {
+  if (jobsGated) {
+    throw new Problem(
+      402,
+      'jobs_not_allowed',
+      'the free plan does not include jobs; upgrade to Hobby or above to run batch / one-shot workloads.'
+    );
+  }
+}
+
+const jobSeed = [
+  { name: 'nightly-export', kind: 'batch', status: 'active', tasks: 24 },
+  { name: 'reindex-search', kind: 'recurring', status: 'active', tasks: 8 },
+  { name: 'legacy-backfill', kind: 'batch', status: 'paused', tasks: 120 },
+];
+
+const jobs = jobSeed.map((j) => ({
+  id: db.id(),
+  account_id: 'acct-1',
+  name: j.name,
+  kind: j.kind,
+  image_ref: `registry.gregale.dev/acme/${j.name}:v3`,
+  command: ['node', 'scripts/run.js'],
+  ram_mb: 2048,
+  task_timeout_sec: 1800,
+  max_parallelism: 25,
+  retry_max: 5,
+  status: j.status,
+  created_at: db.iso(86_400_000),
+  updated_at: db.iso(3_600_000),
+}));
+
+const RUN_STATES = ['running', 'succeeded', 'failed', 'cancelled', 'queued', 'dead_letter'];
+const TASK_STATES = ['succeeded', 'failed', 'timeout', 'oom', 'cancelled', 'claimed', 'queued'];
+
+function runsFor(name: string) {
+  const job = jobs.find((j) => j.name === name);
+  const tasks = jobSeed.find((j) => j.name === name)?.tasks ?? 8;
+  return RUN_STATES.map((state, i) => ({
+    id: db.id(),
+    job_id: job?.id ?? db.id(),
+    account_id: 'acct-1',
+    trigger_kind: (['manual', 'scheduled', 'triggered'] as const)[i % 3],
+    tasks,
+    parallelism: 25,
+    retry_max: 5,
+    task_timeout_sec: 1800,
+    aggregate_status: state,
+    tasks_succeeded: state === 'succeeded' ? tasks : Math.floor(tasks / 2),
+    tasks_failed: state === 'failed' || state === 'dead_letter' ? 3 : 0,
+    tasks_cancelled: state === 'cancelled' ? 2 : 0,
+    created_at: db.iso(i * 3_600_000),
+    updated_at: db.iso(i * 3_500_000),
+  }));
+}
+
+const runCache = new Map<string, ReturnType<typeof runsFor>>();
+const runsOf = (name: string) => {
+  if (!runCache.has(name)) runCache.set(name, runsFor(name));
+  return runCache.get(name)!;
+};
+
+route('GET', '/v1/jobs', () => {
+  gateJobs();
+  return { jobs, limit: 50, offset: 0, next_offset: -1, total: jobs.length };
+});
+
+route('GET', '/v1/jobs/{name}', ({ params }) => {
+  gateJobs();
+  const j = jobs.find((x) => x.name === params.name);
+  if (!j) throw new Problem(404, 'job_not_found');
+  return j;
+});
+
+route('GET', '/v1/jobs/{name}/runs', ({ params }) => {
+  gateJobs();
+  if (!jobs.some((j) => j.name === params.name)) throw new Problem(404, 'job_not_found');
+  const runs = runsOf(params.name);
+  return { runs, limit: 50, offset: 0, next_offset: -1, total: runs.length };
+});
+
+route('GET', '/v1/jobs/{name}/runs/{id}/tasks', ({ params }) => {
+  gateJobs();
+  const run = runsOf(params.name).find((r) => r.id === params.id);
+  if (!run) throw new Problem(404, 'job_run_not_found');
+  const tasks = Array.from({ length: Math.min(run.tasks, 12) }, (_, i) => ({
+    run_id: run.id,
+    task_index: i,
+    status: TASK_STATES[i % TASK_STATES.length],
+    attempt: i % 3 === 0 ? 2 : 1,
+    instance_id: db.id(),
+    started_at: db.iso(600_000),
+    finished_at: db.iso(300_000),
+  }));
+  return { tasks, limit: 50, offset: 0, next_offset: -1, total: tasks.length };
+});
+
+route('GET', '/v1/jobs/{name}/runs/{id}/tasks/{idx}/logs', ({ params }) => {
+  gateJobs();
+  const idx = Number(params.idx);
+  // Task 1 is truncated so the console's "log was cut" notice is reachable.
+  const truncated = idx === 1;
+  return {
+    task_status: TASK_STATES[idx % TASK_STATES.length],
+    log_content: Array.from(
+      { length: truncated ? 12 : 6 },
+      (_, n) => `[task ${idx}] step ${n + 1} complete`
+    ).join('\n'),
+    truncated,
+    max_bytes: 65536,
+  };
+});
+
+route('POST', '/v1/jobs/{name}/runs/{id}/cancel', ({ params }) => {
+  gateJobs();
+  const run = runsOf(params.name).find((r) => r.id === params.id);
+  if (!run) throw new Problem(404, 'job_run_not_found');
+  if (run.aggregate_status !== 'running' && run.aggregate_status !== 'queued') {
+    throw new Problem(409, 'job_run_not_cancellable', 'The run has already finished.');
+  }
+  run.aggregate_status = 'cancelled';
+  return { run, cancelled_at: new Date().toISOString() };
+});
+
 // --- Triggers ---------------------------------------------------------------
 // Six kinds so every pill renders, one paused, and a spread of record states
 // and dead-letter reasons so each filter has something to find.

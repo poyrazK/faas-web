@@ -39,6 +39,7 @@ export const keys = {
   appDeployments: (slug: string) => ['apps', slug, 'deployments'] as const,
   domains: ['domains'] as const,
   triggers: ['triggers'] as const,
+  jobs: ['jobs'] as const,
   crons: ['crons'] as const,
   keys: ['keys'] as const,
   invoices: ['invoices'] as const,
@@ -979,6 +980,77 @@ export function useTriggers() {
     queryFn: () => unwrap(api.GET('/v1/triggers', {})),
   });
 }
+
+/**
+ * Jobs — batch and recurring workloads (spec §14.A), account-wide like
+ * triggers rather than per-app.
+ *
+ * Plan-gated: `ErrPlanJobsNotAllowed` answers `402 jobs_not_allowed` on Free.
+ * The spec's prose also mentions a 404 for the same gate; the handler returns
+ * 402, so that is what the UI branches on.
+ */
+export function useJobs() {
+  return useQuery({
+    queryKey: keys.jobs,
+    queryFn: () => unwrap(api.GET('/v1/jobs', {})),
+  });
+}
+
+export function useJobRuns(name: string | null) {
+  return useQuery({
+    queryKey: ['jobs', name, 'runs'],
+    enabled: name !== null,
+    queryFn: () => unwrap(api.GET('/v1/jobs/{name}/runs', { params: { path: { name: name! } } })),
+  });
+}
+
+export function useJobTasks(name: string | null, runId: string | null) {
+  return useQuery({
+    queryKey: ['jobs', name, 'runs', runId, 'tasks'],
+    enabled: name !== null && runId !== null,
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/jobs/{name}/runs/{id}/tasks', {
+          params: { path: { name: name!, id: runId! } },
+        })
+      ),
+  });
+}
+
+/**
+ * Tail of one task's log. The response carries `truncated` and `max_bytes`,
+ * so a cut log can say it was cut rather than passing for the whole thing.
+ */
+export function useJobTaskLog(name: string, runId: string, taskIndex: number | null) {
+  return useQuery({
+    queryKey: ['jobs', name, 'runs', runId, 'tasks', taskIndex, 'logs'],
+    enabled: taskIndex !== null,
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/jobs/{name}/runs/{id}/tasks/{idx}/logs', {
+          params: { path: { name, id: runId, idx: taskIndex! } },
+        })
+      ),
+  });
+}
+
+/** Cancel an in-flight run. Answers the post-cancel aggregate, not 204. */
+export function useCancelJobRun() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ name, runId }: { name: string; runId: string }) =>
+      unwrap(
+        api.POST('/v1/jobs/{name}/runs/{id}/cancel', {
+          params: { path: { name, id: runId } },
+        })
+      ),
+    onSettled: (_d, _e, vars) => qc.invalidateQueries({ queryKey: ['jobs', vars.name] }),
+  });
+}
+
+export type Job = components['schemas']['JobResponse'];
+export type JobRun = components['schemas']['JobRunResponse'];
+export type JobTask = components['schemas']['JobTaskResponse'];
 
 /**
  * The production debugger (ADR-127).
