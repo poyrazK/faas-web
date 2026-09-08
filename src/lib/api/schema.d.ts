@@ -2256,6 +2256,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/apps/{slug}/deployments/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Fetch the latest deployment for an app.
+         * @description Returns the app's newest deployment by `created_at DESC`. The app slug
+         *     and deployment are resolved within the authenticated account; an
+         *     unknown or cross-account app and a never-deployed app all return the
+         *     same IDOR-safe 404 surface.
+         */
+        get: operations["getLatestAppDeployment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/apps/{slug}/deployments/dev-source": {
         parameters: {
             query?: never;
@@ -4775,8 +4801,10 @@ export interface paths {
         /**
          * Create a trigger.
          * @description Idempotent via Idempotency-Key header. Returns 402
-         *     `triggers_not_allowed` for Free plan, 403 `trigger_quota_exceeded`
-         *     on per-app or per-account cap; see ADR-100.
+         *     `plan_triggers_not_allowed` for Free plan. A 403 may be
+         *     `trigger_kind_not_allowed`, `plan_trigger_quota`,
+         *     `trigger_batch_window_too_large`, or
+         *     `trigger_tls_skip_verify_not_allowed`; see ADR-100.
          */
         post: operations["createTrigger"];
         delete?: never;
@@ -8515,7 +8543,7 @@ export interface components {
             /** Format: date-time */
             effective_at?: string;
         };
-        /** @description Plan-driven quota and resource caps: max RAM per app, concurrent wakes, total deployed apps, included GB-hours, and writable ephemeral app-disk capacity. */
+        /** @description Plan-driven quota, resource caps, and trigger capabilities returned by GET /v1/account. */
         AccountLimits: {
             /**
              * @example hobby
@@ -8533,6 +8561,19 @@ export interface components {
             app_layer_max_mb: number;
             /** @description Maximum writable ephemeral app-disk capacity per app, in MB. This is the same physical drive1 cap historically named app_layer_max_mb. */
             ephemeral_disk_max_mb: number;
+            /** @description Whether the plan permits external event triggers. */
+            triggers_allowed: boolean;
+            /** @description External trigger kinds this plan may create. Cron schedules use the dedicated crons API and are not included. */
+            trigger_kinds: components["schemas"]["TriggerKind"][];
+            trigger_limit_per_app: number;
+            trigger_limit_per_account: number;
+            trigger_batch_size_max: number;
+            /** @description Maximum batching window in milliseconds. */
+            trigger_batch_window_max_ms: number;
+            trigger_max_attempts_max: number;
+            trigger_payload_max_bytes: number;
+            /** @description Whether Kafka tls.skip_verify=true is permitted. */
+            trigger_tls_skip_verify_allowed: boolean;
         };
         /** @description Target plan for the change. */
         ChangePlanRequest: {
@@ -9096,6 +9137,12 @@ export interface components {
              * @enum {string}
              */
             type: "app" | "function";
+            /**
+             * @description Runtime-observed application shape. Repository scanning seeds the value and the first characterization boot may replace it. Distinct from type, which selects the app-vs-function execution contract.
+             * @example http
+             * @enum {string}
+             */
+            workload_class?: "http" | "graphql" | "grpc" | "job" | "worker";
             /**
              * @description Runtime for `type: function` apps. Omit for `type: app` (the default).
              * @enum {string}
@@ -11666,8 +11713,10 @@ export interface components {
          * @description Read shape returned by GET / POST / PATCH on /v1/triggers.
          *     The `config` blob is opaque at the wire level — each kind
          *     decodes its own per-shape struct lazily. The SDK round-trip
-         *     preserves the raw JSON so unknown fields survive client
-         *     versions older than the server.
+         *     preserves unknown fields across client versions. Kafka
+         *     credentials are never returned: `password_set` and
+         *     `client_key_set` report their presence without exposing
+         *     plaintext or the internal sealed envelope.
          */
         Trigger: {
             /** @example 0123456789abcdef0123456789abcdef */
@@ -11683,6 +11732,8 @@ export interface components {
             /**
              * @description Per-kind opaque configuration. Decode with the per-kind
              *     struct (KafkaTriggerConfig, NATSTriggerConfig, etc).
+             *     Kafka responses replace write-only password/client-key
+             *     leaves with boolean `password_set`/`client_key_set` markers.
              * @example {
              *       "brokers": [
              *         "broker:9092"
@@ -11694,17 +11745,18 @@ export interface components {
             config: {
                 [key: string]: unknown;
             };
-            /** @description Records per batch upper bound (per-plan cap in /v1/limits). */
+            /** @description Records per batch upper bound. Omitted create values use min(64, the account plan cap). */
             batch_size_max: number;
-            /** @description Milliseconds a partial batch may wait before dispatch. */
+            /** @description Milliseconds a partial batch may wait before dispatch. Omitted create values use min(1000, the account plan cap). */
             batch_window_ms: number;
+            /** @description Omitted create values use min(5, the account plan cap). */
             max_attempts: number;
             /**
              * @description Per-record broker payload byte cap (migration 00274).
              *     Records above this size are DLQ'd at insert time with
              *     reason='payload_too_large' rather than silently truncated.
              *     Plan-level ceiling in /v1/limits TriggerPayloadMaxBytes.
-             *     Default 6291456 (6 MiB) when omitted on create.
+             *     Omitted create values use min(6291456, the account plan cap).
              */
             payload_max_bytes: number;
             /**
@@ -11752,13 +11804,15 @@ export interface components {
          *     gating mirrors pkg/gregalemanifest.validateKindConfig:
          *       - cron: requires schedule + path (slug ignored)
          *       - non-cron: requires slug + config
+         *     Omitted delivery settings use the platform default capped to the
+         *     selected account plan; explicit over-cap values are rejected.
          */
         CreateTriggerRequest: {
             app_id: string;
             kind: components["schemas"]["TriggerKind"];
             slug?: string;
             enabled?: boolean | null;
-            /** @description Per-kind opaque config blob. */
+            /** @description Per-kind opaque config blob. Kafka password and client_key leaves are plaintext-on-write and sealed before persistence. */
             config?: {
                 [key: string]: unknown;
             };
@@ -11787,7 +11841,9 @@ export interface components {
          * @description Partial trigger update. nil means "leave unchanged" (same
          *     semantics as UpdateCronRequest). Kind is NOT a member — it
          *     is immutable. To change kind, create a new trigger and
-         *     delete the old one.
+         *     delete the old one. Inside a supplied Kafka sasl/tls block,
+         *     omitting the write-only credential preserves its stored value;
+         *     omitting the whole block removes that block and its credential.
          */
         UpdateTriggerRequest: {
             enabled?: boolean | null;
@@ -11831,8 +11887,13 @@ export interface components {
         KafkaSASLConfig: {
             mechanism: components["schemas"]["KafkaSASLMechanism"];
             username: string;
-            /** Format: password */
-            password: string;
+            /**
+             * Format: password
+             * @description Plaintext-on-write only. Omit inside a supplied SASL block to preserve the stored password.
+             */
+            password?: string;
+            /** @description Response-only marker indicating that a password is configured; no credential material is returned. */
+            readonly password_set?: boolean;
         };
         /**
          * @description Kafka TLS material. MinVersion is forced to TLS 1.2 at
@@ -11850,9 +11911,11 @@ export interface components {
             client_cert?: string;
             /**
              * Format: password
-             * @description PEM-encoded client key for mTLS.
+             * @description PEM-encoded client key for mTLS, accepted only on writes. Omit inside a supplied TLS block to preserve the stored key.
              */
             client_key?: string;
+            /** @description Response-only marker indicating that a client key is configured; no credential material is returned. */
+            readonly client_key_set?: boolean;
             /**
              * @description Skip TLS verification. Hobby plan rejects this
              *     (TLSSkipVerifyAllowed=false in pkg/api/limits.go);
@@ -17273,7 +17336,7 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
-        /** @description code: triggers_not_allowed — Free plan cannot create triggers; upgrade required. */
+        /** @description code: plan_triggers_not_allowed — Free plan cannot create triggers; upgrade required. */
         TriggerNotAllowed: {
             headers: {
                 [name: string]: unknown;
@@ -17282,8 +17345,17 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
-        /** @description code: trigger_quota_exceeded — per-app or per-account trigger cap reached (see TriggerLimitPerApp / TriggerLimitPerAccount in /v1/limits). */
+        /** @description code: trigger_kind_not_allowed | plan_trigger_quota | trigger_batch_window_too_large | trigger_tls_skip_verify_not_allowed — source-kind or delivery configuration exceeds the account plan capabilities returned by GET /v1/account. */
         TriggerQuotaExceeded: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description code: secret_store_unavailable — Kafka credentials could not be sealed or opened safely because host age key material is unavailable. */
+        TriggerSecretUnavailable: {
             headers: {
                 [name: string]: unknown;
             };
@@ -21298,6 +21370,32 @@ export interface operations {
             403: components["responses"]["DeploymentForbidden"];
             413: components["responses"]["SourceTooLarge"];
             422: components["responses"]["DeployFailed"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getLatestAppDeployment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The latest deployment. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
             429: components["responses"]["TooManyRequests"];
         };
     };
@@ -25488,6 +25586,7 @@ export interface operations {
             403: components["responses"]["TriggerQuotaExceeded"];
             422: components["responses"]["TriggerImmutable"];
             429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["TriggerSecretUnavailable"];
         };
     };
     batchCreateTriggers: {
@@ -25605,6 +25704,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             422: components["responses"]["TriggerImmutable"];
             429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["TriggerSecretUnavailable"];
         };
     };
     pauseTrigger: {
