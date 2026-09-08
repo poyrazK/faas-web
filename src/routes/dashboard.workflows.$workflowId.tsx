@@ -42,6 +42,7 @@ import { AlertsBody } from './dashboard.alerts';
 import { DebugBody } from './dashboard.debug';
 import { MirrorsBody } from './dashboard.mirrors';
 import { TenantSurfacesBody } from './dashboard.tenant-surfaces';
+import { OpenAPIBody } from './dashboard.openapi';
 import { WebhooksBody } from './dashboard.webhooks';
 import { EdgeRulesBody } from './dashboard.edge-rules';
 import { ErrorsBody } from '@/components/dashboard/errors-body';
@@ -87,6 +88,7 @@ const TABS = [
   'Debugger',
   'Mirrors',
   'Tenant surfaces',
+  'OpenAPI',
   'Configuration',
 ] as const;
 type Tab = (typeof TABS)[number];
@@ -604,6 +606,7 @@ function FunctionDetailPage() {
             {tab === 'Debugger' && <DebugBody slug={fn.id} />}
             {tab === 'Mirrors' && <MirrorsBody slug={fn.id} />}
             {tab === 'Tenant surfaces' && <TenantSurfacesBody slug={fn.id} />}
+            {tab === 'OpenAPI' && <OpenAPIBody slug={fn.id} />}
 
             {tab === 'Configuration' && <AppConfiguration slug={fn.id} />}
           </div>
