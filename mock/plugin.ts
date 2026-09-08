@@ -521,6 +521,111 @@ route('DELETE', '/v1/apps/{slug}/alerts/{id}', ({ params }) => {
   list.splice(i, 1);
   return NO_CONTENT;
 });
+// Traffic mirroring (ADR-124 / ADR-125). MOCK_PLAN=free reproduces the
+// create-time plan gate; the list is never gated, as in apid.
+// Pro allows one mirror rule per app, Scale three.
+const mirrorQuota = () => (db.account.plan === 'scale' ? 3 : 1);
+const MIRROR_WINDOW_SECONDS: Record<string, number> = { '1h': 3600, '24h': 86400, '7d': 604800 };
+
+function mirrorRule(slug: string, id: string) {
+  const rule = listOf(db.mirrorRules, slug).find((r) => r.id === id);
+  if (!rule) throw new Problem(404, 'not_found', 'no such mirror rule');
+  return rule;
+}
+
+route('GET', '/v1/apps/{slug}/mirrors', ({ params }) => {
+  const rules = listOf(db.mirrorRules, params.slug);
+  return { rules, count: rules.length };
+});
+route('POST', '/v1/apps/{slug}/mirrors', ({ params, body }) => {
+  const a = app(params.slug);
+  if (process.env.MOCK_PLAN === 'free')
+    throw new Problem(
+      403,
+      'plan_mirror_not_allowed',
+      'traffic mirroring needs the Pro or Scale plan.'
+    );
+  const list = listOf(db.mirrorRules, a.slug);
+  const source = String(body.source_deployment_id ?? '');
+  const mirror = String(body.mirror_deployment_id ?? '');
+  const percent = Number(body.percent);
+  if (!Number.isInteger(percent) || percent < 0 || percent > 100)
+    throw new Problem(422, 'invalid_mirror_percent', 'percent must be in [0, 100].');
+  if (source === mirror)
+    throw new Problem(422, 'mirror_source_target_same', 'source and mirror must differ.');
+  const s = db.deployments.find((d) => d.id === source);
+  const m = db.deployments.find((d) => d.id === mirror);
+  if (!s || !m) throw new Problem(404, 'not_found', 'no such deployment');
+  if (s.app_id !== a.id || m.app_id !== a.id)
+    throw new Problem(422, 'mirror_cross_app_mismatch', 'both deployments must belong to the app.');
+  if (s.status !== 'live' || m.status !== 'live')
+    throw new Problem(409, 'mirror_deployment_not_live', 'both deployments must be live.');
+  if (list.length >= mirrorQuota())
+    throw new Problem(
+      422,
+      'mirror_rule_quota_exceeded',
+      `at most ${mirrorQuota()} mirror rules per app on the ${db.account.plan} plan.`
+    );
+  const rule: (typeof list)[number] = {
+    id: db.id(),
+    account_id: db.ACCOUNT_ID,
+    app_id: a.id,
+    source_deployment_id: source,
+    mirror_deployment_id: mirror,
+    percent,
+    enabled: true,
+    include_body: body.include_body === true,
+    redact_headers: Array.isArray(body.redact_headers) ? body.redact_headers.map(String) : [],
+    always_stripped_headers: ['Authorization', 'Cookie'],
+    created_at: db.iso(0),
+    updated_at: db.iso(0),
+  };
+  list.push(rule);
+  db.mirrorRules.set(a.slug, list);
+  return status(201, rule);
+});
+route('GET', '/v1/apps/{slug}/mirrors/{id}', ({ params }) => mirrorRule(params.slug, params.id));
+route('PATCH', '/v1/apps/{slug}/mirrors/{id}', ({ params, body }) => {
+  const rule = mirrorRule(params.slug, params.id);
+  if (body.percent !== undefined) {
+    const percent = Number(body.percent);
+    if (!Number.isInteger(percent) || percent < 0 || percent > 100)
+      throw new Problem(422, 'invalid_mirror_percent', 'percent must be in [0, 100].');
+    rule.percent = percent;
+  }
+  if (typeof body.enabled === 'boolean') rule.enabled = body.enabled;
+  if (typeof body.include_body === 'boolean') rule.include_body = body.include_body;
+  if (Array.isArray(body.redact_headers)) rule.redact_headers = body.redact_headers.map(String);
+  rule.updated_at = db.iso(0);
+  return rule;
+});
+route('DELETE', '/v1/apps/{slug}/mirrors/{id}', ({ params }) => {
+  const list = listOf(db.mirrorRules, params.slug);
+  const i = list.findIndex((r) => r.id === params.id);
+  if (i < 0) throw new Problem(404, 'not_found', 'no such mirror rule');
+  list.splice(i, 1);
+  return NO_CONTENT;
+});
+route('GET', '/v1/apps/{slug}/mirrors/{id}/summary', ({ params, query }) => {
+  const rule = mirrorRule(params.slug, params.id);
+  const window = query.get('window') ?? '1h';
+  const seconds = MIRROR_WINDOW_SECONDS[window];
+  if (!seconds) throw new Problem(422, 'invalid_mirror_window', 'window must be 1h, 24h or 7d.');
+  // Deterministic drift proportional to the window and the mirrored share,
+  // so switching windows visibly changes the counts.
+  const total = rule.enabled ? Math.round((seconds / 3600) * rule.percent * 4.2) : 0;
+  return {
+    total_invocations: total,
+    status_diff_count: Math.round(total * 0.012),
+    schema_diff_count: Math.round(total * 0.004),
+    body_diff_count: rule.include_body ? Math.round(total * 0.03) : 0,
+    mean_latency_diff_ms: total === 0 ? 0 : 12,
+    p99_latency_diff_ms: total === 0 ? 0 : -8,
+    crash_count: Math.round(total * 0.0005),
+    window_seconds: seconds,
+  };
+});
+
 route('GET', '/v1/apps/{slug}/webhooks', ({ params }) => listOf(db.webhooks, params.slug));
 route('POST', '/v1/apps/{slug}/webhooks', ({ params, body }) => {
   const a = app(params.slug);

@@ -276,6 +276,14 @@ deployments.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
     });
   }
 }
+
+// apid only stores a mirror rule between two LIVE deployments, so the first
+// app carries a second live row: without it the create form is unreachable.
+{
+  const first = deployments.find((d) => d.app_id === apps[0].id && d.status === 'live');
+  if (first)
+    deployments.push({ ...first, id: id(), scope: 'canary', created_at: iso(30 * 60 * 1000) });
+}
 builds.sort((a, b) => Date.parse(b.enqueued_at) - Date.parse(a.enqueued_at));
 
 // --- Metrics -----------------------------------------------------------------
@@ -428,6 +436,37 @@ export const alerts = new Map<string, S['AlertRuleResponse'][]>(
       ...stamp(),
     })),
   ])
+);
+
+// One mirror rule on the first app: its live deployment shadowed to the one
+// it superseded, so the summary has a real pair to compare.
+export const mirrorRules = new Map<string, S['MirrorRuleResponse'][]>(
+  apps.map((a) => {
+    const own = deployments.filter((d) => d.app_id === a.id);
+    const live = own.filter((d) => d.status === 'live');
+    const source = live[0];
+    const mirror = live[1];
+    if (a !== apps[0] || !source || !mirror) return [a.slug, []];
+    return [
+      a.slug,
+      [
+        {
+          id: id(),
+          account_id: ACCOUNT_ID,
+          app_id: a.id,
+          source_deployment_id: source.id,
+          mirror_deployment_id: mirror.id,
+          percent: 25,
+          enabled: true,
+          include_body: false,
+          redact_headers: ['X-Tenant-Id'],
+          always_stripped_headers: ['Authorization', 'Cookie'],
+          created_at: iso(3 * D),
+          updated_at: iso(3 * D),
+        },
+      ],
+    ];
+  })
 );
 
 export const webhooks = new Map<string, S['AppWebhookResponse'][]>(

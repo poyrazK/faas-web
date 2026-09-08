@@ -128,6 +128,7 @@ export const APP_TABS: { tab: string; segment: string }[] = [
   { tab: 'Webhooks', segment: 'webhooks' },
   { tab: 'Edge rules', segment: 'edge-rules' },
   { tab: 'Debugger', segment: 'debug' },
+  { tab: 'Mirrors', segment: 'mirrors' },
 ];
 
 export const SECTION_LABELS: Record<string, string> = {

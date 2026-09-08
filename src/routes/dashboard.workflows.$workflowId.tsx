@@ -40,6 +40,7 @@ import { QueuesBody } from './dashboard.queues';
 import { UpstreamsBody } from './dashboard.databases';
 import { AlertsBody } from './dashboard.alerts';
 import { DebugBody } from './dashboard.debug';
+import { MirrorsBody } from './dashboard.mirrors';
 import { WebhooksBody } from './dashboard.webhooks';
 import { EdgeRulesBody } from './dashboard.edge-rules';
 import { ErrorsBody } from '@/components/dashboard/errors-body';
@@ -83,6 +84,7 @@ const TABS = [
   'Webhooks',
   'Edge rules',
   'Debugger',
+  'Mirrors',
   'Configuration',
 ] as const;
 type Tab = (typeof TABS)[number];
@@ -598,6 +600,7 @@ function FunctionDetailPage() {
             {tab === 'Webhooks' && <WebhooksBody slug={fn.id} />}
             {tab === 'Edge rules' && <EdgeRulesBody slug={fn.id} />}
             {tab === 'Debugger' && <DebugBody slug={fn.id} />}
+            {tab === 'Mirrors' && <MirrorsBody slug={fn.id} />}
 
             {tab === 'Configuration' && <AppConfiguration slug={fn.id} />}
           </div>
