@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'motion/react';
-import { Check, Flash, Globe, NavArrowDown, TableRows } from 'iconoir-react';
+import { Check, NavArrowDown } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { SweepLink } from '@/components/sweep-link';
 import { EASE, Reveal } from './reveal';
@@ -105,12 +105,6 @@ const TIERS: Tier[] = [
   },
 ];
 
-const INCLUDED = [
-  { icon: Flash, label: 'Functions' },
-  { icon: TableRows, label: 'Queues' },
-  { icon: Globe, label: 'Edge' },
-] as const;
-
 function PlanColumn({ tier, index }: { tier: Tier; index: number }) {
   const [expanded, setExpanded] = useState(false);
   const rows = expanded ? [...tier.features, ...tier.more] : tier.features;
@@ -208,34 +202,12 @@ export function Pricing() {
             </div>
           </div>
 
-          {/* Everything below any plan boundary. */}
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-2 border-t border-border px-6 py-4 text-sm text-foreground sm:px-10">
-            <span>All plans give you access to</span>
-            {INCLUDED.map(({ icon: Icon, label }, i) => (
-              <span key={label} className="inline-flex items-center gap-1.5 font-medium">
-                <Icon aria-hidden className="h-4 w-4 text-brand" />
-                {label}
-                {i < INCLUDED.length - 2 ? ',' : i === INCLUDED.length - 2 ? ' and' : ''}
-              </span>
-            ))}
-          </div>
-
           {/* The five columns. */}
           <div className="grid divide-y divide-border border-t border-border lg:grid-cols-5 lg:divide-x lg:divide-y-0">
             {TIERS.map((tier, i) => (
               <PlanColumn key={tier.name} tier={tier} index={i} />
             ))}
           </div>
-
-          {/* Tick strip, the figure's baseline echoed as a ruler. */}
-          <div
-            aria-hidden
-            className="h-10 border-t border-border"
-            style={{
-              backgroundImage:
-                'repeating-linear-gradient(90deg, var(--border) 0 1px, transparent 1px 8px)',
-            }}
-          />
         </div>
 
         <p className="mt-6 text-sm text-muted-foreground">
