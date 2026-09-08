@@ -1,6 +1,6 @@
 # Trigger Console and Contract Design
 
-**Status:** Direction approved in chat on 2026-09-09 after the PR #57 product and code review; written contract awaiting review.
+**Status:** Approved on 2026-09-09 after the PR #57 product and code review.
 
 ## Goal
 
@@ -164,8 +164,8 @@ On success, secret inputs and in-memory source state are cleared and the user na
 
 - `plan_triggers_not_allowed`: upgrade panel;
 - `trigger_kind_not_allowed`: choose an allowed kind or upgrade;
-- `trigger_quota_exceeded`: limit explanation;
-- trigger batch/window/attempt/payload cap codes: field-level plan feedback;
+- `plan_trigger_quota`: count or numerical-cap explanation using the response's limit and observed values;
+- `trigger_batch_window_too_large` and `trigger_tls_skip_verify_not_allowed`: field-level plan feedback;
 - `trigger_invalid_config`: exact server detail;
 - `secret_store_unavailable`: retry after operator repair;
 - other errors: ordinary error summary with one retry action.
