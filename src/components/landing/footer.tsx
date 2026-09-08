@@ -265,14 +265,21 @@ export function Footer() {
           left and the six groups share the rest evenly, so the eye reads one
           band of headings rather than a brand block and some lists. No rules
           between columns: the whitespace does that work. */}
-      <div className="relative mx-auto max-w-7xl px-4 sm:px-6">
-        <div className="grid grid-cols-2 gap-x-8 gap-y-10 border-t border-border py-16 sm:grid-cols-3 lg:grid-cols-[auto_repeat(6,minmax(0,1fr))] lg:gap-x-10">
+      <div className="relative mx-auto max-w-[88rem] px-4 sm:px-8">
+        <div className="grid grid-cols-2 gap-x-8 gap-y-10 border-t border-border py-16 sm:grid-cols-3 lg:grid-cols-[15rem_repeat(6,minmax(0,1fr))] lg:gap-x-10">
           {/* Brand mark. Spans the full row on small screens so the columns
               below it start clean. */}
           <div className="col-span-2 sm:col-span-3 lg:col-span-1 lg:pr-10">
             <Link to="/" className="inline-flex items-center" aria-label="Gregale home">
               <img src="/logo.png" alt="Gregale" className="h-7 w-auto" />
             </Link>
+            {/* The copyright rides with the mark. Below the columns it landed
+                three quarters of the way down the footer, which is inside the
+                floor glow — grey text on a rising green wash. Here it sits on
+                the same clean ground as the links. */}
+            <p className="mt-6 text-xs text-muted-foreground">
+              © {new Date().getFullYear()} Gregale. All rights reserved.
+            </p>
           </div>
 
           {LINK_GROUPS.map((group) => (
@@ -290,22 +297,15 @@ export function Footer() {
         </div>
       </div>
 
-      {/* Oversized wordmark, clipped by the footer's bottom edge. It sits in
+      {/* Oversized wordmark, clipped by the footer's bottom edge, and now the
+          last thing on the page — nothing follows it, so the crop is the end
+          of the document rather than a seam before another band. It sits in
           front of the dissolve, so it needs real ink: dark where it meets the
           link band, easing off as it drops out of the frame. */}
       <div aria-hidden className="pointer-events-none relative z-10 select-none overflow-hidden">
         <p className="translate-y-[22%] bg-gradient-to-b from-foreground via-[#0f3d2b] to-brand bg-clip-text text-center text-[19vw] font-semibold leading-[0.75] tracking-[-0.05em] text-transparent">
           GREGALE
         </p>
-      </div>
-
-      {/* Bottom bar */}
-      <div className="relative border-t border-border bg-background/60 backdrop-blur-sm">
-        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-4 py-6 sm:flex-row sm:px-6">
-          <p className="text-xs text-muted-foreground">
-            © {new Date().getFullYear()} Gregale. All rights reserved.
-          </p>
-        </div>
       </div>
     </footer>
   );
