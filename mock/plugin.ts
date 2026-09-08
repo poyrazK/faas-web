@@ -1676,6 +1676,196 @@ route('DELETE', '/v1/apps/{slug}/buckets/{bucket}/s3-credentials/{credential}', 
   return NO_CONTENT;
 });
 
+// Managed PostgreSQL. Provisioning settles after a tick so the console's
+// polling path is exercised; MOCK_PLAN=free reproduces the plan gate.
+type PgRow = { id: string; state: string; updated_at: string } & Record<string, unknown>;
+const pgDatabases: PgRow[] = [];
+const pgBindings: PgRow[] = [];
+const PG_QUOTA = 5;
+
+function pgGate() {
+  if (process.env.MOCK_PLAN === 'free')
+    throw new Problem(
+      403,
+      'managed_postgres_not_in_plan',
+      'plan "free": managed PostgreSQL is not included in this plan.'
+    );
+}
+
+function pgSettle(row: PgRow): PgRow {
+  // A row provisions for 4 seconds, then reports itself ready.
+  if (row.state === 'provisioning' && Date.now() - Date.parse(row.updated_at) > 4000) {
+    row.state = 'ready';
+    row.updated_at = new Date().toISOString();
+  } else if (row.state === 'deleting' && Date.now() - Date.parse(row.updated_at) > 4000) {
+    row.state = 'deleted';
+    row.updated_at = new Date().toISOString();
+  }
+  return row;
+}
+
+function pgDatabase(id: string) {
+  const row = pgDatabases.find((d) => d.id === id);
+  if (!row) throw new Problem(404, 'managed_postgres_not_found', 'no such database');
+  return pgSettle(row);
+}
+
+route('GET', '/v1/postgres/databases', () => {
+  pgGate();
+  return {
+    items: pgDatabases.map((d) => pgSettle(d as never)).filter((d) => d.state !== 'deleted'),
+  };
+});
+route('POST', '/v1/postgres/databases', ({ body }) => {
+  pgGate();
+  const name = String(body.name ?? '').trim();
+  if (!/^[a-z][a-z0-9-]{1,62}$/.test(name))
+    throw new Problem(
+      400,
+      'managed_postgres_invalid',
+      'a name starts with a letter and holds lower-case letters, digits and dashes.'
+    );
+  if (pgDatabases.some((d) => d.name === name && d.state !== 'deleted'))
+    throw new Problem(409, 'managed_postgres_conflict', `a database named "${name}" exists.`);
+  if (pgDatabases.filter((d) => d.state !== 'deleted').length >= PG_QUOTA)
+    throw new Problem(
+      403,
+      'managed_postgres_quota_exceeded',
+      `at most ${PG_QUOTA} managed databases on this plan.`
+    );
+  const major = Number(body.postgres_major);
+  if (![15, 16, 17].includes(major))
+    throw new Problem(422, 'managed_postgres_unsupported', `PostgreSQL ${major} is not offered.`);
+  const now = new Date().toISOString();
+  const database = {
+    id: db.id(),
+    name,
+    region: String(body.region ?? 'fra'),
+    postgres_major: major,
+    service_class: String(body.service_class ?? 'development'),
+    availability: String(body.availability ?? 'single_zone'),
+    scale_to_zero: body.scale_to_zero !== false,
+    storage_limit_bytes: Number(body.storage_limit_bytes ?? 10 * 1024 ** 3),
+    restore_window_seconds: Number(body.restore_window_seconds ?? 7 * 24 * 3600),
+    restore_source_database_id: null,
+    restore_point_in_time: null,
+    state: 'provisioning',
+    last_error_code: null,
+    created_at: now,
+    updated_at: now,
+  };
+  pgDatabases.push(database);
+  return status(201, database);
+});
+route('GET', '/v1/postgres/databases/{id}', ({ params }) => pgDatabase(params.id));
+route('DELETE', '/v1/postgres/databases/{id}', ({ params }) => {
+  const database = pgDatabase(params.id);
+  database.state = 'deleting';
+  database.updated_at = new Date().toISOString();
+  for (const b of pgBindings.filter((x) => x.database_id === params.id)) b.state = 'deleting';
+  return database;
+});
+route('POST', '/v1/postgres/databases/{id}/restore', ({ params, body }) => {
+  const source = pgDatabase(params.id);
+  const name = String(body.name ?? '').trim();
+  if (!/^[a-z][a-z0-9-]{1,62}$/.test(name))
+    throw new Problem(400, 'managed_postgres_invalid', 'the new database needs a valid name.');
+  const at = Date.parse(String(body.point_in_time ?? ''));
+  if (Number.isNaN(at))
+    throw new Problem(
+      400,
+      'managed_postgres_invalid',
+      'point_in_time must be an RFC3339 timestamp.'
+    );
+  const window = Number(source.restore_window_seconds) * 1000;
+  if (Date.now() - at > window)
+    throw new Problem(
+      422,
+      'managed_postgres_unsupported',
+      'that point in time is older than the restore window.'
+    );
+  const now = new Date().toISOString();
+  const restored = {
+    ...source,
+    id: db.id(),
+    name,
+    state: 'provisioning',
+    restore_source_database_id: source.id,
+    restore_point_in_time: new Date(at).toISOString(),
+    created_at: now,
+    updated_at: now,
+  };
+  pgDatabases.push(restored);
+  return status(201, restored);
+});
+route('GET', '/v1/postgres/databases/{id}/bindings', ({ params }) => {
+  pgDatabase(params.id);
+  return {
+    items: pgBindings
+      .filter((b) => b.database_id === params.id)
+      .map(pgSettle)
+      .filter((b) => b.state !== 'deleted'),
+  };
+});
+route('POST', '/v1/postgres/databases/{id}/bindings', ({ params, body }) => {
+  const database = pgDatabase(params.id);
+  if (database.state !== 'ready')
+    throw new Problem(
+      409,
+      'managed_postgres_conflict',
+      `the database is ${String(database.state)}; bind it once it is ready.`
+    );
+  const appId = String(body.app_id ?? '');
+  if (!db.apps.some((a) => a.id === appId))
+    throw new Problem(404, 'managed_postgres_not_found', 'no such app');
+  const key = String(body.environment_key ?? '').trim();
+  if (!/^[A-Z][A-Z0-9_]*$/.test(key))
+    throw new Problem(
+      400,
+      'managed_postgres_invalid',
+      'the secret name is upper-case letters, digits and underscores.'
+    );
+  const scope = String(body.scope ?? 'default');
+  if (
+    pgBindings.some(
+      (b) =>
+        b.database_id === params.id &&
+        b.app_id === appId &&
+        b.scope === scope &&
+        b.state !== 'deleted'
+    )
+  )
+    throw new Problem(409, 'managed_postgres_conflict', 'that app is already bound in this scope.');
+  const now = new Date().toISOString();
+  const binding = {
+    id: db.id(),
+    database_id: params.id,
+    app_id: appId,
+    scope,
+    environment_key: key,
+    access: String(body.access ?? 'read_write'),
+    credential_generation: 1,
+    state: 'provisioning',
+    last_error_code: null,
+    created_at: now,
+    updated_at: now,
+  };
+  pgBindings.push(binding);
+  return status(201, binding);
+});
+route('GET', '/v1/postgres/bindings/{id}', ({ params }) => {
+  const binding = pgBindings.find((b) => b.id === params.id);
+  if (!binding) throw new Problem(404, 'managed_postgres_not_found', 'no such binding');
+  return pgSettle(binding);
+});
+route('DELETE', '/v1/postgres/bindings/{id}', ({ params }) => {
+  const binding = pgBindings.find((b) => b.id === params.id);
+  if (!binding) throw new Problem(404, 'managed_postgres_not_found', 'no such binding');
+  binding.state = 'deleting';
+  binding.updated_at = new Date().toISOString();
+  return binding;
+});
+
 route('GET', '/v1/apps/{slug}/webhooks', ({ params }) => listOf(db.webhooks, params.slug));
 route('POST', '/v1/apps/{slug}/webhooks', ({ params, body }) => {
   const a = app(params.slug);
