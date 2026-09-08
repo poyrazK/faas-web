@@ -8,23 +8,22 @@ import { TextReveal } from './text-reveal';
 import { FloorGlow } from './floor-glow';
 
 /**
- * Footer directory.
+ * Footer directory — a wide six-column index, logo at the far left.
  *
  * **Every href here resolves.** This was twenty links pointing at `#`, naming
  * pages that do not exist — Careers, Blog, Brand kit, DPA, Sub-processors,
  * Containers. A dead link in a footer is worse than a missing one: it reads as
  * a real page right up until someone clicks it.
  *
- * Destinations are limited to what actually exists: the landing anchors, the
- * app's own routes, `/docs`, the source repository, and the OpenAPI document
- * the API serves.
+ * So the columns are filled from what exists rather than from the shape of the
+ * grid: the landing anchors, the app's own routes, the fourteen published docs
+ * (titles taken from `docs-manifest.ts`, so a renamed page renames itself
+ * here), and the OpenAPI document the API serves on this origin. A column is
+ * short when the material is short.
  *
- * Still absent: Privacy and Terms. Those remain unwritten, and linking a page
- * into existence is the thing this comment exists to prevent. The DPA and the
- * sub-processor list *were* written all along — they sat in the upstream
- * repository and are now published under `/docs`.
- *
- * Changelog is absent too: the repository has no releases to point at.
+ * Still absent: Privacy and Terms, which remain unwritten; social accounts,
+ * which the site does not have; and a language selector, because there is one
+ * language. Each of those is a link this footer would have to invent.
  */
 interface FooterLink {
   label: string;
@@ -42,26 +41,51 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
     title: 'Product',
     links: [
       { label: 'How it works', href: '#how' },
+      { label: 'Why microVMs', href: '#why' },
+      { label: 'Deploying', href: '#deploy' },
       { label: 'Pricing', href: '#pricing' },
-      { label: 'Console', href: '/dashboard', route: '/dashboard' },
-      { label: 'Start free', href: '/signup', route: '/signup' },
-      { label: 'Sign in', href: '/login', route: '/login' },
+    ],
+  },
+  {
+    title: 'Runtimes',
+    links: [
+      { label: 'Node 24', href: '/docs/runtime-node', doc: 'runtime-node' },
+      { label: 'Python 3.13', href: '/docs/runtime-python', doc: 'runtime-python' },
+      { label: 'Go 1.24', href: '/docs/runtime-go', doc: 'runtime-go' },
+      { label: 'Trace propagation', href: '/docs/tracing', doc: 'tracing' },
+    ],
+  },
+  {
+    title: 'Platform',
+    links: [
+      { label: 'Scaling to zero', href: '/docs/scale-to-zero', doc: 'scale-to-zero' },
+      { label: 'Storage', href: '/docs/storage', doc: 'storage' },
+      {
+        label: 'Preview environments',
+        href: '/docs/preview-environments',
+        doc: 'preview-environments',
+      },
+      { label: 'Egress denylist', href: '/docs/egress-denylist', doc: 'egress-denylist' },
     ],
   },
   {
     title: 'Developers',
     links: [
       { label: 'Documentation', href: '/docs', doc: true },
+      {
+        label: 'Deploying from source',
+        href: '/docs/deploy-from-source',
+        doc: 'deploy-from-source',
+      },
+      { label: 'CLI setup', href: '/docs/cli', doc: 'cli' },
       // Served by apid on this same origin, so it needs no absolute URL.
       { label: 'API reference', href: '/v1/openapi.yaml' },
     ],
   },
   {
-    // These used to be absent because the pages did not exist. They do —
-    // upstream had a DPA and a sub-processor list all along, now published at
-    // /docs. Privacy and Terms are still genuinely unwritten.
-    title: 'Trust',
+    title: 'Trust & safety',
     links: [
+      { label: 'Compliance', href: '/docs/compliance', doc: 'compliance' },
       { label: 'Data Processing Agreement', href: '/docs/dpa', doc: 'dpa' },
       { label: 'Sub-processors', href: '/docs/subprocessors', doc: 'subprocessors' },
       {
@@ -69,6 +93,14 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
         href: '/docs/responsible-disclosure',
         doc: 'responsible-disclosure',
       },
+    ],
+  },
+  {
+    title: 'Account',
+    links: [
+      { label: 'Console', href: '/dashboard', route: '/dashboard' },
+      { label: 'Start free', href: '/signup', route: '/signup' },
+      { label: 'Sign in', href: '/login', route: '/login' },
     ],
   },
 ];
@@ -137,7 +169,10 @@ export function Footer() {
       {/* The floor glow — Dia's footer gradient in the mint ramp. Anchored to
           the very bottom and rising into view; the wordmark and bottom bar
           sit in front of it, the CTA panel above it. */}
-      <FloorGlow blur={28} className="absolute inset-x-0 bottom-0 h-[56%] sm:h-[50%]" />
+      {/* The directory is six columns now, which stacks into three tall rows on
+          a phone. The glow is pinned lower there so it stays a floor under the
+          wordmark rather than rising behind the links. */}
+      <FloorGlow blur={28} className="absolute inset-x-0 bottom-0 h-[34%] sm:h-[46%] lg:h-[50%]" />
 
       {/* Readability scrim over the CTA and link bands, clearing before the
           glow's brightest band so the floor stays plainly lit. */}
@@ -146,7 +181,7 @@ export function Footer() {
         className="pointer-events-none absolute inset-0"
         style={{
           background:
-            'linear-gradient(to bottom, color-mix(in srgb, var(--background) 92%, transparent) 0%, color-mix(in srgb, var(--background) 82%, transparent) 55%, color-mix(in srgb, var(--background) 40%, transparent) 74%, transparent 88%)',
+            'linear-gradient(to bottom, color-mix(in srgb, var(--background) 92%, transparent) 0%, color-mix(in srgb, var(--background) 88%, transparent) 62%, color-mix(in srgb, var(--background) 45%, transparent) 78%, transparent 90%)',
         }}
       />
 
@@ -226,28 +261,24 @@ export function Footer() {
         </div>
       </section>
 
-      {/* Link directory — hairline rules turn it into a spec sheet */}
-      <div className="relative mx-auto max-w-6xl px-4 sm:px-6">
-        <div className="grid gap-10 border-t border-border py-14 md:grid-cols-[1.4fr_repeat(4,1fr)] md:gap-6">
-          {/* Brand column */}
-          <div className="md:pr-8">
-            <Link to="/" className="inline-flex items-center">
+      {/* Link directory. The mark sits in its own narrow column at the far
+          left and the six groups share the rest evenly, so the eye reads one
+          band of headings rather than a brand block and some lists. No rules
+          between columns: the whitespace does that work. */}
+      <div className="relative mx-auto max-w-7xl px-4 sm:px-6">
+        <div className="grid grid-cols-2 gap-x-8 gap-y-10 border-t border-border py-16 sm:grid-cols-3 lg:grid-cols-[auto_repeat(6,minmax(0,1fr))] lg:gap-x-10">
+          {/* Brand mark. Spans the full row on small screens so the columns
+              below it start clean. */}
+          <div className="col-span-2 sm:col-span-3 lg:col-span-1 lg:pr-10">
+            <Link to="/" className="inline-flex items-center" aria-label="Gregale home">
               <img src="/logo.png" alt="Gregale" className="h-7 w-auto" />
             </Link>
-            <p className="mt-4 max-w-[26ch] text-sm leading-relaxed text-muted-foreground">
-              Scale-to-zero serverless on real microVMs. Snapshot cold starts under 350ms.
-            </p>
           </div>
 
-          {/* Link groups */}
           {LINK_GROUPS.map((group) => (
-            <nav
-              key={group.title}
-              aria-label={group.title}
-              className="md:border-l md:border-border md:pl-6"
-            >
-              <h3 className="label-mono text-muted-foreground">{group.title}</h3>
-              <ul className="mt-4 flex flex-col gap-2.5">
+            <nav key={group.title} aria-label={group.title}>
+              <h3 className="text-sm font-medium text-foreground">{group.title}</h3>
+              <ul className="mt-4 flex flex-col gap-3">
                 {group.links.map((link) => (
                   <li key={link.label}>
                     <FooterAnchor link={link} />
