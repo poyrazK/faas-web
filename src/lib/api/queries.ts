@@ -332,6 +332,7 @@ export function usePerAppUsage() {
   return useQuery({
     queryKey: ['usage', 'per-app'],
     queryFn: () => unwrap(api.GET('/v1/usage', {})),
+    refetchInterval: 30_000,
   });
 }
 
@@ -1145,6 +1146,7 @@ export function useUsageSummary() {
   return useQuery({
     queryKey: keys.usageSummary,
     queryFn: () => unwrap(api.GET('/v1/usage/summary', {})),
+    refetchInterval: 30_000,
   });
 }
 

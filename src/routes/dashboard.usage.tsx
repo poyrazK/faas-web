@@ -18,6 +18,7 @@ import { useToast } from '@/components/ui/toast';
 import { errorMessage } from '@/lib/api/errors';
 import { slugIndex } from '@/lib/api/adapters';
 import { consoleHead } from '@/lib/seo';
+import { formatUsageBytes, formatUsageNumber } from '@/lib/usage-format';
 
 export const Route = createFileRoute('/dashboard/usage')({
   component: UsagePage,
@@ -34,11 +35,6 @@ export const Route = createFileRoute('/dashboard/usage')({
  * Plan limits come from `/v1/account` rather than being hardcoded, so a plan
  * change is reflected without a deploy.
  */
-function formatNumber(value: number | undefined, digits = 2): string {
-  if (value == null) return '—';
-  return value.toLocaleString(undefined, { maximumFractionDigits: digits });
-}
-
 function formatMoney(cents: number | undefined): string {
   if (cents == null) return '—';
   return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'EUR' }).format(
@@ -158,14 +154,14 @@ function ForecastPanel({
         <p className="text-xs text-muted-foreground">
           At this pace: ~
           <span className="text-foreground [font-variant-numeric:tabular-nums]">
-            {formatNumber(projected)}
+            {formatUsageNumber(projected)}
           </span>{' '}
           GB-hours by month end
           {overBy > 0 ? (
             <span style={{ color: 'var(--status-warning)' }}>
               {' '}
-              — ≈{formatNumber(overBy)} past the allowance. The spend cap below decides what happens
-              then.
+              — ≈{formatUsageNumber(overBy)} past the allowance. The spend cap below decides what
+              happens then.
             </span>
           ) : (
             ' — inside the allowance.'
@@ -188,7 +184,7 @@ function PerAppUsagePanel() {
         gbHours: (u.mb_seconds ?? 0) / 1024 / 3600,
         requests: u.requests ?? 0,
         coldBoots: u.cold_boots ?? 0,
-        egressGb: ((u.tx_bytes ?? 0) + (u.net_tx_bytes ?? 0)) / 1e9,
+        egressBytes: (u.tx_bytes ?? 0) + (u.net_tx_bytes ?? 0),
       }))
       .sort((a, b) => b.gbHours - a.gbHours);
   }, [q.data, apps]);
@@ -234,7 +230,7 @@ function PerAppUsagePanel() {
                 <tr key={r.slug}>
                   <td className="px-5 py-2.5 font-mono text-xs">{r.slug}</td>
                   <td className="px-5 py-2.5 text-right [font-variant-numeric:tabular-nums]">
-                    {r.gbHours.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                    {formatUsageNumber(r.gbHours)}
                   </td>
                   <td className="px-5 py-2.5">
                     {/* Share of the month's compute — the ranking, visible. */}
@@ -260,7 +256,7 @@ function PerAppUsagePanel() {
                     {r.coldBoots.toLocaleString()}
                   </td>
                   <td className="px-5 py-2.5 text-right [font-variant-numeric:tabular-nums]">
-                    {r.egressGb.toLocaleString(undefined, { maximumFractionDigits: 2 })} GB
+                    {formatUsageBytes(r.egressBytes)}
                   </td>
                 </tr>
               ))}
@@ -302,9 +298,9 @@ function UsagePage() {
       ) : (
         <>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <StatTile label="GB-hours used" value={formatNumber(used)} />
-            <StatTile label="Included" value={formatNumber(included)} />
-            <StatTile label="Overage" value={formatNumber(data?.overage_gb_hours)} />
+            <StatTile label="GB-hours used" value={formatUsageNumber(used)} />
+            <StatTile label="Included" value={formatUsageNumber(included)} />
+            <StatTile label="Overage" value={formatUsageNumber(data?.overage_gb_hours)} />
             <StatTile label="Overage cost" value={formatMoney(data?.overage_cents)} />
           </div>
 
@@ -327,16 +323,22 @@ function UsagePage() {
                 />
               </div>
               <p className="text-xs text-muted-foreground">
-                {formatNumber(used)} of {formatNumber(included)} GB-hours
+                {formatUsageNumber(used)} of {formatUsageNumber(included)} GB-hours
                 {over ? ' — you are into overage for this period.' : '.'}
               </p>
             </div>
           </Panel>
 
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <StatTile label="CPU hours" value={formatNumber(data?.used_cpu_hours)} />
-            <StatTile label="Egress" value={`${formatNumber(data?.used_egress_gb)} GB`} />
-            <StatTile label="Ingress" value={`${formatNumber(data?.used_ingress_gb)} GB`} />
+            <StatTile label="CPU hours" value={formatUsageNumber(data?.used_cpu_hours)} />
+            <StatTile
+              label="Egress"
+              value={formatUsageBytes((data?.used_egress_gb ?? 0) * 1024 ** 3)}
+            />
+            <StatTile
+              label="Ingress"
+              value={formatUsageBytes((data?.used_ingress_gb ?? 0) * 1024 ** 3)}
+            />
             <StatTile label="Apps" value={String(account?.app_count ?? '—')} />
           </div>
 
