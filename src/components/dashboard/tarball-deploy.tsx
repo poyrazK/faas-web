@@ -63,7 +63,7 @@ export function TarballDeploy({
       });
       onDeployed?.(deployment.id);
     } catch (err) {
-      if (err instanceof ApiError && err.status === 413) {
+      if (err instanceof ApiError && err.code === 'source_too_large') {
         toast({
           kind: 'error',
           title: 'Archive too large',

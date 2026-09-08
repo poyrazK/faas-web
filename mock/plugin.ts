@@ -1410,7 +1410,7 @@ route('POST', '/v1/apps/{slug}/restart', ({ params }) => {
     );
   restarting.add(a.slug);
   setTimeout(() => restarting.delete(a.slug), 5_000);
-  return status(202, { wake_id: `wk_${db.id().slice(0, 12)}` });
+  return status(202, { wake_id: db.id() });
 });
 
 route('POST', '/v1/apps/{slug}/restore', ({ params }) => {
@@ -1441,7 +1441,7 @@ route('GET', '/v1/apps/{slug}/upstreams/history', ({ params, query }) => {
         sampled_at: db.iso((count - 1 - i) * step * 60_000),
         p50_ms: gap ? null : Math.round((4 + index * 3) * drift),
         p95_ms: gap ? null : Math.round((11 + index * 7) * drift),
-        sample_count: gap ? 0 : 12,
+        sample_count: gap ? 1 : 12,
       };
     }),
   }));
@@ -1563,8 +1563,18 @@ const bucketS3 = new Map<
   }[]
 >();
 
+/**
+ * The API declares `{bucket}` as the bucket's id, not its name. The mock
+ * enforces the shape so passing a name fails here rather than in production.
+ */
+function bucketId(value: string) {
+  if (!/^[0-9a-f]{32}$/.test(value))
+    throw new Problem(404, 'not_found', `"${value}" is not a bucket id.`);
+  return value;
+}
+
 function grantsFor(slug: string, bucket: string) {
-  const key = `${slug}/${bucket}`;
+  const key = `${slug}/${bucketId(bucket)}`;
   if (!bucketGrants.has(key)) {
     const first = db.keys[0];
     bucketGrants.set(
@@ -1587,7 +1597,7 @@ function grantsFor(slug: string, bucket: string) {
 }
 
 function s3For(slug: string, bucket: string) {
-  const key = `${slug}/${bucket}`;
+  const key = `${slug}/${bucketId(bucket)}`;
   if (!bucketS3.has(key)) bucketS3.set(key, []);
   return bucketS3.get(key)!;
 }

@@ -9,29 +9,22 @@ import { useTrigger } from '@/lib/api/queries';
  * Editing stays in `gregale.yaml` and the CLI — a trigger's source, filter
  * and target belong in version control — but reading what is actually
  * deployed does not, and "why is nothing arriving" is usually answered by
- * the filter or the paused flag rather than by the record log.
+ * the filter criteria or the paused flag rather than by the record log.
+ *
+ * The fields are the schema's own: `config` holds the broker coordinates and
+ * differs per kind, so it is rendered as the JSON the API returned rather
+ * than flattened into invented field names.
  */
 
-function fieldRows(trigger: Record<string, unknown>): [string, string][] {
-  const rows: [string, string][] = [];
-  const add = (label: string, value: unknown) => {
-    if (value === undefined || value === null || value === '') return;
-    rows.push([label, typeof value === 'string' ? value : JSON.stringify(value)]);
-  };
-  add('Source', trigger.source);
-  add('Target', trigger.target ?? trigger.app_slug);
-  add('Filter', trigger.filter);
-  add('Batch size', trigger.batch_size);
-  add('Max retries', trigger.max_retries);
-  add('Created', trigger.created_at ? new Date(String(trigger.created_at)).toLocaleString() : null);
-  add('Updated', trigger.updated_at ? new Date(String(trigger.updated_at)).toLocaleString() : null);
-  return rows;
+function labelled(value: unknown): string | null {
+  if (value === undefined || value === null || value === '') return null;
+  return typeof value === 'string' ? value : JSON.stringify(value);
 }
 
 export function TriggerConfiguration({ triggerId }: { triggerId: string }) {
   const trigger = useTrigger(triggerId);
-  const data = trigger.data as Record<string, unknown> | undefined;
-  const missing = trigger.error instanceof ApiError && trigger.error.status === 404;
+  const data = trigger.data;
+  const missing = trigger.error instanceof ApiError && trigger.error.code === 'trigger_not_found';
 
   if (trigger.isPending)
     return <p className="text-sm text-muted-foreground">Reading the trigger…</p>;
@@ -40,7 +33,22 @@ export function TriggerConfiguration({ triggerId }: { triggerId: string }) {
   if (trigger.error || !data)
     return <p className="text-sm text-muted-foreground">{errorMessage(trigger.error)}</p>;
 
-  const rows = fieldRows(data);
+  const rows: [string, string][] = [
+    ['Delivery slug', labelled(data.slug)],
+    ['Source', labelled(data.source)],
+    ['Schedule', labelled(data.schedule)],
+    ['Path', labelled(data.path)],
+    ['Batch size (max)', labelled(data.batch_size_max)],
+    ['Batch window', data.batch_window_ms != null ? `${data.batch_window_ms} ms` : null],
+    ['Attempts', labelled(data.max_attempts)],
+    ['Payload cap', data.payload_max_bytes != null ? `${data.payload_max_bytes} bytes` : null],
+    ['Poison strategy', labelled(data.broker_poison_strategy)],
+  ].filter((row): row is [string, string] => row[1] !== null);
+
+  const filter = data.filter_criteria;
+  const hasFilter = filter != null && Object.keys(filter).length > 0;
+  const hasConfig = data.config != null && Object.keys(data.config).length > 0;
+
   return (
     <Panel
       title="Configuration"
@@ -48,30 +56,45 @@ export function TriggerConfiguration({ triggerId }: { triggerId: string }) {
     >
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center gap-2">
-          <Pill label={String(data.kind ?? 'trigger')} />
+          <Pill label={data.kind} />
           <Pill
-            label={data.enabled === false ? 'paused' : 'enabled'}
-            color={data.enabled === false ? 'var(--status-idle)' : 'var(--status-good)'}
+            label={data.enabled ? 'enabled' : 'paused'}
+            color={data.enabled ? 'var(--status-good)' : 'var(--status-idle)'}
           />
-          <span className="font-mono text-xs text-muted-foreground">
-            {String(data.id ?? triggerId)}
-          </span>
+          <span className="font-mono text-xs text-muted-foreground">{data.id}</span>
         </div>
-        {rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            The API returned no configurable fields for this trigger.
-          </p>
-        ) : (
-          <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
-            {rows.map(([label, value]) => (
-              <div key={label} className="flex min-w-0 flex-col gap-0.5">
-                <dt className="label-mono text-muted-foreground">{label}</dt>
-                <dd className="truncate font-mono text-xs" title={value}>
-                  {value}
-                </dd>
-              </div>
-            ))}
-          </dl>
+
+        <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+          {rows.map(([label, value]) => (
+            <div key={label} className="flex min-w-0 flex-col gap-0.5">
+              <dt className="label-mono text-muted-foreground">{label}</dt>
+              <dd className="truncate font-mono text-xs" title={value}>
+                {value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+
+        <div>
+          <p className="label-mono mb-1.5 text-muted-foreground">Filter</p>
+          {hasFilter ? (
+            <pre className="max-h-40 overflow-auto rounded-md bg-muted p-2 font-mono text-xs">
+              {JSON.stringify(filter, null, 2)}
+            </pre>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              No filter: every record from the source is dispatched.
+            </p>
+          )}
+        </div>
+
+        {hasConfig && (
+          <div>
+            <p className="label-mono mb-1.5 text-muted-foreground">Source configuration</p>
+            <pre className="max-h-56 overflow-auto rounded-md bg-muted p-2 font-mono text-xs">
+              {JSON.stringify(data.config, null, 2)}
+            </pre>
+          </div>
         )}
       </div>
     </Panel>

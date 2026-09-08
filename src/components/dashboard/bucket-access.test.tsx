@@ -75,36 +75,55 @@ beforeEach(() => {
   confirm.mockReset().mockResolvedValue(true);
 });
 
+describe('BucketAccess', () => {
+  it('addresses the bucket by its id, which is what the API path takes', async () => {
+    render(wrap(<BucketAccess slug="api" bucketId="b17c0ffee0000000000000000000dead" />));
+    await waitFor(() =>
+      expect(useBucketAccessGrants).toHaveBeenCalledWith('api', 'b17c0ffee0000000000000000000dead')
+    );
+    expect(useBucketS3Credentials).toHaveBeenCalledWith('api', 'b17c0ffee0000000000000000000dead');
+  });
+});
+
 describe('BucketAccess grants', () => {
   it('shows the key’s own status beside the grant, since a revoked key grants nothing', () => {
-    render(wrap(<BucketAccess slug="api" bucket="assets" />));
+    render(wrap(<BucketAccess slug="api" bucketId="b17c0ffee0000000000000000000dead" />));
     expect(screen.getByText('ci-deploy')).toBeInTheDocument();
     expect(screen.getByText('revoked')).toBeInTheDocument();
   });
 
   it('offers only keys that do not already have a grant', async () => {
-    render(wrap(<BucketAccess slug="api" bucket="assets" />));
+    render(wrap(<BucketAccess slug="api" bucketId="b17c0ffee0000000000000000000dead" />));
     const picker = screen.getByLabelText('API key to grant');
     expect(picker).toHaveValue('k2');
     await userEvent.click(screen.getByRole('button', { name: /^grant$/i }));
-    await waitFor(() => expect(setGrant).toHaveBeenCalledWith('api', 'assets', 'k2', 'read'));
+    await waitFor(() =>
+      expect(setGrant).toHaveBeenCalledWith('api', 'b17c0ffee0000000000000000000dead', 'k2', 'read')
+    );
   });
 
   it('confirms before revoking a grant', async () => {
-    render(wrap(<BucketAccess slug="api" bucket="assets" />));
+    render(wrap(<BucketAccess slug="api" bucketId="b17c0ffee0000000000000000000dead" />));
     await userEvent.click(screen.getByRole('button', { name: /revoke grant for ci-deploy/i }));
     await waitFor(() => expect(confirm).toHaveBeenCalled());
-    await waitFor(() => expect(deleteGrant).toHaveBeenCalledWith('api', 'assets', 'k1'));
+    await waitFor(() =>
+      expect(deleteGrant).toHaveBeenCalledWith('api', 'b17c0ffee0000000000000000000dead', 'k1')
+    );
   });
 });
 
 describe('BucketAccess S3 credentials', () => {
   it('shows the secret once, with a warning that it is not kept', async () => {
-    render(wrap(<BucketAccess slug="api" bucket="assets" />));
+    render(wrap(<BucketAccess slug="api" bucketId="b17c0ffee0000000000000000000dead" />));
     await userEvent.type(screen.getByLabelText('Credential label'), 'backup-runner');
     await userEvent.click(screen.getByRole('button', { name: /create/i }));
     await waitFor(() =>
-      expect(createCredential).toHaveBeenCalledWith('api', 'assets', 'backup-runner', 'read')
+      expect(createCredential).toHaveBeenCalledWith(
+        'api',
+        'b17c0ffee0000000000000000000dead',
+        'backup-runner',
+        'read'
+      )
     );
     expect(await screen.findByText('super-secret-value')).toBeInTheDocument();
     expect(screen.getByText(/shown once/i)).toBeInTheDocument();

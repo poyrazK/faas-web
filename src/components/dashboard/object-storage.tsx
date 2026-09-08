@@ -195,7 +195,7 @@ function BucketManager({ slug }: { slug: string }) {
             maxBytes={directUploadMaxBytes}
             signingEnabled={data.enabled}
           />
-          <BucketAccess slug={slug} bucket={bucket.name} />
+          <BucketAccess key={bucket.id} slug={slug} bucketId={bucket.id} />
         </>
       )}
       {bucket && bucket.state !== 'ready' && (

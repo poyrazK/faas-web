@@ -47,7 +47,7 @@ export function RestartAppButton({ slug }: { slug: string }) {
         description: `Replacement wake ${result.wake_id.slice(0, 12)} — it appears in the wake timeline.`,
       });
     } catch (err) {
-      if (err instanceof ApiError && err.status === 409) {
+      if (err instanceof ApiError && err.code === 'conflict') {
         toast({
           kind: 'info',
           title: 'Already restarting',
@@ -109,7 +109,7 @@ export function PurgeCacheControl({ slug }: { slug: string }) {
       });
       setPath('');
     } catch (err) {
-      if (err instanceof ApiError && err.status === 422) {
+      if (err instanceof ApiError && err.code === 'validation_failed') {
         toast({
           kind: 'error',
           title: 'That path glob was rejected',
