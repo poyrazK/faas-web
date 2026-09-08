@@ -23,6 +23,7 @@ import { Route as DashboardAuditRouteImport } from './routes/dashboard.audit'
 import { Route as DashboardBuildsRouteImport } from './routes/dashboard.builds'
 import { Route as DashboardCronsRouteImport } from './routes/dashboard.crons'
 import { Route as DashboardDatabasesRouteImport } from './routes/dashboard.databases'
+import { Route as DashboardDebugRouteImport } from './routes/dashboard.debug'
 import { Route as DashboardDeploymentsRouteImport } from './routes/dashboard.deployments'
 import { Route as DashboardDomainsRouteImport } from './routes/dashboard.domains'
 import { Route as DashboardEdgeRulesRouteImport } from './routes/dashboard.edge-rules'
@@ -41,6 +42,7 @@ import { Route as DashboardStorageRouteImport } from './routes/dashboard.storage
 import { Route as DashboardTeamRouteImport } from './routes/dashboard.team'
 import { Route as DashboardTemplatesRouteImport } from './routes/dashboard.templates'
 import { Route as DashboardTracesRouteImport } from './routes/dashboard.traces'
+import { Route as DashboardTriggersRouteImport } from './routes/dashboard.triggers'
 import { Route as DashboardUsageRouteImport } from './routes/dashboard.usage'
 import { Route as DashboardWebhooksRouteImport } from './routes/dashboard.webhooks'
 import { Route as DashboardWorkersRouteImport } from './routes/dashboard.workers'
@@ -119,6 +121,11 @@ const DashboardCronsRoute = DashboardCronsRouteImport.update({
 const DashboardDatabasesRoute = DashboardDatabasesRouteImport.update({
   id: '/databases',
   path: '/databases',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardDebugRoute = DashboardDebugRouteImport.update({
+  id: '/debug',
+  path: '/debug',
   getParentRoute: () => DashboardRoute,
 } as any)
 const DashboardDeploymentsRoute = DashboardDeploymentsRouteImport.update({
@@ -211,6 +218,11 @@ const DashboardTracesRoute = DashboardTracesRouteImport.update({
   path: '/traces',
   getParentRoute: () => DashboardRoute,
 } as any)
+const DashboardTriggersRoute = DashboardTriggersRouteImport.update({
+  id: '/triggers',
+  path: '/triggers',
+  getParentRoute: () => DashboardRoute,
+} as any)
 const DashboardUsageRoute = DashboardUsageRouteImport.update({
   id: '/usage',
   path: '/usage',
@@ -272,6 +284,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/builds': typeof DashboardBuildsRoute
   '/dashboard/crons': typeof DashboardCronsRoute
   '/dashboard/databases': typeof DashboardDatabasesRoute
+  '/dashboard/debug': typeof DashboardDebugRoute
   '/dashboard/deployments': typeof DashboardDeploymentsRoute
   '/dashboard/domains': typeof DashboardDomainsRoute
   '/dashboard/edge-rules': typeof DashboardEdgeRulesRoute
@@ -290,6 +303,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/team': typeof DashboardTeamRoute
   '/dashboard/templates': typeof DashboardTemplatesRoute
   '/dashboard/traces': typeof DashboardTracesRoute
+  '/dashboard/triggers': typeof DashboardTriggersRoute
   '/dashboard/usage': typeof DashboardUsageRoute
   '/dashboard/webhooks': typeof DashboardWebhooksRoute
   '/dashboard/workers': typeof DashboardWorkersRoute
@@ -313,6 +327,7 @@ export interface FileRoutesByTo {
   '/dashboard/builds': typeof DashboardBuildsRoute
   '/dashboard/crons': typeof DashboardCronsRoute
   '/dashboard/databases': typeof DashboardDatabasesRoute
+  '/dashboard/debug': typeof DashboardDebugRoute
   '/dashboard/deployments': typeof DashboardDeploymentsRoute
   '/dashboard/domains': typeof DashboardDomainsRoute
   '/dashboard/edge-rules': typeof DashboardEdgeRulesRoute
@@ -331,6 +346,7 @@ export interface FileRoutesByTo {
   '/dashboard/team': typeof DashboardTeamRoute
   '/dashboard/templates': typeof DashboardTemplatesRoute
   '/dashboard/traces': typeof DashboardTracesRoute
+  '/dashboard/triggers': typeof DashboardTriggersRoute
   '/dashboard/usage': typeof DashboardUsageRoute
   '/dashboard/webhooks': typeof DashboardWebhooksRoute
   '/dashboard/workers': typeof DashboardWorkersRoute
@@ -357,6 +373,7 @@ export interface FileRoutesById {
   '/dashboard/builds': typeof DashboardBuildsRoute
   '/dashboard/crons': typeof DashboardCronsRoute
   '/dashboard/databases': typeof DashboardDatabasesRoute
+  '/dashboard/debug': typeof DashboardDebugRoute
   '/dashboard/deployments': typeof DashboardDeploymentsRoute
   '/dashboard/domains': typeof DashboardDomainsRoute
   '/dashboard/edge-rules': typeof DashboardEdgeRulesRoute
@@ -375,6 +392,7 @@ export interface FileRoutesById {
   '/dashboard/team': typeof DashboardTeamRoute
   '/dashboard/templates': typeof DashboardTemplatesRoute
   '/dashboard/traces': typeof DashboardTracesRoute
+  '/dashboard/triggers': typeof DashboardTriggersRoute
   '/dashboard/usage': typeof DashboardUsageRoute
   '/dashboard/webhooks': typeof DashboardWebhooksRoute
   '/dashboard/workers': typeof DashboardWorkersRoute
@@ -402,6 +420,7 @@ export interface FileRouteTypes {
     | '/dashboard/builds'
     | '/dashboard/crons'
     | '/dashboard/databases'
+    | '/dashboard/debug'
     | '/dashboard/deployments'
     | '/dashboard/domains'
     | '/dashboard/edge-rules'
@@ -420,6 +439,7 @@ export interface FileRouteTypes {
     | '/dashboard/team'
     | '/dashboard/templates'
     | '/dashboard/traces'
+    | '/dashboard/triggers'
     | '/dashboard/usage'
     | '/dashboard/webhooks'
     | '/dashboard/workers'
@@ -443,6 +463,7 @@ export interface FileRouteTypes {
     | '/dashboard/builds'
     | '/dashboard/crons'
     | '/dashboard/databases'
+    | '/dashboard/debug'
     | '/dashboard/deployments'
     | '/dashboard/domains'
     | '/dashboard/edge-rules'
@@ -461,6 +482,7 @@ export interface FileRouteTypes {
     | '/dashboard/team'
     | '/dashboard/templates'
     | '/dashboard/traces'
+    | '/dashboard/triggers'
     | '/dashboard/usage'
     | '/dashboard/webhooks'
     | '/dashboard/workers'
@@ -486,6 +508,7 @@ export interface FileRouteTypes {
     | '/dashboard/builds'
     | '/dashboard/crons'
     | '/dashboard/databases'
+    | '/dashboard/debug'
     | '/dashboard/deployments'
     | '/dashboard/domains'
     | '/dashboard/edge-rules'
@@ -504,6 +527,7 @@ export interface FileRouteTypes {
     | '/dashboard/team'
     | '/dashboard/templates'
     | '/dashboard/traces'
+    | '/dashboard/triggers'
     | '/dashboard/usage'
     | '/dashboard/webhooks'
     | '/dashboard/workers'
@@ -624,6 +648,13 @@ declare module '@tanstack/react-router' {
       path: '/databases'
       fullPath: '/dashboard/databases'
       preLoaderRoute: typeof DashboardDatabasesRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/debug': {
+      id: '/dashboard/debug'
+      path: '/debug'
+      fullPath: '/dashboard/debug'
+      preLoaderRoute: typeof DashboardDebugRouteImport
       parentRoute: typeof DashboardRoute
     }
     '/dashboard/deployments': {
@@ -752,6 +783,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardTracesRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/dashboard/triggers': {
+      id: '/dashboard/triggers'
+      path: '/triggers'
+      fullPath: '/dashboard/triggers'
+      preLoaderRoute: typeof DashboardTriggersRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/dashboard/usage': {
       id: '/dashboard/usage'
       path: '/usage'
@@ -826,6 +864,7 @@ interface DashboardRouteChildren {
   DashboardBuildsRoute: typeof DashboardBuildsRoute
   DashboardCronsRoute: typeof DashboardCronsRoute
   DashboardDatabasesRoute: typeof DashboardDatabasesRoute
+  DashboardDebugRoute: typeof DashboardDebugRoute
   DashboardDeploymentsRoute: typeof DashboardDeploymentsRoute
   DashboardDomainsRoute: typeof DashboardDomainsRoute
   DashboardEdgeRulesRoute: typeof DashboardEdgeRulesRoute
@@ -844,6 +883,7 @@ interface DashboardRouteChildren {
   DashboardTeamRoute: typeof DashboardTeamRoute
   DashboardTemplatesRoute: typeof DashboardTemplatesRoute
   DashboardTracesRoute: typeof DashboardTracesRoute
+  DashboardTriggersRoute: typeof DashboardTriggersRoute
   DashboardUsageRoute: typeof DashboardUsageRoute
   DashboardWebhooksRoute: typeof DashboardWebhooksRoute
   DashboardWorkersRoute: typeof DashboardWorkersRoute
@@ -861,6 +901,7 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardBuildsRoute: DashboardBuildsRoute,
   DashboardCronsRoute: DashboardCronsRoute,
   DashboardDatabasesRoute: DashboardDatabasesRoute,
+  DashboardDebugRoute: DashboardDebugRoute,
   DashboardDeploymentsRoute: DashboardDeploymentsRoute,
   DashboardDomainsRoute: DashboardDomainsRoute,
   DashboardEdgeRulesRoute: DashboardEdgeRulesRoute,
@@ -879,6 +920,7 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardTeamRoute: DashboardTeamRoute,
   DashboardTemplatesRoute: DashboardTemplatesRoute,
   DashboardTracesRoute: DashboardTracesRoute,
+  DashboardTriggersRoute: DashboardTriggersRoute,
   DashboardUsageRoute: DashboardUsageRoute,
   DashboardWebhooksRoute: DashboardWebhooksRoute,
   DashboardWorkersRoute: DashboardWorkersRoute,

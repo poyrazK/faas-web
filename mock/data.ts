@@ -162,15 +162,19 @@ for (const app of apps) {
   for (let k = 0; k < n; k++) {
     const latest = k === 0;
     const ageMs = latest ? between(0.5, 6) * H : between(1, 30) * D;
+    // The vocabulary apid actually emits (pkg/state/types.go). The OpenAPI
+    // example says "active", which the API has never produced — seeding it
+    // here meant the console's live deployments rendered as "building" in
+    // dev and the drift stayed invisible.
     const status = latest
       ? app.status === 'error'
         ? 'failed'
         : app.status === 'deploying'
           ? 'building'
-          : 'active'
+          : 'live'
       : rand() < 0.12
         ? 'failed'
-        : 'succeeded';
+        : 'superseded';
     const kind = pick(['github', 'github', 'github', 'tarball'] as const);
     const buildId = id();
     const dep: Deployment = {

@@ -18,10 +18,12 @@ function stepState(index: number, appCreated: boolean, phase: DeploymentPhase): 
   if (index === 0) return appCreated ? 'done' : 'active';
   if (index === 1) {
     if (phase === 'failed') return 'failed';
-    if (phase === 'live') return 'done';
+    if (phase === 'live' || phase === 'superseded') return 'done';
     return appCreated ? 'active' : 'pending';
   }
-  return phase === 'live' ? 'done' : 'pending';
+  // A superseded deployment did reach live before a newer one replaced it, so
+  // the step is complete either way.
+  return phase === 'live' || phase === 'superseded' ? 'done' : 'pending';
 }
 
 export function DeploymentProgress({
@@ -53,8 +55,11 @@ export function DeploymentProgress({
   const phase = deploymentPhase(deployment?.status);
   const hasBuild = Boolean(deploymentId);
   const live = phase === 'live';
+  // Replaced while this panel was watching: finished, but no longer serving.
+  const superseded = phase === 'superseded';
+  const settled = live || superseded;
   const failed = phase === 'failed' || Boolean(submissionError);
-  const progress = !appCreated ? 8 : live ? 100 : failed ? 66 : hasBuild ? 50 : 33;
+  const progress = !appCreated ? 8 : settled ? 100 : failed ? 66 : hasBuild ? 50 : 33;
 
   const title = !appCreated
     ? 'Creating app'
@@ -64,9 +69,11 @@ export function DeploymentProgress({
         ? 'Submitting build'
         : live
           ? 'Deployment live'
-          : failed
-            ? 'Deployment failed'
-            : 'Build in progress';
+          : superseded
+            ? 'Replaced by a newer deployment'
+            : failed
+              ? 'Deployment failed'
+              : 'Build in progress';
 
   const description = !appCreated
     ? `Creating ${appName} with the configuration you reviewed.`
@@ -76,9 +83,11 @@ export function DeploymentProgress({
         ? 'The app exists. The first deployment is being submitted to the builder.'
         : live
           ? `${appName} is live. This status came from the deployment API.`
-          : failed
-            ? 'The deployment API reported a failure. Review the error below and try again from the app page.'
-            : 'The deployment is queued or building. This page refreshes its real status automatically.';
+          : superseded
+            ? `This deployment shipped, then a newer one replaced it. ${appName} is served by that newer deployment.`
+            : failed
+              ? 'The deployment API reported a failure. Review the error below and try again from the app page.'
+              : 'The deployment is queued or building. This page refreshes its real status automatically.';
 
   const statusText = !appCreated
     ? 'Creating app…'
@@ -94,7 +103,7 @@ export function DeploymentProgress({
 
   return (
     <section className="overflow-hidden rounded-xl border border-border bg-card">
-      <ProgressEdge progress={progress} state={live ? 'done' : failed ? 'failed' : 'running'} />
+      <ProgressEdge progress={progress} state={settled ? 'done' : failed ? 'failed' : 'running'} />
 
       <div className="p-5">
         <div className="flex items-start justify-between gap-4">
@@ -102,10 +111,10 @@ export function DeploymentProgress({
             <h2 className="text-sm font-medium">{title}</h2>
             <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{description}</p>
           </div>
-          {hasBuild && !live && !failed && (
+          {hasBuild && !settled && !failed && (
             <RefreshDouble className="h-4 w-4 shrink-0 animate-spin text-brand" aria-hidden />
           )}
-          {live && <Check className="h-4 w-4 shrink-0 text-brand" aria-hidden />}
+          {settled && <Check className="h-4 w-4 shrink-0 text-brand" aria-hidden />}
           {failed && (
             <WarningTriangle
               className="h-4 w-4 shrink-0"

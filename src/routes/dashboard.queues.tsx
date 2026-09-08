@@ -6,8 +6,8 @@ import { FIELD, Textarea } from '@/components/ui/field';
 import { Pill } from '@/components/dashboard/resource-table';
 import { ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
+import { DeadLetterPanel } from '@/components/dashboard/dead-letter-panel';
 import {
-  useDeadLetter,
   useQueuePeek,
   useQueueSend,
   useQueueState,
@@ -249,7 +249,6 @@ function DelayedTasksPanel({ slug }: { slug: string }) {
 export function QueuesBody({ slug }: { slug: string }) {
   const state = useQueueState(slug);
   const peek = useQueuePeek(slug);
-  const dlq = useDeadLetter(slug);
 
   const pending = useMemo<MessageRow[]>(
     () =>
@@ -260,17 +259,6 @@ export function QueuesBody({ slug }: { slug: string }) {
         failedAt: '',
       })),
     [peek.data]
-  );
-
-  const dead = useMemo<MessageRow[]>(
-    () =>
-      (dlq.data?.messages ?? []).map((m) => ({
-        id: m.id,
-        createdAt: m.created_at ?? '',
-        attempts: m.attempts ?? 0,
-        failedAt: m.failed_at ?? '',
-      })),
-    [dlq.data]
   );
 
   const pendingColumns: Column<MessageRow>[] = [
@@ -285,29 +273,6 @@ export function QueuesBody({ slug }: { slug: string }) {
       numeric: true,
       render: (m) => (
         <span className="text-xs text-muted-foreground">{formatWhen(m.createdAt)}</span>
-      ),
-    },
-  ];
-
-  const deadColumns: Column<MessageRow>[] = [
-    {
-      key: 'id',
-      label: 'Message',
-      render: (m) => <span className="font-mono text-xs">{m.id}</span>,
-    },
-    {
-      key: 'attempts',
-      label: 'Attempts',
-      numeric: true,
-      width: 'w-28',
-      render: (m) => <span className="[font-variant-numeric:tabular-nums]">{m.attempts}</span>,
-    },
-    {
-      key: 'failedAt',
-      label: 'Failed',
-      numeric: true,
-      render: (m) => (
-        <span className="text-xs text-muted-foreground">{formatWhen(m.failedAt)}</span>
       ),
     },
   ];
@@ -339,17 +304,7 @@ export function QueuesBody({ slug }: { slug: string }) {
         />
       </Panel>
 
-      <Panel title="Dead letter">
-        <ResourceTable
-          rows={dead}
-          columns={deadColumns}
-          emptyMessage="Nothing has been dead-lettered."
-          minWidth="min-w-[600px]"
-          loading={dlq.isPending}
-          error={dlq.error}
-          onRetry={() => void dlq.refetch()}
-        />
-      </Panel>
+      <DeadLetterPanel slug={slug} />
     </div>
   );
 }

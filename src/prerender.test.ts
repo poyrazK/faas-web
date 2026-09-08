@@ -115,4 +115,42 @@ describeBuilt('prerendered pages', () => {
       }
     });
   });
+
+  /**
+   * Prerendered markup has to be *visible*, not merely present.
+   *
+   * Motion serialises its `initial` prop into the static HTML, so a
+   * mount-triggered entrance above the fold ships as `style="opacity:0"` and
+   * stays invisible until the bundle downloads and hydrates. The hero emblem
+   * carries no animation, so it was the one thing that painted — the mark
+   * alone on an otherwise blank page for as long as the network took.
+   *
+   * Below the fold is a different case and deliberately not asserted here:
+   * `whileInView` content is supposed to start hidden.
+   */
+  describe('above-the-fold content paints without JS', () => {
+    const landing = readFileSync('dist/index.html', 'utf8');
+
+    function openingTag(tag: string): string {
+      const m = landing.match(new RegExp(`<${tag}[^>]*>`));
+      expect(m, `no <${tag}> in the prerendered landing page`).not.toBeNull();
+      return m![0];
+    }
+
+    it('does not ship the nav hidden', () => {
+      expect(openingTag('header')).not.toMatch(/opacity:\s*0/);
+    });
+
+    it('does not ship the headline hidden', () => {
+      expect(openingTag('h1')).not.toMatch(/opacity:\s*0/);
+    });
+
+    it('does not let the emblem be the only thing painted', () => {
+      // The emblem renders at opacity 1. If the headline needs JS to become
+      // visible and the emblem does not, the mark flashes on its own.
+      const emblem = landing.match(/<div[^>]*data-emblem[^>]*>/)?.[0] ?? '';
+      expect(emblem).toContain('opacity:1');
+      expect(openingTag('h1')).not.toMatch(/opacity:\s*0/);
+    });
+  });
 });

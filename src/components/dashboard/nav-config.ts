@@ -1,26 +1,28 @@
 import type { ComponentType, SVGProps } from 'react';
 import {
   Activity,
-  Timer,
+  Antenna,
+  Coins,
   CreditCard,
   Cube,
+  GitFork as WorkflowIcon,
+  Github,
   Globe,
+  GraphUp,
+  Group,
   HardDrive,
-  Key,
-  Server,
-  Upload,
-  ViewGrid,
-  Package,
-  Coins,
-  Rocket,
   Journal,
+  Key,
+  Package,
+  Rocket,
+  Search,
+  Server,
   Settings,
   ShieldCheck,
   Shuffle,
-  GraphUp,
-  Group,
-  Github,
-  GitFork as WorkflowIcon,
+  Timer,
+  Upload,
+  ViewGrid,
 } from 'iconoir-react';
 
 /**
@@ -57,6 +59,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: '/dashboard/templates', label: 'Templates', icon: Cube },
       { to: '/dashboard/import', label: 'Import', icon: Upload },
       { to: '/dashboard/crons', label: 'Cron Jobs', icon: Timer },
+      { to: '/dashboard/triggers', label: 'Triggers', icon: Antenna },
       { to: '/dashboard/workers', label: 'Instances', icon: Server },
       { to: '/dashboard/deployments', label: 'Deployments', icon: Rocket },
       { to: '/dashboard/builds', label: 'Builds', icon: Package },
@@ -73,6 +76,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     title: 'Observability',
     items: [
+      { to: '/dashboard/debug', label: 'Debugger', icon: Search },
       { to: '/dashboard/traces', label: 'Invocations', icon: Activity },
       { to: '/dashboard/audit', label: 'Audit Log', icon: Journal },
     ],
@@ -121,6 +125,7 @@ export const APP_TABS: { tab: string; segment: string }[] = [
   { tab: 'Alerts', segment: 'alerts' },
   { tab: 'Webhooks', segment: 'webhooks' },
   { tab: 'Edge rules', segment: 'edge-rules' },
+  { tab: 'Debugger', segment: 'debug' },
 ];
 
 export const SECTION_LABELS: Record<string, string> = {

@@ -4,6 +4,113 @@
  */
 
 export interface paths {
+    "/v1/apps/{slug}/buckets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App whose bucket catalog is being managed. */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        /** List private object buckets and configured creation capabilities */
+        get: operations["listObjectBuckets"];
+        put?: never;
+        /**
+         * Create a private bucket on the region's current default backend
+         * @description Requires deploy:write or admin. Idempotent by app, scope and name, not
+         *     by Idempotency-Key. Retry provisioning by submitting the same name and
+         *     scope. Existing buckets retain their backend when the default changes.
+         */
+        post: operations["createObjectBucket"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/buckets/{bucket}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App that owns the bucket to remove. */
+                slug: string;
+                /** @description Identifier of the empty bucket to delete. */
+                bucket: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete an empty bucket
+         * @description Requires deploy:write or admin. Never recursively deletes data. Nonempty buckets return 409. Repeat after successful deletion returns 404.
+         */
+        delete: operations["deleteObjectBucket"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/buckets/{bucket}/objects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App containing the objects being managed. */
+                slug: string;
+                /** @description Identifier of the bucket whose objects are being managed. */
+                bucket: string;
+            };
+            cookie?: never;
+        };
+        /** List objects with opaque cursor pagination */
+        get: operations["listBucketObjects"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete one object by exact key
+         * @description Requires deploy:write or admin. With provider-side versioning this may create a delete marker; version management is not part of this preview.
+         */
+        delete: operations["deleteBucketObject"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/buckets/{bucket}/signed-url": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App authorizing the requested object capability. */
+                slug: string;
+                /** @description Identifier of the bucket containing the authorized object. */
+                bucket: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Issue a short-lived direct upload or download URL
+         * @description GET requires apps:read or admin; PUT requires deploy:write or admin.
+         *     PUT must declare size_bytes, enforced by signed length (or an empty-body
+         *     digest for zero bytes). These reusable bearer URLs expire within 15
+         *     minutes and are not retained by the API idempotency cache. Send only
+         *     returned headers to the URL, never Gregale credentials. In browsers,
+         *     Content-Length is set by fetch from the File body, not manually.
+         */
+        post: operations["signBucketObject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/config": {
         parameters: {
             query?: never;
@@ -6961,6 +7068,55 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description Private logical bucket metadata without upstream credentials or placement details. */
+        ObjectBucket: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            scope: string;
+            region: string;
+            /** @enum {string} */
+            state: "provisioning" | "ready" | "deleting";
+            /** Format: date-time */
+            created_at: string;
+        };
+        /** @description App bucket catalog and operator-configured preview capabilities. */
+        ObjectBucketList: {
+            items: components["schemas"]["ObjectBucket"][];
+            enabled: boolean;
+            regions: string[];
+            default_region: string;
+            /** Format: int64 */
+            max_upload_bytes: number;
+            max_buckets_per_app: number;
+        };
+        /** @description Exact object operation to authorize for a short time. */
+        ObjectSignRequest: {
+            /** @enum {string} */
+            method: "GET" | "PUT";
+            key: string;
+            /** @default 300 */
+            expires_in: number;
+            /**
+             * Format: int64
+             * @description Required for PUT; forbidden for GET.
+             */
+            size_bytes?: number;
+            /** @description PUT only. */
+            content_type?: string;
+        };
+        /** @description Temporary bearer capability for a direct provider request. Do not log or persist it. */
+        ObjectSignedRequest: {
+            /** Format: uri */
+            url: string;
+            /** @enum {string} */
+            method: "GET" | "PUT";
+            headers: {
+                [key: string]: string;
+            };
+            /** Format: date-time */
+            expires_at: string;
+        };
         /** @description One entry from the closed operator runtime-configuration catalog. */
         OperatorRuntimeConfig: {
             key: string;
@@ -15530,6 +15686,244 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listObjectBuckets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App whose bucket catalog is being managed. */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Buckets across this app's environment scopes; backend credentials are never exposed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObjectBucketList"];
+                };
+            };
+            /** @description Authentication, authorization, or storage error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    createObjectBucket: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App whose bucket catalog is being managed. */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                    /** @default default */
+                    scope?: string;
+                    /** @description Gregale region, not upstream signing region. Omit to use the configured default. */
+                    region?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Existing ready bucket */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObjectBucket"];
+                };
+            };
+            /** @description Bucket created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObjectBucket"];
+                };
+            };
+            /** @description Invalid request, access denied, bucket limit/conflict, or provider unavailable */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    deleteObjectBucket: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App that owns the bucket to remove. */
+                slug: string;
+                /** @description Identifier of the empty bucket to delete. */
+                bucket: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Bucket deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Access denied, bucket missing/nonempty/busy, or provider unavailable */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listBucketObjects: {
+        parameters: {
+            query?: {
+                /** @description Only return keys starting with this prefix. */
+                prefix?: string;
+                /** @description Opaque next_cursor from the preceding page. */
+                cursor?: string;
+                /** @description Maximum objects in this page. */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description App containing the objects being managed. */
+                slug: string;
+                /** @description Identifier of the bucket whose objects are being managed. */
+                bucket: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page, not a bucket-wide usage or billing total */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            key: string;
+                            /** Format: int64 */
+                            size_bytes: number;
+                            /** Format: date-time */
+                            last_modified: string;
+                        }[];
+                        next_cursor?: string;
+                    };
+                };
+            };
+            /** @description Invalid request, access denied, bucket unavailable, or provider error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    deleteBucketObject: {
+        parameters: {
+            query: {
+                /** @description Exact object key to delete; URL-encode it. */
+                key: string;
+            };
+            header?: never;
+            path: {
+                /** @description App containing the objects being managed. */
+                slug: string;
+                /** @description Identifier of the bucket whose objects are being managed. */
+                bucket: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Object deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid request, access denied, or provider error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    signBucketObject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App authorizing the requested object capability. */
+                slug: string;
+                /** @description Identifier of the bucket containing the authorized object. */
+                bucket: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ObjectSignRequest"];
+            };
+        };
+        responses: {
+            /** @description Temporary capability; Cache-Control no-store */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObjectSignedRequest"];
+                };
+            };
+            /** @description Invalid request, access denied, or provider unavailable */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     listOperatorRuntimeConfig: {
         parameters: {
             query?: never;

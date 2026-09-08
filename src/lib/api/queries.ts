@@ -38,6 +38,7 @@ export const keys = {
   deployments: ['deployments'] as const,
   appDeployments: (slug: string) => ['apps', slug, 'deployments'] as const,
   domains: ['domains'] as const,
+  triggers: ['triggers'] as const,
   crons: ['crons'] as const,
   keys: ['keys'] as const,
   invoices: ['invoices'] as const,
@@ -781,6 +782,44 @@ export function useUpdateDeploymentTraffic() {
   });
 }
 
+/**
+ * Cancel a deployment that is still in flight.
+ *
+ * The API answers 409 once the deployment has gone live — by then there is
+ * nothing to cancel, which is an outcome to explain rather than an error.
+ */
+export function useCancelDeployment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ slug, id }: { slug: string; id: string }) =>
+      unwrap(
+        api.POST('/v1/apps/{slug}/deployments/{id}/cancel', { params: { path: { slug, id } } })
+      ),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.deployments }),
+  });
+}
+
+/**
+ * Retry a failed deployment from a named stage.
+ *
+ * The API duplicates the row rather than mutating it and answers 202 with a new
+ * deployment, so this invalidates the list instead of patching the failed row —
+ * the retry is a separate event and the timeline is supposed to show both.
+ */
+export function useRetryDeployment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, from_stage }: { id: string; from_stage: RetryStage }) =>
+      unwrap(
+        api.POST('/v1/deployments/{id}/retry', { params: { path: { id } }, body: { from_stage } })
+      ),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.deployments }),
+  });
+}
+
+/** The closed-6 stage vocabulary the retry endpoint accepts (ADR-117). */
+export type RetryStage = components['schemas']['RetryDeploymentRequest']['from_stage'];
+
 /* ------------------------------------------------------------------ *
  * Mutations
  *
@@ -927,6 +966,167 @@ export function useCrons() {
   });
 }
 
+/**
+ * Triggers — the unified event-source primitive (spec §4.10, ADR-100).
+ *
+ * Account-wide like crons, not per-app, so this page is a sidebar entry
+ * rather than an app tab even though every trigger names an app.
+ */
+export function useTriggers() {
+  return useQuery({
+    queryKey: keys.triggers,
+    queryFn: () => unwrap(api.GET('/v1/triggers', {})),
+  });
+}
+
+/**
+ * The production debugger (ADR-127).
+ *
+ * Plan-gated: `DebugTelemetryEnabled` is false on Free, so every one of these
+ * answers `402 plan_feature_gated` there. That is a fact about the plan, not a
+ * failure, and the page says so rather than showing an error.
+ *
+ * The window is clamped server-side to `DebugTelemetryRetentionDays`, so the
+ * UI offers only windows the plan actually retains — asking for 7 days on a
+ * 3-day plan silently returns 3, and a console that showed "7 days" over that
+ * would be lying about what it drew.
+ */
+export function useDebugRequests(slug: string, since: string) {
+  return useQuery({
+    queryKey: ['apps', slug, 'debug', 'requests', since],
+    enabled: Boolean(slug),
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/debug/requests', {
+          params: { path: { slug }, query: { since } },
+        })
+      ),
+  });
+}
+
+export function useDebugRegressions(slug: string, since: string) {
+  return useQuery({
+    queryKey: ['apps', slug, 'debug', 'regressions', since],
+    enabled: Boolean(slug),
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/debug/regressions', {
+          params: { path: { slug }, query: { since } },
+        })
+      ),
+  });
+}
+
+/**
+ * Per-route latency for two deployments over one window.
+ *
+ * The body calls them `source` and `mirror`, but the handler simply runs the
+ * same per-route query against each deployment id — there is no mirror
+ * relationship required, so this compares any two deployments. That is what
+ * makes it answer "did the last deploy make this route slower?".
+ */
+export function useCompareDeployments(slug: string) {
+  return useMutation({
+    mutationFn: (body: components['schemas']['DebugCompareRequest']) =>
+      unwrap(api.POST('/v1/apps/{slug}/debug/compare', { params: { path: { slug } }, body })),
+  });
+}
+
+/** The five per-state counts. Scalars, so they stay scalars — no chart. */
+export function useTriggerMetrics(id: string | null) {
+  return useQuery({
+    queryKey: ['triggers', id, 'metrics'],
+    enabled: id !== null,
+    queryFn: () => unwrap(api.GET('/v1/triggers/{id}/metrics', { params: { path: { id: id! } } })),
+  });
+}
+
+export function useTriggerRecords(id: string | null, state: TriggerRecordState | '') {
+  return useQuery({
+    queryKey: ['triggers', id, 'records', state],
+    enabled: id !== null,
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/triggers/{id}/records', {
+          params: { path: { id: id! }, query: state ? { state } : {} },
+        })
+      ),
+  });
+}
+
+export function useTriggerDeadLetter(id: string | null, reason: TriggerDeadLetterReason | '') {
+  return useQuery({
+    queryKey: ['triggers', id, 'dlq', reason],
+    enabled: id !== null,
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/triggers/{id}/dlq', {
+          params: { path: { id: id! }, query: reason ? { reason } : {} },
+        })
+      ),
+  });
+}
+
+/**
+ * Pause and resume are the cheapest way to stop a misbehaving trigger, so
+ * they live on the row rather than behind a detail view.
+ */
+export function useSetTriggerEnabled() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
+      unwrap(
+        enabled
+          ? api.POST('/v1/triggers/{id}/resume', { params: { path: { id } } })
+          : api.POST('/v1/triggers/{id}/pause', { params: { path: { id } } })
+      ),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.triggers }),
+  });
+}
+
+/**
+ * Push one record back into the dispatch queue.
+ *
+ * The API answers 409 `trigger_dlq_retry_failed` when the record's state was
+ * neither `retry` nor `dead_letter` — a record that already succeeded, or is
+ * mid-flight, has nothing to re-drive. That is a state to explain, not a
+ * failure to report.
+ *
+ * Invalidates the whole trigger family: a retried record leaves the dead-letter
+ * list and changes the per-state counts, and seeing both move is the
+ * confirmation the action worked.
+ */
+export function useRetryTriggerRecord() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ triggerId, recordId }: { triggerId: string; recordId: string }) =>
+      unwrap(
+        api.POST('/v1/triggers/{id}/records/{rid}/retry', {
+          params: { path: { id: triggerId, rid: recordId } },
+        })
+      ),
+    onSettled: (_d, _e, vars) => qc.invalidateQueries({ queryKey: ['triggers', vars.triggerId] }),
+  });
+}
+
+/** Discard a record without re-firing it. Irreversible, hence the confirm. */
+export function useDropTriggerRecord() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ triggerId, recordId }: { triggerId: string; recordId: string }) =>
+      unwrap(
+        api.POST('/v1/triggers/{id}/records/{rid}/drop', {
+          params: { path: { id: triggerId, rid: recordId } },
+        })
+      ),
+    onSettled: (_d, _e, vars) => qc.invalidateQueries({ queryKey: ['triggers', vars.triggerId] }),
+  });
+}
+
+export type TriggerRecordState = components['schemas']['TriggerRecordState'];
+export type TriggerDeadLetterReason = components['schemas']['TriggerDeadLetterReason'];
+export type Trigger = components['schemas']['Trigger'];
+
 export function useApiKeys() {
   return useQuery({
     queryKey: keys.keys,
@@ -1067,6 +1267,38 @@ export function useDeleteDomain() {
 }
 
 type DomainsList = NonNullable<ReturnType<typeof useDomains>['data']>;
+
+/**
+ * Re-run DNS + certificate verification for one domain.
+ *
+ * The row is refreshed from the server rather than patched optimistically: the
+ * point of pressing Verify is to learn what the platform observes, so guessing
+ * the outcome locally would defeat it.
+ */
+export function useVerifyDomain() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (domain: string) =>
+      unwrap(api.POST('/v1/domains/{domain}/verify', { params: { path: { domain } } })),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.domains }),
+  });
+}
+
+/**
+ * The five-check domain doctor (ADR-120). Disabled until a domain is selected,
+ * because the probe is synchronous server-side when its cache is cold.
+ */
+export function useDomainDoctor(domain: string | null) {
+  return useQuery({
+    queryKey: ['domains', domain, 'doctor'],
+    enabled: domain !== null,
+    // The report is a live probe; a cached one would misreport a DNS change the
+    // customer just made, which is precisely when they open this.
+    staleTime: 0,
+    queryFn: () =>
+      unwrap(api.GET('/v1/domains/{domain}/doctor', { params: { path: { domain: domain! } } })),
+  });
+}
 
 export function useInvokeApp() {
   return useMutation({
@@ -1215,6 +1447,77 @@ export function useAlerts(slug: string) {
   });
 }
 
+/**
+ * Recent deliveries for one alert rule — whether it actually reached the
+ * webhook, and what came back when it did not.
+ *
+ * `include_test` defaults to false to match the API: the test-alert button
+ * writes delivery rows too, and a customer checking whether a rule fired in
+ * production does not want their own test clicks in the answer.
+ */
+export function useAlertDeliveries(slug: string, ruleId: string, includeTest: boolean) {
+  return useQuery({
+    queryKey: ['apps', slug, 'alerts', ruleId, 'deliveries', includeTest],
+    enabled: Boolean(slug && ruleId),
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/alerts/{id}/deliveries', {
+          params: { path: { slug, id: ruleId }, query: { include_test: includeTest } },
+        })
+      ),
+  });
+}
+
+/** The system-seeded alert-preset catalog (ADR-123). Read-only for customers. */
+export function useAlertPresets() {
+  return useQuery({
+    queryKey: ['alert-presets'],
+    // The catalog is seeded server-side and changes on deploys, not on use.
+    staleTime: 5 * 60_000,
+    queryFn: () => unwrap(api.GET('/v1/alert-presets', {})),
+  });
+}
+
+/** Instantiate a preset as a real alert rule on one app. */
+export function useEnableAlertPreset() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      slug,
+      name,
+      body,
+    }: {
+      slug: string;
+      name: string;
+      body: components['schemas']['EnableAlertPresetRequest'];
+    }) =>
+      unwrap(
+        api.POST('/v1/apps/{slug}/alert-presets/{name}/enable', {
+          params: { path: { slug, name } },
+          body,
+        })
+      ),
+    onSettled: (_d, _e, vars) => qc.invalidateQueries({ queryKey: ['apps', vars.slug, 'alerts'] }),
+  });
+}
+
+/**
+ * Fire a synthetic alert at the rule this preset instantiated.
+ *
+ * 404 means the preset was never enabled here — there is no rule to dispatch
+ * to, which is a prerequisite to state rather than a failure to report.
+ */
+export function useTestAlertPreset() {
+  return useMutation({
+    mutationFn: ({ slug, name }: { slug: string; name: string }) =>
+      unwrap(
+        api.POST('/v1/apps/{slug}/alert-presets/{name}/test', {
+          params: { path: { slug, name } },
+        })
+      ),
+  });
+}
+
 export function useDeleteAlert(slug: string) {
   const qc = useQueryClient();
   return useMutation({
@@ -1322,6 +1625,26 @@ export function useQueueSend(slug: string) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['apps', slug, 'queues'] });
     },
+  });
+}
+
+/**
+ * Reset one dead-lettered row back to pending.
+ *
+ * Invalidates the whole queue family, not just the dead-letter list: a replayed
+ * row leaves one table and appears in the other, and seeing it move is the
+ * confirmation that the action worked.
+ */
+export function useReplayDeadLetter(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      unwrap(
+        api.POST('/v1/apps/{slug}/queues/dead_letter/{id}/replay', {
+          params: { path: { slug, id } },
+        })
+      ),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['apps', slug, 'queues'] }),
   });
 }
 

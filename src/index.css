@@ -283,6 +283,37 @@
      which lands the one iteration on the final, visible frame. */
   --animate-item-enter: item-enter 0.38s var(--motion-ease);
 
+  /* The landing page's above-the-fold entrances, as CSS rather than JS.
+     
+     These were Motion's `initial`/`animate`, which the prerender serialises
+     as inline `opacity:0` — so the nav and headline stayed invisible until
+     the bundle hydrated, leaving the hero emblem (which has no animation)
+     alone on the page for as long as the network took. CSS is
+     render-blocking, so these play on the first paint instead.
+
+     The values are the JS ones verbatim — 0.7s on --motion-ease, which is
+     the same cubic-bezier the `EASE` constant carries — so the motion is
+     unchanged; only what drives it moved. `backwards` holds the from-state
+     through the stagger delay, which callers set with `animation-delay`. */
+  --animate-hero-enter: hero-enter 0.7s var(--motion-ease) backwards;
+
+  @keyframes hero-enter {
+    from {
+      opacity: 0;
+      transform: translateY(14px);
+      filter: blur(6px);
+    }
+  }
+
+  --animate-nav-enter: nav-enter 0.7s var(--motion-ease) 0.1s backwards;
+
+  @keyframes nav-enter {
+    from {
+      opacity: 0;
+      transform: translateY(-14px);
+    }
+  }
+
   /* Entrances drift in from the northeast — a gregale is a northeast wind,
      and every ambient motion in the console honours its direction. */
   @keyframes item-enter {
@@ -457,6 +488,8 @@
 
 @layer base {
   @media (prefers-reduced-motion: reduce) {
+    .animate-hero-enter,
+    .animate-nav-enter,
     .animate-glow-breathe,
     .animate-dither-drift-a,
     .animate-dither-drift-b,

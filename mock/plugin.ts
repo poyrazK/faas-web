@@ -327,6 +327,92 @@ route('DELETE', '/v1/apps/{slug}/upstreams/{id}', ({ params }) => {
   list.splice(i, 1);
   return NO_CONTENT;
 });
+const alertPresets = [
+  {
+    id: 'preset-error-rate',
+    name: 'error_rate_2pct',
+    display_name: 'Error rate exceeds 2%',
+    description: 'Fires when the rolling 15-minute error rate exceeds 2%.',
+    category: 'reliability',
+    metric: 'error_rate_pct',
+    comparison: 'gt',
+    threshold: 2,
+    window_spec: '15m',
+    default_cooldown_minutes: 15,
+    minimum_plan: 'hobby',
+    enabled_in_catalog: true,
+  },
+  {
+    id: 'preset-latency',
+    name: 'latency_p99_1s',
+    display_name: 'p99 latency over 1s',
+    description: 'Fires when the 99th percentile stays above one second for an hour.',
+    category: 'availability',
+    metric: 'latency_p99_ms',
+    comparison: 'gt',
+    threshold: 1000,
+    window_spec: '1h',
+    default_cooldown_minutes: 30,
+    minimum_plan: 'pro',
+    enabled_in_catalog: true,
+  },
+  {
+    id: 'preset-cold-starts',
+    name: 'cold_start_50pct',
+    display_name: 'Cold starts over 50%',
+    description: 'Most requests are waking the app; consider a warm instance.',
+    category: 'cost',
+    metric: 'cold_start_pct',
+    comparison: 'gt',
+    threshold: 50,
+    window_spec: '6h',
+    default_cooldown_minutes: 60,
+    minimum_plan: 'free',
+    enabled_in_catalog: true,
+  },
+];
+
+route('GET', '/v1/alert-presets', () => alertPresets);
+
+route('POST', '/v1/apps/{slug}/alert-presets/{name}/enable', ({ params, body }) => {
+  const preset = alertPresets.find((p) => p.name === params.name);
+  if (!preset) throw new Problem(404, 'preset_not_found');
+  // The account is on hobby in the mock, so a pro preset shows the plan gate.
+  if (preset.minimum_plan === 'pro' || preset.minimum_plan === 'scale') {
+    throw new Problem(402, 'plan_required', `This preset needs the ${preset.minimum_plan} plan.`);
+  }
+  const a = app(params.slug);
+  const list = listOf(db.alerts, params.slug);
+  const rule: (typeof list)[number] = {
+    id: db.id(),
+    app_id: a.id,
+    name: preset.display_name,
+    enabled: body.enabled !== false,
+    metric: preset.metric as (typeof list)[number]['metric'],
+    comparison: preset.comparison as (typeof list)[number]['comparison'],
+    threshold: preset.threshold,
+    window_spec: preset.window_spec as (typeof list)[number]['window_spec'],
+    webhook_url: String(body.webhook_url ?? ''),
+    webhook_secret_sealed_masked: '***',
+    cooldown_minutes: preset.default_cooldown_minutes,
+    action: 'webhook',
+    state: 'ok',
+    created_at: db.iso(0),
+    updated_at: db.iso(0),
+  };
+  list.push(rule);
+  db.alerts.set(params.slug, list);
+  return status(201, rule);
+});
+
+route('POST', '/v1/apps/{slug}/alert-presets/{name}/test', ({ params }) => {
+  const preset = alertPresets.find((p) => p.name === params.name);
+  if (!preset) throw new Problem(404, 'preset_not_found');
+  const exists = listOf(db.alerts, params.slug).some((r) => r.name === preset.display_name);
+  if (!exists) throw new Problem(404, 'not_found', 'This preset is not enabled on the app.');
+  return { status: 'sent', is_test: true };
+});
+
 route('GET', '/v1/apps/{slug}/alerts', ({ params }) => listOf(db.alerts, params.slug));
 route('POST', '/v1/apps/{slug}/alerts', ({ params, body }) => {
   const a = app(params.slug);
@@ -354,6 +440,57 @@ route('POST', '/v1/apps/{slug}/alerts', ({ params, body }) => {
   db.alerts.set(params.slug, list);
   return status(201, rule);
 });
+// Deliveries: one delivered, one failed with a real reason, and one test row
+// that only appears when include_test is set — so both branches of the toggle
+// are visible without a live webhook.
+route('GET', '/v1/apps/{slug}/alerts/{id}/deliveries', ({ params, query }) => {
+  const rule = listOf(db.alerts, params.slug).find((r) => r.id === params.id);
+  if (!rule) throw new Problem(404, 'alert_not_found');
+  const base = {
+    rule_id: rule.id,
+    account_id: 'acct-1',
+    app_id: rule.app_id,
+    observed_value: 12.5,
+  };
+  const rows = [
+    {
+      ...base,
+      id: db.id(),
+      idempotency_key: `${rule.id}:1`,
+      status: 'delivered',
+      attempt_count: 1,
+      last_status_code: 200,
+      fired_at: new Date(Date.now() - 3600_000).toISOString(),
+      delivered_at: new Date(Date.now() - 3599_000).toISOString(),
+      is_test: false,
+    },
+    {
+      ...base,
+      id: db.id(),
+      idempotency_key: `${rule.id}:2`,
+      status: 'failed',
+      attempt_count: 3,
+      last_status_code: 502,
+      last_error: 'upstream refused the connection',
+      observed_value: 31.2,
+      fired_at: new Date(Date.now() - 7200_000).toISOString(),
+      is_test: false,
+    },
+    {
+      ...base,
+      id: db.id(),
+      idempotency_key: `${db.id()}:test`,
+      status: 'delivered',
+      attempt_count: 1,
+      last_status_code: 200,
+      fired_at: new Date(Date.now() - 600_000).toISOString(),
+      delivered_at: new Date(Date.now() - 599_000).toISOString(),
+      is_test: true,
+    },
+  ];
+  return query.get('include_test') === 'true' ? rows : rows.filter((r) => !r.is_test);
+});
+
 route('PATCH', '/v1/apps/{slug}/alerts/{id}', ({ params, body }) => {
   const rule = listOf(db.alerts, params.slug).find((r) => r.id === params.id);
   if (!rule) throw new Problem(404, 'alert_rule_not_found');
@@ -449,11 +586,52 @@ route('POST', '/v1/apps/{slug}/webhooks/{id}/deliveries/{did}/retry', ({ params 
   return { delivery: d };
 });
 
+// Deployment lifecycle. Cancel refuses a live row the way the API does; retry
+// answers with a new row so the console's "it appears as a new deployment"
+// promise is visible in dev.
+route('POST', '/v1/apps/{slug}/deployments/{id}/cancel', ({ params }) => {
+  const d = db.deployments.find((x) => x.id === params.id);
+  if (!d) throw new Problem(404, 'deployment_not_found');
+  if (d.status === 'live')
+    throw new Problem(409, 'conflict', 'Live deployment cannot be cancelled.');
+  d.status = 'cancelled';
+  return d;
+});
+
+route('POST', '/v1/deployments/{id}/retry', ({ params, body }) => {
+  const d = db.deployments.find((x) => x.id === params.id);
+  if (!d) throw new Problem(404, 'deployment_not_found');
+  const stages = [
+    'source_download',
+    'dependency_restore',
+    'image_build',
+    'security_scan',
+    'snapshot_prepare',
+    'readiness',
+  ];
+  if (!stages.includes(String(body.from_stage ?? ''))) throw new Problem(400, 'invalid_from_stage');
+  const copy = { ...d, id: db.id(), status: 'building', created_at: new Date().toISOString() };
+  db.deployments.unshift(copy);
+  return copy;
+});
+
 route('GET', '/v1/apps/{slug}/queues/state', ({ params }) => db.queueState(app(params.slug)));
 route('GET', '/v1/apps/{slug}/queues/peek', ({ params }) => db.queuePeek(app(params.slug)));
 route('GET', '/v1/apps/{slug}/queues/dead_letter', ({ params }) =>
   db.queueDeadLetter(app(params.slug))
 );
+
+// Replay resets the row in place. A second replay finds it already pending and
+// 404s, matching the real contract the console's "already replayed" branch
+// depends on.
+const replayed = new Set<string>();
+
+route('POST', '/v1/apps/{slug}/queues/dead_letter/{id}/replay', ({ params }) => {
+  const key = `${params.slug}:${params.id}`;
+  if (replayed.has(key)) throw new Problem(404, 'not_found', 'The row is already pending.');
+  replayed.add(key);
+  return NO_CONTENT;
+});
 
 // --- Logs (SSE) ---------------------------------------------------------------
 
@@ -738,6 +916,328 @@ route('DELETE', '/v1/domains/{domain}', ({ params }) => {
   db.domains.splice(i, 1);
   return NO_CONTENT;
 });
+
+// Verify flips the row on the second press, so the console's "not verified
+// yet" branch is reachable without waiting on real DNS. The attempt count
+// lives beside the row rather than on it: the rows are schema-typed.
+const verifyAttempts = new Map<string, number>();
+
+route('POST', '/v1/domains/{domain}/verify', ({ params }) => {
+  const d = db.domains.find((x) => x.domain === params.domain);
+  if (!d) throw new Problem(404, 'domain_not_found');
+  const n = (verifyAttempts.get(d.domain) ?? 0) + 1;
+  verifyAttempts.set(d.domain, n);
+  if (n > 1) {
+    d.verified = true;
+    d.verified_at = new Date().toISOString();
+  }
+  return d;
+});
+
+route('GET', '/v1/domains/{domain}/doctor', ({ params }) => {
+  const d = db.domains.find((x) => x.domain === params.domain);
+  if (!d) throw new Problem(404, 'domain_not_found');
+  const ok = (name: string, detail: string) => ({
+    name,
+    status: 'ok',
+    detail,
+    checked_at: new Date().toISOString(),
+  });
+  return {
+    domain: d.domain,
+    app_id: d.app_id,
+    stale: false,
+    healthy: Boolean(d.verified),
+    observed_at: new Date().toISOString(),
+    checks: d.verified
+      ? [
+          ok('dns_record', 'CNAME resolves.'),
+          ok('points_to_gregale', 'Points at edge.gregale.dev.'),
+          ok('tls_certificate', 'Issued and valid.'),
+          ok('caa_permits', 'No CAA record restricts issuance.'),
+          ok('ipv6_conflict', 'No conflicting AAAA record.'),
+        ]
+      : [
+          {
+            name: 'dns_record',
+            status: 'fail',
+            detail: 'No CNAME found for this hostname.',
+            observed: 'NXDOMAIN',
+            remediation: `Set CNAME ${d.domain} -> edge.gregale.dev`,
+            checked_at: new Date().toISOString(),
+          },
+          { name: 'points_to_gregale', status: 'pending', detail: 'Waiting on the DNS record.' },
+          { name: 'tls_certificate', status: 'pending', detail: 'Issued once DNS resolves.' },
+          ok('caa_permits', 'No CAA record restricts issuance.'),
+          { name: 'ipv6_conflict', status: 'na', detail: 'No AAAA record published.' },
+        ],
+  };
+});
+
+// --- Debugger (ADR-127) -----------------------------------------------------
+// MOCK_PLAN=free reproduces the plan gate, which is the branch that decides
+// whether the page reads as broken or as "not on your plan".
+const debugGated = process.env.MOCK_PLAN === 'free';
+
+function gateDebug() {
+  if (debugGated) {
+    throw new Problem(
+      402,
+      'plan_feature_gated',
+      "the free plan doesn't unlock debugger; upgrade to Hobby or higher to use event-driven features."
+    );
+  }
+}
+
+const DEBUG_ROUTES = ['/orders/{id}', '/health', '/webhooks/stripe', '/search'];
+
+route('GET', '/v1/apps/{slug}/debug/requests', ({ query }) => {
+  gateDebug();
+  const asked = query.get('since') || '1h';
+  // The server clamps to the plan's retention; 72h comes back as 24h so the
+  // console's "capped" notice is reachable.
+  const since = asked === '72h' ? '24h' : asked;
+  const requests = Array.from({ length: 18 }, (_, i) => ({
+    id: db.id(),
+    deployment_id: db.deployments[i % db.deployments.length].id,
+    route: DEBUG_ROUTES[i % DEBUG_ROUTES.length],
+    method: (['GET', 'POST', 'GET', 'PUT'] as const)[i % 4],
+    status: i % 7 === 0 ? 500 : i % 5 === 0 ? 404 : 200,
+    latency_ms: i % 7 === 0 ? 2400 : 40 + i * 11,
+    cold_boot: i % 6 === 0,
+    trace_id: db.id() + db.id(),
+    received_at: db.iso(i * 120_000),
+  }));
+  return { since, requests };
+});
+
+route('GET', '/v1/apps/{slug}/debug/regressions', ({ query }) => {
+  gateDebug();
+  return {
+    since: query.get('since') || '24h',
+    regressions: [
+      {
+        deployment_id: db.deployments[0].id,
+        route: '/orders/{id}',
+        p95_ms: 1840,
+        p95_base_ms: 260,
+        affected_count: 412,
+        regression_factor: '7.08',
+        first_detected_at: db.iso(5_400_000),
+        last_detected_at: db.iso(120_000),
+      },
+      {
+        deployment_id: db.deployments[0].id,
+        route: '/search',
+        p95_ms: 390,
+        p95_base_ms: 300,
+        affected_count: 27,
+        regression_factor: '1.30',
+        first_detected_at: db.iso(9_000_000),
+        last_detected_at: db.iso(600_000),
+      },
+    ],
+  };
+});
+
+route('POST', '/v1/apps/{slug}/debug/compare', ({ body }) => {
+  gateDebug();
+  if (!body.source || !body.mirror) throw new Problem(400, 'validation_failed');
+  return {
+    source: String(body.source),
+    mirror: String(body.mirror),
+    // The last route has traffic on one side only — the API does not
+    // synthesise the missing percentiles, and neither should the console.
+    routes: [
+      {
+        route: '/orders/{id}',
+        source_p50_ms: 120,
+        source_p95_ms: 260,
+        source_p99_ms: 410,
+        source_count: 5120,
+        mirror_p50_ms: 640,
+        mirror_p95_ms: 1840,
+        mirror_p99_ms: 2600,
+        mirror_count: 4980,
+      },
+      {
+        route: '/health',
+        source_p50_ms: 4,
+        source_p95_ms: 9,
+        source_p99_ms: 14,
+        source_count: 20400,
+        mirror_p50_ms: 4,
+        mirror_p95_ms: 9,
+        mirror_p99_ms: 15,
+        mirror_count: 20110,
+      },
+      {
+        route: '/search',
+        source_p50_ms: 210,
+        source_p95_ms: 480,
+        source_p99_ms: 700,
+        source_count: 880,
+        mirror_p50_ms: 150,
+        mirror_p95_ms: 300,
+        mirror_p99_ms: 460,
+        mirror_count: 910,
+      },
+      {
+        route: '/webhooks/stripe',
+        source_p50_ms: 88,
+        source_p95_ms: 140,
+        source_p99_ms: 190,
+        source_count: 310,
+        mirror_p50_ms: null,
+        mirror_p95_ms: null,
+        mirror_p99_ms: null,
+        mirror_count: null,
+      },
+    ],
+  };
+});
+
+// --- Triggers ---------------------------------------------------------------
+// Six kinds so every pill renders, one paused, and a spread of record states
+// and dead-letter reasons so each filter has something to find.
+const triggerSeed = [
+  { kind: 'cron', slug: 'nightly-report', enabled: true, config: { schedule: '0 3 * * *' } },
+  {
+    kind: 'kafka',
+    slug: 'orders',
+    enabled: true,
+    config: { brokers: ['broker-1:9092'], topic: 'orders.v1', group: 'faas-orders' },
+  },
+  {
+    kind: 'nats',
+    slug: 'billing-events',
+    enabled: false,
+    config: { url: 'nats://nats:4222', stream: 'BILLING', subject: 'billing.>', durable: 'faas' },
+  },
+  {
+    kind: 'redis_streams',
+    slug: 'sessions',
+    enabled: true,
+    config: { addr: 'redis:6379', stream: 'sessions', group: 'faas' },
+  },
+  {
+    kind: 'sqs_compat',
+    slug: 'inbound-mail',
+    enabled: true,
+    config: { queue_url: 'http://sqs.local/q/mail', long_poll_secs: 20 },
+  },
+  { kind: 'queue', slug: 'delayed-tasks', enabled: true, config: { mode: 'delayed_task' } },
+];
+
+const triggers = triggerSeed.map((t, i) => ({
+  id: db.id(),
+  account_id: 'acct-1',
+  app_id: db.apps[i % db.apps.length].id,
+  kind: t.kind,
+  slug: t.slug,
+  enabled: t.enabled,
+  config: t.config,
+  batch_size_max: t.kind === 'cron' ? 1 : 500,
+  batch_window_ms: t.kind === 'cron' ? 0 : 30000,
+  max_attempts: 10,
+  max_payload_bytes: 6 * 1024 * 1024,
+  created_at: db.iso(0),
+  updated_at: db.iso(0),
+}));
+
+const RECORD_STATES = ['pending', 'claimed', 'succeeded', 'retry', 'dead_letter'];
+const DLQ_REASONS = ['max_attempts', 'poison_record', 'broker_error', 'rate_limited'];
+
+route('GET', '/v1/triggers', ({ query }) => {
+  const kind = query.get('kind');
+  return triggers.filter((t) => !kind || t.kind === kind);
+});
+
+route('GET', '/v1/triggers/{id}', ({ params }) => {
+  const t = triggers.find((x) => x.id === params.id);
+  if (!t) throw new Problem(404, 'trigger_not_found');
+  return t;
+});
+
+route('POST', '/v1/triggers/{id}/pause', ({ params }) => {
+  const t = triggers.find((x) => x.id === params.id);
+  if (!t) throw new Problem(404, 'trigger_not_found');
+  t.enabled = false;
+  return NO_CONTENT;
+});
+
+route('POST', '/v1/triggers/{id}/resume', ({ params }) => {
+  const t = triggers.find((x) => x.id === params.id);
+  if (!t) throw new Problem(404, 'trigger_not_found');
+  t.enabled = true;
+  return NO_CONTENT;
+});
+
+route('GET', '/v1/triggers/{id}/metrics', ({ params }) => ({
+  trigger_id: params.id,
+  pending_count: 4,
+  claimed_count: 1,
+  succeeded_count: 1284,
+  retry_count: 3,
+  dead_letter_count: 2,
+}));
+
+route('GET', '/v1/triggers/{id}/records', ({ params, query }) => {
+  const want = query.get('state');
+  const records = RECORD_STATES.flatMap((state, i) =>
+    Array.from({ length: state === 'succeeded' ? 3 : 1 }, (_, n) => ({
+      id: db.id(),
+      trigger_id: params.id,
+      item_identifier: `orders.v1@${4200 + i * 10 + n}`,
+      payload: JSON.stringify({ order: 1000 + i, total_cents: 4200 + i }),
+      headers: JSON.stringify({ 'content-type': 'application/json' }),
+      metadata: JSON.stringify({ delivery_count: state === 'retry' ? 3 : 1 }),
+      state,
+      attempts: state === 'retry' ? 3 : state === 'dead_letter' ? 10 : 1,
+      next_fire_at: db.iso(0),
+      received_at: db.iso(i * 900_000),
+      last_error: state === 'retry' || state === 'dead_letter' ? 'handler returned 500' : undefined,
+      last_dispatched_at: state === 'pending' ? undefined : db.iso(i * 800_000),
+    }))
+  );
+  return { records: records.filter((r) => !want || r.state === want) };
+});
+
+route('GET', '/v1/triggers/{id}/dlq', ({ params, query }) => {
+  const want = query.get('reason');
+  const records = DLQ_REASONS.map((reason, i) => ({
+    record_id: db.id(),
+    trigger_id: params.id,
+    reason,
+    routed_to: reason === 'poison_record' ? 'drop' : 'manual_retry',
+    detail:
+      reason === 'broker_error'
+        ? { broker: 'broker-1:9092', error: 'connection reset by peer' }
+        : { attempts: 10, last_status: 500 },
+    created_at: db.iso(i * 3_600_000),
+  }));
+  return { records: records.filter((r) => !want || r.reason === want) };
+});
+
+// Retry mirrors the real contract: only a record in retry or dead_letter can
+// be re-driven, everything else answers 409 trigger_dlq_retry_failed. The
+// console decides from the record's state, so this is the backstop for the
+// dead-letter list, where the state is implied rather than shown.
+const retriedRecords = new Set<string>();
+
+route('POST', '/v1/triggers/{id}/records/{rid}/retry', ({ params }) => {
+  if (retriedRecords.has(params.rid)) {
+    throw new Problem(
+      409,
+      'trigger_dlq_retry_failed',
+      'Record state was not retry or dead_letter.'
+    );
+  }
+  retriedRecords.add(params.rid);
+  return NO_CONTENT;
+});
+
+route('POST', '/v1/triggers/{id}/records/{rid}/drop', () => NO_CONTENT);
 
 route('GET', '/v1/crons', () => db.crons);
 route('POST', '/v1/crons', ({ body }) => {

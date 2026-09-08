@@ -6,3 +6,6 @@ dist-ssr
 .originkit/
 .vercel
 .env*
+
+# TanStack router plugin scratch
+.tanstack

@@ -5,6 +5,7 @@ import { ResourceTable, type Column } from '@/components/dashboard/resource-tabl
 import { useApps, useStorageUsage } from '@/lib/api/queries';
 import { slugIndex } from '@/lib/api/adapters';
 import { consoleHead } from '@/lib/seo';
+import { ObjectStorage } from '@/components/dashboard/object-storage';
 
 export const Route = createFileRoute('/dashboard/storage')({
   component: StoragePage,
@@ -14,11 +15,8 @@ export const Route = createFileRoute('/dashboard/storage')({
 /**
  * Storage consumed per app, from `/v1/usage/storage`.
  *
- * This was a list of object-storage buckets. **There are no buckets** — the
- * platform stores VM snapshots and image layers, which is what actually takes
- * up space and what you are billed for. Snapshots are what make a sub-350ms
- * wake possible, so a large snapshot figure is the cost of that speed rather
- * than something to clean up.
+ * Runtime storage is independent of customer object buckets. Never present
+ * this metering endpoint as object-bucket capacity or billing.
  *
  * The endpoint reports a single day, not a range, so the page picks one.
  */
@@ -95,8 +93,10 @@ function StoragePage() {
 
   return (
     <div className="flex flex-col gap-6">
+      <PageHeader title="Storage" description="Private object buckets and runtime storage usage." />
+      <ObjectStorage />
       <PageHeader
-        title="Storage"
+        title="Runtime storage usage"
         description="VM snapshots and image layers per app. Snapshots are what make a cold wake fast."
         actions={
           <label className="flex items-center gap-2">
