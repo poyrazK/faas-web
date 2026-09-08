@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'motion/react';
-import { Check, Flash, Globe, NavArrowDown, TableRows } from 'iconoir-react';
+import { Check, NavArrowDown } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { SweepLink } from '@/components/sweep-link';
 import { EASE, Reveal } from './reveal';
@@ -8,7 +8,7 @@ import { SteppedBars } from './shaders/stepped-bars';
 
 /**
  * Plan-grid pricing, staged like a hardware spec sheet: a framed hero panel
- * with a stepped-bar figure, an "all plans include" strip, then five columns.
+ * with a stepped-bar figure, then five plan columns.
  *
  * **The dollar figures are marketing copy, not API data.** The API exposes
  * four plans (free, hobby, pro, scale) and their quotas but no prices — the
@@ -105,12 +105,6 @@ const TIERS: Tier[] = [
   },
 ];
 
-const INCLUDED = [
-  { icon: Flash, label: 'Functions' },
-  { icon: TableRows, label: 'Queues' },
-  { icon: Globe, label: 'Edge' },
-] as const;
-
 function PlanColumn({ tier, index }: { tier: Tier; index: number }) {
   const [expanded, setExpanded] = useState(false);
   const rows = expanded ? [...tier.features, ...tier.more] : tier.features;
@@ -181,61 +175,83 @@ function PlanColumn({ tier, index }: { tier: Tier; index: number }) {
   );
 }
 
+/**
+ * The plan risers — what stands between Why and pricing instead of a rule.
+ *
+ * Every other section on this page hands off through a full-width hairline,
+ * and at this boundary that line was the whole transition: a cut across the
+ * page exactly where the argument should be carrying into the prices.
+ *
+ * So the boundary runs the other way. The table's own column dividers keep
+ * going past the top of the panel, up into the gap, fading out before they
+ * reach the cards above — four verticals where a horizontal used to be. The
+ * grid of the next section reaches up instead of the page being cut in two,
+ * and nothing here is drawn that the table does not already draw.
+ *
+ * They are `lg`-only because that is where the table is five columns; below
+ * it the plans stack and there is nothing for a riser to be aligned to.
+ */
+function PlanRisers() {
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none absolute inset-x-0 bottom-full hidden h-14 lg:block"
+    >
+      {[20, 40, 60, 80].map((x, i) => (
+        <motion.div
+          key={x}
+          className="absolute bottom-0 w-px origin-bottom"
+          style={{
+            left: `${x}%`,
+            height: '100%',
+            background: 'linear-gradient(to bottom, transparent, var(--border))',
+          }}
+          initial={{ scaleY: 0 }}
+          whileInView={{ scaleY: 1 }}
+          viewport={{ once: true, amount: 0.6 }}
+          transition={{ duration: 0.5, delay: 0.1 + i * 0.08, ease: EASE }}
+        />
+      ))}
+    </div>
+  );
+}
+
 export function Pricing() {
   return (
-    <section id="pricing" className="relative scroll-mt-24 border-t border-border">
-      <div className="mx-auto max-w-6xl px-4 py-24 sm:px-6">
-        <div className="overflow-hidden rounded-lg border border-border bg-card">
-          {/* Hero panel: headline left, the stepped-bar figure right. */}
-          <div className="grid gap-8 p-6 sm:p-10 lg:grid-cols-2 lg:gap-4 lg:p-0">
-            <div className="flex flex-col justify-center lg:p-12">
-              <Reveal y={12}>
-                <h2 className="text-balance text-4xl font-semibold leading-[1.08] tracking-[-0.02em] text-foreground sm:text-5xl">
-                  Flexible pricing for any scale
-                </h2>
-              </Reveal>
-              <Reveal y={12} delay={0.1}>
-                <p className="mt-5 max-w-sm text-base leading-relaxed text-muted-foreground">
-                  Pick a plan, pay for the compute you actually use. Scale-to-zero means idle costs
-                  nothing.
-                </p>
-              </Reveal>
-            </div>
-            {/* The figure gets the whole right half; the shader draws grain,
+    <section id="pricing" className="relative scroll-mt-24">
+      <div className="mx-auto max-w-6xl px-4 pb-24 pt-0 sm:px-6">
+        <div className="relative">
+          <div className="overflow-hidden rounded-lg border border-border bg-card">
+            {/* Hero panel: headline left, the stepped-bar figure right. */}
+            <div className="grid gap-8 p-6 sm:p-10 lg:grid-cols-2 lg:gap-4 lg:p-0">
+              <div className="flex flex-col justify-center lg:p-12">
+                <Reveal y={12}>
+                  <h2 className="text-balance text-4xl font-semibold leading-[1.08] tracking-[-0.02em] text-foreground sm:text-5xl">
+                    Flexible pricing for any scale
+                  </h2>
+                </Reveal>
+                <Reveal y={12} delay={0.1}>
+                  <p className="mt-5 max-w-sm text-base leading-relaxed text-muted-foreground">
+                    Pick a plan, pay for the compute you actually use. Scale-to-zero means idle
+                    costs nothing.
+                  </p>
+                </Reveal>
+              </div>
+              {/* The figure gets the whole right half; the shader draws grain,
                 slats, sheen, and a pointer light over the mint ramp. */}
-            <div className="flex items-end lg:pt-12">
-              <SteppedBars className="h-56 w-full sm:h-72 lg:h-full" />
+              <div className="flex items-end lg:pt-12">
+                <SteppedBars className="h-56 w-full sm:h-72 lg:h-full" />
+              </div>
+            </div>
+
+            {/* The five columns. */}
+            <div className="grid divide-y divide-border border-t border-border lg:grid-cols-5 lg:divide-x lg:divide-y-0">
+              {TIERS.map((tier, i) => (
+                <PlanColumn key={tier.name} tier={tier} index={i} />
+              ))}
             </div>
           </div>
-
-          {/* Everything below any plan boundary. */}
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-2 border-t border-border px-6 py-4 text-sm text-foreground sm:px-10">
-            <span>All plans give you access to</span>
-            {INCLUDED.map(({ icon: Icon, label }, i) => (
-              <span key={label} className="inline-flex items-center gap-1.5 font-medium">
-                <Icon aria-hidden className="h-4 w-4 text-brand" />
-                {label}
-                {i < INCLUDED.length - 2 ? ',' : i === INCLUDED.length - 2 ? ' and' : ''}
-              </span>
-            ))}
-          </div>
-
-          {/* The five columns. */}
-          <div className="grid divide-y divide-border border-t border-border lg:grid-cols-5 lg:divide-x lg:divide-y-0">
-            {TIERS.map((tier, i) => (
-              <PlanColumn key={tier.name} tier={tier} index={i} />
-            ))}
-          </div>
-
-          {/* Tick strip, the figure's baseline echoed as a ruler. */}
-          <div
-            aria-hidden
-            className="h-10 border-t border-border"
-            style={{
-              backgroundImage:
-                'repeating-linear-gradient(90deg, var(--border) 0 1px, transparent 1px 8px)',
-            }}
-          />
+          <PlanRisers />
         </div>
 
         <p className="mt-6 text-sm text-muted-foreground">

@@ -168,7 +168,7 @@ export const REASONS: readonly Reason[] = [
 export function Why() {
   return (
     <section id="why" className="relative scroll-mt-24 border-t border-border">
-      <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-28">
+      <div className="mx-auto max-w-6xl px-4 pb-12 pt-20 sm:px-6 sm:pb-20 sm:pt-28">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="mb-4 text-sm font-semibold text-brand">Why Gregale</p>
