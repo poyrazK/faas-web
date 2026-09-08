@@ -175,61 +175,83 @@ function PlanColumn({ tier, index }: { tier: Tier; index: number }) {
   );
 }
 
+/**
+ * The plan risers — what stands between Why and pricing instead of a rule.
+ *
+ * Every other section on this page hands off through a full-width hairline,
+ * and at this boundary that line was the whole transition: a cut across the
+ * page exactly where the argument should be carrying into the prices.
+ *
+ * So the boundary runs the other way. The table's own column dividers keep
+ * going past the top of the panel, up into the gap, fading out before they
+ * reach the cards above — four verticals where a horizontal used to be. The
+ * grid of the next section reaches up instead of the page being cut in two,
+ * and nothing here is drawn that the table does not already draw.
+ *
+ * They are `lg`-only because that is where the table is five columns; below
+ * it the plans stack and there is nothing for a riser to be aligned to.
+ */
+function PlanRisers() {
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none absolute inset-x-0 bottom-full hidden h-14 lg:block"
+    >
+      {[20, 40, 60, 80].map((x, i) => (
+        <motion.div
+          key={x}
+          className="absolute bottom-0 w-px origin-bottom"
+          style={{
+            left: `${x}%`,
+            height: '100%',
+            background: 'linear-gradient(to bottom, transparent, var(--border))',
+          }}
+          initial={{ scaleY: 0 }}
+          whileInView={{ scaleY: 1 }}
+          viewport={{ once: true, amount: 0.6 }}
+          transition={{ duration: 0.5, delay: 0.1 + i * 0.08, ease: EASE }}
+        />
+      ))}
+    </div>
+  );
+}
+
 export function Pricing() {
   return (
     <section id="pricing" className="relative scroll-mt-24">
-      {/* Why hands off to pricing through light rather than a rule. The band
-          fills the gutter between the two sections — Why's bottom padding
-          above, pricing's top padding below — so it lights the seam without
-          ever crossing text. */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 -top-20 h-44 sm:-top-28 sm:h-52"
-        style={{
-          background:
-            'radial-gradient(68% 62% at 50% 50%, color-mix(in oklab, var(--brand-fill) 15%, transparent) 0%, color-mix(in oklab, var(--brand-fill) 6%, transparent) 46%, transparent 76%)',
-        }}
-      />
-      {/* All that is left of the rule: a filament, lit only where the glow is
-          and gone well before either edge — an anchor, not a divider. */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-px"
-        style={{
-          background:
-            'linear-gradient(to right, transparent 14%, color-mix(in oklab, var(--brand-fill) 28%, transparent) 50%, transparent 86%)',
-        }}
-      />
-      <div className="mx-auto max-w-6xl px-4 py-24 sm:px-6">
-        <div className="overflow-hidden rounded-lg border border-border bg-card">
-          {/* Hero panel: headline left, the stepped-bar figure right. */}
-          <div className="grid gap-8 p-6 sm:p-10 lg:grid-cols-2 lg:gap-4 lg:p-0">
-            <div className="flex flex-col justify-center lg:p-12">
-              <Reveal y={12}>
-                <h2 className="text-balance text-4xl font-semibold leading-[1.08] tracking-[-0.02em] text-foreground sm:text-5xl">
-                  Flexible pricing for any scale
-                </h2>
-              </Reveal>
-              <Reveal y={12} delay={0.1}>
-                <p className="mt-5 max-w-sm text-base leading-relaxed text-muted-foreground">
-                  Pick a plan, pay for the compute you actually use. Scale-to-zero means idle costs
-                  nothing.
-                </p>
-              </Reveal>
-            </div>
-            {/* The figure gets the whole right half; the shader draws grain,
+      <div className="mx-auto max-w-6xl px-4 pb-24 pt-0 sm:px-6">
+        <div className="relative">
+          <div className="overflow-hidden rounded-lg border border-border bg-card">
+            {/* Hero panel: headline left, the stepped-bar figure right. */}
+            <div className="grid gap-8 p-6 sm:p-10 lg:grid-cols-2 lg:gap-4 lg:p-0">
+              <div className="flex flex-col justify-center lg:p-12">
+                <Reveal y={12}>
+                  <h2 className="text-balance text-4xl font-semibold leading-[1.08] tracking-[-0.02em] text-foreground sm:text-5xl">
+                    Flexible pricing for any scale
+                  </h2>
+                </Reveal>
+                <Reveal y={12} delay={0.1}>
+                  <p className="mt-5 max-w-sm text-base leading-relaxed text-muted-foreground">
+                    Pick a plan, pay for the compute you actually use. Scale-to-zero means idle
+                    costs nothing.
+                  </p>
+                </Reveal>
+              </div>
+              {/* The figure gets the whole right half; the shader draws grain,
                 slats, sheen, and a pointer light over the mint ramp. */}
-            <div className="flex items-end lg:pt-12">
-              <SteppedBars className="h-56 w-full sm:h-72 lg:h-full" />
+              <div className="flex items-end lg:pt-12">
+                <SteppedBars className="h-56 w-full sm:h-72 lg:h-full" />
+              </div>
+            </div>
+
+            {/* The five columns. */}
+            <div className="grid divide-y divide-border border-t border-border lg:grid-cols-5 lg:divide-x lg:divide-y-0">
+              {TIERS.map((tier, i) => (
+                <PlanColumn key={tier.name} tier={tier} index={i} />
+              ))}
             </div>
           </div>
-
-          {/* The five columns. */}
-          <div className="grid divide-y divide-border border-t border-border lg:grid-cols-5 lg:divide-x lg:divide-y-0">
-            {TIERS.map((tier, i) => (
-              <PlanColumn key={tier.name} tier={tier} index={i} />
-            ))}
-          </div>
+          <PlanRisers />
         </div>
 
         <p className="mt-6 text-sm text-muted-foreground">
