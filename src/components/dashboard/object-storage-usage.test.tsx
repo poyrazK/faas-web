@@ -54,6 +54,17 @@ describe('ObjectStorageUsagePanel', () => {
     expect(screen.getByText('$4.128')).toBeInTheDocument();
   });
 
+  it('falls back to EUR when no charges block names a currency', () => {
+    const current = useObjectStorageUsage();
+    useObjectStorageUsage.mockReturnValue({
+      ...current,
+      data: { usage: current.data.usage, policy: current.data.policy },
+    });
+    render(<ObjectStorageUsagePanel />);
+    // cost_millicents is documented as EUR; only `charges` carries a currency.
+    expect(screen.getByText('€4.128')).toBeInTheDocument();
+  });
+
   it('says so when the report is stale rather than presenting it as current', () => {
     const current = useObjectStorageUsage();
     useObjectStorageUsage.mockReturnValue({

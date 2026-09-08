@@ -48,11 +48,11 @@ const KEY_STATUS_COLOR: Record<string, string> = {
   revoked: 'var(--status-critical)',
 };
 
-export function BucketAccess({ slug, bucket }: { slug: string; bucket: string }) {
+export function BucketAccess({ slug, bucketId }: { slug: string; bucketId: string }) {
   return (
     <div className="grid gap-6 lg:grid-cols-2">
-      <AccessGrants slug={slug} bucket={bucket} />
-      <S3Credentials slug={slug} bucket={bucket} />
+      <AccessGrants slug={slug} bucket={bucketId} />
+      <S3Credentials slug={slug} bucket={bucketId} />
     </div>
   );
 }

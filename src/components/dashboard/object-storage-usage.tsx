@@ -25,7 +25,9 @@ function bytes(value: number): string {
   return `${n < 10 ? n.toFixed(1) : Math.round(n)} ${units[i]}`;
 }
 
-function money(millicents: number, currency = 'USD'): string {
+// `ObjectStorageUsage.cost_millicents` is documented as EUR; only the
+// `charges` block carries a currency of its own.
+function money(millicents: number, currency = 'EUR'): string {
   const amount = millicents / 100_000;
   return new Intl.NumberFormat(undefined, {
     style: 'currency',
