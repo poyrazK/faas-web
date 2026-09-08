@@ -166,7 +166,9 @@ export function PostgresDatabases() {
           )}
         </Panel>
 
-        {open && <DatabaseDetail database={open} />}
+        {/* Keyed on the database: the restore and binding forms belong to the
+            one that is open, and must not carry over to the next. */}
+        {open && <DatabaseDetail key={open.id} database={open} />}
       </div>
     </PlanGated>
   );
