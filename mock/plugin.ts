@@ -976,13 +976,16 @@ route('GET', '/v1/apps/{slug}/env-diff', ({ params }) => {
       key: e.key,
       kind: 'env' as const,
       cells: {
-        production: { present: true, value_hash: hash(`${e.key}:prod`) },
+        // Env vars are plain configuration, so the diff carries their values;
+        // the list endpoint does not return them, so dev values stand in.
+        production: { present: true, value: `${e.key.toLowerCase()}-value` },
         preview:
           i % 3 === 2
             ? { present: false }
             : {
                 present: true,
-                value_hash: hash(i % 3 === 1 ? `${e.key}:preview` : `${e.key}:prod`),
+                value:
+                  i % 3 === 1 ? `${e.key.toLowerCase()}-preview` : `${e.key.toLowerCase()}-value`,
               },
       },
     })),
