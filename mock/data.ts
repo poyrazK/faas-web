@@ -430,6 +430,36 @@ export const alerts = new Map<string, S['AlertRuleResponse'][]>(
   ])
 );
 
+// One mirror rule on the first app: its live deployment shadowed to the one
+// it superseded, so the summary has a real pair to compare.
+export const mirrorRules = new Map<string, S['MirrorRuleResponse'][]>(
+  apps.map((a) => {
+    const own = deployments.filter((d) => d.app_id === a.id);
+    const source = own.find((d) => d.status === 'live');
+    const mirror = own.find((d) => d.status === 'superseded');
+    if (a !== apps[0] || !source || !mirror) return [a.slug, []];
+    return [
+      a.slug,
+      [
+        {
+          id: id(),
+          account_id: ACCOUNT_ID,
+          app_id: a.id,
+          source_deployment_id: source.id,
+          mirror_deployment_id: mirror.id,
+          percent: 25,
+          enabled: true,
+          include_body: false,
+          redact_headers: ['X-Tenant-Id'],
+          always_stripped_headers: ['Authorization', 'Cookie'],
+          created_at: iso(3 * D),
+          updated_at: iso(3 * D),
+        },
+      ],
+    ];
+  })
+);
+
 export const webhooks = new Map<string, S['AppWebhookResponse'][]>(
   apps.map((a) => [
     a.slug,
