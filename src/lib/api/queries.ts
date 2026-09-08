@@ -1835,6 +1835,77 @@ export function useRemoveTenantHostname(slug: string) {
   });
 }
 
+/* ------------------------------------------------------------------ *
+ * OpenAPI import (ADR-126) and per-deployment discovery (ADR-122)
+ * ------------------------------------------------------------------ */
+
+export type OpenAPISource = 'manual_import' | 'auto';
+/** The body the import and dry-run endpoints take: a 3.0 / 3.1 document. */
+export type OpenAPIDocument =
+  paths['/v1/apps/{slug}/openapi']['post']['requestBody']['content']['application/json'];
+export type EdgeRuleSuggestion = components['schemas']['EdgeRuleSuggestion'];
+
+const appOpenAPIKey = (slug: string) => ['apps', slug, 'openapi'] as const;
+
+/**
+ * `manual_import` is the customer's own document verbatim and 404s with
+ * `not_found` when nothing was imported; `auto` is the platform-merged view
+ * (import ∪ observed routes ∪ edge rules) and always answers.
+ */
+export function useAppOpenAPI(slug: string, source: OpenAPISource) {
+  return useQuery({
+    queryKey: [...appOpenAPIKey(slug), source],
+    queryFn: () =>
+      unwrap(api.GET('/v1/apps/{slug}/openapi', { params: { path: { slug }, query: { source } } })),
+    enabled: Boolean(slug),
+    retry: false,
+  });
+}
+
+/** Read-only: validates the document and lists the edge rules it would suggest. */
+export function useDryRunAppOpenAPI(slug: string) {
+  return useMutation({
+    mutationFn: (body: OpenAPIDocument) =>
+      unwrap(api.POST('/v1/apps/{slug}/openapi/dry-run', { params: { path: { slug } }, body })),
+  });
+}
+
+export function useImportAppOpenAPI(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: OpenAPIDocument) =>
+      unwrap(api.POST('/v1/apps/{slug}/openapi', { params: { path: { slug } }, body })),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: appOpenAPIKey(slug) }),
+  });
+}
+
+export function useDeleteAppOpenAPI(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => unwrap(api.DELETE('/v1/apps/{slug}/openapi', { params: { path: { slug } } })),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: appOpenAPIKey(slug) }),
+  });
+}
+
+/**
+ * The document the cold-boot probe captured from the app itself. Paid plans
+ * only: Free answers `402 openapi_docs_not_allowed`; `404` means nothing was
+ * captured for this deployment.
+ */
+export function useDeploymentOpenAPIDoc(slug: string, deployment: string) {
+  return useQuery({
+    queryKey: ['apps', slug, 'deployments', deployment, 'openapi'],
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/deployments/{deployment}/openapi', {
+          params: { path: { slug, deployment } },
+        })
+      ),
+    enabled: Boolean(slug && deployment),
+    retry: false,
+  });
+}
+
 /** Clears a delivery out of `dead` back to `pending` for another attempt. */
 export function useRetryDelivery(slug: string, id: string) {
   const qc = useQueryClient();
