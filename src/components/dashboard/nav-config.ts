@@ -129,6 +129,7 @@ export const APP_TABS: { tab: string; segment: string }[] = [
   { tab: 'Edge rules', segment: 'edge-rules' },
   { tab: 'Debugger', segment: 'debug' },
   { tab: 'Mirrors', segment: 'mirrors' },
+  { tab: 'Tenant surfaces', segment: 'tenant-surfaces' },
 ];
 
 export const SECTION_LABELS: Record<string, string> = {
