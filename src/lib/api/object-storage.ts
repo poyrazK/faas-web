@@ -86,3 +86,92 @@ export async function uploadSignedObject(
   if (!response.ok)
     throw new Error(`Upload failed (${response.status}). Request a new upload and try again.`);
 }
+
+/* ------------------------------------------------------------------ *
+ * Bucket access: API-key grants and S3 credentials
+ * ------------------------------------------------------------------ */
+
+export const grantKey = (slug: string, bucket: string) =>
+  ['apps', slug, 'buckets', bucket, 'access-grants'] as const;
+export const s3CredentialKey = (slug: string, bucket: string) =>
+  ['apps', slug, 'buckets', bucket, 's3-credentials'] as const;
+
+/** Which of the account's API keys may read or write this bucket. */
+export function useBucketAccessGrants(slug: string, bucket: string) {
+  return useQuery({
+    queryKey: grantKey(slug, bucket),
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/buckets/{bucket}/access-grants', {
+          params: { path: { slug, bucket } },
+        })
+      ),
+    enabled: Boolean(slug && bucket),
+  });
+}
+
+export function setBucketAccessGrant(
+  slug: string,
+  bucket: string,
+  key: string,
+  permission: 'read' | 'write' | 'read_write'
+) {
+  return unwrap(
+    api.PUT('/v1/apps/{slug}/buckets/{bucket}/access-grants/{key}', {
+      params: { path: { slug, bucket, key } },
+      body: { permission },
+    })
+  );
+}
+
+export function deleteBucketAccessGrant(slug: string, bucket: string, key: string) {
+  return unwrap(
+    api.DELETE('/v1/apps/{slug}/buckets/{bucket}/access-grants/{key}', {
+      params: { path: { slug, bucket, key } },
+    })
+  );
+}
+
+/** Credentials for the S3-compatible endpoint; the secret is shown once. */
+export function useBucketS3Credentials(slug: string, bucket: string) {
+  return useQuery({
+    queryKey: s3CredentialKey(slug, bucket),
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/buckets/{bucket}/s3-credentials', {
+          params: { path: { slug, bucket } },
+        })
+      ),
+    enabled: Boolean(slug && bucket),
+  });
+}
+
+export function createBucketS3Credential(
+  slug: string,
+  bucket: string,
+  label: string,
+  permission: 'read' | 'write' | 'read_write'
+) {
+  return unwrap(
+    api.POST('/v1/apps/{slug}/buckets/{bucket}/s3-credentials', {
+      params: { path: { slug, bucket } },
+      body: { label, permission },
+    })
+  );
+}
+
+export function revokeBucketS3Credential(slug: string, bucket: string, credential: string) {
+  return unwrap(
+    api.DELETE('/v1/apps/{slug}/buckets/{bucket}/s3-credentials/{credential}', {
+      params: { path: { slug, bucket, credential } },
+    })
+  );
+}
+
+/** Account-wide object-storage accounting, with the policy caps it is measured against. */
+export function useObjectStorageUsage() {
+  return useQuery({
+    queryKey: ['account', 'object-storage-usage'],
+    queryFn: () => unwrap(api.GET('/v1/account/object-storage-usage', {})),
+  });
+}
