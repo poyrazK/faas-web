@@ -5,6 +5,7 @@ import { Pill, ResourceTable, type Column } from '@/components/dashboard/resourc
 import { PlanGated } from '@/components/dashboard/plan-gated';
 import { JobRuns } from '@/components/dashboard/job-runs';
 import { JobTasks } from '@/components/dashboard/job-tasks';
+import { JobDefinition, JobRunDetail } from '@/components/dashboard/job-detail';
 import { useJobs } from '@/lib/api/queries';
 import { consoleHead } from '@/lib/seo';
 
@@ -152,10 +153,25 @@ function JobsPage() {
 
         {job && (
           <Panel
+            title={`Definition — ${job}`}
+            description="As deployed. Jobs are defined and changed with the CLI."
+          >
+            <JobDefinition name={job} />
+          </Panel>
+        )}
+
+        {job && (
+          <Panel
             title={`Runs — ${job}`}
             description="Newest first. Cancel stops tasks still in flight."
           >
             <JobRuns name={job} onSelect={setRunId} selectedRunId={runId} />
+          </Panel>
+        )}
+
+        {job && runId && (
+          <Panel title="Run" description="What this run did, counted as the API reports it.">
+            <JobRunDetail name={job} runId={runId} />
           </Panel>
         )}
 

@@ -1157,6 +1157,35 @@ export function useJobs() {
   });
 }
 
+/**
+ * One job's definition. The list carries enough to choose a job; this carries
+ * the fields that explain how a run will behave — the command, the env
+ * overrides, the per-task timeout and the retry ceiling.
+ */
+export function useJob(name: string | null) {
+  return useQuery({
+    queryKey: [...keys.jobs, name],
+    queryFn: () => unwrap(api.GET('/v1/jobs/{name}', { params: { path: { name: name! } } })),
+    enabled: Boolean(name),
+  });
+}
+
+/** One run, refreshed while it is still moving. */
+export function useJobRun(name: string | null, runId: string | null) {
+  return useQuery({
+    queryKey: [...keys.jobs, name, 'runs', runId],
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/jobs/{name}/runs/{id}', { params: { path: { name: name!, id: runId! } } })
+      ),
+    enabled: Boolean(name && runId),
+    refetchInterval: (query) =>
+      query.state.data && ['queued', 'running'].includes(query.state.data.aggregate_status)
+        ? 5_000
+        : false,
+  });
+}
+
 export function useJobRuns(name: string | null) {
   return useQuery({
     queryKey: ['jobs', name, 'runs'],
