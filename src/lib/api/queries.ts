@@ -103,20 +103,30 @@ export function useInstallRepos(installationId: number | null) {
   });
 }
 
+type BindRepoInput = { installationId: number; repo: string; branch: string };
+
 /** Persist the (account, app, installation, repo, branch) binding. */
+function bindRepo(slug: string, input: BindRepoInput) {
+  return unwrap(
+    api.POST('/v1/apps/{slug}/install/bind', {
+      params: { path: { slug } },
+      body: {
+        installation_id: input.installationId,
+        repo_full_name: input.repo,
+        production_branch: input.branch,
+      },
+    })
+  );
+}
+
 export function useBindRepo(slug: string) {
+  return useMutation({ mutationFn: (input: BindRepoInput) => bindRepo(slug, input) });
+}
+
+/** Slug-in-variables variant for a wizard that creates the app first. */
+export function useBindRepoFor() {
   return useMutation({
-    mutationFn: (input: { installationId: number; repo: string; branch: string }) =>
-      unwrap(
-        api.POST('/v1/apps/{slug}/install/bind', {
-          params: { path: { slug } },
-          body: {
-            installation_id: input.installationId,
-            repo_full_name: input.repo,
-            production_branch: input.branch,
-          },
-        })
-      ),
+    mutationFn: ({ slug, ...input }: { slug: string } & BindRepoInput) => bindRepo(slug, input),
   });
 }
 

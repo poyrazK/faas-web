@@ -18,7 +18,7 @@ function OnboardingPage() {
   const sweepNavigate = useSweepNavigate();
   const { user } = useAuth();
 
-  const finish = () => {
+  const finishDeployment = () => {
     markOnboarded();
   };
 
@@ -52,7 +52,7 @@ function OnboardingPage() {
       <main className="relative px-5 py-10 sm:py-14">
         <NewAppWizard
           onboarding
-          onAppCreated={finish}
+          onDeploymentAccepted={finishDeployment}
           onConnectGitHub={beginOnboardingGitHubConnect}
         />
       </main>

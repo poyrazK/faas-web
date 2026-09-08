@@ -15,7 +15,7 @@ import { templateBySlug } from '@/lib/templates';
 import { type Runtime } from '@/lib/mock-data';
 import { errorMessage } from '@/lib/api/errors';
 import { useData } from '@/lib/store';
-import { useDeployFromRefFor, useUpdateAppFor } from '@/lib/api/queries';
+import { useBindRepoFor, useDeployFromRefFor, useUpdateAppFor } from '@/lib/api/queries';
 import { useAuth } from '@/lib/auth';
 import {
   appQuotaExceeded,
@@ -72,8 +72,8 @@ interface NewAppWizardProps {
   templateSlug?: string;
   /** Removes dashboard chrome and keeps onboarding focused on a real Git deployment. */
   onboarding?: boolean;
-  /** Called only after POST /v1/apps has returned a durable app. */
-  onAppCreated?: () => void;
+  /** Called after the first source-ref deployment has been accepted. */
+  onDeploymentAccepted?: () => void;
   /** Allows onboarding to make a deliberate hand-off to the account connection screen. */
   onConnectGitHub?: () => void;
 }
@@ -81,7 +81,7 @@ interface NewAppWizardProps {
 export function NewAppWizard({
   templateSlug,
   onboarding = false,
-  onAppCreated,
+  onDeploymentAccepted,
   onConnectGitHub,
 }: NewAppWizardProps) {
   const navigate = useNavigate();
@@ -101,6 +101,7 @@ export function NewAppWizard({
   const [repo, setRepo] = useState('');
   const [ref, setRef] = useState('main');
   const [name, setName] = useState(template ? template.slug : '');
+  const bindRepo = useBindRepoFor();
   const deployFromRef = useDeployFromRefFor();
   const updateApp = useUpdateAppFor();
   const [appType, setAppType] = useState<'function' | 'app'>('function');
@@ -137,18 +138,34 @@ export function NewAppWizard({
   const limitsLoading = authLoading && !account;
   const deployBlocked = limitsLoading || quotaExceeded || !memoryAllowed(account, selectedMemoryMb);
 
+  async function submitGitSource(slug: string) {
+    const installationId = Number(account?.github_install_id);
+    if (!Number.isSafeInteger(installationId) || installationId <= 0) {
+      throw new Error('Connect GitHub before deploying from a repository.');
+    }
+
+    await bindRepo.mutateAsync({
+      slug,
+      installationId,
+      repo: repo.trim(),
+      branch: normalizedRef,
+    });
+    return deployFromRef.mutateAsync({
+      slug,
+      repo: repo.trim(),
+      ref: normalizedRef,
+      format: 'tarball',
+    });
+  }
+
   async function retrySourceDeploy() {
     if (!createdId || source !== 'git' || !gitSourceValid || retrying) return;
     setRetrying(true);
     setSubmissionError(null);
     try {
-      const deployment = await deployFromRef.mutateAsync({
-        slug: createdId,
-        repo: repo.trim(),
-        ref: normalizedRef,
-        format: 'tarball',
-      });
+      const deployment = await submitGitSource(createdId);
       setDeploymentId(deployment.id);
+      onDeploymentAccepted?.();
       toast({
         kind: 'success',
         title: 'Build accepted',
@@ -178,20 +195,12 @@ export function NewAppWizard({
       });
       setCreatedId(created.id);
       setCreatedUrl(created.url);
-      onAppCreated?.();
 
       const scalePromise: Promise<unknown> = !effectiveScaleToZero
         ? updateApp.mutateAsync({ slug: created.id, min_instances: 1 })
         : Promise.resolve();
       const deploymentPromise =
-        source === 'git' && gitSourceValid
-          ? deployFromRef.mutateAsync({
-              slug: created.id,
-              repo: repo.trim(),
-              ref: normalizedRef,
-              format: 'tarball',
-            })
-          : Promise.resolve(null);
+        source === 'git' && gitSourceValid ? submitGitSource(created.id) : Promise.resolve(null);
 
       const [scaleResult, deploymentResult] = await Promise.allSettled([
         scalePromise,
@@ -208,6 +217,7 @@ export function NewAppWizard({
 
       if (deploymentResult.status === 'fulfilled' && deploymentResult.value) {
         setDeploymentId(deploymentResult.value.id);
+        onDeploymentAccepted?.();
         toast({
           kind: 'success',
           title: 'Build accepted',
