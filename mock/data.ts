@@ -521,6 +521,48 @@ export const tenantSurfaces = new Map<string, S['TenantSurfaceResponse'][]>(
   })
 );
 
+// OpenAPI documents (ADR-126 import, ADR-122 cold-boot discovery). The first
+// app has an imported doc and a captured one on its live deployment.
+const SAMPLE_OPENAPI: Record<string, unknown> = {
+  openapi: '3.1.0',
+  info: { title: 'api-gateway', version: '2.4.0' },
+  paths: {
+    '/orders': {
+      get: { summary: 'List orders' },
+      post: {
+        summary: 'Create an order',
+        requestBody: {
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['sku', 'quantity'],
+                properties: { sku: { type: 'string' }, quantity: { type: 'integer' } },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/orders/{id}': { get: { summary: 'Get an order' }, delete: { summary: 'Cancel an order' } },
+    '/health': { get: { summary: 'Liveness' } },
+  },
+};
+
+export const appOpenAPIDocs = new Map<string, Record<string, unknown>>([
+  [apps[0].slug, SAMPLE_OPENAPI],
+]);
+
+export const deploymentOpenAPIDocs = new Map<string, Record<string, unknown>>(
+  deployments
+    .filter((d) => d.app_id === apps[0].id && d.status === 'live')
+    .slice(0, 1)
+    .map((d) => [
+      d.id,
+      { ...SAMPLE_OPENAPI, info: { title: 'api-gateway', version: '2.4.0-live' } },
+    ])
+);
+
 export const webhooks = new Map<string, S['AppWebhookResponse'][]>(
   apps.map((a) => [
     a.slug,
