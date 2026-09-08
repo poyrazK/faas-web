@@ -24,6 +24,9 @@ const PLAN_GATE_CODES = new Set([
   'plan_mirror_not_allowed',
   'tenant_surfaces_not_allowed',
   'openapi_docs_not_allowed',
+  'plan_per_app_metrics_not_allowed',
+  'plan_app_usage_summary_not_allowed',
+  'plan_static_egress_ip_not_allowed',
 ]);
 
 export function isPlanGate(error: unknown): boolean {
