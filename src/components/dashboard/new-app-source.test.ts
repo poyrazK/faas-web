@@ -32,6 +32,7 @@ describe('new app Git source validation', () => {
       'main.lock',
       'abc123',
       'bad ref',
+      'bad\u0001ref',
       'main?',
       'x'.repeat(201),
     ]) {

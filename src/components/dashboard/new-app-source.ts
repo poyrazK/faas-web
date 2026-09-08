@@ -1,5 +1,12 @@
 const GITHUB_REPO = /^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/;
-const FORBIDDEN_REF_CHAR = /[\\\0`?%[\]{}<>"'*\x00-\x20\x7f:^~]/;
+const FORBIDDEN_REF_CHAR = /[\\`?%[\]{}<>"'*:^~]/;
+
+function hasControlOrSpace(value: string): boolean {
+  return Array.from(value).some((character) => {
+    const code = character.charCodeAt(0);
+    return code <= 0x20 || code === 0x7f;
+  });
+}
 
 export function isValidGitHubRepo(value: string): boolean {
   return GITHUB_REPO.test(value.trim());
@@ -18,6 +25,7 @@ export function isValidGitRef(value: string): boolean {
     ref.includes('..') ||
     ref.includes('@{') ||
     ref.endsWith('.') ||
+    hasControlOrSpace(ref) ||
     FORBIDDEN_REF_CHAR.test(ref)
   ) {
     return false;
