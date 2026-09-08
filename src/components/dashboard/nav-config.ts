@@ -130,6 +130,7 @@ export const APP_TABS: { tab: string; segment: string }[] = [
   { tab: 'Debugger', segment: 'debug' },
   { tab: 'Mirrors', segment: 'mirrors' },
   { tab: 'Tenant surfaces', segment: 'tenant-surfaces' },
+  { tab: 'OpenAPI', segment: 'openapi' },
 ];
 
 export const SECTION_LABELS: Record<string, string> = {
