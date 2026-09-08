@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import type { components } from '@/lib/api/schema';
+import { CorsPresetPicker } from '../cors-presets';
 import {
   ChipSet,
   HeaderOpsField,
@@ -240,6 +241,25 @@ export const KINDS = {
     }),
     Form: ({ value, onChange, errors }) => (
       <div className="flex flex-col gap-4">
+        <CorsPresetPicker
+          value={value.cors_preset_id ?? null}
+          onPick={(preset) =>
+            onChange(
+              preset
+                ? {
+                    ...value,
+                    cors_preset_id: preset.id,
+                    allow_origins: preset.allow_origins,
+                    allow_methods: preset.allow_methods,
+                    allow_headers: preset.allow_headers ?? [],
+                    expose_headers: preset.expose_headers ?? [],
+                    allow_credentials: preset.allow_credentials,
+                    max_age_seconds: preset.max_age_seconds,
+                  }
+                : { ...value, cors_preset_id: null }
+            )
+          }
+        />
         <StringListField
           label="Allowed origins"
           hint="Full origins, or * for any. Enter or comma to add."

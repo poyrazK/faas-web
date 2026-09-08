@@ -20,6 +20,7 @@ import {
 import { slugIndex } from '@/lib/api/adapters';
 import { errorMessage } from '@/lib/api/errors';
 import { consoleHead } from '@/lib/seo';
+import { CorsPresetsPanel } from '@/components/dashboard/cors-presets';
 
 export const Route = createFileRoute('/dashboard/edge-rules')({
   component: EdgeRulesPage,
@@ -269,6 +270,8 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
         }}
         rowActions={rowActionsFor}
       />
+
+      <CorsPresetsPanel slug={scoped} />
 
       {(creating || editing) && (
         <EdgeRuleDialog

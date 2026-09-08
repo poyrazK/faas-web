@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { LogOut } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,7 @@ import { useMfa } from '@/components/auth/mfa-provider';
 import { errorMessage } from '@/lib/api/errors';
 import { formatRelative } from '@/lib/mock-data';
 import { consoleHead } from '@/lib/seo';
+import { AuthEventDetail } from '@/components/dashboard/auth-event-detail';
 
 export const Route = createFileRoute('/dashboard/security')({
   component: SecurityPage,
@@ -53,6 +54,7 @@ function AuthEventsPanel() {
   const q = useAuthAuditEvents();
   const events = q.data?.events ?? [];
   const phase = queryPhase({ error: q.error, loading: q.isPending, isEmpty: events.length === 0 });
+  const [openId, setOpenId] = useState<string | null>(null);
   return (
     <Panel
       title="Auth events"
@@ -69,22 +71,26 @@ function AuthEventsPanel() {
       ) : (
         <ul className="flex flex-col divide-y divide-border">
           {events.slice(0, 12).map((e) => (
-            <li
-              key={e.id}
-              className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-2.5 text-xs"
-            >
-              <span className="font-mono">{e.kind}</span>
-              <span className="text-muted-foreground">{e.actor}</span>
-              {e.severity && e.severity !== 'info' && (
-                <span style={{ color: 'var(--status-warning)' }}>{e.severity}</span>
-              )}
-              <span className="ml-auto text-muted-foreground">
-                {new Date(e.at).toLocaleString()}
-              </span>
+            <li key={e.id}>
+              <button
+                type="button"
+                onClick={() => setOpenId(e.id)}
+                className="flex w-full flex-wrap items-center gap-x-4 gap-y-1 px-5 py-2.5 text-left text-xs transition-colors hover:bg-muted/40 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand"
+              >
+                <span className="font-mono">{e.kind}</span>
+                <span className="text-muted-foreground">{e.actor}</span>
+                {e.severity && e.severity !== 'info' && (
+                  <span style={{ color: 'var(--status-warning)' }}>{e.severity}</span>
+                )}
+                <span className="ml-auto text-muted-foreground">
+                  {new Date(e.at).toLocaleString()}
+                </span>
+              </button>
             </li>
           ))}
         </ul>
       )}
+      <AuthEventDetail id={openId} onClose={() => setOpenId(null)} />
     </Panel>
   );
 }
