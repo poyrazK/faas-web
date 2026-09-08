@@ -18,6 +18,8 @@ import { useApps, useSetTriggerEnabled, useTriggerMetrics, useTriggers } from '@
 import { slugIndex } from '@/lib/api/adapters';
 import { consoleHead } from '@/lib/seo';
 import { TriggerConfiguration } from '@/components/dashboard/trigger-detail';
+import { CreateTrigger } from '@/components/dashboard/trigger-create';
+import { PlanGated } from '@/components/dashboard/plan-gated';
 
 export const Route = createFileRoute('/dashboard/triggers')({
   component: TriggersPage,
@@ -189,7 +191,7 @@ function TriggersPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Triggers"
-        description="Event sources that invoke an app — cron, Kafka, NATS, Redis Streams, an SQS-compatible queue, or the in-platform queue. Defined in gregale.yaml and the CLI; paused, inspected and recovered here."
+        description="Event sources that invoke an app — Kafka, NATS, Redis Streams, an SQS-compatible queue, or the in-platform queue. Created and removed here; scheduled runs live on the Crons page."
       />
 
       <ResourceTable
@@ -198,12 +200,16 @@ function TriggersPage() {
         initialSort={{ key: 'slug', dir: 'asc' }}
         searchKeys={['slug', 'app', 'kind']}
         searchPlaceholder="Filter by trigger, app, or kind…"
-        emptyMessage="No triggers yet. Declare them in gregale.yaml and deploy."
+        emptyMessage="No triggers yet. Bind an event source to an app below."
         minWidth="min-w-[880px]"
         loading={isPending}
         error={error}
         onRetry={() => void refetch()}
       />
+
+      <PlanGated error={error} feature="Triggers">
+        <CreateTrigger />
+      </PlanGated>
 
       {selected && (
         <TriggerDetail triggerId={selected.id} label={`${selected.kind} · ${selected.slug}`} />
