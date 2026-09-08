@@ -34,6 +34,7 @@ describe('isPlanGate', () => {
       'plan_static_egress_ip_not_allowed',
       'plan_cors_preset_not_allowed',
       'managed_postgres_not_in_plan',
+      'triggers_not_allowed',
     ]) {
       expect(isPlanGate(new ApiError({ status: 402, code, title: 'Gated' }))).toBe(true);
     }

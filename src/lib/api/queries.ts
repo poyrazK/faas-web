@@ -1334,6 +1334,30 @@ export function useTriggerDeadLetter(id: string | null, reason: TriggerDeadLette
  * Pause and resume are the cheapest way to stop a misbehaving trigger, so
  * they live on the row rather than behind a detail view.
  */
+/**
+ * Create a broker trigger. `kind=cron` is refused by this endpoint — the
+ * handler answers 400 and points at `POST /v1/crons` — so the console offers
+ * the five broker kinds here and sends cron to the Crons page.
+ */
+export function useCreateTrigger() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: components['schemas']['CreateTriggerRequest']) =>
+      unwrap(api.POST('/v1/triggers', { body })),
+    onSettled: () => void qc.invalidateQueries({ queryKey: keys.triggers }),
+  });
+}
+
+/** Delete a trigger. `kind` is immutable, so a change of source is delete-and-recreate. */
+export function useDeleteTrigger() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      unwrap(api.DELETE('/v1/triggers/{id}', { params: { path: { id } } })),
+    onSettled: () => void qc.invalidateQueries({ queryKey: keys.triggers }),
+  });
+}
+
 export function useSetTriggerEnabled() {
   const qc = useQueryClient();
   return useMutation({
