@@ -3,6 +3,7 @@ import { Pill, ResourceTable, type Column } from '@/components/dashboard/resourc
 import { useDebugRequests } from '@/lib/api/queries';
 import { formatRelative } from '@/lib/mock-data';
 import { DebugGate } from './debug-gate';
+import { DebugRequestEvidence } from './debug-request-evidence';
 
 /**
  * One row per gateway-served request (ADR-127 PR-A).
@@ -39,6 +40,7 @@ function statusColor(status: number): string {
 
 export function DebugRequests({ slug }: { slug: string }) {
   const [since, setSince] = useState<string>('1h');
+  const [openId, setOpenId] = useState<string | null>(null);
   const { data, isPending, error, refetch } = useDebugRequests(slug, since);
 
   const rows: Row[] = (data?.requests ?? []).map((r) => ({
@@ -138,7 +140,9 @@ export function DebugRequests({ slug }: { slug: string }) {
           loading={isPending}
           error={error}
           onRetry={() => void refetch()}
+          onRowClick={(r) => setOpenId(r.id)}
         />
+        <DebugRequestEvidence slug={slug} reqId={openId} onClose={() => setOpenId(null)} />
       </div>
     </DebugGate>
   );
