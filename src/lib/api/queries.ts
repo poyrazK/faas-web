@@ -1769,6 +1769,72 @@ export function useWebhookDeliveries(slug: string, id: string) {
   });
 }
 
+/* ------------------------------------------------------------------ *
+ * Tenant surfaces (ADR-100)
+ * ------------------------------------------------------------------ */
+
+export type TenantSurface = components['schemas']['TenantSurfaceResponse'];
+export type TenantHostname = components['schemas']['TenantHostnameResponse'];
+
+const tenantSurfacesKey = (slug: string) => ['apps', slug, 'tenant-surfaces'] as const;
+
+/** Plan/flag-gated: `402 tenant_surfaces_not_allowed` comes back on the list too. */
+export function useTenantSurfaces(slug: string) {
+  return useQuery({
+    queryKey: tenantSurfacesKey(slug),
+    queryFn: () =>
+      unwrap(api.GET('/v1/apps/{slug}/tenant-surfaces', { params: { path: { slug } } })),
+    enabled: Boolean(slug),
+  });
+}
+
+export function useCreateTenantSurface(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: components['schemas']['CreateTenantSurfaceRequest']) =>
+      unwrap(api.POST('/v1/apps/{slug}/tenant-surfaces', { params: { path: { slug } }, body })),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: tenantSurfacesKey(slug) }),
+  });
+}
+
+export function useDeleteTenantSurface(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      unwrap(
+        api.DELETE('/v1/apps/{slug}/tenant-surfaces/{id}', { params: { path: { slug, id } } })
+      ),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: tenantSurfacesKey(slug) }),
+  });
+}
+
+export function useAddTenantHostname(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, hostname }: { id: string; hostname: string }) =>
+      unwrap(
+        api.POST('/v1/apps/{slug}/tenant-surfaces/{id}/hostnames', {
+          params: { path: { slug, id } },
+          body: { hostname },
+        })
+      ),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: tenantSurfacesKey(slug) }),
+  });
+}
+
+export function useRemoveTenantHostname(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, hostname }: { id: string; hostname: string }) =>
+      unwrap(
+        api.DELETE('/v1/apps/{slug}/tenant-surfaces/{id}/hostnames/{hostname}', {
+          params: { path: { slug, id, hostname } },
+        })
+      ),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: tenantSurfacesKey(slug) }),
+  });
+}
+
 /** Clears a delivery out of `dead` back to `pending` for another attempt. */
 export function useRetryDelivery(slug: string, id: string) {
   const qc = useQueryClient();
