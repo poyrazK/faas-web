@@ -248,6 +248,34 @@ for (const app of apps) {
   }
 }
 deployments.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+
+// A canary mid-rollout and a queued deployment, so the deployment controls
+// (advance, reorder) have something to act on in dev.
+{
+  const canary = deployments.find((d) => d.app_id === apps[0].id && d.status === 'live');
+  if (canary) {
+    Object.assign(canary, {
+      canary_preset: 'balanced',
+      canary_step: 1,
+      canary_total_steps: 3,
+      canary_step_started_at: iso(20 * 60 * 1000),
+      rollout_state: 'rolling_out',
+      rollout_started_at: iso(45 * 60 * 1000),
+      traffic_percent: 10,
+    } satisfies Partial<Deployment>);
+  }
+  const template = deployments.find((d) => d.app_id === apps[1].id);
+  if (template) {
+    deployments.unshift({
+      ...template,
+      id: id(),
+      status: 'pending',
+      error: null,
+      error_code: null,
+      created_at: iso(2 * 60 * 1000),
+    });
+  }
+}
 builds.sort((a, b) => Date.parse(b.enqueued_at) - Date.parse(a.enqueued_at));
 
 // --- Metrics -----------------------------------------------------------------
