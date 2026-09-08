@@ -8,7 +8,7 @@ import {
 } from '@tanstack/react-query';
 import { api, issueCSRF, unwrap } from './client';
 import { ApiError } from './errors';
-import type { components } from './schema';
+import type { components, paths } from './schema';
 
 /**
  * Query hooks over the REST surface.
@@ -805,6 +805,104 @@ export function useRetryDeployment() {
         api.POST('/v1/deployments/{id}/retry', { params: { path: { id } }, body: { from_stage } })
       ),
     onSettled: () => qc.invalidateQueries({ queryKey: keys.deployments }),
+  });
+}
+
+/**
+ * The closed six-stage summary a deploy leaves behind (ADR-117). The wire is
+ * the raw `deployments.stage_state` column, so every field is optional; the
+ * 404 for an unknown or cross-account id is the only error branch.
+ */
+export type DeploymentStages = NonNullable<
+  paths['/v1/deployments/{id}/stages']['get']['responses'][200]['content']['application/json']
+>;
+
+export function useDeploymentStages(id: string) {
+  return useQuery({
+    queryKey: ['deployments', id, 'stages'],
+    queryFn: () => unwrap(api.GET('/v1/deployments/{id}/stages', { params: { path: { id } } })),
+    enabled: Boolean(id),
+  });
+}
+
+/** Reverse-chronological deployment_audit rows; `limit` is echoed back clamped. */
+export function useDeploymentAudit(id: string, limit = 50) {
+  return useQuery({
+    queryKey: ['deployments', id, 'audit', limit],
+    queryFn: () =>
+      unwrap(api.GET('/v1/deployments/{id}/audit', { params: { path: { id }, query: { limit } } })),
+    enabled: Boolean(id),
+  });
+}
+
+/**
+ * The per-deployment preview host. `alive=false` comes back as a 200 with an
+ * empty url, so a closed preview is data, not an error.
+ */
+export function useDeploymentPreviewUrl(id: string) {
+  return useQuery({
+    queryKey: ['deployments', id, 'url'],
+    queryFn: () => unwrap(api.GET('/v1/deployments/{id}/url', { params: { path: { id } } })),
+    enabled: Boolean(id),
+  });
+}
+
+/**
+ * Advance a persisted canary by one stage. The caller sends the step it saw;
+ * a stale step answers `409 canary_step_conflict`, which is the API refusing
+ * to double-advance, not a failure to act on.
+ */
+export function useAdvanceCanary() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, expected_step }: { id: string; expected_step: number }) =>
+      unwrap(
+        api.POST('/v1/deployments/{id}/canary/advance', {
+          params: { path: { id } },
+          body: { expected_step },
+        })
+      ),
+    onSettled: (_data, _err, { id }) => {
+      void qc.invalidateQueries({ queryKey: ['deployments', id] });
+      void qc.invalidateQueries({ queryKey: keys.deployments });
+    },
+  });
+}
+
+/** Priority of a still-pending deployment: 0 deploys next, 100 is FIFO, 1000 is background. */
+export function useReorderDeployment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, priority }: { id: string; priority: number }) =>
+      unwrap(
+        api.POST('/v1/deployments/{id}/reorder', { params: { path: { id } }, body: { priority } })
+      ),
+    onSettled: (_data, _err, { id }) => {
+      void qc.invalidateQueries({ queryKey: ['deployments', id] });
+      void qc.invalidateQueries({ queryKey: keys.deployments });
+    },
+  });
+}
+
+/**
+ * Soft-delete superseded, failed and cancelled deployments older than the
+ * cutoff. The API defaults to 168h; it is sent explicitly so the request says
+ * what it does.
+ */
+export function useClearObsoleteDeployments() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ slug, older_than = '168h' }: { slug: string; older_than?: string }) =>
+      unwrap(
+        api.POST('/v1/apps/{slug}/deployments/clear-obsolete', {
+          params: { path: { slug } },
+          body: { older_than },
+        })
+      ),
+    onSettled: (_data, _err, { slug }) => {
+      void qc.invalidateQueries({ queryKey: keys.deployments });
+      void qc.invalidateQueries({ queryKey: keys.appDeployments(slug) });
+    },
   });
 }
 
