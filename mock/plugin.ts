@@ -884,6 +884,196 @@ route('GET', '/v1/apps/{slug}/deployments/{deployment}/openapi', ({ params, res 
   return doc;
 });
 
+// Per-app singles: wake timeline, usage summary, env diff, static egress IP
+// (ADR-119, Scale-only: MOCK_PLAN=scale unlocks it), streaming probe (ADR-102).
+const staticEgressPins = new Map<string, { ip: string; set_at: string }>();
+const WAKE_TRIGGERS = ['manual.api', 'http.request', 'cron.fired', 'queue.message'];
+const WAKE_CLASSES = ['user', 'user', 'user', 'monitor', 'crawler'] as const;
+
+route('GET', '/v1/apps/{slug}/wake-timeline', ({ params }) => {
+  const a = app(params.slug);
+  if (process.env.MOCK_PLAN === 'free')
+    throw new Problem(
+      402,
+      'plan_per_app_metrics_not_allowed',
+      'the free plan does not include per-app metrics; upgrade to Hobby or above.'
+    );
+  const now = Date.now();
+  const rows = Array.from({ length: 12 }, (_, i) => {
+    const tier = i % 5 === 0 ? 'init' : i % 7 === 0 ? 'cold_boot_fallback' : 'warm';
+    const queued = i % 4 === 0 ? 2 : 0;
+    return {
+      kind: 'wake.boot_started' as const,
+      state: 'RUNNING',
+      at: new Date(now - (i * 97 + 3) * 60_000).toISOString(),
+      wake_id: db.id(),
+      trigger: WAKE_TRIGGERS[i % WAKE_TRIGGERS.length],
+      trigger_class: WAKE_CLASSES[i % WAKE_CLASSES.length],
+      method: 'GET',
+      tier,
+      queued_count: queued,
+      concurrency_at_admit: 1 + (i % 3),
+      at_capacity: queued > 0,
+      at_capacity_present: true,
+      ready_in_ms: tier === 'warm' ? 180 + i * 7 : tier === 'init' ? 1240 + i * 30 : 2960,
+    };
+  });
+  const histogram = (key: 'trigger' | 'trigger_class') =>
+    rows.reduce<Record<string, number>>((acc, r) => {
+      acc[r[key]] = (acc[r[key]] ?? 0) + 1;
+      return acc;
+    }, {});
+  const atCapacity = rows.filter((r) => r.at_capacity).length;
+  return {
+    app: { app_id: a.id, slug: a.slug, status: a.status, url: a.url },
+    wake_count_24h: rows.length,
+    wake_count_with_meta: rows.length,
+    at_capacity_count: atCapacity,
+    at_capacity_pct: Math.round((atCapacity / rows.length) * 1000) / 10,
+    trigger_histogram: histogram('trigger'),
+    trigger_class_histogram: histogram('trigger_class'),
+    rows,
+    as_of: new Date(now).toISOString(),
+  };
+});
+
+route('GET', '/v1/apps/{slug}/usage', ({ params }) => {
+  const a = app(params.slug);
+  if (process.env.MOCK_PLAN === 'free')
+    throw new Problem(
+      402,
+      'plan_app_usage_summary_not_allowed',
+      'the free plan does not include the per-app usage summary; upgrade to Hobby or above.'
+    );
+  const gbHours = Math.round(a.ram_mb * 0.0417 * 100) / 100;
+  return {
+    slug: a.slug,
+    period_start: db.iso(30 * 24 * 3_600_000),
+    period_end: db.iso(0),
+    mb_seconds: Math.round(gbHours * 1024 * 3600),
+    gb_hours: gbHours,
+    requests: 8421 * (1 + (a.ram_mb % 7)),
+    tx_bytes: 94_371_840 * (1 + (a.ram_mb % 3)),
+    builder_seconds: 192.5,
+    cold_boot_count: 14,
+    plan_included_gb_hours: db.account.limits.included_gb_hours,
+    overage_gb_hours: Math.max(0, gbHours - db.account.limits.included_gb_hours),
+    source: 'usage_minutes',
+    as_of: db.iso(0),
+  };
+});
+
+route('GET', '/v1/apps/{slug}/env-diff', ({ params }) => {
+  const a = app(params.slug);
+  const scopes = ['production', 'preview'];
+  const hash = (s: string) => {
+    let h = 0;
+    for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+    return h.toString(16).padStart(8, '0');
+  };
+  const rows = [
+    ...listOf(db.env, a.slug).map((e, i) => ({
+      key: e.key,
+      kind: 'env' as const,
+      cells: {
+        // Env vars are plain configuration, so the diff carries their values;
+        // the list endpoint does not return them, so dev values stand in.
+        production: { present: true, value: `${e.key.toLowerCase()}-value` },
+        preview:
+          i % 3 === 2
+            ? { present: false }
+            : {
+                present: true,
+                value:
+                  i % 3 === 1 ? `${e.key.toLowerCase()}-preview` : `${e.key.toLowerCase()}-value`,
+              },
+      },
+    })),
+    ...listOf(db.secrets, a.slug).map((s, i) => ({
+      key: s.key,
+      kind: 'secret' as const,
+      cells: {
+        production: { present: true, value_hash: hash(`${s.key}:prod`) },
+        preview: { present: i % 2 === 0, value_hash: hash(`${s.key}:preview`) },
+      },
+    })),
+  ];
+  return { app_slug: a.slug, scopes, rows, generated_at: db.iso(0) };
+});
+
+const staticEgressAllowed = () => process.env.MOCK_PLAN === 'scale';
+route('GET', '/v1/apps/{slug}/static-egress-ip', ({ params }) => {
+  const a = app(params.slug);
+  const pin = staticEgressPins.get(a.slug);
+  return {
+    ip: pin?.ip ?? null,
+    set_at: pin?.set_at ?? null,
+    plan_cap: staticEgressAllowed() ? 1 : 0,
+    plan_allowed: staticEgressAllowed(),
+  };
+});
+route('PUT', '/v1/apps/{slug}/static-egress-ip', ({ params, body }) => {
+  const a = app(params.slug);
+  if (!staticEgressAllowed())
+    throw new Problem(
+      402,
+      'plan_static_egress_ip_not_allowed',
+      'static egress IPs need the Scale plan.'
+    );
+  if (body.set === false || body.ip === '') {
+    staticEgressPins.delete(a.slug);
+    return { ip: null, set_at: null, plan_cap: 1, plan_allowed: true };
+  }
+  const ip = String(body.ip ?? '');
+  const octets = ip.split('.').map(Number);
+  if (octets.length !== 4 || octets.some((o) => !Number.isInteger(o) || o < 0 || o > 255))
+    throw new Problem(400, 'validation_failed', `"${ip}" is not an IPv4 address.`);
+  if (
+    octets[0] === 10 ||
+    (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) ||
+    (octets[0] === 192 && octets[1] === 168) ||
+    octets[0] === 169
+  )
+    throw new Problem(400, 'validation_failed', 'RFC1918 and link-local ranges cannot be pinned.');
+  for (const [slug, pin] of staticEgressPins)
+    if (slug !== a.slug && pin.ip === ip)
+      throw new Problem(
+        403,
+        'plan_static_egress_ip_quota',
+        `${ip} is already pinned by ${slug}; one app per IP.`
+      );
+  const pin = { ip, set_at: db.iso(0) };
+  staticEgressPins.set(a.slug, pin);
+  return { ...pin, plan_cap: 1, plan_allowed: true };
+});
+route('DELETE', '/v1/apps/{slug}/static-egress-ip', ({ params }) => {
+  staticEgressPins.delete(app(params.slug).slug);
+  return NO_CONTENT;
+});
+
+route('GET', '/v1/apps/{slug}/streaming-cap', ({ params }) => {
+  const a = app(params.slug);
+  const planAllowed = process.env.MOCK_PLAN !== 'free';
+  const flag = a.streaming_enabled ?? false;
+  const planCap = planAllowed ? 104_857_600 : 0;
+  const status = !planAllowed
+    ? 'plan-disallows'
+    : !flag
+      ? 'flag-disabled'
+      : a.slug.includes('json')
+        ? 'accept-json-downgrade'
+        : 'streaming';
+  return {
+    app_id: a.id,
+    status,
+    effective_cap_bytes: status === 'streaming' ? planCap : 0,
+    plan_cap_bytes: planCap,
+    flag_enabled: flag,
+    plan_allowed: planAllowed,
+    cap_kind: status === 'streaming' ? 'plan' : 'none',
+  };
+});
+
 route('GET', '/v1/apps/{slug}/webhooks', ({ params }) => listOf(db.webhooks, params.slug));
 route('POST', '/v1/apps/{slug}/webhooks', ({ params, body }) => {
   const a = app(params.slug);

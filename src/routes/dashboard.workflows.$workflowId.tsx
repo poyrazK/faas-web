@@ -48,6 +48,7 @@ import { EdgeRulesBody } from './dashboard.edge-rules';
 import { ErrorsBody } from '@/components/dashboard/errors-body';
 import { AppConfiguration } from '@/components/dashboard/app-configuration';
 import { InvokePanel, SloPanel } from '@/components/dashboard/app-core-panels';
+import { AppUsagePanel, WakeTimelinePanel } from '@/components/dashboard/app-insights';
 import { Swap } from '@/components/dashboard/motion';
 import { RepoPicker } from '@/components/dashboard/repo-picker';
 import { DeploymentProgress } from '@/components/dashboard/deployment-progress';
@@ -516,6 +517,8 @@ function FunctionDetailPage() {
                     )}
                   </Panel>
                   <SloPanel slug={fn.id} />
+                  <WakeTimelinePanel slug={fn.id} />
+                  <AppUsagePanel slug={fn.id} />
                 </div>
               ))}
 
