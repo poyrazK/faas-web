@@ -35,7 +35,7 @@ export function JobDefinition({ name }: { name: string }) {
 
   if (job.isPending)
     return <p className="text-sm text-muted-foreground">Reading the definition…</p>;
-  if (job.error instanceof ApiError && job.error.status === 404)
+  if (job.error instanceof ApiError && job.error.code === 'job_not_found')
     return <p className="text-sm text-muted-foreground">This job no longer exists.</p>;
   if (job.error || !data)
     return <p className="text-sm text-muted-foreground">{errorMessage(job.error)}</p>;
@@ -89,7 +89,7 @@ export function JobRunDetail({ name, runId }: { name: string; runId: string }) {
   const data = run.data;
 
   if (run.isPending) return <p className="text-sm text-muted-foreground">Reading the run…</p>;
-  if (run.error instanceof ApiError && run.error.status === 404)
+  if (run.error instanceof ApiError && run.error.code === 'job_run_not_found')
     return <p className="text-sm text-muted-foreground">This run is no longer recorded.</p>;
   if (run.error || !data)
     return <p className="text-sm text-muted-foreground">{errorMessage(run.error)}</p>;
