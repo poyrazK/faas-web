@@ -37,6 +37,7 @@ import { Route as DashboardMetricsRouteImport } from './routes/dashboard.metrics
 import { Route as DashboardMirrorsRouteImport } from './routes/dashboard.mirrors'
 import { Route as DashboardOpenapiRouteImport } from './routes/dashboard.openapi'
 import { Route as DashboardPlansRouteImport } from './routes/dashboard.plans'
+import { Route as DashboardPostgresRouteImport } from './routes/dashboard.postgres'
 import { Route as DashboardQueuesRouteImport } from './routes/dashboard.queues'
 import { Route as DashboardSecretsRouteImport } from './routes/dashboard.secrets'
 import { Route as DashboardSecurityRouteImport } from './routes/dashboard.security'
@@ -197,6 +198,11 @@ const DashboardPlansRoute = DashboardPlansRouteImport.update({
   path: '/plans',
   getParentRoute: () => DashboardRoute,
 } as any)
+const DashboardPostgresRoute = DashboardPostgresRouteImport.update({
+  id: '/postgres',
+  path: '/postgres',
+  getParentRoute: () => DashboardRoute,
+} as any)
 const DashboardQueuesRoute = DashboardQueuesRouteImport.update({
   id: '/queues',
   path: '/queues',
@@ -322,6 +328,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/mirrors': typeof DashboardMirrorsRoute
   '/dashboard/openapi': typeof DashboardOpenapiRoute
   '/dashboard/plans': typeof DashboardPlansRoute
+  '/dashboard/postgres': typeof DashboardPostgresRoute
   '/dashboard/queues': typeof DashboardQueuesRoute
   '/dashboard/secrets': typeof DashboardSecretsRoute
   '/dashboard/security': typeof DashboardSecurityRoute
@@ -369,6 +376,7 @@ export interface FileRoutesByTo {
   '/dashboard/mirrors': typeof DashboardMirrorsRoute
   '/dashboard/openapi': typeof DashboardOpenapiRoute
   '/dashboard/plans': typeof DashboardPlansRoute
+  '/dashboard/postgres': typeof DashboardPostgresRoute
   '/dashboard/queues': typeof DashboardQueuesRoute
   '/dashboard/secrets': typeof DashboardSecretsRoute
   '/dashboard/security': typeof DashboardSecurityRoute
@@ -419,6 +427,7 @@ export interface FileRoutesById {
   '/dashboard/mirrors': typeof DashboardMirrorsRoute
   '/dashboard/openapi': typeof DashboardOpenapiRoute
   '/dashboard/plans': typeof DashboardPlansRoute
+  '/dashboard/postgres': typeof DashboardPostgresRoute
   '/dashboard/queues': typeof DashboardQueuesRoute
   '/dashboard/secrets': typeof DashboardSecretsRoute
   '/dashboard/security': typeof DashboardSecurityRoute
@@ -470,6 +479,7 @@ export interface FileRouteTypes {
     | '/dashboard/mirrors'
     | '/dashboard/openapi'
     | '/dashboard/plans'
+    | '/dashboard/postgres'
     | '/dashboard/queues'
     | '/dashboard/secrets'
     | '/dashboard/security'
@@ -517,6 +527,7 @@ export interface FileRouteTypes {
     | '/dashboard/mirrors'
     | '/dashboard/openapi'
     | '/dashboard/plans'
+    | '/dashboard/postgres'
     | '/dashboard/queues'
     | '/dashboard/secrets'
     | '/dashboard/security'
@@ -566,6 +577,7 @@ export interface FileRouteTypes {
     | '/dashboard/mirrors'
     | '/dashboard/openapi'
     | '/dashboard/plans'
+    | '/dashboard/postgres'
     | '/dashboard/queues'
     | '/dashboard/secrets'
     | '/dashboard/security'
@@ -796,6 +808,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardPlansRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/dashboard/postgres': {
+      id: '/dashboard/postgres'
+      path: '/postgres'
+      fullPath: '/dashboard/postgres'
+      preLoaderRoute: typeof DashboardPostgresRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/dashboard/queues': {
       id: '/dashboard/queues'
       path: '/queues'
@@ -954,6 +973,7 @@ interface DashboardRouteChildren {
   DashboardMirrorsRoute: typeof DashboardMirrorsRoute
   DashboardOpenapiRoute: typeof DashboardOpenapiRoute
   DashboardPlansRoute: typeof DashboardPlansRoute
+  DashboardPostgresRoute: typeof DashboardPostgresRoute
   DashboardQueuesRoute: typeof DashboardQueuesRoute
   DashboardSecretsRoute: typeof DashboardSecretsRoute
   DashboardSecurityRoute: typeof DashboardSecurityRoute
@@ -995,6 +1015,7 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardMirrorsRoute: DashboardMirrorsRoute,
   DashboardOpenapiRoute: DashboardOpenapiRoute,
   DashboardPlansRoute: DashboardPlansRoute,
+  DashboardPostgresRoute: DashboardPostgresRoute,
   DashboardQueuesRoute: DashboardQueuesRoute,
   DashboardSecretsRoute: DashboardSecretsRoute,
   DashboardSecurityRoute: DashboardSecurityRoute,
