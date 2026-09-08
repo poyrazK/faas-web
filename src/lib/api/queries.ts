@@ -1906,6 +1906,89 @@ export function useDeploymentOpenAPIDoc(slug: string, deployment: string) {
   });
 }
 
+/* ------------------------------------------------------------------ *
+ * Per-app singles: wake timeline, usage, env diff, static egress IP,
+ * streaming classification
+ * ------------------------------------------------------------------ */
+
+export type AppWakeTimeline = components['schemas']['AppWakeTimelineResponse'];
+export type AppUsageSummary = components['schemas']['AppUsageSummaryResponse'];
+export type EnvDiff = components['schemas']['EnvDiffResponse'];
+export type AppStaticEgressIP = components['schemas']['AppStaticEgressIPResponse'];
+export type AppStreamingStatus = components['schemas']['AppStreamingStatus'];
+
+/** Where recent wakes spent their time; `402 plan_per_app_metrics_not_allowed` on Free. */
+export function useAppWakeTimeline(slug: string) {
+  return useQuery({
+    queryKey: ['apps', slug, 'wake-timeline'],
+    queryFn: () => unwrap(api.GET('/v1/apps/{slug}/wake-timeline', { params: { path: { slug } } })),
+    enabled: Boolean(slug),
+    retry: false,
+  });
+}
+
+/** Trailing-30-day billing usage; `402 plan_app_usage_summary_not_allowed` on Free. */
+export function useAppUsage(slug: string) {
+  return useQuery({
+    queryKey: ['apps', slug, 'usage'],
+    queryFn: () => unwrap(api.GET('/v1/apps/{slug}/usage', { params: { path: { slug } } })),
+    enabled: Boolean(slug),
+    retry: false,
+  });
+}
+
+export function useAppEnvDiff(slug: string) {
+  return useQuery({
+    queryKey: ['apps', slug, 'env-diff'],
+    queryFn: () => unwrap(api.GET('/v1/apps/{slug}/env-diff', { params: { path: { slug } } })),
+    enabled: Boolean(slug),
+  });
+}
+
+const staticEgressKey = (slug: string) => ['apps', slug, 'static-egress-ip'] as const;
+
+/** Never gated on read: `plan_allowed=false` is the answer, not an error. */
+export function useAppStaticEgressIP(slug: string) {
+  return useQuery({
+    queryKey: staticEgressKey(slug),
+    queryFn: () =>
+      unwrap(api.GET('/v1/apps/{slug}/static-egress-ip', { params: { path: { slug } } })),
+    enabled: Boolean(slug),
+  });
+}
+
+export function useSetAppStaticEgressIP(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (ip: string) =>
+      unwrap(
+        api.PUT('/v1/apps/{slug}/static-egress-ip', {
+          params: { path: { slug } },
+          body: { ip, set: true },
+        })
+      ),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: staticEgressKey(slug) }),
+  });
+}
+
+export function useClearAppStaticEgressIP(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      unwrap(api.DELETE('/v1/apps/{slug}/static-egress-ip', { params: { path: { slug } } })),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: staticEgressKey(slug) }),
+  });
+}
+
+/** The probe that decides whether this app's responses stream, and why (ADR-102). */
+export function useAppStreamingCap(slug: string) {
+  return useQuery({
+    queryKey: ['apps', slug, 'streaming-cap'],
+    queryFn: () => unwrap(api.GET('/v1/apps/{slug}/streaming-cap', { params: { path: { slug } } })),
+    enabled: Boolean(slug),
+  });
+}
+
 /** Clears a delivery out of `dead` back to `pending` for another attempt. */
 export function useRetryDelivery(slug: string, id: string) {
   const qc = useQueryClient();
