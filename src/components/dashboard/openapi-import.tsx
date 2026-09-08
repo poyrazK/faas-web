@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
 import { FieldError, Select, Textarea } from '@/components/ui/field';
 import { useToast } from '@/components/ui/toast';
-import { Panel } from '@/components/dashboard/primitives';
+import { InlinePhase, Panel, queryPhase } from '@/components/dashboard/primitives';
 import { PlanGated } from '@/components/dashboard/plan-gated';
 import { Pill } from '@/components/dashboard/resource-table';
 import { ApiError, errorMessage } from '@/lib/api/errors';
@@ -404,8 +404,16 @@ function DeploymentDocument({ slug }: { slug: string }) {
   const deployments = useDeployments(100);
   const own = (deployments.data?.items ?? []).filter((d) => d.app_id === app.data?.id);
   const [chosen, setChosen] = useState('');
-  const deploymentId = chosen || own[0]?.id || '';
+  // Derived, not synchronised: a selection that is not in the current list
+  // must never reach the path parameter, or one app is asked for another's
+  // deployment and the 404 reads as "nothing was captured".
+  const deploymentId = own.some((d) => d.id === chosen) ? chosen : (own[0]?.id ?? '');
   const doc = useDeploymentOpenAPIDoc(slug, deploymentId);
+  const listPhase = queryPhase({
+    error: deployments.error ?? app.error,
+    loading: deployments.isPending || app.isPending,
+    isEmpty: own.length === 0,
+  });
 
   return (
     <Panel
@@ -428,8 +436,13 @@ function DeploymentDocument({ slug }: { slug: string }) {
         ) : undefined
       }
     >
-      {own.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No deployments to read from yet.</p>
+      {listPhase !== 'ready' ? (
+        <InlinePhase
+          phase={listPhase}
+          error={deployments.error ?? app.error}
+          loadingMessage="Looking for deployments…"
+          emptyMessage="No deployments to read from yet."
+        />
       ) : (
         <PlanGated error={doc.error} feature="Endpoint discovery">
           {doc.isPending ? (
