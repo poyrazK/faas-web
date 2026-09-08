@@ -19,6 +19,7 @@ import { Modal } from '@/components/ui/modal';
 import { ErrorState, LoadingState, Panel, UnreachableState, queryPhase } from './primitives';
 import { RegistryCredentialsPanel } from './app-core-panels';
 import { SupplyChainPanel } from './supply-chain-panel';
+import { StaticEgressIP, StreamingCapNote } from './app-insights';
 
 /**
  * The app's own settings, editable.
@@ -371,6 +372,9 @@ function ConfigForm({ app }: { app: App }) {
               Scale 64.
             </span>
           </label>
+          <div className="sm:col-span-2">
+            <StaticEgressIP slug={app.slug} />
+          </div>
         </div>
       </Panel>
 
@@ -382,6 +386,7 @@ function ConfigForm({ app }: { app: App }) {
             checked={draft.streaming_enabled}
             onChange={(on) => set('streaming_enabled', on)}
           />
+          <StreamingCapNote slug={app.slug} />
           <Toggle
             label="WebSockets"
             hint="Allow upgrade requests. An open socket keeps the instance resident."

@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils';
 const KEY_RULE = /^[A-Z][A-Z0-9_]*$/;
 import { formatRelative } from '@/lib/mock-data';
 import { consoleHead } from '@/lib/seo';
+import { EnvDiffPanel } from '@/components/dashboard/app-insights';
 
 export const Route = createFileRoute('/dashboard/env')({
   component: EnvPage,
@@ -207,6 +208,7 @@ export function EnvBody({ slug }: { slug: string }) {
         error={error}
         onRetry={() => void refetch()}
       />
+      <EnvDiffPanel slug={slug} />
     </div>
   );
 }
