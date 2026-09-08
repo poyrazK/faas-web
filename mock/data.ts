@@ -469,6 +469,58 @@ export const mirrorRules = new Map<string, S['MirrorRuleResponse'][]>(
   })
 );
 
+// Tenant surfaces (ADR-100): one issued surface on the first app, one still
+// pending on the second with a hostname whose TXT record is not published yet.
+function tenantHostname(
+  hostname: string,
+  verified: boolean,
+  lastError: string | null = null
+): S['TenantHostnameResponse'] {
+  return {
+    hostname,
+    challenge_token: verified ? null : `gregale-verify-${hostname.replace(/\./g, '-')}`,
+    verified,
+    verified_at: verified ? iso(2 * D) : null,
+    last_error: lastError,
+    txt_record: `_gregale-challenge.${hostname} TXT "gregale-verify-${hostname.replace(/\./g, '-')}"`,
+  };
+}
+
+export const tenantSurfaces = new Map<string, S['TenantSurfaceResponse'][]>(
+  apps.map((a, i) => {
+    if (i > 1) return [a.slug, []];
+    const issued = i === 0;
+    return [
+      a.slug,
+      [
+        {
+          id: id(),
+          account_id: ACCOUNT_ID,
+          app_id: a.id,
+          name: issued ? 'customer-domains' : 'eu-tenants',
+          cert_kind: 'per_host_san',
+          status: issued ? 'active' : 'pending',
+          cert_state: issued ? 'issued' : 'pending',
+          cert_not_after: issued ? iso(-70 * D) : undefined,
+          cert_last_error: null,
+          created_at: iso(12 * D),
+          updated_at: iso(2 * D),
+          hostnames: issued
+            ? [tenantHostname('app.acme.example', true), tenantHostname('app.globex.example', true)]
+            : [
+                tenantHostname('shop.initech.example', true),
+                tenantHostname(
+                  'shop.umbrella.example',
+                  false,
+                  'TXT record not found at _gregale-challenge.shop.umbrella.example'
+                ),
+              ],
+        },
+      ],
+    ];
+  })
+);
+
 export const webhooks = new Map<string, S['AppWebhookResponse'][]>(
   apps.map((a) => [
     a.slug,

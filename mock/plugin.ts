@@ -626,6 +626,132 @@ route('GET', '/v1/apps/{slug}/mirrors/{id}/summary', ({ params, query }) => {
   };
 });
 
+// Tenant surfaces (ADR-100). MOCK_PLAN=free reproduces the 402 gate, which
+// apid applies to every route in the family, the list included.
+const TENANT_SURFACE_QUOTA = 5;
+const TENANT_HOSTNAME_QUOTA = 20;
+
+function gateTenantSurfaces() {
+  if (process.env.MOCK_PLAN === 'free')
+    throw new Problem(
+      402,
+      'tenant_surfaces_not_allowed',
+      'tenant surfaces need the Pro or Scale plan.'
+    );
+}
+
+function tenantSurface(slug: string, id: string) {
+  const surface = listOf(db.tenantSurfaces, slug).find((s) => s.id === id);
+  if (!surface) throw new Problem(404, 'not_found', 'no such tenant surface');
+  return surface;
+}
+
+function tenantHostnameTaken(hostname: string) {
+  for (const surfaces of db.tenantSurfaces.values())
+    for (const s of surfaces) if (s.hostnames.some((h) => h.hostname === hostname)) return true;
+  return false;
+}
+
+function newTenantHostname(hostname: string) {
+  const token = `gregale-verify-${db.id().slice(0, 12)}`;
+  return {
+    hostname,
+    challenge_token: token,
+    verified: false,
+    verified_at: null,
+    last_error: null,
+    txt_record: `_gregale-challenge.${hostname} TXT "${token}"`,
+  };
+}
+
+function canonicalHostname(value: unknown) {
+  const hostname = String(value ?? '')
+    .trim()
+    .toLowerCase();
+  if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(hostname))
+    throw new Problem(400, 'validation_failed', `"${hostname}" is not a hostname.`);
+  if (tenantHostnameTaken(hostname))
+    throw new Problem(
+      409,
+      'tenant_hostname_already_claimed',
+      `${hostname} is already claimed by a surface.`
+    );
+  return hostname;
+}
+
+route('GET', '/v1/apps/{slug}/tenant-surfaces', ({ params }) => {
+  gateTenantSurfaces();
+  return { surfaces: listOf(db.tenantSurfaces, params.slug) };
+});
+route('POST', '/v1/apps/{slug}/tenant-surfaces', ({ params, body }) => {
+  gateTenantSurfaces();
+  const a = app(params.slug);
+  const list = listOf(db.tenantSurfaces, a.slug);
+  const name = String(body.name ?? '').trim();
+  if (!name) throw new Problem(400, 'validation_failed', 'name is required.');
+  if (body.cert_kind !== undefined && body.cert_kind !== 'per_host_san')
+    throw new Problem(400, 'tenant_surface_cert_kind_invalid', 'cert_kind must be per_host_san.');
+  if (list.length >= TENANT_SURFACE_QUOTA)
+    throw new Problem(
+      403,
+      'tenant_surface_quota',
+      `at most ${TENANT_SURFACE_QUOTA} tenant surfaces per app on this plan.`
+    );
+  const seeds = Array.isArray(body.hostnames) ? body.hostnames.map(canonicalHostname) : [];
+  const surface: (typeof list)[number] = {
+    id: db.id(),
+    account_id: db.ACCOUNT_ID,
+    app_id: a.id,
+    name,
+    cert_kind: 'per_host_san',
+    status: 'pending',
+    cert_state: seeds.length ? 'pending' : 'none',
+    cert_last_error: null,
+    created_at: db.iso(0),
+    updated_at: db.iso(0),
+    hostnames: seeds.map(newTenantHostname),
+  };
+  list.push(surface);
+  db.tenantSurfaces.set(a.slug, list);
+  return status(202, surface);
+});
+route('GET', '/v1/apps/{slug}/tenant-surfaces/{id}', ({ params }) => {
+  gateTenantSurfaces();
+  return tenantSurface(params.slug, params.id);
+});
+route('DELETE', '/v1/apps/{slug}/tenant-surfaces/{id}', ({ params }) => {
+  gateTenantSurfaces();
+  const list = listOf(db.tenantSurfaces, params.slug);
+  const i = list.findIndex((s) => s.id === params.id);
+  if (i < 0) throw new Problem(404, 'not_found', 'no such tenant surface');
+  list.splice(i, 1);
+  return NO_CONTENT;
+});
+route('POST', '/v1/apps/{slug}/tenant-surfaces/{id}/hostnames', ({ params, body }) => {
+  gateTenantSurfaces();
+  const surface = tenantSurface(params.slug, params.id);
+  if (surface.hostnames.length >= TENANT_HOSTNAME_QUOTA)
+    throw new Problem(
+      403,
+      'tenant_hostname_quota',
+      `at most ${TENANT_HOSTNAME_QUOTA} hostnames per surface on this plan.`
+    );
+  const h = newTenantHostname(canonicalHostname(body.hostname));
+  surface.hostnames.push(h);
+  if (surface.cert_state === 'none') surface.cert_state = 'pending';
+  surface.updated_at = db.iso(0);
+  return status(202, h);
+});
+route('DELETE', '/v1/apps/{slug}/tenant-surfaces/{id}/hostnames/{hostname}', ({ params }) => {
+  gateTenantSurfaces();
+  const surface = tenantSurface(params.slug, params.id);
+  const i = surface.hostnames.findIndex((h) => h.hostname === params.hostname.toLowerCase());
+  if (i < 0) throw new Problem(404, 'not_found', 'no such hostname on this surface');
+  surface.hostnames.splice(i, 1);
+  surface.updated_at = db.iso(0);
+  return NO_CONTENT;
+});
+
 route('GET', '/v1/apps/{slug}/webhooks', ({ params }) => listOf(db.webhooks, params.slug));
 route('POST', '/v1/apps/{slug}/webhooks', ({ params, body }) => {
   const a = app(params.slug);
