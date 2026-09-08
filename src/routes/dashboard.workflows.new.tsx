@@ -14,7 +14,7 @@ import { templateBySlug } from '@/lib/templates';
 import { type Runtime } from '@/lib/mock-data';
 import { errorMessage } from '@/lib/api/errors';
 import { useData } from '@/lib/store';
-import { useDeployFromRefFor, useUpdateAppFor } from '@/lib/api/queries';
+import { useDeployFromRefFor, useUpdateAppFor, useTemplates } from '@/lib/api/queries';
 import { useAuth } from '@/lib/auth';
 import { appQuotaExceeded, appQuotaRemaining, memoryAllowed } from '@/lib/plan';
 import { cn } from '@/lib/utils';
@@ -80,6 +80,10 @@ function NewFunctionPage() {
   // the CLI), the template's runtime and memory, and a name suggestion.
   const { template: templateSlug } = Route.useSearch();
   const template = templateBySlug(templateSlug);
+  // The catalog the API serves shares no slugs with the local scaffolds; a
+  // catalog template prefills the name and hands the scaffold to the CLI.
+  const catalog = useTemplates();
+  const catalogTemplate = (catalog.data ?? []).find((t) => t.name === templateSlug);
 
   const [createdId, setCreatedId] = useState<string | null>(null);
   // The endpoint the API assigned. Constructing one from the slug would be a
@@ -89,7 +93,7 @@ function NewFunctionPage() {
   const [source, setSource] = useState(template ? 'empty' : 'git');
   const [repo, setRepo] = useState('');
   const [ref, setRef] = useState('main');
-  const [name, setName] = useState(template ? template.slug : '');
+  const [name, setName] = useState(template ? template.slug : (templateSlug ?? ''));
   const deployFromRef = useDeployFromRefFor();
   const updateApp = useUpdateAppFor();
   const [appType, setAppType] = useState<'function' | 'app'>('function');
@@ -235,6 +239,22 @@ function NewFunctionPage() {
             sourceRef={ref}
             submissionError={submissionError}
           />
+        ) : !template && catalogTemplate ? (
+          <Panel
+            title={`${catalogTemplate.name} scaffold`}
+            description="The app exists — the CLI writes this template's files into an empty directory, then deploys them."
+          >
+            <p className="text-xs text-muted-foreground">{catalogTemplate.description}</p>
+            <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-border bg-background p-3">
+              <code className="font-mono text-xs text-foreground">
+                gregale init --template {catalogTemplate.name} && gregale deploy --app {name}
+              </code>
+              <CopyIconButton
+                text={`gregale init --template ${catalogTemplate.name} && gregale deploy --app ${name}`}
+                label="Copy the CLI commands"
+              />
+            </div>
+          </Panel>
         ) : template ? (
           <Panel
             title={`${template.name} scaffold`}

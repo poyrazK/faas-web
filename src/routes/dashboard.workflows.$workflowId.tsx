@@ -49,6 +49,7 @@ import { ErrorsBody } from '@/components/dashboard/errors-body';
 import { AppConfiguration } from '@/components/dashboard/app-configuration';
 import { InvokePanel, SloPanel } from '@/components/dashboard/app-core-panels';
 import { AppUsagePanel, WakeTimelinePanel } from '@/components/dashboard/app-insights';
+import { TearDownPreviewButton } from '@/components/dashboard/preview-actions';
 import { Swap } from '@/components/dashboard/motion';
 import { RepoPicker } from '@/components/dashboard/repo-picker';
 import { DeploymentProgress } from '@/components/dashboard/deployment-progress';
@@ -319,6 +320,7 @@ function FunctionDetailPage() {
               <Rocket className="h-3.5 w-3.5" />
               Deploy
             </Button>
+            <TearDownPreviewButton slug={fn.id} />
             {canRollback && (
               <Button
                 variant="outline"
