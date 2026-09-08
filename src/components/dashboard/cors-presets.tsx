@@ -340,14 +340,22 @@ function CreatePreset({ appId }: { appId?: string }) {
 
 /** The select at the top of a CORS rule form; picking fills the rule from the preset. */
 export function CorsPresetPicker({
+  slug,
   value,
   onPick,
 }: {
+  /** The app the rule belongs to; another app's scoped preset is not offered. */
+  slug?: string;
   value: string | null;
   onPick: (preset: CorsPreset | null) => void;
 }) {
   const presets = useCorsPresets();
-  const list = presets.data?.presets ?? [];
+  const app = useApp(slug ?? '');
+  const appId = slug ? app.data?.id : undefined;
+  // An app-scoped preset is visible only to its own app: referencing another
+  // app's preset compiles the rule away at the gateway and the route 404s,
+  // with nothing said anywhere.
+  const list = (presets.data?.presets ?? []).filter((p) => !p.app_id || p.app_id === appId);
   if (presets.isPending || presets.error || list.length === 0) return null;
   return (
     <label className="flex flex-col gap-1.5">
@@ -361,7 +369,7 @@ export function CorsPresetPicker({
         {list.map((p) => (
           <option key={p.id} value={p.id}>
             {p.name}
-            {p.app_id ? ' (this app)' : ''}
+            {p.app_id ? ' (this app)' : ' (account)'}
           </option>
         ))}
       </Select>

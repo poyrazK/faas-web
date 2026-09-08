@@ -231,85 +231,103 @@ export const KINDS = {
     desc: 'Answer preflights and set the access-control headers at the edge.',
     empty: () => ({ allow_origins: [], allow_methods: ['GET'], allow_credentials: false }),
     summary: (a) =>
-      `${a.allow_origins.length || 'no'} origin${a.allow_origins.length === 1 ? '' : 's'} · ${a.allow_methods.join('/') || 'no methods'}`,
-    validate: (a) => ({
-      ...(a.allow_origins.length ? {} : { allow_origins: 'At least one origin.' }),
-      ...(a.allow_methods.length ? {} : { allow_methods: 'At least one method.' }),
-      ...(a.allow_credentials && a.allow_origins.includes('*')
-        ? { allow_credentials: 'Credentials cannot be sent to a wildcard origin.' }
-        : {}),
-    }),
-    Form: ({ value, onChange, errors }) => (
+      a.cors_preset_id
+        ? 'from a preset'
+        : `${a.allow_origins.length || 'no'} origin${a.allow_origins.length === 1 ? '' : 's'} · ${a.allow_methods.join('/') || 'no methods'}`,
+    // A preset IS the whole policy: the API requires every inline field to be
+    // empty when `cors_preset_id` is set and rejects the pair with a 422
+    // otherwise, so these rules apply only to a rule carrying its own values.
+    validate: (a) =>
+      a.cors_preset_id
+        ? {}
+        : {
+            ...(a.allow_origins.length ? {} : { allow_origins: 'At least one origin.' }),
+            ...(a.allow_methods.length ? {} : { allow_methods: 'At least one method.' }),
+            ...(a.allow_credentials && a.allow_origins.includes('*')
+              ? { allow_credentials: 'Credentials cannot be sent to a wildcard origin.' }
+              : {}),
+          },
+    Form: ({ value, onChange, errors, slug }) => (
       <div className="flex flex-col gap-4">
         <CorsPresetPicker
+          slug={slug}
           value={value.cors_preset_id ?? null}
           onPick={(preset) =>
             onChange(
               preset
-                ? {
-                    ...value,
+                ? // Reference only. The API refuses a rule that carries both a
+                  // preset and inline values, so picking one clears them.
+                  {
                     cors_preset_id: preset.id,
-                    allow_origins: preset.allow_origins,
-                    allow_methods: preset.allow_methods,
-                    allow_headers: preset.allow_headers ?? [],
-                    expose_headers: preset.expose_headers ?? [],
-                    allow_credentials: preset.allow_credentials,
-                    max_age_seconds: preset.max_age_seconds,
+                    allow_origins: [],
+                    allow_methods: [],
+                    allow_headers: [],
+                    expose_headers: [],
+                    allow_credentials: false,
                   }
-                : { ...value, cors_preset_id: null }
+                : { ...value, cors_preset_id: null, allow_methods: ['GET'] }
             )
           }
         />
-        <StringListField
-          label="Allowed origins"
-          hint="Full origins, or * for any. Enter or comma to add."
-          error={errors.allow_origins}
-          value={value.allow_origins}
-          onChange={(allow_origins) => onChange({ ...value, allow_origins })}
-          placeholder="https://app.example.com"
-        />
-        <ChipSet
-          label="Allowed methods"
-          error={errors.allow_methods}
-          options={METHODS}
-          value={value.allow_methods as (typeof METHODS)[number][]}
-          onChange={(allow_methods) => onChange({ ...value, allow_methods })}
-        />
-        <div className="grid gap-4 sm:grid-cols-2">
-          <StringListField
-            label="Allowed headers"
-            hint="Optional. Empty means the safelisted ones."
-            value={value.allow_headers ?? []}
-            onChange={(allow_headers) => onChange({ ...value, allow_headers })}
-            placeholder="Authorization"
-          />
-          <StringListField
-            label="Exposed headers"
-            hint="Optional. Headers the browser may read."
-            value={value.expose_headers ?? []}
-            onChange={(expose_headers) => onChange({ ...value, expose_headers })}
-            placeholder="X-Request-Id"
-          />
-        </div>
-        <NumberField
-          label="Max age (seconds)"
-          hint="How long a browser may cache the preflight."
-          value={value.max_age_seconds}
-          onChange={(max_age_seconds) => onChange({ ...value, max_age_seconds })}
-          className="sm:w-56"
-        />
-        <div className="border-t border-border">
-          <ToggleRow
-            label="Allow credentials"
-            hint="Lets the browser send cookies and Authorization. Not valid with a wildcard origin."
-            checked={value.allow_credentials}
-            onChange={(allow_credentials) => onChange({ ...value, allow_credentials })}
-          />
-        </div>
-        {errors.allow_credentials && (
-          <p className="text-xs" style={{ color: 'var(--status-critical)' }} role="alert">
-            {errors.allow_credentials}
+        {value.cors_preset_id ? (
+          <p className="text-xs text-muted-foreground">
+            This rule serves the preset's policy. Clear the preset above to set origins and methods
+            on the rule itself.
           </p>
+        ) : (
+          <>
+            <StringListField
+              label="Allowed origins"
+              hint="Full origins, or * for any. Enter or comma to add."
+              error={errors.allow_origins}
+              value={value.allow_origins}
+              onChange={(allow_origins) => onChange({ ...value, allow_origins })}
+              placeholder="https://app.example.com"
+            />
+            <ChipSet
+              label="Allowed methods"
+              error={errors.allow_methods}
+              options={METHODS}
+              value={value.allow_methods as (typeof METHODS)[number][]}
+              onChange={(allow_methods) => onChange({ ...value, allow_methods })}
+            />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <StringListField
+                label="Allowed headers"
+                hint="Optional. Empty means the safelisted ones."
+                value={value.allow_headers ?? []}
+                onChange={(allow_headers) => onChange({ ...value, allow_headers })}
+                placeholder="Authorization"
+              />
+              <StringListField
+                label="Exposed headers"
+                hint="Optional. Headers the browser may read."
+                value={value.expose_headers ?? []}
+                onChange={(expose_headers) => onChange({ ...value, expose_headers })}
+                placeholder="X-Request-Id"
+              />
+            </div>
+            <NumberField
+              label="Max age (seconds)"
+              hint="How long a browser may cache the preflight."
+              value={value.max_age_seconds}
+              onChange={(max_age_seconds) => onChange({ ...value, max_age_seconds })}
+              className="sm:w-56"
+            />
+            <div className="border-t border-border">
+              <ToggleRow
+                label="Allow credentials"
+                hint="Lets the browser send cookies and Authorization. Not valid with a wildcard origin."
+                checked={value.allow_credentials}
+                onChange={(allow_credentials) => onChange({ ...value, allow_credentials })}
+              />
+            </div>
+            {errors.allow_credentials && (
+              <p className="text-xs" style={{ color: 'var(--status-critical)' }} role="alert">
+                {errors.allow_credentials}
+              </p>
+            )}
+          </>
         )}
       </div>
     ),
