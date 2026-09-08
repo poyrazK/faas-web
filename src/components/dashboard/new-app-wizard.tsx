@@ -9,6 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/components/ui/toast';
 import { DeploymentProgress } from '@/components/dashboard/deployment-progress';
 import { PageHeader, Panel } from '@/components/dashboard/primitives';
+import { isValidGitHubRepo, isValidGitRef } from '@/components/dashboard/new-app-source';
 import { CopyIconButton } from '@/components/ui/copy-button';
 import { templateBySlug } from '@/lib/templates';
 import { type Runtime } from '@/lib/mock-data';
@@ -118,7 +119,10 @@ export function NewAppWizard({
   );
 
   const nameValid = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(name);
-  const repoValid = /^[^/\s]+\/[^/\s]+$/.test(repo.trim());
+  const normalizedRef = ref.trim() || 'main';
+  const repoValid = isValidGitHubRepo(repo);
+  const refValid = isValidGitRef(normalizedRef);
+  const gitSourceValid = source !== 'git' || (repoValid && refValid);
   const maxMemoryMb = account?.limits.ram_mb ?? 128;
   const selectedMemoryMb = Math.min(memoryMb, maxMemoryMb);
   const quotaRemaining = appQuotaRemaining(account);
@@ -127,21 +131,21 @@ export function NewAppWizard({
   const deployBlocked = limitsLoading || quotaExceeded || !memoryAllowed(account, selectedMemoryMb);
 
   async function retrySourceDeploy() {
-    if (!createdId || source !== 'git' || !repoValid || retrying) return;
+    if (!createdId || source !== 'git' || !gitSourceValid || retrying) return;
     setRetrying(true);
     setSubmissionError(null);
     try {
       const deployment = await deployFromRef.mutateAsync({
         slug: createdId,
         repo: repo.trim(),
-        ref: ref.trim() || 'main',
+        ref: normalizedRef,
         format: 'tarball',
       });
       setDeploymentId(deployment.id);
       toast({
         kind: 'success',
         title: 'Build accepted',
-        description: `${repo.trim()}@${ref.trim() || 'main'} is queued for build.`,
+        description: `${repo.trim()}@${normalizedRef} is queued for build.`,
       });
     } catch (err) {
       setSubmissionError(errorMessage(err));
@@ -151,7 +155,9 @@ export function NewAppWizard({
   }
 
   async function createFunction() {
-    if (deployBlocked || (source === 'git' && !githubConnected)) return;
+    if (deployBlocked || !nameValid || !gitSourceValid || (source === 'git' && !githubConnected)) {
+      return;
+    }
     setDeploying(true);
     setSubmissionError(null);
     try {
@@ -171,11 +177,11 @@ export function NewAppWizard({
         ? updateApp.mutateAsync({ slug: created.id, min_instances: 1 })
         : Promise.resolve();
       const deploymentPromise =
-        source === 'git' && repoValid
+        source === 'git' && gitSourceValid
           ? deployFromRef.mutateAsync({
               slug: created.id,
               repo: repo.trim(),
-              ref: ref.trim() || 'main',
+              ref: normalizedRef,
               format: 'tarball',
             })
           : Promise.resolve(null);
@@ -198,7 +204,7 @@ export function NewAppWizard({
         toast({
           kind: 'success',
           title: 'Build accepted',
-          description: `${repo.trim()}@${ref.trim() || 'main'} is queued for build.`,
+          description: `${repo.trim()}@${normalizedRef} is queued for build.`,
         });
       } else if (deploymentResult.status === 'rejected') {
         setSubmissionError(errorMessage(deploymentResult.reason));
@@ -467,9 +473,16 @@ export function NewAppWizard({
                     value={ref}
                     onChange={(e) => setRef(e.target.value)}
                     placeholder="main"
+                    maxLength={200}
                     spellCheck={false}
+                    aria-invalid={!refValid || undefined}
                     className="h-10 rounded-lg border border-border bg-card px-3 font-mono text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/25"
                   />
+                  {!refValid && (
+                    <span className="text-xs" style={{ color: 'var(--status-critical)' }}>
+                      Use a valid branch, tag, or commit SHA of at most 200 characters.
+                    </span>
+                  )}
                 </label>
                 <p className="text-xs text-muted-foreground sm:col-span-2">
                   The repository has to be reachable by the GitHub installation from{' '}
@@ -481,7 +494,7 @@ export function NewAppWizard({
             <div className="flex justify-end">
               <Button
                 variant="cta"
-                disabled={source === 'git' && (!githubConnected || !repoValid)}
+                disabled={source === 'git' && (!githubConnected || !gitSourceValid)}
                 onClick={() => setStep(1)}
                 className="h-10 gap-2 rounded-lg"
               >
@@ -645,7 +658,7 @@ export function NewAppWizard({
                   [
                     'First deploy',
                     source === 'git'
-                      ? `${repo}@${ref || 'main'}, right after create`
+                      ? `${repo}@${normalizedRef}, right after create`
                       : 'Later, from the CLI',
                   ],
                   ['Runtime', runtime],
@@ -707,7 +720,12 @@ export function NewAppWizard({
               </Button>
               <Button
                 variant="cta"
-                disabled={deployBlocked || (source === 'git' && !githubConnected)}
+                disabled={
+                  deployBlocked ||
+                  !nameValid ||
+                  !gitSourceValid ||
+                  (source === 'git' && !githubConnected)
+                }
                 onClick={() => void createFunction()}
                 className="h-10 gap-2 rounded-lg px-6"
               >
