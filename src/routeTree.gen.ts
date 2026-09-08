@@ -43,6 +43,7 @@ import { Route as DashboardSettingsRouteImport } from './routes/dashboard.settin
 import { Route as DashboardStorageRouteImport } from './routes/dashboard.storage'
 import { Route as DashboardTeamRouteImport } from './routes/dashboard.team'
 import { Route as DashboardTemplatesRouteImport } from './routes/dashboard.templates'
+import { Route as DashboardTenantSurfacesRouteImport } from './routes/dashboard.tenant-surfaces'
 import { Route as DashboardTracesRouteImport } from './routes/dashboard.traces'
 import { Route as DashboardTriggersRouteImport } from './routes/dashboard.triggers'
 import { Route as DashboardUsageRouteImport } from './routes/dashboard.usage'
@@ -225,6 +226,11 @@ const DashboardTemplatesRoute = DashboardTemplatesRouteImport.update({
   path: '/templates',
   getParentRoute: () => DashboardRoute,
 } as any)
+const DashboardTenantSurfacesRoute = DashboardTenantSurfacesRouteImport.update({
+  id: '/tenant-surfaces',
+  path: '/tenant-surfaces',
+  getParentRoute: () => DashboardRoute,
+} as any)
 const DashboardTracesRoute = DashboardTracesRouteImport.update({
   id: '/traces',
   path: '/traces',
@@ -316,6 +322,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/storage': typeof DashboardStorageRoute
   '/dashboard/team': typeof DashboardTeamRoute
   '/dashboard/templates': typeof DashboardTemplatesRoute
+  '/dashboard/tenant-surfaces': typeof DashboardTenantSurfacesRoute
   '/dashboard/traces': typeof DashboardTracesRoute
   '/dashboard/triggers': typeof DashboardTriggersRoute
   '/dashboard/usage': typeof DashboardUsageRoute
@@ -361,6 +368,7 @@ export interface FileRoutesByTo {
   '/dashboard/storage': typeof DashboardStorageRoute
   '/dashboard/team': typeof DashboardTeamRoute
   '/dashboard/templates': typeof DashboardTemplatesRoute
+  '/dashboard/tenant-surfaces': typeof DashboardTenantSurfacesRoute
   '/dashboard/traces': typeof DashboardTracesRoute
   '/dashboard/triggers': typeof DashboardTriggersRoute
   '/dashboard/usage': typeof DashboardUsageRoute
@@ -409,6 +417,7 @@ export interface FileRoutesById {
   '/dashboard/storage': typeof DashboardStorageRoute
   '/dashboard/team': typeof DashboardTeamRoute
   '/dashboard/templates': typeof DashboardTemplatesRoute
+  '/dashboard/tenant-surfaces': typeof DashboardTenantSurfacesRoute
   '/dashboard/traces': typeof DashboardTracesRoute
   '/dashboard/triggers': typeof DashboardTriggersRoute
   '/dashboard/usage': typeof DashboardUsageRoute
@@ -458,6 +467,7 @@ export interface FileRouteTypes {
     | '/dashboard/storage'
     | '/dashboard/team'
     | '/dashboard/templates'
+    | '/dashboard/tenant-surfaces'
     | '/dashboard/traces'
     | '/dashboard/triggers'
     | '/dashboard/usage'
@@ -503,6 +513,7 @@ export interface FileRouteTypes {
     | '/dashboard/storage'
     | '/dashboard/team'
     | '/dashboard/templates'
+    | '/dashboard/tenant-surfaces'
     | '/dashboard/traces'
     | '/dashboard/triggers'
     | '/dashboard/usage'
@@ -550,6 +561,7 @@ export interface FileRouteTypes {
     | '/dashboard/storage'
     | '/dashboard/team'
     | '/dashboard/templates'
+    | '/dashboard/tenant-surfaces'
     | '/dashboard/traces'
     | '/dashboard/triggers'
     | '/dashboard/usage'
@@ -814,6 +826,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardTemplatesRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/dashboard/tenant-surfaces': {
+      id: '/dashboard/tenant-surfaces'
+      path: '/tenant-surfaces'
+      fullPath: '/dashboard/tenant-surfaces'
+      preLoaderRoute: typeof DashboardTenantSurfacesRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/dashboard/traces': {
       id: '/dashboard/traces'
       path: '/traces'
@@ -922,6 +941,7 @@ interface DashboardRouteChildren {
   DashboardStorageRoute: typeof DashboardStorageRoute
   DashboardTeamRoute: typeof DashboardTeamRoute
   DashboardTemplatesRoute: typeof DashboardTemplatesRoute
+  DashboardTenantSurfacesRoute: typeof DashboardTenantSurfacesRoute
   DashboardTracesRoute: typeof DashboardTracesRoute
   DashboardTriggersRoute: typeof DashboardTriggersRoute
   DashboardUsageRoute: typeof DashboardUsageRoute
@@ -961,6 +981,7 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardStorageRoute: DashboardStorageRoute,
   DashboardTeamRoute: DashboardTeamRoute,
   DashboardTemplatesRoute: DashboardTemplatesRoute,
+  DashboardTenantSurfacesRoute: DashboardTenantSurfacesRoute,
   DashboardTracesRoute: DashboardTracesRoute,
   DashboardTriggersRoute: DashboardTriggersRoute,
   DashboardUsageRoute: DashboardUsageRoute,
