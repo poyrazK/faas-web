@@ -276,6 +276,14 @@ deployments.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
     });
   }
 }
+
+// apid only stores a mirror rule between two LIVE deployments, so the first
+// app carries a second live row: without it the create form is unreachable.
+{
+  const first = deployments.find((d) => d.app_id === apps[0].id && d.status === 'live');
+  if (first)
+    deployments.push({ ...first, id: id(), scope: 'canary', created_at: iso(30 * 60 * 1000) });
+}
 builds.sort((a, b) => Date.parse(b.enqueued_at) - Date.parse(a.enqueued_at));
 
 // --- Metrics -----------------------------------------------------------------
@@ -435,8 +443,9 @@ export const alerts = new Map<string, S['AlertRuleResponse'][]>(
 export const mirrorRules = new Map<string, S['MirrorRuleResponse'][]>(
   apps.map((a) => {
     const own = deployments.filter((d) => d.app_id === a.id);
-    const source = own.find((d) => d.status === 'live');
-    const mirror = own.find((d) => d.status === 'superseded');
+    const live = own.filter((d) => d.status === 'live');
+    const source = live[0];
+    const mirror = live[1];
     if (a !== apps[0] || !source || !mirror) return [a.slug, []];
     return [
       a.slug,

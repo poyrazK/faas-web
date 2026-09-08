@@ -937,7 +937,7 @@ export function useCreateMirrorRule(slug: string) {
   return useMutation({
     mutationFn: (body: components['schemas']['CreateMirrorRuleRequest']) =>
       unwrap(api.POST('/v1/apps/{slug}/mirrors', { params: { path: { slug } }, body })),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['apps', slug, 'mirrors'] }),
+    onSettled: () => void qc.invalidateQueries({ queryKey: ['apps', slug, 'mirrors'] }),
   });
 }
 
@@ -949,7 +949,7 @@ export function useUpdateMirrorRule(slug: string) {
       ...body
     }: { id: string } & components['schemas']['UpdateMirrorRuleRequest']) =>
       unwrap(api.PATCH('/v1/apps/{slug}/mirrors/{id}', { params: { path: { slug, id } }, body })),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['apps', slug, 'mirrors'] }),
+    onSettled: () => void qc.invalidateQueries({ queryKey: ['apps', slug, 'mirrors'] }),
   });
 }
 
@@ -958,7 +958,7 @@ export function useDeleteMirrorRule(slug: string) {
   return useMutation({
     mutationFn: (id: string) =>
       unwrap(api.DELETE('/v1/apps/{slug}/mirrors/{id}', { params: { path: { slug, id } } })),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['apps', slug, 'mirrors'] }),
+    onSettled: () => void qc.invalidateQueries({ queryKey: ['apps', slug, 'mirrors'] }),
   });
 }
 

@@ -523,7 +523,8 @@ route('DELETE', '/v1/apps/{slug}/alerts/{id}', ({ params }) => {
 });
 // Traffic mirroring (ADR-124 / ADR-125). MOCK_PLAN=free reproduces the
 // create-time plan gate; the list is never gated, as in apid.
-const MIRROR_QUOTA = 3;
+// Pro allows one mirror rule per app, Scale three.
+const mirrorQuota = () => (db.account.plan === 'scale' ? 3 : 1);
 const MIRROR_WINDOW_SECONDS: Record<string, number> = { '1h': 3600, '24h': 86400, '7d': 604800 };
 
 function mirrorRule(slug: string, id: string) {
@@ -559,11 +560,11 @@ route('POST', '/v1/apps/{slug}/mirrors', ({ params, body }) => {
     throw new Problem(422, 'mirror_cross_app_mismatch', 'both deployments must belong to the app.');
   if (s.status !== 'live' || m.status !== 'live')
     throw new Problem(409, 'mirror_deployment_not_live', 'both deployments must be live.');
-  if (list.length >= MIRROR_QUOTA)
+  if (list.length >= mirrorQuota())
     throw new Problem(
       422,
       'mirror_rule_quota_exceeded',
-      `at most ${MIRROR_QUOTA} mirror rules per app.`
+      `at most ${mirrorQuota()} mirror rules per app on the ${db.account.plan} plan.`
     );
   const rule: (typeof list)[number] = {
     id: db.id(),
@@ -618,8 +619,8 @@ route('GET', '/v1/apps/{slug}/mirrors/{id}/summary', ({ params, query }) => {
     status_diff_count: Math.round(total * 0.012),
     schema_diff_count: Math.round(total * 0.004),
     body_diff_count: rule.include_body ? Math.round(total * 0.03) : 0,
-    mean_latency_diff_ms: total === 0 ? 0 : 12.4,
-    p99_latency_diff_ms: total === 0 ? 0 : -8.1,
+    mean_latency_diff_ms: total === 0 ? 0 : 12,
+    p99_latency_diff_ms: total === 0 ? 0 : -8,
     crash_count: Math.round(total * 0.0005),
     window_seconds: seconds,
   };

@@ -104,7 +104,12 @@ export function MirrorRules({ slug }: { slug: string }) {
   const app = useApp(slug);
   const rules = useMirrorRules(slug);
   const deployments = useDeployments(100);
-  const phase = queryPhase({ error: rules.error, loading: rules.isPending });
+  // The create form's "there are none right now" is a claim about the app's
+  // deployments, so it must not be made while those queries are still out.
+  const phase = queryPhase({
+    error: rules.error ?? app.error ?? deployments.error,
+    loading: rules.isPending || app.isPending || deployments.isPending,
+  });
   const appDeployments: Deployment[] = (deployments.data?.items ?? []).filter(
     (d) => d.app_id === app.data?.id
   );
@@ -315,7 +320,9 @@ function CreateMirrorRule({ slug, deployments }: { slug: string; deployments: De
   const [redact, setRedact] = useState('');
 
   const percentValue = Number(percent);
-  const percentOk = Number.isInteger(percentValue) && percentValue >= 0 && percentValue <= 100;
+  // `Number('')` is 0, so an emptied field would otherwise pass as a legal 0%
+  // rule — one the API accepts and that never fires.
+  const percentOk = /^\d+$/.test(percent.trim()) && percentValue >= 0 && percentValue <= 100;
   const sourceId = source || live[0]?.id || '';
   const mirrorId = mirror || live.find((d) => d.id !== sourceId)?.id || '';
   const ready = Boolean(sourceId && mirrorId && sourceId !== mirrorId && percentOk);
