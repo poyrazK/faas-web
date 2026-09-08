@@ -20,6 +20,7 @@ import { ErrorState, LoadingState, Panel, UnreachableState, queryPhase } from '.
 import { RegistryCredentialsPanel } from './app-core-panels';
 import { SupplyChainPanel } from './supply-chain-panel';
 import { StaticEgressIP, StreamingCapNote } from './app-insights';
+import { PurgeCacheControl } from './app-lifecycle';
 
 /**
  * The app's own settings, editable.
@@ -374,6 +375,9 @@ function ConfigForm({ app }: { app: App }) {
           </label>
           <div className="sm:col-span-2">
             <StaticEgressIP slug={app.slug} />
+          </div>
+          <div className="sm:col-span-2">
+            <PurgeCacheControl slug={app.slug} />
           </div>
         </div>
       </Panel>

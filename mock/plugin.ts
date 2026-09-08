@@ -1189,6 +1189,493 @@ route('POST', '/v1/preview/{slug}/destroy', ({ params }) => {
   return NO_CONTENT;
 });
 
+// Request analytics, request evidence, app lifecycle, upstream history,
+// rollout recovery and the tarball deploy.
+const ANALYTICS_WINDOW_HOURS: Record<string, number> = { '24h': 24, '3d': 72, '7d': 168 };
+const ANALYTICS_GROUPS: Record<string, string[]> = {
+  route: ['/orders', '/orders/{id}', '/health', '/search'],
+  country: ['DE', 'TR', 'US', 'FR'],
+  referrer_host: ['acme.example', 'news.example', '(direct)'],
+  ua_family: ['Chrome', 'Safari', 'curl', 'Googlebot'],
+  status: ['200', '404', '500'],
+};
+
+function analyticsWindow(query: URLSearchParams) {
+  const since = query.get('since') ?? '24h';
+  const hours = ANALYTICS_WINDOW_HOURS[since];
+  // Anything longer than a week is clamped, as the retention does upstream.
+  return { since, hours: hours ?? 24, clamped: hours === undefined };
+}
+
+route('GET', '/v1/apps/{slug}/analytics', ({ params, query }) => {
+  const a = app(params.slug);
+  if (process.env.MOCK_PLAN === 'free')
+    throw new Problem(
+      402,
+      'plan_per_app_metrics_not_allowed',
+      'the free plan does not include per-app metrics; upgrade to Hobby or above.'
+    );
+  const { since, hours, clamped } = analyticsWindow(query);
+  const groupBy = query.get('group_by') ?? 'route';
+  const values = ANALYTICS_GROUPS[groupBy];
+  if (!values) throw new Problem(400, 'validation_failed', `unknown group_by "${groupBy}".`);
+  const requests = hours * 351;
+  const errors = Math.round(requests * 0.0044);
+  const group = (value: string, i: number) => {
+    const share = [0.44, 0.3, 0.18, 0.08][i] ?? 0.05;
+    const rq = Math.round(requests * share);
+    const err = Math.round(errors * share);
+    return {
+      value,
+      ...(groupBy === 'route' ? { method: (['GET', 'POST', 'GET', 'PUT'] as const)[i % 4] } : {}),
+      requests: rq,
+      error_requests: err,
+      error_rate_pct: rq === 0 ? 0 : Math.round((err / rq) * 10000) / 100,
+      cold_boots: Math.round(rq * 0.0017),
+      p50_ms: 42 + i * 9,
+      p95_ms: 180 + i * 40,
+      p99_ms: 420 + i * 90,
+    };
+  };
+  return {
+    slug: a.slug,
+    since,
+    from: db.iso(hours * 3_600_000),
+    until: db.iso(0),
+    window_clamped: clamped,
+    requests,
+    error_requests: errors,
+    error_rate_pct: Math.round((errors / requests) * 10000) / 100,
+    cold_boots: Math.round(requests * 0.0017),
+    p50_ms: 42,
+    p95_ms: 180,
+    p99_ms: 420,
+    group_by: groupBy,
+    groups: values.map(group),
+    groups_limit: 50,
+    groups_truncated: values.length > 3,
+    routes: ANALYTICS_GROUPS.route.map(group),
+    routes_limit: 50,
+    routes_truncated: false,
+    as_of: db.iso(0),
+  };
+});
+
+route('GET', '/v1/apps/{slug}/analytics/timeseries', ({ params, query }) => {
+  const a = app(params.slug);
+  if (process.env.MOCK_PLAN === 'free')
+    throw new Problem(
+      402,
+      'plan_per_app_metrics_not_allowed',
+      'the free plan does not include per-app metrics; upgrade to Hobby or above.'
+    );
+  const { since, hours, clamped } = analyticsWindow(query);
+  const now = Date.now();
+  const points = Array.from({ length: hours }, (_, i) => {
+    const hour = hours - 1 - i;
+    // A diurnal shape, so the line is a shape rather than a flat run.
+    const at = new Date(now - hour * 3_600_000);
+    const wave = Math.sin((at.getUTCHours() / 24) * Math.PI * 2) * 0.4 + 1;
+    const requests = Math.round(280 * wave);
+    const errors =
+      at.getUTCHours() === 3 ? Math.round(requests * 0.11) : Math.round(requests * 0.004);
+    return {
+      start: new Date(at.setMinutes(0, 0, 0)).toISOString(),
+      requests,
+      error_requests: errors,
+      error_rate_pct: Math.round((errors / requests) * 10000) / 100,
+      cold_boots: at.getUTCHours() % 6 === 0 ? 2 : 0,
+      p50_ms: Math.round(42 * wave),
+      p95_ms: Math.round(180 * wave),
+      p99_ms: Math.round(420 * wave),
+    };
+  });
+  return {
+    slug: a.slug,
+    since,
+    from: points[0]?.start ?? db.iso(hours * 3_600_000),
+    until: db.iso(0),
+    window_clamped: clamped,
+    bucket: '1h',
+    points,
+    as_of: db.iso(0),
+  };
+});
+
+route('GET', '/v1/apps/{slug}/debug/requests/{req_id}', ({ params }) => {
+  gateDebug();
+  app(params.slug);
+  if (!/^[0-9a-f]{8,}$/.test(params.req_id))
+    throw new Problem(404, 'not_found', 'no telemetry for that request id');
+  return {
+    id: params.req_id,
+    deployment_id: db.deployments[0].id,
+    route: '/orders/{id}',
+    method: 'GET',
+    status: 500,
+    latency_ms: 2400,
+    count: 1,
+    cold_boot: false,
+    trace_id: db.id() + db.id(),
+    received_at: db.iso(120_000),
+  };
+});
+
+route('GET', '/v1/apps/{slug}/debug/requests/{req_id}/evidence', ({ params }) => {
+  gateDebug();
+  app(params.slug);
+  if (!/^[0-9a-f]{8,}$/.test(params.req_id))
+    throw new Problem(404, 'not_found', 'no telemetry for that request id');
+  const traceId = db.id() + db.id();
+  const spans = [
+    {
+      trace_id: traceId,
+      span_id: db.id().slice(0, 16),
+      name: 'GET /orders/{id}',
+      kind: 'server',
+      duration_nanos: 2_400_000_000,
+      status: 'ERROR',
+    },
+    {
+      trace_id: traceId,
+      span_id: db.id().slice(0, 16),
+      name: 'postgres.query',
+      kind: 'client',
+      duration_nanos: 2_180_000_000,
+      status: 'OK',
+      db_statement: 'SELECT * FROM orders WHERE id = $1',
+    },
+    {
+      trace_id: traceId,
+      span_id: db.id().slice(0, 16),
+      name: 'redis.get',
+      kind: 'client',
+      duration_nanos: 3_400_000,
+      status: 'OK',
+    },
+  ];
+  return {
+    request: {
+      id: params.req_id,
+      deployment_id: db.deployments[0].id,
+      route: '/orders/{id}',
+      method: 'GET',
+      status: 500,
+      latency_ms: 2400,
+      count: 1,
+      cold_boot: false,
+      trace_id: traceId,
+      received_at: db.iso(120_000),
+    },
+    regression: {
+      deployment_id: db.deployments[0].id,
+      route: '/orders/{id}',
+      p95_ms: 1840,
+      p95_base_ms: 260,
+      affected_count: 412,
+      regression_factor: '7.08',
+      first_detected_at: db.iso(5_400_000),
+      last_detected_at: db.iso(120_000),
+    },
+    spans,
+    spans_truncated: false,
+    explanation: {
+      status: 'regression_detected',
+      headline:
+        'A database query on this route takes 7× longer than it did before the current deployment.',
+      primary_span: spans[1],
+    },
+    generated_at: db.iso(0),
+  };
+});
+
+route('DELETE', '/v1/apps/{slug}/cache', ({ params, query }) => {
+  app(params.slug);
+  const path = query.get('path');
+  if (path !== null && !path.startsWith('/'))
+    throw new Problem(422, 'validation_failed', 'a path glob starts with "/".');
+  return NO_CONTENT;
+});
+
+const restarting = new Set<string>();
+route('POST', '/v1/apps/{slug}/restart', ({ params }) => {
+  const a = app(params.slug);
+  if (restarting.has(a.slug))
+    throw new Problem(409, 'conflict', 'a restart is already in flight for this app.');
+  if (process.env.MOCK_SPEND_CAP === 'reached')
+    throw new Problem(
+      402,
+      'admission_refused',
+      "the account's spend cap is met; raise it to allow new wakes."
+    );
+  restarting.add(a.slug);
+  setTimeout(() => restarting.delete(a.slug), 5_000);
+  return status(202, { wake_id: db.id() });
+});
+
+route('POST', '/v1/apps/{slug}/restore', ({ params }) => {
+  const a = app(params.slug);
+  if (a.status !== 'deleted_pending')
+    throw new Problem(409, 'conflict', 'the app is not pending deletion.');
+  a.status = 'active';
+  return a;
+});
+
+route('GET', '/v1/apps/{slug}/upstreams/history', ({ params, query }) => {
+  const a = app(params.slug);
+  const bucket = query.get('bucket') ?? '5m';
+  const minutes: Record<string, number> = { '1m': 1, '5m': 5, '1h': 60, '6h': 360, '24h': 1440 };
+  const step = minutes[bucket];
+  if (!step) throw new Problem(400, 'validation_failed', `unsupported bucket "${bucket}".`);
+  const count = Math.min(48, Math.round(1440 / step));
+  return listOf(db.upstreams, a.slug).map((u, index) => ({
+    host_redacted_hash: u.host_redacted_hash,
+    kind: u.kind,
+    port: u.port,
+    scope: u.scope ?? undefined,
+    region: 'fra',
+    buckets: Array.from({ length: count }, (_, i) => {
+      const gap = index === 1 && i > count - 6;
+      const drift = index === 0 && i > count - 10 ? 2.4 : 1;
+      return {
+        sampled_at: db.iso((count - 1 - i) * step * 60_000),
+        p50_ms: gap ? null : Math.round((4 + index * 3) * drift),
+        p95_ms: gap ? null : Math.round((11 + index * 7) * drift),
+        sample_count: gap ? 1 : 12,
+      };
+    }),
+  }));
+});
+
+route('POST', '/v1/apps/{slug}/rollouts/recover', ({ params, body }) => {
+  const a = app(params.slug);
+  if (process.env.MOCK_PLAN === 'free')
+    throw new Problem(
+      403,
+      'plan_traffic_split_not_allowed',
+      'canary rollouts need the Pro or Scale plan.'
+    );
+  const action = String(body.action ?? '');
+  if (!['advance', 'promote', 'abort'].includes(action))
+    throw new Problem(400, 'validation_failed', 'action must be advance, promote or abort.');
+  const d = db.deployments.find(
+    (x) => x.app_id === a.id && (x.rollout_state === 'rolling_out' || x.rollout_state === 'pending')
+  );
+  if (!d) throw new Problem(409, 'rollout_state_invalid', 'no rollout is in flight for this app.');
+  if (action === 'advance') {
+    const startedAt = Date.parse(d.canary_step_started_at ?? d.created_at);
+    if (Date.now() - startedAt < 30 * 60_000)
+      throw new Problem(
+        409,
+        'rollout_not_stuck',
+        'the rollout is still progressing; use promote instead to ship it now.'
+      );
+    d.canary_step = (d.canary_step ?? 0) + 1;
+    d.canary_step_started_at = new Date().toISOString();
+  } else if (action === 'promote') {
+    d.canary_step = d.canary_total_steps ?? 1;
+    d.rollout_state = 'complete';
+    d.rollout_completed_at = new Date().toISOString();
+    d.traffic_percent = 100;
+  } else {
+    d.rollout_state = 'aborted';
+    d.rollout_aborted_at = new Date().toISOString();
+  }
+  return { deployment: d, audit_id: db.id() };
+});
+
+route('POST', '/v1/apps/{slug}/deployments/source-tarball', ({ params, req }) => {
+  const a = app(params.slug);
+  const type = String(req.headers['content-type'] ?? '');
+  if (!type.startsWith('multipart/form-data'))
+    throw new Problem(400, 'validation_failed', 'the body must be multipart/form-data.');
+  const template = db.deployments.find((d) => d.app_id === a.id);
+  const deployment = {
+    ...(template ?? db.deployments[0]),
+    id: db.id(),
+    app_id: a.id,
+    kind: 'tarball',
+    status: 'building',
+    error: null,
+    error_code: null,
+    created_at: new Date().toISOString(),
+  };
+  db.deployments.unshift(deployment);
+  return status(202, deployment);
+});
+
+route('GET', '/v1/account/object-storage-usage', () => ({
+  usage: {
+    observed_bytes: 41_237_899_264,
+    capacity_bytes: 214_748_364_800,
+    capacity_keys: 500_000,
+    stored_byte_hours: 29_691_287_470_080,
+    request_count: 184_221,
+    egress_bytes: 8_912_345_600,
+    cost_millicents: 412_800,
+    authorizations: 9_412,
+    fresh: true,
+    period_start: db.iso(8 * 24 * 3_600_000),
+  },
+  policy: {
+    max_account_bytes: 214_748_364_800,
+    max_bucket_bytes: 107_374_182_400,
+    max_account_keys: 500_000,
+    max_monthly_cost_millicents: 5_000_000,
+    max_monthly_requests: 5_000_000,
+    max_monthly_egress_bytes: 1_099_511_627_776,
+    max_monthly_authorizations: 250_000,
+    max_report_age_seconds: 3600,
+  },
+  charges: {
+    currency: 'USD',
+    storage_millicents: 268_400,
+    requests_millicents: 61_200,
+    egress_millicents: 83_200,
+    total_millicents: 412_800,
+  },
+}));
+
+// Bucket access: API-key grants and S3 credentials.
+const bucketGrants = new Map<
+  string,
+  {
+    key_id: string;
+    key_label: string;
+    key_status: string;
+    permission: string;
+    created_at: string;
+    updated_at: string;
+  }[]
+>();
+const bucketS3 = new Map<
+  string,
+  {
+    id: string;
+    bucket_id: string;
+    access_key_id: string;
+    label: string;
+    permission: string;
+    status: string;
+    created_at: string;
+    last_used_at?: string;
+    revoked_at?: string;
+  }[]
+>();
+
+/**
+ * The API declares `{bucket}` as the bucket's id, not its name. The mock
+ * enforces the shape so passing a name fails here rather than in production.
+ */
+function bucketId(value: string) {
+  if (!/^[0-9a-f]{32}$/.test(value))
+    throw new Problem(404, 'not_found', `"${value}" is not a bucket id.`);
+  return value;
+}
+
+function grantsFor(slug: string, bucket: string) {
+  const key = `${slug}/${bucketId(bucket)}`;
+  if (!bucketGrants.has(key)) {
+    const first = db.keys[0];
+    bucketGrants.set(
+      key,
+      first
+        ? [
+            {
+              key_id: first.id,
+              key_label: first.label ?? first.id.slice(0, 8),
+              key_status: 'active',
+              permission: 'read',
+              created_at: db.iso(6 * 24 * 3_600_000),
+              updated_at: db.iso(6 * 24 * 3_600_000),
+            },
+          ]
+        : []
+    );
+  }
+  return bucketGrants.get(key)!;
+}
+
+function s3For(slug: string, bucket: string) {
+  const key = `${slug}/${bucketId(bucket)}`;
+  if (!bucketS3.has(key)) bucketS3.set(key, []);
+  return bucketS3.get(key)!;
+}
+
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/access-grants', ({ params }) => ({
+  items: grantsFor(app(params.slug).slug, params.bucket),
+}));
+route('PUT', '/v1/apps/{slug}/buckets/{bucket}/access-grants/{key}', ({ params, body }) => {
+  const slug = app(params.slug).slug;
+  const permission = String(body.permission ?? '');
+  if (!['read', 'write', 'read_write'].includes(permission))
+    throw new Problem(422, 'validation_failed', 'permission must be read, write or read_write.');
+  const key = db.keys.find((k) => k.id === params.key);
+  if (!key) throw new Problem(404, 'not_found', 'no such API key');
+  const list = grantsFor(slug, params.bucket);
+  const existing = list.find((g) => g.key_id === params.key);
+  if (existing) {
+    existing.permission = permission;
+    existing.updated_at = db.iso(0);
+    return existing;
+  }
+  const grant = {
+    key_id: key.id,
+    key_label: key.label ?? key.id.slice(0, 8),
+    key_status: 'active',
+    permission,
+    created_at: db.iso(0),
+    updated_at: db.iso(0),
+  };
+  list.push(grant);
+  return grant;
+});
+route('DELETE', '/v1/apps/{slug}/buckets/{bucket}/access-grants/{key}', ({ params }) => {
+  const list = grantsFor(app(params.slug).slug, params.bucket);
+  const i = list.findIndex((g) => g.key_id === params.key);
+  if (i < 0) throw new Problem(404, 'not_found', 'no grant for that key on this bucket');
+  list.splice(i, 1);
+  return NO_CONTENT;
+});
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/s3-credentials', ({ params }) => ({
+  items: s3For(app(params.slug).slug, params.bucket),
+}));
+route('POST', '/v1/apps/{slug}/buckets/{bucket}/s3-credentials', ({ params, body }) => {
+  const slug = app(params.slug).slug;
+  const label = String(body.label ?? '').trim();
+  const permission = String(body.permission ?? '');
+  if (!label) throw new Problem(422, 'validation_failed', 'a label is required.');
+  if (!['read', 'write', 'read_write'].includes(permission))
+    throw new Problem(422, 'validation_failed', 'permission must be read, write or read_write.');
+  const list = s3For(slug, params.bucket);
+  const credential = {
+    id: db.id(),
+    bucket_id: params.bucket,
+    access_key_id: `GK${db.id().slice(0, 18).toUpperCase()}`,
+    label,
+    permission,
+    status: 'active',
+    created_at: db.iso(0),
+  };
+  list.push(credential);
+  // The secret exists only in this response, as upstream.
+  return status(201, {
+    ...credential,
+    secret_access_key: `${db.id()}${db.id()}`,
+    endpoint: 'https://s3.gregale.dev',
+    region: 'us-east-1',
+    addressing_style: 'path',
+  });
+});
+route('DELETE', '/v1/apps/{slug}/buckets/{bucket}/s3-credentials/{credential}', ({ params }) => {
+  const list = s3For(app(params.slug).slug, params.bucket);
+  const credential = list.find((c) => c.id === params.credential);
+  if (!credential) throw new Problem(404, 'not_found', 'no such credential');
+  credential.status = 'revoked';
+  credential.revoked_at = db.iso(0);
+  return NO_CONTENT;
+});
+
 route('GET', '/v1/apps/{slug}/webhooks', ({ params }) => listOf(db.webhooks, params.slug));
 route('POST', '/v1/apps/{slug}/webhooks', ({ params, body }) => {
   const a = app(params.slug);

@@ -2695,3 +2695,179 @@ export function useDestroyPreview() {
     onSuccess: () => void qc.invalidateQueries({ queryKey: keys.apps }),
   });
 }
+
+/* ------------------------------------------------------------------ *
+ * Request analytics, request evidence, app lifecycle, upstream history,
+ * rollout recovery, one trigger, a tarball deploy
+ * ------------------------------------------------------------------ */
+
+export type RequestAnalytics = components['schemas']['RequestAnalyticsResponse'];
+export type RequestAnalyticsTimeseries =
+  components['schemas']['RequestAnalyticsTimeseriesResponse'];
+export type AnalyticsGroupBy = RequestAnalytics['group_by'];
+export type DebugRequestEvidence = components['schemas']['DebugRequestEvidenceResponse'];
+export type UpstreamHistory = components['schemas']['DataUpstreamHistoryResponse'];
+
+/** Aggregated request analytics; `402` on Free, like the rest of per-app metrics. */
+export function useAppAnalytics(slug: string, since: string, groupBy: AnalyticsGroupBy) {
+  return useQuery({
+    queryKey: ['apps', slug, 'analytics', since, groupBy],
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/analytics', {
+          params: { path: { slug }, query: { since, group_by: groupBy } },
+        })
+      ),
+    enabled: Boolean(slug),
+    retry: false,
+  });
+}
+
+/** Hourly buckets, zero-filled by the API — a real series, so a line is honest. */
+export function useAppAnalyticsTimeseries(slug: string, since: string) {
+  return useQuery({
+    queryKey: ['apps', slug, 'analytics', 'timeseries', since],
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/analytics/timeseries', {
+          params: { path: { slug }, query: { since } },
+        })
+      ),
+    enabled: Boolean(slug),
+    retry: false,
+  });
+}
+
+export function useDebugRequest(slug: string, reqId: string) {
+  return useQuery({
+    queryKey: ['apps', slug, 'debug', 'requests', reqId],
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/debug/requests/{req_id}', {
+          params: { path: { slug, req_id: reqId } },
+        })
+      ),
+    enabled: Boolean(slug && reqId),
+    retry: false,
+  });
+}
+
+/** The spans behind one request plus the platform's own explanation of it. */
+export function useDebugRequestEvidence(slug: string, reqId: string) {
+  return useQuery({
+    queryKey: ['apps', slug, 'debug', 'requests', reqId, 'evidence'],
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/debug/requests/{req_id}/evidence', {
+          params: { path: { slug, req_id: reqId } },
+        })
+      ),
+    enabled: Boolean(slug && reqId),
+    retry: false,
+  });
+}
+
+/** Purge the edge response cache, optionally under one path glob. */
+export function usePurgeAppCache(slug: string) {
+  return useMutation({
+    mutationFn: (path?: string) =>
+      unwrap(
+        api.DELETE('/v1/apps/{slug}/cache', {
+          params: { path: { slug }, query: path ? { path } : {} },
+        })
+      ),
+  });
+}
+
+/** Park every instance, snapshot afresh, and queue one replacement wake. */
+export function useRestartApp(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => unwrap(api.POST('/v1/apps/{slug}/restart', { params: { path: { slug } } })),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.app(slug) });
+      void qc.invalidateQueries({ queryKey: ['apps', slug, 'wake-timeline'] });
+    },
+  });
+}
+
+/** Undo a delete inside the grace window. */
+export function useRestoreApp() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (slug: string) =>
+      unwrap(api.POST('/v1/apps/{slug}/restore', { params: { path: { slug } } })),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.apps }),
+  });
+}
+
+/** Bucketed probe history per declared upstream. */
+export function useUpstreamHistory(slug: string, bucket: string) {
+  return useQuery({
+    queryKey: ['apps', slug, 'upstreams', 'history', bucket],
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/upstreams/history', {
+          params: { path: { slug }, query: { bucket } },
+        })
+      ),
+    enabled: Boolean(slug),
+  });
+}
+
+/**
+ * The escape hatch for a rollout that stopped moving: advance one step
+ * (refused with `409 rollout_not_stuck` while it is still progressing),
+ * promote to 100%, or abort with a reason.
+ */
+export function useRecoverRollout(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: components['schemas']['RecoverRolloutRequest']) =>
+      unwrap(api.POST('/v1/apps/{slug}/rollouts/recover', { params: { path: { slug } }, body })),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: keys.deployments });
+      void qc.invalidateQueries({ queryKey: keys.appDeployments(slug) });
+    },
+  });
+}
+
+/** One trigger, for the detail the list cannot carry. */
+export function useTrigger(id: string) {
+  return useQuery({
+    queryKey: ['triggers', id],
+    queryFn: () => unwrap(api.GET('/v1/triggers/{id}', { params: { path: { id } } })),
+    enabled: Boolean(id),
+  });
+}
+
+/**
+ * Deploy a source tarball the customer picked, the console's equivalent of
+ * `gregale deploy --tarball`. Multipart: openapi-fetch skips the serializer
+ * when `body` is undefined, so the body is passed through as `never`.
+ */
+export function useDeployTarball(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      file: File;
+      sidecar?: components['schemas']['SourceTarballDeployRequest'];
+    }) =>
+      unwrap(
+        api.POST('/v1/apps/{slug}/deployments/source-tarball', {
+          params: { path: { slug } },
+          body: input as never,
+          bodySerializer: () => {
+            const form = new FormData();
+            form.append('tarball', input.file);
+            if (input.sidecar) form.append('sidecar', JSON.stringify(input.sidecar));
+            return form;
+          },
+        })
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.deployments });
+      void qc.invalidateQueries({ queryKey: keys.appDeployments(slug) });
+    },
+  });
+}

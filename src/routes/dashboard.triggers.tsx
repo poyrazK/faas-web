@@ -17,6 +17,7 @@ import { errorMessage } from '@/lib/api/errors';
 import { useApps, useSetTriggerEnabled, useTriggerMetrics, useTriggers } from '@/lib/api/queries';
 import { slugIndex } from '@/lib/api/adapters';
 import { consoleHead } from '@/lib/seo';
+import { TriggerConfiguration } from '@/components/dashboard/trigger-detail';
 
 export const Route = createFileRoute('/dashboard/triggers')({
   component: TriggersPage,
@@ -94,6 +95,9 @@ function TriggerDetail({ triggerId, label }: { triggerId: string; label: string 
       ) : (
         <TriggerDeadLetter triggerId={triggerId} />
       )}
+      <div className="mt-5">
+        <TriggerConfiguration triggerId={triggerId} />
+      </div>
     </Panel>
   );
 }
