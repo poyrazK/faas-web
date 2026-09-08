@@ -917,6 +917,69 @@ export function useClearObsoleteDeployments() {
   });
 }
 
+/* ------------------------------------------------------------------ *
+ * Traffic mirroring (ADR-124 / ADR-125)
+ * ------------------------------------------------------------------ */
+
+export type MirrorRule = components['schemas']['MirrorRuleResponse'];
+export type MirrorWindow = '1h' | '24h' | '7d';
+
+export function useMirrorRules(slug: string) {
+  return useQuery({
+    queryKey: ['apps', slug, 'mirrors'],
+    queryFn: () => unwrap(api.GET('/v1/apps/{slug}/mirrors', { params: { path: { slug } } })),
+    enabled: Boolean(slug),
+  });
+}
+
+export function useCreateMirrorRule(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: components['schemas']['CreateMirrorRuleRequest']) =>
+      unwrap(api.POST('/v1/apps/{slug}/mirrors', { params: { path: { slug } }, body })),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['apps', slug, 'mirrors'] }),
+  });
+}
+
+export function useUpdateMirrorRule(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      ...body
+    }: { id: string } & components['schemas']['UpdateMirrorRuleRequest']) =>
+      unwrap(api.PATCH('/v1/apps/{slug}/mirrors/{id}', { params: { path: { slug, id } }, body })),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['apps', slug, 'mirrors'] }),
+  });
+}
+
+export function useDeleteMirrorRule(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      unwrap(api.DELETE('/v1/apps/{slug}/mirrors/{id}', { params: { path: { slug, id } } })),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['apps', slug, 'mirrors'] }),
+  });
+}
+
+/**
+ * Drift counts over a trailing window. `mean_latency_diff_ms` is signed —
+ * positive means the mirror answered slower than the source — so the sign is
+ * the finding and the number is its size.
+ */
+export function useMirrorSummary(slug: string, id: string, window: MirrorWindow) {
+  return useQuery({
+    queryKey: ['apps', slug, 'mirrors', id, 'summary', window],
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/mirrors/{id}/summary', {
+          params: { path: { slug, id }, query: { window } },
+        })
+      ),
+    enabled: Boolean(slug && id),
+  });
+}
+
 /** The closed-6 stage vocabulary the retry endpoint accepts (ADR-117). */
 export type RetryStage = components['schemas']['RetryDeploymentRequest']['from_stage'];
 
