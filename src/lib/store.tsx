@@ -120,6 +120,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
           type: input.type ?? 'function',
           runtime: input.runtime,
           ram_mb: input.memoryMb,
+          // Defaulted in the spec, but openapi-typescript makes defaulted
+          // properties required, so the API defaults are sent explicitly.
+          cpu_millicores: 1000,
+          head_wakes: false,
+          crawler_policy: 'wake',
         });
         return toWorkflow(app);
       },
