@@ -2704,6 +2704,20 @@ route('GET', '/v1/jobs/{name}', ({ params }) => {
   return j;
 });
 
+route('GET', '/v1/jobs/{name}', ({ params }) => {
+  gateJobs();
+  const job = jobs.find((j) => j.name === params.name);
+  if (!job) throw new Problem(404, 'job_not_found', 'no such job');
+  return job;
+});
+route('GET', '/v1/jobs/{name}/runs/{id}', ({ params }) => {
+  gateJobs();
+  const job = jobs.find((j) => j.name === params.name);
+  if (!job) throw new Problem(404, 'job_not_found', 'no such job');
+  const run = runsOf(job.name).find((r) => r.id === params.id);
+  if (!run) throw new Problem(404, 'job_run_not_found', 'no such run');
+  return run;
+});
 route('GET', '/v1/jobs/{name}/runs', ({ params }) => {
   gateJobs();
   if (!jobs.some((j) => j.name === params.name)) throw new Problem(404, 'job_not_found');
