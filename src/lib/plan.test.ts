@@ -4,6 +4,7 @@ import {
   appQuotaRemaining,
   isPaidPlan,
   memoryAllowed,
+  residentInstancesAllowed,
   type PlanSnapshot,
 } from './plan';
 
@@ -32,5 +33,13 @@ describe('plan capabilities', () => {
     expect(memoryAllowed(free, 512)).toBe(false);
     // Unknown account state should not make the local designer unusable.
     expect(memoryAllowed(null, 2048)).toBe(true);
+  });
+
+  it('allows resident instances only on paid plans', () => {
+    expect(residentInstancesAllowed(null)).toBe(false);
+    expect(residentInstancesAllowed({ plan: 'free' })).toBe(false);
+    expect(residentInstancesAllowed({ plan: 'hobby' })).toBe(true);
+    expect(residentInstancesAllowed({ plan: 'pro' })).toBe(true);
+    expect(residentInstancesAllowed({ plan: 'scale' })).toBe(true);
   });
 });

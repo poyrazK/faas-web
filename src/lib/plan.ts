@@ -21,3 +21,7 @@ export function appQuotaExceeded(account: PlanSnapshot | null): boolean {
 export function memoryAllowed(account: PlanSnapshot | null, memoryMb: number): boolean {
   return account === null || memoryMb <= account.limits.ram_mb;
 }
+
+export function residentInstancesAllowed(account: Pick<Account, 'plan'> | null): boolean {
+  return account !== null && isPaidPlan(account.plan);
+}

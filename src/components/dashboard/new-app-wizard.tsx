@@ -17,7 +17,12 @@ import { errorMessage } from '@/lib/api/errors';
 import { useData } from '@/lib/store';
 import { useDeployFromRefFor, useUpdateAppFor } from '@/lib/api/queries';
 import { useAuth } from '@/lib/auth';
-import { appQuotaExceeded, appQuotaRemaining, memoryAllowed } from '@/lib/plan';
+import {
+  appQuotaExceeded,
+  appQuotaRemaining,
+  memoryAllowed,
+  residentInstancesAllowed,
+} from '@/lib/plan';
 import { cn } from '@/lib/utils';
 
 const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
@@ -105,6 +110,8 @@ export function NewAppWizard({
   const [memoryMb, setMemoryMb] = useState(template ? template.memoryMb : 128);
   const [scaleToZero, setScaleToZero] = useState(true);
   const githubConnected = Boolean(account?.github_install_id);
+  const canKeepResident = residentInstancesAllowed(account);
+  const effectiveScaleToZero = scaleToZero || !canKeepResident;
 
   const [deploying, setDeploying] = useState(false);
   const [deploymentId, setDeploymentId] = useState<string | null>(null);
@@ -173,7 +180,7 @@ export function NewAppWizard({
       setCreatedUrl(created.url);
       onAppCreated?.();
 
-      const scalePromise: Promise<unknown> = !scaleToZero
+      const scalePromise: Promise<unknown> = !effectiveScaleToZero
         ? updateApp.mutateAsync({ slug: created.id, min_instances: 1 })
         : Promise.resolve();
       const deploymentPromise =
@@ -613,11 +620,18 @@ export function NewAppWizard({
                   <p className="mt-1 max-w-md text-xs leading-relaxed text-muted-foreground">
                     Snapshot the microVM after 60s idle. Wakes in under 350ms on the next request.
                   </p>
+                  {account && !canKeepResident && (
+                    <p id="scale-to-zero-plan-note" className="mt-1 text-xs text-muted-foreground">
+                      Keeping an instance resident requires a paid plan.
+                    </p>
+                  )}
                 </div>
                 <Switch
-                  checked={scaleToZero}
+                  checked={effectiveScaleToZero}
+                  disabled={!canKeepResident}
                   onCheckedChange={setScaleToZero}
                   aria-label="Scale to zero"
+                  aria-describedby={!canKeepResident ? 'scale-to-zero-plan-note' : undefined}
                   className="mt-1 data-[state=checked]:bg-brand"
                 />
               </div>
@@ -663,7 +677,10 @@ export function NewAppWizard({
                   ],
                   ['Runtime', runtime],
                   ['Memory', `${selectedMemoryMb} MB`],
-                  ['Scale to zero', scaleToZero ? 'Parks when idle' : 'One instance kept resident'],
+                  [
+                    'Scale to zero',
+                    effectiveScaleToZero ? 'Parks when idle' : 'One instance kept resident',
+                  ],
                   // Assigned by the API on create, so it is not known until then.
                   ['Endpoint', createdUrl ?? 'Assigned on create'],
                 ].map(([label, value]) => (
