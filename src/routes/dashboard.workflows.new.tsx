@@ -84,20 +84,32 @@ function NewFunctionPage() {
   // catalog template prefills the name and hands the scaffold to the CLI.
   const catalog = useTemplates();
   const catalogTemplate = (catalog.data ?? []).find((t) => t.name === templateSlug);
+  // Either kind of template prefills the wizard. The catalog's names encode a
+  // runtime only for the per-runtime starters; the rest keep the default and
+  // the customer picks, rather than the wizard guessing.
+  const picked = Boolean(template) || Boolean(templateSlug);
+  const initialName = template?.slug ?? templateSlug ?? '';
+  const catalogRuntime: Runtime | null = /-node$/.test(templateSlug ?? '')
+    ? 'node24'
+    : /-python$/.test(templateSlug ?? '')
+      ? 'python313'
+      : /-go$/.test(templateSlug ?? '')
+        ? 'go124'
+        : null;
 
   const [createdId, setCreatedId] = useState<string | null>(null);
   // The endpoint the API assigned. Constructing one from the slug would be a
   // guess about the platform's hostname scheme; this is the real value.
   const [createdUrl, setCreatedUrl] = useState<string | null>(null);
   const [step, setStep] = useState(0);
-  const [source, setSource] = useState(template ? 'empty' : 'git');
+  const [source, setSource] = useState(picked ? 'empty' : 'git');
   const [repo, setRepo] = useState('');
   const [ref, setRef] = useState('main');
-  const [name, setName] = useState(template ? template.slug : (templateSlug ?? ''));
+  const [name, setName] = useState(initialName);
   const deployFromRef = useDeployFromRefFor();
   const updateApp = useUpdateAppFor();
   const [appType, setAppType] = useState<'function' | 'app'>('function');
-  const [runtime, setRuntime] = useState<Runtime>(template ? template.runtime : 'node22');
+  const [runtime, setRuntime] = useState<Runtime>(template?.runtime ?? catalogRuntime ?? 'node22');
   // Start at the platform floor. The previous 512 MB default guaranteed a
   // failed Free-plan submission before the customer had seen the limit.
   const [memoryMb, setMemoryMb] = useState(template ? template.memoryMb : 128);
@@ -112,9 +124,7 @@ function NewFunctionPage() {
   // A half-filled wizard asks before it is discarded. Once the app exists
   // (or nothing was typed) leaving is free. A template's prefilled name is
   // not the user's typing — only their own edits arm the guard.
-  useUnsavedGuard(
-    !createdId && Boolean(repo.trim() || (name.trim() && name !== (template?.slug ?? '')))
-  );
+  useUnsavedGuard(!createdId && Boolean(repo.trim() || (name.trim() && name !== initialName)));
 
   const nameValid = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(name);
   const repoValid = /^[^/\s]+\/[^/\s]+$/.test(repo.trim());
