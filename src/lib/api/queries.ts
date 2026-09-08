@@ -2859,3 +2859,111 @@ export function useDeployTarball(slug: string) {
     },
   });
 }
+
+/* ------------------------------------------------------------------ *
+ * Managed PostgreSQL
+ * ------------------------------------------------------------------ */
+
+export type PostgresDatabase = components['schemas']['ManagedPostgresDatabase'];
+export type PostgresBinding = components['schemas']['ManagedPostgresBinding'];
+
+const postgresKey = ['postgres', 'databases'] as const;
+
+export function usePostgresDatabases() {
+  return useQuery({
+    queryKey: postgresKey,
+    queryFn: () => unwrap(api.GET('/v1/postgres/databases', {})),
+    // Provisioning finishes on the provider's clock, not the browser's.
+    refetchInterval: (query) =>
+      (query.state.data?.items ?? []).some(
+        (d) => d.state === 'provisioning' || d.state === 'deleting'
+      )
+        ? 5_000
+        : false,
+  });
+}
+
+export function usePostgresDatabase(id: string) {
+  return useQuery({
+    queryKey: [...postgresKey, id],
+    queryFn: () => unwrap(api.GET('/v1/postgres/databases/{id}', { params: { path: { id } } })),
+    enabled: Boolean(id),
+  });
+}
+
+export function useCreatePostgresDatabase() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: components['schemas']['CreateManagedPostgresDatabaseRequest']) =>
+      unwrap(api.POST('/v1/postgres/databases', { body })),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: postgresKey }),
+  });
+}
+
+export function useDeletePostgresDatabase() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      unwrap(api.DELETE('/v1/postgres/databases/{id}', { params: { path: { id } } })),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: postgresKey }),
+  });
+}
+
+/** Point-in-time restore: always into a new database, never over the old one. */
+export function useRestorePostgresDatabase() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string; name: string; point_in_time: string }) =>
+      unwrap(api.POST('/v1/postgres/databases/{id}/restore', { params: { path: { id } }, body })),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: postgresKey }),
+  });
+}
+
+export function usePostgresBindings(id: string) {
+  return useQuery({
+    queryKey: [...postgresKey, id, 'bindings'],
+    queryFn: () =>
+      unwrap(api.GET('/v1/postgres/databases/{id}/bindings', { params: { path: { id } } })),
+    enabled: Boolean(id),
+    refetchInterval: (query) =>
+      (query.state.data?.items ?? []).some(
+        (b) => b.state === 'provisioning' || b.state === 'deleting'
+      )
+        ? 5_000
+        : false,
+  });
+}
+
+export function usePostgresBinding(id: string) {
+  return useQuery({
+    queryKey: ['postgres', 'bindings', id],
+    queryFn: () => unwrap(api.GET('/v1/postgres/bindings/{id}', { params: { path: { id } } })),
+    enabled: Boolean(id),
+  });
+}
+
+/** Credentials never reach the browser: the app gets them as a secret. */
+export function useCreatePostgresBinding(databaseId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: components['schemas']['CreateManagedPostgresBindingRequest']) =>
+      unwrap(
+        api.POST('/v1/postgres/databases/{id}/bindings', {
+          params: { path: { id: databaseId } },
+          body,
+        })
+      ),
+    onSuccess: () =>
+      void qc.invalidateQueries({ queryKey: [...postgresKey, databaseId, 'bindings'] }),
+  });
+}
+
+export function useDeletePostgresBinding(databaseId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      unwrap(api.DELETE('/v1/postgres/bindings/{id}', { params: { path: { id } } })),
+    onSuccess: () =>
+      void qc.invalidateQueries({ queryKey: [...postgresKey, databaseId, 'bindings'] }),
+  });
+}
