@@ -8,7 +8,7 @@ import { SteppedBars } from './shaders/stepped-bars';
 
 /**
  * Plan-grid pricing, staged like a hardware spec sheet: a framed hero panel
- * with a stepped-bar figure, an "all plans include" strip, then five columns.
+ * with a stepped-bar figure, then five plan columns.
  *
  * **The dollar figures are marketing copy, not API data.** The API exposes
  * four plans (free, hobby, pro, scale) and their quotas but no prices — the
@@ -177,7 +177,29 @@ function PlanColumn({ tier, index }: { tier: Tier; index: number }) {
 
 export function Pricing() {
   return (
-    <section id="pricing" className="relative scroll-mt-24 border-t border-border">
+    <section id="pricing" className="relative scroll-mt-24">
+      {/* Why hands off to pricing through light rather than a rule. The band
+          fills the gutter between the two sections — Why's bottom padding
+          above, pricing's top padding below — so it lights the seam without
+          ever crossing text. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 -top-20 h-44 sm:-top-28 sm:h-52"
+        style={{
+          background:
+            'radial-gradient(68% 62% at 50% 50%, color-mix(in oklab, var(--brand-fill) 15%, transparent) 0%, color-mix(in oklab, var(--brand-fill) 6%, transparent) 46%, transparent 76%)',
+        }}
+      />
+      {/* All that is left of the rule: a filament, lit only where the glow is
+          and gone well before either edge — an anchor, not a divider. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-px"
+        style={{
+          background:
+            'linear-gradient(to right, transparent 14%, color-mix(in oklab, var(--brand-fill) 28%, transparent) 50%, transparent 86%)',
+        }}
+      />
       <div className="mx-auto max-w-6xl px-4 py-24 sm:px-6">
         <div className="overflow-hidden rounded-lg border border-border bg-card">
           {/* Hero panel: headline left, the stepped-bar figure right. */}
