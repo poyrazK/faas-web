@@ -14,6 +14,7 @@ import { isDeploymentTerminal } from '@/lib/deployment-status';
 import { formatRelative } from '@/lib/mock-data';
 import { AdvanceCanaryButton, ReorderDeploymentControl } from './deployment-actions';
 import { DeploymentAudit, DeploymentPreviewUrl, DeploymentStages } from './deployment-insights';
+import { RolloutRecovery } from './rollout-recovery';
 import { LogView } from './log-view';
 
 const STATUS_COLOR: Record<string, string> = {
@@ -52,10 +53,13 @@ function durationLabel(seconds: number | undefined): string {
  */
 export function DeploymentDetailPanel({
   deploymentId,
+  appSlug,
   timing,
   onClose,
 }: {
   deploymentId: string;
+  /** Enables the per-app rollout recovery actions; omitted on account-wide views. */
+  appSlug?: string;
   timing?: {
     durationSeconds?: number;
     enqueuedAt: string;
@@ -107,6 +111,7 @@ export function DeploymentDetailPanel({
           </div>
 
           <ReorderDeploymentControl deployment={deployment} />
+          {appSlug && <RolloutRecovery slug={appSlug} deployment={deployment} />}
 
           <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
             {[

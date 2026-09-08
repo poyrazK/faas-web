@@ -11,6 +11,7 @@ import { useConfirm } from '@/components/ui/confirm';
 import { useAddUpstream, useDeleteUpstream, useUpstreams } from '@/lib/api/queries';
 import { errorMessage } from '@/lib/api/errors';
 import { consoleHead } from '@/lib/seo';
+import { UpstreamHistoryPanel } from '@/components/dashboard/upstream-history';
 
 export const Route = createFileRoute('/dashboard/databases')({
   component: UpstreamsPage,
@@ -268,6 +269,7 @@ export function UpstreamsBody({ slug }: { slug: string }) {
         error={error}
         onRetry={() => void refetch()}
       />
+      <UpstreamHistoryPanel slug={slug} />
     </div>
   );
 }

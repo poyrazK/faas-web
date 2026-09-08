@@ -49,6 +49,9 @@ import { ErrorsBody } from '@/components/dashboard/errors-body';
 import { AppConfiguration } from '@/components/dashboard/app-configuration';
 import { InvokePanel, SloPanel } from '@/components/dashboard/app-core-panels';
 import { AppUsagePanel, WakeTimelinePanel } from '@/components/dashboard/app-insights';
+import { AppAnalyticsPanel } from '@/components/dashboard/app-analytics';
+import { RestartAppButton } from '@/components/dashboard/app-lifecycle';
+import { TarballDeploy } from '@/components/dashboard/tarball-deploy';
 import { TearDownPreviewButton } from '@/components/dashboard/preview-actions';
 import { Swap } from '@/components/dashboard/motion';
 import { RepoPicker } from '@/components/dashboard/repo-picker';
@@ -320,6 +323,7 @@ function FunctionDetailPage() {
               <Rocket className="h-3.5 w-3.5" />
               Deploy
             </Button>
+            <RestartAppButton slug={fn.id} />
             <TearDownPreviewButton slug={fn.id} />
             {canRollback && (
               <Button
@@ -519,6 +523,7 @@ function FunctionDetailPage() {
                     )}
                   </Panel>
                   <SloPanel slug={fn.id} />
+                  <AppAnalyticsPanel slug={fn.id} />
                   <WakeTimelinePanel slug={fn.id} />
                   <AppUsagePanel slug={fn.id} />
                 </div>
@@ -583,9 +588,24 @@ function FunctionDetailPage() {
                     </ul>
                   )}
                 </Panel>
+                <Panel
+                  title="Deploy an archive"
+                  description="For source that is not in a connected repository — the console's half of `gregale deploy --tarball`."
+                >
+                  <TarballDeploy
+                    slug={fn.id}
+                    onDeployed={(id) =>
+                      void navigate({
+                        search: { tab: 'Deployments', deployment: id },
+                        replace: true,
+                      })
+                    }
+                  />
+                </Panel>
                 {selectedDeployment && (
                   <DeploymentDetailPanel
                     deploymentId={selectedDeployment.id}
+                    appSlug={fn.id}
                     timing={buildTimings.get(selectedDeployment.id)}
                     onClose={() => void navigate({ search: { tab: 'Deployments' }, replace: true })}
                   />

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
 import { errorMessage } from '@/lib/api/errors';
+import { BucketAccess } from './bucket-access';
 import {
   bucketKey,
   objectKey,
@@ -186,13 +187,16 @@ function BucketManager({ slug }: { slug: string }) {
         ))}
       </div>
       {bucket?.state === 'ready' && (
-        <ObjectBrowser
-          key={bucket.id}
-          slug={slug}
-          bucket={bucket}
-          maxBytes={directUploadMaxBytes}
-          signingEnabled={data.enabled}
-        />
+        <>
+          <ObjectBrowser
+            key={bucket.id}
+            slug={slug}
+            bucket={bucket}
+            maxBytes={directUploadMaxBytes}
+            signingEnabled={data.enabled}
+          />
+          <BucketAccess slug={slug} bucket={bucket.name} />
+        </>
       )}
       {bucket && bucket.state !== 'ready' && (
         <p className="text-sm text-muted-foreground">

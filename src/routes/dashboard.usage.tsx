@@ -19,6 +19,7 @@ import { errorMessage } from '@/lib/api/errors';
 import { slugIndex } from '@/lib/api/adapters';
 import { consoleHead } from '@/lib/seo';
 import { formatUsageBytes, formatUsageNumber } from '@/lib/usage-format';
+import { ObjectStorageUsagePanel } from '@/components/dashboard/object-storage-usage';
 
 export const Route = createFileRoute('/dashboard/usage')({
   component: UsagePage,
@@ -288,6 +289,8 @@ function UsagePage() {
         title="Usage"
         description="This billing period. GB-hours are memory × time — a parked app accrues none."
       />
+
+      <ObjectStorageUsagePanel />
 
       {phase === 'unreachable' ? (
         <UnreachableState onRetry={() => void refetch()} />
