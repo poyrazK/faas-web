@@ -23,7 +23,11 @@ describe('isPlanGate', () => {
   });
 
   it('covers the other plan-gate codes the API uses', () => {
-    for (const code of ['plan_feature_gated', 'plan_alert_rules_not_allowed']) {
+    for (const code of [
+      'plan_feature_gated',
+      'plan_alert_rules_not_allowed',
+      'plan_mirror_not_allowed',
+    ]) {
       expect(isPlanGate(new ApiError({ status: 402, code, title: 'Gated' }))).toBe(true);
     }
   });
