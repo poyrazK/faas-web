@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  beginOnboardingGitHubConnect,
   clearWorkspace,
   clearOAuthPending,
+  consumeOnboardingGitHubReturn,
   DEFAULT_WORKSPACE,
   hasOnboarded,
   hasOAuthPending,
@@ -63,6 +65,14 @@ describe('onboarding flag', () => {
     expect(hasOnboarded()).toBe(false);
     markOnboarded();
     expect(hasOnboarded()).toBe(true);
+  });
+
+  it('round-trips a GitHub connection hand-off and consumes it once', () => {
+    beginOnboardingGitHubConnect();
+
+    expect(hasOnboarded()).toBe(false);
+    expect(consumeOnboardingGitHubReturn()).toBe(true);
+    expect(consumeOnboardingGitHubReturn()).toBe(false);
   });
 });
 

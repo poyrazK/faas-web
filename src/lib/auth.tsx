@@ -36,6 +36,7 @@ const SESSION_KEY = 'gregale.session';
 const ONBOARDED_KEY = 'gregale.onboarded';
 const WORKSPACE_KEY = 'gregale.workspace';
 const OAUTH_PENDING_KEY = 'gregale.oauth-pending';
+const ONBOARDING_GITHUB_RETURN_KEY = 'gregale.onboarding-github-return';
 export const DEFAULT_WORKSPACE = 'acme-corp';
 
 /** The server's floor: NIST-style length rule, no complexity theatre. */
@@ -138,6 +139,29 @@ export function hasOnboarded(): boolean {
 
 export function markOnboarded() {
   window.localStorage.setItem(ONBOARDED_KEY, 'true');
+}
+
+/**
+ * The GitHub installation callback lands on `/dashboard/account`, whose parent
+ * route normally requires onboarding to be complete. Remember this deliberate
+ * hand-off so the guard can admit that one route and the account page can send
+ * the customer back to their first deployment.
+ */
+export function beginOnboardingGitHubConnect() {
+  if (typeof window === 'undefined') return;
+  window.sessionStorage.setItem(ONBOARDING_GITHUB_RETURN_KEY, 'true');
+}
+
+export function hasOnboardingGitHubReturn(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.sessionStorage.getItem(ONBOARDING_GITHUB_RETURN_KEY) === 'true';
+}
+
+export function consumeOnboardingGitHubReturn(): boolean {
+  if (typeof window === 'undefined') return false;
+  const pending = hasOnboardingGitHubReturn();
+  if (pending) window.sessionStorage.removeItem(ONBOARDING_GITHUB_RETURN_KEY);
+  return pending;
 }
 
 /** Workspace slug chosen during onboarding; falls back to the demo default. */

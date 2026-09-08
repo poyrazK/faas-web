@@ -1,10 +1,11 @@
-import { createFileRoute, Link } from '@tanstack/react-router';
+import { useEffect } from 'react';
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { ArrowRight, Check, Github, OpenNewWindow } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { PageHeader, Panel } from '@/components/dashboard/primitives';
 import { PasswordPanel } from '@/components/dashboard/password-wizard';
-import { useAuth } from '@/lib/auth';
+import { consumeOnboardingGitHubReturn, useAuth } from '@/lib/auth';
 import { consoleHead } from '@/lib/seo';
 
 type AccountSearch = {
@@ -32,10 +33,16 @@ export const Route = createFileRoute('/dashboard/account')({
  */
 
 function AccountPage() {
+  const navigate = useNavigate();
   const { account, apiReachable } = useAuth();
   const { github, default_branch } = Route.useSearch();
   const githubConnected = Boolean(account?.github_install_id);
   const justConnected = github === 'connected' && githubConnected;
+
+  useEffect(() => {
+    if (!justConnected || !consumeOnboardingGitHubReturn()) return;
+    void navigate({ to: '/onboarding', replace: true });
+  }, [justConnected, navigate]);
 
   return (
     <div className="flex flex-col gap-6">
