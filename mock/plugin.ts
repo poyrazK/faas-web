@@ -1074,6 +1074,121 @@ route('GET', '/v1/apps/{slug}/streaming-cap', ({ params }) => {
   };
 });
 
+// CORS presets (ADR-129), the template catalog, and preview teardown.
+const CORS_PRESET_QUOTA = 10;
+type CorsPresetRow = (typeof db.corsPresets)[number];
+
+route('GET', '/v1/cors-presets', ({ query }) => {
+  const appId = query.get('app_id');
+  if (appId && !db.apps.some((a) => a.id === appId))
+    throw new Problem(404, 'not_found', 'no such app');
+  return { presets: appId ? db.corsPresets.filter((p) => p.app_id === appId) : db.corsPresets };
+});
+route('POST', '/v1/cors-presets', ({ body }) => {
+  if (process.env.MOCK_PLAN === 'free')
+    throw new Problem(
+      402,
+      'plan_cors_preset_not_allowed',
+      'the free plan does not include CORS presets; upgrade to Hobby or above.'
+    );
+  const name = String(body.name ?? '').trim();
+  const origins = Array.isArray(body.allow_origins) ? body.allow_origins.map(String) : [];
+  const methods = Array.isArray(body.allow_methods) ? body.allow_methods.map(String) : [];
+  const maxAge = Number(body.max_age_seconds);
+  if (
+    !name ||
+    name.length > 64 ||
+    origins.length === 0 ||
+    methods.length === 0 ||
+    !Number.isInteger(maxAge) ||
+    maxAge < 0 ||
+    maxAge > 86400
+  )
+    throw new Problem(
+      422,
+      'cors_preset_invalid',
+      'name 1..64, at least one allow_origin and allow_method, max_age 0..86400.'
+    );
+  if (body.allow_credentials === true && origins.includes('*'))
+    throw new Problem(
+      422,
+      'cors_wildcard_with_credentials',
+      'allow_credentials cannot be combined with a wildcard origin.'
+    );
+  const appId = typeof body.app_id === 'string' && body.app_id ? body.app_id : null;
+  if (appId && !db.apps.some((a) => a.id === appId))
+    throw new Problem(404, 'cors_preset_app_not_found', 'no such app');
+  if (db.corsPresets.length >= CORS_PRESET_QUOTA)
+    throw new Problem(
+      403,
+      'plan_cors_preset_quota_reached',
+      `at most ${CORS_PRESET_QUOTA} CORS presets on this plan.`
+    );
+  if (db.corsPresets.some((p) => p.name === name && (p.app_id ?? null) === appId))
+    throw new Problem(
+      409,
+      'cors_preset_name_conflict',
+      `a preset named "${name}" exists in this scope.`
+    );
+  const preset: CorsPresetRow = {
+    id: db.id(),
+    account_id: db.ACCOUNT_ID,
+    app_id: appId,
+    name,
+    description: typeof body.description === 'string' ? body.description : undefined,
+    allow_origins: origins,
+    allow_methods: methods,
+    allow_headers: Array.isArray(body.allow_headers) ? body.allow_headers.map(String) : [],
+    expose_headers: Array.isArray(body.expose_headers) ? body.expose_headers.map(String) : [],
+    allow_credentials: body.allow_credentials === true,
+    max_age_seconds: maxAge,
+    created_at: db.iso(0),
+    updated_at: db.iso(0),
+  };
+  db.corsPresets.push(preset);
+  return status(201, preset);
+});
+route('GET', '/v1/cors-presets/{id}', ({ params }) => {
+  const preset = db.corsPresets.find((p) => p.id === params.id);
+  if (!preset) throw new Problem(404, 'not_found', 'no such CORS preset');
+  return preset;
+});
+route('PATCH', '/v1/cors-presets/{id}', ({ params, body }) => {
+  const preset = db.corsPresets.find((p) => p.id === params.id);
+  if (!preset) throw new Problem(404, 'not_found', 'no such CORS preset');
+  if (Object.keys(body).length === 0)
+    throw new Problem(422, 'cors_preset_update_requires_field', 'at least one field is required.');
+  if (Array.isArray(body.allow_origins)) preset.allow_origins = body.allow_origins.map(String);
+  if (Array.isArray(body.allow_methods)) preset.allow_methods = body.allow_methods.map(String);
+  if (typeof body.allow_credentials === 'boolean')
+    preset.allow_credentials = body.allow_credentials;
+  if (typeof body.max_age_seconds === 'number') preset.max_age_seconds = body.max_age_seconds;
+  if (preset.allow_credentials && preset.allow_origins.includes('*'))
+    throw new Problem(422, 'cors_wildcard_with_credentials', 'credentials with a wildcard origin.');
+  preset.updated_at = db.iso(0);
+  return preset;
+});
+route('DELETE', '/v1/cors-presets/{id}', ({ params }) => {
+  const i = db.corsPresets.findIndex((p) => p.id === params.id);
+  if (i < 0) throw new Problem(404, 'not_found', 'no such CORS preset');
+  db.corsPresets.splice(i, 1);
+  return NO_CONTENT;
+});
+
+route('GET', '/v1/templates', () => db.templates);
+
+route('POST', '/v1/preview/{slug}/destroy', ({ params }) => {
+  const i = db.apps.findIndex((a) => a.slug === params.slug && /^pr-\d+-/.test(a.slug));
+  if (i < 0)
+    throw new Problem(
+      404,
+      'preview_not_found',
+      'the slug does not identify a preview app; use DELETE /v1/apps/{slug} to destroy a production app'
+    );
+  db.apps.splice(i, 1);
+  return NO_CONTENT;
+});
+
 route('GET', '/v1/apps/{slug}/webhooks', ({ params }) => listOf(db.webhooks, params.slug));
 route('POST', '/v1/apps/{slug}/webhooks', ({ params, body }) => {
   const a = app(params.slug);
@@ -2949,38 +3064,45 @@ route('GET', '/v1/deployments/{id}/secret-scan', () => ({
   findings: [],
   error: '',
 }));
-route('GET', '/v1/audit-events', () => ({
-  events: [
-    {
-      id: hex(12),
-      at: new Date(Date.now() - 600e3).toISOString(),
-      actor: 'demo@acme-corp.dev',
-      kind: 'session.signed_in',
-      subject: 'google-oauth',
-      severity: 'info',
-      data: {},
-    },
-    {
-      id: hex(12),
-      at: new Date(Date.now() - 86400e3).toISOString(),
-      actor: 'demo@acme-corp.dev',
-      kind: 'api_key.minted',
-      subject: 'ci-deploy',
-      severity: 'info',
-      data: {},
-    },
-    {
-      id: hex(12),
-      at: new Date(Date.now() - 2 * 86400e3).toISOString(),
-      actor: 'demo@acme-corp.dev',
-      kind: 'login.failed_password',
-      subject: '203.0.113.7',
-      severity: 'warn',
-      data: {},
-    },
-  ],
-  limit: 50,
-}));
+// Auth audit events (ADR-077 timeline). Generated once so `/{id}` can find
+// the row the list showed; ids are bigint-as-string like the API's.
+const AUTH_EVENTS = [
+  {
+    id: '1042',
+    at: new Date(Date.now() - 600e3).toISOString(),
+    actor: 'demo@acme-corp.dev',
+    kind: 'session.signed_in',
+    subject: 'google-oauth',
+    severity: 'info',
+    data: { method: 'google', ip: '203.0.113.9', user_agent: 'Mozilla/5.0' },
+  },
+  {
+    id: '1041',
+    at: new Date(Date.now() - 86400e3).toISOString(),
+    actor: 'demo@acme-corp.dev',
+    kind: 'api_key.minted',
+    subject: 'ci-deploy',
+    severity: 'info',
+    data: { scopes: ['deploy:write', 'read'], key_prefix: 'gk_ci_' },
+  },
+  {
+    id: '1040',
+    at: new Date(Date.now() - 2 * 86400e3).toISOString(),
+    actor: 'demo@acme-corp.dev',
+    kind: 'login.failed_password',
+    subject: '203.0.113.7',
+    severity: 'warn',
+    data: { attempts: 3, locked: false },
+  },
+];
+route('GET', '/v1/audit-events', () => ({ events: AUTH_EVENTS, limit: 50 }));
+route('GET', '/v1/audit-events/{id}', ({ params }) => {
+  if (!/^[0-9]+$/.test(params.id))
+    throw new Problem(400, 'validation_failed', 'id must be a positive integer.');
+  const event = AUTH_EVENTS.find((e) => e.id === params.id);
+  if (!event) throw new Problem(404, 'not_found', 'no such audit event');
+  return event;
+});
 
 // --- Project import (scan/apply). The dev mock cannot untar a real upload,
 // so the scan answers a canned Kubernetes-flavoured plan and apply echoes

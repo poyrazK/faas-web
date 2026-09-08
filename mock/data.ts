@@ -249,6 +249,23 @@ for (const app of apps) {
 }
 deployments.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
 
+// A pull-request preview of the first app, named the way githubd names them
+// (`pr-{number}-{parent}`), so the teardown action has a row to act on.
+apps.push({
+  ...apps[0],
+  id: id(),
+  slug: `pr-42-${apps[0].slug}`,
+  url: `https://pr-42-${apps[0].slug}.gregale.app`,
+  min_instances: 0,
+  status: 'active',
+});
+{
+  const preview = apps[apps.length - 1];
+  const source = deployments.find((d) => d.app_id === apps[0].id && d.status === 'live');
+  if (source) deployments.push({ ...source, id: id(), app_id: preview.id });
+  deployments.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+}
+
 // A canary mid-rollout and a queued deployment, so the deployment controls
 // (advance, reorder) have something to act on in dev.
 {
@@ -562,6 +579,108 @@ export const deploymentOpenAPIDocs = new Map<string, Record<string, unknown>>(
       { ...SAMPLE_OPENAPI, info: { title: 'api-gateway', version: '2.4.0-live' } },
     ])
 );
+
+// CORS presets (ADR-129): one account-wide, one scoped to the first app.
+export const corsPresets: S['CorsPresetResponse'][] = [
+  {
+    id: id(),
+    account_id: ACCOUNT_ID,
+    app_id: null,
+    name: 'web-clients',
+    description: 'The marketing site and the console.',
+    allow_origins: ['https://acme.example', 'https://app.acme.example'],
+    allow_methods: ['GET', 'POST', 'OPTIONS'],
+    allow_headers: ['Authorization', 'Content-Type'],
+    expose_headers: [],
+    allow_credentials: true,
+    max_age_seconds: 600,
+    created_at: iso(20 * D),
+    updated_at: iso(20 * D),
+  },
+  {
+    id: id(),
+    account_id: ACCOUNT_ID,
+    app_id: apps[0].id,
+    name: 'public-read',
+    allow_origins: ['*'],
+    allow_methods: ['GET', 'HEAD'],
+    allow_headers: [],
+    expose_headers: ['X-Request-Id'],
+    allow_credentials: false,
+    max_age_seconds: 3600,
+    created_at: iso(5 * D),
+    updated_at: iso(5 * D),
+  },
+];
+
+// The starter catalog, mirroring cmd/gregale/templates in the API.
+export const templates: S['TemplateView'][] = [
+  {
+    name: 'hello-node',
+    category: 'hello',
+    description: 'minimal Node.js HTTP server — first-touch smoke test',
+  },
+  {
+    name: 'hello-python',
+    category: 'hello',
+    description: 'minimal Python HTTP server — first-touch smoke test',
+  },
+  {
+    name: 'hello-go',
+    category: 'hello',
+    description: 'minimal Go HTTP server — first-touch smoke test',
+  },
+  {
+    name: 'function-node',
+    category: 'function',
+    description: 'the Node.js function contract: one handler, one envelope',
+  },
+  {
+    name: 'function-python',
+    category: 'function',
+    description: 'the Python function contract: one handler, one envelope',
+  },
+  {
+    name: 'function-go',
+    category: 'function',
+    description: 'the Go function contract: one handler, one envelope',
+  },
+  {
+    name: 'cron-example',
+    category: 'stateless-contract',
+    description: 'a handler wired to a cron trigger, with idempotent runs',
+  },
+  {
+    name: 'cron-worker',
+    category: 'stateless-contract',
+    description: 'scheduled job worker with retries — bring your own schedule',
+  },
+  {
+    name: 'webhook-receiver',
+    category: 'stateless-contract',
+    description: 'verify a signature, acknowledge fast, hand off to a queue',
+  },
+  {
+    name: 's3-uploader',
+    category: 'stateless-contract',
+    description: 'signed-URL uploads into a bucket, no credentials in the browser',
+  },
+  {
+    name: 'slack-bot',
+    category: 'stateless-contract',
+    description: 'slash commands and interactive messages over the events API',
+  },
+  {
+    name: 'rest-api-postgres',
+    category: 'stateless-contract',
+    description: 'a CRUD API on managed PostgreSQL with migrations',
+  },
+  {
+    name: 'ai-chat',
+    category: 'ai',
+    description: 'streaming chat over a model provider with per-request budgets',
+  },
+];
 
 export const webhooks = new Map<string, S['AppWebhookResponse'][]>(
   apps.map((a) => [
