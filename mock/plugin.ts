@@ -535,7 +535,9 @@ route('POST', '/v1/apps/{slug}/webhooks', ({ params, body }) => {
     account_id: db.ACCOUNT_ID,
     target_url: url,
     webhook_secret_sealed_masked: '***',
-    event_filter: Array.isArray(body.event_filter) ? (body.event_filter as string[]) : [],
+    event_filter: Array.isArray(body.event_filter)
+      ? (body.event_filter as (typeof list)[number]['event_filter'])
+      : [],
     retry_policy: (body.retry_policy ?? 'default') as (typeof list)[number]['retry_policy'],
     enabled: body.enabled !== false,
     created_at: db.iso(0),
@@ -613,6 +615,187 @@ route('POST', '/v1/deployments/{id}/retry', ({ params, body }) => {
   const copy = { ...d, id: db.id(), status: 'building', created_at: new Date().toISOString() };
   db.deployments.unshift(copy);
   return copy;
+});
+
+// Deployment control (ADR-117 stages, ADR-122 canary + audit + preview URL,
+// ADR-124 queue controls). MOCK_PLAN=free reproduces the plan gates.
+const STAGE_ORDER = [
+  'source_download',
+  'dependency_restore',
+  'image_build',
+  'security_scan',
+  'snapshot_prepare',
+  'readiness',
+] as const;
+const STAGE_MS = [1800, 9400, 41000, 6200, 3100, 2500];
+const PREVIEW_ALIVE = new Set(['pending', 'building', 'imaging', 'snapshotting', 'live']);
+const CANARY_LADDER: Record<string, number[]> = {
+  slow: [5, 10, 25, 50, 100],
+  balanced: [10, 50, 100],
+  aggressive: [25, 100],
+  '1-10-50-100': [1, 10, 50, 100],
+  none: [100],
+};
+const queueGated = process.env.MOCK_PLAN === 'free';
+
+function gateQueueControls() {
+  if (queueGated) {
+    throw new Problem(
+      402,
+      'plan_reorder_disabled',
+      "the free plan doesn't unlock deployment queue controls; upgrade to Hobby or higher."
+    );
+  }
+}
+
+function deploymentById(id: string) {
+  const d = db.deployments.find((x) => x.id === id);
+  if (!d) throw new Problem(404, 'not_found', 'no such deployment');
+  return d;
+}
+
+route('GET', '/v1/deployments/{id}/stages', ({ params }) => {
+  const d = deploymentById(params.id);
+  const started = Date.parse(d.created_at);
+  const at = (i: number) => STAGE_MS.slice(0, i).reduce((sum, ms) => sum + ms, 0);
+  const row = (i: number, stageStatus: 'completed' | 'failed', reason?: string) => ({
+    name: STAGE_ORDER[i],
+    started_at: new Date(started + at(i)).toISOString(),
+    ended_at: new Date(started + at(i + 1)).toISOString(),
+    duration_ms: STAGE_MS[i],
+    status: stageStatus,
+    ...(reason ? { reason } : {}),
+  });
+  if (d.status === 'pending') return { history: [] };
+  if (d.status === 'building')
+    return {
+      current: 'image_build',
+      current_started_at: new Date(started + at(2)).toISOString(),
+      history: [row(0, 'completed'), row(1, 'completed')],
+    };
+  if (d.status === 'failed' || d.status === 'cancelled')
+    return {
+      history: [
+        row(0, 'completed'),
+        row(1, 'completed'),
+        row(2, 'failed', d.error ?? 'build failed'),
+      ],
+    };
+  return { history: STAGE_ORDER.map((_, i) => row(i, 'completed')) };
+});
+
+route('GET', '/v1/deployments/{id}/audit', ({ params, query }) => {
+  const d = deploymentById(params.id);
+  const limit = Math.min(500, Math.max(1, Number(query.get('limit') ?? 50) || 50));
+  const items: Array<{ at: string; kind: string; actor: string; data?: unknown }> = [];
+  if (d.canary_total_steps)
+    items.push({
+      at: d.canary_step_started_at ?? d.created_at,
+      kind: 'deploy.traffic_changed',
+      actor: 'canary',
+      data: { step: d.canary_step, traffic_percent: d.traffic_percent },
+    });
+  if (d.status === 'live' || d.status === 'superseded')
+    items.push({
+      at: d.created_at,
+      kind: 'deploy.traffic_changed',
+      actor: 'system',
+      data: { from: 0, to: d.traffic_percent ?? 100 },
+    });
+  items.push({ at: d.created_at, kind: 'deploy.created', actor: d.deployed_via ?? 'cli' });
+  return { items: items.slice(0, limit), limit };
+});
+
+route('GET', '/v1/deployments/{id}/url', ({ params }) => {
+  const d = deploymentById(params.id);
+  const a = db.apps.find((x) => x.id === d.app_id);
+  const siblings = db.deployments
+    .filter((x) => x.app_id === d.app_id)
+    .sort((x, y) => Date.parse(x.created_at) - Date.parse(y.created_at));
+  const ordinal = siblings.findIndex((x) => x.id === d.id) + 1;
+  const alive = PREVIEW_ALIVE.has(d.status);
+  const host = alive && a ? `deploy-${ordinal}.${a.slug}.gregale.dev` : '';
+  return {
+    deployment_id: d.id,
+    app_id: d.app_id,
+    host,
+    url: host ? `https://${host}` : '',
+    alive,
+    last_checked_at: new Date().toISOString(),
+  };
+});
+
+route('POST', '/v1/deployments/{id}/canary/advance', ({ params, body }) => {
+  if (queueGated)
+    throw new Problem(
+      403,
+      'plan_traffic_split_not_allowed',
+      'canary rollouts need the Pro or Scale plan.'
+    );
+  const d = deploymentById(params.id);
+  const total = d.canary_total_steps ?? 0;
+  const step = d.canary_step ?? 0;
+  if (d.rollout_state !== 'rolling_out' || total === 0 || step >= total)
+    throw new Problem(409, 'canary_step_conflict', 'deployment is not mid-rollout.');
+  if (Number(body.expected_step) !== step)
+    throw new Problem(
+      409,
+      'canary_step_conflict',
+      `expected step ${step}, got ${String(body.expected_step)}.`
+    );
+  const ladder = CANARY_LADDER[d.canary_preset ?? 'balanced'] ?? CANARY_LADDER.balanced;
+  const next = step + 1;
+  d.canary_step = next;
+  d.canary_step_started_at = new Date().toISOString();
+  d.traffic_percent = ladder[Math.min(next, ladder.length) - 1] ?? 100;
+  if (next >= total) {
+    d.rollout_state = 'complete';
+    d.rollout_completed_at = new Date().toISOString();
+    d.traffic_percent = 100;
+  }
+  return { deployment: d, audit_id: db.id() };
+});
+
+route('POST', '/v1/deployments/{id}/reorder', ({ params, body }) => {
+  gateQueueControls();
+  const d = deploymentById(params.id);
+  const priority = Number(body.priority);
+  if (!Number.isInteger(priority))
+    throw new Problem(400, 'validation_failed', 'body must be {"priority": <int in [0,1000]>}');
+  if (d.status !== 'pending')
+    throw new Problem(
+      409,
+      'deployment_reorder_not_pending',
+      'deployment has left the pending queue.'
+    );
+  if (priority < 0 || priority > 1000)
+    throw new Problem(422, 'deployment_reorder_priority_invalid', 'priority must be in [0,1000].');
+  return { id: d.id, priority };
+});
+
+route('POST', '/v1/apps/{slug}/deployments/clear-obsolete', ({ params, body }) => {
+  gateQueueControls();
+  const a = app(params.slug);
+  const olderThan =
+    typeof body.older_than === 'string' && body.older_than ? body.older_than : '168h';
+  const hours = /^(\d+)h$/.exec(olderThan);
+  if (!hours)
+    throw new Problem(
+      400,
+      'validation_failed',
+      'older_than must be a Go duration in hours, e.g. 168h'
+    );
+  const cutoff = Date.now() - Number(hours[1]) * 3_600_000;
+  const obsolete = new Set(['superseded', 'failed', 'cancelled']);
+  let count = 0;
+  for (let i = db.deployments.length - 1; i >= 0; i--) {
+    const d = db.deployments[i];
+    if (d.app_id === a.id && obsolete.has(d.status) && Date.parse(d.created_at) < cutoff) {
+      db.deployments.splice(i, 1);
+      count++;
+    }
+  }
+  return { app_slug: a.slug, count, older_than: olderThan };
 });
 
 route('GET', '/v1/apps/{slug}/queues/state', ({ params }) => db.queueState(app(params.slug)));
@@ -1385,6 +1568,8 @@ route('POST', '/v1/crons', ({ body }) => {
     schedule,
     path: String(body.path ?? '/'),
     enabled: body.enabled !== false,
+    timezone: String(body.timezone ?? 'UTC'),
+    skip_if_running: body.skip_if_running === true,
     created_at: db.iso(0),
     last_fired_at: null,
   };

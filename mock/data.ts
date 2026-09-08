@@ -50,6 +50,7 @@ export const ORG_ID = id();
 export const account: S['AccountResponse'] = {
   id: ACCOUNT_ID,
   email: 'design@gregale.dev',
+  email_verified: true,
   plan: 'pro',
   status: 'active',
   limits: {
@@ -57,11 +58,14 @@ export const account: S['AccountResponse'] = {
     ram_mb: 4096,
     max_concurrency: 64,
     deployed_apps: 25,
+    developer_apps: 3,
     included_gb_hours: 2000,
     app_layer_max_mb: 2048,
+    ephemeral_disk_max_mb: 2048,
   },
   usage_gb_hours: 1432.5,
   app_count: 6,
+  developer_app_count: 0,
   github_install_id: '48213377',
 };
 
@@ -110,6 +114,25 @@ export const apps: App[] = APP_SEEDS.map((a, i) => ({
   type: a.type,
   runtime: a.runtime,
   ram_mb: a.ram,
+  cpu_millicores: 500,
+  configured_resources: { memory_mb: a.ram, cpu_millicores: 500 },
+  effective_limits: {
+    memory_limit_mb: a.ram,
+    plan_memory_max_mb: 4096,
+    ephemeral_disk_max_mb: 2048,
+    guest_vcpus: 2,
+    cpu_limit_millicores: 500,
+    plan_cpu_max_millicores: 1000,
+    cpu_weight: 100,
+    max_instances: a.type === 'app' ? 8 : 4,
+    concurrency_per_instance: 5,
+    app_request_rate_rps: 200,
+    app_request_burst: 400,
+    account_request_rate_rpm: 60000,
+    request_budget_ms: 30000,
+    request_budget_max_ms: 300000,
+    response_write_timeout_s: 60,
+  },
   max_concurrency: a.type === 'app' ? 8 : 4,
   concurrency_per_vm: 5,
   idle_timeout_s: 60,
@@ -123,6 +146,8 @@ export const apps: App[] = APP_SEEDS.map((a, i) => ({
         ? ['python', '-m', 'app']
         : ['/app/bin/server'],
     port: 8080,
+    head_wakes: false,
+    crawler_policy: 'wake',
     healthz: '/healthz',
   },
   autoscale_target_rps: 50,
@@ -223,6 +248,34 @@ for (const app of apps) {
   }
 }
 deployments.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+
+// A canary mid-rollout and a queued deployment, so the deployment controls
+// (advance, reorder) have something to act on in dev.
+{
+  const canary = deployments.find((d) => d.app_id === apps[0].id && d.status === 'live');
+  if (canary) {
+    Object.assign(canary, {
+      canary_preset: 'balanced',
+      canary_step: 1,
+      canary_total_steps: 3,
+      canary_step_started_at: iso(20 * 60 * 1000),
+      rollout_state: 'rolling_out',
+      rollout_started_at: iso(45 * 60 * 1000),
+      traffic_percent: 10,
+    } satisfies Partial<Deployment>);
+  }
+  const template = deployments.find((d) => d.app_id === apps[1].id);
+  if (template) {
+    deployments.unshift({
+      ...template,
+      id: id(),
+      status: 'pending',
+      error: null,
+      error_code: null,
+      created_at: iso(2 * 60 * 1000),
+    });
+  }
+}
 builds.sort((a, b) => Date.parse(b.enqueued_at) - Date.parse(a.enqueued_at));
 
 // --- Metrics -----------------------------------------------------------------
@@ -383,16 +436,16 @@ export const webhooks = new Map<string, S['AppWebhookResponse'][]>(
     [
       {
         url: 'https://ops.example.com/hooks/gregale',
-        filter: ['deployment.succeeded', 'deployment.failed'],
+        filter: ['app.deployed', 'deployment.failed'],
       },
-      { url: 'https://api.pagerduty.com/v2/enqueue', filter: ['alert.firing'] },
-    ].map((w) => ({
+      { url: 'https://api.pagerduty.com/v2/enqueue', filter: ['error.new'] },
+    ].map((w): S['AppWebhookResponse'] => ({
       id: id(),
       app_id: a.id,
       account_id: ACCOUNT_ID,
       target_url: w.url,
       webhook_secret_sealed_masked: '***' as const,
-      event_filter: w.filter,
+      event_filter: w.filter as S['AppWebhookResponse']['event_filter'],
       retry_policy: 'default' as const,
       enabled: true,
       ...stamp(),
@@ -421,6 +474,8 @@ export const crons: S['CronResponse'][] = [
     schedule: '0 2 * * *',
     path: '/run',
     enabled: true,
+    timezone: 'UTC',
+    skip_if_running: false,
     created_at: iso(35 * D),
     last_fired_at: iso(16 * H),
   },
@@ -430,6 +485,8 @@ export const crons: S['CronResponse'][] = [
     schedule: '*/15 * * * *',
     path: '/reconcile',
     enabled: true,
+    timezone: 'UTC',
+    skip_if_running: false,
     created_at: iso(28 * D),
     last_fired_at: iso(9 * 60_000),
   },
@@ -439,6 +496,8 @@ export const crons: S['CronResponse'][] = [
     schedule: '0 */6 * * *',
     path: '/reindex',
     enabled: false,
+    timezone: 'UTC',
+    skip_if_running: false,
     created_at: iso(12 * D),
     last_fired_at: iso(3 * D),
   },
@@ -448,6 +507,8 @@ export const crons: S['CronResponse'][] = [
     schedule: '30 4 * * 1',
     path: '/purge-cache',
     enabled: true,
+    timezone: 'UTC',
+    skip_if_running: false,
     created_at: iso(20 * D),
     last_fired_at: iso(2 * D),
   },
