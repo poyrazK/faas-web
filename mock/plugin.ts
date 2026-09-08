@@ -535,7 +535,9 @@ route('POST', '/v1/apps/{slug}/webhooks', ({ params, body }) => {
     account_id: db.ACCOUNT_ID,
     target_url: url,
     webhook_secret_sealed_masked: '***',
-    event_filter: Array.isArray(body.event_filter) ? (body.event_filter as string[]) : [],
+    event_filter: Array.isArray(body.event_filter)
+      ? (body.event_filter as (typeof list)[number]['event_filter'])
+      : [],
     retry_policy: (body.retry_policy ?? 'default') as (typeof list)[number]['retry_policy'],
     enabled: body.enabled !== false,
     created_at: db.iso(0),
@@ -1385,6 +1387,8 @@ route('POST', '/v1/crons', ({ body }) => {
     schedule,
     path: String(body.path ?? '/'),
     enabled: body.enabled !== false,
+    timezone: String(body.timezone ?? 'UTC'),
+    skip_if_running: body.skip_if_running === true,
     created_at: db.iso(0),
     last_fired_at: null,
   };
