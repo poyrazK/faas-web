@@ -48,6 +48,8 @@ vi.mock('@/lib/api/queries', () => ({
   useBindRepoFor: () => ({ mutateAsync: mocks.bindRepo }),
   useDeployFromRefFor: () => ({ mutateAsync: mocks.deployFromRef }),
   useUpdateAppFor: () => ({ mutateAsync: mocks.updateApp }),
+  // The wizard reads the starter catalog to prefill from a `?template=` name.
+  useTemplates: () => ({ data: [], isPending: false, error: null }),
 }));
 
 async function submitGitApp(onDeploymentAccepted = vi.fn()) {
