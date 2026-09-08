@@ -10,7 +10,9 @@ export const Route = createFileRoute('/dashboard/openapi')({
 });
 
 export function OpenAPIBody({ slug }: { slug: string }) {
-  return <OpenAPIImport slug={slug} />;
+  // Keyed on the app: a pasted document, its preview and the chosen
+  // deployment all belong to one app and must not survive a switch.
+  return <OpenAPIImport key={slug} slug={slug} />;
 }
 
 function OpenAPIPage() {
