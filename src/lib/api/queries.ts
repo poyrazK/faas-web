@@ -2625,3 +2625,73 @@ export function useAppInstances(slug: string) {
     enabled: Boolean(slug),
   });
 }
+
+/* ------------------------------------------------------------------ *
+ * Small closures: CORS presets, the template catalog, one audit event,
+ * preview teardown
+ * ------------------------------------------------------------------ */
+
+export type CorsPreset = components['schemas']['CorsPresetResponse'];
+export type TemplateView = components['schemas']['TemplateView'];
+export type AuditEvent = components['schemas']['AuditEventResponse'];
+
+const corsPresetsKey = ['cors-presets'] as const;
+
+/** Account-wide presets plus, when `appId` is given, that app's scoped ones. */
+export function useCorsPresets(appId?: string) {
+  return useQuery({
+    queryKey: [...corsPresetsKey, appId ?? 'all'],
+    queryFn: () =>
+      unwrap(api.GET('/v1/cors-presets', { params: { query: appId ? { app_id: appId } : {} } })),
+  });
+}
+
+export function useCreateCorsPreset() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: components['schemas']['CreateCorsPresetRequest']) =>
+      unwrap(api.POST('/v1/cors-presets', { body })),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: corsPresetsKey }),
+  });
+}
+
+export function useDeleteCorsPreset() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      unwrap(api.DELETE('/v1/cors-presets/{id}', { params: { path: { id } } })),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: corsPresetsKey }),
+  });
+}
+
+/** The 13-entry starter catalog the CLI's `init --template` reads from the same source. */
+export function useTemplates() {
+  return useQuery({
+    queryKey: ['templates'],
+    queryFn: () => unwrap(api.GET('/v1/templates', {})),
+    staleTime: 5 * 60_000,
+  });
+}
+
+/** One auth audit event; cross-account ids read as `not_found`. */
+export function useAuditEvent(id: string) {
+  return useQuery({
+    queryKey: ['audit-events', id],
+    queryFn: () => unwrap(api.GET('/v1/audit-events/{id}', { params: { path: { id } } })),
+    enabled: Boolean(id),
+  });
+}
+
+/**
+ * Tear down a preview app. Distinct from deleting an app: the row is stamped
+ * `torn_down` so the janitor skips it, and the audit kind differs. A slug that
+ * is not a preview answers `404 preview_not_found`.
+ */
+export function useDestroyPreview() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (slug: string) =>
+      unwrap(api.POST('/v1/preview/{slug}/destroy', { params: { path: { slug } } })),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.apps }),
+  });
+}
