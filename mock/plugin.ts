@@ -752,6 +752,138 @@ route('DELETE', '/v1/apps/{slug}/tenant-surfaces/{id}/hostnames/{hostname}', ({ 
   return NO_CONTENT;
 });
 
+// OpenAPI import (ADR-126). Limits are abuse caps, not plan tiers; the
+// per-deployment discovery doc (ADR-122) is the paid-plan surface.
+const OPENAPI_MAX_ENDPOINTS = 50;
+const OPENAPI_MAX_BYTES = 256 * 1024;
+const OPENAPI_METHODS = ['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace'];
+
+function validateOpenAPIDoc(body: Record<string, unknown>) {
+  if (Object.keys(body).length === 0) throw new Problem(400, 'empty_body', 'Body is zero bytes.');
+  const bytes = Buffer.byteLength(JSON.stringify(body));
+  if (bytes > OPENAPI_MAX_BYTES)
+    throw new Problem(
+      413,
+      'openapi_import_too_large',
+      `Document is ${bytes} bytes; the cap is 256 KiB.`
+    );
+  const version = body.openapi;
+  const info = body.info;
+  const paths = body.paths;
+  if (
+    typeof version !== 'string' ||
+    !/^3\.[01]\.\d+$/.test(version) ||
+    typeof info !== 'object' ||
+    info === null ||
+    typeof paths !== 'object' ||
+    paths === null
+  )
+    throw new Problem(
+      422,
+      'openapi_import_invalid',
+      'An OpenAPI 3.0 or 3.1 document needs openapi, info and paths.'
+    );
+  const endpoints: { path: string; methods: string[] }[] = [];
+  for (const [path, item] of Object.entries(paths as Record<string, unknown>)) {
+    const methods =
+      typeof item === 'object' && item !== null
+        ? Object.keys(item).filter((k) => OPENAPI_METHODS.includes(k))
+        : [];
+    endpoints.push({ path, methods });
+  }
+  const count = endpoints.reduce((n, e) => n + e.methods.length, 0);
+  if (count > OPENAPI_MAX_ENDPOINTS)
+    throw new Problem(
+      422,
+      'openapi_import_too_many_endpoints',
+      `${count} endpoints; the cap is ${OPENAPI_MAX_ENDPOINTS}.`
+    );
+  return { version, endpoints, count, bytes };
+}
+
+route('GET', '/v1/apps/{slug}/openapi', ({ params, query, res }) => {
+  const a = app(params.slug);
+  const source = query.get('source') ?? 'manual_import';
+  if (source === 'dry_run')
+    throw new Problem(405, 'dry_run_requires_post', 'dry-run is POST-only.');
+  if (source !== 'manual_import' && source !== 'auto')
+    throw new Problem(400, 'invalid_source', 'source must be manual_import or auto.');
+  const doc = db.appOpenAPIDocs.get(a.slug);
+  if (source === 'manual_import') {
+    if (!doc) throw new Problem(404, 'not_found', 'No imported OpenAPI document for this app.');
+    res.setHeader('X-OpenAPI-Doc-Source', 'manual_import');
+    return doc;
+  }
+  // auto: the import merged with the observed routes and the edge rules.
+  const rules = db.edgeRules.filter((r) => r.app_id === a.id);
+  const merged: Record<string, unknown> = doc
+    ? structuredClone(doc)
+    : { openapi: '3.1.0', info: { title: a.slug, version: 'auto' }, paths: {} };
+  const paths = merged.paths as Record<string, Record<string, unknown>>;
+  for (const r of rules) {
+    const item = (paths[r.match_path] ??= {});
+    const existing = Array.isArray(item['x-faas-edge-rules']) ? item['x-faas-edge-rules'] : [];
+    item['x-faas-edge-rules'] = [...existing, { id: r.id, kind: r.kind, priority: r.priority }];
+  }
+  res.setHeader('X-OpenAPI-Doc-Source', doc ? 'auto' : 'empty: no_import_no_rules');
+  res.setHeader('X-Faas-Cache', 'miss');
+  res.setHeader('X-OpenAPI-Doc-Annotations-Count', String(rules.length));
+  return merged;
+});
+route('POST', '/v1/apps/{slug}/openapi', ({ params, body }) => {
+  const a = app(params.slug);
+  const { version, count, bytes } = validateOpenAPIDoc(body);
+  db.appOpenAPIDocs.set(a.slug, body);
+  return {
+    app_id: a.id,
+    source: 'manual_import',
+    openapi_version: version,
+    endpoint_count: count,
+    byte_size: bytes,
+    captured_at: db.iso(0),
+    updated_at: db.iso(0),
+  };
+});
+route('DELETE', '/v1/apps/{slug}/openapi', ({ params }) => {
+  db.appOpenAPIDocs.delete(app(params.slug).slug);
+  return NO_CONTENT;
+});
+route('POST', '/v1/apps/{slug}/openapi/dry-run', ({ params, body }) => {
+  const a = app(params.slug);
+  const { version, endpoints, count } = validateOpenAPIDoc(body);
+  const covered = new Set(
+    db.edgeRules.filter((r) => r.app_id === a.id && r.kind === 'validate').map((r) => r.match_path)
+  );
+  const suggestions = endpoints
+    .filter((e) => e.methods.length > 0 && !covered.has(e.path))
+    .map((e) => ({
+      path: e.path,
+      methods: e.methods,
+      kind: 'validate',
+      action: {
+        schema: { type: 'object' },
+        content_types: ['application/json'],
+        validate_mode: 'observe',
+      },
+    }));
+  return { suggestions, openapi_version: version, endpoint_count: count };
+});
+route('GET', '/v1/apps/{slug}/deployments/{deployment}/openapi', ({ params, res }) => {
+  const a = app(params.slug);
+  if (db.account.plan === 'free' || process.env.MOCK_PLAN === 'free')
+    throw new Problem(
+      402,
+      'openapi_docs_not_allowed',
+      'endpoint discovery needs the Hobby plan or higher.'
+    );
+  const d = db.deployments.find((x) => x.id === params.deployment && x.app_id === a.id);
+  const doc = d && db.deploymentOpenAPIDocs.get(d.id);
+  if (!doc) throw new Problem(404, 'not_found', 'No document captured for this deployment.');
+  res.setHeader('X-OpenAPI-Doc-Source', 'cold_boot');
+  res.setHeader('Cache-Control', 'private, max-age=300');
+  return doc;
+});
+
 route('GET', '/v1/apps/{slug}/webhooks', ({ params }) => listOf(db.webhooks, params.slug));
 route('POST', '/v1/apps/{slug}/webhooks', ({ params, body }) => {
   const a = app(params.slug);
