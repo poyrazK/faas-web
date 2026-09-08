@@ -9,7 +9,6 @@ import {
   useReorderDeployment,
   type Deployment,
 } from '@/lib/api/queries';
-import { deploymentPhase } from '@/lib/deployment-status';
 
 /**
  * The write half of deployment control (ADR-122 canary, ADR-124 queue).
@@ -101,7 +100,9 @@ export function ReorderDeploymentControl({ deployment }: { deployment: Deploymen
   const { toast } = useToast();
   const reorder = useReorderDeployment();
   const [priority, setPriority] = useState<number>(100);
-  if (deploymentPhase(deployment.status) !== 'queued') return null;
+  // The API accepts a reorder only while the row is literally `pending`;
+  // `deploymentPhase` answers 'queued' for any status it does not know.
+  if (deployment.status !== 'pending') return null;
 
   const onApply = async () => {
     try {
