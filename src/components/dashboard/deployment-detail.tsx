@@ -12,6 +12,8 @@ import { useLogStream } from '@/lib/api/logs';
 import { useDeployment } from '@/lib/api/queries';
 import { isDeploymentTerminal } from '@/lib/deployment-status';
 import { formatRelative } from '@/lib/mock-data';
+import { AdvanceCanaryButton, ReorderDeploymentControl } from './deployment-actions';
+import { DeploymentAudit, DeploymentPreviewUrl, DeploymentStages } from './deployment-insights';
 import { LogView } from './log-view';
 
 const STATUS_COLOR: Record<string, string> = {
@@ -98,7 +100,13 @@ export function DeploymentDetailPanel({
                 Updating
               </span>
             )}
+            <span className="ml-auto flex flex-wrap items-center gap-2">
+              <DeploymentPreviewUrl deploymentId={deployment.id} />
+              <AdvanceCanaryButton deployment={deployment} />
+            </span>
           </div>
+
+          <ReorderDeploymentControl deployment={deployment} />
 
           <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
             {[
@@ -112,6 +120,16 @@ export function DeploymentDetailPanel({
               ['Finished', timing?.finishedAt ? relativeTime(timing.finishedAt) : '—'],
               ['Build duration', durationLabel(timing?.durationSeconds)],
               ['Error code', deployment.error_code ?? '—'],
+              [
+                'Canary',
+                deployment.canary_total_steps
+                  ? `${deployment.canary_preset ?? ''} step ${deployment.canary_step ?? 0}/${deployment.canary_total_steps} · ${deployment.rollout_state ?? ''}`.trim()
+                  : '—',
+              ],
+              [
+                'Traffic',
+                deployment.traffic_percent != null ? `${deployment.traffic_percent}%` : '—',
+              ],
             ].map(([label, value]) => (
               <div key={label} className="flex min-w-0 flex-col gap-0.5">
                 <dt className="label-mono text-muted-foreground">{label}</dt>
@@ -151,6 +169,9 @@ export function DeploymentDetailPanel({
               </p>
             )}
           </div>
+
+          <DeploymentStages deploymentId={deployment.id} />
+          <DeploymentAudit deploymentId={deployment.id} />
         </div>
       )}
     </Panel>

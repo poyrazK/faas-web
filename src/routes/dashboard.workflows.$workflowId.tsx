@@ -49,6 +49,7 @@ import { Swap } from '@/components/dashboard/motion';
 import { RepoPicker } from '@/components/dashboard/repo-picker';
 import { DeploymentProgress } from '@/components/dashboard/deployment-progress';
 import { DeploymentDetailPanel } from '@/components/dashboard/deployment-detail';
+import { ClearObsoleteDeploymentsButton } from '@/components/dashboard/deployment-actions';
 import { Pill } from '@/components/dashboard/resource-table';
 import { Modal } from '@/components/ui/modal';
 import { pageHead, useDocumentTitle } from '@/lib/seo';
@@ -521,7 +522,11 @@ function FunctionDetailPage() {
 
             {tab === 'Deployments' && (
               <>
-                <Panel title="Deployment history" description={`${deployments.length} deployments`}>
+                <Panel
+                  title="Deployment history"
+                  description={`${deployments.length} deployments`}
+                  actions={<ClearObsoleteDeploymentsButton slug={fn.id} />}
+                >
                   {deployments.length === 0 ? (
                     <EmptyState message="No deployments yet. Deploy a Git ref or use the CLI." />
                   ) : (
