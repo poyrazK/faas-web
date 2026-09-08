@@ -3,6 +3,7 @@ import {
   Activity,
   Antenna,
   Coins,
+  Database,
   CreditCard,
   Cube,
   GitFork as WorkflowIcon,
@@ -73,6 +74,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: '/dashboard/domains', label: 'Domains', icon: Globe },
       { to: '/dashboard/edge-rules', label: 'Edge Rules', icon: Shuffle },
       { to: '/dashboard/storage', label: 'Storage', icon: HardDrive },
+      { to: '/dashboard/postgres', label: 'Postgres', icon: Database },
     ],
   },
   {
