@@ -22,6 +22,7 @@ const PLAN_GATE_CODES = new Set([
   'plan_feature_gated',
   'plan_alert_rules_not_allowed',
   'plan_mirror_not_allowed',
+  'tenant_surfaces_not_allowed',
 ]);
 
 export function isPlanGate(error: unknown): boolean {

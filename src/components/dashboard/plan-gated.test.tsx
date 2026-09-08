@@ -27,6 +27,7 @@ describe('isPlanGate', () => {
       'plan_feature_gated',
       'plan_alert_rules_not_allowed',
       'plan_mirror_not_allowed',
+      'tenant_surfaces_not_allowed',
     ]) {
       expect(isPlanGate(new ApiError({ status: 402, code, title: 'Gated' }))).toBe(true);
     }
