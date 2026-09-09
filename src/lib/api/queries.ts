@@ -1,4 +1,5 @@
 import {
+  useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
@@ -738,6 +739,26 @@ export function useDeployments(
     queryKey: [...keys.deployments, limit],
     queryFn: () => unwrap(api.GET('/v1/deployments', { params: { query: { limit } } })),
     ...options,
+  });
+}
+
+/**
+ * Account-wide deployment history, paged newest-first by the API cursor.
+ * Overview pages keep using the first-page `useDeployments` query; the full
+ * history page opts into this query so it can load older releases on demand.
+ */
+export function useInfiniteDeployments(limit = 50) {
+  return useInfiniteQuery({
+    queryKey: [...keys.deployments, 'history', limit],
+    queryFn: ({ pageParam }) =>
+      unwrap(
+        api.GET('/v1/deployments', {
+          params: { query: { limit, ...(pageParam ? { before: pageParam } : {}) } },
+        })
+      ),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.next_before ?? undefined,
+    retry: retryPolicy,
   });
 }
 
