@@ -15,7 +15,7 @@ import {
   UnreachableState,
   queryPhase,
 } from '@/components/dashboard/primitives';
-import { formatCompact, formatMs, formatRelative } from '@/lib/mock-data';
+import { formatCompact, formatMs } from '@/lib/mock-data';
 import {
   useAppMetrics,
   useBindRepo,
@@ -57,8 +57,8 @@ import { Swap } from '@/components/dashboard/motion';
 import { RepoPicker } from '@/components/dashboard/repo-picker';
 import { DeploymentProgress } from '@/components/dashboard/deployment-progress';
 import { DeploymentDetailPanel } from '@/components/dashboard/deployment-detail';
+import { DeploymentHistoryPanel } from '@/components/dashboard/deployment-history';
 import { ClearObsoleteDeploymentsButton } from '@/components/dashboard/deployment-actions';
-import { Pill } from '@/components/dashboard/resource-table';
 import { Modal } from '@/components/ui/modal';
 import { pageHead, useDocumentTitle } from '@/lib/seo';
 import { PlanGate } from '@/components/dashboard/plan-gate';
@@ -231,9 +231,6 @@ function FunctionDetailPage() {
   }
 
   const deployments = deploymentsFor(fn.id);
-  const selectedDeployment = selectedDeploymentId
-    ? deployments.find((dep) => dep.id === selectedDeploymentId)
-    : undefined;
   const hasRunnable = hasRunnableDeployment(deployments);
   const canRollback = hasRollbackTarget(deployments);
   const isDeploying =
@@ -538,56 +535,18 @@ function FunctionDetailPage() {
 
             {tab === 'Deployments' && (
               <>
-                <Panel
-                  title="Deployment history"
-                  description={`${deployments.length} deployments`}
+                <DeploymentHistoryPanel
+                  slug={fn.id}
+                  selectedDeploymentId={selectedDeploymentId}
+                  buildTimings={buildTimings}
+                  onSelect={(id) =>
+                    void navigate({
+                      search: { tab: 'Deployments', deployment: id },
+                      replace: true,
+                    })
+                  }
                   actions={<ClearObsoleteDeploymentsButton slug={fn.id} />}
-                >
-                  {deployments.length === 0 ? (
-                    <EmptyState message="No deployments yet. Deploy a Git ref or use the CLI." />
-                  ) : (
-                    <ul className="flex flex-col divide-y divide-border">
-                      {deployments.map((dep) => (
-                        <li key={dep.id}>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              void navigate({
-                                search: { tab: 'Deployments', deployment: dep.id },
-                                replace: true,
-                              })
-                            }
-                            className="flex w-full flex-wrap items-center gap-3 py-3 text-left transition-colors first:pt-0 last:pb-0 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-                          >
-                            <Pill
-                              label={dep.status ?? dep.state}
-                              color={
-                                dep.state === 'succeeded'
-                                  ? 'var(--status-good)'
-                                  : dep.state === 'failed'
-                                    ? 'var(--status-critical)'
-                                    : 'var(--status-warning)'
-                              }
-                            />
-                            <span className="font-mono text-xs text-muted-foreground">
-                              image {dep.version || '—'}
-                            </span>
-                            <span className="min-w-0 flex-1 truncate text-sm">{dep.message}</span>
-                            <span className="w-20 text-right text-xs text-muted-foreground [font-variant-numeric:tabular-nums]">
-                              {(() => {
-                                const seconds = buildTimings.get(dep.id)?.durationSeconds;
-                                return seconds == null ? '—' : `${seconds.toFixed(1)}s`;
-                              })()}
-                            </span>
-                            <span className="w-16 text-right text-xs text-muted-foreground [font-variant-numeric:tabular-nums]">
-                              {formatRelative(dep.createdAt)}
-                            </span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </Panel>
+                />
                 <Panel
                   title="Deploy an archive"
                   description="For source that is not in a connected repository — the console's half of `gregale deploy --tarball`."
@@ -602,11 +561,11 @@ function FunctionDetailPage() {
                     }
                   />
                 </Panel>
-                {selectedDeployment && (
+                {selectedDeploymentId && (
                   <DeploymentDetailPanel
-                    deploymentId={selectedDeployment.id}
+                    deploymentId={selectedDeploymentId}
                     appSlug={fn.id}
-                    timing={buildTimings.get(selectedDeployment.id)}
+                    timing={buildTimings.get(selectedDeploymentId)}
                     onClose={() => void navigate({ search: { tab: 'Deployments' }, replace: true })}
                   />
                 )}
