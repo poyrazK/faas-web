@@ -3,168 +3,150 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { withRouter } from '@/test/router';
 import { ApiError } from '@/lib/api/errors';
+import type { Account } from '@/lib/auth';
+import type { App } from '@/lib/api/queries';
 
-const useApps = vi.fn();
 const create = vi.fn();
 const toast = vi.fn();
 
-vi.mock('@/lib/api/queries', () => ({
-  useApps: () => useApps() as unknown,
+vi.mock('@/lib/api/queries', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/api/queries')>()),
   useCreateTrigger: () => ({ mutateAsync: create, isPending: false }),
 }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }));
 
-const { CreateTrigger, buildConfig, validateConfig } = await import('./trigger-create');
+const { CreateTrigger } = await import('./trigger-create');
+
+const account = {
+  plan: 'pro',
+  limits: {
+    plan: 'pro',
+    triggers_allowed: true,
+    trigger_kinds: ['kafka', 'nats', 'redis_streams', 'sqs_compat', 'queue'],
+    trigger_limit_per_app: 10,
+    trigger_limit_per_account: 50,
+    trigger_batch_size_max: 500,
+    trigger_batch_window_max_ms: 300_000,
+    trigger_max_attempts_max: 10,
+    trigger_payload_max_bytes: 6_291_456,
+    trigger_tls_skip_verify_allowed: true,
+  },
+} as Account;
+const apps = [{ id: 'app1', slug: 'api-gateway' }] as App[];
 
 beforeEach(() => {
-  useApps.mockReset().mockReturnValue({
-    data: [{ id: 'app1', slug: 'api-gateway' }],
-    isPending: false,
-    error: null,
-  });
   create.mockReset().mockResolvedValue({ id: 't1', slug: 'orders-inbound' });
   toast.mockReset();
 });
 
-describe('validateConfig', () => {
-  it('demands what the server demands, per kind', () => {
-    expect(validateConfig('kafka', {})).toEqual({
-      brokers: expect.any(String),
-      topic: expect.any(String),
-      group: expect.any(String),
-    });
-    expect(Object.keys(validateConfig('nats', {}))).toEqual([
-      'url',
-      'stream',
-      'subject',
-      'durable',
-    ]);
-    expect(Object.keys(validateConfig('redis_streams', {}))).toEqual(['addr', 'stream', 'group']);
-    expect(validateConfig('queue', {})).toEqual({});
-  });
-
-  it('rejects the URL schemes the server rejects', () => {
-    expect(
-      validateConfig('nats', { url: 'http://x', stream: 's', subject: 'a', durable: 'd' }).url
-    ).toMatch(/nats:\/\/ or tls:\/\//);
-    expect(validateConfig('sqs_compat', { queue_url: 'ftp://x' }).queue_url).toMatch(/http/);
-    expect(
-      validateConfig('sqs_compat', { queue_url: 'https://q.example', long_poll_secs: '30' })
-        .long_poll_secs
-    ).toMatch(/1 and 20/);
-  });
-});
-
-describe('buildConfig', () => {
-  it('splits the broker list and omits SASL when no credentials were given', () => {
-    expect(buildConfig('kafka', { brokers: 'a:9092, b:9092', topic: 't', group: 'g' })).toEqual({
-      brokers: ['a:9092', 'b:9092'],
-      topic: 't',
-      group: 'g',
-    });
-  });
-
-  it('includes SASL once a username is present', () => {
-    const c = buildConfig('kafka', {
-      brokers: 'a:9092',
-      topic: 't',
-      group: 'g',
-      sasl_username: 'svc',
-      sasl_password: 'pw',
-    });
-    expect(c.sasl).toEqual({ mechanism: 'scram-sha-256', username: 'svc', password: 'pw' });
-  });
-
-  it('sends long_poll_secs as a number, and drops it when blank', () => {
-    expect(buildConfig('sqs_compat', { queue_url: 'https://q', long_poll_secs: '10' })).toEqual({
-      queue_url: 'https://q',
-      long_poll_secs: 10,
-    });
-    expect(buildConfig('sqs_compat', { queue_url: 'https://q' })).toEqual({
-      queue_url: 'https://q',
-    });
-  });
-});
-
 describe('CreateTrigger', () => {
-  it('does not offer cron, which this endpoint refuses, and points at Crons instead', async () => {
-    render(withRouter(<CreateTrigger />));
-    const kinds = [
-      ...(await screen.findByLabelText('Trigger kind')).querySelectorAll('option'),
-    ].map((o) => (o as HTMLOptionElement).value);
-    expect(kinds).toEqual(['kafka', 'nats', 'redis_streams', 'sqs_compat', 'queue']);
-    expect(screen.getByRole('link', { name: /create a cron/i })).toBeInTheDocument();
-  });
-
-  it('sends the app, kind, slug and the shaped config', async () => {
-    render(withRouter(<CreateTrigger />));
-    await userEvent.type(await screen.findByLabelText('Trigger slug'), 'orders-inbound');
-    await userEvent.type(screen.getByLabelText('Brokers'), 'broker:9092');
-    await userEvent.type(screen.getByLabelText('Topic'), 'orders');
-    await userEvent.type(screen.getByLabelText('Consumer group'), 'gregale');
-    await userEvent.click(screen.getByRole('button', { name: /create trigger/i }));
-    await waitFor(() =>
-      expect(create).toHaveBeenCalledWith({
-        app_id: 'app1',
-        kind: 'kafka',
-        slug: 'orders-inbound',
-        config: { brokers: ['broker:9092'], topic: 'orders', group: 'gregale' },
-      })
+  it('shows an upgrade route on Free and never submits', async () => {
+    render(
+      withRouter(
+        <CreateTrigger
+          account={{
+            ...account,
+            plan: 'free',
+            limits: { ...account.limits, triggers_allowed: false, trigger_kinds: [] },
+          }}
+          apps={apps}
+        />
+      )
     );
-  });
-
-  it('swaps the fields when the source changes', async () => {
-    render(withRouter(<CreateTrigger />));
-    await userEvent.selectOptions(await screen.findByLabelText('Trigger kind'), 'redis_streams');
-    expect(screen.getByLabelText('Address')).toBeInTheDocument();
-    expect(screen.queryByLabelText('Brokers')).not.toBeInTheDocument();
-    await userEvent.selectOptions(screen.getByLabelText('Trigger kind'), 'queue');
-    expect(screen.getByLabelText('Queue mode')).toBeInTheDocument();
-  });
-
-  it('will not submit an incomplete config, and says which field is missing', async () => {
-    render(withRouter(<CreateTrigger />));
-    await userEvent.type(await screen.findByLabelText('Trigger slug'), 'x');
-    await userEvent.click(screen.getByRole('button', { name: /create trigger/i }));
-    expect(await screen.findByText(/at least one broker/i)).toBeInTheDocument();
+    expect(await screen.findByText(/not included on your current plan/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /compare plans/i })).toHaveAttribute(
+      'href',
+      '/dashboard/plans'
+    );
     expect(create).not.toHaveBeenCalled();
   });
 
-  it('repeats the server’s reason when it rejects the config', async () => {
-    create.mockRejectedValue(
-      new ApiError({
-        status: 422,
-        code: 'trigger_invalid_config',
-        title: 'Invalid trigger config',
-        detail: 'kafka config requires non-empty group',
-      })
-    );
-    render(withRouter(<CreateTrigger />));
-    await userEvent.type(await screen.findByLabelText('Trigger slug'), 'orders');
-    await userEvent.type(screen.getByLabelText('Brokers'), 'b:9092');
-    await userEvent.type(screen.getByLabelText('Topic'), 't');
-    await userEvent.type(screen.getByLabelText('Consumer group'), 'g');
-    await userEvent.click(screen.getByRole('button', { name: /create trigger/i }));
-    await waitFor(() => expect(toast).toHaveBeenCalled());
-    expect(toast).toHaveBeenCalledWith(
-      expect.objectContaining({ description: 'kafka config requires non-empty group' })
+  it('requires an app before rendering the wizard', async () => {
+    render(withRouter(<CreateTrigger account={account} apps={[]} />));
+    expect(await screen.findByText(/create an app first/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /create app/i })).toHaveAttribute(
+      'href',
+      '/dashboard/workflows/new'
     );
   });
 
-  it('reads a quota refusal as a limit rather than a failure', async () => {
-    create.mockRejectedValue(
-      new ApiError({ status: 403, code: 'trigger_quota_exceeded', title: 'Too many' })
-    );
-    render(withRouter(<CreateTrigger />));
-    await userEvent.type(await screen.findByLabelText('Trigger slug'), 'orders');
-    await userEvent.type(screen.getByLabelText('Brokers'), 'b:9092');
-    await userEvent.type(screen.getByLabelText('Topic'), 't');
-    await userEvent.type(screen.getByLabelText('Consumer group'), 'g');
+  it('uses only the kinds in the account capability snapshot', async () => {
+    const hobby = {
+      ...account,
+      plan: 'hobby',
+      limits: {
+        ...account.limits,
+        plan: 'hobby',
+        trigger_kinds: ['sqs_compat', 'queue'],
+        trigger_batch_size_max: 50,
+        trigger_batch_window_max_ms: 30_000,
+        trigger_max_attempts_max: 3,
+        trigger_payload_max_bytes: 1_048_576,
+        trigger_tls_skip_verify_allowed: false,
+      },
+    } as Account;
+    render(withRouter(<CreateTrigger account={hobby} apps={apps} />));
+    const options = [
+      ...(await screen.findByLabelText('Trigger kind')).querySelectorAll('option'),
+    ].map((option) => (option as HTMLOptionElement).value);
+    expect(options).toEqual(['sqs_compat', 'queue']);
+  });
+
+  it('does not advance until destination fields are valid', async () => {
+    render(withRouter(<CreateTrigger account={account} apps={apps} />));
+    await userEvent.click(await screen.findByRole('button', { name: 'Next' }));
+    expect(screen.getByText(/lower-case letters/i)).toBeInTheDocument();
+    expect(screen.getByLabelText('Trigger slug')).toHaveFocus();
+    expect(screen.queryByLabelText('Brokers')).not.toBeInTheDocument();
+  });
+
+  it('reviews the handler contract and submits explicit plan-safe values', async () => {
+    render(withRouter(<CreateTrigger account={account} apps={apps} />));
+    await userEvent.type(await screen.findByLabelText('Trigger slug'), 'orders-inbound');
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await userEvent.type(screen.getByLabelText('Brokers'), 'broker:9092');
+    await userEvent.type(screen.getByLabelText('Topic'), 'orders');
+    await userEvent.type(screen.getByLabelText('Consumer group'), 'gregale');
+    await userEvent.click(screen.getByRole('button', { name: 'Review' }));
+    expect(screen.getByText('POST /_triggers/kafka/orders-inbound')).toBeInTheDocument();
+    expect(screen.getByText(/batchItemFailures/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: /create trigger/i }));
     await waitFor(() =>
-      expect(toast).toHaveBeenCalledWith(
-        expect.objectContaining({ kind: 'info', title: 'Trigger limit reached' })
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          app_id: 'app1',
+          kind: 'kafka',
+          slug: 'orders-inbound',
+          batch_size_max: 64,
+          batch_window_ms: 1000,
+          max_attempts: 5,
+          payload_max_bytes: 6_291_456,
+          enabled: true,
+        })
       )
     );
+  });
+
+  it.each([
+    ['trigger_kind_not_allowed', /not available on this plan/i],
+    ['plan_trigger_quota', /plan limit/i],
+    ['trigger_batch_window_too_large', /batch window/i],
+    ['trigger_tls_skip_verify_not_allowed', /tls verification/i],
+    ['trigger_invalid_config', /broker rejected/i],
+    ['secret_store_unavailable', /credential store/i],
+  ])('keeps the populated flow and explains %s', async (code, recovery) => {
+    create.mockRejectedValue(
+      new ApiError({ status: 422, code, title: 'Rejected', detail: 'server detail' })
+    );
+    render(withRouter(<CreateTrigger account={account} apps={apps} />));
+    await userEvent.type(await screen.findByLabelText('Trigger slug'), 'orders');
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await userEvent.type(screen.getByLabelText('Brokers'), 'b:9092');
+    await userEvent.type(screen.getByLabelText('Topic'), 'orders');
+    await userEvent.type(screen.getByLabelText('Consumer group'), 'g');
+    await userEvent.click(screen.getByRole('button', { name: 'Review' }));
+    await userEvent.click(screen.getByRole('button', { name: /create trigger/i }));
+    expect(await screen.findByText(recovery)).toBeInTheDocument();
+    expect(screen.getByText('orders')).toBeInTheDocument();
   });
 });
