@@ -6,6 +6,7 @@ import {
   useAppsMetrics,
   useCreateApp,
   useDeployments,
+  useLatestAppDeployments,
   useRollback,
   type Deployment as ApiDeployment,
   type MetricsRange,
@@ -81,16 +82,22 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const rollback = useRollback();
 
   const apps = useMemo(() => appsQuery.data ?? [], [appsQuery.data]);
+  const latestAppDeployments = useLatestAppDeployments(apps);
 
-  // The list arrives newest-first, so the first hit per app is its latest —
-  // which is where a workflow's version and deploy time come from.
+  // The account-wide list is still useful for the global history page, but its
+  // first 50 rows are not enough to identify every app's latest deployment.
+  // Prefer the app-scoped limit=1 reads, falling back to the global rows while
+  // those requests are loading or if one app's endpoint is unavailable.
   const latestByAppId = useMemo(() => {
     const byApp = new Map<string, ApiDeployment>();
     for (const d of deploymentsQuery.data?.items ?? []) {
       if (!byApp.has(d.app_id)) byApp.set(d.app_id, d);
     }
+    for (const [appId, deployment] of latestAppDeployments.latestByAppId) {
+      byApp.set(appId, deployment);
+    }
     return byApp;
-  }, [deploymentsQuery.data]);
+  }, [deploymentsQuery.data, latestAppDeployments.latestByAppId]);
 
   const workflows = useMemo(
     () => apps.map((app) => toWorkflow(app, metricsQuery.data, latestByAppId.get(app.id))),
