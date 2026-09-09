@@ -39,6 +39,7 @@ export const keys = {
   appDeployments: (slug: string) => ['apps', slug, 'deployments'] as const,
   domains: ['domains'] as const,
   triggers: ['triggers'] as const,
+  trigger: (id: string) => ['triggers', id] as const,
   jobs: ['jobs'] as const,
   crons: ['crons'] as const,
   keys: ['keys'] as const,
@@ -1298,7 +1299,7 @@ export function useCompareDeployments(slug: string) {
 /** The five per-state counts. Scalars, so they stay scalars — no chart. */
 export function useTriggerMetrics(id: string | null) {
   return useQuery({
-    queryKey: ['triggers', id, 'metrics'],
+    queryKey: id ? [...keys.trigger(id), 'metrics'] : [...keys.triggers, null, 'metrics'],
     enabled: id !== null,
     queryFn: () => unwrap(api.GET('/v1/triggers/{id}/metrics', { params: { path: { id: id! } } })),
   });
@@ -1306,7 +1307,9 @@ export function useTriggerMetrics(id: string | null) {
 
 export function useTriggerRecords(id: string | null, state: TriggerRecordState | '') {
   return useQuery({
-    queryKey: ['triggers', id, 'records', state],
+    queryKey: id
+      ? [...keys.trigger(id), 'records', state]
+      : [...keys.triggers, null, 'records', state],
     enabled: id !== null,
     queryFn: () =>
       unwrap(
@@ -1319,7 +1322,7 @@ export function useTriggerRecords(id: string | null, state: TriggerRecordState |
 
 export function useTriggerDeadLetter(id: string | null, reason: TriggerDeadLetterReason | '') {
   return useQuery({
-    queryKey: ['triggers', id, 'dlq', reason],
+    queryKey: id ? [...keys.trigger(id), 'dlq', reason] : [...keys.triggers, null, 'dlq', reason],
     enabled: id !== null,
     queryFn: () =>
       unwrap(
@@ -1348,13 +1351,34 @@ export function useCreateTrigger() {
   });
 }
 
+function invalidateTrigger(qc: QueryClient, id: string): Promise<unknown> {
+  return Promise.all([
+    qc.invalidateQueries({ queryKey: keys.triggers }),
+    qc.invalidateQueries({ queryKey: keys.trigger(id) }),
+  ]);
+}
+
+export function useUpdateTrigger() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      body,
+    }: {
+      id: string;
+      body: components['schemas']['UpdateTriggerRequest'];
+    }) => unwrap(api.PATCH('/v1/triggers/{id}', { params: { path: { id } }, body })),
+    onSettled: (_data, _error, variables) => invalidateTrigger(qc, variables.id),
+  });
+}
+
 /** Delete a trigger. `kind` is immutable, so a change of source is delete-and-recreate. */
 export function useDeleteTrigger() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
       unwrap(api.DELETE('/v1/triggers/{id}', { params: { path: { id } } })),
-    onSettled: () => void qc.invalidateQueries({ queryKey: keys.triggers }),
+    onSettled: (_data, _error, id) => invalidateTrigger(qc, id),
   });
 }
 
@@ -1367,7 +1391,7 @@ export function useSetTriggerEnabled() {
           ? api.POST('/v1/triggers/{id}/resume', { params: { path: { id } } })
           : api.POST('/v1/triggers/{id}/pause', { params: { path: { id } } })
       ),
-    onSettled: () => qc.invalidateQueries({ queryKey: keys.triggers }),
+    onSettled: (_data, _error, variables) => invalidateTrigger(qc, variables.id),
   });
 }
 
@@ -2888,7 +2912,7 @@ export function useRecoverRollout(slug: string) {
 /** One trigger, for the detail the list cannot carry. */
 export function useTrigger(id: string) {
   return useQuery({
-    queryKey: ['triggers', id],
+    queryKey: keys.trigger(id),
     queryFn: () => unwrap(api.GET('/v1/triggers/{id}', { params: { path: { id } } })),
     enabled: Boolean(id),
   });
