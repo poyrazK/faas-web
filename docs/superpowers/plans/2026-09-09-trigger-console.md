@@ -30,33 +30,33 @@
 
 ## File Map
 
-| File | Responsibility |
-| --- | --- |
-| `api/openapi.yaml` | Vendored backend contract consumed by type generation. |
-| `src/lib/api/schema.d.ts` | Generated API types. |
-| `src/lib/api/queries.ts` | Trigger query keys plus create/update/delete/pause/resume hooks and invalidation. |
-| `src/lib/api/queries.test.tsx` | New mutation request and trigger-family invalidation behavior. |
-| `src/components/dashboard/trigger-form-model.ts` | Pure plan defaults, discriminated source state, validation, create/update request shaping, and redacted-config normalization. |
-| `src/components/dashboard/trigger-form-model.test.ts` | Plan, SASL, TLS, filter, secret, and request-shape boundary tests. |
-| `src/components/dashboard/trigger-source-fields.tsx` | Kind-specific broker and Kafka TLS/SASL inputs. |
-| `src/components/dashboard/trigger-source-fields.test.tsx` | Source-switching, advanced security, and accessibility tests. |
-| `src/components/dashboard/trigger-delivery-fields.tsx` | Batch, retry, payload, poison, enabled, and filter inputs constrained by plan caps. |
-| `src/components/dashboard/trigger-delivery-fields.test.tsx` | Cap labels, input bounds, filter errors, and Kafka-only poison behavior. |
-| `src/components/dashboard/trigger-create.tsx` | Three-step orchestration, typed error recovery, submit, secret clearing, and success navigation. |
-| `src/components/dashboard/trigger-create.test.tsx` | Free/no-app states, step behavior, payload, error mappings, and navigation. |
-| `src/components/dashboard/trigger-detail.tsx` | Operational detail, handler contract, redacted config, edit/rotate, pause/resume, and delete. |
-| `src/components/dashboard/trigger-detail.test.tsx` | Detail projection, update, redaction, confirmation, invalidation, and navigation. |
-| `src/routes/dashboard.triggers.index.tsx` | Account-wide trigger list, filters, CTA, row status, and URL links. |
-| `src/routes/dashboard.triggers.index.test.tsx` | List states, filters, row actions, and route links. |
-| `src/routes/dashboard.triggers.new.tsx` | Account/limits/apps loading boundary around the create flow. |
-| `src/routes/dashboard.triggers.$triggerId.tsx` | URL parameter composition around trigger detail. |
-| `src/routes/dashboard.triggers.tsx` | Removed after its list responsibility moves to the `.index` route. |
-| `src/test/router.tsx` | Test router leaves for trigger, plan, cron, and app-creation links. |
-| `mock/trigger-contract.ts` | Dev-server plan capability matrix and trigger defaults. |
-| `mock/trigger-contract.test.ts` | Fixture checks against the vendored OpenAPI vocabulary. |
-| `mock/data.ts` | Account fixture with complete trigger capabilities. |
-| `mock/plugin.ts` | Plan-aware/redacted GET/POST/PATCH/DELETE trigger behavior. |
-| `src/lib/mock-spec-drift.test.ts` | Confirms the new mock PATCH route still exists in OpenAPI. |
+| File                                                        | Responsibility                                                                                                                |
+| ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `api/openapi.yaml`                                          | Vendored backend contract consumed by type generation.                                                                        |
+| `src/lib/api/schema.d.ts`                                   | Generated API types.                                                                                                          |
+| `src/lib/api/queries.ts`                                    | Trigger query keys plus create/update/delete/pause/resume hooks and invalidation.                                             |
+| `src/lib/api/queries.test.tsx`                              | New mutation request and trigger-family invalidation behavior.                                                                |
+| `src/components/dashboard/trigger-form-model.ts`            | Pure plan defaults, discriminated source state, validation, create/update request shaping, and redacted-config normalization. |
+| `src/components/dashboard/trigger-form-model.test.ts`       | Plan, SASL, TLS, filter, secret, and request-shape boundary tests.                                                            |
+| `src/components/dashboard/trigger-source-fields.tsx`        | Kind-specific broker and Kafka TLS/SASL inputs.                                                                               |
+| `src/components/dashboard/trigger-source-fields.test.tsx`   | Source-switching, advanced security, and accessibility tests.                                                                 |
+| `src/components/dashboard/trigger-delivery-fields.tsx`      | Batch, retry, payload, poison, enabled, and filter inputs constrained by plan caps.                                           |
+| `src/components/dashboard/trigger-delivery-fields.test.tsx` | Cap labels, input bounds, filter errors, and Kafka-only poison behavior.                                                      |
+| `src/components/dashboard/trigger-create.tsx`               | Three-step orchestration, typed error recovery, submit, secret clearing, and success navigation.                              |
+| `src/components/dashboard/trigger-create.test.tsx`          | Free/no-app states, step behavior, payload, error mappings, and navigation.                                                   |
+| `src/components/dashboard/trigger-detail.tsx`               | Operational detail, handler contract, redacted config, edit/rotate, pause/resume, and delete.                                 |
+| `src/components/dashboard/trigger-detail.test.tsx`          | Detail projection, update, redaction, confirmation, invalidation, and navigation.                                             |
+| `src/routes/dashboard.triggers.index.tsx`                   | Account-wide trigger list, filters, CTA, row status, and URL links.                                                           |
+| `src/routes/dashboard.triggers.index.test.tsx`              | List states, filters, row actions, and route links.                                                                           |
+| `src/routes/dashboard.triggers.new.tsx`                     | Account/limits/apps loading boundary around the create flow.                                                                  |
+| `src/routes/dashboard.triggers.$triggerId.tsx`              | URL parameter composition around trigger detail.                                                                              |
+| `src/routes/dashboard.triggers.tsx`                         | Removed after its list responsibility moves to the `.index` route.                                                            |
+| `src/test/router.tsx`                                       | Test router leaves for trigger, plan, cron, and app-creation links.                                                           |
+| `mock/trigger-contract.ts`                                  | Dev-server plan capability matrix and trigger defaults.                                                                       |
+| `mock/trigger-contract.test.ts`                             | Fixture checks against the vendored OpenAPI vocabulary.                                                                       |
+| `mock/data.ts`                                              | Account fixture with complete trigger capabilities.                                                                           |
+| `mock/plugin.ts`                                            | Plan-aware/redacted GET/POST/PATCH/DELETE trigger behavior.                                                                   |
+| `src/lib/mock-spec-drift.test.ts`                           | Confirms the new mock PATCH route still exists in OpenAPI.                                                                    |
 
 ---
 
@@ -175,10 +175,21 @@ it('emits the exact Kafka SASL vocabulary', () => {
   } as TriggerLimits;
   const draft = newTriggerDraft(proLimits, 'app-1');
   draft.source = {
-    kind: 'kafka', brokers: 'b:9092', topic: 'orders', group: 'gregale',
-    tlsEnabled: false, caCert: '', clientCert: '', clientKey: '', clientKeySet: false,
-    skipVerify: false, saslEnabled: true, mechanism: 'SCRAM-SHA-256',
-    username: 'svc', password: 'pw', passwordSet: false,
+    kind: 'kafka',
+    brokers: 'b:9092',
+    topic: 'orders',
+    group: 'gregale',
+    tlsEnabled: false,
+    caCert: '',
+    clientCert: '',
+    clientKey: '',
+    clientKeySet: false,
+    skipVerify: false,
+    saslEnabled: true,
+    mechanism: 'SCRAM-SHA-256',
+    username: 'svc',
+    password: 'pw',
+    passwordSet: false,
   };
   expect(buildCreateTriggerRequest(draft).config).toMatchObject({
     sasl: { mechanism: 'SCRAM-SHA-256', username: 'svc', password: 'pw' },
@@ -202,7 +213,23 @@ Define source variants:
 
 ```ts
 export type TriggerSourceDraft =
-  | { kind: 'kafka'; brokers: string; topic: string; group: string; tlsEnabled: boolean; caCert: string; clientCert: string; clientKey: string; clientKeySet: boolean; skipVerify: boolean; saslEnabled: boolean; mechanism: 'PLAIN' | 'SCRAM-SHA-256' | 'SCRAM-SHA-512'; username: string; password: string; passwordSet: boolean }
+  | {
+      kind: 'kafka';
+      brokers: string;
+      topic: string;
+      group: string;
+      tlsEnabled: boolean;
+      caCert: string;
+      clientCert: string;
+      clientKey: string;
+      clientKeySet: boolean;
+      skipVerify: boolean;
+      saslEnabled: boolean;
+      mechanism: 'PLAIN' | 'SCRAM-SHA-256' | 'SCRAM-SHA-512';
+      username: string;
+      password: string;
+      passwordSet: boolean;
+    }
   | { kind: 'nats'; url: string; stream: string; subject: string; durable: string }
   | { kind: 'redis_streams'; addr: string; stream: string; group: string }
   | { kind: 'sqs_compat'; queueUrl: string; longPollSecs: string }
@@ -438,8 +465,13 @@ and:
 export function useUpdateTrigger() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, body }: { id: string; body: components['schemas']['UpdateTriggerRequest'] }) =>
-      unwrap(api.PATCH('/v1/triggers/{id}', { params: { path: { id } }, body })),
+    mutationFn: ({
+      id,
+      body,
+    }: {
+      id: string;
+      body: components['schemas']['UpdateTriggerRequest'];
+    }) => unwrap(api.PATCH('/v1/triggers/{id}', { params: { path: { id } }, body })),
     onSettled: (_data, _error, vars) => invalidateTrigger(qc, vars.id),
   });
 }
@@ -499,13 +531,16 @@ Compose the existing `TriggerRecords` and `TriggerDeadLetter` components beneath
 Open a controlled edit panel initialized with `draftFromTrigger`. Disable identity inputs. Submit `buildUpdateTriggerRequest`, clear secret controls on success, and leave state populated on error. Delete confirmation must use:
 
 ```ts
-if (!(await confirm({
-  title: `Delete ${trigger.slug}?`,
-  description: 'Polling stops and this trigger cannot be recovered.',
-  confirmLabel: 'Delete trigger',
-  destructive: true,
-  typeToConfirm: trigger.slug,
-}))) return;
+if (
+  !(await confirm({
+    title: `Delete ${trigger.slug}?`,
+    description: 'Polling stops and this trigger cannot be recovered.',
+    confirmLabel: 'Delete trigger',
+    destructive: true,
+    typeToConfirm: trigger.slug,
+  }))
+)
+  return;
 ```
 
 - [ ] **Step 5: Add the detail route and regenerate route types**

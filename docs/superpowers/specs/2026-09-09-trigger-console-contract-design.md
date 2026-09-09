@@ -30,9 +30,7 @@ The function can report partial failures:
 
 ```json
 {
-  "batchItemFailures": [
-    { "itemIdentifier": "record-id" }
-  ]
+  "batchItemFailures": [{ "itemIdentifier": "record-id" }]
 }
 ```
 
@@ -58,11 +56,11 @@ trigger_tls_skip_verify_allowed
 
 The allowed kinds are:
 
-| Plan | Kinds |
-| --- | --- |
-| Free | none |
-| Hobby | `sqs_compat`, `queue` |
-| Pro | all five non-cron kinds |
+| Plan  | Kinds                   |
+| ----- | ----------------------- |
+| Free  | none                    |
+| Hobby | `sqs_compat`, `queue`   |
+| Pro   | all five non-cron kinds |
 | Scale | all five non-cron kinds |
 
 The API enforces the same list during create and returns a typed `403 trigger_kind_not_allowed` when the kind exists but is unavailable on the account plan. Unknown enum values continue through the existing request-validation response.

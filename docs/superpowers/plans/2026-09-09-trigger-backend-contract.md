@@ -28,34 +28,34 @@
 
 ## File Map
 
-| File | Responsibility |
-| --- | --- |
-| `pkg/api/limits.go` | Canonical allowed trigger kinds and plan capability helpers. |
-| `pkg/api/limits_test.go` | Closed plan × trigger-kind policy matrix. |
-| `pkg/api/errors.go` | Stable `trigger_kind_not_allowed` and `secret_store_unavailable` problems. |
-| `pkg/api/trigger.go` | Public Kafka credential size limits and existing request DTOs. |
-| `pkg/api/dto.go` | Serialized trigger capability fields on `AccountLimits`. |
-| `cmd/apid/handlers.go` | Projects canonical trigger limits into `GET /v1/account`. |
-| `cmd/apid/handlers_account_test.go` | Pins the account capability wire shape. |
-| `cmd/apid/handlers_triggers.go` | Plan gates, legal defaults, secret boundary, create/batch/update/read orchestration. |
-| `cmd/apid/handlers_triggers_caps_test.go` | Plan-safe default, explicit-cap, and kind-gate regressions. |
-| `cmd/apid/handlers_triggers_secrets_test.go` | Handler-level sealing, redaction, update-preservation, and fail-closed tests. |
-| `pkg/state/memstore.go` | Faithful in-memory trigger config/delivery persistence for handler and scheduler tests. |
-| `pkg/state/memstore_test.go` | Pins create/update trigger config and delivery persistence. |
-| `pkg/triggerconfig/config.go` | Lossless seal/open/redact/merge operations over Kafka config JSON. |
-| `pkg/triggerconfig/config_test.go` | Secret codec round-trip, redaction, unknown-field, legacy, and corrupt-envelope tests. |
-| `pkg/sched/loop.go` | Holds rotation-aware trigger secret identities. |
-| `pkg/sched/poller.go` | Preserves registered-factory construction errors. |
-| `pkg/sched/dispatch_triggers.go` | Opens stored trigger secrets before poller creation. |
-| `pkg/sched/poller_kafka_test.go` | Sealed and legacy Kafka runtime decoding tests. |
-| `pkg/sched/dispatch_triggers_test.go` | Corrupt/missing identity and poller error propagation tests. |
-| `cmd/schedd/main.go` | Loads host identities and injects them into the scheduler loop. |
-| `cmd/schedd/main_test.go` | Pins rotation-aware host identity loading. |
-| `docs/adr/100-triggers-event-source-mappings.md` | Security and plan-policy addendum. |
-| `api/openapi.yaml` | Public account limits, redacted trigger config semantics, defaults, and typed errors. |
-| `pkg/apid/openapi.yaml` | Generated embedded OpenAPI copy. |
-| `sdk/node/src/generated/**` | Generated Node contract. |
-| `sdk/python/faas_sdk/**` | Generated Python contract. |
+| File                                             | Responsibility                                                                          |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| `pkg/api/limits.go`                              | Canonical allowed trigger kinds and plan capability helpers.                            |
+| `pkg/api/limits_test.go`                         | Closed plan × trigger-kind policy matrix.                                               |
+| `pkg/api/errors.go`                              | Stable `trigger_kind_not_allowed` and `secret_store_unavailable` problems.              |
+| `pkg/api/trigger.go`                             | Public Kafka credential size limits and existing request DTOs.                          |
+| `pkg/api/dto.go`                                 | Serialized trigger capability fields on `AccountLimits`.                                |
+| `cmd/apid/handlers.go`                           | Projects canonical trigger limits into `GET /v1/account`.                               |
+| `cmd/apid/handlers_account_test.go`              | Pins the account capability wire shape.                                                 |
+| `cmd/apid/handlers_triggers.go`                  | Plan gates, legal defaults, secret boundary, create/batch/update/read orchestration.    |
+| `cmd/apid/handlers_triggers_caps_test.go`        | Plan-safe default, explicit-cap, and kind-gate regressions.                             |
+| `cmd/apid/handlers_triggers_secrets_test.go`     | Handler-level sealing, redaction, update-preservation, and fail-closed tests.           |
+| `pkg/state/memstore.go`                          | Faithful in-memory trigger config/delivery persistence for handler and scheduler tests. |
+| `pkg/state/memstore_test.go`                     | Pins create/update trigger config and delivery persistence.                             |
+| `pkg/triggerconfig/config.go`                    | Lossless seal/open/redact/merge operations over Kafka config JSON.                      |
+| `pkg/triggerconfig/config_test.go`               | Secret codec round-trip, redaction, unknown-field, legacy, and corrupt-envelope tests.  |
+| `pkg/sched/loop.go`                              | Holds rotation-aware trigger secret identities.                                         |
+| `pkg/sched/poller.go`                            | Preserves registered-factory construction errors.                                       |
+| `pkg/sched/dispatch_triggers.go`                 | Opens stored trigger secrets before poller creation.                                    |
+| `pkg/sched/poller_kafka_test.go`                 | Sealed and legacy Kafka runtime decoding tests.                                         |
+| `pkg/sched/dispatch_triggers_test.go`            | Corrupt/missing identity and poller error propagation tests.                            |
+| `cmd/schedd/main.go`                             | Loads host identities and injects them into the scheduler loop.                         |
+| `cmd/schedd/main_test.go`                        | Pins rotation-aware host identity loading.                                              |
+| `docs/adr/100-triggers-event-source-mappings.md` | Security and plan-policy addendum.                                                      |
+| `api/openapi.yaml`                               | Public account limits, redacted trigger config semantics, defaults, and typed errors.   |
+| `pkg/apid/openapi.yaml`                          | Generated embedded OpenAPI copy.                                                        |
+| `sdk/node/src/generated/**`                      | Generated Node contract.                                                                |
+| `sdk/python/faas_sdk/**`                         | Generated Python contract.                                                              |
 
 ---
 
