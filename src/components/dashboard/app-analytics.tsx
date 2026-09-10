@@ -2,7 +2,7 @@ import { useState, type KeyboardEvent } from 'react';
 import { Area, AreaChart, Grid, Tooltip, XAxis, YAxis } from '@/components/dither-kit';
 import { Select } from '@/components/ui/field';
 import { InlinePhase, Panel, StatTile, queryPhase } from '@/components/dashboard/primitives';
-import { PlanGated } from '@/components/dashboard/plan-gated';
+import { isPlanGate, PlanGated } from '@/components/dashboard/plan-gated';
 import { Pill } from '@/components/dashboard/resource-table';
 import {
   useAppAnalytics,
@@ -62,6 +62,8 @@ export function AppAnalyticsBody({
     groupBy,
   });
   const data = analytics.data;
+  const enabled = Boolean(slug);
+  const planGateError = [analytics.error, series.error].find(isPlanGate);
   const points = (series.data?.points ?? []).map((point) => ({
     at: hourLabel(point.start),
     requests: point.requests,
@@ -69,17 +71,17 @@ export function AppAnalyticsBody({
   }));
   const analyticsPhase = queryPhase({
     error: analytics.error,
-    loading: analytics.isPending,
+    loading: enabled && analytics.isPending,
     isEmpty: !data,
   });
   const seriesPhase = queryPhase({
     error: series.error,
-    loading: series.isPending,
+    loading: enabled && series.isPending,
     isEmpty: points.length < 2,
   });
   const groupsPhase = queryPhase({
     error: analytics.error,
-    loading: analytics.isPending,
+    loading: enabled && analytics.isPending,
     isEmpty: (data?.groups.length ?? 0) === 0,
   });
   const tileState =
@@ -103,7 +105,7 @@ export function AppAnalyticsBody({
   };
 
   return (
-    <PlanGated error={analytics.error ?? series.error} feature="Request analytics">
+    <PlanGated error={planGateError} feature="Request analytics">
       <Panel
         title="Request analytics"
         description="Aggregated at the edge from route templates, hostname-only referrers and country codes — never full URLs."

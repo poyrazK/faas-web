@@ -92,3 +92,46 @@ Windows shim, which cannot execute from this WSL worktree UNC path.
 ## Concerns
 
 None.
+
+## Review fix round 1
+
+### Findings addressed
+
+- Disabled analytics queries now gate their pending status on a non-empty slug,
+  so a disabled query resolves through the empty phase rather than showing a
+  spinner that cannot complete.
+- The gate now selects a recognized plan-code error from either the aggregate
+  or timeseries query via isPlanGate. An unrelated aggregate error can no
+  longer mask a timeseries plan gate.
+
+### RED
+
+Command:
+
+    /home/bahadir/.nvm/versions/node/v22.22.3/bin/node node_modules/vitest/vitest.mjs run src/components/dashboard/app-analytics.test.tsx
+
+Relevant output before the fix:
+
+    src/components/dashboard/app-analytics.test.tsx (10 tests | 2 failed)
+    Unable to find an element with the text: No request analytics are available yet.
+    Unable to find an element with the text: /does not include per-app metrics/i.
+
+The disabled-query test rendered skeletons and Loading instead of empty state.
+The competing-errors test rendered aggregate unavailable instead of the plan
+gate.
+
+### GREEN
+
+Commands:
+
+    /home/bahadir/.nvm/versions/node/v22.22.3/bin/node node_modules/vitest/vitest.mjs run src/components/dashboard/app-analytics.test.tsx
+    /home/bahadir/.nvm/versions/node/v22.22.3/bin/node node_modules/typescript/bin/tsc --noEmit
+    /home/bahadir/.nvm/versions/node/v22.22.3/bin/node node_modules/prettier/bin/prettier.cjs --check src/components/dashboard/app-analytics.tsx src/components/dashboard/app-analytics.test.tsx
+    /home/bahadir/.nvm/versions/node/v22.22.3/bin/node node_modules/eslint/bin/eslint.js src/components/dashboard/app-analytics.tsx src/components/dashboard/app-analytics.test.tsx
+
+Relevant output:
+
+    Test Files  1 passed (1)
+    Tests  10 passed (10)
+
+All type, formatting, lint, and diff checks passed.
