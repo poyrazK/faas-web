@@ -1,3 +1,7 @@
+import { CheckCircle, Clock, HelpCircle, NavArrowRight, WarningTriangle } from 'iconoir-react';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
 import type {
   PublicStatusComponent,
   PublicStatusDaily,
@@ -15,6 +19,15 @@ const stateLabels: Record<PublicStatusState, string> = {
   unknown: 'Unknown',
 };
 
+const overallLabels: Record<PublicStatusState, string> = {
+  operational: 'All systems operational',
+  maintenance: 'Maintenance in progress',
+  degraded: 'Degraded performance',
+  partial_outage: 'Partial outage',
+  major_outage: 'Major outage',
+  unknown: 'Status unavailable',
+};
+
 const componentLabels: Record<string, string> = {
   api_console: 'API & Console',
   deployments: 'Deployments',
@@ -26,13 +39,22 @@ const componentLabels: Record<string, string> = {
 export function StatusHeader() {
   return (
     <header className="status-header">
-      <a href="/status" className="status-wordmark">
-        Gregale Status
-      </a>
-      <nav aria-label="Status navigation">
-        <a href="/status#history">Incident history</a>
-        <a href="/">Back to Gregale</a>
-      </nav>
+      <div className="status-header-inner">
+        <a href="/status" className="status-wordmark" aria-label="Gregale Status home">
+          <img src="/favicon.png" alt="" />
+          <span>Gregale</span>
+          <Separator orientation="vertical" className="status-wordmark-separator" />
+          <strong>Status</strong>
+        </a>
+        <nav aria-label="Status navigation">
+          <Button asChild variant="ghost" size="sm" className="status-nav-history">
+            <a href="/status#history">History</a>
+          </Button>
+          <Button asChild variant="outline" size="sm">
+            <a href="/">Back to Gregale</a>
+          </Button>
+        </nav>
+      </div>
     </header>
   );
 }
@@ -48,6 +70,7 @@ export function StatusOverview({
     if (a.kind !== b.kind) return a.kind === 'incident' ? -1 : 1;
     return Date.parse(b.updated_at) - Date.parse(a.updated_at);
   });
+
   return (
     <div className="status-shell">
       <a href="#status-main" className="skip-link">
@@ -57,29 +80,41 @@ export function StatusOverview({
       <main id="status-main" className="status-main">
         {updatesDelayed && (
           <div className="status-delay" role="status">
-            <span aria-hidden="true">!</span> Updates delayed — showing the last available snapshot.
+            <WarningTriangle aria-hidden="true" />
+            <span>
+              <strong>Updates delayed.</strong> Showing the last available snapshot.
+            </span>
           </div>
         )}
-        <section className="status-overall" aria-labelledby="overall-title">
-          <p className="status-kicker">Current platform status</p>
-          <div className="status-overall-line">
-            <span
-              className={`status-mark status-mark--${snapshot.overall_status}`}
-              aria-hidden="true"
-            />
-            <h1 id="overall-title">{stateLabels[snapshot.overall_status]}</h1>
+
+        <section
+          className={`status-overall status-overall--${snapshot.overall_status}`}
+          aria-label="Current platform status"
+        >
+          <div className="status-overall-icon" aria-hidden="true">
+            <StateIcon state={snapshot.overall_status} />
           </div>
-          <p className="status-freshness">
-            Data {snapshot.data_status}. Updated{' '}
-            <time dateTime={snapshot.updated_at}>{formatDateTime(snapshot.updated_at)}</time>.{' '}
-            Gregale currently operates in a single region.
-          </p>
+          <div className="status-overall-copy">
+            <p>Current platform status</p>
+            <h1>{overallLabels[snapshot.overall_status]}</h1>
+          </div>
+          <div className="status-freshness">
+            <strong>{dataStatusLabel(snapshot.data_status)}</strong>
+            <span>
+              Updated{' '}
+              <time dateTime={snapshot.updated_at}>{formatDateTime(snapshot.updated_at)}</time>
+            </span>
+            <span>Single-region service</span>
+          </div>
         </section>
 
         {active.length > 0 && (
           <section className="status-section" aria-label="Active incidents and maintenance">
-            <SectionHeading eyebrow="Now" title="Active incidents and maintenance" />
-            <div className="status-event-list">
+            <SectionHeading
+              title="Active incidents and maintenance"
+              description="Current events that may affect Gregale services."
+            />
+            <div className="status-event-list status-event-list--active">
               {active.map((item) => (
                 <EventCard key={item.id} event={item} />
               ))}
@@ -89,21 +124,21 @@ export function StatusOverview({
 
         <section className="status-section" aria-labelledby="capabilities-title">
           <SectionHeading
-            eyebrow="Last 30 days"
             title="Platform capabilities"
+            description="Status, uptime, and telemetry coverage for the last 30 days."
             id="capabilities-title"
           />
-          <div className="status-ledger">
+          <ul className="status-ledger" aria-label="Platform capabilities">
             {snapshot.components.map((component) => (
               <CapabilityRow key={component.id} component={component} />
             ))}
-          </div>
+          </ul>
         </section>
 
         <section className="status-section" aria-labelledby="indicators-title">
           <SectionHeading
-            eyebrow="Current window"
             title="Service indicators"
+            description="Current error-budget measurements across the platform."
             id="indicators-title"
           />
           <div className="status-indicators">
@@ -122,14 +157,14 @@ export function StatusOverview({
               </div>
             ))}
           </div>
-          <p className="status-note">These are error-budget indicators, not an SLA.</p>
+          <p className="status-note">Measurements are error-budget indicators, not an SLA.</p>
         </section>
 
         {snapshot.upcoming_maintenance.length > 0 && (
           <section className="status-section" aria-labelledby="maintenance-title">
             <SectionHeading
-              eyebrow="Next 30 days"
               title="Upcoming maintenance"
+              description="Planned work scheduled within the next 30 days."
               id="maintenance-title"
             />
             <div className="status-event-list">
@@ -142,8 +177,8 @@ export function StatusOverview({
 
         <section id="history" className="status-section" aria-labelledby="history-title">
           <SectionHeading
-            eyebrow="Last 90 days"
             title="Recent incident history"
+            description="Resolved incidents published during the last 90 days."
             id="history-title"
           />
           {snapshot.resolved_incidents.length ? (
@@ -162,22 +197,30 @@ export function StatusOverview({
   );
 }
 
-function SectionHeading({ eyebrow, title, id }: { eyebrow: string; title: string; id?: string }) {
+function SectionHeading({
+  title,
+  description,
+  id,
+}: {
+  title: string;
+  description: string;
+  id?: string;
+}) {
   return (
     <div className="status-section-heading">
-      <p>{eyebrow}</p>
       <h2 id={id}>{title}</h2>
+      <p>{description}</p>
     </div>
   );
 }
 
 function CapabilityRow({ component }: { component: PublicStatusComponent }) {
   return (
-    <article className="status-capability">
+    <li className="status-capability">
       <div className="status-capability-copy">
-        <div>
+        <div className="status-capability-title">
           <h3>{component.name}</h3>
-          <StatusText state={component.status} />
+          <StatusBadge state={component.status} />
         </div>
         <div className="status-uptime">
           <strong>
@@ -197,7 +240,11 @@ function CapabilityRow({ component }: { component: PublicStatusComponent }) {
           <DayBar key={day.date} day={day} />
         ))}
       </div>
-    </article>
+      <div className="status-days-axis" aria-hidden="true">
+        <span>30 days ago</span>
+        <span>Today</span>
+      </div>
+    </li>
   );
 }
 
@@ -217,34 +264,53 @@ function DayBar({ day }: { day: PublicStatusDaily }) {
   );
 }
 
-function StatusText({ state }: { state: PublicStatusState }) {
+function StatusBadge({ state }: { state: PublicStatusState }) {
   return (
-    <span className={`status-text status-text--${state}`}>
-      <span className="status-text-symbol" aria-hidden="true">
-        {stateSymbol(state)}
-      </span>
+    <Badge variant="outline" className={`status-badge status-badge--${state}`}>
+      <StateIcon state={state} />
       {stateLabels[state]}
-    </span>
+    </Badge>
   );
+}
+
+function StateIcon({ state }: { state: PublicStatusState }) {
+  const className = 'status-state-icon';
+  if (state === 'operational') return <CheckCircle className={className} aria-hidden="true" />;
+  if (state === 'maintenance') return <Clock className={className} aria-hidden="true" />;
+  if (state === 'unknown') return <HelpCircle className={className} aria-hidden="true" />;
+  return <WarningTriangle className={className} aria-hidden="true" />;
 }
 
 function EventCard({ event, compact = false }: { event: PublicStatusEvent; compact?: boolean }) {
   const latest = event.updates[event.updates.length - 1];
   const when = event.scheduled_start_at ?? event.starts_at ?? event.updated_at;
   return (
-    <article className="status-event" data-kind={event.kind}>
-      <div className="status-event-meta">
-        <span>{event.kind === 'incident' ? 'Incident' : 'Maintenance'}</span>
-        <time dateTime={when}>{formatDateTime(when)}</time>
-      </div>
-      <h3>
-        <a href={`/status/incidents/${event.id}`}>{event.title}</a>
-      </h3>
-      <p className="status-event-state">
-        {humanize(event.state)} ·{' '}
-        {event.components.map((id) => componentLabels[id] ?? id).join(', ')}
-      </p>
-      {!compact && latest && <p>{latest.message}</p>}
+    <article
+      className={`status-event status-event--${event.kind}`}
+      data-kind={event.kind}
+      data-impact={event.impact}
+    >
+      <a
+        href={`/status/incidents/${event.id}`}
+        className="status-event-link"
+        aria-label={`${event.title}: ${humanize(event.state)}. View details.`}
+      >
+        <div className="status-event-topline">
+          <Badge variant="outline" className="status-event-kind">
+            {event.kind === 'incident' ? 'Incident' : 'Maintenance'}
+          </Badge>
+          <time dateTime={when}>{formatDateTime(when)}</time>
+        </div>
+        <div className="status-event-title">
+          <h3>{event.title}</h3>
+          <NavArrowRight aria-hidden="true" />
+        </div>
+        {!compact && latest && <p className="status-event-message">{latest.message}</p>}
+        <p className="status-event-state">
+          <strong>{humanize(event.state)}</strong>
+          <span>{event.components.map((id) => componentLabels[id] ?? id).join(', ')}</span>
+        </p>
+      </a>
     </article>
   );
 }
@@ -257,27 +323,42 @@ export function IncidentDetail({ event }: { event: PublicStatusEvent }) {
     <div className="status-shell">
       <StatusHeader />
       <main className="status-main status-detail">
-        <a href="/status" className="status-back">
-          ← Status overview
-        </a>
-        <p className="status-kicker">
-          {event.kind === 'incident' ? 'Incident' : 'Maintenance'} · {humanize(event.state)}
-        </p>
-        <h1>{event.title}</h1>
-        <p className="status-detail-components">
-          Affected: {event.components.map((id) => componentLabels[id] ?? id).join(', ')}
-        </p>
-        <ol className="status-timeline" aria-label="Incident timeline">
-          {ordered.map((update) => (
-            <li key={update.id}>
-              <time dateTime={update.posted_at}>{formatDateTime(update.posted_at)}</time>
-              <div>
-                <strong>{humanize(update.state)}</strong>
-                <p>{update.message}</p>
-              </div>
-            </li>
-          ))}
-        </ol>
+        <Button asChild variant="ghost" size="sm" className="status-back">
+          <a href="/status">← Status overview</a>
+        </Button>
+        <section className="status-detail-heading">
+          <div className="status-detail-meta">
+            <Badge variant="outline">
+              {event.kind === 'incident' ? 'Incident' : 'Maintenance'}
+            </Badge>
+            <Badge variant="secondary">{humanize(event.state)}</Badge>
+          </div>
+          <h1>{event.title}</h1>
+          <p>
+            Affected services: {event.components.map((id) => componentLabels[id] ?? id).join(', ')}
+          </p>
+        </section>
+        <section className="status-detail-timeline" aria-labelledby="timeline-title">
+          <SectionHeading
+            id="timeline-title"
+            title="Event timeline"
+            description="Updates are shown in chronological order."
+          />
+          <ol className="status-timeline" aria-label="Incident timeline">
+            {ordered.map((update) => (
+              <li key={update.id}>
+                <div className="status-timeline-marker" aria-hidden="true" />
+                <div>
+                  <div className="status-timeline-heading">
+                    <strong>{humanize(update.state)}</strong>
+                    <time dateTime={update.posted_at}>{formatDateTime(update.posted_at)}</time>
+                  </div>
+                  <p>{update.message}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </section>
       </main>
       <StatusFooter />
     </div>
@@ -289,7 +370,9 @@ export function StatusUnavailable() {
     <div className="status-shell">
       <StatusHeader />
       <main className="status-main status-unavailable">
-        <p className="status-kicker">Data source unavailable</p>
+        <div className="status-unavailable-icon" aria-hidden="true">
+          <WarningTriangle />
+        </div>
         <h1>Status temporarily unavailable</h1>
         <p>We could not load the current snapshot. Please try again shortly.</p>
       </main>
@@ -303,12 +386,14 @@ export function StatusNotFound() {
     <div className="status-shell">
       <StatusHeader />
       <main className="status-main status-unavailable">
-        <p className="status-kicker">Status event not found</p>
+        <div className="status-unavailable-icon" aria-hidden="true">
+          <HelpCircle />
+        </div>
         <h1>This event is unavailable</h1>
         <p>The incident link may be invalid or the event may not have been published.</p>
-        <a href="/status" className="status-back">
-          ← Status overview
-        </a>
+        <Button asChild variant="outline" size="sm" className="status-unavailable-action">
+          <a href="/status">Back to status overview</a>
+        </Button>
       </main>
       <StatusFooter />
     </div>
@@ -318,11 +403,18 @@ export function StatusNotFound() {
 function StatusFooter() {
   return (
     <footer className="status-footer">
-      <span>Gregale status</span>
+      <span>Gregale Status</span>
       <span>Single-region service · Error-budget indicators</span>
     </footer>
   );
 }
+
+function dataStatusLabel(status: PublicStatusOverview['data_status']) {
+  if (status === 'fresh') return 'Live telemetry';
+  if (status === 'stale') return 'Telemetry delayed';
+  return 'Telemetry unavailable';
+}
+
 function formatDateTime(value: string) {
   return (
     new Intl.DateTimeFormat('en', {
@@ -332,15 +424,11 @@ function formatDateTime(value: string) {
     }).format(new Date(value)) + ' UTC'
   );
 }
+
 function formatMetric(value: number) {
   return value >= 100 ? value.toFixed(0) : value.toFixed(2);
 }
+
 function humanize(value: string) {
   return value.replaceAll('_', ' ').replace(/^./, (letter) => letter.toUpperCase());
-}
-function stateSymbol(state: PublicStatusState) {
-  if (state === 'operational') return '✓';
-  if (state === 'unknown') return '?';
-  if (state === 'maintenance') return '◇';
-  return '!';
 }

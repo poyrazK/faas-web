@@ -107,6 +107,21 @@ function snapshot(): PublicStatusOverview {
 }
 
 describe('StatusOverview', () => {
+  it('presents the snapshot as a status banner followed by one five-service ledger', () => {
+    render(<StatusOverview snapshot={snapshot()} updatesDelayed={false} />);
+
+    const banner = screen.getByRole('region', { name: 'Current platform status' });
+    expect(
+      within(banner).getByRole('heading', { level: 1, name: 'Major outage' })
+    ).toBeInTheDocument();
+    expect(within(banner).getByText(/Live telemetry/)).toBeInTheDocument();
+
+    const ledger = screen.getByRole('list', { name: 'Platform capabilities' });
+    expect(within(ledger).getAllByRole('listitem')).toHaveLength(5);
+    expect(screen.getAllByText('30 days ago')).toHaveLength(5);
+    expect(screen.getAllByText('Today')).toHaveLength(5);
+  });
+
   it('renders the public ledger in order with 30 keyboard-readable days per capability', () => {
     const { container } = render(<StatusOverview snapshot={snapshot()} updatesDelayed />);
     expect(screen.getByRole('heading', { level: 1, name: 'Major outage' })).toBeInTheDocument();
@@ -123,23 +138,35 @@ describe('StatusOverview', () => {
   });
 
   it.each([
-    ['operational', 'Operational'],
-    ['maintenance', 'Maintenance'],
-    ['degraded', 'Degraded performance'],
-    ['partial_outage', 'Partial outage'],
-    ['major_outage', 'Major outage'],
-    ['unknown', 'Unknown'],
-  ] as const)('renders the %s overall state with text, not color alone', (state, label) => {
+    ['operational', 'All systems operational', 'Operational'],
+    ['maintenance', 'Maintenance in progress', 'Maintenance'],
+    ['degraded', 'Degraded performance', 'Degraded performance'],
+    ['partial_outage', 'Partial outage', 'Partial outage'],
+    ['major_outage', 'Major outage', 'Major outage'],
+    ['unknown', 'Status unavailable', 'Unknown'],
+  ] as const)(
+    'renders the %s overall state with text, not color alone',
+    (state, overallLabel, componentLabel) => {
+      const value = snapshot();
+      value.overall_status = state;
+      value.components[0].status = state;
+      render(<StatusOverview snapshot={value} updatesDelayed={false} />);
+      expect(screen.getByRole('heading', { level: 1, name: overallLabel })).toBeInTheDocument();
+      const component = screen
+        .getByRole('heading', { level: 3, name: 'API & Console' })
+        .closest('li');
+      expect(component).not.toBeNull();
+      expect(within(component!).getByText(componentLabel)).toBeInTheDocument();
+    }
+  );
+
+  it('describes a healthy platform in plain language', () => {
     const value = snapshot();
-    value.overall_status = state;
-    value.components[0].status = state;
+    value.overall_status = 'operational';
     render(<StatusOverview snapshot={value} updatesDelayed={false} />);
-    expect(screen.getByRole('heading', { level: 1, name: label })).toBeInTheDocument();
-    const component = screen
-      .getByRole('heading', { level: 3, name: 'API & Console' })
-      .closest('article');
-    expect(component).not.toBeNull();
-    expect(within(component!).getByText(label)).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'All systems operational' })
+    ).toBeInTheDocument();
   });
 
   it('orders active incidents before maintenance and renders messages as plain text', () => {
