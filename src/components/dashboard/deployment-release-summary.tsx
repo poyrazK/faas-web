@@ -88,18 +88,28 @@ export function DeploymentReleaseSummary({
         <div>
           <p className="label-mono text-muted-foreground">Release summary</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Current release compared with its immediate predecessor.
+            Selected release compared with its immediate predecessor.
           </p>
         </div>
         {targetId && (
-          <Button
-            size="xs"
-            variant="destructive"
-            busy={rollback.isPending}
-            onClick={() => void onRollback()}
-          >
-            Roll back to {targetId.slice(0, 8)}
-          </Button>
+          <div className="flex max-w-sm flex-col items-start gap-2 sm:items-end">
+            <div className="text-left sm:text-right">
+              <p className="label-mono text-muted-foreground">Eligible rollback target</p>
+              <p className="mt-1 break-all font-mono text-xs">{targetId}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                The platform determines this target from the app&apos;s current release state; it
+                may differ from the selected release above.
+              </p>
+            </div>
+            <Button
+              size="xs"
+              variant="destructive"
+              busy={rollback.isPending}
+              onClick={() => void onRollback()}
+            >
+              Roll back to {targetId.slice(0, 8)}
+            </Button>
+          </div>
         )}
       </div>
       <div className="mt-4">{body}</div>
@@ -113,8 +123,8 @@ function SummaryBody({ summary }: { summary: DeploymentSummary }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="grid gap-3 sm:grid-cols-2">
-        <ReleaseRef label="Current" id={summary.deployment.id} />
-        <ReleaseRef label="Previous" id={previous?.id} emptyLabel="Initial release" />
+        <ReleaseRef label="Selected release" id={summary.deployment.id} />
+        <ReleaseRef label="Previous to selected" id={previous?.id} emptyLabel="Initial release" />
       </div>
 
       {summary.changes.length === 0 ? (
