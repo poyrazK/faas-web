@@ -28,6 +28,7 @@ const MOCK = process.env.MOCK_API === '1';
  */
 const API_PATHS = [
   '/v1',
+  '/status/slo.json',
   '/auth',
   '/dashboard/install',
   '/dashboard/account/set-password',

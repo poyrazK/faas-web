@@ -18,6 +18,12 @@ const PAGES = [
   },
   { route: '/login', file: 'dist/login/index.html', title: 'Sign in · Gregale' },
   { route: '/signup', file: 'dist/signup/index.html', title: 'Create account · Gregale' },
+  { route: '/status', file: 'dist/status/index.html', title: 'Status · Gregale' },
+  {
+    route: '/status/incidents/:id',
+    file: 'dist/status/incidents/index.html',
+    title: 'Status event · Gregale',
+  },
 ];
 
 const built = existsSync('dist/index.html');
@@ -106,6 +112,29 @@ describeBuilt('prerendered pages', () => {
   describe('indexing directives', () => {
     it('lets the landing page be indexed', () => {
       expect(readFileSync('dist/index.html', 'utf8')).not.toContain('name="robots"');
+    });
+
+    it('indexes the public status overview', () => {
+      expect(readFileSync('dist/status/index.html', 'utf8')).not.toContain('name="robots"');
+      expect(readFileSync('dist/sitemap.xml', 'utf8')).toContain(
+        '<loc>https://gregale.dev/status</loc>'
+      );
+      expect(readFileSync('dist/sitemap.xml', 'utf8')).not.toContain('/status/incidents/');
+    });
+
+    it('serves direct incident links from a noindex status-event shell', () => {
+      const incident = readFileSync('dist/status/incidents/index.html', 'utf8');
+      expect(incident).toContain('content="noindex, follow"');
+      expect(incident).toContain('Gregale Status');
+      expect(incident).not.toContain('rel="canonical"');
+      expect(incident).not.toContain('application/ld+json');
+    });
+
+    it('prerenders meaningful styled status fallback content', () => {
+      const status = readFileSync('dist/status/index.html', 'utf8');
+      expect(status).toContain('API &amp; Console');
+      expect(status).toContain('Observability');
+      expect(status).toMatch(/href="\/assets\/[^"]+\.css"/);
     });
 
     it('keeps the auth pages out of search results', () => {

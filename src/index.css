@@ -1,5 +1,6 @@
 /* Familjen Grotesk type system — see index.html for the font loads. */
 @import 'tailwindcss';
+@import './components/status/status-page.css';
 
 /* The console's dark surface is `.console`, not `.dark` — bind Tailwind's
    `dark:` variant to it so a shadcn-scaffolded component's dark styles are
