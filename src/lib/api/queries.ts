@@ -2,7 +2,6 @@ import {
   useInfiniteQuery,
   useMutation,
   useQuery,
-  useQueries,
   useQueryClient,
   type QueryClient,
   type QueryFilters,
@@ -40,7 +39,7 @@ export const keys = {
   appSlo: (slug: string, window: AppSLOWindow) => ['apps', slug, 'slo', window] as const,
   deployments: ['deployments'] as const,
   appDeployments: (slug: string) => ['apps', slug, 'deployments'] as const,
-  appLatestDeployment: (slug: string) => ['apps', slug, 'deployments', 'latest'] as const,
+  latestDeploymentsByApp: ['deployments', 'latest-by-app'] as const,
   domains: ['domains'] as const,
   triggers: ['triggers'] as const,
   jobs: ['jobs'] as const,
@@ -771,46 +770,20 @@ export function useAppDeployments(slug: string, limit = 50) {
 }
 
 /**
- * Read the newest deployment for every app in parallel.
- *
- * The account-wide feed is intentionally bounded, so a busy account can hide
- * the newest row for quieter apps. This fan-out is deliberately `limit=1` and
- * only polls while an app's newest deployment is still moving; it keeps the
- * workflow metadata accurate without turning the global history feed into an
- * unbounded request.
+ * Read the newest deployment for every app in one account-scoped request.
+ * The batch is authoritative for workflow version/state metadata because the
+ * paginated global history can omit quieter apps.
  */
-export function useLatestAppDeployments(apps: readonly App[]) {
-  const queries = useQueries({
-    queries: apps.map((app) => ({
-      queryKey: keys.appLatestDeployment(app.slug),
-      queryFn: () =>
-        unwrap(
-          api.GET('/v1/apps/{slug}/deployments', {
-            params: { path: { slug: app.slug }, query: { limit: 1 } },
-          })
-        ),
-      enabled: Boolean(app.slug),
-      retry: retryPolicy,
-      refetchInterval: (query: { state: { data?: { items?: Array<{ status?: string }> } } }) => {
-        const latest = query.state.data?.items?.[0];
-        return latest && !isDeploymentTerminal(latest.status) ? 2_500 : false;
-      },
-    })),
+export function useLatestAppDeployments() {
+  return useQuery<components['schemas']['LatestDeploymentsByAppResponse'], Error>({
+    queryKey: keys.latestDeploymentsByApp,
+    queryFn: () => unwrap(api.GET('/v1/deployments/latest-by-app', {})),
+    retry: retryPolicy,
+    refetchInterval: (query) => {
+      const items = query.state.data?.items ?? [];
+      return items.some((deployment) => !isDeploymentTerminal(deployment.status)) ? 2_500 : false;
+    },
   });
-
-  const latestByAppId = new Map<string, Deployment>();
-  for (const [index, query] of queries.entries()) {
-    const latest = query.data?.items?.[0];
-    if (latest) latestByAppId.set(apps[index].id, latest);
-  }
-
-  return {
-    latestByAppId,
-    // Scoped metadata is best-effort. The store keeps the account-wide feed as
-    // a fallback, so an isolated app request must not blank the whole console.
-    isPending: queries.some((query) => query.isPending),
-    error: queries.find((query) => query.error)?.error ?? null,
-  };
 }
 
 export function useDeployment(id: string, options?: Options<Deployment>) {

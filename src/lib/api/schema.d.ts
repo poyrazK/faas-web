@@ -3665,6 +3665,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/deployments/latest-by-app": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the latest deployment for each app on the account.
+         * @description Returns at most one deployment for every non-deleted app owned by the
+         *     authenticated account. Items are ordered newest first by `created_at`,
+         *     with deployment ID as the stable tie-breaker.
+         */
+        get: operations["listLatestDeploymentsByApp"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/deployments/{id}": {
         parameters: {
             query?: never;
@@ -10118,6 +10140,10 @@ export interface components {
             items: components["schemas"]["DeploymentResponse"][];
             /** Format: date-time */
             next_before?: string | null;
+        };
+        /** @description At most one newest deployment for each non-deleted app owned by the authenticated account. */
+        LatestDeploymentsByAppResponse: {
+            items: components["schemas"]["DeploymentResponse"][];
         };
         /**
          * @description One persisted billing-provider invoice (issue #259). Money is
@@ -23800,6 +23826,33 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeploymentListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    listLatestDeploymentsByApp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The latest deployment for each deployed app. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "items": []
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LatestDeploymentsByAppResponse"];
                 };
             };
             401: components["responses"]["Unauthorized"];

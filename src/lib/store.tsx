@@ -82,22 +82,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const rollback = useRollback();
 
   const apps = useMemo(() => appsQuery.data ?? [], [appsQuery.data]);
-  const latestAppDeployments = useLatestAppDeployments(apps);
+  const latestAppDeployments = useLatestAppDeployments();
 
-  // The account-wide list is still useful for the global history page, but its
-  // first 50 rows are not enough to identify every app's latest deployment.
-  // Prefer the app-scoped limit=1 reads, falling back to the global rows while
-  // those requests are loading or if one app's endpoint is unavailable.
+  // The account-wide list remains the source for global history, but its first
+  // 50 rows cannot identify every app's latest deployment. The batch response
+  // is therefore authoritative for workflow state, version, and deploy time.
   const latestByAppId = useMemo(() => {
     const byApp = new Map<string, ApiDeployment>();
-    for (const d of deploymentsQuery.data?.items ?? []) {
-      if (!byApp.has(d.app_id)) byApp.set(d.app_id, d);
-    }
-    for (const [appId, deployment] of latestAppDeployments.latestByAppId) {
-      byApp.set(appId, deployment);
+    for (const deployment of latestAppDeployments.data?.items ?? []) {
+      byApp.set(deployment.app_id, deployment);
     }
     return byApp;
-  }, [deploymentsQuery.data, latestAppDeployments.latestByAppId]);
+  }, [latestAppDeployments.data]);
 
   const workflows = useMemo(
     () => apps.map((app) => toWorkflow(app, metricsQuery.data, latestByAppId.get(app.id))),
@@ -115,8 +111,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
       deployments,
       // Metrics are excluded: the list should paint as soon as the apps land
       // rather than waiting on a Prometheus round-trip that may be degraded.
-      loading: appsQuery.isPending || deploymentsQuery.isPending,
-      error: appsQuery.error ?? deploymentsQuery.error ?? null,
+      loading: appsQuery.isPending || deploymentsQuery.isPending || latestAppDeployments.isPending,
+      error:
+        appsQuery.error ??
+        deploymentsQuery.error ??
+        (latestAppDeployments.data ? null : latestAppDeployments.error) ??
+        null,
       getWorkflow: (id) => workflows.find((f) => f.id === id),
       deploymentsFor: (id) => deployments.filter((d) => d.workflowId === id),
       workflowsForProject: (projectId) => workflows.filter((f) => f.projectId === projectId),
@@ -155,6 +155,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       appsQuery.error,
       deploymentsQuery.isPending,
       deploymentsQuery.error,
+      latestAppDeployments.isPending,
+      latestAppDeployments.data,
+      latestAppDeployments.error,
       createApp,
       rollback,
       qc,
