@@ -1,4 +1,4 @@
-import { useId, useMemo, useRef, useState } from 'react';
+import { useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createFileRoute, Link, useParams } from '@tanstack/react-router';
 import { motion, useReducedMotion } from 'motion/react';
 import { ArrowLeft, OpenNewWindow, Pause, Play, Refresh, Rocket } from 'iconoir-react';
@@ -17,6 +17,7 @@ import {
 } from '@/components/dashboard/primitives';
 import { formatCompact, formatMs } from '@/lib/mock-data';
 import {
+  useAppDeployments,
   useAppMetrics,
   useBindRepo,
   useBuilds,
@@ -25,6 +26,7 @@ import {
   useWakeApp,
   type MetricsRange,
 } from '@/lib/api/queries';
+import { toDeployment } from '@/lib/api/adapters';
 import { useData } from '@/lib/store';
 import { useToast } from '@/components/ui/toast';
 import { useConfirm } from '@/components/ui/confirm';
@@ -98,6 +100,30 @@ const TABS = [
 ] as const;
 type Tab = (typeof TABS)[number];
 
+function DeploymentCapability({
+  slug,
+  resource,
+  phase,
+  error,
+  hasRunnable,
+  onRetry,
+  children,
+}: {
+  slug: string;
+  resource: 'Invoke' | 'Logs';
+  phase: ReturnType<typeof queryPhase>;
+  error: unknown;
+  hasRunnable: boolean;
+  onRetry: () => void;
+  children: ReactNode;
+}) {
+  if (phase === 'unreachable') return <UnreachableState onRetry={onRetry} />;
+  if (phase === 'error') return <ErrorState error={error} onRetry={onRetry} />;
+  if (phase === 'loading') return <LoadingState message="Loading deployment history…" />;
+  if (!hasRunnable) return <DeploymentGate slug={slug} resource={resource} />;
+  return <>{children}</>;
+}
+
 export const Route = createFileRoute('/dashboard/workflows/$workflowId')({
   head: () => pageHead({ title: 'Workflow' }),
   // Tab lives in the URL, so a refresh or a shared link lands on the same one.
@@ -135,13 +161,14 @@ function FunctionDetailPage() {
     setTab(TABS[next]);
   };
   const [range, setRange] = useState<MetricsRange>('24h');
-  const { getWorkflow, deploymentsFor, redeploy, loading, error, refresh } = useData();
+  const { getWorkflow, redeploy, loading, error, refresh } = useData();
   const { account, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const park = useParkApp();
   const wake = useWakeApp();
   const deployFromRef = useDeployFromRef(workflowId);
   const bindRepo = useBindRepo(workflowId);
+  const appDeploymentQuery = useAppDeployments(workflowId);
   const [deployOpen, setDeployOpen] = useState(false);
   const [deployRepo, setDeployRepo] = useState('');
   const [deployRef, setDeployRef] = useState('main');
@@ -200,6 +227,21 @@ function FunctionDetailPage() {
     return byDeployment;
   }, [builds.data]);
 
+  const deployments = useMemo(() => {
+    const deploymentItems = appDeploymentQuery.data?.pages.flatMap((page) => page.items) ?? [];
+    const appId = deploymentItems[0]?.app_id;
+    const slugById = appId ? new Map([[appId, workflowId]]) : new Map<string, string>();
+    return deploymentItems.map((deployment) => toDeployment(deployment, slugById));
+  }, [appDeploymentQuery.data, workflowId]);
+  // Keep a stale loaded page usable while a later page is being fetched, but
+  // never turn an initial deployment read failure into an undeployed gate.
+  const deploymentError = deployments.length === 0 ? appDeploymentQuery.error : undefined;
+  const deploymentPhase = queryPhase({
+    error: deploymentError,
+    loading: appDeploymentQuery.isPending,
+    isEmpty: deployments.length === 0,
+  });
+
   // Order matters: the app list arrives over the network now, so "not in the
   // list" means "not loaded yet" until the request settles. Claiming 404 first
   // would flash a wrong answer on every cold navigation.
@@ -230,7 +272,6 @@ function FunctionDetailPage() {
     );
   }
 
-  const deployments = deploymentsFor(fn.id);
   const hasRunnable = hasRunnableDeployment(deployments);
   const canRollback = hasRollbackTarget(deployments);
   const isDeploying =
@@ -526,12 +567,18 @@ function FunctionDetailPage() {
                 </div>
               ))}
 
-            {tab === 'Invoke' &&
-              (!hasRunnable ? (
-                <DeploymentGate slug={fn.id} resource="Invoke" />
-              ) : (
+            {tab === 'Invoke' && (
+              <DeploymentCapability
+                slug={fn.id}
+                resource="Invoke"
+                phase={deploymentPhase}
+                error={deploymentError}
+                hasRunnable={hasRunnable}
+                onRetry={() => void appDeploymentQuery.refetch()}
+              >
                 <InvokePanel slug={fn.id} />
-              ))}
+              </DeploymentCapability>
+            )}
 
             {tab === 'Deployments' && (
               <>
@@ -572,12 +619,18 @@ function FunctionDetailPage() {
               </>
             )}
 
-            {tab === 'Logs' &&
-              (!hasRunnable ? (
-                <DeploymentGate slug={fn.id} resource="Logs" />
-              ) : (
+            {tab === 'Logs' && (
+              <DeploymentCapability
+                slug={fn.id}
+                resource="Logs"
+                phase={deploymentPhase}
+                error={deploymentError}
+                hasRunnable={hasRunnable}
+                onRetry={() => void appDeploymentQuery.refetch()}
+              >
                 <LogsBody slug={fn.id} />
-              ))}
+              </DeploymentCapability>
+            )}
             {tab === 'Errors' && <ErrorsBody slug={fn.id} />}
             {tab === 'Routes' && <RoutesBody slug={fn.id} />}
             {tab === 'Secrets' && <SecretsBody slug={fn.id} />}
