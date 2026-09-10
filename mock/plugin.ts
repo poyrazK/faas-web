@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createHash, randomBytes } from 'node:crypto';
 import type { Plugin } from 'vite';
+import type { components } from '../src/lib/api/schema';
 import * as db from './data';
 
 /**
@@ -89,6 +90,55 @@ route('POST', '/v1/auth/logout', ({ res }) => {
 });
 
 route('GET', '/v1/account', () => ({ ...db.account, app_count: db.apps.length }));
+const SLO_WINDOWS = new Set(['1h', '24h', '7d']);
+
+function sloWindow(query: URLSearchParams) {
+  const window = query.get('window') ?? '24h';
+  if (!SLO_WINDOWS.has(window))
+    throw new Problem(400, 'validation_failed', `unknown SLO window "${window}".`);
+  return window as '1h' | '24h' | '7d';
+}
+
+function accountSlo(
+  window: ReturnType<typeof sloWindow>
+): components['schemas']['AccountSLOResponse'] {
+  return {
+    window,
+    source: 'prometheus',
+    as_of: db.iso(0),
+    request_duration: { p50_ms: 22.1, p95_ms: 91, p99_ms: 410 },
+    error_rate_pct: 0.55,
+    cold_boot_rate_pct: 4.2,
+    instance_hours: 12,
+    gb_hours: 3,
+    wake_queue_p95_ms: 14,
+    requests_total: 12000,
+    throttled_total: 23,
+  };
+}
+
+function appSlo(
+  a: db.App,
+  window: ReturnType<typeof sloWindow>
+): components['schemas']['AppSLOResponse'] {
+  return {
+    app_id: a.id,
+    app_slug: a.slug,
+    window,
+    source: 'prometheus',
+    as_of: db.iso(0),
+    request_duration: { p50_ms: 14.2, p95_ms: 87, p99_ms: 312.5 },
+    error_rate_pct: 0.41,
+    cold_boot_rate_pct: 3.1,
+    instance_hours: 0,
+    gb_hours: 0,
+    wake_queue_p95_ms: 12,
+    requests_total: 4321,
+    throttled_total: 0,
+  };
+}
+
+route('GET', '/v1/account/slo', ({ query }) => accountSlo(sloWindow(query)));
 route('PATCH', '/v1/account/plan', ({ body }) => {
   const plan = String(body.plan ?? '') as typeof db.account.plan;
   if (!['free', 'hobby', 'pro', 'scale'].includes(plan)) throw new Problem(400, 'invalid_plan');
@@ -234,6 +284,9 @@ route('POST', '/v1/apps/{slug}/rollback', ({ params }) => {
 });
 route('GET', '/v1/apps/{slug}/metrics', ({ params, query }) =>
   db.metricsFor(app(params.slug), query.get('range') ?? '24h')
+);
+route('GET', '/v1/apps/{slug}/slo', ({ params, query }) =>
+  appSlo(app(params.slug), sloWindow(query))
 );
 route('GET', '/v1/apps/{slug}/routes', ({ params }) => db.routesFor(app(params.slug)));
 
@@ -1276,8 +1329,8 @@ route('GET', '/v1/apps/{slug}/analytics/timeseries', ({ params, query }) => {
       'the free plan does not include per-app metrics; upgrade to Hobby or above.'
     );
   const { since, hours, clamped } = analyticsWindow(query);
-  const now = Date.now();
-  const points = Array.from({ length: hours }, (_, i) => {
+  const now = db.NOW;
+  const unfilteredPoints = Array.from({ length: hours }, (_, i) => {
     const hour = hours - 1 - i;
     // A diurnal shape, so the line is a shape rather than a flat run.
     const at = new Date(now - hour * 3_600_000);
@@ -1296,14 +1349,42 @@ route('GET', '/v1/apps/{slug}/analytics/timeseries', ({ params, query }) => {
       p99_ms: Math.round(420 * wave),
     };
   });
+  const route = query.get('route');
+  const method = query.get('method');
+  const routeMethodFilter = route !== null && method !== null;
+  const scale = (point: (typeof unfilteredPoints)[number], factor: number) => {
+    const requests = Math.round(point.requests * factor);
+    const errorRequests = Math.min(requests, Math.round(point.error_requests * factor));
+    return {
+      ...point,
+      requests,
+      error_requests: errorRequests,
+      error_rate_pct: requests === 0 ? 0 : Math.round((errorRequests / requests) * 10000) / 100,
+      cold_boots: Math.round(point.cold_boots * factor),
+    };
+  };
+  const points = routeMethodFilter
+    ? unfilteredPoints.map((point) => scale(point, 0.44))
+    : unfilteredPoints;
+  const groupBy = query.get('group_by');
+  const values = groupBy === null ? undefined : ANALYTICS_GROUPS[groupBy];
+  if (groupBy !== null && !values)
+    throw new Problem(400, 'validation_failed', `unknown group_by "${groupBy}".`);
+  const series = values?.map((value, i) => ({
+    value,
+    ...(groupBy === 'route' ? { method: (['GET', 'POST', 'GET', 'PUT'] as const)[i % 4] } : {}),
+    points: points.map((point) => scale(point, [0.44, 0.3, 0.18, 0.08][i] ?? 0.05)),
+  }));
   return {
     slug: a.slug,
+    ...(routeMethodFilter ? { route, method } : {}),
     since,
     from: points[0]?.start ?? db.iso(hours * 3_600_000),
     until: db.iso(0),
     window_clamped: clamped,
     bucket: '1h',
     points,
+    ...(groupBy !== null ? { group_by: groupBy, series } : {}),
     as_of: db.iso(0),
   };
 });
