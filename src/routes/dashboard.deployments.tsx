@@ -314,6 +314,16 @@ export function DeploymentsPage() {
   const retryNextPage = () => {
     void deploymentsQuery.fetchNextPage().catch(() => undefined);
   };
+  const retryBackgroundRefetch = () => {
+    void deploymentsQuery.refetch();
+  };
+  const loadedDataError =
+    deployments.length > 0 &&
+    deploymentsQuery.error != null &&
+    (deploymentsQuery.isFetchNextPageError || deploymentsQuery.isRefetchError);
+  const retryLoadedData = deploymentsQuery.isFetchNextPageError
+    ? retryNextPage
+    : retryBackgroundRefetch;
 
   // Build duration lives on the build record, not the deployment, so the two
   // have to be joined here. Every row showed "0.0s" before this: the adapter
@@ -398,13 +408,13 @@ export function DeploymentsPage() {
         onRowClick={(d) => setSelected(d)}
       />
 
-      {deploymentsQuery.error != null && deployments.length > 0 && (
+      {loadedDataError && (
         <div className="flex flex-wrap items-center justify-center gap-3">
           <InlinePhase
             phase={queryPhase({ error: deploymentsQuery.error })}
             error={deploymentsQuery.error}
           />
-          <Button size="xs" variant="ghost" onClick={retryNextPage}>
+          <Button size="xs" variant="ghost" onClick={retryLoadedData}>
             Retry
           </Button>
         </div>

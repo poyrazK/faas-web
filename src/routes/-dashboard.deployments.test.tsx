@@ -49,7 +49,17 @@ const { DeploymentsPage } = await import('./dashboard.deployments');
 
 const ready = (data: unknown) => ({ data, isPending: false, error: null, refetch: vi.fn() });
 
-function infiniteQuery({ items, error }: { items: unknown[]; error: Error | null }) {
+function infiniteQuery({
+  items,
+  error,
+  isFetchNextPageError = false,
+  isRefetchError = false,
+}: {
+  items: unknown[];
+  error: Error | null;
+  isFetchNextPageError?: boolean;
+  isRefetchError?: boolean;
+}) {
   return {
     data: { pages: [{ items }] },
     isPending: false,
@@ -58,6 +68,8 @@ function infiniteQuery({ items, error }: { items: unknown[]; error: Error | null
     fetchNextPage,
     hasNextPage: true,
     isFetchingNextPage: false,
+    isFetchNextPageError,
+    isRefetchError,
   };
 }
 
@@ -75,7 +87,11 @@ beforeEach(() => {
 describe('DeploymentsPage pagination retries', () => {
   it('retries the failed next page without refetching loaded data', () => {
     useInfiniteDeployments.mockReturnValue(
-      infiniteQuery({ items: [{}], error: new Error('next page failed') })
+      infiniteQuery({
+        items: [{}],
+        error: new Error('next page failed'),
+        isFetchNextPageError: true,
+      })
     );
 
     render(<DeploymentsPage />);
@@ -83,6 +99,23 @@ describe('DeploymentsPage pagination retries', () => {
 
     expect(fetchNextPage).toHaveBeenCalledTimes(1);
     expect(refetchDeployments).not.toHaveBeenCalled();
+    expect(refetchApps).not.toHaveBeenCalled();
+  });
+
+  it('retries a failed background refetch without loading an older page', () => {
+    useInfiniteDeployments.mockReturnValue(
+      infiniteQuery({
+        items: [{}],
+        error: new Error('background refresh failed'),
+        isRefetchError: true,
+      })
+    );
+
+    render(<DeploymentsPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+
+    expect(refetchDeployments).toHaveBeenCalledTimes(1);
+    expect(fetchNextPage).not.toHaveBeenCalled();
     expect(refetchApps).not.toHaveBeenCalled();
   });
 
