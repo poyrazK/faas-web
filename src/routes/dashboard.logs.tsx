@@ -22,18 +22,26 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { CopyMorph, useCopy } from '@/components/ui/copy-button';
-import { EmptyState, LevelTag, LoadingState, PageHeader } from '@/components/dashboard/primitives';
+import {
+  EmptyState,
+  ErrorState,
+  LevelTag,
+  LoadingState,
+  PageHeader,
+  UnreachableState,
+  queryPhase,
+} from '@/components/dashboard/primitives';
 import { Pill } from '@/components/dashboard/resource-table';
 import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
 import { LOG_LEVELS, MAX_LINES, useLogStream, type LogLevelFilter } from '@/lib/api/logs';
-import { useAppInstances } from '@/lib/api/queries';
+import { slugIndex, toDeployment } from '@/lib/api/adapters';
+import { useAppDeployments, useAppInstances } from '@/lib/api/queries';
 import { errorMessage } from '@/lib/api/errors';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import { consoleHead } from '@/lib/seo';
 import { DeploymentGate } from '@/components/dashboard/deployment-gate';
 import { hasRunnableDeployment } from '@/lib/deployment-status';
-import { useData } from '@/lib/store';
 
 export const Route = createFileRoute('/dashboard/logs')({
   component: LogsPage,
@@ -602,8 +610,20 @@ function LogsPage() {
   const navigate = Route.useNavigate();
   const appState = useSelectedApp();
   const { slug, select, apps } = appState;
-  const { deployments, loading: loadingData } = useData();
-  const selectedDeployments = deployments.filter((deployment) => deployment.workflowId === slug);
+  // The account-wide feed is intentionally capped. Reading it here meant a
+  // busy workspace could hide this app's only runnable deployment behind the
+  // global page boundary, so Logs now gates on the app-scoped history query.
+  const deploymentsQuery = useAppDeployments(slug);
+  const selectedDeployments = useMemo(() => {
+    const bySlug = slugIndex(apps);
+    return (deploymentsQuery.data?.pages.flatMap((page) => page.items) ?? []).map((deployment) =>
+      toDeployment(deployment, bySlug)
+    );
+  }, [apps, deploymentsQuery.data]);
+  const deploymentsPhase = queryPhase({
+    error: deploymentsQuery.error,
+    loading: deploymentsQuery.isPending,
+  });
 
   // The URL's app wins over the remembered one, once the list can confirm
   // it exists. Cheap no-op on every render after it has applied.
@@ -680,8 +700,15 @@ function LogsPage() {
         }
       />
       <AppScope state={appState} resource="logs">
-        {loadingData ? (
-          <LoadingState message="Loading app state…" />
+        {deploymentsPhase === 'unreachable' ? (
+          <UnreachableState onRetry={() => void deploymentsQuery.refetch()} />
+        ) : deploymentsPhase === 'error' ? (
+          <ErrorState
+            error={deploymentsQuery.error}
+            onRetry={() => void deploymentsQuery.refetch()}
+          />
+        ) : deploymentsPhase === 'loading' ? (
+          <LoadingState message="Loading deployment history…" />
         ) : !hasRunnableDeployment(selectedDeployments) ? (
           <DeploymentGate slug={slug} resource="Logs" />
         ) : (
