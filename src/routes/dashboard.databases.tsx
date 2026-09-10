@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { Plus, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
-import { FIELD } from '@/components/ui/field';
+import { FIELD, FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
 import { PageHeader, Panel } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
@@ -63,6 +63,11 @@ const DEFAULT_PORT: Partial<Record<(typeof KINDS)[number], number>> = {
   https_api: 443,
 };
 
+const UPSTREAM_HOST =
+  /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/i;
+const IPV4 = /^(?:\d{1,3}\.){3}\d{1,3}$/;
+const UPSTREAM_SCOPE = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/;
+
 /**
  * The upstreams body, without the page chrome around it.
  *
@@ -82,6 +87,25 @@ export function UpstreamsBody({ slug }: { slug: string }) {
   const [host, setHost] = useState('');
   const [port, setPort] = useState(String(DEFAULT_PORT.postgres));
   const [scope, setScope] = useState('');
+  const validation = useFormValidation<'host' | 'port' | 'scope'>();
+  const cleanHost = host.trim();
+  const parsedPort = Number(port);
+  const cleanScope = scope.trim();
+  const hostError =
+    cleanHost.length <= 253 && UPSTREAM_HOST.test(cleanHost) && !IPV4.test(cleanHost)
+      ? undefined
+      : 'Enter a hostname, not an IP address or URL.';
+  const portError =
+    Number.isInteger(parsedPort) && parsedPort >= 1 && parsedPort <= 65535
+      ? undefined
+      : 'Enter a whole-number port from 1 to 65535.';
+  const scopeError =
+    !cleanScope || UPSTREAM_SCOPE.test(cleanScope)
+      ? undefined
+      : 'Use 3–40 lowercase letters, numbers, or dashes.';
+  const shownHostError = validation.submitAttempted ? hostError : undefined;
+  const shownPortError = validation.submitAttempted ? portError : undefined;
+  const shownScopeError = validation.submitAttempted ? scopeError : undefined;
 
   const rows = useMemo<UpstreamRow[]>(
     () =>
@@ -174,20 +198,29 @@ export function UpstreamsBody({ slug }: { slug: string }) {
         description="Declared upstreams are probed for reachability and latency before the app needs them. The hostname is hashed at rest."
       >
         <form
+          noValidate
           className="flex flex-wrap items-end gap-3"
           onSubmit={(e) => {
             e.preventDefault();
-            if (!host.trim() || !Number(port) || add.isPending) return;
+            if (
+              !validation.validate(
+                { host: hostError, port: portError, scope: scopeError },
+                e.currentTarget
+              ) ||
+              add.isPending
+            )
+              return;
             void add
               .mutateAsync({
                 kind,
-                host: host.trim(),
-                port: Number(port),
-                scope: scope.trim() || undefined,
+                host: cleanHost,
+                port: parsedPort,
+                scope: cleanScope || undefined,
               })
               .then(() => {
                 setHost('');
                 setScope('');
+                validation.resetValidation();
                 toast({ kind: 'success', title: `${kind} upstream declared` });
               })
               .catch((err: unknown) =>
@@ -216,41 +249,46 @@ export function UpstreamsBody({ slug }: { slug: string }) {
           <label className="flex min-w-56 flex-1 flex-col gap-1.5">
             <span className="label-mono text-muted-foreground">Host</span>
             <input
+              name="host"
               value={host}
               onChange={(e) => setHost(e.target.value)}
+              {...fieldErrorProps(shownHostError, 'upstream-host-error')}
               placeholder="db.internal.example.com"
               spellCheck={false}
               className={`${FIELD} font-mono`}
             />
+            {shownHostError && <FieldError id="upstream-host-error">{shownHostError}</FieldError>}
           </label>
           <label className="flex w-28 flex-col gap-1.5">
             <span className="label-mono text-muted-foreground">Port</span>
             <input
+              name="port"
               type="number"
               min={1}
               max={65535}
               value={port}
               onChange={(e) => setPort(e.target.value)}
+              {...fieldErrorProps(shownPortError, 'upstream-port-error')}
               className={`${FIELD} font-mono [font-variant-numeric:tabular-nums]`}
             />
+            {shownPortError && <FieldError id="upstream-port-error">{shownPortError}</FieldError>}
           </label>
           <label className="flex w-36 flex-col gap-1.5">
             <span className="label-mono text-muted-foreground">Scope</span>
             <input
+              name="scope"
               value={scope}
               onChange={(e) => setScope(e.target.value)}
+              {...fieldErrorProps(shownScopeError, 'upstream-scope-error')}
               placeholder="optional"
               spellCheck={false}
               className={`${FIELD} font-mono`}
             />
+            {shownScopeError && (
+              <FieldError id="upstream-scope-error">{shownScopeError}</FieldError>
+            )}
           </label>
-          <Button
-            type="submit"
-            size="sm"
-            className="gap-1.5"
-            disabled={!host.trim() || !Number(port)}
-            busy={add.isPending}
-          >
+          <Button type="submit" size="sm" className="gap-1.5" busy={add.isPending}>
             <Plus className="h-3.5 w-3.5" />
             Declare
           </Button>

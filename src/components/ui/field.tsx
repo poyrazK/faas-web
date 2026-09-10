@@ -36,6 +36,42 @@ export function FieldError({ id, children }: { id: string; children: React.React
   );
 }
 
+/** Native ARIA wiring shared by validated controls. */
+export function fieldErrorProps(error: string | undefined, errorId: string) {
+  return {
+    'aria-invalid': error ? (true as const) : undefined,
+    'aria-describedby': error ? errorId : undefined,
+  };
+}
+
+/**
+ * Submit-attempt state plus deterministic first-invalid focus.
+ *
+ * Validation stays in each form because its rules come from that endpoint's
+ * schema. This hook only owns the interaction contract: errors appear after a
+ * submit attempt and the first named invalid control receives focus.
+ */
+export function useFormValidation<Name extends string>() {
+  const [submitAttempted, setSubmitAttempted] = React.useState(false);
+
+  const validate = React.useCallback(
+    (errors: Partial<Record<Name, string | undefined>>, form: HTMLFormElement) => {
+      setSubmitAttempted(true);
+      const firstInvalid = Object.entries(errors).find(([, message]) => Boolean(message));
+      if (!firstInvalid) return true;
+
+      const control = form.elements.namedItem(firstInvalid[0]);
+      if (control instanceof HTMLElement) control.focus();
+      return false;
+    },
+    []
+  );
+
+  const resetValidation = React.useCallback(() => setSubmitAttempted(false), []);
+
+  return { submitAttempted, validate, resetValidation };
+}
+
 export function Textarea({ className, ...props }: React.ComponentProps<'textarea'>) {
   return (
     <textarea

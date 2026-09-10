@@ -3,6 +3,7 @@ import { createFileRoute } from '@tanstack/react-router';
 import { WarningTriangle, Plus, Refresh, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { CopyMorph, useCopy } from '@/components/ui/copy-button';
+import { FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
 import { PageHeader, Panel } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { useToast } from '@/components/ui/toast';
@@ -109,42 +110,83 @@ function GraceWindowPanel() {
   const q = useGraceWindow();
   const set = useSetGraceWindow();
   const [days, setDays] = useState('');
+  const validation = useFormValidation<'days'>();
+  const parsedDays = Number(days);
+  const daysError =
+    days !== '' && Number.isInteger(parsedDays) && parsedDays >= 0
+      ? undefined
+      : 'Enter a whole number of days, zero or greater.';
+  const shownDaysError = validation.submitAttempted ? daysError : undefined;
   return (
     <Panel
       title="Rotation grace window"
       description="Days the old key keeps working after a rotation."
     >
-      <div className="flex flex-wrap items-end gap-3">
+      <form
+        noValidate
+        className="flex flex-wrap items-end gap-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!validation.validate({ days: daysError }, event.currentTarget) || set.isPending)
+            return;
+          void set
+            .mutateAsync(parsedDays)
+            .then(() => {
+              validation.resetValidation();
+              toast({ kind: 'success', title: 'Grace window updated' });
+            })
+            .catch((err: unknown) =>
+              toast({ kind: 'error', title: 'Could not update', description: errorMessage(err) })
+            );
+        }}
+      >
         <label className="flex flex-col gap-1.5">
           <span className="label-mono text-muted-foreground">Days</span>
           <input
+            name="days"
             type="number"
             min={0}
-            value={days === '' ? (q.data?.days ?? '') : days}
+            step={1}
+            value={days}
             onChange={(e) => setDays(e.target.value)}
+            placeholder={q.data?.days == null ? undefined : String(q.data.days)}
+            {...fieldErrorProps(shownDaysError, 'grace-days-error')}
             className="h-9 w-24 rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-brand/50 [font-variant-numeric:tabular-nums]"
           />
+          {shownDaysError && <FieldError id="grace-days-error">{shownDaysError}</FieldError>}
         </label>
+        <Button type="submit" size="sm" variant="outline" busy={set.isPending}>
+          Save
+        </Button>
         <Button
+          type="button"
           size="sm"
-          variant="outline"
-          disabled={days === ''}
+          variant="ghost"
+          disabled={q.data?.days == null}
           busy={set.isPending}
           onClick={() =>
             void set
-              .mutateAsync(Number(days))
-              .then(() => toast({ kind: 'success', title: 'Grace window updated' }))
+              .mutateAsync(null)
+              .then(() => {
+                setDays('');
+                validation.resetValidation();
+                toast({ kind: 'success', title: 'Plan default restored' });
+              })
               .catch((err: unknown) =>
-                toast({ kind: 'error', title: 'Could not update', description: errorMessage(err) })
+                toast({
+                  kind: 'error',
+                  title: 'Could not restore default',
+                  description: errorMessage(err),
+                })
               )
           }
         >
-          Save
+          Use plan default
         </Button>
         {q.data && (
           <p className="text-xs text-muted-foreground">Plan default {q.data.plan_default} days.</p>
         )}
-      </div>
+      </form>
     </Panel>
   );
 }

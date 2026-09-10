@@ -4,10 +4,11 @@ import { WarningTriangle, ArrowRight } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import { PageHeader, Panel } from '@/components/dashboard/primitives';
-import { FIELD } from '@/components/ui/field';
+import { FIELD, FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
 import { clearWorkspace, readWorkspace, saveWorkspace, useAuth } from '@/lib/auth';
 import {
   useAccountExport,
+  useDeleteAccount,
   useEgressExtra,
   useRestoreAccount,
   useSetEgressExtra,
@@ -48,18 +49,20 @@ const ELSEWHERE: { label: string; description: string; to: '/dashboard/workflows
     },
   ];
 
-/** Type-to-confirm dialog for the irreversible action. */
-function DeleteWorkspaceDialog({
-  workspace,
+/** Type-to-confirm dialog for the staged server-side deletion. */
+function DeleteAccountDialog({
+  confirmValue,
+  busy,
   onCancel,
   onConfirm,
 }: {
-  workspace: string;
+  confirmValue: string;
+  busy: boolean;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
   const [typed, setTyped] = useState('');
-  const matches = typed === workspace;
+  const matches = typed === confirmValue;
   const dialogRef = useRef<HTMLDivElement>(null);
   useFocusTrap(dialogRef, true);
 
@@ -89,16 +92,16 @@ function DeleteWorkspaceDialog({
         </span>
 
         <h2 id="delete-title" className="mt-4 text-lg font-semibold tracking-tight">
-          Delete this workspace?
+          Schedule account deletion?
         </h2>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-          This destroys every function, snapshot, and volume in{' '}
-          <span className="font-mono text-foreground">{workspace}</span>. It cannot be undone.
+          This stages the account and everything it owns for deletion. You can restore it for 30
+          days before the data is permanently removed.
         </p>
 
         <label className="mt-5 block">
           <span className="text-xs text-muted-foreground">
-            Type <span className="font-mono text-foreground">{workspace}</span> to confirm
+            Type <span className="font-mono text-foreground">{confirmValue}</span> to confirm
           </span>
           <input
             autoFocus
@@ -112,8 +115,14 @@ function DeleteWorkspaceDialog({
           <Button variant="ghost" size="sm" onClick={onCancel}>
             Cancel
           </Button>
-          <Button variant="destructive" size="sm" disabled={!matches} onClick={onConfirm}>
-            Delete workspace
+          <Button
+            variant="destructive"
+            size="sm"
+            disabled={!matches}
+            busy={busy}
+            onClick={onConfirm}
+          >
+            Schedule deletion
           </Button>
         </div>
       </div>
@@ -208,36 +217,60 @@ function EgressExtraPanel() {
   const set = useSetEgressExtra();
   const [value, setValue] = useState('');
   const current = q.data;
+  const validation = useFormValidation<'extra'>();
+  const parsed = Number(value);
+  const valid =
+    value !== '' &&
+    current != null &&
+    Number.isInteger(parsed) &&
+    parsed >= 0 &&
+    parsed <= current.max_extra;
+  const valueError = valid
+    ? undefined
+    : current
+      ? `Enter a whole number from 0 to ${current.max_extra}.`
+      : 'Wait for the account limit to load.';
+  const shownValueError = validation.submitAttempted ? valueError : undefined;
   return (
     <Panel
       title="Egress allowlist budget"
       description="Extra allowlist entries on top of the plan's cap, shared across apps."
     >
-      <div className="flex flex-wrap items-end gap-3">
+      <form
+        noValidate
+        className="flex flex-wrap items-end gap-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!validation.validate({ extra: valueError }, event.currentTarget) || set.isPending)
+            return;
+          void set
+            .mutateAsync(parsed)
+            .then(() => {
+              validation.resetValidation();
+              toast({ kind: 'success', title: 'Egress budget updated' });
+            })
+            .catch((err: unknown) =>
+              toast({ kind: 'error', title: 'Could not update', description: errorMessage(err) })
+            );
+        }}
+      >
         <label className="flex flex-col gap-1.5">
           <span className="label-mono text-muted-foreground">Extra entries</span>
           <input
+            name="extra"
             type="number"
             min={0}
             max={current?.max_extra}
-            value={value === '' ? (current?.extra ?? '') : value}
+            step={1}
+            value={value}
             onChange={(e) => setValue(e.target.value)}
+            placeholder={current ? String(current.extra) : undefined}
+            {...fieldErrorProps(shownValueError, 'egress-extra-error')}
             className={`${FIELD} w-32 [font-variant-numeric:tabular-nums]`}
           />
+          {shownValueError && <FieldError id="egress-extra-error">{shownValueError}</FieldError>}
         </label>
-        <Button
-          size="sm"
-          disabled={value === ''}
-          busy={set.isPending}
-          onClick={() =>
-            void set
-              .mutateAsync(Number(value))
-              .then(() => toast({ kind: 'success', title: 'Egress budget updated' }))
-              .catch((err: unknown) =>
-                toast({ kind: 'error', title: 'Could not update', description: errorMessage(err) })
-              )
-          }
-        >
+        <Button type="submit" size="sm" busy={set.isPending}>
           Save
         </Button>
         {current && (
@@ -245,18 +278,19 @@ function EgressExtraPanel() {
             Plan cap {current.plan_cap} per app · up to {current.max_extra} extra.
           </p>
         )}
-      </div>
+      </form>
     </Panel>
   );
 }
 
 function SettingsPage() {
   const { toast } = useToast();
-  const { signOut } = useAuth();
+  const { account, refreshAccount, signOut } = useAuth();
   const navigate = useNavigate();
+  const deleteAccount = useDeleteAccount();
 
   const [workspace, setWorkspace] = useState(readWorkspace);
-  const [showDelete, setShowDelete] = useState(false);
+  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
 
   // The workspace name is a label this console shows in its own chrome; the
   // API has no account-name field to put it in. Stored where it is used, and
@@ -270,12 +304,7 @@ function SettingsPage() {
     });
   };
 
-  // Local reset only. Real account deletion is `DELETE /v1/account` — it stages
-  // a 30-day grace period and is restorable — but wiring a destructive endpoint
-  // to this button needs its own decision, not a drive-by. Until then the copy
-  // says what actually happens rather than implying the account is gone.
-  const handleDelete = () => {
-    setShowDelete(false);
+  const handleLocalReset = () => {
     clearWorkspace();
     void signOut();
     toast({
@@ -284,6 +313,27 @@ function SettingsPage() {
       description: 'You have been signed out. Your account was not deleted.',
     });
     navigate({ to: '/' });
+  };
+
+  const handleDeleteAccount = () => {
+    void deleteAccount
+      .mutateAsync()
+      .then(() => {
+        setShowDeleteAccount(false);
+        void refreshAccount();
+        toast({
+          kind: 'success',
+          title: 'Account deletion scheduled',
+          description: 'You can restore the account during the next 30 days.',
+        });
+      })
+      .catch((err: unknown) =>
+        toast({
+          kind: 'error',
+          title: 'Could not schedule deletion',
+          description: errorMessage(err),
+        })
+      );
   };
 
   return (
@@ -355,24 +405,44 @@ function SettingsPage() {
       </Panel>
 
       <Panel title="Danger zone" className="border-destructive/30">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <p className="text-sm font-medium">Delete workspace</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Permanently destroys every function, snapshot, and volume. This cannot be undone.
-            </p>
+        <div className="flex flex-col divide-y divide-border">
+          <div className="flex flex-wrap items-center justify-between gap-4 pb-5">
+            <div>
+              <p className="text-sm font-medium">Clear this browser</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Clears the local workspace label and signs out. Your account and resources stay
+                intact.
+              </p>
+            </div>
+            <Button variant="outline" size="sm" onClick={handleLocalReset}>
+              Clear browser data and sign out
+            </Button>
           </div>
-          <Button variant="destructive" size="sm" onClick={() => setShowDelete(true)}>
-            Delete workspace
-          </Button>
+          <div className="flex flex-wrap items-center justify-between gap-4 pt-5">
+            <div>
+              <p className="text-sm font-medium">Delete account</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Schedules all account data for deletion after a 30-day recovery window.
+              </p>
+            </div>
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={account?.status === 'deleted_pending'}
+              onClick={() => setShowDeleteAccount(true)}
+            >
+              Schedule account deletion
+            </Button>
+          </div>
         </div>
       </Panel>
 
-      {showDelete && (
-        <DeleteWorkspaceDialog
-          workspace={workspace}
-          onCancel={() => setShowDelete(false)}
-          onConfirm={handleDelete}
+      {showDeleteAccount && (
+        <DeleteAccountDialog
+          confirmValue={account?.email ?? 'DELETE'}
+          busy={deleteAccount.isPending}
+          onCancel={() => setShowDeleteAccount(false)}
+          onConfirm={handleDeleteAccount}
         />
       )}
       <EgressExtraPanel />

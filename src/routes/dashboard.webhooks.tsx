@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { List, Plus, Refresh, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
-import { FIELD } from '@/components/ui/field';
+import { FIELD, FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
 import { Switch } from '@/components/ui/switch';
 import { Modal } from '@/components/ui/modal';
 import { InlinePhase, PageHeader, Panel, queryPhase } from '@/components/dashboard/primitives';
@@ -38,13 +38,33 @@ interface WebhookRow {
 
 const EVENTS = [
   'cron.fired',
+  'cron.fired.manually',
   'app.created',
   'app.deleted',
+  'app.deployed',
+  'app.scaled',
+  'app.parked',
+  'app.woken',
   'build.succeeded',
   'build.failed',
+  'deployment.failed',
+  'rollout.aborted',
+  'error.new',
+  'job.finished',
+  'preview.created',
+  'budget.threshold',
 ] as const;
 type Event = (typeof EVENTS)[number];
 type RetryPolicy = 'default' | 'aggressive' | 'none';
+
+function isHttpsUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && Boolean(url.hostname);
+  } catch {
+    return false;
+  }
+}
 
 const DELIVERY_COLOR: Record<string, string | undefined> = {
   succeeded: 'var(--status-good)',
@@ -163,8 +183,19 @@ export function WebhooksBody({ slug }: { slug: string }) {
   const [events, setEvents] = useState<Event[]>([]);
   const [retryPolicy, setRetryPolicy] = useState<RetryPolicy>('default');
   const [viewing, setViewing] = useState<WebhookRow | null>(null);
-
-  const valid = /^https:\/\//.test(target.trim()) && secret.length >= 16;
+  const validation = useFormValidation<'target' | 'secret'>();
+  const targetError =
+    target.trim().length > 2048
+      ? 'Target URLs can be at most 2048 characters.'
+      : isHttpsUrl(target.trim())
+        ? undefined
+        : 'Enter a complete HTTPS target URL.';
+  const secretError =
+    secret.length >= 1 && secret.length <= 256
+      ? undefined
+      : 'Enter a secret of no more than 256 characters.';
+  const shownTargetError = validation.submitAttempted ? targetError : undefined;
+  const shownSecretError = validation.submitAttempted ? secretError : undefined;
 
   const rows = useMemo<WebhookRow[]>(
     () =>
@@ -300,10 +331,15 @@ export function WebhooksBody({ slug }: { slug: string }) {
         description="Every matching event is POSTed as JSON with an HMAC signature. The secret is sealed on save and never shown again."
       >
         <form
+          noValidate
           className="grid gap-4 sm:grid-cols-2"
           onSubmit={(e) => {
             e.preventDefault();
-            if (!valid || create.isPending) return;
+            if (
+              !validation.validate({ target: targetError, secret: secretError }, e.currentTarget) ||
+              create.isPending
+            )
+              return;
             void create
               .mutateAsync({
                 target_url: target.trim(),
@@ -316,6 +352,7 @@ export function WebhooksBody({ slug }: { slug: string }) {
                 setTarget('');
                 setSecret('');
                 setEvents([]);
+                validation.resetValidation();
                 toast({ kind: 'success', title: 'Webhook added' });
               })
               .catch((err: unknown) =>
@@ -326,23 +363,34 @@ export function WebhooksBody({ slug }: { slug: string }) {
           <label className="flex flex-col gap-1.5">
             <span className="label-mono text-muted-foreground">Target URL</span>
             <input
+              name="target"
+              maxLength={2048}
               value={target}
               onChange={(e) => setTarget(e.target.value)}
+              {...fieldErrorProps(shownTargetError, 'webhook-target-error')}
               placeholder="https://ops.example.com/hooks/gregale"
               spellCheck={false}
               className={`${FIELD} font-mono`}
             />
+            {shownTargetError && (
+              <FieldError id="webhook-target-error">{shownTargetError}</FieldError>
+            )}
           </label>
           <label className="flex flex-col gap-1.5">
             <span className="label-mono text-muted-foreground">Secret</span>
             <input
+              name="secret"
               type="password"
               value={secret}
               onChange={(e) => setSecret(e.target.value)}
-              placeholder="16+ characters"
+              {...fieldErrorProps(shownSecretError, 'webhook-secret-error')}
+              placeholder="1–256 characters"
               autoComplete="new-password"
               className={`${FIELD} font-mono`}
             />
+            {shownSecretError && (
+              <FieldError id="webhook-secret-error">{shownSecretError}</FieldError>
+            )}
           </label>
           <fieldset className="flex flex-col gap-1.5">
             <legend className="label-mono text-muted-foreground">Events</legend>
@@ -383,13 +431,7 @@ export function WebhooksBody({ slug }: { slug: string }) {
                 <option value="none">none — one attempt</option>
               </select>
             </label>
-            <Button
-              type="submit"
-              size="sm"
-              className="gap-1.5"
-              disabled={!valid}
-              busy={create.isPending}
-            >
+            <Button type="submit" size="sm" className="gap-1.5" busy={create.isPending}>
               <Plus className="h-3.5 w-3.5" />
               Add webhook
             </Button>

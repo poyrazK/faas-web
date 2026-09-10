@@ -3,7 +3,7 @@ import { createFileRoute } from '@tanstack/react-router';
 import { SendMail, Trash } from 'iconoir-react';
 import { CopyMorph, useCopy } from '@/components/ui/copy-button';
 import { OrgKeysPanel, OrgPanel } from '@/components/dashboard/org-panels';
-import { FIELD } from '@/components/ui/field';
+import { FIELD, FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
 import { Button } from '@/components/ui/button';
 import { PageHeader, Panel } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
@@ -18,7 +18,7 @@ import {
   useRemoveMember,
   useRevokeInvitation,
 } from '@/lib/api/queries';
-import { useAuth } from '@/lib/auth';
+import { isValidEmail, useAuth } from '@/lib/auth';
 import { errorMessage } from '@/lib/api/errors';
 import { formatRelative } from '@/lib/mock-data';
 import { consoleHead } from '@/lib/seo';
@@ -127,6 +127,13 @@ function TeamPage() {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<(typeof ROLES)[number]>('developer');
   const [token, setToken] = useState<{ email: string; token: string } | null>(null);
+  const validation = useFormValidation<'email'>();
+  const emailError = !isValidEmail(email)
+    ? 'Enter a valid email address.'
+    : email.length > 320
+      ? 'Enter a valid email address (320 characters max).'
+      : undefined;
+  const shownEmailError = validation.submitAttempted ? emailError : undefined;
 
   const memberRows = useMemo<MemberRow[]>(
     () =>
@@ -349,15 +356,22 @@ function TeamPage() {
       ) : (
         <Panel lit title="Invite a member">
           <form
+            noValidate
             className="flex flex-wrap items-end gap-3"
             onSubmit={(e) => {
               e.preventDefault();
-              if (!email.includes('@') || !active || invite.isPending) return;
+              if (
+                !validation.validate({ email: emailError }, e.currentTarget) ||
+                !active ||
+                invite.isPending
+              )
+                return;
               void invite
                 .mutateAsync({ email: email.trim(), role })
                 .then((result) => {
                   setToken({ email: result.email, token: result.token });
                   setEmail('');
+                  validation.resetValidation();
                 })
                 .catch((err: unknown) =>
                   toast({
@@ -371,12 +385,18 @@ function TeamPage() {
             <label className="flex min-w-64 flex-1 flex-col gap-1.5">
               <span className="label-mono text-muted-foreground">Email</span>
               <input
+                name="email"
                 type="email"
+                maxLength={320}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                {...fieldErrorProps(shownEmailError, 'invite-email-error')}
                 placeholder="name@company.com"
                 className={FIELD}
               />
+              {shownEmailError && (
+                <FieldError id="invite-email-error">{shownEmailError}</FieldError>
+              )}
             </label>
             <label className="flex flex-col gap-1.5">
               <span className="label-mono text-muted-foreground">Role</span>
@@ -396,7 +416,7 @@ function TeamPage() {
               type="submit"
               size="sm"
               className="gap-1.5"
-              disabled={!email.includes('@') || !active}
+              disabled={!active}
               busy={invite.isPending}
             >
               <SendMail className="h-3.5 w-3.5" />

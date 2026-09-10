@@ -174,7 +174,7 @@ export function saveWorkspace(slug: string) {
   window.localStorage.setItem(WORKSPACE_KEY, slug.trim());
 }
 
-/** Explicit workspace deletion wipes account state, not just the session. */
+/** Clear the console-only workspace label and onboarding hint in this browser. */
 export function clearWorkspace() {
   window.localStorage.removeItem(WORKSPACE_KEY);
   window.localStorage.removeItem(ONBOARDED_KEY);

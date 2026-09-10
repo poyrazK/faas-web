@@ -16,7 +16,7 @@ import {
 import { DomainDoctor } from '@/components/dashboard/domain-doctor';
 import { slugIndex } from '@/lib/api/adapters';
 import { errorMessage } from '@/lib/api/errors';
-import { FieldError } from '@/components/ui/field';
+import { FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
 import { cn } from '@/lib/utils';
 
 /** A registrable hostname: labels of letters/digits/hyphens, at least one dot. */
@@ -67,9 +67,10 @@ function DomainsPage() {
 
   const [host, setHost] = useState('');
   const [appSlug, setAppSlug] = useState('');
-  const [hostTouched, setHostTouched] = useState(false);
+  const validation = useFormValidation<'host'>();
   const hostOk = HOST_RULE.test(host.trim());
-  const showHostError = hostTouched && host.trim().length > 0 && !hostOk;
+  const hostError = hostOk ? undefined : 'Enter a full hostname, like api.example.com.';
+  const showHostError = validation.submitAttempted ? hostError : undefined;
 
   const rows = useMemo<DomainRow[]>(() => {
     const bySlug = slugIndex(apps ?? []);
@@ -218,6 +219,7 @@ function DomainsPage() {
       .mutateAsync({ domain: host.trim(), app_id: target.id })
       .then((created) => {
         setHost('');
+        validation.resetValidation();
         toast({
           kind: 'success',
           title: 'Domain added',
@@ -243,28 +245,25 @@ function DomainsPage() {
           className="flex flex-wrap items-end gap-3"
           onSubmit={(e) => {
             e.preventDefault();
-            if (hostOk && !addDomain.isPending) submit();
+            if (!validation.validate({ host: hostError }, e.currentTarget) || addDomain.isPending)
+              return;
+            submit();
           }}
         >
           <label className="flex min-w-56 flex-1 flex-col gap-1.5">
             <span className="label-mono text-muted-foreground">Hostname</span>
             <input
+              name="host"
               value={host}
               onChange={(e) => setHost(e.target.value)}
-              onBlur={() => setHostTouched(true)}
-              aria-invalid={showHostError || undefined}
-              aria-describedby={showHostError ? 'domain-host-error' : undefined}
+              {...fieldErrorProps(showHostError, 'domain-host-error')}
               placeholder="api.example.com"
               className={cn(
                 'h-10 rounded-lg border bg-background px-3 text-sm outline-none focus:border-brand',
                 showHostError ? 'border-[color:var(--status-critical)]' : 'border-border'
               )}
             />
-            {showHostError && (
-              <FieldError id="domain-host-error">
-                A full hostname with at least one dot, like api.example.com.
-              </FieldError>
-            )}
+            {showHostError && <FieldError id="domain-host-error">{showHostError}</FieldError>}
           </label>
 
           <label className="flex flex-col gap-1.5">

@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect, useRef } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { Clock, Play, Plus, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
-import { FIELD } from '@/components/ui/field';
+import { FIELD, FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
 import { Switch } from '@/components/ui/switch';
 import { Modal } from '@/components/ui/modal';
 import { InlinePhase, PageHeader, Panel, queryPhase } from '@/components/dashboard/primitives';
@@ -151,9 +151,12 @@ function CronsPage() {
   const [path, setPath] = useState('/');
   const [history, setHistory] = useState<CronRow | null>(null);
   const [fireRequest, setFireRequest] = useState<string | null>(null);
+  const validation = useFormValidation<'schedule'>();
 
   const targetApp = appId || apps?.[0]?.id || '';
   const scheduleOk = schedule.trim().split(/\s+/).length === 5;
+  const scheduleError = scheduleOk ? undefined : 'Enter a five-field cron schedule.';
+  const shownScheduleError = validation.submitAttempted ? scheduleError : undefined;
 
   const rows = useMemo<CronRow[]>(() => {
     const bySlug = slugIndex(apps ?? []);
@@ -292,10 +295,16 @@ function CronsPage() {
 
       <Panel lit title="Add a cron">
         <form
+          noValidate
           className="flex flex-wrap items-end gap-3"
           onSubmit={(e) => {
             e.preventDefault();
-            if (!targetApp || !scheduleOk || createCron.isPending) return;
+            if (
+              !validation.validate({ schedule: scheduleError }, e.currentTarget) ||
+              !targetApp ||
+              createCron.isPending
+            )
+              return;
             void createCron
               .mutateAsync({
                 app_id: targetApp,
@@ -305,6 +314,7 @@ function CronsPage() {
               .then((c) => {
                 setSchedule('');
                 setPath('/');
+                validation.resetValidation();
                 toast({
                   kind: 'success',
                   title: 'Cron added',
@@ -333,12 +343,17 @@ function CronsPage() {
           <label className="flex min-w-48 flex-1 flex-col gap-1.5">
             <span className="label-mono text-muted-foreground">Schedule</span>
             <input
+              name="schedule"
               value={schedule}
               onChange={(e) => setSchedule(e.target.value)}
+              {...fieldErrorProps(shownScheduleError, 'cron-schedule-error')}
               placeholder="*/15 * * * *"
               spellCheck={false}
               className={`${FIELD} font-mono`}
             />
+            {shownScheduleError && (
+              <FieldError id="cron-schedule-error">{shownScheduleError}</FieldError>
+            )}
           </label>
           <label className="flex min-w-40 flex-col gap-1.5">
             <span className="label-mono text-muted-foreground">Path</span>
@@ -354,7 +369,7 @@ function CronsPage() {
             type="submit"
             size="sm"
             className="gap-1.5"
-            disabled={!targetApp || !scheduleOk}
+            disabled={!targetApp}
             busy={createCron.isPending}
           >
             <Plus className="h-3.5 w-3.5" />

@@ -12,7 +12,7 @@ import { useUsageSummary, useApps, usePerAppUsage, useSetOverageCap } from '@/li
 import { useAuth } from '@/lib/auth';
 import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { FIELD } from '@/components/ui/field';
+import { FIELD, FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
 import { InlinePhase } from '@/components/dashboard/primitives';
 import { useToast } from '@/components/ui/toast';
 import { errorMessage } from '@/lib/api/errors';
@@ -43,53 +43,87 @@ function formatMoney(cents: number | undefined): string {
   );
 }
 
-/** A hard ceiling on monthly overage spend (issue #561). 0 clears it. */
+/** A hard ceiling on monthly overage spend (issue #561). Null clears it; 0 forbids overage. */
 function SpendCapPanel() {
   const { toast } = useToast();
   const setCap = useSetOverageCap();
   const [euros, setEuros] = useState('');
+  const validation = useFormValidation<'euros'>();
+  const amountOk = /^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(euros);
+  const amountError = amountOk
+    ? undefined
+    : 'Enter zero or a positive amount with no more than two decimal places.';
+  const shownAmountError = validation.submitAttempted ? amountError : undefined;
   return (
     <Panel
       title="Spend cap"
-      description="A hard ceiling on this month's overage. Once reached, requests beyond the included allowance are refused rather than billed. Zero clears the cap."
+      description="A hard ceiling on this month's overage. Once reached, requests beyond the included allowance are refused rather than billed. Zero allows no overage; clearing removes the ceiling."
     >
-      <div className="flex flex-wrap items-end gap-3">
+      <form
+        noValidate
+        className="flex flex-wrap items-end gap-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!validation.validate({ euros: amountError }, event.currentTarget) || setCap.isPending)
+            return;
+          const cents = Number(euros) * 100;
+          void setCap
+            .mutateAsync(cents)
+            .then(() => {
+              validation.resetValidation();
+              toast({
+                kind: 'success',
+                title: `Spend cap set to €${Number(euros).toFixed(2)}`,
+              });
+            })
+            .catch((err: unknown) =>
+              toast({ kind: 'error', title: 'Could not set cap', description: errorMessage(err) })
+            );
+        }}
+      >
         <label className="flex flex-col gap-1.5">
           <span className="label-mono text-muted-foreground">Cap (EUR)</span>
           <input
+            name="euros"
             type="number"
             min={0}
             step="0.01"
             value={euros}
             onChange={(e) => setEuros(e.target.value)}
+            {...fieldErrorProps(shownAmountError, 'spend-cap-error')}
             placeholder="10.00"
             className={`${FIELD} w-36 [font-variant-numeric:tabular-nums]`}
           />
+          {shownAmountError && <FieldError id="spend-cap-error">{shownAmountError}</FieldError>}
         </label>
+        <Button type="submit" size="sm" busy={setCap.isPending}>
+          Set cap
+        </Button>
         <Button
+          type="button"
           size="sm"
-          disabled={euros === ''}
+          variant="outline"
           busy={setCap.isPending}
           onClick={() =>
             void setCap
-              .mutateAsync(Math.round(Number(euros) * 100))
-              .then(() =>
-                toast({
-                  kind: 'success',
-                  title:
-                    Number(euros) === 0
-                      ? 'Spend cap cleared'
-                      : `Spend cap set to €${Number(euros).toFixed(2)}`,
-                })
-              )
+              .mutateAsync(null)
+              .then(() => {
+                setEuros('');
+                validation.resetValidation();
+                toast({ kind: 'success', title: 'Spend cap cleared' });
+              })
               .catch((err: unknown) =>
-                toast({ kind: 'error', title: 'Could not set cap', description: errorMessage(err) })
+                toast({
+                  kind: 'error',
+                  title: 'Could not clear cap',
+                  description: errorMessage(err),
+                })
               )
           }
         >
-          Set cap
+          Clear cap
         </Button>
-      </div>
+      </form>
     </Panel>
   );
 }

@@ -3469,11 +3469,23 @@ route('GET', '/v1/account/export', () => ({
   crons: db.crons,
   api_keys: db.keys ?? [],
 }));
-route('POST', '/v1/account/restore', () => ({ ...db.account, app_count: db.apps.length }));
-let graceDays = 7;
+route('DELETE', '/v1/account', () => {
+  db.account.status = 'deleted_pending';
+  const scheduledAt = new Date().toISOString();
+  return {
+    status: 'deleted_pending',
+    scheduled_at: scheduledAt,
+    restore_until: new Date(Date.now() + 30 * 86400e3).toISOString(),
+  };
+});
+route('POST', '/v1/account/restore', () => {
+  db.account.status = 'active';
+  return { ...db.account, app_count: db.apps.length };
+});
+let graceDays: number | null = 7;
 route('GET', '/v1/account/keys/grace_window_days', () => ({ days: graceDays, plan_default: 7 }));
 route('PATCH', '/v1/account/keys/grace_window_days', async ({ body }) => {
-  graceDays = Number(body.days ?? graceDays);
+  if ('days' in body) graceDays = body.days === null ? null : Number(body.days);
   return { days: graceDays, plan_default: 7 };
 });
 let egressExtra = 0;

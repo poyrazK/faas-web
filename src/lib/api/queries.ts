@@ -260,7 +260,7 @@ export function useAcceptInvitation() {
 export function useSetOverageCap() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (capCents: number) =>
+    mutationFn: (capCents: number | null) =>
       unwrap(api.POST('/v1/account/overage-cap', { body: { overage_cap_cents: capCents } })),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.account }),
   });
@@ -291,6 +291,15 @@ export function useAccountExport() {
   });
 }
 
+/** Stage account deletion; data remains restorable for the API's 30-day grace period. */
+export function useDeleteAccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => unwrap(api.DELETE('/v1/account', {})),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.account }),
+  });
+}
+
 /** Bring a deleted_pending account back inside the 30-day window. */
 export function useRestoreAccount() {
   const qc = useQueryClient();
@@ -311,7 +320,7 @@ export function useGraceWindow() {
 export function useSetGraceWindow() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (days: number) =>
+    mutationFn: (days: number | null) =>
       unwrap(api.PATCH('/v1/account/keys/grace_window_days', { body: { days } })),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['account', 'grace-window'] }),
   });
