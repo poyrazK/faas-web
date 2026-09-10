@@ -35,6 +35,19 @@ beforeEach(() => {
 });
 
 describe('spend-cap validation', () => {
+  it('converts decimal euro amounts to exact whole cents', async () => {
+    setCap.mockReset().mockResolvedValue({ overage_cap_cents: 110 });
+    render(<UsagePage />);
+    const cap = screen.getByRole('spinbutton', { name: 'Cap (EUR)' });
+
+    await userEvent.type(cap, '0.29{Enter}');
+    await waitFor(() => expect(setCap).toHaveBeenLastCalledWith(29));
+
+    await userEvent.clear(cap);
+    await userEvent.type(cap, '1.10{Enter}');
+    await waitFor(() => expect(setCap).toHaveBeenLastCalledWith(110));
+  });
+
   it('treats zero as a zero-overage ceiling and clears only with null', async () => {
     setCap.mockReset().mockResolvedValue({ overage_cap_cents: 0 });
     render(<UsagePage />);

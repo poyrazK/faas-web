@@ -90,6 +90,43 @@ const OUTCOME_COLOR: Record<string, string | undefined> = {
   running: 'var(--status-warning)',
 };
 
+const CRON_FIELD_RANGES = [
+  [0, 59],
+  [0, 23],
+  [1, 31],
+  [1, 12],
+  [0, 7],
+] as const;
+
+function isCronNumber(value: string, minimum: number, maximum: number): boolean {
+  if (!/^\d+$/.test(value)) return false;
+  const parsed = Number(value);
+  return parsed >= minimum && parsed <= maximum;
+}
+
+function isCronSegment(segment: string, minimum: number, maximum: number): boolean {
+  const [base, step, extra] = segment.split('/');
+  if (extra !== undefined || (step !== undefined && !isCronNumber(step, 1, maximum - minimum + 1)))
+    return false;
+  if (base === '*') return true;
+
+  const [start, end, extraBound] = base.split('-');
+  if (extraBound !== undefined || !isCronNumber(start, minimum, maximum)) return false;
+  if (end === undefined) return true;
+  return isCronNumber(end, minimum, maximum) && Number(start) <= Number(end);
+}
+
+function isCronSchedule(value: string): boolean {
+  const fields = value.trim().split(/\s+/);
+  return (
+    fields.length === CRON_FIELD_RANGES.length &&
+    fields.every((field, index) => {
+      const [minimum, maximum] = CRON_FIELD_RANGES[index];
+      return field.split(',').every((segment) => isCronSegment(segment, minimum, maximum));
+    })
+  );
+}
+
 /** The last runs of one cron — outcome, duration, and the error if any. */
 function RunHistory({ cron, onClose }: { cron: CronRow | null; onClose: () => void }) {
   const runs = useCronRuns(cron?.id ?? '');
@@ -154,7 +191,7 @@ function CronsPage() {
   const validation = useFormValidation<'schedule'>();
 
   const targetApp = appId || apps?.[0]?.id || '';
-  const scheduleOk = schedule.trim().split(/\s+/).length === 5;
+  const scheduleOk = isCronSchedule(schedule);
   const scheduleError = scheduleOk ? undefined : 'Enter a five-field cron schedule.';
   const shownScheduleError = validation.submitAttempted ? scheduleError : undefined;
 

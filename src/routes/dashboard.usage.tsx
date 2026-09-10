@@ -66,7 +66,7 @@ function SpendCapPanel() {
           event.preventDefault();
           if (!validation.validate({ euros: amountError }, event.currentTarget) || setCap.isPending)
             return;
-          const cents = Number(euros) * 100;
+          const cents = Math.round(Number(euros) * 100);
           void setCap
             .mutateAsync(cents)
             .then(() => {

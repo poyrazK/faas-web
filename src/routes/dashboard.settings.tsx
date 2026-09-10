@@ -62,7 +62,10 @@ function DeleteAccountDialog({
   onConfirm: () => void;
 }) {
   const [typed, setTyped] = useState('');
-  const matches = typed === confirmValue;
+  const validation = useFormValidation<'confirmation'>();
+  const confirmationError =
+    typed === confirmValue ? undefined : `Type ${confirmValue} exactly to continue.`;
+  const shownConfirmationError = validation.submitAttempted ? confirmationError : undefined;
   const dialogRef = useRef<HTMLDivElement>(null);
   useFocusTrap(dialogRef, true);
 
@@ -99,32 +102,44 @@ function DeleteAccountDialog({
           days before the data is permanently removed.
         </p>
 
-        <label className="mt-5 block">
-          <span className="text-xs text-muted-foreground">
-            Type <span className="font-mono text-foreground">{confirmValue}</span> to confirm
-          </span>
-          <input
-            autoFocus
-            value={typed}
-            onChange={(e) => setTyped(e.target.value)}
-            className="mt-2 h-10 w-full rounded-lg border border-border bg-background px-3 font-mono text-sm outline-none focus:border-[color:var(--status-critical)]"
-          />
-        </label>
+        <form
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (
+              !validation.validate({ confirmation: confirmationError }, event.currentTarget) ||
+              busy
+            )
+              return;
+            onConfirm();
+          }}
+        >
+          <label className="mt-5 block">
+            <span className="text-xs text-muted-foreground">
+              Type <span className="font-mono text-foreground">{confirmValue}</span> to confirm
+            </span>
+            <input
+              autoFocus
+              name="confirmation"
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              {...fieldErrorProps(shownConfirmationError, 'delete-confirmation-error')}
+              className="mt-2 h-10 w-full rounded-lg border border-border bg-background px-3 font-mono text-sm outline-none focus:border-[color:var(--status-critical)]"
+            />
+            {shownConfirmationError && (
+              <FieldError id="delete-confirmation-error">{shownConfirmationError}</FieldError>
+            )}
+          </label>
 
-        <div className="mt-6 flex justify-end gap-2">
-          <Button variant="ghost" size="sm" onClick={onCancel}>
-            Cancel
-          </Button>
-          <Button
-            variant="destructive"
-            size="sm"
-            disabled={!matches}
-            busy={busy}
-            onClick={onConfirm}
-          >
-            Schedule deletion
-          </Button>
-        </div>
+          <div className="mt-6 flex justify-end gap-2">
+            <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="destructive" size="sm" busy={busy}>
+              Schedule deletion
+            </Button>
+          </div>
+        </form>
       </div>
     </div>
   );
@@ -171,11 +186,11 @@ function ExportPanel() {
 }
 
 /** Visible only inside the 30-day deletion window — the way back. */
-function RestoreBanner() {
+function RestoreBanner({ pending, onRestored }: { pending: boolean; onRestored: () => void }) {
   const { toast } = useToast();
   const { account, refreshAccount } = useAuth();
   const restore = useRestoreAccount();
-  if (account?.status !== 'deleted_pending') return null;
+  if (!pending && account?.status !== 'deleted_pending') return null;
   return (
     <div
       role="alert"
@@ -196,6 +211,7 @@ function RestoreBanner() {
           void restore
             .mutateAsync()
             .then(() => {
+              onRestored();
               void refreshAccount();
               toast({ kind: 'success', title: 'Account restored' });
             })
@@ -291,6 +307,7 @@ function SettingsPage() {
 
   const [workspace, setWorkspace] = useState(readWorkspace);
   const [showDeleteAccount, setShowDeleteAccount] = useState(false);
+  const [deletionPending, setDeletionPending] = useState(account?.status === 'deleted_pending');
 
   // The workspace name is a label this console shows in its own chrome; the
   // API has no account-name field to put it in. Stored where it is used, and
@@ -319,13 +336,20 @@ function SettingsPage() {
     void deleteAccount
       .mutateAsync()
       .then(() => {
+        setDeletionPending(true);
         setShowDeleteAccount(false);
-        void refreshAccount();
         toast({
           kind: 'success',
           title: 'Account deletion scheduled',
           description: 'You can restore the account during the next 30 days.',
         });
+        void refreshAccount().catch((err: unknown) =>
+          toast({
+            kind: 'info',
+            title: 'Account state could not be refreshed',
+            description: `${errorMessage(err)} Recovery remains available below.`,
+          })
+        );
       })
       .catch((err: unknown) =>
         toast({
@@ -340,7 +364,7 @@ function SettingsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader title="Settings" description="Workspace configuration and credentials." />
 
-      <RestoreBanner />
+      <RestoreBanner pending={deletionPending} onRestored={() => setDeletionPending(false)} />
 
       <Panel
         title="Workspace"
@@ -428,7 +452,7 @@ function SettingsPage() {
             <Button
               variant="destructive"
               size="sm"
-              disabled={account?.status === 'deleted_pending'}
+              disabled={deletionPending || account?.status === 'deleted_pending'}
               onClick={() => setShowDeleteAccount(true)}
             >
               Schedule account deletion

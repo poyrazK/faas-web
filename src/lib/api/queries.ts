@@ -256,7 +256,7 @@ export function useAcceptInvitation() {
  * Billing & account controls
  * ------------------------------------------------------------------ */
 
-/** Set (or clear with 0) a hard ceiling on monthly overage spend. */
+/** Set a monthly overage ceiling; zero forbids overage and null clears the cap. */
 export function useSetOverageCap() {
   const qc = useQueryClient();
   return useMutation({

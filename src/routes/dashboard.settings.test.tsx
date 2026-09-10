@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const setEgressExtra = vi.fn();
 const deleteAccount = vi.fn();
+const restoreAccount = vi.fn();
 const signOut = vi.fn();
 const refreshAccount = vi.fn();
 const clearWorkspace = vi.fn();
@@ -33,7 +34,7 @@ vi.mock('@/lib/api/queries', () => ({
   useAccountExport: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useEgressExtra: () => ({ data: { extra: 0, plan_cap: 8, max_extra: 32 } }),
   useSetEgressExtra: () => ({ mutateAsync: setEgressExtra, isPending: false }),
-  useRestoreAccount: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useRestoreAccount: () => ({ mutateAsync: restoreAccount, isPending: false }),
   useDeleteAccount: () => ({ mutateAsync: deleteAccount, isPending: false }),
 }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }));
@@ -53,6 +54,7 @@ beforeEach(() => {
   });
   signOut.mockReset().mockResolvedValue(undefined);
   refreshAccount.mockReset().mockResolvedValue(undefined);
+  restoreAccount.mockReset().mockResolvedValue({ status: 'active' });
   clearWorkspace.mockReset();
   navigate.mockReset();
   toast.mockReset();
@@ -114,6 +116,51 @@ describe('settings form trust and validation', () => {
     expect(signOut).not.toHaveBeenCalled();
     expect(toast).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'Account deletion scheduled' })
+    );
+  });
+
+  it('validates deletion confirmation on Enter and preserves it for API retry', async () => {
+    deleteAccount.mockReset().mockRejectedValueOnce(new Error('offline')).mockResolvedValue({
+      status: 'deleted_pending',
+      scheduled_at: '2026-09-11T00:00:00Z',
+      restore_until: '2026-10-11T00:00:00Z',
+    });
+    render(<SettingsPage />);
+    await userEvent.click(screen.getByRole('button', { name: 'Schedule account deletion' }));
+    const confirmation = screen.getByRole('textbox', { name: /type owner@example.com/i });
+
+    await userEvent.type(confirmation, '{Enter}');
+    expect(confirmation).toHaveFocus();
+    expect(confirmation).toHaveAccessibleDescription('Type owner@example.com exactly to continue.');
+    expect(deleteAccount).not.toHaveBeenCalled();
+
+    await userEvent.type(confirmation, 'not-owner@example.com{Enter}');
+    expect(confirmation).toHaveAccessibleDescription('Type owner@example.com exactly to continue.');
+    expect(deleteAccount).not.toHaveBeenCalled();
+
+    await userEvent.clear(confirmation);
+    await userEvent.type(confirmation, 'owner@example.com{Enter}');
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(expect.objectContaining({ kind: 'error' }))
+    );
+    expect(confirmation).toHaveValue('owner@example.com');
+
+    await userEvent.type(confirmation, '{Enter}');
+    await waitFor(() => expect(deleteAccount).toHaveBeenCalledTimes(2));
+  });
+
+  it('keeps recovery accessible when account refresh fails after deletion', async () => {
+    const failedRefresh = Promise.reject(new Error('refresh offline'));
+    void failedRefresh.catch(() => undefined);
+    refreshAccount.mockReset().mockReturnValueOnce(failedRefresh);
+    render(<SettingsPage />);
+    await userEvent.click(screen.getByRole('button', { name: 'Schedule account deletion' }));
+    const confirmation = screen.getByRole('textbox', { name: /type owner@example.com/i });
+    await userEvent.type(confirmation, 'owner@example.com{Enter}');
+
+    expect(await screen.findByRole('button', { name: 'Restore account' })).toBeInTheDocument();
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Account state could not be refreshed' })
     );
   });
 });

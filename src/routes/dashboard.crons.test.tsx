@@ -36,6 +36,20 @@ beforeEach(() => {
 });
 
 describe('cron form validation', () => {
+  it.each(['99 * * * *', 'a b c d e'])(
+    'rejects the range-invalid or malformed schedule %s',
+    async (invalidSchedule) => {
+      render(<CronsPage />);
+      const schedule = screen.getByRole('textbox', { name: 'Schedule' });
+
+      await userEvent.type(schedule, `${invalidSchedule}{Enter}`);
+
+      expect(schedule).toHaveFocus();
+      expect(schedule).toHaveAccessibleDescription('Enter a five-field cron schedule.');
+      expect(createCron).not.toHaveBeenCalled();
+    }
+  );
+
   it('reports malformed keyboard submissions, then supports failure, retry, and success', async () => {
     render(<CronsPage />);
     const schedule = screen.getByRole('textbox', { name: 'Schedule' });
