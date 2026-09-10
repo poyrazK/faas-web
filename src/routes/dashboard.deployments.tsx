@@ -3,12 +3,14 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { InlinePhase, PageHeader, queryPhase } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { formatRelative, type Deployment } from '@/lib/mock-data';
-import { useData } from '@/lib/store';
+import { slugIndex, toDeployment } from '@/lib/api/adapters';
 import {
+  useApps,
   useBuilds,
   useDeployment,
   useDeploymentScan,
   useDeploymentSecretScan,
+  useInfiniteDeployments,
 } from '@/lib/api/queries';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
@@ -284,11 +286,44 @@ function DeploymentDrawer({
   );
 }
 
-function DeploymentsPage() {
-  const { deployments, getWorkflow, loading, error, refresh } = useData();
+export function DeploymentsPage() {
+  const apps = useApps();
+  const deploymentsQuery = useInfiniteDeployments();
   const builds = useBuilds();
   const navigate = useNavigate();
   const [selected, setSelected] = useState<Deployment | null>(null);
+
+  const deployments = useMemo(() => {
+    const slugById = slugIndex(apps.data ?? []);
+    return (
+      deploymentsQuery.data?.pages
+        .flatMap((page) => page.items)
+        .map((deployment) => toDeployment(deployment, slugById)) ?? []
+    );
+  }, [apps.data, deploymentsQuery.data]);
+  const appNames = useMemo(
+    () => new Map((apps.data ?? []).map((app) => [app.slug, app.slug])),
+    [apps.data]
+  );
+  const loading = deployments.length === 0 && (apps.isPending || deploymentsQuery.isPending);
+  const error = apps.error ?? (deployments.length === 0 ? deploymentsQuery.error : undefined);
+  const retry = () => {
+    void apps.refetch();
+    void deploymentsQuery.refetch();
+  };
+  const retryNextPage = () => {
+    void deploymentsQuery.fetchNextPage().catch(() => undefined);
+  };
+  const retryBackgroundRefetch = () => {
+    void deploymentsQuery.refetch();
+  };
+  const loadedDataError =
+    deployments.length > 0 &&
+    deploymentsQuery.error != null &&
+    (deploymentsQuery.isFetchNextPageError || deploymentsQuery.isRefetchError);
+  const retryLoadedData = deploymentsQuery.isFetchNextPageError
+    ? retryNextPage
+    : retryBackgroundRefetch;
 
   // Build duration lives on the build record, not the deployment, so the two
   // have to be joined here. Every row showed "0.0s" before this: the adapter
@@ -326,7 +361,7 @@ function DeploymentsPage() {
       label: 'App',
       render: (d) => (
         <span className="font-mono text-xs text-muted-foreground">
-          {getWorkflow(d.workflowId)?.name ?? '—'}
+          {appNames.get(d.workflowId) ?? d.workflowId}
         </span>
       ),
     },
@@ -369,14 +404,39 @@ function DeploymentsPage() {
         emptyMessage="No deployments match these filters."
         loading={loading}
         error={error}
-        onRetry={refresh}
+        onRetry={retry}
         onRowClick={(d) => setSelected(d)}
       />
+
+      {loadedDataError && (
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <InlinePhase
+            phase={queryPhase({ error: deploymentsQuery.error })}
+            error={deploymentsQuery.error}
+          />
+          <Button size="xs" variant="ghost" onClick={retryLoadedData}>
+            Retry
+          </Button>
+        </div>
+      )}
+
+      {deploymentsQuery.hasNextPage && (
+        <div className="flex justify-center">
+          <Button
+            size="sm"
+            variant="outline"
+            busy={deploymentsQuery.isFetchingNextPage}
+            onClick={() => void deploymentsQuery.fetchNextPage().catch(() => undefined)}
+          >
+            Load older deployments
+          </Button>
+        </div>
+      )}
 
       <DeploymentDrawer
         key={selected?.id ?? 'none'}
         deployment={selected}
-        appName={selected ? (getWorkflow(selected.workflowId)?.name ?? selected.workflowId) : ''}
+        appName={selected ? (appNames.get(selected.workflowId) ?? selected.workflowId) : ''}
         onClose={() => setSelected(null)}
         onOpenApp={() => {
           if (!selected) return;
