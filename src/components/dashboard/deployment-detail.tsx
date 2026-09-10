@@ -9,7 +9,7 @@ import {
 } from '@/components/dashboard/primitives';
 import { Pill } from '@/components/dashboard/resource-table';
 import { useLogStream } from '@/lib/api/logs';
-import { useDeployment } from '@/lib/api/queries';
+import { useApp, useDeployment } from '@/lib/api/queries';
 import { isDeploymentTerminal } from '@/lib/deployment-status';
 import { formatRelative } from '@/lib/mock-data';
 import { AdvanceCanaryButton, ReorderDeploymentControl } from './deployment-actions';
@@ -71,17 +71,32 @@ export function DeploymentDetailPanel({
   const detail = useDeployment(deploymentId, {
     refetchInterval: (query) => (isDeploymentTerminal(query.state.data?.status) ? false : 2_500),
   });
-  const buildLog = useLogStream({ kind: 'build', deploymentId, limit: 200 }, Boolean(deploymentId));
+  const selectedApp = useApp(appSlug ?? '', { enabled: Boolean(appSlug) });
   const deployment = detail.data;
+  const appCheckPending = Boolean(appSlug) && selectedApp.isPending;
+  const appCheckError = appSlug ? selectedApp.error : null;
+  const wrongApp = Boolean(
+    appSlug && selectedApp.data && deployment && deployment.app_id !== selectedApp.data.id
+  );
+  const ownsDeployment = !appSlug || Boolean(selectedApp.data && deployment && !wrongApp);
+  const buildLog = useLogStream(
+    { kind: 'build', deploymentId, limit: 200 },
+    Boolean(deploymentId) && ownsDeployment
+  );
   const status = deployment?.status?.toLowerCase() ?? 'unknown';
+  const error = detail.error ?? appCheckError;
   // The shared precedence: an unreachable API renders as the quiet outage
   // box, matching the tables beside this panel, not as a red fault.
-  const phase = queryPhase({ error: detail.error, loading: detail.isPending });
+  const phase = queryPhase({ error, loading: detail.isPending || appCheckPending });
+  const retry = () => {
+    void detail.refetch();
+    if (appSlug) void selectedApp.refetch();
+  };
 
   return (
     <Panel
       title="Deployment details"
-      description={deployment ? `${deployment.kind} · ${deployment.id}` : deploymentId}
+      description={deployment && !wrongApp ? `${deployment.kind} · ${deployment.id}` : deploymentId}
       actions={
         <Button size="xs" variant="ghost" onClick={onClose}>
           Close
@@ -89,11 +104,15 @@ export function DeploymentDetailPanel({
       }
     >
       {phase === 'unreachable' ? (
-        <UnreachableState onRetry={() => void detail.refetch()} />
+        <UnreachableState onRetry={retry} />
       ) : phase === 'loading' ? (
         <LoadingState message="Loading deployment…" />
       ) : phase === 'error' || !deployment ? (
-        <ErrorState error={detail.error} onRetry={() => void detail.refetch()} />
+        <ErrorState error={error} onRetry={retry} />
+      ) : wrongApp ? (
+        <p className="text-sm text-muted-foreground">
+          This deployment is not available for the selected app.
+        </p>
       ) : (
         <div className="flex flex-col gap-5">
           <div className="flex flex-wrap items-center gap-2">
