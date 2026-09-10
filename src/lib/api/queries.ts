@@ -9,6 +9,7 @@ import {
 } from '@tanstack/react-query';
 import { api, issueCSRF, unwrap } from './client';
 import { ApiError } from './errors';
+import { isDeploymentTerminal } from '../deployment-status';
 import type { components, paths } from './schema';
 
 /**
@@ -39,6 +40,7 @@ export const keys = {
   appSlo: (slug: string, window: AppSLOWindow) => ['apps', slug, 'slo', window] as const,
   deployments: ['deployments'] as const,
   appDeployments: (slug: string) => ['apps', slug, 'deployments'] as const,
+  latestDeploymentsByApp: ['deployments', 'latest-by-app'] as const,
   deploymentSummary: (slug: string, id: string) =>
     ['apps', slug, 'deployments', id, 'summary'] as const,
   domains: ['domains'] as const,
@@ -787,6 +789,23 @@ export function useAppDeployments(slug: string, limit = 50) {
     getNextPageParam: (lastPage) => lastPage.next_before ?? undefined,
     enabled: Boolean(slug),
     retry: retryPolicy,
+  });
+}
+
+/**
+ * Read the newest deployment for every app in one account-scoped request.
+ * The batch is authoritative for workflow version/state metadata because the
+ * paginated global history can omit quieter apps.
+ */
+export function useLatestAppDeployments() {
+  return useQuery<components['schemas']['LatestDeploymentsByAppResponse'], Error>({
+    queryKey: keys.latestDeploymentsByApp,
+    queryFn: () => unwrap(api.GET('/v1/deployments/latest-by-app', {})),
+    retry: retryPolicy,
+    refetchInterval: (query) => {
+      const items = query.state.data?.items ?? [];
+      return items.some((deployment) => !isDeploymentTerminal(deployment.status)) ? 2_500 : false;
+    },
   });
 }
 
