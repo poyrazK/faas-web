@@ -144,6 +144,22 @@ describe('AppAnalyticsPanel', () => {
 });
 
 describe('AppAnalyticsBody', () => {
+  it('can defer its window control to the account page while keeping grouping', () => {
+    render(
+      <AppAnalyticsBody
+        slug="api"
+        since="7d"
+        groupBy="route"
+        showWindowSelector={false}
+        onSinceChange={vi.fn()}
+        onGroupByChange={vi.fn()}
+        onRouteChange={vi.fn()}
+      />
+    );
+    expect(screen.queryByLabelText('Analytics window')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Group by')).toBeInTheDocument();
+  });
+
   it('selects a route row and queries its paired route and method', async () => {
     const onRouteChange = vi.fn();
     render(

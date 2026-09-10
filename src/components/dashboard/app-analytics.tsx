@@ -32,6 +32,8 @@ export type AppAnalyticsBodyProps = {
   groupBy: AnalyticsGroupBy;
   route?: string;
   method?: AnalyticsMethod;
+  /** Account analytics owns the shared window in its page header. */
+  showWindowSelector?: boolean;
   onSinceChange: (since: string) => void;
   onGroupByChange: (groupBy: AnalyticsGroupBy) => void;
   onRouteChange: (route: string | undefined, method: AnalyticsMethod | undefined) => void;
@@ -50,6 +52,7 @@ export function AppAnalyticsBody({
   groupBy,
   route,
   method,
+  showWindowSelector = true,
   onSinceChange,
   onGroupByChange,
   onRouteChange,
@@ -111,18 +114,20 @@ export function AppAnalyticsBody({
         description="Aggregated at the edge from route templates, hostname-only referrers and country codes — never full URLs."
         actions={
           <div className="flex items-center gap-2">
-            <Select
-              value={since}
-              onChange={(event) => onSinceChange(event.target.value)}
-              aria-label="Analytics window"
-              className="h-8 text-xs"
-            >
-              {WINDOWS.map((window) => (
-                <option key={window} value={window}>
-                  {window}
-                </option>
-              ))}
-            </Select>
+            {showWindowSelector && (
+              <Select
+                value={since}
+                onChange={(event) => onSinceChange(event.target.value)}
+                aria-label="Analytics window"
+                className="h-8 text-xs"
+              >
+                {WINDOWS.map((window) => (
+                  <option key={window} value={window}>
+                    {window}
+                  </option>
+                ))}
+              </Select>
+            )}
             <Select
               value={groupBy}
               onChange={(event) => changeGroup(event.target.value as AnalyticsGroupBy)}
