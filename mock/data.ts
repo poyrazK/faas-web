@@ -36,8 +36,8 @@ const pick = <T>(xs: readonly T[]): T => xs[int(0, xs.length - 1)];
 const hex = (n: number) => Array.from({ length: n }, () => int(0, 15).toString(16)).join('');
 export const id = () => hex(32);
 
-/** Fixed "now" so seeded and analytics fixture timestamps are stable across boots. */
-export const NOW = Date.parse('2026-09-05T13:00:00.123Z');
+/** Shared startup time keeps seeded fixture ages relative to the running mock server. */
+export const NOW = Date.now();
 const H = 3_600_000;
 const D = 24 * H;
 export const iso = (msAgo: number) => new Date(NOW - msAgo).toISOString();

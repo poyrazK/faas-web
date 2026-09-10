@@ -34,6 +34,7 @@ function AnalyticsPage() {
     void navigate({
       search: (previous) => (typeof next === 'function' ? next(previous) : next),
       replace: true,
+      resetScroll: false,
     });
   };
 

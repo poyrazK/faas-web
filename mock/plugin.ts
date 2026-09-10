@@ -91,6 +91,9 @@ route('POST', '/v1/auth/logout', ({ res }) => {
 
 route('GET', '/v1/account', () => ({ ...db.account, app_count: db.apps.length }));
 const SLO_WINDOWS = new Set(['1h', '24h', '7d']);
+// Keep analytics screenshots stable without aging unrelated lifecycle fixtures.
+const ANALYTICS_NOW = Date.parse('2026-09-05T13:00:00.123Z');
+const analyticsIso = (msAgo: number) => new Date(ANALYTICS_NOW - msAgo).toISOString();
 
 function sloWindow(query: URLSearchParams) {
   const window = query.get('window') ?? '24h';
@@ -105,7 +108,7 @@ function accountSlo(
   return {
     window,
     source: 'prometheus',
-    as_of: db.iso(0),
+    as_of: analyticsIso(0),
     request_duration: { p50_ms: 22.1, p95_ms: 91, p99_ms: 410 },
     error_rate_pct: 0.55,
     cold_boot_rate_pct: 4.2,
@@ -126,7 +129,7 @@ function appSlo(
     app_slug: a.slug,
     window,
     source: 'prometheus',
-    as_of: db.iso(0),
+    as_of: analyticsIso(0),
     request_duration: { p50_ms: 14.2, p95_ms: 87, p99_ms: 312.5 },
     error_rate_pct: 0.41,
     cold_boot_rate_pct: 3.1,
@@ -1271,7 +1274,8 @@ const ANALYTICS_METHODS = new Set<AnalyticsMethod>([
   'HEAD',
   'OPTIONS',
 ]);
-const isAnalyticsGroupBy = (value: string): value is AnalyticsGroupBy => value in ANALYTICS_GROUPS;
+const isAnalyticsGroupBy = (value: string): value is AnalyticsGroupBy =>
+  Object.hasOwn(ANALYTICS_GROUPS, value);
 
 function analyticsWindow(query: URLSearchParams) {
   const since = query.get('since') ?? '24h';
@@ -1314,8 +1318,8 @@ route('GET', '/v1/apps/{slug}/analytics', ({ params, query }) => {
   return {
     slug: a.slug,
     since,
-    from: db.iso(hours * 3_600_000),
-    until: db.iso(0),
+    from: analyticsIso(hours * 3_600_000),
+    until: analyticsIso(0),
     window_clamped: clamped,
     requests,
     error_requests: errors,
@@ -1331,7 +1335,7 @@ route('GET', '/v1/apps/{slug}/analytics', ({ params, query }) => {
     routes: ANALYTICS_GROUPS.route.map(group),
     routes_limit: 50,
     routes_truncated: false,
-    as_of: db.iso(0),
+    as_of: analyticsIso(0),
   };
 });
 
@@ -1344,7 +1348,7 @@ function analyticsTimeseries({ params, query }: Parameters<Handler>[0]): Analyti
       'the free plan does not include per-app metrics; upgrade to Hobby or above.'
     );
   const { since, hours, clamped } = analyticsWindow(query);
-  const now = db.NOW;
+  const now = ANALYTICS_NOW;
   const unfilteredPoints = Array.from({ length: hours }, (_, i) => {
     const hour = hours - 1 - i;
     // A diurnal shape, so the line is a shape rather than a flat run.
@@ -1408,13 +1412,13 @@ function analyticsTimeseries({ params, query }: Parameters<Handler>[0]): Analyti
     slug: a.slug,
     ...routeMethodFilter,
     since,
-    from: points[0]?.start ?? db.iso(hours * 3_600_000),
-    until: db.iso(0),
+    from: points[0]?.start ?? analyticsIso(hours * 3_600_000),
+    until: analyticsIso(0),
     window_clamped: clamped,
     bucket: '1h',
     points,
     ...(groupBy !== undefined ? { group_by: groupBy, series } : {}),
-    as_of: db.iso(0),
+    as_of: analyticsIso(0),
   };
 }
 

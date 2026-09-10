@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { mockApi } from '../mock/plugin';
 
 let server: Server;
@@ -28,6 +28,7 @@ beforeAll(async () => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   if (savedPlan === undefined) delete process.env.MOCK_PLAN;
   else process.env.MOCK_PLAN = savedPlan;
 });
@@ -44,6 +45,18 @@ async function get(path: string) {
 }
 
 describe('analytics mock contracts', () => {
+  it.each([
+    ['analytics', 'toString'],
+    ['analytics', '__proto__'],
+    ['analytics/timeseries', 'toString'],
+    ['analytics/timeseries', '__proto__'],
+  ])('%s rejects inherited group name %s', async (path, group) => {
+    const result = await get(`/v1/apps/api-gateway/${path}?group_by=${group}`);
+
+    expect(result.response.status, group).toBe(400);
+    expect(result.body).toMatchObject({ code: 'validation_failed' });
+  });
+
   it('returns complete deterministic account and app SLO panels for the selected window', async () => {
     const account = await get('/v1/account/slo?window=7d');
     const app = await get('/v1/apps/api-gateway/slo?window=1h');
@@ -143,5 +156,28 @@ describe('analytics mock contracts', () => {
 
     expect(result.response.status).toBe(400);
     expect(result.body).toMatchObject({ code: 'validation_failed' });
+  });
+});
+
+describe('seeded rollout timing', () => {
+  it('seeds the canary twenty minutes before startup', async () => {
+    const startup = Date.parse('2026-10-12T12:00:00Z');
+    vi.spyOn(Date, 'now').mockReturnValue(startup);
+    vi.resetModules();
+    const db = await import('../mock/data');
+    const canary = db.deployments.find((deployment) => deployment.rollout_state === 'rolling_out');
+
+    expect(canary?.canary_step_started_at).toBe('2026-10-12T11:40:00.000Z');
+  });
+
+  it('keeps the freshly seeded canary behind the rollout_not_stuck recovery gate', async () => {
+    const response = await fetch(`${origin}/v1/apps/api-gateway/rollouts/recover`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'advance' }),
+    });
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ code: 'rollout_not_stuck' });
   });
 });

@@ -1,10 +1,17 @@
 import { useState } from 'react';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { withRouter } from '@/test/router';
 import { ApiError } from '@/lib/api/errors';
 import type { components } from '@/lib/api/schema';
+import { Route } from '@/routes/dashboard.analytics';
 import {
   AccountAnalytics,
   AnalyticsWindowSelector,
@@ -145,6 +152,44 @@ beforeEach(() => {
       as_of: stamp,
     })
   );
+});
+
+describe('analytics route scroll restoration', () => {
+  it.each([
+    ['selecting', '', 'Filter chart to GET /orders', '/orders'],
+    ['clearing', '&route=%2Forders&method=GET', 'Clear route filter', undefined],
+  ])('preserves scroll when %s a route filter', async (_action, filter, button, expectedRoute) => {
+    const root = createRootRoute();
+    const analyticsRoute = Route.update({
+      id: '/dashboard/analytics',
+      path: '/dashboard/analytics',
+      getParentRoute: () => root,
+    } as never);
+    const router = createRouter({
+      routeTree: root.addChildren([analyticsRoute]),
+      history: createMemoryHistory({
+        initialEntries: [`/dashboard/analytics?app=alpha&window=7d${filter}`],
+      }),
+      scrollRestoration: true,
+    });
+    render(<RouterProvider router={router} />);
+    const control = await screen.findByRole('button', { name: button });
+    await waitFor(() => expect(router.state.status).toBe('idle'));
+    const scrollTo = vi.spyOn(window, 'scrollTo');
+    const rendered = vi.fn();
+    const unsubscribe = router.subscribe('onRendered', rendered);
+    try {
+      await userEvent.click(control);
+      await waitFor(() => expect(rendered).toHaveBeenCalled());
+
+      expect(router.state.location.search).toMatchObject({ app: 'alpha', window: '7d' });
+      expect(router.state.location.search.route).toBe(expectedRoute);
+      expect(scrollTo).not.toHaveBeenCalled();
+    } finally {
+      unsubscribe();
+      scrollTo.mockRestore();
+    }
+  });
 });
 
 describe('AccountAnalytics', () => {
