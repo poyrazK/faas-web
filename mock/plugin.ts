@@ -2275,6 +2275,20 @@ route('GET', '/v1/deployments', ({ query }) => ({
   items: db.deployments.slice(0, Number(query.get('limit') ?? 50)),
   next_before: null,
 }));
+route('GET', '/v1/deployments/latest-by-app', () => {
+  const latest = new Map<string, db.Deployment>();
+  const activeAppIds = new Set(db.apps.map((app) => app.id));
+
+  for (const deployment of db.deployments) {
+    if (!activeAppIds.has(deployment.app_id)) continue;
+    const current = latest.get(deployment.app_id);
+    if (!current || Date.parse(deployment.created_at) > Date.parse(current.created_at)) {
+      latest.set(deployment.app_id, deployment);
+    }
+  }
+
+  return { items: [...latest.values()] };
+});
 route('GET', '/v1/deployments/{id}', ({ params }) => {
   const d = db.deployments.find((x) => x.id === params.id);
   if (!d) throw new Problem(404, 'deployment_not_found');
