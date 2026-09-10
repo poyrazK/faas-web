@@ -7,6 +7,7 @@ import {
   CloudXmark,
   LogOut,
   Menu,
+  Plus,
   SidebarCollapse,
   SidebarExpand,
   Settings,
@@ -26,6 +27,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipProvider } from '@/components/ui/tooltip';
+import { Button } from '@/components/ui/button';
 import { CommandPalette } from './command-palette';
 import { EASE } from './motion';
 import { NAV_GROUPS, SECTION_LABELS } from './nav-config';
@@ -626,6 +628,12 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                 <Breadcrumbs />
 
                 <div className="ml-auto flex items-center gap-1.5">
+                  <Button asChild size="sm" className="gap-1.5">
+                    <Link to="/dashboard/workflows/new" aria-label="New app">
+                      <Plus className="h-3.5 w-3.5" />
+                      <span className="hidden sm:inline">New app</span>
+                    </Link>
+                  </Button>
                   {/* Search lives on the overview as the page's own field;
                       ⌘K still opens the palette from anywhere. */}
                   <AccountMenu onSignOut={handleSignOut} />
