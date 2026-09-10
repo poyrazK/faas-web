@@ -286,7 +286,7 @@ function DeploymentDrawer({
   );
 }
 
-function DeploymentsPage() {
+export function DeploymentsPage() {
   const apps = useApps();
   const deploymentsQuery = useInfiniteDeployments();
   const builds = useBuilds();
@@ -310,6 +310,9 @@ function DeploymentsPage() {
   const retry = () => {
     void apps.refetch();
     void deploymentsQuery.refetch();
+  };
+  const retryNextPage = () => {
+    void deploymentsQuery.fetchNextPage().catch(() => undefined);
   };
 
   // Build duration lives on the build record, not the deployment, so the two
@@ -401,7 +404,7 @@ function DeploymentsPage() {
             phase={queryPhase({ error: deploymentsQuery.error })}
             error={deploymentsQuery.error}
           />
-          <Button size="xs" variant="ghost" onClick={retry}>
+          <Button size="xs" variant="ghost" onClick={retryNextPage}>
             Retry
           </Button>
         </div>
