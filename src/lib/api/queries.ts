@@ -765,6 +765,31 @@ export function useInfiniteDeployments(limit = 50) {
   });
 }
 
+/**
+ * App-scoped deployment history, paged newest-first by the API's opaque
+ * timestamp cursor. Keeping this separate from the account-wide feed prevents
+ * a busy account from truncating one app's release history at an arbitrary
+ * global page boundary.
+ */
+export function useAppDeployments(slug: string, limit = 50) {
+  return useInfiniteQuery({
+    queryKey: [...keys.appDeployments(slug), limit],
+    queryFn: ({ pageParam }) =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/deployments', {
+          params: {
+            path: { slug },
+            query: { limit, ...(pageParam ? { before: pageParam } : {}) },
+          },
+        })
+      ),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.next_before ?? undefined,
+    enabled: Boolean(slug),
+    retry: retryPolicy,
+  });
+}
+
 export function useDeployment(id: string, options?: Options<Deployment>) {
   return useQuery({
     queryKey: ['deployments', id],

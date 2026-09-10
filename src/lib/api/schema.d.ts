@@ -2237,7 +2237,15 @@ export interface paths {
             };
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List deployments for an app.
+         * @description Paged backwards (newest first) for the app identified by `slug`.
+         *     `next_before` is an opaque RFC3339Nano cursor from the last row in
+         *     the page; pass it as `before` to fetch older deployments. Unknown or
+         *     cross-account app slugs return the same IDOR-safe 404 surface as the
+         *     other app-scoped endpoints.
+         */
+        get: operations["listAppDeployments"];
         put?: never;
         /**
          * Create a deployment.
@@ -21289,6 +21297,37 @@ export interface operations {
             400: components["responses"]["ValidationFailed"];
             401: components["responses"]["Unauthorized"];
             402: components["responses"]["PaymentRequired"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    listAppDeployments: {
+        parameters: {
+            query?: {
+                /** @description Page size for this app (1–200; default 50). */
+                limit?: number;
+                /** @description RFC3339Nano cursor from a previous response's next_before. */
+                before?: string;
+            };
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A paginated list of deployments for an app. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
             429: components["responses"]["TooManyRequests"];
         };
     };
