@@ -28,6 +28,7 @@ export type AppMetrics = components['schemas']['AppMetricsResponse'];
 export type MetricsRange = AppMetrics['range'];
 export type AppSLOWindow = components['schemas']['AppSLOResponse']['window'];
 export type MFAEnrollment = components['schemas']['MFAEnrollResponse'];
+export type DeploymentSummary = components['schemas']['DeploymentSummaryResponse'];
 
 export const keys = {
   account: ['account'] as const,
@@ -38,6 +39,8 @@ export const keys = {
   appSlo: (slug: string, window: AppSLOWindow) => ['apps', slug, 'slo', window] as const,
   deployments: ['deployments'] as const,
   appDeployments: (slug: string) => ['apps', slug, 'deployments'] as const,
+  deploymentSummary: (slug: string, id: string) =>
+    ['apps', slug, 'deployments', id, 'summary'] as const,
   domains: ['domains'] as const,
   triggers: ['triggers'] as const,
   jobs: ['jobs'] as const,
@@ -743,6 +746,26 @@ export function useDeployments(
 }
 
 /**
+ * Account-wide deployment history, paged newest-first by the API cursor.
+ * Overview pages keep using the first-page `useDeployments` query; the full
+ * history page opts into this query so it can load older releases on demand.
+ */
+export function useInfiniteDeployments(limit = 50) {
+  return useInfiniteQuery({
+    queryKey: [...keys.deployments, 'history', limit],
+    queryFn: ({ pageParam }) =>
+      unwrap(
+        api.GET('/v1/deployments', {
+          params: { query: { limit, ...(pageParam ? { before: pageParam } : {}) } },
+        })
+      ),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.next_before ?? undefined,
+    retry: retryPolicy,
+  });
+}
+
+/**
  * App-scoped deployment history, paged newest-first by the API's opaque
  * timestamp cursor. Keeping this separate from the account-wide feed prevents
  * a busy account from truncating one app's release history at an arbitrary
@@ -773,6 +796,24 @@ export function useDeployment(id: string, options?: Options<Deployment>) {
     queryFn: () => unwrap(api.GET('/v1/deployments/{id}', { params: { path: { id } } })),
     enabled: Boolean(id),
     ...options,
+  });
+}
+
+/**
+ * The app-scoped release cockpit: selected deployment, its predecessor, the
+ * non-secret field diff, and the exact superseded deployment rollback would
+ * currently promote.
+ */
+export function useDeploymentSummary(slug: string, id: string) {
+  return useQuery({
+    queryKey: keys.deploymentSummary(slug, id),
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/deployments/{id}/summary', {
+          params: { path: { slug, id } },
+        })
+      ),
+    enabled: Boolean(slug && id),
   });
 }
 
@@ -1124,12 +1165,23 @@ export function useDeployFromRef(slug: string) {
   });
 }
 
+export type RollbackInput = string | { slug: string; targetDeploymentId?: string };
+
 export function useRollback() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (slug: string) =>
-      unwrap(api.POST('/v1/apps/{slug}/rollback', { params: { path: { slug } } })),
-    onSuccess: (_data, slug) => {
+    mutationFn: (input: RollbackInput) => {
+      const slug = typeof input === 'string' ? input : input.slug;
+      const targetDeploymentId = typeof input === 'string' ? undefined : input.targetDeploymentId;
+      return unwrap(
+        api.POST('/v1/apps/{slug}/rollback', {
+          params: { path: { slug } },
+          ...(targetDeploymentId ? { body: { target_deployment_id: targetDeploymentId } } : {}),
+        })
+      );
+    },
+    onSuccess: (_data, input) => {
+      const slug = typeof input === 'string' ? input : input.slug;
       void qc.invalidateQueries({ queryKey: keys.apps });
       void qc.invalidateQueries({ queryKey: keys.app(slug) });
       void qc.invalidateQueries({ queryKey: keys.deployments });
