@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   ErrorState,
@@ -54,11 +54,30 @@ function delta(a: number | null, b: number | null): { text: string; color: strin
 }
 
 export function DebugCompare({ slug }: { slug: string }) {
+  const [since, setSince] = useState('24h');
+
+  return <AppDeploymentCompare key={slug} slug={slug} since={since} onSinceChange={setSince} />;
+}
+
+function AppDeploymentCompare({
+  slug,
+  since,
+  onSinceChange,
+}: {
+  slug: string;
+  since: string;
+  onSinceChange: (value: string) => void;
+}) {
   const deployments = useAppDeployments(slug);
   const compare = useCompareDeployments(slug);
   const [source, setSource] = useState('');
   const [mirror, setMirror] = useState('');
-  const [since, setSince] = useState('24h');
+  const resetCompare = compare.reset;
+
+  useEffect(() => {
+    resetCompare();
+  }, [resetCompare]);
+
   const deploymentItems = deployments.data?.pages.flatMap((page) => page.items) ?? [];
   const deploymentPhase = queryPhase({
     error: deploymentItems.length === 0 ? deployments.error : undefined,
@@ -180,7 +199,7 @@ export function DebugCompare({ slug }: { slug: string }) {
               <select
                 aria-label="Compare window"
                 value={since}
-                onChange={(e) => setSince(e.target.value)}
+                onChange={(e) => onSinceChange(e.target.value)}
                 className="h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-brand/50"
               >
                 {WINDOWS.map((w) => (
