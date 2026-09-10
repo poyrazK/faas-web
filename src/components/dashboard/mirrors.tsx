@@ -8,6 +8,7 @@ import { useToast } from '@/components/ui/toast';
 import {
   EmptyState,
   ErrorState,
+  InlinePhase,
   LoadingState,
   Panel,
   RangeSelector,
@@ -18,10 +19,9 @@ import {
 import { Pill } from '@/components/dashboard/resource-table';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import {
-  useApp,
   useCreateMirrorRule,
   useDeleteMirrorRule,
-  useDeployments,
+  useAppDeployments,
   useMirrorRules,
   useMirrorSummary,
   useUpdateMirrorRule,
@@ -101,19 +101,21 @@ function explainMirrorError(err: unknown): {
 }
 
 export function MirrorRules({ slug }: { slug: string }) {
-  const app = useApp(slug);
   const rules = useMirrorRules(slug);
-  const deployments = useDeployments(100);
+  const deployments = useAppDeployments(slug);
+  const appDeployments: Deployment[] = deployments.data?.pages.flatMap((page) => page.items) ?? [];
   // The create form's "there are none right now" is a claim about the app's
   // deployments, so it must not be made while those queries are still out.
+  const readError = rules.error ?? (appDeployments.length === 0 ? deployments.error : undefined);
   const phase = queryPhase({
-    error: rules.error ?? app.error ?? deployments.error,
-    loading: rules.isPending || app.isPending || deployments.isPending,
+    error: readError,
+    loading: rules.isPending || deployments.isPending,
   });
-  const appDeployments: Deployment[] = (deployments.data?.items ?? []).filter(
-    (d) => d.app_id === app.data?.id
-  );
   const byId = new Map(appDeployments.map((d) => [d.id, d]));
+  const retry = () => {
+    if (rules.error) void rules.refetch();
+    if (deployments.error) void deployments.refetch();
+  };
 
   return (
     <Panel
@@ -121,11 +123,11 @@ export function MirrorRules({ slug }: { slug: string }) {
       description="Replay a share of a live deployment's requests against another deployment and count the differences."
     >
       {phase === 'unreachable' ? (
-        <UnreachableState onRetry={() => void rules.refetch()} />
+        <UnreachableState onRetry={retry} />
       ) : phase === 'loading' ? (
         <LoadingState message="Loading mirror rules…" />
       ) : phase === 'error' ? (
-        <ErrorState error={rules.error} onRetry={() => void rules.refetch()} />
+        <ErrorState error={readError} onRetry={retry} />
       ) : (
         <div className="flex flex-col gap-6">
           {(rules.data?.rules.length ?? 0) === 0 ? (
@@ -140,6 +142,24 @@ export function MirrorRules({ slug }: { slug: string }) {
             </ul>
           )}
           <CreateMirrorRule slug={slug} deployments={appDeployments} />
+          {deployments.hasNextPage && (
+            <div className="flex flex-col items-center gap-2">
+              <Button
+                size="xs"
+                variant="outline"
+                busy={deployments.isFetchingNextPage}
+                onClick={() => void deployments.fetchNextPage().catch(() => undefined)}
+              >
+                Load older deployments
+              </Button>
+              {Boolean(deployments.error) && (
+                <InlinePhase
+                  phase={queryPhase({ error: deployments.error })}
+                  error={deployments.error}
+                />
+              )}
+            </div>
+          )}
         </div>
       )}
     </Panel>
