@@ -2405,18 +2405,17 @@ route('GET', '/v1/deployments', ({ query }) => ({
   next_before: null,
 }));
 route('GET', '/v1/deployments/latest-by-app', () => {
-  const latest = new Map<string, db.Deployment>();
-  const activeAppIds = new Set(db.apps.map((app) => app.id));
-
-  for (const deployment of db.deployments) {
-    if (!activeAppIds.has(deployment.app_id)) continue;
-    const current = latest.get(deployment.app_id);
-    if (!current || Date.parse(deployment.created_at) > Date.parse(current.created_at)) {
-      latest.set(deployment.app_id, deployment);
-    }
-  }
-
-  return { items: [...latest.values()] };
+  const appIDs = new Set(db.apps.map((app) => app.id));
+  const seen = new Set<string>();
+  const items = [...db.deployments]
+    .filter((deployment) => appIDs.has(deployment.app_id))
+    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at) || b.id.localeCompare(a.id))
+    .filter((deployment) => {
+      if (seen.has(deployment.app_id)) return false;
+      seen.add(deployment.app_id);
+      return true;
+    });
+  return { items } satisfies components['schemas']['LatestDeploymentsByAppResponse'];
 });
 route('GET', '/v1/deployments/{id}', ({ params }) => {
   const d = db.deployments.find((x) => x.id === params.id);

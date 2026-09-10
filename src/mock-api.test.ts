@@ -181,3 +181,18 @@ describe('seeded rollout timing', () => {
     expect(await response.json()).toMatchObject({ code: 'rollout_not_stuck' });
   });
 });
+
+describe('deployment mock contracts', () => {
+  it('serves the latest deployment for each app before the dynamic deployment route', async () => {
+    const result = await get('/v1/deployments/latest-by-app');
+
+    expect(result.response.status).toBe(200);
+    expect(result.body).toEqual({
+      items: expect.arrayContaining([
+        expect.objectContaining({ app_id: expect.any(String), created_at: expect.any(String) }),
+      ]),
+    });
+    const appIDs = result.body.items.map((deployment: { app_id: string }) => deployment.app_id);
+    expect(new Set(appIDs).size).toBe(appIDs.length);
+  });
+});
