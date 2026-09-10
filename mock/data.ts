@@ -36,8 +36,8 @@ const pick = <T>(xs: readonly T[]): T => xs[int(0, xs.length - 1)];
 const hex = (n: number) => Array.from({ length: n }, () => int(0, 15).toString(16)).join('');
 export const id = () => hex(32);
 
-/** Fixed "now" so relative timestamps stay stable across requests. */
-export const NOW = Date.now();
+/** Fixed "now" so seeded and analytics fixture timestamps are stable across boots. */
+export const NOW = Date.parse('2026-09-05T13:00:00.123Z');
 const H = 3_600_000;
 const D = 24 * H;
 export const iso = (msAgo: number) => new Date(NOW - msAgo).toISOString();

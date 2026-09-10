@@ -1250,14 +1250,28 @@ route('POST', '/v1/preview/{slug}/destroy', ({ params }) => {
 
 // Request analytics, request evidence, app lifecycle, upstream history,
 // rollout recovery and the tarball deploy.
+type AnalyticsTimeseries = components['schemas']['RequestAnalyticsTimeseriesResponse'];
+type AnalyticsGroupBy = NonNullable<AnalyticsTimeseries['group_by']>;
+type AnalyticsMethod = NonNullable<AnalyticsTimeseries['method']>;
+
 const ANALYTICS_WINDOW_HOURS: Record<string, number> = { '24h': 24, '3d': 72, '7d': 168 };
-const ANALYTICS_GROUPS: Record<string, string[]> = {
+const ANALYTICS_GROUPS: Record<AnalyticsGroupBy, string[]> = {
   route: ['/orders', '/orders/{id}', '/health', '/search'],
   country: ['DE', 'TR', 'US', 'FR'],
   referrer_host: ['acme.example', 'news.example', '(direct)'],
   ua_family: ['Chrome', 'Safari', 'curl', 'Googlebot'],
   status: ['200', '404', '500'],
 };
+const ANALYTICS_METHODS = new Set<AnalyticsMethod>([
+  'GET',
+  'POST',
+  'PUT',
+  'PATCH',
+  'DELETE',
+  'HEAD',
+  'OPTIONS',
+]);
+const isAnalyticsGroupBy = (value: string): value is AnalyticsGroupBy => value in ANALYTICS_GROUPS;
 
 function analyticsWindow(query: URLSearchParams) {
   const since = query.get('since') ?? '24h';
@@ -1276,8 +1290,9 @@ route('GET', '/v1/apps/{slug}/analytics', ({ params, query }) => {
     );
   const { since, hours, clamped } = analyticsWindow(query);
   const groupBy = query.get('group_by') ?? 'route';
+  if (!isAnalyticsGroupBy(groupBy))
+    throw new Problem(400, 'validation_failed', `unknown group_by "${groupBy}".`);
   const values = ANALYTICS_GROUPS[groupBy];
-  if (!values) throw new Problem(400, 'validation_failed', `unknown group_by "${groupBy}".`);
   const requests = hours * 351;
   const errors = Math.round(requests * 0.0044);
   const group = (value: string, i: number) => {
@@ -1320,7 +1335,7 @@ route('GET', '/v1/apps/{slug}/analytics', ({ params, query }) => {
   };
 });
 
-route('GET', '/v1/apps/{slug}/analytics/timeseries', ({ params, query }) => {
+function analyticsTimeseries({ params, query }: Parameters<Handler>[0]): AnalyticsTimeseries {
   const a = app(params.slug);
   if (process.env.MOCK_PLAN === 'free')
     throw new Problem(
@@ -1349,9 +1364,16 @@ route('GET', '/v1/apps/{slug}/analytics/timeseries', ({ params, query }) => {
       p99_ms: Math.round(420 * wave),
     };
   });
-  const route = query.get('route');
-  const method = query.get('method');
-  const routeMethodFilter = route !== null && method !== null;
+  const requestedRoute = query.get('route');
+  const requestedMethod = query.get('method');
+  let routeMethodFilter: { route: string; method: AnalyticsMethod } | undefined;
+  if (requestedRoute !== null || requestedMethod !== null) {
+    if (requestedRoute === null || requestedMethod === null)
+      throw new Problem(400, 'validation_failed', 'route and method must be provided together.');
+    if (!ANALYTICS_METHODS.has(requestedMethod as AnalyticsMethod))
+      throw new Problem(400, 'validation_failed', `unknown method "${requestedMethod}".`);
+    routeMethodFilter = { route: requestedRoute, method: requestedMethod as AnalyticsMethod };
+  }
   const scale = (point: (typeof unfilteredPoints)[number], factor: number) => {
     const requests = Math.round(point.requests * factor);
     const errorRequests = Math.min(requests, Math.round(point.error_requests * factor));
@@ -1366,10 +1388,17 @@ route('GET', '/v1/apps/{slug}/analytics/timeseries', ({ params, query }) => {
   const points = routeMethodFilter
     ? unfilteredPoints.map((point) => scale(point, 0.44))
     : unfilteredPoints;
-  const groupBy = query.get('group_by');
-  const values = groupBy === null ? undefined : ANALYTICS_GROUPS[groupBy];
-  if (groupBy !== null && !values)
-    throw new Problem(400, 'validation_failed', `unknown group_by "${groupBy}".`);
+  const requestedGroupBy = query.get('group_by');
+  if (requestedGroupBy !== null && !isAnalyticsGroupBy(requestedGroupBy))
+    throw new Problem(400, 'validation_failed', `unknown group_by "${requestedGroupBy}".`);
+  const groupBy = requestedGroupBy ?? undefined;
+  if (routeMethodFilter && groupBy !== undefined && groupBy !== 'route')
+    throw new Problem(
+      400,
+      'validation_failed',
+      'route and method filters require group_by=route or no group_by.'
+    );
+  const values = groupBy === undefined ? undefined : ANALYTICS_GROUPS[groupBy];
   const series = values?.map((value, i) => ({
     value,
     ...(groupBy === 'route' ? { method: (['GET', 'POST', 'GET', 'PUT'] as const)[i % 4] } : {}),
@@ -1377,17 +1406,19 @@ route('GET', '/v1/apps/{slug}/analytics/timeseries', ({ params, query }) => {
   }));
   return {
     slug: a.slug,
-    ...(routeMethodFilter ? { route, method } : {}),
+    ...routeMethodFilter,
     since,
     from: points[0]?.start ?? db.iso(hours * 3_600_000),
     until: db.iso(0),
     window_clamped: clamped,
     bucket: '1h',
     points,
-    ...(groupBy !== null ? { group_by: groupBy, series } : {}),
+    ...(groupBy !== undefined ? { group_by: groupBy, series } : {}),
     as_of: db.iso(0),
   };
-});
+}
+
+route('GET', '/v1/apps/{slug}/analytics/timeseries', analyticsTimeseries);
 
 route('GET', '/v1/apps/{slug}/debug/requests/{req_id}', ({ params }) => {
   gateDebug();

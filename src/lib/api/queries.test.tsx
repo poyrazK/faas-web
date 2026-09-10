@@ -49,6 +49,19 @@ afterEach(() => {
 });
 
 describe('analytics query contracts', () => {
+  it('defaults account SLO requests and cache identity to 24h', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(response());
+    stubApiFetch(fetchMock);
+    const { useAccountSlo } = await import('./queries');
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    renderHook(() => useAccountSlo(), { wrapper: queryWrapper(queryClient) });
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    expect(urlOf(fetchMock.mock.calls[0][0]).searchParams.get('window')).toBe('24h');
+    expect(queryClient.getQueryCache().getAll()[0]?.queryKey).toEqual(['account', 'slo', '24h']);
+  });
+
   it('sends the selected account SLO window and keeps it in the cache identity', async () => {
     const fetchMock = vi.fn().mockResolvedValue(response());
     stubApiFetch(fetchMock);
