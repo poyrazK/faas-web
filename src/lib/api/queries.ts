@@ -27,6 +27,7 @@ export type AppMetrics = components['schemas']['AppMetricsResponse'];
 export type MetricsRange = AppMetrics['range'];
 export type AppSLOWindow = components['schemas']['AppSLOResponse']['window'];
 export type MFAEnrollment = components['schemas']['MFAEnrollResponse'];
+export type DeploymentSummary = components['schemas']['DeploymentSummaryResponse'];
 
 export const keys = {
   account: ['account'] as const,
@@ -37,6 +38,8 @@ export const keys = {
   appSlo: (slug: string, window: AppSLOWindow) => ['apps', slug, 'slo', window] as const,
   deployments: ['deployments'] as const,
   appDeployments: (slug: string) => ['apps', slug, 'deployments'] as const,
+  deploymentSummary: (slug: string, id: string) =>
+    ['apps', slug, 'deployments', id, 'summary'] as const,
   domains: ['domains'] as const,
   triggers: ['triggers'] as const,
   jobs: ['jobs'] as const,
@@ -750,6 +753,24 @@ export function useDeployment(id: string, options?: Options<Deployment>) {
   });
 }
 
+/**
+ * The app-scoped release cockpit: selected deployment, its predecessor, the
+ * non-secret field diff, and the exact superseded deployment rollback would
+ * currently promote.
+ */
+export function useDeploymentSummary(slug: string, id: string) {
+  return useQuery({
+    queryKey: keys.deploymentSummary(slug, id),
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/deployments/{id}/summary', {
+          params: { path: { slug, id } },
+        })
+      ),
+    enabled: Boolean(slug && id),
+  });
+}
+
 export function useUpdateDeploymentMinInstances() {
   const qc = useQueryClient();
   return useMutation({
@@ -1098,12 +1119,23 @@ export function useDeployFromRef(slug: string) {
   });
 }
 
+export type RollbackInput = string | { slug: string; targetDeploymentId?: string };
+
 export function useRollback() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (slug: string) =>
-      unwrap(api.POST('/v1/apps/{slug}/rollback', { params: { path: { slug } } })),
-    onSuccess: (_data, slug) => {
+    mutationFn: (input: RollbackInput) => {
+      const slug = typeof input === 'string' ? input : input.slug;
+      const targetDeploymentId = typeof input === 'string' ? undefined : input.targetDeploymentId;
+      return unwrap(
+        api.POST('/v1/apps/{slug}/rollback', {
+          params: { path: { slug } },
+          ...(targetDeploymentId ? { body: { target_deployment_id: targetDeploymentId } } : {}),
+        })
+      );
+    },
+    onSuccess: (_data, input) => {
+      const slug = typeof input === 'string' ? input : input.slug;
       void qc.invalidateQueries({ queryKey: keys.apps });
       void qc.invalidateQueries({ queryKey: keys.app(slug) });
       void qc.invalidateQueries({ queryKey: keys.deployments });

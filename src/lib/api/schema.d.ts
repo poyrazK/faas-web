@@ -2256,6 +2256,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/apps/{slug}/deployments/{id}/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Fetch a deployment release summary and diff.
+         * @description Returns the selected deployment, its immediately preceding release,
+         *     a stable field-level diff of non-secret release metadata, and the
+         *     deployment id the app rollback operation would currently target.
+         *     Unknown, cross-account, or slug/deployment-mismatch requests return
+         *     the same IDOR-safe 404 surface as the other app-scoped reads.
+         */
+        get: operations["getAppDeploymentSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/apps/{slug}/deployments/dev-source": {
         parameters: {
             query?: never;
@@ -10110,6 +10139,25 @@ export interface components {
             items: components["schemas"]["DeploymentResponse"][];
             /** Format: date-time */
             next_before?: string | null;
+        };
+        /** @description App-scoped release cockpit: selected deployment, immediate predecessor, non-secret field-level diff, and eligible rollback target. */
+        DeploymentSummaryResponse: {
+            deployment: components["schemas"]["DeploymentResponse"];
+            /** @description The immediately older deployment by created_at, or null for an initial release. */
+            previous?: components["schemas"]["DeploymentResponse"] | null;
+            changes: components["schemas"]["DeploymentChange"][];
+            /**
+             * Format: uuid
+             * @description The latest superseded deployment eligible for POST /v1/apps/{slug}/rollback; omitted when none exists.
+             */
+            rollback_target_id?: string | null;
+        };
+        /** @description One non-secret release field that changed from the previous deployment. */
+        DeploymentChange: {
+            /** @enum {string} */
+            field: "status" | "kind" | "build_id" | "image_digest" | "source_url" | "commit_sha" | "source_root" | "scope" | "build_plan" | "min_instances" | "traffic_percent" | "has_overrides" | "canary_preset" | "rollback_on_5xx" | "rollout_state";
+            before: string | number | boolean | Record<string, never> | null;
+            after: string | number | boolean | Record<string, never> | null;
         };
         /**
          * @description One persisted billing-provider invoice (issue #259). Money is
@@ -21298,6 +21346,34 @@ export interface operations {
             403: components["responses"]["DeploymentForbidden"];
             413: components["responses"]["SourceTooLarge"];
             422: components["responses"]["DeployFailed"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getAppDeploymentSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The release summary. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentSummaryResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
             429: components["responses"]["TooManyRequests"];
         };
     };

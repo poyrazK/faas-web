@@ -14,6 +14,7 @@ import { isDeploymentTerminal } from '@/lib/deployment-status';
 import { formatRelative } from '@/lib/mock-data';
 import { AdvanceCanaryButton, ReorderDeploymentControl } from './deployment-actions';
 import { DeploymentAudit, DeploymentPreviewUrl, DeploymentStages } from './deployment-insights';
+import { DeploymentReleaseSummary } from './deployment-release-summary';
 import { RolloutRecovery } from './rollout-recovery';
 import { LogView } from './log-view';
 
@@ -174,6 +175,8 @@ export function DeploymentDetailPanel({
               </p>
             )}
           </div>
+
+          {appSlug && <DeploymentReleaseSummary appSlug={appSlug} deploymentId={deployment.id} />}
 
           <DeploymentStages deploymentId={deployment.id} />
           <DeploymentAudit deploymentId={deployment.id} />
