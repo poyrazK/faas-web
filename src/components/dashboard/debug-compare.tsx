@@ -1,8 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { InlinePhase } from '@/components/dashboard/primitives';
+import {
+  ErrorState,
+  InlinePhase,
+  LoadingState,
+  UnreachableState,
+  queryPhase,
+} from '@/components/dashboard/primitives';
 import { ResourceTable, type Column } from '@/components/dashboard/resource-table';
-import { useApps, useCompareDeployments, useDeployments } from '@/lib/api/queries';
+import { useAppDeployments, useCompareDeployments } from '@/lib/api/queries';
 import { errorMessage } from '@/lib/api/errors';
 import { DebugGate, isPlanGated } from './debug-gate';
 import { WINDOWS } from './debug-requests';
@@ -48,21 +54,46 @@ function delta(a: number | null, b: number | null): { text: string; color: strin
 }
 
 export function DebugCompare({ slug }: { slug: string }) {
-  // There is no GET for per-app deployments — /v1/apps/{slug}/deployments is
-  // POST-only — so the account-wide list is filtered to this app by id.
-  const deployments = useDeployments(100);
-  const apps = useApps();
+  const [since, setSince] = useState('24h');
+
+  return <AppDeploymentCompare key={slug} slug={slug} since={since} onSinceChange={setSince} />;
+}
+
+function AppDeploymentCompare({
+  slug,
+  since,
+  onSinceChange,
+}: {
+  slug: string;
+  since: string;
+  onSinceChange: (value: string) => void;
+}) {
+  const deployments = useAppDeployments(slug);
   const compare = useCompareDeployments(slug);
   const [source, setSource] = useState('');
   const [mirror, setMirror] = useState('');
-  const [since, setSince] = useState('24h');
+  const resetCompare = compare.reset;
 
-  const options = useMemo(() => {
-    const appId = (apps.data ?? []).find((a) => a.slug === slug)?.id;
-    return (deployments.data?.items ?? [])
-      .filter((d) => !appId || d.app_id === appId)
-      .map((d) => ({ id: d.id, label: `${d.status} · ${d.id.slice(0, 8)}` }));
-  }, [deployments.data, apps.data, slug]);
+  useEffect(() => {
+    resetCompare();
+  }, [resetCompare]);
+
+  const deploymentItems = deployments.data?.pages.flatMap((page) => page.items) ?? [];
+  const deploymentPhase = queryPhase({
+    error: deploymentItems.length === 0 ? deployments.error : undefined,
+    loading: deployments.isPending,
+    isEmpty: deploymentItems.length === 0,
+  });
+
+  const options = deploymentItems.map((d) => ({
+    id: d.id,
+    label: `${d.status} · ${d.id.slice(0, 8)}`,
+  }));
+
+  // A selected id can outlive an app switch. Keep it in the native select only
+  // while it belongs to the current app, so a stale id cannot reach compare.
+  const sourceId = options.some((option) => option.id === source) ? source : '';
+  const mirrorId = options.some((option) => option.id === mirror) ? mirror : '';
 
   const rows: Row[] = (compare.data?.routes ?? []).map((r) => ({
     id: r.route,
@@ -129,19 +160,27 @@ export function DebugCompare({ slug }: { slug: string }) {
     },
   ];
 
-  const ready = source !== '' && mirror !== '' && source !== mirror;
+  const ready = sourceId !== '' && mirrorId !== '' && sourceId !== mirrorId;
 
   return (
     <DebugGate error={isPlanGated(compare.error) ? compare.error : null}>
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-end gap-3">
-          {[['A', source, setSource] as const, ['B', mirror, setMirror] as const].map(
-            ([label, value, set]) => (
+      {deploymentPhase === 'unreachable' ? (
+        <UnreachableState onRetry={() => void deployments.refetch()} />
+      ) : deploymentPhase === 'error' ? (
+        <ErrorState error={deployments.error} onRetry={() => void deployments.refetch()} />
+      ) : deploymentPhase === 'loading' ? (
+        <LoadingState message="Loading deployment history…" />
+      ) : deploymentPhase === 'empty' ? (
+        <InlinePhase phase="empty" emptyMessage="No deployments to compare yet." />
+      ) : (
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-end gap-3">
+            {[['A', setSource] as const, ['B', setMirror] as const].map(([label, set]) => (
               <label key={label} className="flex flex-col gap-1.5">
                 <span className="label-mono text-muted-foreground">Deployment {label}</span>
                 <select
                   aria-label={`Deployment ${label}`}
-                  value={value}
+                  value={label === 'A' ? sourceId : mirrorId}
                   onChange={(e) => set(e.target.value)}
                   className="h-9 min-w-52 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-brand/50"
                 >
@@ -153,66 +192,87 @@ export function DebugCompare({ slug }: { slug: string }) {
                   ))}
                 </select>
               </label>
-            )
+            ))}
+
+            <label className="flex flex-col gap-1.5">
+              <span className="label-mono text-muted-foreground">Window</span>
+              <select
+                aria-label="Compare window"
+                value={since}
+                onChange={(e) => onSinceChange(e.target.value)}
+                className="h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-brand/50"
+              >
+                {WINDOWS.map((w) => (
+                  <option key={w} value={w}>
+                    {w}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <Button
+              size="sm"
+              disabled={!ready}
+              busy={compare.isPending}
+              onClick={() =>
+                void compare
+                  .mutateAsync({ source: sourceId, mirror: mirrorId, since })
+                  .catch(() => undefined)
+              }
+            >
+              Compare
+            </Button>
+          </div>
+
+          {deployments.hasNextPage && (
+            <div className="flex flex-col items-center gap-2">
+              <Button
+                size="xs"
+                variant="outline"
+                busy={deployments.isFetchingNextPage}
+                onClick={() => void deployments.fetchNextPage().catch(() => undefined)}
+              >
+                Load older deployments
+              </Button>
+              {Boolean(deployments.error) && (
+                <InlinePhase
+                  phase={queryPhase({ error: deployments.error })}
+                  error={deployments.error}
+                />
+              )}
+            </div>
           )}
 
-          <label className="flex flex-col gap-1.5">
-            <span className="label-mono text-muted-foreground">Window</span>
-            <select
-              aria-label="Compare window"
-              value={since}
-              onChange={(e) => setSince(e.target.value)}
-              className="h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-brand/50"
-            >
-              {WINDOWS.map((w) => (
-                <option key={w} value={w}>
-                  {w}
-                </option>
-              ))}
-            </select>
-          </label>
+          {sourceId !== '' && sourceId === mirrorId && (
+            <p className="text-xs text-[color:var(--status-warning)]">
+              Pick two different deployments — comparing one with itself says nothing.
+            </p>
+          )}
 
-          <Button
-            size="sm"
-            disabled={!ready}
-            busy={compare.isPending}
-            onClick={() =>
-              void compare.mutateAsync({ source, mirror, since }).catch(() => undefined)
-            }
-          >
-            Compare
-          </Button>
+          {compare.error && !isPlanGated(compare.error) && (
+            <p className="text-sm text-[color:var(--status-critical)]">
+              {errorMessage(compare.error)}
+            </p>
+          )}
+
+          {compare.data ? (
+            <ResourceTable
+              rows={rows}
+              columns={columns}
+              initialSort={{ key: 'route', dir: 'asc' }}
+              searchKeys={['route']}
+              searchPlaceholder="Filter by route…"
+              emptyMessage="Neither deployment served traffic in this window."
+              minWidth="min-w-[860px]"
+            />
+          ) : (
+            <InlinePhase
+              phase="empty"
+              emptyMessage="Choose two deployments to compare their per-route latency."
+            />
+          )}
         </div>
-
-        {source !== '' && source === mirror && (
-          <p className="text-xs text-[color:var(--status-warning)]">
-            Pick two different deployments — comparing one with itself says nothing.
-          </p>
-        )}
-
-        {compare.error && !isPlanGated(compare.error) && (
-          <p className="text-sm text-[color:var(--status-critical)]">
-            {errorMessage(compare.error)}
-          </p>
-        )}
-
-        {compare.data ? (
-          <ResourceTable
-            rows={rows}
-            columns={columns}
-            initialSort={{ key: 'route', dir: 'asc' }}
-            searchKeys={['route']}
-            searchPlaceholder="Filter by route…"
-            emptyMessage="Neither deployment served traffic in this window."
-            minWidth="min-w-[860px]"
-          />
-        ) : (
-          <InlinePhase
-            phase="empty"
-            emptyMessage="Choose two deployments to compare their per-route latency."
-          />
-        )}
-      </div>
+      )}
     </DebugGate>
   );
 }
