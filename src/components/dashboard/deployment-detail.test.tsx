@@ -22,6 +22,7 @@ vi.mock('./deployment-insights', () => ({
   DeploymentPreviewUrl: () => null,
   DeploymentStages: () => null,
 }));
+vi.mock('./deployment-release-summary', () => ({ DeploymentReleaseSummary: () => null }));
 vi.mock('./rollout-recovery', () => ({ RolloutRecovery: () => null }));
 
 const { DeploymentDetailPanel } = await import('./deployment-detail');
