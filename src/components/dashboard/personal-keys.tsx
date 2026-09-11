@@ -77,7 +77,7 @@ function GraceWindowPanel() {
   return (
     <Panel
       title="Rotation grace window"
-      description="Account-wide override for future personal-key rotations. Zero revokes the old key immediately; restoring the plan default clears the override."
+      description="Account-wide override for future personal and organisation key rotations. Zero revokes the old key immediately; restoring the plan default clears the override."
     >
       <form
         noValidate
@@ -155,7 +155,7 @@ export function PersonalKeysBody() {
   const createKey = useCreateApiKey();
   const deleteKey = useDeleteApiKey();
   const rotateKey = useRotateApiKey();
-  const policy = useKeyRotationPolicy('personal');
+  const policy = useKeyRotationPolicy();
   const [creating, setCreating] = useState(false);
 
   const [label, setLabel] = useState('');

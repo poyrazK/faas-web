@@ -1,18 +1,11 @@
 import { useGraceWindow } from '@/lib/api/queries';
 
-/** Org rotation preserves its existing empty body; the API documents plan fallback. */
-export function useKeyRotationPolicy(scope: 'personal' | 'organisation') {
+/** Both rotation endpoints resolve the account override before the plan default. */
+export function useKeyRotationPolicy() {
   const query = useGraceWindow();
   const days =
-    query.data && !query.error
-      ? scope === 'organisation'
-        ? query.data.plan_default
-        : (query.data.days ?? query.data.plan_default)
-      : undefined;
-  const source =
-    scope === 'organisation'
-      ? 'Organisation rotations here use the plan default.'
-      : `${query.data?.days == null ? 'Using the plan default.' : 'Using the account override.'} This account-wide policy applies to future rotations; creating a key does not set a policy for that key.`;
+    query.data && !query.error ? (query.data.days ?? query.data.plan_default) : undefined;
+  const source = `${query.data?.days == null ? 'Using the plan default.' : 'Using the account override.'} This account-wide policy applies to future personal and organisation key rotations; creating a key does not set a policy for that key.`;
   const context =
     days === undefined
       ? query.error

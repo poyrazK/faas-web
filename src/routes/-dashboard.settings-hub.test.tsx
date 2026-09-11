@@ -169,6 +169,59 @@ async function section(name: string) {
 }
 
 describe('canonical Settings', () => {
+  it.each([
+    {
+      days: 0,
+      effective: 0,
+      consequence: 'The previous key stops working immediately.',
+      source: 'Using the account override.',
+    },
+    {
+      days: 3,
+      effective: 3,
+      consequence: 'The previous key works for 3 days after rotation, then stops.',
+      source: 'Using the account override.',
+    },
+    {
+      days: null,
+      effective: 7,
+      consequence: 'The previous key works for 7 days after rotation, then stops.',
+      source: 'Using the plan default.',
+    },
+  ])(
+    'confirms the account grace policy used by organization rotation (override=$days)',
+    async ({ days, effective, consequence, source }) => {
+      const get = api.GET.getMockImplementation()!;
+      api.GET.mockImplementation((path, options) =>
+        path.endsWith('/grace_window_days') ? ok({ days, plan_default: 7 }) : get(path, options)
+      );
+      api.POST.mockResolvedValue({
+        data: {
+          key: key('replacement'),
+          key_plaintext: 'rotated-once',
+          old_key_id: 'acme',
+          old_key_expires_at: `2026-09-${11 + effective}T00:00:00Z`,
+        },
+        response: new Response(null, { status: 200 }),
+      });
+      await mount('/dashboard/settings?section=api-keys&scope=organization&org=acme');
+      const rotate = await screen.findByRole('button', { name: 'Rotate key acme CI' });
+      await waitFor(() => expect(rotate).toBeEnabled());
+      await userEvent.click(rotate);
+      const dialog = screen.getByRole('dialog');
+      expect(dialog).toHaveAccessibleDescription(
+        `A new key is minted and shown once. Effective grace window: ${effective} days. ${consequence} ${source} This account-wide policy applies to future personal and organisation key rotations; creating a key does not set a policy for that key.`
+      );
+      expect(api.POST).not.toHaveBeenCalled();
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Rotate key' }));
+      await screen.findByRole('button', { name: 'Reveal' });
+      expect(api.POST).toHaveBeenCalledExactlyOnceWith('/v1/orgs/{slug}/keys/{id}/rotate', {
+        params: { path: { slug: 'acme', id: 'acme' } },
+        body: {},
+      });
+    }
+  );
+
   it.each(['personal', 'organization'])(
     'opens creation from the empty %s key list',
     async (scope) => {

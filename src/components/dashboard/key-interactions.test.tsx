@@ -70,7 +70,7 @@ describe.each([
     create: createOrg,
     rotate: rotateOrg,
     revoke: revokeOrg,
-    days: 7,
+    days: 0,
     scopes: ['deploy:write', 'apps:read'],
   },
 ])('$name key interactions', ({ name, View, create, rotate, revoke, days, scopes }) => {
@@ -122,16 +122,9 @@ describe.each([
   it('explains the effective grace window and its scope before creating', async () => {
     show();
     const region = await open();
-    expect(
-      within(region).getByText(new RegExp(`Effective grace window: ${days} days`))
-    ).toBeVisible();
-    expect(
-      within(region).getByText(
-        name === 'personal'
-          ? /account-wide.*future rotations/i
-          : /organisation rotations.*plan default/i
-      )
-    ).toBeVisible();
+    const context = within(region).getByText(new RegExp(`Effective grace window: ${days} days`));
+    expect(context).toBeVisible();
+    expect(context).toHaveTextContent(/account-wide.*personal and organisation key rotations/i);
   });
 
   it('never inserts a freshly created plaintext into the masked DOM or accessible attributes', async () => {

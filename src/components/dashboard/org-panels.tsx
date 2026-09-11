@@ -205,7 +205,7 @@ function OrgKeysBody({ slug, canManage }: { slug: string; canManage: boolean }) 
   const create = useCreateOrgKey(slug);
   const remove = useDeleteOrgKey(slug);
   const rotate = useRotateOrgKey(slug);
-  const policy = useKeyRotationPolicy('organisation');
+  const policy = useKeyRotationPolicy();
 
   const [label, setLabel] = useState('');
   const [creating, setCreating] = useState(false);
