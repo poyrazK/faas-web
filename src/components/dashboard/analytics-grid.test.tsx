@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyOrder, buildCards, move, type AnalyticsPoint } from './analytics-grid';
+import { applyOrder, buildCards, type AnalyticsPoint } from './analytics-grid';
 
 function points(counts: number[]): AnalyticsPoint[] {
   return counts.map((requests, i) => ({
@@ -13,21 +13,6 @@ function points(counts: number[]): AnalyticsPoint[] {
     p99_ms: 30,
   }));
 }
-
-describe('move', () => {
-  it('reorders without mutating its input', () => {
-    const list = ['a', 'b', 'c'];
-    expect(move(list, 0, 2)).toEqual(['b', 'c', 'a']);
-    expect(list).toEqual(['a', 'b', 'c']);
-  });
-
-  it('returns the same array for a no-op or an out-of-range move', () => {
-    const list = ['a', 'b'];
-    expect(move(list, 1, 1)).toBe(list);
-    expect(move(list, 0, 5)).toBe(list);
-    expect(move(list, -1, 0)).toBe(list);
-  });
-});
 
 describe('applyOrder', () => {
   const cards = buildCards(points([1, 2, 3, 4]), 'the hours before');

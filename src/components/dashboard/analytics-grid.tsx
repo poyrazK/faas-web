@@ -1,5 +1,5 @@
-import { useCallback, useRef, useState } from 'react';
-import { LayoutGroup, motion, useReducedMotion } from 'motion/react';
+import { useCallback, useState } from 'react';
+import { Reorder, useReducedMotion } from 'motion/react';
 import { Area, AreaChart } from '@/components/dither-kit';
 import { cn } from '@/lib/utils';
 
@@ -175,15 +175,6 @@ export function applyOrder(cards: AnalyticsCardSpec[], order: string[]): Analyti
   return [...ordered, ...cards.filter((card) => !seen.has(card.id))];
 }
 
-/** Move an item, returning a new array. */
-export function move<T>(list: T[], from: number, to: number): T[] {
-  if (from === to || from < 0 || to < 0 || from >= list.length || to >= list.length) return list;
-  const next = list.slice();
-  const [item] = next.splice(from, 1);
-  next.splice(to, 0, item);
-  return next;
-}
-
 export function AnalyticsGrid({
   cards,
   points,
@@ -195,18 +186,11 @@ export function AnalyticsGrid({
 }) {
   const reduce = useReducedMotion();
   const [order, setOrder] = useState<string[]>(readOrder);
-  const nodes = useRef(new Map<string, HTMLElement>());
-  // The card we last swapped with, held until the pointer leaves it.
-  //
-  // Without this the grid oscillates: onDrag fires on every pointer move and
-  // hit-tests with getBoundingClientRect, which during a layout animation
-  // returns the in-flight rect. The card we just swapped with spends the next
-  // ~250ms travelling out from under a stationary pointer, and every frame of
-  // that journey looks like a fresh reason to swap back.
-  const lastPartner = useRef<string | null>(null);
   const ordered = applyOrder(cards, order);
+  const ids = ordered.map((card) => card.id);
 
-  const persist = useCallback((next: string[]) => {
+  const onReorder = useCallback((next: string[]) => {
+    setOrder(next);
     try {
       window.localStorage.setItem(ORDER_KEY, JSON.stringify(next));
     } catch {
@@ -214,81 +198,45 @@ export function AnalyticsGrid({
     }
   }, []);
 
-  // Reorder on the card the pointer is actually over, not on a drag distance.
-  // Cards differ in width, so a threshold that feels right against a 1-column
-  // card overshoots a 2-column one; the pointer is the only measure that reads
-  // the same at both sizes.
-  const onDrag = useCallback(
-    (id: string, clientX: number, clientY: number) => {
-      let over: string | null = null;
-      for (const [otherId, el] of nodes.current) {
-        if (otherId === id) continue;
-        const r = el.getBoundingClientRect();
-        if (clientX < r.left || clientX > r.right || clientY < r.top || clientY > r.bottom)
-          continue;
-        over = otherId;
-        break;
-      }
-      // Off every sibling — the pointer is over the dragged card's own slot,
-      // which is where a completed swap leaves it. Release the guard so the
-      // next card met is a fresh partner.
-      if (over === null) {
-        lastPartner.current = null;
-        return;
-      }
-      if (over === lastPartner.current) return;
-      lastPartner.current = over;
-      setOrder((previous) => {
-        const current = applyOrder(cards, previous).map((card) => card.id);
-        const next = move(current, current.indexOf(id), current.indexOf(over));
-        if (next === current) return previous;
-        persist(next);
-        return next;
-      });
-    },
-    [cards, persist]
-  );
+  const grid = 'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4';
+  const cardClass = (card: AnalyticsCardSpec) =>
+    cn('relative rounded-xl border border-border bg-card p-5', card.span === 2 && 'lg:col-span-2');
 
-  return (
-    <LayoutGroup>
-      <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+  // No drag under reduced motion: the reorder is a nicety, and a gesture whose
+  // whole feedback channel is movement has nothing to say without it.
+  if (reduce) {
+    return (
+      <ul className={grid}>
         {ordered.map((card) => (
-          <motion.li
-            key={card.id}
-            ref={(el: HTMLLIElement | null) => {
-              if (el) nodes.current.set(card.id, el);
-              else nodes.current.delete(card.id);
-            }}
-            layout={reduce ? false : 'position'}
-            transition={REFLOW}
-            drag={reduce ? false : true}
-            dragSnapToOrigin
-            // No elastic: the card must sit under the pointer exactly, because
-            // the pointer is what decides the drop. Rubber-banding would make
-            // the card and the decision disagree at the edges.
-            dragElastic={0}
-            dragMomentum={false}
-            onDrag={(event) => {
-              const point =
-                'touches' in event && event.touches.length > 0
-                  ? event.touches[0]
-                  : (event as PointerEvent);
-              onDrag(card.id, point.clientX, point.clientY);
-            }}
-            onDragEnd={() => {
-              lastPartner.current = null;
-            }}
-            whileDrag={{ scale: 1.015, zIndex: 30, cursor: 'grabbing' }}
-            className={cn(
-              'relative touch-none rounded-xl border border-border bg-card p-5',
-              card.span === 2 && 'lg:col-span-2'
-            )}
-          >
+          <li key={card.id} className={cardClass(card)}>
             <AnalyticsCard card={card} points={points} loading={loading} />
-          </motion.li>
+          </li>
         ))}
       </ul>
-    </LayoutGroup>
+    );
+  }
+
+  return (
+    <Reorder.Group as="ul" axis="xy" values={ids} onReorder={onReorder} className={grid}>
+      {ordered.map((card) => (
+        <Reorder.Item
+          key={card.id}
+          value={card.id}
+          // Position only. A reorder moves cards; it does not resize them, and
+          // animating size across a one-column/two-column swap stretches the
+          // card — and the canvas inside it — through the whole transition.
+          layout="position"
+          transition={REFLOW}
+          // Elevation rather than scale: a transform on a layout-animated card
+          // distorts its children, and the shadow is what reads as "lifted"
+          // anyway.
+          whileDrag={{ boxShadow: 'var(--elevation-3)', cursor: 'grabbing' }}
+          className={cn(cardClass(card), 'touch-none')}
+        >
+          <AnalyticsCard card={card} points={points} loading={loading} />
+        </Reorder.Item>
+      ))}
+    </Reorder.Group>
   );
 }
 
