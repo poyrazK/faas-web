@@ -622,19 +622,19 @@ function OverviewPage() {
             <ArrowRight className="h-3 w-3" />
           </Link>
         </div>
-
-        {/* Scoped to one app because the series is: the platform has no
-            account-level rollup of `/analytics/timeseries`, and summing apps
-            with different retention would thin out at the earlier end while
-            looking like a total. */}
-        {analyticsApp.slug && (
-          <AnalyticsSection
-            apps={analyticsApp.apps}
-            slug={analyticsApp.slug}
-            onSelectApp={analyticsApp.select}
-          />
-        )}
       </section>
+
+      {/* Its own band, not a section inside the one above. Scoped to one app
+          because the series is: the platform has no account-level rollup of
+          `/analytics/timeseries`, and summing apps with different retention
+          would thin out at the earlier end while looking like a total. */}
+      {analyticsApp.slug && (
+        <AnalyticsSection
+          apps={analyticsApp.apps}
+          slug={analyticsApp.slug}
+          onSelectApp={analyticsApp.select}
+        />
+      )}
     </div>
   );
 }

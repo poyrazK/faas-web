@@ -98,6 +98,23 @@ function compact(n: number): string {
  * available to everyone without appearing uninvited on a grid someone has
  * already arranged.
  */
+/**
+ * The per-app row of `/v1/apps/metrics` — the account rollup.
+ *
+ * Not plan-gated, unlike the hourly series, which is what lets a Free account
+ * see these figures at all. `wake_p95_ms` is deliberately absent: the spec says
+ * the underlying histogram is unlabeled, so it is the FLEET p95 and cannot
+ * appear on a card about one app.
+ */
+export interface AppMetricsRow {
+  request_count: number;
+  latency_p50_ms: number;
+  latency_p95_ms: number;
+  latency_p99_ms: number;
+  error_rate_pct: number;
+  cold_start_pct: number;
+}
+
 export interface MetricDef {
   id: string;
   label: string;
@@ -108,6 +125,15 @@ export interface MetricDef {
     points: AnalyticsPoint[],
     halfLabel: string
   ) => { value: string; delta: number | null; caption: string };
+  /**
+   * The same metric from the rollup, for accounts without the series.
+   *
+   * May rename the card: the rollup answers some questions in a different unit
+   * (cold starts as a share, not a count), and a card that keeps its label while
+   * changing its unit is worse than one that says what it is now showing.
+   * Returning null means the metric has no honest scalar form.
+   */
+  scalar?: (row: AppMetricsRow) => { label?: string; value: string; caption: string } | null;
 }
 
 function latencyCard(key: 'p50_ms' | 'p95_ms' | 'p99_ms') {
@@ -133,6 +159,10 @@ export const CATALOG: MetricDef[] = [
       delta: halfOverHalf(points, 'requests'),
       caption: `Served this window, against ${halfLabel}`,
     }),
+    scalar: (row) => ({
+      value: compact(row.request_count),
+      caption: 'Served in this window',
+    }),
   },
   {
     id: 'errors',
@@ -144,6 +174,12 @@ export const CATALOG: MetricDef[] = [
       value: compact(sum(points, 'error_requests')),
       delta: halfOverHalf(points, 'error_requests'),
       caption: `Errored responses, against ${halfLabel}`,
+    }),
+    scalar: (row) => ({
+      value: compact(Math.round((row.request_count * row.error_rate_pct) / 100)),
+      // Said plainly: the rollup returns a rate, not a count, so this figure is
+      // arithmetic on two numbers it did return rather than one it reported.
+      caption: 'Derived from the error rate',
     }),
   },
   {
@@ -160,10 +196,35 @@ export const CATALOG: MetricDef[] = [
         caption: 'Errored share of the window',
       };
     },
+    scalar: (row) => ({
+      value: `${row.error_rate_pct.toFixed(2)}%`,
+      caption: 'Errored share of the window',
+    }),
   },
-  { id: 'p50', label: 'Latency p50', span: 1, deltaGood: false, build: latencyCard('p50_ms') },
-  { id: 'p95', label: 'Latency p95', span: 1, deltaGood: false, build: latencyCard('p95_ms') },
-  { id: 'p99', label: 'Latency p99', span: 1, deltaGood: false, build: latencyCard('p99_ms') },
+  {
+    id: 'p50',
+    label: 'Latency p50',
+    span: 1,
+    deltaGood: false,
+    build: latencyCard('p50_ms'),
+    scalar: (row) => ({ value: `${Math.round(row.latency_p50_ms)} ms`, caption: 'This window' }),
+  },
+  {
+    id: 'p95',
+    label: 'Latency p95',
+    span: 1,
+    deltaGood: false,
+    build: latencyCard('p95_ms'),
+    scalar: (row) => ({ value: `${Math.round(row.latency_p95_ms)} ms`, caption: 'This window' }),
+  },
+  {
+    id: 'p99',
+    label: 'Latency p99',
+    span: 1,
+    deltaGood: false,
+    build: latencyCard('p99_ms'),
+    scalar: (row) => ({ value: `${Math.round(row.latency_p99_ms)} ms`, caption: 'This window' }),
+  },
   {
     id: 'cold_boots',
     label: 'Cold boots',
@@ -174,6 +235,13 @@ export const CATALOG: MetricDef[] = [
       value: compact(sum(points, 'cold_boots')),
       delta: halfOverHalf(points, 'cold_boots'),
       caption: `Wakes from a parked app, against ${halfLabel}`,
+    }),
+    // The series counts wakes; the rollup reports the share of requests that
+    // caused one. Different question, so a different name on the card.
+    scalar: (row) => ({
+      label: 'Cold starts',
+      value: `${row.cold_start_pct.toFixed(1)}%`,
+      caption: 'Share of requests that woke a parked app',
     }),
   },
 ];
@@ -211,6 +279,35 @@ export function chosenCards(
     .map((def) => buildCard(def, points, halfLabel));
 }
 
+/**
+ * The chosen metrics as scalars, for an account without the series.
+ *
+ * A metric with no honest scalar form is dropped rather than approximated —
+ * the grid gets shorter, which is the correct way to be missing something.
+ */
+export function scalarCards(chosen: string[], row: AppMetricsRow): AnalyticsCardSpec[] {
+  return chosen
+    .map((id) => CATALOG.find((def) => def.id === id))
+    .filter((def): def is MetricDef => !!def)
+    .flatMap((def) => {
+      const built = def.scalar?.(row);
+      if (!built) return [];
+      return [
+        {
+          id: def.id,
+          label: built.label ?? def.label,
+          span: def.span,
+          deltaGood: def.deltaGood,
+          value: built.value,
+          // No series, so no period-over-period: a delta needs two halves of
+          // one, and inventing a baseline is how a dashboard starts lying.
+          delta: null,
+          caption: built.caption,
+        },
+      ];
+    });
+}
+
 /** Catalog entries not currently on the grid — what the picker offers. */
 export function availableMetrics(chosen: string[]): MetricDef[] {
   const on = new Set(chosen);
@@ -238,13 +335,17 @@ function readChosen(): string[] | null {
 
 export function AnalyticsGrid({
   points,
-  halfLabel,
+  build,
   loading = false,
   picking: pickingProp,
   onPicking,
 }: {
+  /** Drawn beneath any card that names a series. Empty on the scalar path, so
+   *  the charts simply do not appear rather than being suppressed. */
   points: AnalyticsPoint[];
-  halfLabel: string;
+  /** Where the figures come from — the hourly series, or the rollup. The grid
+   *  owns which metrics are shown and in what order; not what they read. */
+  build: (chosen: string[]) => AnalyticsCardSpec[];
   loading?: boolean;
   /** Controlled by the section header's + when it is passed. */
   picking?: boolean;
@@ -256,7 +357,7 @@ export function AnalyticsGrid({
   const picking = pickingProp ?? ownPicking;
   const setPicking = onPicking ?? setOwnPicking;
   const chosen = stored ?? DEFAULT_IDS;
-  const cards = chosenCards(chosen, points, halfLabel);
+  const cards = build(chosen);
   const available = availableMetrics(chosen);
 
   const commit = useCallback((next: string[]) => {
