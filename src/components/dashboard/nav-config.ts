@@ -34,6 +34,8 @@ export interface NavItem {
   to: string;
   label: string;
   icon: NavIcon;
+  /** Small wayfinding accents in the sidebar; labels and other menus stay neutral. */
+  sidebarIconClassName?: string;
   exact?: boolean;
   search?: Record<string, string>;
 }
@@ -52,11 +54,18 @@ export interface NavHub extends NavItem {
 
 /** Existing pages anchor each hub until its feature composition is ready. */
 export const NAV_HUBS: NavHub[] = [
-  { to: '/dashboard', label: 'Overview', icon: ViewGrid, exact: true },
+  {
+    to: '/dashboard',
+    label: 'Overview',
+    icon: ViewGrid,
+    exact: true,
+    sidebarIconClassName: 'text-brand/80',
+  },
   {
     to: '/dashboard/workflows',
     label: 'Apps',
     icon: WorkflowIcon,
+    sidebarIconClassName: 'text-cat-compute/80',
     sections: [
       { to: '/dashboard/workflows', label: 'Apps', icon: WorkflowIcon },
       { to: '/dashboard/templates', label: 'Templates', icon: Cube },
@@ -67,6 +76,7 @@ export const NAV_HUBS: NavHub[] = [
     to: '/dashboard/jobs',
     label: 'Jobs',
     icon: Play,
+    sidebarIconClassName: 'text-cat-compute/80',
     pageOwnsNavigation: true,
     sections: [
       { to: '/dashboard/jobs', label: 'Jobs', icon: Play },
@@ -78,18 +88,30 @@ export const NAV_HUBS: NavHub[] = [
     to: '/dashboard/deployments',
     label: 'Releases',
     icon: Rocket,
+    sidebarIconClassName: 'text-cat-compute/80',
     pageOwnsNavigation: true,
     sections: [
       { to: '/dashboard/deployments', label: 'Deployments', icon: Rocket },
       { to: '/dashboard/builds', label: 'Builds', icon: Package },
     ],
   },
-  { to: '/dashboard/workers', label: 'Instances', icon: Server },
-  { to: '/dashboard/domains', label: 'Domains', icon: Globe },
+  {
+    to: '/dashboard/workers',
+    label: 'Instances',
+    icon: Server,
+    sidebarIconClassName: 'text-cat-compute/80',
+  },
+  {
+    to: '/dashboard/domains',
+    label: 'Domains',
+    icon: Globe,
+    sidebarIconClassName: 'text-cat-network/80',
+  },
   {
     to: '/dashboard/storage',
     label: 'Data',
     icon: HardDrive,
+    sidebarIconClassName: 'text-cat-storage/80',
     sections: [
       { to: '/dashboard/storage', label: 'Storage', icon: HardDrive },
       { to: '/dashboard/postgres', label: 'Postgres', icon: Database },
@@ -99,6 +121,7 @@ export const NAV_HUBS: NavHub[] = [
     to: '/dashboard/debug',
     label: 'Observe',
     icon: Search,
+    sidebarIconClassName: 'text-cat-security/80',
     sections: [
       { to: '/dashboard/debug', label: 'Debugger', icon: Search },
       { to: '/dashboard/traces', label: 'Invocations', icon: Activity },

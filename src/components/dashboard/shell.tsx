@@ -121,7 +121,7 @@ function SidebarBody({
             )}
 
             <nav aria-label={group.title ?? 'Main'} className="flex flex-col gap-0.5">
-              {group.items.map(({ to, label, icon: Icon, exact }) => {
+              {group.items.map(({ to, label, icon: Icon, exact, sidebarIconClassName }) => {
                 const isActive = currentHub?.to === to;
                 const currentPath = matchesNavPath(pathname, { to, exact: true });
                 const link = (
@@ -138,9 +138,11 @@ function SidebarBody({
                     aria-label={collapsed ? label : undefined}
                     aria-current={isActive ? 'page' : undefined}
                     className={cn(
-                      'pressable relative isolate flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
-                      isActive && '!text-foreground',
-                      isActive && reduce && 'bg-muted'
+                      'pressable relative isolate flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
+                      isActive
+                        ? 'text-brand'
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                      isActive && reduce && 'bg-brand/10 ring-1 ring-inset ring-brand/15'
                     )}
                   >
                     <>
@@ -148,7 +150,7 @@ function SidebarBody({
                         <motion.span
                           aria-hidden="true"
                           layoutId="sidebar-active"
-                          className="absolute inset-0 -z-10 rounded-md bg-muted"
+                          className="absolute inset-0 -z-10 rounded-md bg-brand/10 ring-1 ring-inset ring-brand/15"
                           transition={{
                             type: 'spring',
                             stiffness: 500,
@@ -156,7 +158,13 @@ function SidebarBody({
                           }}
                         />
                       )}
-                      <Icon className="h-4 w-4 shrink-0" />
+                      <Icon
+                        aria-hidden="true"
+                        className={cn(
+                          'h-4 w-4 shrink-0 transition-colors duration-150',
+                          isActive ? 'text-brand' : sidebarIconClassName
+                        )}
+                      />
                       <span aria-hidden={collapsed} className={labelCls}>
                         {label}
                       </span>
