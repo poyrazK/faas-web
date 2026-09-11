@@ -21,18 +21,10 @@ import {
   Server,
   Settings,
   ShieldCheck,
-  Shuffle,
   Timer,
   Upload,
   ViewGrid,
 } from 'iconoir-react';
-
-/**
- * Grouped sidebar navigation.
- *
- * `to` is typed against the router's generated route ids, so a nav entry
- * cannot point at a route that does not exist.
- */
 
 /** Any Iconoir glyph: they are plain SVG components. */
 export type NavIcon = ComponentType<SVGProps<SVGSVGElement>>;
@@ -50,63 +42,88 @@ export interface NavGroup {
   items: NavItem[];
 }
 
-export const NAV_GROUPS: NavGroup[] = [
+export interface NavHub extends NavItem {
+  sections?: NavItem[];
+}
+
+/** Existing pages anchor each hub until its feature composition is ready. */
+export const NAV_HUBS: NavHub[] = [
+  { to: '/dashboard', label: 'Overview', icon: ViewGrid, exact: true },
   {
-    items: [{ to: '/dashboard', label: 'Overview', icon: ViewGrid, exact: true }],
-  },
-  {
-    title: 'Build',
-    items: [
+    to: '/dashboard/workflows',
+    label: 'Apps',
+    icon: WorkflowIcon,
+    sections: [
       { to: '/dashboard/workflows', label: 'Apps', icon: WorkflowIcon },
       { to: '/dashboard/templates', label: 'Templates', icon: Cube },
       { to: '/dashboard/import', label: 'Import', icon: Upload },
-      { to: '/dashboard/crons', label: 'Cron Jobs', icon: Timer },
+    ],
+  },
+  {
+    to: '/dashboard/jobs',
+    label: 'Jobs',
+    icon: Play,
+    sections: [
       { to: '/dashboard/jobs', label: 'Jobs', icon: Play },
+      { to: '/dashboard/crons', label: 'Cron Jobs', icon: Timer },
       { to: '/dashboard/triggers', label: 'Triggers', icon: Antenna },
-      { to: '/dashboard/workers', label: 'Instances', icon: Server },
+    ],
+  },
+  {
+    to: '/dashboard/deployments',
+    label: 'Releases',
+    icon: Rocket,
+    sections: [
       { to: '/dashboard/deployments', label: 'Deployments', icon: Rocket },
       { to: '/dashboard/builds', label: 'Builds', icon: Package },
     ],
   },
+  { to: '/dashboard/workers', label: 'Instances', icon: Server },
+  { to: '/dashboard/domains', label: 'Domains', icon: Globe },
   {
-    title: 'Manage',
-    items: [
-      { to: '/dashboard/domains', label: 'Domains', icon: Globe },
-      { to: '/dashboard/edge-rules', label: 'Edge Rules', icon: Shuffle },
+    to: '/dashboard/storage',
+    label: 'Data',
+    icon: HardDrive,
+    sections: [
       { to: '/dashboard/storage', label: 'Storage', icon: HardDrive },
       { to: '/dashboard/postgres', label: 'Postgres', icon: Database },
     ],
   },
   {
-    title: 'Observability',
-    items: [
+    to: '/dashboard/debug',
+    label: 'Observe',
+    icon: Search,
+    sections: [
       { to: '/dashboard/debug', label: 'Debugger', icon: Search },
       { to: '/dashboard/traces', label: 'Invocations', icon: Activity },
       { to: '/dashboard/audit', label: 'Audit Log', icon: Journal },
     ],
   },
   {
-    title: 'Billing',
-    items: [
+    to: '/dashboard/usage',
+    label: 'Billing',
+    icon: GraphUp,
+    sections: [
       { to: '/dashboard/usage', label: 'Usage', icon: GraphUp },
       { to: '/dashboard/invoices', label: 'Invoices', icon: Coins },
       { to: '/dashboard/plans', label: 'Plans', icon: CreditCard },
     ],
   },
   {
-    title: 'Account',
-    items: [
+    to: '/dashboard/settings',
+    label: 'Settings',
+    icon: Settings,
+    sections: [
+      { to: '/dashboard/settings', label: 'Settings', icon: Settings },
       { to: '/dashboard/keys', label: 'API Keys', icon: Key },
       { to: '/dashboard/team', label: 'Team', icon: Group },
       { to: '/dashboard/account', label: 'Account', icon: Github },
       { to: '/dashboard/security', label: 'Security', icon: ShieldCheck },
-      { to: '/dashboard/settings', label: 'Settings', icon: Settings },
     ],
   },
 ];
 
-/** Flat lookup for breadcrumbs and the command palette. */
-export const NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((g) => g.items);
+export const NAV_GROUPS: NavGroup[] = [{ items: NAV_HUBS }];
 
 /** Path segment -> label, for breadcrumb section titles. */
 /**
@@ -134,6 +151,43 @@ export const APP_TABS: { tab: string; segment: string }[] = [
   { tab: 'Tenant surfaces', segment: 'tenant-surfaces' },
   { tab: 'OpenAPI', segment: 'openapi' },
 ];
+
+export const APP_SECTIONS: NavItem[] = APP_TABS.map(({ tab, segment }) => ({
+  to: `/dashboard/${segment}`,
+  label: tab,
+  icon: Search,
+}));
+
+/** Both hub names and familiar page names remain searchable. */
+export const NAV_ITEMS: NavItem[] = [
+  ...NAV_HUBS,
+  ...NAV_HUBS.flatMap((hub) => hub.sections ?? []),
+  ...APP_SECTIONS,
+].filter(
+  (item, index, all) =>
+    all.findIndex((other) => other.to === item.to && other.label === item.label) === index
+);
+
+export function matchesNavPath(pathname: string, item: Pick<NavItem, 'to' | 'exact'>): boolean {
+  const path = pathname.replace(/\/$/, '');
+  return path === item.to || (!item.exact && path.startsWith(`${item.to}/`));
+}
+
+/** Shared ownership for primary active states, breadcrumbs and section links. */
+export function findNavHub(pathname: string): NavHub | undefined {
+  const hub = NAV_HUBS.find(
+    (item) =>
+      matchesNavPath(pathname, item) ||
+      item.sections?.some((section) => matchesNavPath(pathname, section))
+  );
+  // Debugger belongs to Observe globally, even though it also has an app tab.
+  return (
+    hub ??
+    (APP_SECTIONS.some((item) => matchesNavPath(pathname, item))
+      ? NAV_HUBS.find((item) => item.label === 'Apps')
+      : undefined)
+  );
+}
 
 export const SECTION_LABELS: Record<string, string> = {
   // Derived from APP_TABS, so the breadcrumb, the ⌘K palette, and the app

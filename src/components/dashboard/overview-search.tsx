@@ -72,7 +72,7 @@ export function OverviewSearch({ workflows }: { workflows: Workflow[] }) {
         go: () => void navigate({ to: '/dashboard/import' }),
       },
       ...NAV_ITEMS.filter((n) => n.to !== '/dashboard').map((n) => ({
-        id: `nav-${n.to}`,
+        id: `nav-${n.to}-${n.label}`,
         label: n.label,
         group: 'Page',
         icon: n.icon,

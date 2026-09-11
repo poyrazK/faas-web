@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { UTurnArrowLeft, GitBranch, LogOut, Plus, Search, SidebarCollapse } from 'iconoir-react';
-import { APP_TABS, NAV_ITEMS, SECTION_LABELS, type NavIcon } from './nav-config';
+import { NAV_ITEMS, SECTION_LABELS, type NavIcon } from './nav-config';
 import { EASE } from './motion';
 import { Kbd } from '@/components/ui/kbd';
 import { useData } from '@/lib/store';
@@ -40,7 +40,11 @@ function readRecent(): string[] {
   try {
     const raw = window.localStorage.getItem(RECENT_KEY);
     const parsed: unknown = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
+    return Array.isArray(parsed)
+      ? parsed
+          .filter((x): x is string => typeof x === 'string')
+          .map((id) => id.replace(/^nav-app-/, 'nav-/dashboard/'))
+      : [];
   } catch {
     return [];
   }
@@ -92,21 +96,12 @@ export function CommandPalette({
       // Driven by the nav config, so a new page becomes reachable by ⌘K the
       // moment it appears in the sidebar.
       ...NAV_ITEMS.map((item) => ({
-        id: `nav-${item.to}`,
+        // Keep existing recent page commands while giving hub aliases their own IDs.
+        id: `${item.to !== '/dashboard' && item.label !== SECTION_LABELS[item.to.split('/').pop()!] ? 'hub' : 'nav'}-${item.to}`,
         label: item.label,
         group: 'Go to',
         icon: item.icon,
         run: go(item.to),
-      })),
-      // The per-app resources left the sidebar for the app's own tabs, but
-      // they are still whole pages with a picker, and ⌘K is how you reach a
-      // page you know the name of.
-      ...APP_TABS.map((t) => ({
-        id: `nav-app-${t.segment}`,
-        label: SECTION_LABELS[t.segment] ?? t.tab,
-        group: 'Go to',
-        icon: Search,
-        run: go(`/dashboard/${t.segment}`),
       })),
       {
         id: 'act-new',
@@ -160,7 +155,7 @@ export function CommandPalette({
       ...workflows.map((fn) => ({
         id: fn.id,
         label: fn.name,
-        group: 'Workflows',
+        group: 'Apps',
         hint: `${formatCompact(fn.invocations24h)} calls · ${fn.runtime}`,
         icon: GitBranch,
         run: () => {
@@ -317,7 +312,7 @@ export function CommandPalette({
 
   // Group headers only make sense in source order. Once a query ranks results
   // by score they interleave, so searching drops the headers entirely rather
-  // than repeating "Workflows" every third row.
+  // than repeating "Apps" every third row.
   const grouped = query.trim() === '';
   let lastGroup = '';
 
@@ -365,7 +360,7 @@ export function CommandPalette({
                 ref={inputRef}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search workflows, jump to a page, run an action…"
+                placeholder="Search apps, jump to a page, run an action…"
                 aria-label="Search commands"
                 role="combobox"
                 aria-expanded={results.length > 0}
