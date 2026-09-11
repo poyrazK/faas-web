@@ -90,39 +90,88 @@ const OUTCOME_COLOR: Record<string, string | undefined> = {
   running: 'var(--status-warning)',
 };
 
-const CRON_FIELD_RANGES = [
-  [0, 59],
-  [0, 23],
-  [1, 31],
-  [1, 12],
-  [0, 7],
-] as const;
+const MONTH_NAMES: Readonly<Record<string, number>> = {
+  jan: 1,
+  feb: 2,
+  mar: 3,
+  apr: 4,
+  may: 5,
+  jun: 6,
+  jul: 7,
+  aug: 8,
+  sep: 9,
+  oct: 10,
+  nov: 11,
+  dec: 12,
+};
+const WEEKDAY_NAMES: Readonly<Record<string, number>> = {
+  sun: 0,
+  mon: 1,
+  tue: 2,
+  wed: 3,
+  thu: 4,
+  fri: 5,
+  sat: 6,
+};
+interface CronField {
+  minimum: number;
+  maximum: number;
+  names?: Readonly<Record<string, number>>;
+}
+const CRON_FIELDS: readonly CronField[] = [
+  { minimum: 0, maximum: 59 },
+  { minimum: 0, maximum: 23 },
+  { minimum: 1, maximum: 31 },
+  { minimum: 1, maximum: 12, names: MONTH_NAMES },
+  { minimum: 0, maximum: 6, names: WEEKDAY_NAMES },
+];
 
-function isCronNumber(value: string, minimum: number, maximum: number): boolean {
-  if (!/^\d+$/.test(value)) return false;
+function cronValue(value: string, names?: Readonly<Record<string, number>>): number | undefined {
+  const named = names?.[value.toLowerCase()];
+  if (named !== undefined) return named;
+  if (!/^\+?\d+$/.test(value)) return undefined;
   const parsed = Number(value);
-  return parsed >= minimum && parsed <= maximum;
+  return Number.isSafeInteger(parsed) ? parsed : undefined;
 }
 
-function isCronSegment(segment: string, minimum: number, maximum: number): boolean {
-  const [base, step, extra] = segment.split('/');
-  if (extra !== undefined || (step !== undefined && !isCronNumber(step, 1, maximum - minimum + 1)))
-    return false;
-  if (base === '*') return true;
+function isCronSegment(segment: string, field: CronField): boolean {
+  const rangeAndStep = segment.split('/');
+  if (rangeAndStep.length > 2) return false;
 
-  const [start, end, extraBound] = base.split('-');
-  if (extraBound !== undefined || !isCronNumber(start, minimum, maximum)) return false;
-  if (end === undefined) return true;
-  return isCronNumber(end, minimum, maximum) && Number(start) <= Number(end);
+  const [base, rawStep] = rangeAndStep;
+  const step = rawStep === undefined ? 1 : cronValue(rawStep);
+  if (step === undefined || step === 0) return false;
+
+  const bounds = base.split('-');
+  if (bounds.length > 2) return false;
+  const [rawStart, rawEnd] = bounds;
+  const wildcard = rawStart === '*' || rawStart === '?';
+  if (wildcard && rawEnd !== undefined) return false;
+
+  const start = wildcard ? field.minimum : cronValue(rawStart, field.names);
+  const end = wildcard
+    ? field.maximum
+    : rawEnd !== undefined
+      ? cronValue(rawEnd, field.names)
+      : rawStep !== undefined
+        ? field.maximum
+        : start;
+  return (
+    start !== undefined &&
+    end !== undefined &&
+    start >= field.minimum &&
+    end <= field.maximum &&
+    start <= end
+  );
 }
 
 function isCronSchedule(value: string): boolean {
   const fields = value.trim().split(/\s+/);
   return (
-    fields.length === CRON_FIELD_RANGES.length &&
+    fields.length === CRON_FIELDS.length &&
     fields.every((field, index) => {
-      const [minimum, maximum] = CRON_FIELD_RANGES[index];
-      return field.split(',').every((segment) => isCronSegment(segment, minimum, maximum));
+      const cronField = CRON_FIELDS[index];
+      return field.split(',').every((segment) => isCronSegment(segment, cronField));
     })
   );
 }

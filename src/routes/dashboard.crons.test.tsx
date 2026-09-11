@@ -36,17 +36,39 @@ beforeEach(() => {
 });
 
 describe('cron form validation', () => {
-  it.each(['99 * * * *', 'a b c d e'])(
-    'rejects the range-invalid or malformed schedule %s',
-    async (invalidSchedule) => {
+  it.each([
+    '99 * * * *',
+    'a b c d e',
+    '* * * * 7',
+    '0 0 * FOO MON',
+    '0 0 * DEC-JAN MON',
+    '0 0 * JAN MON/0',
+  ])('rejects the range-invalid or malformed schedule %s', async (invalidSchedule) => {
+    render(<CronsPage />);
+    const schedule = screen.getByRole('textbox', { name: 'Schedule' });
+
+    await userEvent.type(schedule, `${invalidSchedule}{Enter}`);
+
+    expect(schedule).toHaveFocus();
+    expect(schedule).toHaveAccessibleDescription('Enter a five-field cron schedule.');
+    expect(createCron).not.toHaveBeenCalled();
+  });
+
+  it.each(['0 0 * JAN MON', '0 9 ? JAN,MAR MON-FRI/2', '*/15 9-17/2 1,15 JAN-DEC SUN,SAT'])(
+    'submits the backend-supported symbolic schedule %s',
+    async (validSchedule) => {
+      createCron.mockReset().mockResolvedValue({ schedule: validSchedule, path: '/' });
       render(<CronsPage />);
       const schedule = screen.getByRole('textbox', { name: 'Schedule' });
 
-      await userEvent.type(schedule, `${invalidSchedule}{Enter}`);
+      await userEvent.type(schedule, `${validSchedule}{Enter}`);
 
-      expect(schedule).toHaveFocus();
-      expect(schedule).toHaveAccessibleDescription('Enter a five-field cron schedule.');
-      expect(createCron).not.toHaveBeenCalled();
+      await waitFor(() =>
+        expect(createCron).toHaveBeenCalledWith(
+          expect.objectContaining({ schedule: validSchedule })
+        )
+      );
+      expect(schedule).not.toHaveAccessibleDescription('Enter a five-field cron schedule.');
     }
   );
 
