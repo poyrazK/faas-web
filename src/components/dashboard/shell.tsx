@@ -7,7 +7,6 @@ import {
   LogOut,
   Menu,
   NavArrowDown,
-  Plus,
   Search,
   SidebarCollapse,
   SidebarExpand,
@@ -127,9 +126,8 @@ function NavRow({
         // The nested row trades its icon for indent: a second column of glyphs
         // reads as ten more destinations rather than as detail under one.
         nested ? 'gap-2.5 py-1 pl-7 pr-2.5' : 'gap-2.5 px-2.5',
-        'text-muted-foreground hover:bg-muted hover:text-foreground',
-        current && '!text-foreground',
-        current && reduce && 'bg-muted'
+        current ? 'text-brand' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+        current && reduce && 'bg-brand/10 ring-1 ring-inset ring-brand/15'
       )}
     >
       <>
@@ -137,11 +135,19 @@ function NavRow({
           <motion.span
             aria-hidden="true"
             layoutId="sidebar-active"
-            className="absolute inset-0 -z-10 rounded-md bg-muted"
+            className="absolute inset-0 -z-10 rounded-md bg-brand/10 ring-1 ring-inset ring-brand/15"
             transition={{ type: 'spring', stiffness: 500, damping: 40 }}
           />
         )}
-        {!nested && <Icon className="h-4 w-4 shrink-0" />}
+        {!nested && (
+          <Icon
+            aria-hidden="true"
+            className={cn(
+              'h-4 w-4 shrink-0 transition-colors duration-150',
+              current ? 'text-brand' : item.sidebarIconClassName
+            )}
+          />
+        )}
         <span aria-hidden={collapsed} className={labelCls}>
           {label}
         </span>
@@ -212,7 +218,13 @@ function NavDisclosure({
             onBranch && 'text-foreground'
           )}
         >
-          <Icon className="h-4 w-4 shrink-0" />
+          <Icon
+            aria-hidden="true"
+            className={cn(
+              'h-4 w-4 shrink-0 transition-colors duration-150',
+              onBranch ? 'text-brand' : hub.sidebarIconClassName
+            )}
+          />
           <span aria-hidden={collapsed} className={labelCls}>
             {hub.label}
           </span>
