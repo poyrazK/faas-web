@@ -47,8 +47,11 @@ export function AnalyticsSection({
   return (
     <section className="flex flex-col gap-3" aria-labelledby="analytics-heading">
       <div className="flex flex-wrap items-center justify-between gap-3">
+        {/* Not "Analytics": the overview already has a section of that name
+            carrying the account's scalars. This one is the request series for
+            one app, and the picker beside it says which. */}
         <h2 id="analytics-heading" className="text-sm font-semibold">
-          Analytics
+          Request analytics
         </h2>
         <div className="flex flex-wrap items-center gap-2">
           <AppSelect slug={slug} onSelect={onSelectApp} apps={apps} />
