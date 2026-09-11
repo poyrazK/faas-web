@@ -74,3 +74,22 @@ window.IntersectionObserver ??= class {
 window.scrollTo = () => {};
 HTMLCanvasElement.prototype.getContext = (() =>
   null) as typeof HTMLCanvasElement.prototype.getContext;
+
+/**
+ * jsdom ships no Pointer Capture API and no `scrollIntoView`.
+ *
+ * Radix's listbox primitives call both while opening — `hasPointerCapture` to
+ * decide whether a pointer is already claimed, `scrollIntoView` to bring the
+ * selected option into view — so without these a Select throws on the click
+ * that opens it and the menu never renders. The failure surfaces as a missing
+ * `option` role, which reads like a markup bug rather than a missing browser
+ * API, so it is worth shimming once here rather than rediscovering per test.
+ */
+if (!Element.prototype.hasPointerCapture) {
+  Element.prototype.hasPointerCapture = () => false;
+  Element.prototype.setPointerCapture = () => {};
+  Element.prototype.releasePointerCapture = () => {};
+}
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => {};
+}
