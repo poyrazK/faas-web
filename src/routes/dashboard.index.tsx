@@ -15,7 +15,6 @@ import { PointerGlow } from '@/components/amicro/pointer-glow';
 import { WordReveal } from '@/components/amicro/word-reveal';
 import { LiveDot } from '@/components/ui/live-dot';
 import { WindFlow } from '@/components/dashboard/wind-flow';
-import { ResidencyField } from '@/components/dashboard/residency-field';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Odometer } from '@/components/ui/odometer';
 import { useData } from '@/lib/store';
@@ -315,16 +314,13 @@ function OverviewPage() {
   // exact fleet total; the Workers view can load the remaining pages.
   const residentKnown = !instances.isPending && !instances.error && !instances.data?.next_before;
   const residentPartial = Boolean(instances.data?.next_before);
-  const { residentMb, residentCount, residentInstances } = useMemo(() => {
+  const { residentMb, residentCount } = useMemo(() => {
     const resident = (instances.data?.instances ?? []).filter(
       (row) => row.state.toLowerCase() !== 'parked'
     );
     return {
       residentMb: resident.reduce((sum, row) => sum + row.ram_mb, 0),
       residentCount: resident.length,
-      // The field draws a cell per row, so it needs the rows — id for a stable
-      // position, ram_mb for the area.
-      residentInstances: resident.map((row) => ({ id: row.id, ram_mb: row.ram_mb })),
     };
   }, [instances.data]);
 
@@ -613,28 +609,6 @@ function OverviewPage() {
             )}
           </StatCard>
         </div>
-
-        {/* The field goes beside the figures, never behind them. Putting a
-            shader under a number is the thing the stat cards just had five of;
-            here it is its own panel answering its own question — what the fleet
-            is made of, and whether it is moving — while the cards above answer
-            how much, right now. */}
-        {residentKnown && residentCount > 0 && (
-          <div className="animate-item-enter overflow-hidden rounded-xl border border-border bg-card">
-            <div className="flex items-baseline justify-between gap-4 px-5 pt-5">
-              <p className="text-xs text-muted-foreground">Fleet residency</p>
-              <p className="text-xs text-muted-foreground [font-variant-numeric:tabular-nums]">
-                {residentCount} {residentCount === 1 ? 'instance' : 'instances'} holding{' '}
-                {residentMb.toLocaleString()} MB
-              </p>
-            </div>
-            <ResidencyField instances={residentInstances} className="h-40 w-full" />
-            <p className="px-5 pb-5 text-xs text-muted-foreground">
-              One cell per running instance, sized by the memory it holds. Cells appear as apps wake
-              and dissolve as they park.
-            </p>
-          </div>
-        )}
 
         <div className="flex justify-end">
           <Link
