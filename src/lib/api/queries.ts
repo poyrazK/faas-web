@@ -1888,6 +1888,27 @@ export function useInvocations(limit = 50) {
   });
 }
 
+/**
+ * Account invocation history, paged newest-first by the last invocation id.
+ * The API does not return a separate cursor: when a full page arrives, its
+ * last id is the opaque `before` value for the next request.
+ */
+export function useInfiniteInvocations(limit = 50) {
+  return useInfiniteQuery({
+    queryKey: [...keys.invocations, 'history', limit],
+    queryFn: ({ pageParam }) =>
+      unwrap(
+        api.GET('/v1/invocations', {
+          params: { query: { limit, ...(pageParam ? { before: pageParam } : {}) } },
+        })
+      ),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) =>
+      lastPage.invocations.length === limit ? lastPage.invocations.at(-1)?.id : undefined,
+    retry: retryPolicy,
+  });
+}
+
 export function useInvocation(id: string, poll = false) {
   return useQuery({
     queryKey: ['invocations', id],
