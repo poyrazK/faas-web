@@ -1,15 +1,21 @@
-import { useMemo, useState } from 'react';
-import { createFileRoute } from '@tanstack/react-router';
-import { InlinePhase, PageHeader, queryPhase } from '@/components/dashboard/primitives';
-import { Modal } from '@/components/ui/modal';
+import { useMemo } from 'react';
+import { createFileRoute, Link } from '@tanstack/react-router';
+import { PageHeader } from '@/components/dashboard/primitives';
+import { InstanceDetail } from '@/components/dashboard/instance-detail';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
-import { useApps, useInstances, useWakeTimeline } from '@/lib/api/queries';
+import { useApps, useInstances } from '@/lib/api/queries';
 import { slugIndex } from '@/lib/api/adapters';
 import { formatRelative } from '@/lib/mock-data';
 import { consoleHead } from '@/lib/seo';
 
 export const Route = createFileRoute('/dashboard/workers')({
   component: WorkersPage,
+  validateSearch: (
+    raw: Record<string, unknown>
+  ): Record<string, unknown> & { instance?: string } => ({
+    ...raw,
+    instance: typeof raw.instance === 'string' && raw.instance.trim() ? raw.instance : undefined,
+  }),
   head: () => consoleHead('workers'),
 });
 
@@ -22,7 +28,6 @@ export const Route = createFileRoute('/dashboard/workers')({
  * not an outage. The empty copy says so.
  */
 interface InstanceRow {
-  wakeId: string;
   id: string;
   app: string;
   state: string;
@@ -47,8 +52,18 @@ function formatWhen(value: string | null | undefined): string {
 
 function WorkersPage() {
   const { data, isPending, error, refetch } = useInstances();
-  const { data: apps } = useApps();
-  const [timeline, setTimeline] = useState<{ slug: string; wakeId: string } | null>(null);
+  const appQuery = useApps();
+  const apps = appQuery.data;
+  const { instance: selectedId } = Route.useSearch();
+  const navigate = Route.useNavigate();
+  const select = (instance?: string) =>
+    void navigate({
+      search: (current) => ({ ...current, instance }),
+      hash: true,
+      resetScroll: false,
+    });
+  const selected = data?.instances.find((instance) => instance.id === selectedId);
+  const selectedSlug = apps?.find((app) => app.id === selected?.app_id)?.slug;
 
   const rows = useMemo<InstanceRow[]>(() => {
     const bySlug = slugIndex(apps ?? []);
@@ -59,7 +74,6 @@ function WorkersPage() {
       ramMb: i.ram_mb,
       startedAt: i.started_at ?? '',
       lastRequestAt: i.last_request_at ?? '',
-      wakeId: i.wake_id ?? '',
     }));
   }, [data, apps]);
 
@@ -111,7 +125,6 @@ function WorkersPage() {
         title="Instances"
         description="Firecracker microVMs currently alive. Apps park when idle, so an empty list means everything scaled to zero."
       />
-      <WakeTimelineModal target={timeline} onClose={() => setTimeline(null)} />
       <ResourceTable
         rows={rows}
         columns={columns}
@@ -123,73 +136,27 @@ function WorkersPage() {
         loading={isPending}
         error={error}
         onRetry={() => void refetch()}
-        rowActions={(i) =>
-          i.wakeId ? (
-            <button
-              type="button"
-              onClick={() => setTimeline({ slug: i.app, wakeId: i.wakeId })}
-              className="pressable rounded text-xs text-muted-foreground hover:text-foreground"
-            >
-              Timeline
-            </button>
-          ) : null
-        }
+        onRowClick={(instance) => select(instance.id)}
       />
-    </div>
-  );
-}
-
-/**
- * The canonical wake timeline for one instance's wake attempt — every frame
- * schedd recorded, with elapsed deltas, so a slow cold start can be read
- * stage by stage instead of guessed at.
- */
-function WakeTimelineModal({
-  target,
-  onClose,
-}: {
-  target: { slug: string; wakeId: string } | null;
-  onClose: () => void;
-}) {
-  const q = useWakeTimeline(target?.slug ?? '', target?.wakeId ?? '');
-  const events = q.data?.events ?? [];
-  const phase = queryPhase({ error: q.error, loading: q.isPending, isEmpty: events.length === 0 });
-  const t0 = events.length ? Date.parse(events[0].at) : 0;
-
-  return (
-    <Modal
-      open={target !== null}
-      onClose={onClose}
-      title="Wake timeline"
-      description={target ? `${target.slug} · ${target.wakeId.slice(0, 13)}` : undefined}
-      width="max-w-xl"
-    >
-      {phase !== 'ready' ? (
-        <InlinePhase
-          phase={phase}
-          error={q.error}
-          loadingMessage="Reading the timeline…"
-          emptyMessage="No frames recorded for this wake."
-        />
-      ) : (
-        <ol className="flex flex-col">
-          {events.map((e, i) => {
-            const dt = Math.max(0, Date.parse(e.at) - t0);
-            return (
-              <li
-                key={`${e.at}-${i}`}
-                className="flex items-baseline gap-4 border-b border-border py-2 text-xs last:border-0"
-              >
-                <span className="w-16 shrink-0 text-right font-mono text-muted-foreground [font-variant-numeric:tabular-nums]">
-                  +{dt} ms
-                </span>
-                <span className="font-mono">{e.kind}</span>
-                {e.actor && <span className="text-muted-foreground">{e.actor}</span>}
-              </li>
-            );
-          })}
-        </ol>
+      {!isPending && !error && rows.length === 0 && (
+        <Link to="/dashboard/workflows" className="text-sm underline underline-offset-4">
+          View apps
+        </Link>
       )}
-    </Modal>
+      {selectedId && (
+        <InstanceDetail
+          id={selectedId}
+          instance={selected}
+          slug={selectedSlug}
+          loading={isPending}
+          error={error}
+          onRetry={() => void refetch()}
+          appsLoading={appQuery.isPending}
+          appsError={appQuery.error}
+          onRetryApps={() => void appQuery.refetch()}
+          onClose={() => select()}
+        />
+      )}
+    </div>
   );
 }

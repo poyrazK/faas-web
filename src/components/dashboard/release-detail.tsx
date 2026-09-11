@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { RefreshDouble } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -24,6 +24,7 @@ import { RELEASE_SECTIONS, sourceSize, type ReleaseSection } from './releases-se
 import { RolloutRecovery } from './rollout-recovery';
 import { LogView } from './log-view';
 import { releaseStatusColor } from './release-status';
+import { useDetailFocus } from './use-detail-focus';
 
 function relativeTime(value?: string): string {
   if (!value) return '—';
@@ -56,24 +57,7 @@ export function ReleaseDetailPanel({
   onSectionChange?: (section: ReleaseSection, replace?: boolean) => void;
   onClose: () => void;
 }) {
-  const panelRef = useRef<HTMLElement>(null);
-  // URL selection reveals the inline detail even below a full page of rows.
-  // Closing it (including browser Back) returns keyboard users to their row.
-  useLayoutEffect(() => {
-    const panel = panelRef.current;
-    const origin = document.activeElement;
-    panel?.focus({ preventScroll: true });
-    panel?.scrollIntoView({ block: 'start', behavior: 'instant' });
-    return () => {
-      if (
-        origin instanceof HTMLElement &&
-        origin.isConnected &&
-        (panel?.contains(document.activeElement) || document.activeElement === document.body)
-      ) {
-        origin.focus();
-      }
-    };
-  }, [deploymentId, buildId]);
+  const panelRef = useDetailFocus(JSON.stringify([deploymentId, buildId]));
   const [localSection, setLocalSection] = useState<ReleaseSection>('overview');
   const section = controlledSection ?? localSection;
   const selectedBuild = useBuild(!deploymentId ? (buildId ?? '') : '');
