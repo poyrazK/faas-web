@@ -16,15 +16,25 @@ const lists = vi.hoisted(() => ({
   empty: false,
   appsRead: 'ready',
   historyError: false,
+  jobsError: false,
+  jobsHasNext: false,
+  jobsNextError: false,
   retryApps: vi.fn(),
   retryHistory: vi.fn(),
+  retryJobs: vi.fn(),
+  fetchNextJobs: vi.fn(),
 }));
 beforeEach(() => {
   lists.empty = false;
   lists.appsRead = 'ready';
   lists.historyError = false;
+  lists.jobsError = false;
+  lists.jobsHasNext = false;
+  lists.jobsNextError = false;
   lists.retryApps.mockReset();
   lists.retryHistory.mockReset();
+  lists.retryJobs.mockReset();
+  lists.fetchNextJobs.mockReset().mockResolvedValue(undefined);
 });
 
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
@@ -69,6 +79,16 @@ vi.mock('@/lib/api/queries', () => {
   };
   return {
     useJobs: () => ok({ jobs: lists.empty ? [] : [job] }),
+    useInfiniteJobs: () => ({
+      data: { pages: [{ jobs: lists.empty ? [] : [job] }] },
+      isPending: false,
+      error: lists.jobsError ? new Error('Workloads offline') : null,
+      refetch: lists.retryJobs,
+      hasNextPage: lists.jobsHasNext,
+      isFetchingNextPage: false,
+      isFetchNextPageError: lists.jobsNextError,
+      fetchNextPage: lists.fetchNextJobs,
+    }),
     useJob: () => ok(job),
     useJobRuns: () => ok({ runs: [run] }),
     useJobRun: () => ok(run),
@@ -237,6 +257,25 @@ describe('Jobs hub', () => {
     );
     await userEvent.hover(screen.getByRole('button', { name: 'Run history for */15 * * * *' }));
     expect(await screen.findByRole('tooltip')).toHaveTextContent('Run history for */15 * * * *');
+  });
+
+  it('loads older workloads on demand', async () => {
+    lists.jobsHasNext = true;
+    await mount();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Load older jobs' }));
+    expect(lists.fetchNextJobs).toHaveBeenCalledOnce();
+  });
+
+  it('keeps loaded workloads visible when an older page fails and offers retry', async () => {
+    lists.jobsError = true;
+    lists.jobsNextError = true;
+    await mount();
+
+    expect(await screen.findByRole('button', { name: 'nightly-export' })).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Workloads offline');
+    await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(lists.fetchNextJobs).toHaveBeenCalledOnce();
   });
 
   it('composes model-specific sections with accessible navigation', async () => {

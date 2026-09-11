@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useJobs, useJobRuns, useJobTasks, useCronRuns } from './queries';
+import { useInfiniteJobs, useJobs, useJobRuns, useJobTasks, useCronRuns } from './queries';
 
 const { get } = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock('./client', async (importOriginal) => {
@@ -68,6 +68,44 @@ describe('Jobs deep links beyond the first API page', () => {
       expect(rows).toContainEqual(kind === 'tasks' ? { task_index: 75 } : { id: 'older' });
     }
   );
+
+  it('loads older workload pages from the server offset cursor', async () => {
+    get.mockImplementation(
+      async (
+        _path: string,
+        options: { params?: { query?: { offset?: number; limit?: number } } }
+      ) => {
+        const offset = options.params?.query?.offset ?? 0;
+        return {
+          data: {
+            jobs: [{ id: offset === 0 ? 'newest' : 'older' }],
+            limit: 50,
+            offset,
+            next_offset: offset === 0 ? 50 : -1,
+            total: 2,
+          },
+          response: new Response(),
+        };
+      }
+    );
+    const { result } = renderHook(() => useInfiniteJobs(), { wrapper });
+    await waitFor(() => expect(result.current.hasNextPage).toBe(true));
+    await act(async () => {
+      await result.current.fetchNextPage();
+    });
+    await waitFor(() => expect(result.current.data?.pages).toHaveLength(2));
+
+    expect(get).toHaveBeenNthCalledWith(1, '/v1/jobs', {
+      params: { query: { limit: 50, offset: 0 } },
+    });
+    expect(get).toHaveBeenNthCalledWith(2, '/v1/jobs', {
+      params: { query: { limit: 50, offset: 50 } },
+    });
+    expect(result.current.data?.pages.flatMap((page) => page.jobs)).toEqual([
+      { id: 'newest' },
+      { id: 'older' },
+    ]);
+  });
 
   it('stops when an unknown execution exhausts cursor history', async () => {
     get.mockImplementation(

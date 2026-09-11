@@ -1289,7 +1289,7 @@ export function useTriggers() {
  * The spec's prose also mentions a 404 for the same gate; the handler returns
  * 402, so that is what the UI branches on.
  */
-export function useJobs(selectedId?: string) {
+export function useJobs(selectedId?: string, enabled = true) {
   return useQuery({
     queryKey: selectedId ? [...keys.jobs, { selectedId }] : keys.jobs,
     queryFn: async ({ signal }) => {
@@ -1309,6 +1309,31 @@ export function useJobs(selectedId?: string) {
       }
       return { ...page, jobs };
     },
+    enabled,
+  });
+}
+
+/**
+ * Account-wide workload history, paged by the API's offset cursor. The
+ * Workloads section uses this for browsing; selected deep links
+ * stay on `useJobs`, which can walk pages until it finds the requested job.
+ */
+export function useInfiniteJobs(limit = 50, enabled = true) {
+  return useInfiniteQuery({
+    queryKey: [...keys.jobs, 'history', limit],
+    queryFn: ({ pageParam }) =>
+      unwrap(
+        api.GET('/v1/jobs', {
+          params: { query: { limit, offset: pageParam } },
+        })
+      ),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) =>
+      lastPage.next_offset >= 0 && lastPage.next_offset > lastPage.offset
+        ? lastPage.next_offset
+        : undefined,
+    enabled,
+    retry: retryPolicy,
   });
 }
 
