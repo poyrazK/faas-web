@@ -15,7 +15,7 @@
    Measured contrast (sRGB):
      step 8  #00ce91  9.7:1 on ink      -> mint fill, dark text. Reads mint.
      step 11 #006f40  6.1:1 on paper    -> mint text/links on white. AA body.
-     step 7  #51deaa  11.7:1 on #090909 -> mint on the console surface.
+     step 7  #51deaa  10.0:1 on #1c1c1c -> mint on the console surface.
    ------------------------------------------------------------------------- */
 :root {
   --mint-1: oklch(0.989 0.012 165);
@@ -45,8 +45,8 @@
 }
 
 /* --- Elevation -------------------------------------------------------------
-   Three steps, tinted per polarity (ink-tinted on paper, pure black on the
-   console — a grey shadow on #090909 reads as a smudge). Every lifted
+   Three steps, tinted per polarity (ink-tinted on paper, neutral black on
+   the console's charcoal surfaces). Every lifted
    surface picks a step; ad-hoc box-shadows fail review the same way literal
    hex does. 1 = resting card, 2 = raised (hover, sticky bars),
    3 = floating chrome (menus, dialogs, toasts). */
@@ -56,15 +56,15 @@
   --elevation-3: 0 16px 40px -12px rgb(13 21 18 / 0.25);
 }
 .console {
-  --elevation-1: 0 1px 2px rgb(0 0 0 / 0.4);
-  --elevation-2: 0 4px 12px -2px rgb(0 0 0 / 0.5);
-  --elevation-3: 0 24px 48px -12px rgb(0 0 0 / 0.7);
+  --elevation-1: 0 1px 2px rgb(0 0 0 / 0.24);
+  --elevation-2: 0 4px 12px -2px rgb(0 0 0 / 0.34);
+  --elevation-3: 0 24px 48px -12px rgb(0 0 0 / 0.5);
 }
 
 /* --- Light surface (marketing, auth, 404) ---------------------------------
    White dominant, mint as signal. Paper is a hair off pure white and cards are
-   pure white, so a card lifts off the page the same way #0d0d0d lifts off
-   #090909 in the console — the polarity flips, the relationship does not.
+   pure white, so a card lifts off the page the same way #242424 lifts off
+   #1c1c1c in the console — the polarity flips, the relationship does not.
    ------------------------------------------------------------------------- */
 :root {
   /* Declares the polarity to the UA, not just to our own components: it is
@@ -95,6 +95,7 @@
   --border: #e4eae7;
   --border-secondary: #ccd6d1;
   --input: #e4eae7;
+  --overlay: #00482a;
   --ring: #00a465;
   --radius: 0.5rem;
 
@@ -152,30 +153,35 @@
      console resolves here, the mono voice is untouched. */
   --font-sans: 'Satoshi', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 
-  --background: #090909;
-  --foreground: #ffffff;
-  --card: #0d0d0d;
-  --card-foreground: #ffffff;
-  --popover: #0d0d0d;
-  --popover-foreground: #ffffff;
-  --primary: #ffffff;
-  --primary-foreground: #000000;
-  --secondary: #1c1c1c;
-  --secondary-foreground: #ffffff;
-  --muted: #1c1c1c;
-  --muted-foreground: #bababa;
-  --accent: #1c1c1c;
-  --accent-foreground: #ffffff;
-  --destructive: #ef4444;
-  --destructive-foreground: #ffffff;
-  --border: #2b2b2b;
-  --border-secondary: #3b3b3b;
-  --input: #2b2b2b;
+  /* Neutral charcoal keeps black as the foundation without the original
+     near-black crush. Surfaces, borders, and text have no colour cast;
+     mint is reserved for actions, links, and focus. */
+  --background: #1c1c1c;
+  --foreground: #ededed;
+  --card: #242424;
+  --card-foreground: #ededed;
+  --popover: #2c2c2c;
+  --popover-foreground: #ededed;
+  --primary: #51deaa;
+  --primary-foreground: #123529;
+  --secondary: #2e2e2e;
+  --secondary-foreground: #ededed;
+  --muted: #2e2e2e;
+  --muted-foreground: #b8b8b8;
+  --accent: #363636;
+  --accent-foreground: #ededed;
+  --destructive: #ff9393;
+  --destructive-foreground: #431a1a;
+  --border: #3b3b3b;
+  --border-secondary: #525252;
+  --input: #737373;
+  --overlay: #000000;
 
-  /* Mint needs a light step to survive on #090909; step 7 lands at 11.7:1. */
+  /* Mint carries primary actions as well as brand marks: 7.9:1 with the
+     deep-green primary label, and 10.0:1 against the console canvas. */
   --brand: #51deaa;
   --brand-hover: #80e9be;
-  --brand-muted: #51deaa4d;
+  --brand-muted: #51deaa26;
   --brand-fill: #00ce91;
   --ring: #51deaa;
 
@@ -186,10 +192,16 @@
   --cat-security: #a78bfa;
   --cat-storage: #7ea7ff;
 
-  --status-good: #0ca30c;
-  --status-warning: #fab219;
-  --status-serious: #ec835a;
-  --status-critical: #d03b3b;
+  /* Neutral status labels also consume chart-muted, even on routes without
+     charts. Keep their ink and structural lines in the console's palette. */
+  --chart-grid: #3b3b3b;
+  --chart-axis: #525252;
+  --chart-muted: #b8b8b8;
+
+  --status-good: #75cf92;
+  --status-warning: #fabf47;
+  --status-serious: #f3a17e;
+  --status-critical: #ff9393;
 }
 
 @theme inline {
@@ -212,6 +224,7 @@
   --color-border: var(--border);
   --color-border-secondary: var(--border-secondary);
   --color-input: var(--input);
+  --color-overlay: var(--overlay);
   --color-ring: var(--ring);
 
   --color-brand: var(--brand);
@@ -966,7 +979,7 @@
   .console-atmosphere {
     background: radial-gradient(
       90% 48rem at 100% 0%,
-      color-mix(in oklab, var(--brand-fill) 4%, transparent),
+      color-mix(in oklab, var(--foreground) 2%, transparent),
       transparent 60%
     );
   }

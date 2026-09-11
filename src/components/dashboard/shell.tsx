@@ -454,13 +454,17 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   // Toasts render at the root, outside this tree, so the dark palette has to
   // reach them too: mirror `console` onto <html> while the shell is mounted.
   // The same pass retunes `theme-color`, or mobile browser chrome stays the
-  // marketing site's paper white above a near-black page.
+  // marketing site's paper white above the console's charcoal canvas.
   useEffect(() => {
     document.documentElement.classList.add('console');
 
     const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
     const previous = meta?.content;
-    if (meta) meta.content = '#090909';
+    if (meta) {
+      meta.content = getComputedStyle(document.documentElement)
+        .getPropertyValue('--background')
+        .trim();
+    }
 
     return () => {
       document.documentElement.classList.remove('console');
@@ -578,7 +582,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.15 }}
-                  className="fixed inset-0 z-50 bg-mint-12/50 backdrop-blur-sm lg:hidden"
+                  className="fixed inset-0 z-50 bg-overlay/50 backdrop-blur-sm lg:hidden"
                   onClick={() => setMobileOpen(false)}
                 />
               )}
