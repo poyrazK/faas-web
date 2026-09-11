@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -250,4 +250,44 @@ describe('invitation disclosure and one-time evidence', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Invite member' }));
     expect(screen.queryByRole('button', { name: 'Reveal' })).not.toBeInTheDocument();
   });
+
+  it.each([
+    { draft: 'next@example.com', invalid: false },
+    { draft: 'next-invalid-address', invalid: true },
+  ])(
+    'preserves a reopened invitation draft and validation when an old response arrives (invalid=$invalid)',
+    async ({ draft, invalid }) => {
+      let resolve!: (result: { email: string; token: string }) => void;
+      invite.mockReset().mockImplementation(
+        () =>
+          new Promise((done) => {
+            resolve = done;
+          })
+      );
+      const view = render(<TeamPage />);
+      await userEvent.click(screen.getByRole('button', { name: 'Invite member' }));
+      await userEvent.type(
+        screen.getByRole('textbox', { name: 'Email' }),
+        'dev@example.com{Enter}'
+      );
+      await userEvent.click(screen.getByRole('button', { name: 'Close Invite a member' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Invite member' }));
+      const email = screen.getByRole('textbox', { name: 'Email' });
+      await userEvent.type(email, draft);
+      await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Role' }), 'viewer');
+      if (invalid) {
+        await userEvent.click(screen.getByRole('button', { name: 'Invite' }));
+        expect(email).toHaveAccessibleDescription('Enter a valid email address.');
+      }
+      await act(async () => {
+        resolve({ email: 'dev@example.com', token: 'late-token' });
+      });
+      expect(email).toHaveValue(draft);
+      if (invalid) expect(email).toHaveAccessibleDescription('Enter a valid email address.');
+      expect(screen.getByRole('combobox', { name: 'Role' })).toHaveValue('viewer');
+      expect(screen.queryByRole('button', { name: 'Reveal' })).not.toBeInTheDocument();
+      expect(view.container.innerHTML).not.toContain('late-token');
+      expect(invite).toHaveBeenCalledTimes(1);
+    }
+  );
 });

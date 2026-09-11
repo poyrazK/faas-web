@@ -224,7 +224,8 @@ function KeysPage() {
             type="button"
             aria-label={`Rotate ${k.label}`}
             disabled={policy.days === undefined || rotateKey.isPending}
-            onClick={async () => {
+            onClick={async (event) => {
+              const origin = event.currentTarget;
               if (policy.days === undefined) return;
               if (
                 !(await confirm({
@@ -234,12 +235,11 @@ function KeysPage() {
                 }))
               )
                 return;
-              const receive = evidence.capture();
+              const receive = evidence.capture(() => origin.focus());
               void rotateKey
                 .mutateAsync(k.id)
                 .then((result) => {
                   receive(result.key_plaintext);
-                  rotateKey.reset();
                   toast({
                     kind: 'success',
                     title: 'Key rotated',
@@ -252,7 +252,8 @@ function KeysPage() {
                     title: 'Could not rotate',
                     description: errorMessage(err),
                   })
-                );
+                )
+                .finally(() => rotateKey.reset());
             }}
             className="text-muted-foreground transition-colors hover:text-foreground"
           >
@@ -305,7 +306,7 @@ function KeysPage() {
           value={evidence.secret}
           title="API key rotated"
           description="This key will not be shown again."
-          onDismiss={evidence.clear}
+          onDismiss={evidence.dismiss}
         />
       )}
 
@@ -347,12 +348,12 @@ function KeysPage() {
                 void createKey
                   .mutateAsync({ label: label.trim() || undefined, scopes })
                   .then((result) => {
-                    setLabel('');
-                    validation.resetValidation();
                     // `plaintext` on create; the rotate response calls the same
                     // thing `key_plaintext`. Both are the only copy that exists.
-                    receive(result.plaintext ?? null);
-                    createKey.reset();
+                    if (receive(result.plaintext ?? null)) {
+                      setLabel('');
+                      validation.resetValidation();
+                    }
                   })
                   .catch((err: unknown) =>
                     toast({
@@ -360,7 +361,8 @@ function KeysPage() {
                       title: 'Could not create key',
                       description: errorMessage(err),
                     })
-                  );
+                  )
+                  .finally(() => createKey.reset());
               }}
             >
               <label className="flex min-w-56 flex-1 flex-col gap-1.5">

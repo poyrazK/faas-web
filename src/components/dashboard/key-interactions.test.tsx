@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConfirmProvider } from '@/components/ui/confirm';
@@ -218,6 +218,41 @@ describe.each([
     expect(screen.queryByRole('button', { name: 'Reveal' })).not.toBeInTheDocument();
   });
 
+  it.each([
+    { draft: 'next-release', invalid: false },
+    { draft: 'x'.repeat(101), invalid: true },
+  ])(
+    'preserves a reopened draft and its validation when an old response arrives (invalid=$invalid)',
+    async ({ draft, invalid }) => {
+      let resolve!: (result: { plaintext: string }) => void;
+      create.mockImplementation(
+        () =>
+          new Promise((done) => {
+            resolve = done;
+          })
+      );
+      const view = show();
+      await open();
+      await userEvent.type(screen.getByRole('textbox', { name: 'Label' }), 'release{Enter}');
+      await userEvent.click(screen.getByRole('button', { name: 'Close Create a key' }));
+      const region = await open();
+      const label = within(region).getByRole('textbox', { name: 'Label' });
+      fireEvent.change(label, { target: { value: draft } });
+      if (invalid) {
+        await userEvent.click(within(region).getByRole('button', { name: 'Create key' }));
+        expect(label).toHaveAccessibleDescription(/100 characters/);
+      }
+      await act(async () => {
+        resolve({ plaintext: 'late-secret' });
+      });
+      expect(label).toHaveValue(draft);
+      if (invalid) expect(label).toHaveAccessibleDescription(/100 characters/);
+      expect(screen.queryByRole('button', { name: 'Reveal' })).not.toBeInTheDocument();
+      expect(view.container.innerHTML).not.toContain('late-secret');
+      expect(create).toHaveBeenCalledTimes(1);
+    }
+  );
+
   it('shows the effective grace before rotation and preserves cancel/revoke actions', async () => {
     show();
     await userEvent.click(
@@ -290,6 +325,55 @@ describe.each([
     );
     expect(screen.getByRole('button', { name: 'Reveal' })).toBeInTheDocument();
     expect(rotate).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves the last successful one-time key when a confirmed replacement rotation fails', async () => {
+    rotate
+      .mockResolvedValueOnce({ key_plaintext: 'still-valid-secret' })
+      .mockRejectedValueOnce(new Error('rotation offline'));
+    const user = userEvent.setup();
+    const copy = vi.spyOn(navigator.clipboard, 'writeText');
+    const view = show();
+    const rotateLabel = name === 'personal' ? 'Rotate CI' : 'Rotate key CI';
+    await user.click(screen.getByRole('button', { name: rotateLabel }));
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Rotate key' })
+    );
+    await screen.findByRole('button', { name: 'Reveal' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: rotateLabel }));
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Rotate key' })
+    );
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Could not rotate' }))
+    );
+    expect(screen.getByRole('button', { name: 'Reveal' })).toBeVisible();
+    expect(view.container.innerHTML).not.toContain('still-valid-secret');
+    await user.click(screen.getByRole('button', { name: 'Copy' }));
+    expect(copy).toHaveBeenCalledWith('still-valid-secret');
+    await user.click(screen.getByRole('button', { name: 'Reveal' }));
+    expect(screen.getByText('still-valid-secret')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(view.container.innerHTML).not.toContain('still-valid-secret');
+  });
+
+  it('returns keyboard focus to the originating Rotate action when standalone evidence is dismissed', async () => {
+    show();
+    const origin = screen.getByRole('button', {
+      name: name === 'personal' ? 'Rotate CI' : 'Rotate key CI',
+    });
+    origin.focus();
+    await userEvent.keyboard('{Enter}');
+    const confirm = within(screen.getByRole('dialog')).getByRole('button', { name: 'Rotate key' });
+    confirm.focus();
+    await userEvent.keyboard('{Enter}');
+    await screen.findByRole('button', { name: 'Reveal' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    screen.getByRole('button', { name: 'Dismiss' }).focus();
+    await userEvent.keyboard('{Enter}');
+    expect(origin).toHaveFocus();
+    expect(screen.queryByRole('button', { name: 'Reveal' })).not.toBeInTheDocument();
   });
 
   it('starts a replacement key masked even if the previous one was revealed', async () => {

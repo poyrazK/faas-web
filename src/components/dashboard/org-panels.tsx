@@ -193,7 +193,7 @@ function OrgKeysBody({ slug }: { slug: string }) {
           value={evidence.secret}
           title="Organisation key rotated"
           description="This key will not be shown again."
-          onDismiss={evidence.clear}
+          onDismiss={evidence.dismiss}
         />
       )}
 
@@ -233,11 +233,11 @@ function OrgKeysBody({ slug }: { slug: string }) {
                 void create
                   .mutateAsync({ label: label.trim(), scopes: ['deploy:write', 'apps:read'] })
                   .then((key) => {
-                    setLabel('');
-                    validation.resetValidation();
-                    receive(key.plaintext ?? null);
-                    create.reset();
-                    toast({ kind: 'success', title: 'Key created' });
+                    if (receive(key.plaintext ?? null)) {
+                      setLabel('');
+                      validation.resetValidation();
+                      toast({ kind: 'success', title: 'Key created' });
+                    }
                   })
                   .catch((err: unknown) =>
                     toast({
@@ -245,7 +245,8 @@ function OrgKeysBody({ slug }: { slug: string }) {
                       title: 'Could not create',
                       description: errorMessage(err),
                     })
-                  );
+                  )
+                  .finally(() => create.reset());
               }}
             >
               <label className="flex min-w-44 flex-col gap-1.5">
@@ -298,7 +299,8 @@ function OrgKeysBody({ slug }: { slug: string }) {
                     type="button"
                     aria-label={`Rotate key ${k.label ?? k.prefix}`}
                     disabled={policy.days === undefined || rotate.isPending}
-                    onClick={async () => {
+                    onClick={async (event) => {
+                      const origin = event.currentTarget;
                       if (policy.days === undefined) return;
                       if (
                         !(await confirm({
@@ -308,12 +310,11 @@ function OrgKeysBody({ slug }: { slug: string }) {
                         }))
                       )
                         return;
-                      const receive = evidence.capture();
+                      const receive = evidence.capture(() => origin.focus());
                       void rotate
                         .mutateAsync(k.id)
                         .then((r) => {
                           receive(r.key_plaintext ?? null);
-                          rotate.reset();
                           toast({ kind: 'success', title: 'Key rotated' });
                         })
                         .catch((err: unknown) =>
@@ -322,7 +323,8 @@ function OrgKeysBody({ slug }: { slug: string }) {
                             title: 'Could not rotate',
                             description: errorMessage(err),
                           })
-                        );
+                        )
+                        .finally(() => rotate.reset());
                     }}
                     className="pressable rounded p-1 text-muted-foreground hover:text-foreground"
                   >

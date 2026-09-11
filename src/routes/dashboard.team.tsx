@@ -371,10 +371,10 @@ export function TeamMembersBody({
               void invite
                 .mutateAsync({ email: email.trim(), role })
                 .then((result) => {
-                  receive({ email: result.email, token: result.token });
-                  invite.reset();
-                  setEmail('');
-                  validation.resetValidation();
+                  if (receive({ email: result.email, token: result.token })) {
+                    setEmail('');
+                    validation.resetValidation();
+                  }
                 })
                 .catch((err: unknown) =>
                   toast({
@@ -382,7 +382,8 @@ export function TeamMembersBody({
                     title: 'Could not invite',
                     description: errorMessage(err),
                   })
-                );
+                )
+                .finally(() => invite.reset());
             }}
           >
             <label className="flex min-w-64 flex-1 flex-col gap-1.5">

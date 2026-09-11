@@ -8,29 +8,37 @@ export function useOneTimeSecret<T>() {
   const [evidence, setEvidence] = useState<{ value: T; version: number } | null>(null);
   const generation = useRef(0);
   const mounted = useRef(true);
+  const restoreFocus = useRef<(() => void) | undefined>(undefined);
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
       generation.current += 1;
+      restoreFocus.current = undefined;
     };
   }, []);
   const clear = useCallback(() => {
     generation.current += 1;
     setEvidence(null);
+    restoreFocus.current = undefined;
   }, []);
-  const capture = useCallback(() => {
+  const dismiss = useCallback(() => {
+    const focus = restoreFocus.current;
+    clear();
+    focus?.();
+  }, [clear]);
+  const capture = useCallback((onDismiss?: () => void) => {
     const request = ++generation.current;
-    setEvidence(null);
+    // Keep the last accepted evidence if a replacement request fails.
     return (value: T | null) => {
       if (!mounted.current || generation.current !== request) return false;
       setEvidence(value === null ? null : { value, version: request });
+      restoreFocus.current = value === null ? undefined : onDismiss;
       return true;
     };
   }, []);
-  // React can batch the clear and a fast response. A fresh version still resets
-  // Reveal/Copy state without putting the plaintext into a React key.
-  return { secret: evidence?.value ?? null, version: evidence?.version, capture, clear };
+  // A replacement resets Reveal/Copy without putting plaintext into a React key.
+  return { secret: evidence?.value ?? null, version: evidence?.version, capture, clear, dismiss };
 }
 
 /** Masking omits plaintext entirely from the DOM, including accessible metadata. */
