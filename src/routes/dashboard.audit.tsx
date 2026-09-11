@@ -1,8 +1,9 @@
 import { useMemo } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
-import { PageHeader } from '@/components/dashboard/primitives';
+import { InlinePhase, PageHeader, queryPhase } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
-import { useAuditLog } from '@/lib/api/queries';
+import { Button } from '@/components/ui/button';
+import { useInfiniteAuditLog } from '@/lib/api/queries';
 import { formatRelative } from '@/lib/mock-data';
 import { consoleHead } from '@/lib/seo';
 
@@ -15,8 +16,8 @@ export const Route = createFileRoute('/dashboard/audit')({
  * The account audit trail, from `/v1/audit-log`.
  *
  * Append-only by design: there is no write path and nothing to edit here. The
- * severity the API assigns is carried through rather than re-derived, since it
- * is the server that knows which events matter.
+ * opaque cursor lets the page inspect the full history without timestamp
+ * duplicates when several events land in the same instant.
  */
 interface AuditRow {
   id: string;
@@ -45,11 +46,19 @@ function summarise(data: Record<string, unknown> | undefined): string {
 }
 
 function AuditPage() {
-  const { data, isPending, error, refetch } = useAuditLog();
+  const auditLog = useInfiniteAuditLog();
+  const data = useMemo(
+    () => auditLog.data?.pages.flatMap((page) => page.entries) ?? [],
+    [auditLog.data]
+  );
+  // Keep already loaded entries usable if an older page fails; only an
+  // initial failure should replace the table with its full-page error state.
+  const listError = data.length === 0 ? auditLog.error : undefined;
+  const listLoading = auditLog.isPending && !auditLog.error && data.length === 0;
 
   const rows = useMemo<AuditRow[]>(
     () =>
-      (data?.entries ?? []).map((e) => ({
+      data.map((e) => ({
         id: e.id,
         at: e.received_at,
         actor: e.actor ?? e.account_email ?? '',
@@ -100,10 +109,38 @@ function AuditPage() {
         searchPlaceholder="Filter by event, actor, or subject…"
         emptyMessage="Nothing recorded yet."
         minWidth="min-w-[900px]"
-        loading={isPending}
-        error={error}
-        onRetry={() => void refetch()}
+        loading={listLoading}
+        error={listError}
+        onRetry={() => void auditLog.refetch()}
       />
+      {data.length > 0 && Boolean(auditLog.error) && (
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <InlinePhase phase={queryPhase({ error: auditLog.error })} error={auditLog.error} />
+          <Button
+            size="xs"
+            variant="ghost"
+            onClick={() =>
+              void (
+                auditLog.isFetchNextPageError ? auditLog.fetchNextPage() : auditLog.refetch()
+              ).catch(() => undefined)
+            }
+          >
+            Retry
+          </Button>
+        </div>
+      )}
+      {auditLog.hasNextPage && (
+        <div className="flex justify-center">
+          <Button
+            size="sm"
+            variant="outline"
+            busy={auditLog.isFetchingNextPage}
+            onClick={() => void auditLog.fetchNextPage().catch(() => undefined)}
+          >
+            Load older events
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

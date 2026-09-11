@@ -13875,6 +13875,8 @@ export interface components {
              * @example 50
              */
             limit: number;
+            /** @description Opaque cursor for the next older page; omitted when this page reaches the end. */
+            next_before?: string;
         };
         /**
          * @description One frame of the wake timeline (issue #517 / PR-C /
@@ -28990,6 +28992,8 @@ export interface operations {
             query?: {
                 /** @description Audit-log rows with `received_at >= since` (RFC 3339) are returned. Omit to read from the newest row. */
                 since?: string;
+                /** @description Opaque cursor returned as `next_before`; fetches the next older page. Pass verbatim without decoding or re-encoding. */
+                before?: string;
                 /** @description Only return rows whose `kind` starts with this prefix (e.g. `account.` returns `account.deleted`). */
                 kind_prefix?: string;
                 /** @description Audit-log page size. Silently capped at 100. */
@@ -29050,6 +29054,8 @@ export interface operations {
                 account_id?: string;
                 /** @description Operator-side audit-log rows with `received_at >= since` (RFC 3339) are returned. Omit to read from the newest row. */
                 since?: string;
+                /** @description Opaque cursor returned as `next_before`; fetches the next older page. Pass verbatim without decoding or re-encoding. */
+                before?: string;
                 /** @description Only return rows whose `kind` starts with this prefix. */
                 kind_prefix?: string;
                 /** @description Operator-side audit-log page size. Silently capped at 100. */
