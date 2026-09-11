@@ -597,6 +597,7 @@ function FunctionDetailPage() {
                     void navigate({
                       search: { tab: 'Deployments', deployment: id },
                       hash: true,
+                      resetScroll: false,
                     })
                   }
                   actions={<ClearObsoleteDeploymentsButton slug={fn.id} />}
@@ -631,9 +632,16 @@ function FunctionDetailPage() {
                       void navigate({
                         search: (current) => ({ ...current, releaseSection: next }),
                         hash: true,
+                        resetScroll: false,
                       })
                     }
-                    onClose={() => void navigate({ search: { tab: 'Deployments' }, hash: true })}
+                    onClose={() =>
+                      void navigate({
+                        search: { tab: 'Deployments' },
+                        hash: true,
+                        resetScroll: false,
+                      })
+                    }
                   />
                 )}
               </>

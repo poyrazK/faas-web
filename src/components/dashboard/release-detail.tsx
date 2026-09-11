@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { RefreshDouble } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -23,6 +23,7 @@ import { ReleaseProvenance, ReleaseScans } from './release-evidence';
 import { RELEASE_SECTIONS, sourceSize, type ReleaseSection } from './releases-search';
 import { RolloutRecovery } from './rollout-recovery';
 import { LogView } from './log-view';
+import { releaseStatusColor } from './release-status';
 
 function relativeTime(value?: string): string {
   if (!value) return '—';
@@ -55,6 +56,24 @@ export function ReleaseDetailPanel({
   onSectionChange?: (section: ReleaseSection, replace?: boolean) => void;
   onClose: () => void;
 }) {
+  const panelRef = useRef<HTMLElement>(null);
+  // URL selection reveals the inline detail even below a full page of rows.
+  // Closing it (including browser Back) returns keyboard users to their row.
+  useLayoutEffect(() => {
+    const panel = panelRef.current;
+    const origin = document.activeElement;
+    panel?.focus({ preventScroll: true });
+    panel?.scrollIntoView({ block: 'start', behavior: 'instant' });
+    return () => {
+      if (
+        origin instanceof HTMLElement &&
+        origin.isConnected &&
+        (panel?.contains(document.activeElement) || document.activeElement === document.body)
+      ) {
+        origin.focus();
+      }
+    };
+  }, [deploymentId, buildId]);
   const [localSection, setLocalSection] = useState<ReleaseSection>('overview');
   const section = controlledSection ?? localSection;
   const selectedBuild = useBuild(!deploymentId ? (buildId ?? '') : '');
@@ -80,21 +99,38 @@ export function ReleaseDetailPanel({
     Boolean(resolvedDeploymentId) && ownsDeployment
   );
   const error =
-    (resolvedDeploymentId ? detail.error : selectedBuild.error) ??
-    (appSlug ? selectedApp.error : null);
+    (deploymentId ? detail.error : selectedBuild.error) ?? (appSlug ? selectedApp.error : null);
   const phase = queryPhase({
     error,
     loading:
-      (resolvedDeploymentId ? detail.isPending : selectedBuild.isPending) ||
+      (deploymentId ? detail.isPending : selectedBuild.isPending) ||
       (Boolean(appSlug) && selectedApp.isPending),
   });
   const retry = () => {
-    if (resolvedDeploymentId) void detail.refetch();
+    if (deploymentId) void detail.refetch();
     else void selectedBuild.refetch();
     if (appSlug) void selectedApp.refetch();
   };
   const sections = RELEASE_SECTIONS.filter(
-    ([value]) => deployment || ['overview', 'output', 'provenance'].includes(value)
+    ([value]) => resolvedDeploymentId || ['overview', 'output', 'provenance'].includes(value)
+  );
+  const deploymentUnavailable = Boolean(
+    resolvedDeploymentId && (detail.error || detail.isPending || !deployment)
+  );
+  const deploymentState = (
+    <div className="flex flex-col items-start gap-3" role="region" aria-label="Deployment evidence">
+      <InlinePhase
+        phase={queryPhase({ error: detail.error, loading: detail.isPending, isEmpty: !deployment })}
+        error={detail.error}
+        loadingMessage="Loading deployment…"
+        emptyMessage="No deployment detail is available."
+      />
+      {Boolean(detail.error) && (
+        <Button size="xs" variant="outline" onClick={() => void detail.refetch()}>
+          Retry deployment read
+        </Button>
+      )}
+    </div>
   );
   const activeSection = sections.some(([value]) => value === section) ? section : 'overview';
   useEffect(() => {
@@ -104,201 +140,226 @@ export function ReleaseDetailPanel({
   }, [selectedBuild.data, resolvedDeploymentId, section, activeSection, onSectionChange]);
 
   return (
-    <Panel
-      title={resolvedDeploymentId ? 'Release details' : 'Build details'}
-      description={
-        deployment && !wrongApp
-          ? `${deployment.kind} · ${deployment.id}`
-          : (deploymentId ?? buildId)
-      }
-      actions={
-        <Button size="xs" variant="ghost" onClick={onClose}>
-          Close
-        </Button>
-      }
+    <section
+      ref={panelRef}
+      tabIndex={-1}
+      aria-label={resolvedDeploymentId ? 'Release details' : 'Build details'}
+      className="scroll-mt-24 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
-      {phase === 'unreachable' ? (
-        <UnreachableState onRetry={retry} />
-      ) : phase === 'loading' ? (
-        <LoadingState message="Loading release…" />
-      ) : phase === 'error' || (!deployment && !build) ? (
-        <ErrorState error={error} onRetry={retry} />
-      ) : wrongApp ? (
-        <p className="text-sm text-muted-foreground">
-          This deployment is not available for the selected app.
-        </p>
-      ) : (
-        <div className="flex flex-col gap-5">
-          <nav
-            aria-label="Release detail sections"
-            className="flex flex-wrap gap-2 border-b border-border pb-3"
-          >
-            {sections.map(([value, label]) => (
-              <Button
-                key={value}
-                size="xs"
-                variant={value === activeSection ? 'outline' : 'ghost'}
-                aria-pressed={value === activeSection}
-                onClick={() => (onSectionChange ?? setLocalSection)(value)}
-              >
-                {label}
-              </Button>
-            ))}
-          </nav>
-          {activeSection === 'overview' && (
-            <>
-              {deployment ? (
-                <>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Pill label={deployment.status} />
-                    {!isDeploymentTerminal(deployment.status) && (
-                      <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <RefreshDouble className="h-3 w-3 animate-spin" />
-                        Updating
+      <Panel
+        title={resolvedDeploymentId ? 'Release details' : 'Build details'}
+        description={
+          deployment && !wrongApp
+            ? `${deployment.kind} · ${deployment.id}`
+            : (deploymentId ?? buildId)
+        }
+        actions={
+          <Button size="xs" variant="ghost" onClick={onClose}>
+            Close
+          </Button>
+        }
+      >
+        {phase === 'unreachable' ? (
+          <UnreachableState onRetry={retry} />
+        ) : phase === 'loading' ? (
+          <LoadingState message="Loading release…" />
+        ) : phase === 'error' || (!deployment && !build) ? (
+          <ErrorState error={error} onRetry={retry} />
+        ) : wrongApp ? (
+          <p className="text-sm text-muted-foreground">
+            This deployment is not available for the selected app.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-5">
+            <nav
+              aria-label="Release detail sections"
+              className="flex flex-wrap gap-2 border-b border-border pb-3"
+            >
+              {sections.map(([value, label]) => (
+                <Button
+                  key={value}
+                  size="xs"
+                  variant={value === activeSection ? 'outline' : 'ghost'}
+                  aria-pressed={value === activeSection}
+                  onClick={() => (onSectionChange ?? setLocalSection)(value)}
+                >
+                  {label}
+                </Button>
+              ))}
+            </nav>
+            {activeSection === 'overview' && (
+              <>
+                {deploymentUnavailable ? (
+                  deploymentState
+                ) : deployment ? (
+                  <>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Pill
+                        label={deployment.status}
+                        color={releaseStatusColor(deployment.status)}
+                      />
+                      {!isDeploymentTerminal(deployment.status) && (
+                        <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <RefreshDouble className="h-3 w-3 animate-spin" />
+                          Updating
+                        </span>
+                      )}
+                      <span className="ml-auto">
+                        <DeploymentPreviewUrl deploymentId={deployment.id} />
                       </span>
+                    </div>
+                    <EvidenceFields
+                      values={[
+                        ['Deployment ID', deployment.id],
+                        ['Kind', deployment.kind],
+                        ['Build ID', deployment.build_id ?? build?.id ?? '—'],
+                        ['Image', deployment.image_digest || '—'],
+                        ['Created', relativeTime(deployment.created_at)],
+                        ['Error code', deployment.error_code ?? '—'],
+                        [
+                          'Canary',
+                          deployment.canary_total_steps
+                            ? `${deployment.canary_preset ?? ''} step ${deployment.canary_step ?? 0}/${deployment.canary_total_steps} · ${deployment.rollout_state ?? ''}`.trim()
+                            : '—',
+                        ],
+                        [
+                          'Traffic',
+                          deployment.traffic_percent != null
+                            ? `${deployment.traffic_percent}%`
+                            : '—',
+                        ],
+                      ]}
+                    />
+                    {deployment.error && (
+                      <p
+                        role="alert"
+                        className="rounded-md border border-border px-3 py-2 text-sm text-[color:var(--status-critical)]"
+                      >
+                        {deployment.error}
+                      </p>
                     )}
-                    <span className="ml-auto">
-                      <DeploymentPreviewUrl deploymentId={deployment.id} />
-                    </span>
-                  </div>
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    No deployment is attached to this build.
+                  </p>
+                )}
+                {build ? (
                   <EvidenceFields
                     values={[
-                      ['Deployment ID', deployment.id],
-                      ['Kind', deployment.kind],
-                      ['Build ID', deployment.build_id ?? build?.id ?? '—'],
-                      ['Image', deployment.image_digest || '—'],
-                      ['Created', relativeTime(deployment.created_at)],
-                      ['Error code', deployment.error_code ?? '—'],
                       [
-                        'Canary',
-                        deployment.canary_total_steps
-                          ? `${deployment.canary_preset ?? ''} step ${deployment.canary_step ?? 0}/${deployment.canary_total_steps} · ${deployment.rollout_state ?? ''}`.trim()
-                          : '—',
+                        'Build status',
+                        <Pill label={build.status} color={releaseStatusColor(build.status)} />,
                       ],
+                      ['Source', build.kind],
+                      ['Failure class', build.failure_class ?? '—'],
+                      ['Source size', sourceSize(build.source_bytes)],
                       [
-                        'Traffic',
-                        deployment.traffic_percent != null ? `${deployment.traffic_percent}%` : '—',
+                        'Build duration',
+                        build.duration_seconds == null ? '—' : `${build.duration_seconds}s`,
                       ],
+                      ['Enqueued', relativeTime(build.enqueued_at)],
+                      ['Started', relativeTime(build.started_at)],
+                      ['Finished', relativeTime(build.finished_at)],
                     ]}
                   />
-                  {deployment.error && (
-                    <p
-                      role="alert"
-                      className="rounded-md border border-border px-3 py-2 text-sm text-[color:var(--status-critical)]"
-                    >
-                      {deployment.error}
-                    </p>
-                  )}
-                </>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  No deployment is attached to this build.
-                </p>
-              )}
-              {build ? (
-                <EvidenceFields
-                  values={[
-                    ['Build status', build.status],
-                    ['Source', build.kind],
-                    ['Failure class', build.failure_class ?? '—'],
-                    ['Source size', sourceSize(build.source_bytes)],
-                    [
-                      'Build duration',
-                      build.duration_seconds == null ? '—' : `${build.duration_seconds}s`,
-                    ],
-                    ['Enqueued', relativeTime(build.enqueued_at)],
-                    ['Started', relativeTime(build.started_at)],
-                    ['Finished', relativeTime(build.finished_at)],
-                  ]}
-                />
-              ) : joinedBuildId ? (
-                <InlinePhase
-                  phase={queryPhase({
-                    error: joinedBuild.error,
-                    loading: joinedBuild.isPending,
-                    isEmpty: !build,
-                  })}
-                  error={joinedBuild.error}
-                  emptyMessage="No build record is available."
-                />
-              ) : timing ? (
-                <EvidenceFields
-                  values={[
-                    [
-                      'Build duration',
-                      timing.durationSeconds == null ? '—' : `${timing.durationSeconds}s`,
-                    ],
-                    ['Enqueued', relativeTime(timing.enqueuedAt)],
-                    ['Started', relativeTime(timing.startedAt)],
-                    ['Finished', relativeTime(timing.finishedAt)],
-                  ]}
-                />
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  No build is recorded for this release.
-                </p>
-              )}
-              {deployment && slug && (
-                <DeploymentReleaseSummary appSlug={slug} deploymentId={deployment.id} />
-              )}
-            </>
-          )}
-          {activeSection === 'output' && (
-            <div>
-              {buildLog.lines.length ? (
-                <LogView lines={buildLog.lines} className="max-h-72" />
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  {!resolvedDeploymentId
-                    ? 'Build output is available once a deployment is attached.'
-                    : buildLog.status === 'connecting'
-                      ? 'Reading the build log…'
-                      : buildLog.status === 'error'
-                        ? `The build log disconnected${buildLog.reason ? `: ${buildLog.reason}` : '.'}`
-                        : buildLog.reason || 'No build output has arrived yet.'}
-                </p>
-              )}
-            </div>
-          )}
-          {activeSection === 'provenance' && (
-            <ReleaseProvenance
-              buildId={build?.id ?? joinedBuildId}
-              succeeded={build?.status === 'succeeded'}
-            />
-          )}
-          {deployment && activeSection === 'scans' && <ReleaseScans deploymentId={deployment.id} />}
-          {deployment && activeSection === 'lifecycle' && (
-            <>
-              <AdvanceCanaryButton deployment={deployment} />
-              <ReorderDeploymentControl deployment={deployment} />
-              <DeploymentLifecycle key={deployment.id} deployment={deployment} />
-              {slug && <RolloutRecovery slug={slug} deployment={deployment} />}
-              <DeploymentStages deploymentId={deployment.id} />
-            </>
-          )}
-          {deployment && activeSection === 'runtime' && (
-            <DeploymentControls
-              key={`${deployment.id}-${deployment.min_instances}-${deployment.traffic_percent}`}
-              deployment={deployment}
-              version={deployment.id}
-            />
-          )}
-          {deployment && activeSection === 'audit' && (
-            <DeploymentAudit deploymentId={deployment.id} />
-          )}
-        </div>
-      )}
-    </Panel>
+                ) : joinedBuildId ? (
+                  <InlinePhase
+                    phase={queryPhase({
+                      error: joinedBuild.error,
+                      loading: joinedBuild.isPending,
+                      isEmpty: !build,
+                    })}
+                    error={joinedBuild.error}
+                    emptyMessage="No build record is available."
+                  />
+                ) : timing ? (
+                  <EvidenceFields
+                    values={[
+                      [
+                        'Build duration',
+                        timing.durationSeconds == null ? '—' : `${timing.durationSeconds}s`,
+                      ],
+                      ['Enqueued', relativeTime(timing.enqueuedAt)],
+                      ['Started', relativeTime(timing.startedAt)],
+                      ['Finished', relativeTime(timing.finishedAt)],
+                    ]}
+                  />
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    No build is recorded for this release.
+                  </p>
+                )}
+                {!deploymentUnavailable && deployment && slug && (
+                  <DeploymentReleaseSummary appSlug={slug} deploymentId={deployment.id} />
+                )}
+              </>
+            )}
+            {activeSection === 'output' && (
+              <div>
+                {buildLog.lines.length ? (
+                  <LogView lines={buildLog.lines} className="max-h-72" />
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    {!resolvedDeploymentId
+                      ? 'Build output is available once a deployment is attached.'
+                      : buildLog.status === 'connecting'
+                        ? 'Reading the build log…'
+                        : buildLog.status === 'error'
+                          ? `The build log disconnected${buildLog.reason ? `: ${buildLog.reason}` : '.'}`
+                          : buildLog.reason || 'No build output has arrived yet.'}
+                  </p>
+                )}
+              </div>
+            )}
+            {activeSection === 'provenance' && (
+              <ReleaseProvenance
+                buildId={build?.id ?? joinedBuildId}
+                succeeded={build?.status === 'succeeded'}
+              />
+            )}
+            {deploymentUnavailable &&
+              ['scans', 'lifecycle', 'runtime', 'audit'].includes(activeSection) &&
+              deploymentState}
+            {!deploymentUnavailable && deployment && activeSection === 'scans' && (
+              <ReleaseScans deploymentId={deployment.id} />
+            )}
+            {!deploymentUnavailable && deployment && activeSection === 'lifecycle' && (
+              <>
+                <AdvanceCanaryButton deployment={deployment} />
+                <ReorderDeploymentControl deployment={deployment} />
+                <DeploymentLifecycle key={deployment.id} deployment={deployment} />
+                {slug && <RolloutRecovery slug={slug} deployment={deployment} />}
+                <DeploymentStages deploymentId={deployment.id} />
+              </>
+            )}
+            {!deploymentUnavailable && deployment && activeSection === 'runtime' && (
+              <DeploymentControls
+                key={`${deployment.id}-${deployment.min_instances}-${deployment.traffic_percent}`}
+                deployment={deployment}
+                version={deployment.id}
+              />
+            )}
+            {!deploymentUnavailable && deployment && activeSection === 'audit' && (
+              <DeploymentAudit deploymentId={deployment.id} />
+            )}
+          </div>
+        )}
+      </Panel>
+    </section>
   );
 }
 
-function EvidenceFields({ values }: { values: [string, string][] }) {
+function EvidenceFields({ values }: { values: [string, ReactNode][] }) {
   return (
     <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
       {values.map(([label, value]) => (
         <div key={label} className="min-w-0">
           <dt className="label-mono text-muted-foreground">{label}</dt>
-          <dd className="truncate font-mono text-xs" title={value}>
+          <dd
+            className="truncate font-mono text-xs"
+            title={typeof value === 'string' ? value : undefined}
+          >
             {value}
           </dd>
         </div>

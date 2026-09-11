@@ -9,13 +9,15 @@ import {
   RouterProvider,
 } from '@tanstack/react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Route as Releases } from './dashboard.deployments';
 import { Route as Builds } from './dashboard.builds';
 import { Route as App } from './dashboard.workflows.$workflowId';
 
 const fixtures = vi.hoisted(() => ({
   omitBuildFromHistory: false,
+  deploymentRead: 'ready',
+  rowCount: 1,
   deployment: {
     id: 'dep-1',
     app_id: 'app-1',
@@ -87,7 +89,13 @@ vi.mock('@/lib/api/queries', async (original) => {
     ...actual,
     useApps: () => ok([{ id: 'app-1', slug: 'alpha' }]),
     useApp: () => ok({ id: 'app-1', slug: 'alpha' }),
-    useInfiniteDeployments: () => pages([fixtures.deployment]),
+    useInfiniteDeployments: () =>
+      pages(
+        Array.from({ length: fixtures.rowCount }, (_, i) => ({
+          ...fixtures.deployment,
+          id: i === 0 ? 'dep-1' : `dep-${i + 1}`,
+        }))
+      ),
     useAppDeployments: () => pages([fixtures.deployment]),
     useBuilds: () => ok({ items: [fixtures.build, fixtures.orphan] }),
     useInfiniteBuilds: () =>
@@ -95,7 +103,14 @@ vi.mock('@/lib/api/queries', async (original) => {
     useBuildRecords: () => [ok(fixtures.build)],
     useBuild: (id: string) =>
       ok(id === 'build-only' ? fixtures.orphan : id ? fixtures.build : undefined),
-    useDeployment: (id: string) => ok(id ? fixtures.deployment : undefined),
+    useDeployment: (id: string) =>
+      fixtures.deploymentRead === 'ready'
+        ? ok(id ? fixtures.deployment : undefined)
+        : {
+            ...ok(undefined),
+            isPending: fixtures.deploymentRead === 'pending',
+            error: fixtures.deploymentRead === 'error' ? new Error('Deployment read failed') : null,
+          },
     useBuildProvenance: () => ok({ commit_sha: 'abcdef0123456789', buildkit_version: 'v0.20' }),
     useDeploymentScan: () =>
       ok({
@@ -192,6 +207,10 @@ async function mount(entry = '/dashboard/deployments') {
 
 beforeEach(() => {
   fixtures.omitBuildFromHistory = false;
+  fixtures.deploymentRead = 'ready';
+  fixtures.rowCount = 1;
+  fixtures.orphan.deployment_id = '';
+  fixtures.build.status = 'failed';
   Stream.instances = [];
   vi.stubGlobal('EventSource', Stream);
   fixtures.retry.mockReset().mockResolvedValue({ id: 'retry-1' });
@@ -200,7 +219,90 @@ beforeEach(() => {
   fixtures.sbom.mockReset().mockResolvedValue({ bomFormat: 'CycloneDX' });
 });
 
+afterEach(() => vi.restoreAllMocks());
+
 describe('Releases hub', () => {
+  it.each(['error', 'pending'])(
+    'keeps selected build evidence and SBOM available while its deployment read is %s',
+    async (state) => {
+      fixtures.deploymentRead = state;
+      fixtures.orphan.deployment_id = 'dep-1';
+      const download = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+      URL.createObjectURL = vi.fn().mockReturnValue('blob:sbom');
+      URL.revokeObjectURL = vi.fn();
+      await mount('/dashboard/deployments?view=builds&build=build-only');
+      expect(await screen.findByText('Failure class')).toBeInTheDocument();
+      expect(screen.getByText('4.0 KB', { selector: 'dd' })).toBeInTheDocument();
+      expect(screen.queryByText(/No deployment is attached/)).not.toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Runtime controls' }));
+      expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument();
+      if (state === 'error')
+        expect(await screen.findByText('Deployment read failed')).toBeInTheDocument();
+      else expect(await screen.findByText('Loading deployment…')).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Provenance / SBOM' }));
+      expect(await screen.findByText('v0.20')).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Download SBOM' }));
+      expect(fixtures.sbom).toHaveBeenCalledWith('build-only');
+      expect(download).toHaveBeenCalled();
+    }
+  );
+
+  it.each([
+    ['/dashboard/deployments', 'pointer', 'release'],
+    ['/dashboard/deployments?view=builds', 'keyboard', 'build'],
+    ['/dashboard/workflows/alpha?tab=Deployments', 'keyboard', 'app release'],
+  ])(
+    'reveals and focuses %s detail for %s selection and restores focus on close/Back',
+    async (entry, input, kind) => {
+      fixtures.rowCount = 50;
+      const reveal = vi.spyOn(Element.prototype, 'scrollIntoView');
+      const router = await mount(entry);
+      const row =
+        kind === 'build'
+          ? screen.getByRole('button', { name: /build-only/ })
+          : kind === 'app release'
+            ? screen.getByRole('button', { name: /image aaaa/ })
+            : screen.getByRole('button', { name: /dep-1image/ });
+      const select = async () => {
+        if (input === 'pointer') await userEvent.click(row);
+        else {
+          row.focus();
+          await userEvent.keyboard('{Enter}');
+        }
+      };
+      await select();
+      const detail = await screen.findByRole('region', {
+        name: kind === 'build' ? 'Build details' : 'Release details',
+      });
+      expect(detail).toHaveFocus();
+      expect(reveal.mock.contexts).toContain(detail);
+      await userEvent.click(within(detail).getByRole('button', { name: 'Close' }));
+      await waitFor(() => expect(row).toHaveFocus());
+      await select();
+      await act(async () => router.history.back());
+      await waitFor(() => expect(row).toHaveFocus());
+      expect(screen.queryByRole('region', { name: /details/ })).not.toBeInTheDocument();
+      await act(async () => router.history.forward());
+      expect(await screen.findByRole('region', { name: /details/ })).toHaveFocus();
+    }
+  );
+
+  it.each([
+    ['failed', 'var(--status-critical)'],
+    ['running', 'var(--status-warning)'],
+    ['succeeded', 'var(--status-good)'],
+  ])('distinguishes %s build status in the list and shared detail', async (status, color) => {
+    fixtures.build.status = status;
+    await mount('/dashboard/deployments');
+    const row = screen.getByRole('button', { name: /dep-1image/ });
+    expect(within(row).getAllByText(status).at(-1)).toHaveStyle({ color });
+    await userEvent.click(row);
+    const details = await screen.findByRole('region', { name: 'Release details' });
+    expect(within(details).getAllByText(status).at(-1)).toHaveStyle({ color });
+    expect(within(details).getAllByText('failed')[0]).toHaveStyle({
+      color: 'var(--status-critical)',
+    });
+  });
   it('resolves joined build evidence even when its record is outside the loaded build page', async () => {
     fixtures.omitBuildFromHistory = true;
     await mount();

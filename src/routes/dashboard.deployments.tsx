@@ -18,6 +18,7 @@ import {
   type ReleasesSearch,
 } from '@/components/dashboard/releases-search';
 import { consoleHead } from '@/lib/seo';
+import { releaseStatusColor } from '@/components/dashboard/release-status';
 
 export const Route = createFileRoute('/dashboard/deployments')({
   component: DeploymentsPage,
@@ -50,7 +51,12 @@ export function DeploymentsPage() {
   const buildsQuery = useInfiniteBuilds();
   const view = search.view ?? (search.build && !search.deployment ? 'builds' : 'releases');
   const select = (patch: Partial<ReleasesSearch>, replace = false) => {
-    void navigate({ search: (current) => ({ ...current, ...patch }), hash: true, replace });
+    void navigate({
+      search: (current) => ({ ...current, ...patch }),
+      hash: true,
+      replace,
+      resetScroll: false,
+    });
   };
   const builds = useMemo(
     () => buildsQuery.data?.pages.flatMap((page) => page.items) ?? [],
@@ -130,7 +136,7 @@ export function DeploymentsPage() {
     {
       key: 'status',
       label: view === 'builds' ? 'Build status' : 'Deployment state',
-      render: (r) => <Pill label={r.status} />,
+      render: (r) => <Pill label={r.status} color={releaseStatusColor(r.status)} />,
     },
     {
       key: 'id',
@@ -150,7 +156,9 @@ export function DeploymentsPage() {
           {
             key: 'buildStatus' as const,
             label: 'Build status',
-            render: (r: ReleaseRow) => <Pill label={r.buildStatus} />,
+            render: (r: ReleaseRow) => (
+              <Pill label={r.buildStatus} color={releaseStatusColor(r.buildStatus)} />
+            ),
           },
         ]
       : []),

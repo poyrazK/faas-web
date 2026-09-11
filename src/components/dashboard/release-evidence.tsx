@@ -9,6 +9,7 @@ import {
 } from '@/lib/api/queries';
 import { InlinePhase, queryPhase } from './primitives';
 import { Pill } from './resource-table';
+import { RELEASE_SEVERITY_COLOR } from './release-status';
 
 export function ReleaseProvenance({ buildId, succeeded }: { buildId: string; succeeded: boolean }) {
   const provenance = useBuildProvenance(buildId);
@@ -115,7 +116,10 @@ export function ReleaseScans({ deploymentId }: { deploymentId: string }) {
                 key={`${v.id}-${v.package}-${v.version}`}
                 className="flex flex-wrap gap-3 py-2 text-xs"
               >
-                <Pill label={v.severity.toLowerCase()} />
+                <Pill
+                  label={v.severity.toLowerCase()}
+                  color={RELEASE_SEVERITY_COLOR[v.severity.toUpperCase()]}
+                />
                 <span>{v.id}</span>
                 <span>
                   {v.package}@{v.version}
