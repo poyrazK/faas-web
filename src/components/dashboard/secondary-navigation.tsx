@@ -51,7 +51,7 @@ export function SecondaryNavigation({ label, items }: { label: string; items: Na
 export function DashboardSecondaryNavigation() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const hub = findNavHub(pathname);
-  if (!hub?.sections) return null;
+  if (!hub?.sections || hub.pageOwnsNavigation) return null;
   const appSection = APP_SECTIONS.some((item) => matchesNavPath(pathname, item));
   // App detail already has scoped URL tabs, and New app owns its own flow.
   const showAppSections =

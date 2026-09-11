@@ -106,23 +106,6 @@ const GROUPS = [
     ],
   },
   {
-    hub: 'Jobs',
-    anchor: '/dashboard/jobs',
-    links: [
-      ['Jobs', '/dashboard/jobs'],
-      ['Cron Jobs', '/dashboard/crons'],
-      ['Triggers', '/dashboard/triggers'],
-    ],
-  },
-  {
-    hub: 'Releases',
-    anchor: '/dashboard/deployments',
-    links: [
-      ['Deployments', '/dashboard/deployments'],
-      ['Builds', '/dashboard/builds'],
-    ],
-  },
-  {
     hub: 'Data',
     anchor: '/dashboard/storage',
     links: [
@@ -252,18 +235,18 @@ describe('dashboard navigation foundation', () => {
   });
 
   it('uses link keyboard navigation and restores hub selection with browser Back', async () => {
-    const router = await renderShell('/dashboard/jobs');
+    const router = await renderShell('/dashboard/storage');
     const user = userEvent.setup();
-    const sections = screen.getByRole('navigation', { name: 'Jobs sections' });
-    const jobs = within(sections).getByRole('link', { name: 'Jobs' });
-    jobs.focus();
+    const sections = screen.getByRole('navigation', { name: 'Data sections' });
+    const storage = within(sections).getByRole('link', { name: 'Storage' });
+    storage.focus();
     await user.tab();
-    expect(within(sections).getByRole('link', { name: 'Cron Jobs' })).toHaveFocus();
+    expect(within(sections).getByRole('link', { name: 'Postgres' })).toHaveFocus();
     await user.keyboard('{Enter}');
-    await waitFor(() => expect(router.state.location.pathname).toBe('/dashboard/crons'));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/dashboard/postgres'));
     await act(async () => router.history.back());
-    await waitFor(() => expect(router.state.location.pathname).toBe('/dashboard/jobs'));
-    expect(within(sections).getByRole('link', { name: 'Jobs' })).toHaveAttribute(
+    await waitFor(() => expect(router.state.location.pathname).toBe('/dashboard/storage'));
+    expect(within(sections).getByRole('link', { name: 'Storage' })).toHaveAttribute(
       'aria-current',
       'page'
     );
@@ -280,13 +263,13 @@ describe('dashboard navigation foundation', () => {
   });
 
   it('preserves search and hash state when the current section is reselected', async () => {
-    const router = await renderShell('/dashboard/builds?status=failed&build=build-1#output');
-    const link = within(screen.getByRole('navigation', { name: 'Releases sections' })).getByRole(
+    const router = await renderShell('/dashboard/storage?q=assets&campaign=handoff#buckets');
+    const link = within(screen.getByRole('navigation', { name: 'Data sections' })).getByRole(
       'link',
-      { name: 'Builds' }
+      { name: 'Storage' }
     );
     await userEvent.click(link);
-    expect(router.state.location.href).toBe('/dashboard/builds?status=failed&build=build-1#output');
+    expect(router.state.location.href).toBe('/dashboard/storage?q=assets&campaign=handoff#buckets');
   });
 
   it('identifies only the current page in a hub anchor breadcrumb', async () => {

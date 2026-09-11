@@ -46,6 +46,8 @@ export interface NavGroup {
 
 export interface NavHub extends NavItem {
   sections?: NavItem[];
+  /** Page tabs own navigation; section destinations still support search and legacy URLs. */
+  pageOwnsNavigation?: boolean;
 }
 
 /** Existing pages anchor each hub until its feature composition is ready. */
@@ -65,6 +67,7 @@ export const NAV_HUBS: NavHub[] = [
     to: '/dashboard/jobs',
     label: 'Jobs',
     icon: Play,
+    pageOwnsNavigation: true,
     sections: [
       { to: '/dashboard/jobs', label: 'Jobs', icon: Play },
       { to: '/dashboard/crons', label: 'Cron Jobs', icon: Timer },
@@ -75,6 +78,7 @@ export const NAV_HUBS: NavHub[] = [
     to: '/dashboard/deployments',
     label: 'Releases',
     icon: Rocket,
+    pageOwnsNavigation: true,
     sections: [
       { to: '/dashboard/deployments', label: 'Deployments', icon: Rocket },
       { to: '/dashboard/builds', label: 'Builds', icon: Package },
