@@ -1615,6 +1615,26 @@ export function useInvoices() {
   });
 }
 
+/**
+ * Account billing history, paged newest-first by the API's RFC3339Nano cursor.
+ * The invoices page uses this instead of silently dropping older billing
+ * records after the server's default page.
+ */
+export function useInfiniteInvoices(limit = 50) {
+  return useInfiniteQuery({
+    queryKey: [...keys.invoices, 'history', limit],
+    queryFn: ({ pageParam }) =>
+      unwrap(
+        api.GET('/v1/invoices', {
+          params: { query: { limit, ...(pageParam ? { before: pageParam } : {}) } },
+        })
+      ),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.next_before ?? undefined,
+    retry: retryPolicy,
+  });
+}
+
 export function useUsageSummary() {
   return useQuery({
     queryKey: keys.usageSummary,
