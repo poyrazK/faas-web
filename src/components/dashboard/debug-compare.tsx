@@ -11,7 +11,7 @@ import { ResourceTable, type Column } from '@/components/dashboard/resource-tabl
 import { useAppDeployments, useCompareDeployments } from '@/lib/api/queries';
 import { errorMessage } from '@/lib/api/errors';
 import { DebugGate, isPlanGated } from './debug-gate';
-import { WINDOWS } from './debug-requests';
+import { WINDOWS, type DebugSelection } from './debug-search';
 
 /**
  * Per-route latency for two deployments over one window.
@@ -44,7 +44,9 @@ function ms(v: number | null): string {
 
 /** The delta only means something when both sides actually served traffic. */
 function delta(a: number | null, b: number | null): { text: string; color: string } | null {
-  if (a == null || b == null || a === 0) return null;
+  if (a == null || b == null) return null;
+  if (a === 0 || b === 0)
+    return { text: 'Ratio unavailable at zero', color: 'var(--muted-foreground)' };
   const factor = b / a;
   if (factor >= 1.1)
     return { text: `${factor.toFixed(2)}× slower`, color: 'var(--status-critical)' };
@@ -53,30 +55,58 @@ function delta(a: number | null, b: number | null): { text: string; color: strin
   return { text: 'about the same', color: 'var(--muted-foreground)' };
 }
 
-export function DebugCompare({ slug }: { slug: string }) {
-  const [since, setSince] = useState('24h');
+export function DebugCompare({
+  slug,
+  search,
+  onSelect,
+}: { slug: string } & Partial<DebugSelection>) {
+  const [localSince, setSince] = useState('24h');
+  const since = search?.debugWindow ?? (search ? '24h' : localSince);
 
-  return <AppDeploymentCompare key={slug} slug={slug} since={since} onSinceChange={setSince} />;
+  return (
+    <AppDeploymentCompare
+      key={JSON.stringify([
+        slug,
+        search?.debugSource,
+        search?.debugMirror,
+        search?.debugWindow,
+        search?.debugRoute,
+      ])}
+      slug={slug}
+      since={since}
+      onSinceChange={
+        onSelect
+          ? (value) => onSelect({ debugWindow: value as DebugSelection['search']['debugWindow'] })
+          : setSince
+      }
+      search={search}
+      onSelect={onSelect}
+    />
+  );
 }
 
 function AppDeploymentCompare({
   slug,
   since,
   onSinceChange,
+  search,
+  onSelect,
 }: {
   slug: string;
   since: string;
   onSinceChange: (value: string) => void;
-}) {
+} & Partial<DebugSelection>) {
   const deployments = useAppDeployments(slug);
   const compare = useCompareDeployments(slug);
-  const [source, setSource] = useState('');
-  const [mirror, setMirror] = useState('');
+  const [localSource, setSource] = useState('');
+  const [localMirror, setMirror] = useState('');
+  const source = search ? (search.debugSource ?? '') : localSource;
+  const mirror = search ? (search.debugMirror ?? '') : localMirror;
   const resetCompare = compare.reset;
 
   useEffect(() => {
     resetCompare();
-  }, [resetCompare]);
+  }, [resetCompare, source, mirror, since]);
 
   const deploymentItems = deployments.data?.pages.flatMap((page) => page.items) ?? [];
   const deploymentPhase = queryPhase({
@@ -87,7 +117,7 @@ function AppDeploymentCompare({
 
   const options = deploymentItems.map((d) => ({
     id: d.id,
-    label: `${d.status} · ${d.id.slice(0, 8)}`,
+    label: `${d.id.slice(0, 12)} · ${d.status} · ${d.kind || 'source not reported'} · ${d.created_at || 'time not reported'}`,
   }));
 
   // A selected id can outlive an app switch. Keep it in the native select only
@@ -134,7 +164,9 @@ function AppDeploymentCompare({
             {d.text}
           </span>
         ) : (
-          <span className="text-xs text-muted-foreground">no traffic both sides</span>
+          <span className="text-xs text-muted-foreground">
+            No comparable percentile on one or both sides
+          </span>
         );
       },
     },
@@ -181,7 +213,15 @@ function AppDeploymentCompare({
                 <select
                   aria-label={`Deployment ${label}`}
                   value={label === 'A' ? sourceId : mirrorId}
-                  onChange={(e) => set(e.target.value)}
+                  onChange={(e) =>
+                    onSelect
+                      ? onSelect(
+                          label === 'A'
+                            ? { debugSource: e.target.value || undefined }
+                            : { debugMirror: e.target.value || undefined }
+                        )
+                      : set(e.target.value)
+                  }
                   className="h-9 min-w-52 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-brand/50"
                 >
                   <option value="">Choose a deployment…</option>
@@ -216,13 +256,42 @@ function AppDeploymentCompare({
               busy={compare.isPending}
               onClick={() =>
                 void compare
-                  .mutateAsync({ source: sourceId, mirror: mirrorId, since })
+                  .mutateAsync({
+                    source: sourceId,
+                    mirror: mirrorId,
+                    since,
+                    ...(search?.debugRoute ? { route: search.debugRoute } : {}),
+                  })
                   .catch(() => undefined)
               }
             >
               Compare
             </Button>
           </div>
+          <p className="text-xs text-muted-foreground">
+            A is the baseline selection; B is the current selection. Git ref metadata is not
+            returned by deployment history.
+          </p>
+          {search?.debugRoute && (
+            <div className="flex items-center gap-3 text-xs">
+              <span>
+                Comparing route: <code>{search.debugRoute}</code>
+              </span>
+              <Button
+                size="xs"
+                variant="ghost"
+                onClick={() => onSelect?.({ debugRoute: undefined })}
+              >
+                Compare all routes
+              </Button>
+            </div>
+          )}
+          {((source && !sourceId) || (mirror && !mirrorId)) && (
+            <p className="text-xs text-muted-foreground">
+              A selected deployment is not in the loaded history. Load older deployments or choose
+              another; the URL selection is preserved.
+            </p>
+          )}
 
           {deployments.hasNextPage && (
             <div className="flex flex-col items-center gap-2">

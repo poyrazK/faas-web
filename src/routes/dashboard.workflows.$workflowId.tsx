@@ -41,7 +41,8 @@ import { EnvBody } from './dashboard.env';
 import { QueuesBody } from './dashboard.queues';
 import { UpstreamsBody } from './dashboard.databases';
 import { AlertsBody } from './dashboard.alerts';
-import { DebugBody } from './dashboard.debug';
+import { DebugBody } from '@/components/dashboard/debug-body';
+import { validateDebugSearch, type DebugSearch } from '@/components/dashboard/debug-search';
 import { MirrorsBody } from './dashboard.mirrors';
 import { TenantSurfacesBody } from './dashboard.tenant-surfaces';
 import { OpenAPIBody } from './dashboard.openapi';
@@ -135,11 +136,11 @@ export const Route = createFileRoute('/dashboard/workflows/$workflowId')({
   // no query string behind.
   validateSearch: (
     search: Record<string, unknown>
-  ): { tab?: Tab; deployment?: string; releaseSection?: ReleaseSection } => ({
-    ...(TABS.includes(search.tab as Tab) ? { tab: search.tab as Tab } : {}),
-    ...(typeof search.deployment === 'string' && search.deployment
-      ? { deployment: search.deployment }
-      : {}),
+  ): DebugSearch & { tab?: Tab; deployment?: string; releaseSection?: ReleaseSection } => ({
+    ...validateDebugSearch(search),
+    tab: TABS.includes(search.tab as Tab) ? (search.tab as Tab) : undefined,
+    deployment:
+      typeof search.deployment === 'string' && search.deployment ? search.deployment : undefined,
     releaseSection: validateReleasesSearch({ ...search, build: undefined }).releaseSection,
   }),
   component: FunctionDetailPage,
@@ -147,10 +148,12 @@ export const Route = createFileRoute('/dashboard/workflows/$workflowId')({
 
 function FunctionDetailPage() {
   const { workflowId } = useParams({ from: '/dashboard/workflows/$workflowId' });
-  const { tab = 'Metrics', deployment: selectedDeploymentId, releaseSection } = Route.useSearch();
+  const search = Route.useSearch();
+  const { tab = 'Metrics', deployment: selectedDeploymentId, releaseSection } = search;
   const navigate = Route.useNavigate();
-  // Replace rather than push, so tab switching does not fill the back stack.
-  const setTab = (next: Tab) => navigate({ search: { tab: next }, replace: true });
+  // Preserve nested investigations when the operator leaves and returns to a tab.
+  const setTab = (next: Tab) =>
+    navigate({ search: (current) => ({ ...current, tab: next }), hash: true });
   const tabsId = useId();
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const reduce = useReducedMotion();
@@ -668,7 +671,19 @@ function FunctionDetailPage() {
             {tab === 'Alerts' && <AlertsBody slug={fn.id} />}
             {tab === 'Webhooks' && <WebhooksBody slug={fn.id} />}
             {tab === 'Edge rules' && <EdgeRulesBody slug={fn.id} />}
-            {tab === 'Debugger' && <DebugBody slug={fn.id} />}
+            {tab === 'Debugger' && (
+              <DebugBody
+                slug={fn.id}
+                search={search}
+                onSelect={(patch) =>
+                  void navigate({
+                    search: (current) => ({ ...current, ...patch }),
+                    hash: true,
+                    resetScroll: false,
+                  })
+                }
+              />
+            )}
             {tab === 'Mirrors' && <MirrorsBody slug={fn.id} />}
             {tab === 'Tenant surfaces' && <TenantSurfacesBody slug={fn.id} />}
             {tab === 'OpenAPI' && <OpenAPIBody slug={fn.id} />}
