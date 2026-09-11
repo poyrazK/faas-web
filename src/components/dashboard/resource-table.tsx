@@ -55,6 +55,8 @@ export interface ResourceTableProps<T> {
   filteredEmptyMessage?: string;
   emptyAction?: ReactNode;
   minWidth?: string;
+  /** Opt in when columns have explicit widths and long identifiers must not resize them. */
+  tableLayout?: 'auto' | 'fixed';
   /** True while the first fetch is in flight. Replaces the table, not the header. */
   loading?: boolean;
   /** A failed fetch. Rendered instead of an empty state, which means the opposite. */
@@ -85,6 +87,7 @@ export function ResourceTable<T extends { id: string }>({
   filteredEmptyMessage = 'No matching results.',
   emptyAction,
   minWidth = 'min-w-[820px]',
+  tableLayout = 'auto',
   loading = false,
   error,
   onRetry,
@@ -255,7 +258,13 @@ export function ResourceTable<T extends { id: string }>({
         ) : (
           <div className="overflow-hidden rounded-xl border border-border bg-card">
             <div className="overflow-x-auto">
-              <table className={cn('w-full text-sm', secondary.length ? 'min-w-0' : minWidth)}>
+              <table
+                className={cn(
+                  'w-full text-sm',
+                  secondary.length ? 'min-w-0' : minWidth,
+                  tableLayout === 'fixed' && 'table-fixed'
+                )}
+              >
                 <thead>
                   <tr className="border-b border-border text-left">
                     {columns.map((col, index) => {

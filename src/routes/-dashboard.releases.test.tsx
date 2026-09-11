@@ -97,7 +97,7 @@ vi.mock('@/lib/api/queries', async (original) => {
       pages(
         Array.from({ length: fixtures.rowCount }, (_, i) => ({
           ...fixtures.deployment,
-          id: i === 0 ? 'dep-1' : `dep-${i + 1}`,
+          id: i === 0 ? fixtures.deployment.id : `dep-${i + 1}`,
         }))
       ),
     useAppDeployments: () => pages([fixtures.deployment]),
@@ -218,6 +218,8 @@ beforeEach(() => {
   fixtures.appMissing = false;
   fixtures.orphan.deployment_id = '';
   fixtures.build.status = 'failed';
+  fixtures.deployment.id = 'dep-1';
+  fixtures.deployment.image_digest = 'sha256:aaaa';
   Stream.instances = [];
   vi.stubGlobal('EventSource', Stream);
   fixtures.retry.mockReset().mockResolvedValue({ id: 'retry-1' });
@@ -229,6 +231,39 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('Releases hub', () => {
+  it('shortens list identifiers but keeps full IDs and digests searchable and readable in detail', async () => {
+    fixtures.deployment.id = '0123456789abcdef0123456789abcdef';
+    fixtures.deployment.image_digest = `sha256:${'a'.repeat(64)}`;
+    const router = await mount(`/dashboard/deployments?q=${fixtures.deployment.image_digest}`);
+    const row = screen.getByRole('button', { name: /01234567…cdef/ });
+    expect(row).not.toHaveTextContent(fixtures.deployment.image_digest);
+    expect(within(row).getByTitle(fixtures.deployment.id)).toBeInTheDocument();
+    await userEvent.clear(screen.getByRole('searchbox'));
+    await userEvent.type(screen.getByRole('searchbox'), fixtures.deployment.id);
+    await userEvent.click(screen.getByRole('button', { name: /01234567…cdef/ }));
+    expect(router.state.location.search).toMatchObject({ deployment: fixtures.deployment.id });
+    const details = await screen.findByRole('region', { name: 'Release details' });
+    expect(
+      within(details).getByText(fixtures.deployment.id, { selector: 'dd' })
+    ).toBeInTheDocument();
+    expect(
+      within(details).getByText(fixtures.deployment.image_digest, { selector: 'dd' })
+    ).not.toHaveClass('truncate');
+  });
+
+  it('offers actual status values and preserves unrelated URL state when filtering', async () => {
+    const router = await mount('/dashboard/deployments?campaign=handoff#details');
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: 'Status filter' }),
+      'failed'
+    );
+    expect(router.state.location.search).toMatchObject({ status: 'failed', campaign: 'handoff' });
+    expect(router.state.location.hash).toBe('details');
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Status filter' }), '');
+    expect(router.state.location.search.status).toBeUndefined();
+    expect(screen.getByRole('button', { name: /dep-1\b/ })).toBeInTheDocument();
+  });
+
   it('names the active Builds view when filters match nothing', async () => {
     const router = await mount(
       '/dashboard/deployments?view=builds&status=missing&campaign=handoff#builds'
@@ -258,7 +293,9 @@ describe('Releases hub', () => {
 
   it('keeps deployment status and identity primary while preserving compact build facts', async () => {
     await mount();
-    expect(screen.getByRole('columnheader', { name: 'Source size' })).toHaveClass(
+    expect(screen.getAllByRole('columnheader')).toHaveLength(5);
+    expect(screen.getByRole('table')).toHaveClass('table-fixed');
+    expect(screen.getByRole('columnheader', { name: 'Build / source' })).toHaveClass(
       'hidden',
       'md:table-cell'
     );
@@ -307,7 +344,7 @@ describe('Releases hub', () => {
           ? screen.getByRole('button', { name: /build-only/ })
           : kind === 'app release'
             ? screen.getByRole('button', { name: /image aaaa/ })
-            : screen.getByRole('button', { name: /dep-1image/ });
+            : screen.getByRole('button', { name: /dep-1\b/ });
       const select = async () => {
         if (input === 'pointer') await userEvent.click(row);
         else {
@@ -339,19 +376,19 @@ describe('Releases hub', () => {
   ])('distinguishes %s build status in the list and shared detail', async (status, color) => {
     fixtures.build.status = status;
     await mount('/dashboard/deployments');
-    const row = screen.getByRole('button', { name: /dep-1image/ });
-    expect(within(row).getAllByText(status).at(-1)).toHaveStyle({ color });
+    const row = screen.getByRole('button', { name: /dep-1\b/ });
+    expect(within(row).getAllByText(status).at(-1)?.parentElement).toHaveStyle({ color });
     await userEvent.click(row);
     const details = await screen.findByRole('region', { name: 'Release details' });
-    expect(within(details).getAllByText(status).at(-1)).toHaveStyle({ color });
-    expect(within(details).getAllByText('failed')[0]).toHaveStyle({
+    expect(within(details).getAllByText(status).at(-1)?.parentElement).toHaveStyle({ color });
+    expect(within(details).getAllByText('failed')[0].parentElement).toHaveStyle({
       color: 'var(--status-critical)',
     });
   });
   it('resolves joined build evidence even when its record is outside the loaded build page', async () => {
     fixtures.omitBuildFromHistory = true;
     await mount();
-    const row = screen.getByRole('button', { name: /aaaa/ });
+    const row = screen.getByRole('button', { name: /dep-1\b/ });
     expect(row).toHaveTextContent('oom');
     expect(row).toHaveTextContent('42s');
     expect(within(row).getAllByText('failed')).toHaveLength(2);
@@ -359,7 +396,7 @@ describe('Releases hub', () => {
   it('joins deployment rows to their build status, duration, failure and source', async () => {
     await mount();
     expect(screen.getByRole('heading', { name: 'Releases' })).toBeInTheDocument();
-    const row = screen.getByRole('button', { name: /aaaa/ });
+    const row = screen.getByRole('button', { name: /dep-1\b/ });
     expect(row).toHaveTextContent('oom');
     expect(row).toHaveTextContent('42s');
     expect(row).toHaveTextContent('github');
@@ -396,7 +433,7 @@ describe('Releases hub', () => {
 
   it('restores selected detail and section after Back, Forward and a copied URL', async () => {
     const router = await mount('/dashboard/deployments?campaign=handoff#details');
-    await userEvent.click(screen.getByRole('button', { name: /aaaa/ }));
+    await userEvent.click(screen.getByRole('button', { name: /dep-1\b/ }));
     await userEvent.click(screen.getByRole('button', { name: 'Security scans' }));
     expect(await screen.findByText('CVE-2026-1234')).toBeInTheDocument();
     expect(router.state.location.search).toMatchObject({
