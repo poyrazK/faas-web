@@ -196,6 +196,25 @@ describe('New App source flow', () => {
     }
   );
 
+  it('normalizes an incomplete restored review URL and waits for explicit Review after editing or browser Back', async () => {
+    const user = userEvent.setup();
+    const router = await mount('/dashboard/workflows/new?source=empty&step=review');
+    await user.type(await screen.findByLabelText('App name'), 'restored-app');
+    expect(screen.getByLabelText('App name')).toHaveValue('restored-app');
+    expect(router.state.location.search).toMatchObject({ source: 'empty', step: 'configure' });
+    expect(screen.queryByRole('button', { name: 'Create app' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Review' }));
+    expect(await screen.findByRole('button', { name: 'Create app' })).toBeInTheDocument();
+    await act(async () => router.history.back());
+    await user.type(await screen.findByLabelText('App name'), '-edited');
+    expect(screen.getByLabelText('App name')).toHaveValue('restored-app-edited');
+    expect(router.state.location.search.step).toBe('configure');
+    expect(screen.queryByRole('button', { name: 'Create app' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Review' }));
+    expect(await screen.findByRole('button', { name: 'Create app' })).toBeInTheDocument();
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+
   it('selects a catalog template in place and allows returning to choose another source', async () => {
     const user = userEvent.setup();
     const router = await mount();
@@ -304,6 +323,51 @@ describe('New App source flow', () => {
     await user.click(screen.getByRole('link', { name: 'All apps' }));
     expect(window.confirm).toHaveBeenCalledWith('Discard unsaved changes?');
     expect(router.state.location.pathname).toBe('/dashboard/workflows/new');
+  });
+
+  it('retains the uploaded import and scanned plan through a failed submission from another source', async () => {
+    const user = userEvent.setup();
+    let rejectCreate!: (error: Error) => void;
+    mocks.create.mockReturnValueOnce(
+      new Promise((_, reject) => {
+        rejectCreate = reject;
+      })
+    );
+    await mount('/dashboard/workflows/new?source=import');
+    const file = new File(['tarball'], 'repo.tar.gz', { type: 'application/gzip' });
+    await user.upload(screen.getByLabelText('Choose a .tar.gz'), file);
+    await user.type(screen.getByLabelText('Project slug'), 'sample');
+    await user.clear(screen.getByLabelText('Branch'));
+    await user.type(screen.getByLabelText('Branch'), 'feature/import');
+    await user.click(screen.getByRole('button', { name: 'Scan' }));
+    expect(await screen.findByRole('button', { name: 'Apply plan' })).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: /^Empty app/ }));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.type(await screen.findByLabelText('App name'), 'empty-attempt');
+    await user.click(screen.getByRole('button', { name: 'Review' }));
+    await user.click(await screen.findByRole('button', { name: 'Create app' }));
+    expect(
+      await screen.findByText('Track the app and its first deployment from the platform state.')
+    ).toBeVisible();
+    await act(async () => rejectCreate(new Error('Creation unavailable')));
+    expect(await screen.findByRole('button', { name: 'Create app' })).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: 'Back' }));
+    await screen.findByLabelText('App name');
+    await user.click(screen.getByRole('button', { name: 'Back' }));
+    await user.click(await screen.findByRole('button', { name: /^Import/ }));
+    expect(await screen.findByText('repo.tar.gz')).toBeVisible();
+    expect(screen.getByLabelText('Project slug')).toHaveValue('sample');
+    expect(screen.getByLabelText('Branch')).toHaveValue('feature/import');
+    expect(screen.getByRole('button', { name: 'Apply plan' })).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: 'Apply plan' }));
+    expect(await screen.findByRole('link', { name: 'sample-api' })).toBeInTheDocument();
+    expect(mocks.scan).toHaveBeenCalledTimes(1);
+    expect(mocks.apply).toHaveBeenCalledWith({
+      file,
+      slug: 'sample',
+      branch: 'feature/import',
+      planToken: 'scanned-plan-token',
+    });
   });
 
   it.each([

@@ -15,6 +15,9 @@ function NewAppPage() {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
   return (
-    <NewAppWizard search={search} onSearchChange={(next) => void navigate({ search: next })} />
+    <NewAppWizard
+      search={search}
+      onSearchChange={(next, options) => void navigate({ search: next, ...options })}
+    />
   );
 }

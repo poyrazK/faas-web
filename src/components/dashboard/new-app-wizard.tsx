@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useUnsavedGuard } from '@/lib/use-unsaved-guard';
 import { RepoPicker } from '@/components/dashboard/repo-picker';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
@@ -88,7 +88,7 @@ const MEMORY = [128, 256, 512, 1024, 2048];
 
 interface NewAppWizardProps {
   search?: NewAppSearch;
-  onSearchChange?: (search: NewAppSearch) => void;
+  onSearchChange?: (search: NewAppSearch, options?: { replace?: boolean }) => void;
   /** Existing direct template launches remain supported alongside URL search state. */
   templateSlug?: string;
   /** Removes dashboard chrome and keeps onboarding focused on a real Git deployment. */
@@ -202,6 +202,22 @@ export function NewAppWizard({
   // Reloaded URLs restore the source; missing in-memory fields return to the
   // earliest incomplete step instead of exposing an invalid review/create.
   const step = !sourceValid ? 0 : search.step === 'review' && nameValid ? 2 : search.step ? 1 : 0;
+  const normalizedStep = step === 2 ? 'review' : step === 1 ? 'configure' : undefined;
+  const sourcePending =
+    (source === 'template' && catalog.isPending) || (source === 'git' && authLoading);
+  // Replace an incomplete restored step, rather than leaving a review URL
+  // armed to advance as soon as typing makes the missing fields valid.
+  useEffect(() => {
+    if (
+      urlSearch &&
+      onSearchChange &&
+      !submittedSearch &&
+      !sourcePending &&
+      urlSearch.step !== normalizedStep
+    ) {
+      onSearchChange({ ...urlSearch, step: normalizedStep }, { replace: true });
+    }
+  }, [urlSearch, onSearchChange, submittedSearch, sourcePending, normalizedStep]);
   const maxMemoryMb = account?.limits.ram_mb ?? 128;
   const selectedMemoryMb = Math.min(memoryMb, maxMemoryMb);
   const quotaRemaining = appQuotaRemaining(account);
@@ -320,7 +336,7 @@ export function NewAppWizard({
     }
   }
 
-  if (deploying) {
+  function renderCompletion() {
     return (
       <div className="mx-auto flex max-w-2xl flex-col gap-6">
         <PageHeader
@@ -455,7 +471,7 @@ export function NewAppWizard({
     );
   }
 
-  return (
+  const form = (
     <div
       className={cn(
         'mx-auto flex w-full flex-col gap-6',
@@ -896,12 +912,19 @@ export function NewAppWizard({
           </motion.div>
         )}
       </AnimatePresence>
-      {/* Keep an uploaded archive and its scan result when sources change. */}
+    </div>
+  );
+
+  return (
+    <>
+      {deploying ? renderCompletion() : form}
+      {/* Keep the archive and plan mounted through source switches and
+          submission/completion, including a failed attempt from another source. */}
       {!onboarding && (
-        <div hidden={source !== 'import'}>
+        <div hidden={deploying || source !== 'import'} className="mx-auto mt-6 w-full max-w-5xl">
           <ProjectImport initialSlug={search.slug} initialBranch={search.branch} />
         </div>
       )}
-    </div>
+    </>
   );
 }
