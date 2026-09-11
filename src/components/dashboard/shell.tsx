@@ -30,7 +30,7 @@ import {
 import { Tooltip, TooltipProvider } from '@/components/ui/tooltip';
 import { NewAppButton } from './new-app-button';
 import { CommandPalette } from './command-palette';
-import { EASE } from './motion';
+import { DISCLOSURE_CLOSE, DISCLOSURE_OPEN, EASE } from './motion';
 import {
   findNavHub,
   isDisclosureHub,
@@ -183,8 +183,20 @@ function NavDisclosure({
   labelCls: string;
   children: ReactNode;
 }) {
+  const reduce = useReducedMotion();
   const Icon = hub.icon;
   const panelId = `nav-${hub.to.replace(/\W+/g, '-')}`;
+  // The panel clips itself while its height is in motion, and stops once it
+  // has settled — a focus ring on the first or last row is drawn outside the
+  // row's box, and a permanently clipped panel would shave it off.
+  //
+  // Seeded from `open` rather than from `true`: the rail mounts with
+  // `AnimatePresence initial={false}`, so a group that is already open never
+  // animates and never fires the handlers below. Starting clipped would leave
+  // it clipped until its first toggle.
+  const [clip, setClip] = useState(() => !open);
+  const openT = reduce ? { duration: 0 } : DISCLOSURE_OPEN;
+  const closeT = reduce ? { duration: 0 } : DISCLOSURE_CLOSE;
   return (
     <>
       <Tooltip content={hub.label} side="right">
@@ -204,27 +216,43 @@ function NavDisclosure({
           <span aria-hidden={collapsed} className={labelCls}>
             {hub.label}
           </span>
-          <NavArrowDown
+          {/* The chevron rides the panel's own curve and direction rather than
+              a CSS transition of its own, so the two read as one gesture
+              instead of two things that happen to start together. */}
+          <motion.span
             aria-hidden="true"
-            className={cn(
-              'ml-auto h-3.5 w-3.5 shrink-0 transition-transform duration-200 ease-console',
-              labelCls,
-              open ? 'rotate-0' : '-rotate-90'
-            )}
-          />
+            className={cn('ml-auto flex shrink-0', labelCls)}
+            initial={false}
+            animate={{ rotate: open ? 0 : -90 }}
+            transition={open ? openT : closeT}
+          >
+            <NavArrowDown className="h-3.5 w-3.5" />
+          </motion.span>
         </button>
       </Tooltip>
-      {open && (
-        // The guide line is one rule down the whole group, not a tick per row:
-        // it is what makes five indented labels read as one branch instead of
-        // five loose entries.
-        <ul
-          id={panelId}
-          className="relative ml-[18px] flex flex-col gap-0.5 border-l border-border pl-0"
-        >
-          {children}
-        </ul>
-      )}
+      <AnimatePresence initial={false}>
+        {open && (
+          // The guide line is one rule down the whole group, not a tick per
+          // row: it is what makes five indented labels read as one branch
+          // instead of five loose entries.
+          <motion.ul
+            id={panelId}
+            key="panel"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={open ? openT : closeT}
+            onAnimationStart={() => setClip(true)}
+            onAnimationComplete={() => setClip(!open)}
+            className={cn(
+              'relative ml-[18px] flex flex-col gap-0.5 border-l border-border',
+              clip && 'overflow-hidden'
+            )}
+          >
+            {children}
+          </motion.ul>
+        )}
+      </AnimatePresence>
     </>
   );
 }

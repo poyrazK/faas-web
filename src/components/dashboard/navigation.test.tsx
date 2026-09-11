@@ -231,7 +231,12 @@ describe('dashboard navigation foundation', () => {
     expect(within(main).getByRole('link', { name: 'Invocations' })).toBeInTheDocument();
     await userEvent.click(observe);
     expect(observe).toHaveAttribute('aria-expanded', 'false');
-    expect(within(main).queryByRole('link', { name: 'Invocations' })).toBeNull();
+    // The panel collapses on an exit animation, so the rows leave the document
+    // when it finishes rather than on the click. aria-expanded flips at once,
+    // which is what assistive tech reads.
+    await waitFor(() =>
+      expect(within(main).queryByRole('link', { name: 'Invocations' })).toBeNull()
+    );
     // Shutting one group must not shut its neighbours.
     expect(within(main).getByRole('link', { name: 'Storage' })).toBeInTheDocument();
 
@@ -243,7 +248,9 @@ describe('dashboard navigation foundation', () => {
 
     await userEvent.click(observe);
     expect(observe).toHaveAttribute('aria-expanded', 'true');
-    expect(within(main).getByRole('link', { name: 'Invocations' })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(within(main).getByRole('link', { name: 'Invocations' })).toBeInTheDocument()
+    );
     expect(JSON.parse(window.localStorage.getItem('gregale.sidebar.closedGroups') ?? '[]')).toEqual(
       []
     );
