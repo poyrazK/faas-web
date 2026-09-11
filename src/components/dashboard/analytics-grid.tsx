@@ -240,14 +240,21 @@ export function AnalyticsGrid({
   points,
   halfLabel,
   loading = false,
+  picking: pickingProp,
+  onPicking,
 }: {
   points: AnalyticsPoint[];
   halfLabel: string;
   loading?: boolean;
+  /** Controlled by the section header's + when it is passed. */
+  picking?: boolean;
+  onPicking?: (open: boolean) => void;
 }) {
   const reduce = useReducedMotion();
   const [stored, setStored] = useState<string[] | null>(readChosen);
-  const [picking, setPicking] = useState(false);
+  const [ownPicking, setOwnPicking] = useState(false);
+  const picking = pickingProp ?? ownPicking;
+  const setPicking = onPicking ?? setOwnPicking;
   const chosen = stored ?? DEFAULT_IDS;
   const cards = chosenCards(chosen, points, halfLabel);
   const available = availableMetrics(chosen);
@@ -266,7 +273,9 @@ export function AnalyticsGrid({
       commit([...(readChosen() ?? DEFAULT_IDS), id]);
       setPicking(false);
     },
-    [commit]
+    // setPicking is onPicking when the section drives the picker, so it is a
+    // prop and can change — not the stable setState the shorter list assumed.
+    [commit, setPicking]
   );
   const remove = useCallback(
     (id: string) => commit((readChosen() ?? DEFAULT_IDS).filter((entry) => entry !== id)),
@@ -421,20 +430,25 @@ function AnalyticsCard({
     <>
       <div className="flex items-start justify-between gap-2">
         <p className="text-xs text-muted-foreground">{card.label}</p>
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            aria-label={`${card.label} options`}
-            // The card is a drag surface; without this the menu's own pointer
-            // down is read as the start of a gesture and the menu never opens.
-            onPointerDownCapture={(event) => event.stopPropagation()}
-            className="pressable -mr-1 -mt-1 rounded p-1 text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-          >
-            <MoreHoriz aria-hidden="true" className="h-4 w-4" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onSelect={() => onRemove(card.id)}>Remove</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {/* Bubble phase, on a wrapper — never capture, and never on the
+            trigger itself. Radix opens this menu on pointerdown; stopping the
+            event in the capture phase halts it before the target phase, so the
+            trigger's own handler never runs and the menu cannot open. Here the
+            event reaches the trigger first, then stops on its way out, before
+            the card's drag gesture reads it as the start of a drag. */}
+        <span onPointerDown={(event) => event.stopPropagation()}>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              aria-label={`${card.label} options`}
+              className="pressable -mr-1 -mt-1 rounded p-1 text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+            >
+              <MoreHoriz aria-hidden="true" className="h-4 w-4" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => onRemove(card.id)}>Remove</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </span>
       </div>
       <div className="mt-3 flex items-baseline gap-2">
         {loading ? (

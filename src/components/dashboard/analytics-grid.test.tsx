@@ -1,5 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { beforeEach, describe, expect, it } from 'vitest';
 import {
+  AnalyticsGrid,
   availableMetrics,
   buildCard,
   CATALOG,
@@ -98,5 +101,40 @@ describe('buildCard', () => {
 
   it('shows a dash for a latency with no bucket to read', () => {
     expect(buildCard(def('p99'), [], 'x').value).toBe('—');
+  });
+});
+
+describe('the card menu', () => {
+  const points4 = points([1, 2, 3, 4]);
+
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  it('opens and removes the card', async () => {
+    // This is the regression. The trigger opens on pointerdown, and the card
+    // around it is a drag surface, so an earlier version stopped the event in
+    // the capture phase — which halts it before the target phase and stops the
+    // trigger's own handler from ever running. The menu could not open at all.
+    render(<AnalyticsGrid points={points4} halfLabel="x" />);
+    expect(screen.getByText('Latency p95')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Latency p95 options' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Remove' }));
+
+    await waitFor(() => expect(screen.queryByText('Latency p95')).not.toBeInTheDocument());
+    expect(
+      JSON.parse(window.localStorage.getItem('gregale.analytics.order') ?? '[]')
+    ).not.toContain('p95');
+  });
+
+  it('offers a removed metric back in the picker', async () => {
+    render(<AnalyticsGrid points={points4} halfLabel="x" />);
+    await userEvent.click(screen.getByRole('button', { name: 'Latency p95 options' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Remove' }));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add a metric' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Latency p95' }));
+    await waitFor(() => expect(screen.getByText('Latency p95')).toBeInTheDocument());
   });
 });

@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { Refresh } from 'iconoir-react';
+import { Plus, Refresh } from 'iconoir-react';
 import { AppSelect } from '@/components/dashboard/app-select';
 import { PlanGated } from '@/components/dashboard/plan-gated';
-import { Select } from '@/components/ui/field';
 import { errorMessage } from '@/lib/api/errors';
 import { useAppAnalyticsTimeseries } from '@/lib/api/queries';
 import { AnalyticsGrid, type AnalyticsPoint } from './analytics-grid';
+import { RangePicker, rangeHalfLabel, type Range } from './range-picker';
 
 /**
  * Analytics on the overview, scoped to one app.
@@ -20,12 +20,6 @@ import { AnalyticsGrid, type AnalyticsPoint } from './analytics-grid';
  * fact about the plan rather than a failure, so it is said plainly.
  */
 
-const WINDOWS: { value: string; label: string; half: string }[] = [
-  { value: '24h', label: 'Last 24 hours', half: 'the 12 hours before' },
-  { value: '3d', label: 'Last 3 days', half: 'the 36 hours before' },
-  { value: '7d', label: 'Last 7 days', half: 'the 3.5 days before' },
-];
-
 export function AnalyticsSection({
   apps,
   slug,
@@ -35,10 +29,20 @@ export function AnalyticsSection({
   slug: string;
   onSelectApp: (slug: string) => void;
 }) {
-  const [since, setSince] = useState('24h');
-  const window = WINDOWS.find((w) => w.value === since) ?? WINDOWS[0];
-  const series = useAppAnalyticsTimeseries(slug, since);
+  const [range, setRange] = useState<Range>({ kind: 'preset', value: '24h' });
+  const [picking, setPicking] = useState(false);
+  const since = range.kind === 'preset' ? range.value : range.since;
+  const until = range.kind === 'custom' ? range.until : undefined;
+  const series = useAppAnalyticsTimeseries(slug, since, until);
   const points = (series.data?.points ?? []) as AnalyticsPoint[];
+  // The server clamps to what the plan retains. When it does, the control says
+  // what was drawn rather than what was asked for — a button still reading
+  // "Last 14 days" over three days of data is the console lying about its own
+  // chart.
+  const drawn: Range =
+    series.data?.window_clamped && series.data.since
+      ? { kind: 'preset', value: series.data.since }
+      : range;
 
   return (
     <section className="flex flex-col gap-3" aria-labelledby="analytics-heading">
@@ -48,17 +52,15 @@ export function AnalyticsSection({
         </h2>
         <div className="flex flex-wrap items-center gap-2">
           <AppSelect slug={slug} onSelect={onSelectApp} apps={apps} />
-          <Select
-            aria-label="Time window"
-            value={since}
-            onChange={(e) => setSince(e.currentTarget.value)}
+          <RangePicker range={drawn} onChange={setRange} />
+          <button
+            type="button"
+            onClick={() => setPicking(true)}
+            aria-label="Add a metric"
+            className="pressable rounded-md border border-border p-2 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
           >
-            {WINDOWS.map((w) => (
-              <option key={w.value} value={w.value}>
-                {w.label}
-              </option>
-            ))}
-          </Select>
+            <Plus aria-hidden="true" className="h-4 w-4" />
+          </button>
           <button
             type="button"
             onClick={() => void series.refetch()}
@@ -83,13 +85,19 @@ export function AnalyticsSection({
             No requests in this window.
           </p>
         ) : (
-          <AnalyticsGrid points={points} halfLabel={window.half} loading={series.isPending} />
+          <AnalyticsGrid
+            points={points}
+            halfLabel={rangeHalfLabel(drawn)}
+            loading={series.isPending}
+            picking={picking}
+            onPicking={setPicking}
+          />
         )}
       </PlanGated>
 
       {series.data?.window_clamped && (
         <p className="text-xs text-muted-foreground">
-          The window was clamped to the retention this plan keeps.
+          Plan retention capped this to {series.data.since}.
         </p>
       )}
     </section>

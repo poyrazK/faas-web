@@ -3114,13 +3114,16 @@ export function useAppAnalytics(slug: string, since: string, groupBy: AnalyticsG
 }
 
 /** Hourly buckets, zero-filled by the API — a real series, so a line is honest. */
-export function useAppAnalyticsTimeseries(slug: string, since: string) {
+export function useAppAnalyticsTimeseries(slug: string, since: string, until?: string) {
   return useQuery({
-    queryKey: ['apps', slug, 'analytics', 'timeseries', since],
+    queryKey: ['apps', slug, 'analytics', 'timeseries', since, until ?? null],
     queryFn: () =>
       unwrap(
         api.GET('/v1/apps/{slug}/analytics/timeseries', {
-          params: { path: { slug }, query: { since } },
+          // `until` is the exclusive upper bound and defaults to now, so it is
+          // sent only for an explicit range — a preset means "up to now" and
+          // has to keep meaning that as time passes.
+          params: { path: { slug }, query: until ? { since, until } : { since } },
         })
       ),
     enabled: Boolean(slug),
