@@ -543,6 +543,14 @@
   inherits: false;
 }
 
+@layer utilities {
+  /* The page boundary owns route entrances. Do not stack a separate delayed
+     entrance on every card, heading and table inside the same page. */
+  .console-page .animate-item-enter {
+    animation: none;
+  }
+}
+
 @layer components {
   .account-shine {
     position: relative;

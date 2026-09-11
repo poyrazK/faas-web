@@ -217,11 +217,23 @@ describe('dashboard navigation foundation', () => {
         .getAllByRole('link')
         .map((link) => link.textContent)
     ).toEqual(RAIL);
-    await userEvent.click(within(mobile).getByRole('link', { name: 'Postgres' }));
+    await userEvent.click(within(mobile).getByRole('link', { name: 'Analytics' }));
     await waitFor(() =>
       expect(screen.queryByRole('dialog', { name: 'Navigation' })).not.toBeInTheDocument()
     );
-    expect(screen.getByTestId('page')).toHaveTextContent('/dashboard/postgres');
+    expect(screen.getByTestId('page')).toHaveTextContent('/dashboard/analytics');
+  });
+
+  it('marks Analytics as the sole active destination and names its breadcrumb', async () => {
+    await renderShell('/dashboard/analytics');
+    const main = screen.getByRole('navigation', { name: 'Main' });
+    expect(within(main).getByRole('link', { name: 'Analytics' })).toHaveAttribute(
+      'aria-current',
+      'page'
+    );
+    expect(main.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
+    const breadcrumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    expect(within(breadcrumb).getByText('Analytics')).toHaveAttribute('aria-current', 'page');
   });
 
   it('shuts a disclosure, remembers it, and leaves the others open', async () => {
@@ -332,6 +344,7 @@ describe('dashboard navigation foundation', () => {
   });
 
   it('keeps a primary link focused when focusing the collapsed rail expands it', async () => {
+    window.localStorage.setItem('gregale.sidebar.collapsed', '1');
     const router = await renderShell('/dashboard');
     const main = screen.getByRole('navigation', { name: 'Main' });
     await act(async () => within(main).getByRole('link', { name: 'Jobs' }).focus());
@@ -339,6 +352,39 @@ describe('dashboard navigation foundation', () => {
     expect(jobs).toHaveFocus();
     await userEvent.keyboard('{Enter}');
     await waitFor(() => expect(router.state.location.pathname).toBe('/dashboard/jobs'));
+  });
+
+  it('collapses immediately when the toggle is clicked inside a hovered rail', async () => {
+    await renderShell();
+    const toggle = screen.getByRole('button', { name: 'Collapse sidebar' });
+    const rail = toggle.closest('aside')!;
+    await userEvent.hover(rail);
+    await userEvent.click(toggle);
+    expect(rail).toHaveClass('w-16');
+    expect(toggle).toHaveFocus();
+    expect(window.localStorage.getItem('gregale.sidebar.collapsed')).toBe('1');
+  });
+
+  it('honors keyboard collapse while focus is inside the rail', async () => {
+    await renderShell();
+    const main = screen.getByRole('navigation', { name: 'Main' });
+    await act(async () => within(main).getByRole('link', { name: 'Postgres' }).focus());
+    await userEvent.keyboard('{Control>}b{/Control}');
+    expect(main.closest('aside')).toHaveClass('w-16');
+    expect(within(main).getByRole('button', { name: 'Data' })).toHaveFocus();
+    expect(within(main).queryByRole('link', { name: 'Postgres' })).not.toBeInTheDocument();
+  });
+
+  it('keeps disclosure triggers mounted and focused while the compact rail expands', async () => {
+    window.localStorage.setItem('gregale.sidebar.collapsed', '1');
+    await renderShell();
+    const main = screen.getByRole('navigation', { name: 'Main' });
+    const data = within(main).getByRole('button', { name: 'Data' });
+    await act(async () => data.focus());
+    expect(data).toHaveFocus();
+    expect(data).toBe(within(main).getByRole('button', { name: 'Data' }));
+    expect(main.closest('aside')).toHaveClass('w-60');
+    expect(window.localStorage.getItem('gregale.sidebar.collapsed')).toBe('1');
   });
 
   it('preserves search and hash state when the current section is reselected', async () => {
@@ -520,6 +566,7 @@ describe('dashboard navigation foundation', () => {
 
   it.each([
     ['Releases', '/dashboard/deployments'],
+    ['Analytics', '/dashboard/analytics'],
     ['Builds', '/dashboard/builds'],
     ['Data', '/dashboard/storage'],
     ['Observe', '/dashboard/debug'],

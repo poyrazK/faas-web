@@ -173,9 +173,9 @@ export function Swap({ children, id }: { children: ReactNode; id: string | numbe
   return (
     <motion.div
       key={id}
-      initial={reduce ? false : { opacity: 0, x: 6, y: -4 }}
-      animate={{ opacity: 1, x: 0, y: 0 }}
-      transition={{ duration: 0.3, ease: EASE }}
+      initial={reduce ? false : { opacity: 0.65, y: 3 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.16, ease: EASE }}
     >
       {children}
     </motion.div>
