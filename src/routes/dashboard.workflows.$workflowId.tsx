@@ -20,7 +20,7 @@ import {
   useAppDeployments,
   useAppMetrics,
   useBindRepo,
-  useBuilds,
+  useBuildRecords,
   useDeployFromRef,
   useParkApp,
   useWakeApp,
@@ -206,16 +206,23 @@ function FunctionDetailPage() {
       ? ('unavailable' as const)
       : ('ready' as const);
   const metricsPhase = queryPhase({ error: metrics.error, loading: metrics.isPending });
-  const builds = useBuilds({
-    // Build duration is not part of DeploymentResponse. Poll the companion
-    // records alongside deployments while any visible build is unfinished.
-    refetchInterval: (query) => {
-      const items = query.state.data?.items ?? [];
-      return items.some((build) => build.status === 'queued' || build.status === 'running')
-        ? 2_500
-        : false;
-    },
-  });
+  // The deployment history is app-scoped and paged, so resolve build records
+  // for the rows that are actually visible instead of joining against the
+  // account-wide first build page. This keeps older app releases from losing
+  // their timing and avoids fetching another app's build evidence.
+  const deploymentItems = useMemo(
+    () => appDeploymentQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    [appDeploymentQuery.data]
+  );
+  const buildIds = useMemo(
+    () => [
+      ...new Set(
+        deploymentItems.flatMap((deployment) => (deployment.build_id ? [deployment.build_id] : []))
+      ),
+    ],
+    [deploymentItems]
+  );
+  const buildRecords = useBuildRecords(buildIds);
   const buildTimings = useMemo(() => {
     const byDeployment = new Map<
       string,
@@ -226,7 +233,9 @@ function FunctionDetailPage() {
         finishedAt?: string;
       }
     >();
-    for (const build of builds.data?.items ?? []) {
+    for (const result of buildRecords) {
+      const build = result.data;
+      if (!build) continue;
       byDeployment.set(build.deployment_id, {
         durationSeconds: build.duration_seconds,
         enqueuedAt: build.enqueued_at,
@@ -235,14 +244,21 @@ function FunctionDetailPage() {
       });
     }
     return byDeployment;
-  }, [builds.data]);
+  }, [buildRecords]);
+  const buildIdsByDeployment = useMemo(() => {
+    const byDeployment = new Map<string, string>();
+    for (const result of buildRecords) {
+      const build = result.data;
+      if (build) byDeployment.set(build.deployment_id, build.id);
+    }
+    return byDeployment;
+  }, [buildRecords]);
 
   const deployments = useMemo(() => {
-    const deploymentItems = appDeploymentQuery.data?.pages.flatMap((page) => page.items) ?? [];
     const appId = deploymentItems[0]?.app_id;
     const slugById = appId ? new Map([[appId, workflowId]]) : new Map<string, string>();
     return deploymentItems.map((deployment) => toDeployment(deployment, slugById));
-  }, [appDeploymentQuery.data, workflowId]);
+  }, [deploymentItems, workflowId]);
   // Keep a stale loaded page usable while a later page is being fetched, but
   // never turn an initial deployment read failure into an undeployed gate.
   const deploymentError = deployments.length === 0 ? appDeploymentQuery.error : undefined;
@@ -636,11 +652,7 @@ function FunctionDetailPage() {
                     deploymentId={selectedDeploymentId}
                     appSlug={fn.id}
                     timing={buildTimings.get(selectedDeploymentId)}
-                    fallbackBuildId={
-                      builds.data?.items.find(
-                        (build) => build.deployment_id === selectedDeploymentId
-                      )?.id
-                    }
+                    fallbackBuildId={buildIdsByDeployment.get(selectedDeploymentId)}
                     section={releaseSection ?? 'overview'}
                     onSectionChange={(next) =>
                       void navigate({
