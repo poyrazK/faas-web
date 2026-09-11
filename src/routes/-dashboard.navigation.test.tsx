@@ -10,7 +10,6 @@ describe('legacy dashboard bookmarks', () => {
     '/dashboard/jobs',
     '/dashboard/workers',
     '/dashboard/deployments',
-    '/dashboard/builds',
     '/dashboard/domains',
     '/dashboard/edge-rules',
     '/dashboard/storage',
@@ -60,6 +59,7 @@ describe('legacy dashboard bookmarks', () => {
     ['/dashboard/import', '/dashboard/workflows/new?source=import'],
     ['/dashboard/crons', '/dashboard/jobs?section=scheduled'],
     ['/dashboard/triggers', '/dashboard/jobs?section=triggers'],
+    ['/dashboard/builds', '/dashboard/deployments?view=builds'],
   ])('resolves %s through its compatibility redirect', async (entry, destination) => {
     window.localStorage.setItem(
       'gregale.session',

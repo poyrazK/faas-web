@@ -12,8 +12,13 @@ const refetchApps = vi.fn();
 const refetchDeployments = vi.fn();
 
 vi.mock('@tanstack/react-router', () => ({
-  createFileRoute: () => (options: unknown) => options,
+  createFileRoute: () => (options: unknown) => ({
+    ...(options as object),
+    useSearch: () => ({}),
+    useNavigate: () => vi.fn(),
+  }),
   useNavigate: () => vi.fn(),
+  Link: ({ children }: { children: React.ReactNode }) => children,
 }));
 vi.mock('@/lib/api/adapters', () => ({
   slugIndex: () => new Map(),
@@ -31,6 +36,8 @@ vi.mock('@/lib/api/adapters', () => ({
 vi.mock('@/lib/api/queries', () => ({
   useApps: () => useApps() as unknown,
   useBuilds: () => useBuilds() as unknown,
+  useBuildRecords: () => [],
+  useInfiniteBuilds: () => ({ data: { pages: [{ items: [] }] }, isPending: false, error: null }),
   useDeployment: () => useDeployment() as unknown,
   useDeploymentScan: () => useDeploymentScan() as unknown,
   useDeploymentSecretScan: () => useDeploymentSecretScan() as unknown,
@@ -88,7 +95,16 @@ describe('DeploymentsPage pagination retries', () => {
   it('retries the failed next page without refetching loaded data', () => {
     useInfiniteDeployments.mockReturnValue(
       infiniteQuery({
-        items: [{}],
+        items: [
+          {
+            id: 'dep-1',
+            app_id: 'app-1',
+            image_digest: 'sha256:aaaa',
+            kind: 'github',
+            status: 'succeeded',
+            created_at: '2026-09-09T10:00:00Z',
+          },
+        ],
         error: new Error('next page failed'),
         isFetchNextPageError: true,
       })
@@ -105,7 +121,16 @@ describe('DeploymentsPage pagination retries', () => {
   it('retries a failed background refetch without loading an older page', () => {
     useInfiniteDeployments.mockReturnValue(
       infiniteQuery({
-        items: [{}],
+        items: [
+          {
+            id: 'dep-1',
+            app_id: 'app-1',
+            image_digest: 'sha256:aaaa',
+            kind: 'github',
+            status: 'succeeded',
+            created_at: '2026-09-09T10:00:00Z',
+          },
+        ],
         error: new Error('background refresh failed'),
         isRefetchError: true,
       })

@@ -58,7 +58,11 @@ import { TearDownPreviewButton } from '@/components/dashboard/preview-actions';
 import { Swap } from '@/components/dashboard/motion';
 import { RepoPicker } from '@/components/dashboard/repo-picker';
 import { DeploymentProgress } from '@/components/dashboard/deployment-progress';
-import { DeploymentDetailPanel } from '@/components/dashboard/deployment-detail';
+import { ReleaseDetailPanel } from '@/components/dashboard/release-detail';
+import {
+  validateReleasesSearch,
+  type ReleaseSection,
+} from '@/components/dashboard/releases-search';
 import { DeploymentHistoryPanel } from '@/components/dashboard/deployment-history';
 import { ClearObsoleteDeploymentsButton } from '@/components/dashboard/deployment-actions';
 import { Modal } from '@/components/ui/modal';
@@ -129,18 +133,21 @@ export const Route = createFileRoute('/dashboard/workflows/$workflowId')({
   // Tab lives in the URL, so a refresh or a shared link lands on the same one.
   // Optional, so links elsewhere need not pass it and the default tab leaves
   // no query string behind.
-  validateSearch: (search: Record<string, unknown>): { tab?: Tab; deployment?: string } => ({
+  validateSearch: (
+    search: Record<string, unknown>
+  ): { tab?: Tab; deployment?: string; releaseSection?: ReleaseSection } => ({
     ...(TABS.includes(search.tab as Tab) ? { tab: search.tab as Tab } : {}),
     ...(typeof search.deployment === 'string' && search.deployment
       ? { deployment: search.deployment }
       : {}),
+    releaseSection: validateReleasesSearch({ ...search, build: undefined }).releaseSection,
   }),
   component: FunctionDetailPage,
 });
 
 function FunctionDetailPage() {
   const { workflowId } = useParams({ from: '/dashboard/workflows/$workflowId' });
-  const { tab = 'Metrics', deployment: selectedDeploymentId } = Route.useSearch();
+  const { tab = 'Metrics', deployment: selectedDeploymentId, releaseSection } = Route.useSearch();
   const navigate = Route.useNavigate();
   // Replace rather than push, so tab switching does not fill the back stack.
   const setTab = (next: Tab) => navigate({ search: { tab: next }, replace: true });
@@ -589,7 +596,7 @@ function FunctionDetailPage() {
                   onSelect={(id) =>
                     void navigate({
                       search: { tab: 'Deployments', deployment: id },
-                      replace: true,
+                      hash: true,
                     })
                   }
                   actions={<ClearObsoleteDeploymentsButton slug={fn.id} />}
@@ -609,11 +616,24 @@ function FunctionDetailPage() {
                   />
                 </Panel>
                 {selectedDeploymentId && (
-                  <DeploymentDetailPanel
+                  <ReleaseDetailPanel
+                    key={selectedDeploymentId}
                     deploymentId={selectedDeploymentId}
                     appSlug={fn.id}
                     timing={buildTimings.get(selectedDeploymentId)}
-                    onClose={() => void navigate({ search: { tab: 'Deployments' }, replace: true })}
+                    fallbackBuildId={
+                      builds.data?.items.find(
+                        (build) => build.deployment_id === selectedDeploymentId
+                      )?.id
+                    }
+                    section={releaseSection ?? 'overview'}
+                    onSectionChange={(next) =>
+                      void navigate({
+                        search: (current) => ({ ...current, releaseSection: next }),
+                        hash: true,
+                      })
+                    }
+                    onClose={() => void navigate({ search: { tab: 'Deployments' }, hash: true })}
                   />
                 )}
               </>

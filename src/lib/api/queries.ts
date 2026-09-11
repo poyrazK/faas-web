@@ -1,7 +1,9 @@
 import {
   useInfiniteQuery,
   useMutation,
+  useQueries,
   useQuery,
+  queryOptions,
   useQueryClient,
   type QueryClient,
   type QueryFilters,
@@ -566,12 +568,25 @@ export function useAppDiff(slug: string) {
 }
 
 /** One build's record — status, timings, failure class. */
-export function useBuild(id: string) {
-  return useQuery({
+function buildOptions(id: string) {
+  return queryOptions({
     queryKey: ['builds', id],
     queryFn: () => unwrap(api.GET('/v1/builds/{id}', { params: { path: { id } } })),
     enabled: Boolean(id),
+    refetchInterval: (query) =>
+      query.state.data?.status === 'queued' || query.state.data?.status === 'running'
+        ? 2_500
+        : false,
   });
+}
+
+export function useBuild(id: string) {
+  return useQuery(buildOptions(id));
+}
+
+/** Resolve deployment-linked builds outside the independently paged build feed. */
+export function useBuildRecords(ids: string[]) {
+  return useQueries({ queries: [...new Set(ids)].map(buildOptions) });
 }
 
 /** The build's provenance: toolchain versions, digests, source identity. */
@@ -2374,6 +2389,28 @@ export function useBuilds(options?: Options<components['schemas']['BuildListResp
     queryKey: ['builds'],
     queryFn: () => unwrap(api.GET('/v1/builds', {})),
     ...options,
+  });
+}
+
+/** Full build history, including builds without an attached deployment. */
+export function useInfiniteBuilds(limit = 50) {
+  return useInfiniteQuery({
+    queryKey: ['builds', 'history', limit],
+    queryFn: ({ pageParam }) =>
+      unwrap(
+        api.GET('/v1/builds', {
+          params: { query: { limit, ...(pageParam ? { before: pageParam } : {}) } },
+        })
+      ),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.next_before || undefined,
+    retry: retryPolicy,
+    refetchInterval: (query) =>
+      query.state.data?.pages.some((page) =>
+        page.items.some((build) => build.status === 'queued' || build.status === 'running')
+      )
+        ? 2_500
+        : false,
   });
 }
 

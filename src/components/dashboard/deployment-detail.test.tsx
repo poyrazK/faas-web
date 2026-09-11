@@ -9,6 +9,8 @@ const useLogStream = vi.fn();
 vi.mock('@/lib/api/queries', () => ({
   useApp: (slug: string, options: unknown) => useApp(slug, options) as unknown,
   useDeployment: (id: string, options: unknown) => useDeployment(id, options) as unknown,
+  useApps: () => ({ data: [] }),
+  useBuild: () => ({ data: undefined, isPending: false, error: null }),
 }));
 vi.mock('@/lib/api/logs', () => ({
   useLogStream: (source: unknown, connected: boolean) => useLogStream(source, connected) as unknown,
