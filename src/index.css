@@ -204,6 +204,30 @@
   --status-critical: #ff9393;
 }
 
+/* Foil is a silver material in either polarity. Its colour vocabulary stays
+   here; pointer coordinates belong to the individual New App control. */
+:root,
+.console {
+  --foil-ink: #14202e;
+  --foil-body: linear-gradient(135deg, #eee 0%, #dcdcdc 40%, #c9c9c9 72%, #e8e8e8 100%);
+  --foil-white: 255 255 255;
+  --foil-shadow: 30 38 56;
+  --foil-bevel: 60 70 90;
+  --foil-cyan: 0 220 255;
+  --foil-mint: 80 255 190;
+  --foil-lime: 190 255 80;
+  --foil-yellow: 255 230 70;
+  --foil-pink: 255 70 180;
+  --foil-violet: 150 90 255;
+  --foil-blue: 60 120 255;
+  --foil-pearl: 230 238 245;
+  --foil-pearl-shade: 205 217 226;
+  --foil-shine: 226 235 242;
+  --foil-shine-blue: 0 124 255;
+  --foil-shine-pink: 255 0 147;
+  --foil-glare-shade: 205 218 228;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -497,6 +521,233 @@
   syntax: '<angle>';
   initial-value: 0deg;
   inherits: false;
+}
+
+@property --account-shine-angle {
+  syntax: '<angle>';
+  initial-value: 135deg;
+  inherits: false;
+}
+
+@layer components {
+  .account-shine {
+    position: relative;
+  }
+
+  /* A one-pixel reflective rim: the interior stays flat charcoal. */
+  .account-shine::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    padding: 1px;
+    border-radius: inherit;
+    pointer-events: none;
+    background: conic-gradient(
+      from var(--account-shine-angle),
+      var(--border) 0deg,
+      var(--border-secondary) 65deg,
+      color-mix(in oklab, var(--foreground) 70%, transparent) 95deg,
+      color-mix(in oklab, var(--brand) 65%, transparent) 120deg,
+      var(--border) 165deg,
+      var(--border) 360deg
+    );
+    mask:
+      linear-gradient(var(--foreground) 0 0) content-box,
+      linear-gradient(var(--foreground) 0 0);
+    mask-composite: exclude;
+  }
+
+  /* Light travels once on interaction, then rests as a quiet edge. */
+  .account-shine:hover::before,
+  .account-shine:focus-visible::before,
+  .account-shine[data-state='open']::before {
+    animation: account-border-shine 1.2s ease-out both;
+  }
+
+  @keyframes account-border-shine {
+    from {
+      --account-shine-angle: 135deg;
+    }
+    to {
+      --account-shine-angle: 495deg;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .account-shine::before {
+      animation: none !important;
+    }
+  }
+
+  .depth-btn {
+    position: relative;
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    height: 36px;
+    padding: 0 16px;
+    border: none;
+    border-radius: 999px;
+    font-family: var(--font-sans);
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+    cursor: pointer;
+    isolation: isolate;
+    overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+    transition:
+      filter 0.2s ease,
+      box-shadow 0.2s ease;
+  }
+
+  .depth-btn:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 3px;
+  }
+
+  .depth-label {
+    position: relative;
+    /* Keep the dark label above the glare as well as the colour layers. */
+    z-index: 6;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .depth-foil {
+    --pointer-x: 50%;
+    --glare-x: 50%;
+    --glare-y: 50%;
+    --shine-angle: 135deg;
+    color: var(--foil-ink);
+    text-shadow: 0 1px 0 rgb(var(--foil-white) / 0.5);
+    background: var(--foil-body);
+    box-shadow:
+      inset 0 0 0 1px rgb(var(--foil-white) / 0.5),
+      inset 0 1px 1px rgb(var(--foil-white) / 0.7),
+      inset 0 -2px 4px rgb(var(--foil-bevel) / 0.3),
+      0 3px 10px rgb(var(--foil-shadow) / 0.3);
+  }
+
+  .depth-foil:active {
+    filter: brightness(0.96);
+  }
+
+  .depth-foil-l {
+    position: absolute;
+    inset: -48%;
+    z-index: 1;
+    background-repeat: no-repeat;
+    pointer-events: none;
+  }
+
+  .depth-foil-base {
+    background-image: linear-gradient(
+      112deg,
+      transparent 22%,
+      rgb(var(--foil-cyan) / 0.4) 30%,
+      rgb(var(--foil-mint) / 0.34) 36%,
+      rgb(var(--foil-lime) / 0.26) 41%,
+      rgb(var(--foil-yellow) / 0.24) 47%,
+      rgb(var(--foil-pink) / 0.36) 55%,
+      rgb(var(--foil-violet) / 0.36) 63%,
+      rgb(var(--foil-blue) / 0.3) 70%,
+      transparent 80%
+    );
+    background-size: 240% 100%;
+    filter: saturate(1.3) contrast(1.25);
+    animation: depth-foil-drift 7s ease-in-out infinite alternate;
+  }
+
+  .depth-foil-film {
+    background-image:
+      radial-gradient(ellipse at 20% 30%, rgb(var(--foil-pink) / 0.34) 0%, transparent 48%),
+      radial-gradient(ellipse at 70% 20%, rgb(var(--foil-cyan) / 0.34) 0%, transparent 52%),
+      radial-gradient(ellipse at 78% 74%, rgb(var(--foil-mint) / 0.34) 0%, transparent 56%);
+    background-size:
+      150% 150%,
+      160% 160%,
+      145% 145%;
+    filter: blur(0.4px) saturate(1.4);
+    mix-blend-mode: screen;
+    opacity: 0.7;
+    animation: depth-foil-drift 9s ease-in-out infinite alternate-reverse;
+  }
+
+  .depth-foil-pearl {
+    z-index: 2;
+    inset: 0;
+    background: radial-gradient(
+      120% 120% at var(--glare-x) var(--glare-y),
+      rgb(var(--foil-pearl) / 0.6) 0%,
+      rgb(var(--foil-pearl-shade) / 0.2) 26%,
+      transparent 58%
+    );
+    mix-blend-mode: soft-light;
+    opacity: 0.95;
+  }
+
+  .depth-foil-shine {
+    z-index: 4;
+    inset: 0;
+    background-image: linear-gradient(
+      var(--shine-angle),
+      transparent 30%,
+      rgb(var(--foil-shine) / 0.5) 48%,
+      rgb(var(--foil-shine-blue) / 0.1) 58%,
+      rgb(var(--foil-shine-pink) / 0.1) 66%,
+      transparent 82%
+    );
+    background-size: 200% 100%;
+    background-position: var(--pointer-x) center;
+    filter: blur(0.25px);
+    mix-blend-mode: screen;
+    opacity: 0.6;
+  }
+
+  .depth-foil-glare {
+    z-index: 5;
+    inset: 0;
+    background: radial-gradient(
+      circle at var(--glare-x) var(--glare-y),
+      rgb(var(--foil-pearl) / 0.55) 0%,
+      rgb(var(--foil-glare-shade) / 0.16) 10%,
+      transparent 38%
+    );
+    mix-blend-mode: screen;
+    opacity: 0.5;
+  }
+
+  @keyframes depth-foil-drift {
+    from {
+      background-position: 0% center;
+    }
+    to {
+      background-position: 100% center;
+    }
+  }
+
+  @media (width < 640px) {
+    .depth-btn {
+      width: 44px;
+      height: 44px;
+      padding: 0;
+      border-radius: 14px;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .depth-btn,
+    .depth-foil-l {
+      transition: none;
+      animation: none;
+    }
+  }
 }
 
 @layer base {
