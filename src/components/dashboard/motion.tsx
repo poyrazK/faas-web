@@ -19,6 +19,28 @@ export const DURATION = 0.38;
 export const TAP = { scale: 0.97 } as const;
 
 /**
+ * The closing curve — an ease-*in*, the mirror of `EASE`.
+ *
+ * `EASE` is an expo-out: almost all of its travel happens immediately and the
+ * tail is a long settle. That is what an entrance wants, and exactly what a
+ * disappearance does not — run it backwards and the thing crawls away from the
+ * pointer, drawing attention to leaving. Something being dismissed should
+ * commit: slow to let go, then quick to be gone.
+ */
+export const EASE_OUT: [number, number, number, number] = [0.4, 0, 1, 1];
+
+/**
+ * Disclosure timing, split by direction.
+ *
+ * Opening is the longer of the two because it reveals content the eye has to
+ * land on; closing is shorter because nothing needs reading on the way out, and
+ * a slow collapse makes a rail feel gummy when someone is shutting three groups
+ * in a row. Both sit well inside the 400ms ceiling the vocabulary above sets.
+ */
+export const DISCLOSURE_OPEN = { duration: 0.26, ease: EASE } as const;
+export const DISCLOSURE_CLOSE = { duration: 0.17, ease: EASE_OUT } as const;
+
+/**
  * The entrance every staggered child shares.
  *
  * **Only for content whose mount timing the `<Stagger>` controls.** A variant

@@ -59,6 +59,20 @@
   --elevation-1: 0 1px 2px rgb(0 0 0 / 0.24);
   --elevation-2: 0 4px 12px -2px rgb(0 0 0 / 0.34);
   --elevation-3: 0 24px 48px -12px rgb(0 0 0 / 0.5);
+
+  /* The console's reading size.
+     `text-xs` is the console's real body size — 458 uses against 283 of
+     `text-sm` — not the caption size Tailwind's 12px/1.33 default assumes. At
+     that size a resource table is a wall, and the fix is the token rather than
+     458 call sites: the utilities compile to `font-size: var(--text-xs)`, so
+     one definition here moves the whole console and leaves the marketing site
+     (which never carries `.console`) exactly as it was.
+     13px is deliberately a small step. It buys legibility without closing the
+     gap to `text-sm` entirely, and it cannot reflow a fixed-height control the
+     way changing `--text-sm` would. Most of the leverage is in the leading:
+     1.33 is what made dense rows read as a block. */
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: 1.5;
 }
 
 /* --- Light surface (marketing, auth, 404) ---------------------------------
@@ -1084,16 +1098,6 @@
     border-color: color-mix(in oklab, var(--brand) 70%, var(--border-secondary));
   }
 
-  /* A faint phosphor glow behind a readout figure — the instrument-panel
-     accent that DOES survive the odometer: gradient-text (background-clip)
-     cannot paint through the transformed digit strips, which is why the
-     digits went invisible under the earlier sheen. A text-shadow renders
-     with the glyphs wherever they are. */
-  .metric-glow {
-    color: var(--foreground);
-    text-shadow: 0 0 16px color-mix(in oklab, var(--brand-fill) 35%, transparent);
-  }
-
   /* A scroll container with no visible scrollbar — for rails too narrow to
      give one a gutter (wheel, drag, and keyboard scrolling all still work). */
   .scrollbar-none {
@@ -1157,50 +1161,6 @@
       color-mix(in oklab, var(--card) 72%, transparent);
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
-  }
-
-  /* The premium card material, layered over .glass on a SpotlightCard.
-     The edge is light, not a line: a 1px gradient ring (bright at the top
-     where the light hits, a breath of mint pooling at the bottom) drawn by
-     the mask-composite trick, replacing the flat border. The card sits on
-     real elevation and lifts toward the cursor. */
-  .card-lux {
-    border-color: transparent;
-    box-shadow: var(--elevation-1);
-    transition:
-      transform var(--motion-base) var(--motion-ease),
-      box-shadow var(--motion-base) var(--motion-ease);
-  }
-  .card-lux::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    padding: 1px;
-    background: linear-gradient(
-      to bottom,
-      color-mix(in oklab, var(--foreground) 18%, transparent),
-      color-mix(in oklab, var(--foreground) 5%, transparent) 45%,
-      color-mix(in oklab, var(--brand-fill) 12%, transparent)
-    );
-    mask:
-      linear-gradient(#000 0 0) content-box,
-      linear-gradient(#000 0 0);
-    mask-composite: exclude;
-    pointer-events: none;
-  }
-  .card-lux:hover {
-    transform: translateY(-2px);
-    box-shadow:
-      var(--elevation-3),
-      0 14px 44px -20px color-mix(in oklab, var(--brand-fill) 30%, transparent);
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .card-lux,
-    .card-lux:hover {
-      transform: none;
-      transition: none;
-    }
   }
 
   /* Progress-ring sweep: the arc enters from empty on insertion and glides

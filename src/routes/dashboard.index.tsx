@@ -12,10 +12,10 @@ import { FirstRun } from '@/components/dashboard/first-run';
 import { OverviewSearch } from '@/components/dashboard/overview-search';
 import { Magnetic } from '@/components/amicro/magnetic';
 import { PointerGlow } from '@/components/amicro/pointer-glow';
-import { Tilt } from '@/components/amicro/tilt';
 import { WordReveal } from '@/components/amicro/word-reveal';
-import { SpotlightCard } from '@/components/ui/spotlight-card';
 import { LiveDot } from '@/components/ui/live-dot';
+import { AnalyticsSection } from '@/components/dashboard/analytics-section';
+import { useSelectedApp } from '@/components/dashboard/app-select';
 import { WindFlow } from '@/components/dashboard/wind-flow';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Odometer } from '@/components/ui/odometer';
@@ -256,27 +256,35 @@ function StatCard({
   children: React.ReactNode;
 }) {
   return (
-    // A whisper of tilt — the glass leans toward the cursor. Data cards tip,
-    // never flip.
-    <Tilt maxTilt={3} className={className}>
-      <SpotlightCard className="glass card-lux h-full">
-        <div
-          className={cn('flex h-full flex-col p-5', large ? 'min-h-36 gap-3 p-6' : 'gap-2.5')}
-          title={hint}
-        >
-          <p className="label-mono text-muted-foreground">{label}</p>
-          <p
-            className={cn(
-              'metric-glow leading-none font-semibold tracking-tight [font-variant-numeric:tabular-nums]',
-              large ? 'text-5xl' : 'text-2xl'
-            )}
-          >
-            {children}
-          </p>
-          {sub != null && <p className="mt-auto pt-1 text-xs text-muted-foreground">{sub}</p>}
-        </div>
-      </SpotlightCard>
-    </Tilt>
+    // Five decorative layers used to sit between the reader and the figure:
+    // a cursor tilt, a cursor spotlight, a glass blur, a gradient border and a
+    // glow on the numerals themselves. Each was defensible alone; together they
+    // made a card that performs expense rather than having it, and a number you
+    // read *through* a glow is a number that is harder to read. What is left is
+    // the surface every other panel in the console already uses — one hairline,
+    // one fill — so the figure is the only thing on it competing for attention.
+    <div
+      className={cn(
+        'animate-item-enter flex h-full flex-col rounded-xl border border-border bg-card p-5',
+        large && 'min-h-36',
+        className
+      )}
+      title={hint}
+    >
+      <p className="text-xs text-muted-foreground">{label}</p>
+      {/* 34/26 rather than the old 48/24. A figure at twice its neighbour's
+          size stops being a hierarchy and becomes two unrelated rows; this
+          keeps the six readable as one set while the hero pair still leads. */}
+      <p
+        className={cn(
+          'mt-3 leading-none font-semibold tracking-tight [font-variant-numeric:tabular-nums]',
+          large ? 'text-[34px]' : 'text-[26px]'
+        )}
+      >
+        {children}
+      </p>
+      {sub != null && <p className="mt-auto pt-3 text-xs text-muted-foreground">{sub}</p>}
+    </div>
   );
 }
 
@@ -295,6 +303,7 @@ function OverviewPage() {
   // among observers) and leaves with the page. Real reads on a cadence —
   // the spec has no general event stream to subscribe to instead.
   const instances = useInstances({ refetchInterval: 10_000 });
+  const analyticsApp = useSelectedApp();
   useDeployments(50, { refetchInterval: 10_000 });
   useApps({ refetchInterval: 15_000 });
 
@@ -496,7 +505,7 @@ function OverviewPage() {
             sub={
               metricsDegraded
                 ? 'metrics degraded'
-                : `across ${workflows.length} ${workflows.length === 1 ? 'app' : 'apps'} · last 24 hours`
+                : `Across ${workflows.length} ${workflows.length === 1 ? 'app' : 'apps'}, last 24 hours`
             }
           >
             {metricsDegraded ? UNKNOWN : <Odometer value={requests} format={formatCompact} />}
@@ -509,7 +518,7 @@ function OverviewPage() {
             sub={
               metricsDegraded
                 ? 'metrics degraded'
-                : `≈ ${formatCompact(Math.round((requests * errorPct) / 100))} errored · weighted by traffic`
+                : `${formatCompact(Math.round((requests * errorPct) / 100))} errored, weighted by traffic`
             }
           >
             {metricsDegraded ? (
@@ -524,7 +533,7 @@ function OverviewPage() {
           <StatCard
             label="Wake p95"
             hint="95th-percentile cold-start time across the fleet."
-            sub="cold start · fleet"
+            sub="Cold start, fleet-wide"
           >
             {metricsDegraded || !wakeP95 ? (
               UNKNOWN
@@ -562,8 +571,8 @@ function OverviewPage() {
               usage.isPending || usageFailed
                 ? 'reading usage'
                 : overGbh > 0
-                  ? `${formatMoney(usageData?.overage_cents)} overage · ${usageData?.month}`
-                  : `of ${formatGbHours(included)} · ${usageData?.month}`
+                  ? `${formatMoney(usageData?.overage_cents)} overage this period`
+                  : `of ${formatGbHours(included)} this period`
             }
           >
             {usage.isPending ? (
@@ -581,7 +590,7 @@ function OverviewPage() {
           <StatCard
             label="CPU"
             hint="CPU-hours consumed this billing period. Measured, not billed."
-            sub="this period · measured, not billed"
+            sub="Measured this period, not billed"
           >
             {usage.isPending ? (
               <Skeleton className="h-6 w-16" />
@@ -613,6 +622,18 @@ function OverviewPage() {
             <ArrowRight className="h-3 w-3" />
           </Link>
         </div>
+
+        {/* Scoped to one app because the series is: the platform has no
+            account-level rollup of `/analytics/timeseries`, and summing apps
+            with different retention would thin out at the earlier end while
+            looking like a total. */}
+        {analyticsApp.slug && (
+          <AnalyticsSection
+            apps={analyticsApp.apps}
+            slug={analyticsApp.slug}
+            onSelectApp={analyticsApp.select}
+          />
+        )}
       </section>
     </div>
   );

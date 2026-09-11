@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'motion/react';
 import {
@@ -6,6 +6,8 @@ import {
   CloudXmark,
   LogOut,
   Menu,
+  NavArrowDown,
+  Search,
   SidebarCollapse,
   SidebarExpand,
   Settings,
@@ -27,27 +29,254 @@ import {
 import { Tooltip, TooltipProvider } from '@/components/ui/tooltip';
 import { NewAppButton } from './new-app-button';
 import { CommandPalette } from './command-palette';
-import { EASE } from './motion';
-import { findNavHub, matchesNavPath, NAV_GROUPS, SECTION_LABELS } from './nav-config';
+import { DISCLOSURE_CLOSE, DISCLOSURE_OPEN, EASE } from './motion';
+import {
+  findNavHub,
+  isDisclosureHub,
+  matchesNavPath,
+  NAV_GROUPS,
+  type NavHub,
+  type NavItem,
+  SECTION_LABELS,
+  sidebarSectionsFor,
+} from './nav-config';
 import { DashboardSecondaryNavigation } from './secondary-navigation';
 import { recordVisit } from '@/lib/recents';
 import { cn } from '@/lib/utils';
 import { useFocusTrap } from '@/lib/use-focus-trap';
 
 const COLLAPSE_KEY = 'gregale.sidebar.collapsed';
+const OPEN_GROUPS_KEY = 'gregale.sidebar.closedGroups';
+
+/**
+ * Which disclosures the reader has shut.
+ *
+ * Stored as the closed set, not the open one, so open stays the default even
+ * after a hub is added — an unknown hub is open because nobody has closed it.
+ */
+function readClosedGroups(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(OPEN_GROUPS_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : [];
+  } catch {
+    return [];
+  }
+}
 
 function readCollapsed(): boolean {
-  // Collapsed is the default: the rail expands on hover, and pinning it
-  // open (⌘B) is the stored exception.
-  if (typeof window === 'undefined') return true;
-  return window.localStorage.getItem(COLLAPSE_KEY) !== '0';
+  // Expanded is the default, and collapsing (⌘B) is the stored exception.
+  //
+  // It was the other way round, which worked when the rail was a flat list of
+  // twenty-six icons: dense enough to aim at, and the labels were a hover away.
+  // Against hubs-plus-sections it stops working — the second level cannot fit
+  // in 40px, so the default state became ten unlabelled glyphs and a long
+  // emptiness under them, and every destination cost a hover before it could
+  // even be read. A console this wide is scanned far more often than it is
+  // aimed at; the rail should answer "what is here" without being asked.
+  if (typeof window === 'undefined') return false;
+  return window.localStorage.getItem(COLLAPSE_KEY) === '1';
+}
+
+/**
+ * One navigable row of the rail, at either level.
+ *
+ * Hub and section share an implementation so they can never drift in padding,
+ * focus ring or active treatment — only indent, weight and colour separate
+ * them, which is exactly the difference a reader should see.
+ */
+function NavRow({
+  item,
+  nested = false,
+  collapsed = false,
+  labelCls,
+  reduce,
+  onNavigate,
+  pathname,
+  hash,
+  current,
+}: {
+  item: NavItem;
+  nested?: boolean;
+  collapsed?: boolean;
+  labelCls: string;
+  reduce: boolean | null;
+  onNavigate?: () => void;
+  pathname: string;
+  hash: string;
+  current: boolean;
+}) {
+  const { to, label, icon: Icon, exact } = item;
+  const onThisPath = matchesNavPath(pathname, { to, exact: true });
+  const link = (
+    <Link
+      to={to}
+      search={onThisPath ? true : undefined}
+      hash={onThisPath ? hash : undefined}
+      activeOptions={{ exact: exact ?? false, includeSearch: false }}
+      onClick={onNavigate}
+      // Collapsed, the label span is opacity-0 — the accessible name must
+      // survive on the link itself, and the visual label moves into a tooltip
+      // (title="" is mouse-only).
+      aria-label={collapsed ? label : undefined}
+      aria-current={current ? 'page' : undefined}
+      className={cn(
+        'pressable relative isolate flex items-center rounded-md py-1.5 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
+        // The nested row trades its icon for indent: a second column of glyphs
+        // reads as ten more destinations rather than as detail under one.
+        nested ? 'gap-2.5 py-1 pl-7 pr-2.5' : 'gap-2.5 px-2.5',
+        current ? 'text-brand' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+        current && reduce && 'bg-brand/10 ring-1 ring-inset ring-brand/15'
+      )}
+    >
+      <>
+        {current && !reduce && (
+          <motion.span
+            aria-hidden="true"
+            layoutId="sidebar-active"
+            className="absolute inset-0 -z-10 rounded-md bg-brand/10 ring-1 ring-inset ring-brand/15"
+            transition={{ type: 'spring', stiffness: 500, damping: 40 }}
+          />
+        )}
+        {!nested && (
+          <Icon
+            aria-hidden="true"
+            className={cn(
+              'h-4 w-4 shrink-0 transition-colors duration-150',
+              current ? 'text-brand' : item.sidebarIconClassName
+            )}
+          />
+        )}
+        <span aria-hidden={collapsed} className={labelCls}>
+          {label}
+        </span>
+      </>
+    </Link>
+  );
+  // Keep the same link mounted while focus expands the rail.
+  return nested ? (
+    link
+  ) : (
+    <Tooltip content={label} side="right">
+      {link}
+    </Tooltip>
+  );
+}
+
+/**
+ * A hub that owns sections is a disclosure, not a destination.
+ *
+ * Its landing page rides along as the group's first child ("Overview"), which
+ * is what lets the parent be a button: two links to one URL would be two
+ * `aria-current="page"` rows, because the router spreads that attribute onto
+ * every active link last and unconditionally.
+ */
+function NavDisclosure({
+  hub,
+  open,
+  onToggle,
+  onBranch,
+  collapsed,
+  labelCls,
+  children,
+}: {
+  hub: NavHub;
+  open: boolean;
+  onToggle: () => void;
+  onBranch: boolean;
+  collapsed: boolean;
+  labelCls: string;
+  children: ReactNode;
+}) {
+  const reduce = useReducedMotion();
+  const Icon = hub.icon;
+  const panelId = `nav-${hub.to.replace(/\W+/g, '-')}`;
+  // The panel clips itself while its height is in motion, and stops once it
+  // has settled — a focus ring on the first or last row is drawn outside the
+  // row's box, and a permanently clipped panel would shave it off.
+  //
+  // Seeded from `open` rather than from `true`: the rail mounts with
+  // `AnimatePresence initial={false}`, so a group that is already open never
+  // animates and never fires the handlers below. Starting clipped would leave
+  // it clipped until its first toggle.
+  const [clip, setClip] = useState(() => !open);
+  const openT = reduce ? { duration: 0 } : DISCLOSURE_OPEN;
+  const closeT = reduce ? { duration: 0 } : DISCLOSURE_CLOSE;
+  return (
+    <>
+      <Tooltip content={hub.label} side="right">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={open}
+          aria-controls={panelId}
+          aria-label={collapsed ? hub.label : undefined}
+          className={cn(
+            'pressable flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
+            'text-muted-foreground hover:bg-muted hover:text-foreground',
+            onBranch && 'text-foreground'
+          )}
+        >
+          <Icon
+            aria-hidden="true"
+            className={cn(
+              'h-4 w-4 shrink-0 transition-colors duration-150',
+              onBranch ? 'text-brand' : hub.sidebarIconClassName
+            )}
+          />
+          <span aria-hidden={collapsed} className={labelCls}>
+            {hub.label}
+          </span>
+          {/* The chevron rides the panel's own curve and direction rather than
+              a CSS transition of its own, so the two read as one gesture
+              instead of two things that happen to start together. */}
+          <motion.span
+            aria-hidden="true"
+            className={cn('ml-auto flex shrink-0', labelCls)}
+            initial={false}
+            animate={{ rotate: open ? 0 : -90 }}
+            transition={open ? openT : closeT}
+          >
+            <NavArrowDown className="h-3.5 w-3.5" />
+          </motion.span>
+        </button>
+      </Tooltip>
+      <AnimatePresence initial={false}>
+        {open && (
+          // The guide line is one rule down the whole group, not a tick per
+          // row: it is what makes five indented labels read as one branch
+          // instead of five loose entries.
+          <motion.ul
+            id={panelId}
+            key="panel"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={open ? openT : closeT}
+            onAnimationStart={() => setClip(true)}
+            onAnimationComplete={() => setClip(!open)}
+            className={cn(
+              'relative ml-[18px] flex flex-col gap-0.5 border-l border-border',
+              clip && 'overflow-hidden'
+            )}
+          >
+            {children}
+          </motion.ul>
+        )}
+      </AnimatePresence>
+    </>
+  );
 }
 
 function SidebarBody({
   id,
   onNavigate,
+  onOpenSearch,
   collapsed = false,
 }: {
+  /** Opens the command palette; the rail's search field is its front door. */
+  onOpenSearch?: () => void;
   /** Namespaces the shared active pill — the desktop rail and the mobile
    * drawer each get their own, so one never tries to fly to the other. */
   id: string;
@@ -57,6 +286,20 @@ function SidebarBody({
   const reduce = useReducedMotion();
   const { pathname, hash } = useRouterState({ select: (s) => s.location });
   const currentHub = findNavHub(pathname);
+  const [closedGroups, setClosedGroups] = useState<string[]>(readClosedGroups);
+  const toggleGroup = useCallback((key: string) => {
+    setClosedGroups((previous) => {
+      const next = previous.includes(key)
+        ? previous.filter((entry) => entry !== key)
+        : [...previous, key];
+      try {
+        window.localStorage.setItem(OPEN_GROUPS_KEY, JSON.stringify(next));
+      } catch {
+        // Storage unavailable — the rail still opens and shuts for this visit.
+      }
+      return next;
+    });
+  }, []);
   // Everything below shares one rule: geometry is constant between the two
   // widths. Icons never change alignment, headings never unmount, rows never
   // re-pad — only the rail's width moves, and text fades in place. That is
@@ -92,9 +335,34 @@ function SidebarBody({
         />
       </Link>
 
+      {/* The rail's own way in. The palette is the real search, so this is a
+          button wearing a field's clothes rather than a second input to
+          maintain — and it puts the shortcut where someone looking for search
+          will actually look. */}
+      <button
+        type="button"
+        onClick={onOpenSearch}
+        aria-label="Quick search"
+        className="pressable mt-4 flex h-8 w-full items-center gap-2.5 overflow-hidden rounded-md border border-border px-2.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+      >
+        <Search aria-hidden="true" className="h-4 w-4 shrink-0" />
+        <span aria-hidden={collapsed} className={labelCls}>
+          Quick search
+        </span>
+        <kbd
+          aria-hidden="true"
+          className={cn('ml-auto font-mono text-[11px] text-muted-foreground/70', labelCls)}
+        >
+          ⌘K
+        </kbd>
+      </button>
+
       {/* scrollbar-none: at 40px-wide rows a native scrollbar eats the rail
           and shoves the icons off-center (it did). */}
-      <div className="scrollbar-none mt-6 flex flex-col gap-4 overflow-x-hidden overflow-y-auto">
+      <nav
+        aria-label="Main"
+        className="scrollbar-none mt-4 flex flex-col gap-4 overflow-x-hidden overflow-y-auto"
+      >
         {NAV_GROUPS.map((group, gi) => (
           <div key={group.title ?? `group-${gi}`}>
             {/* One fixed-height slot per group header, whichever face it
@@ -120,68 +388,65 @@ function SidebarBody({
               </div>
             )}
 
-            <nav aria-label={group.title ?? 'Main'} className="flex flex-col gap-0.5">
-              {group.items.map(({ to, label, icon: Icon, exact, sidebarIconClassName }) => {
-                const isActive = currentHub?.to === to;
-                const currentPath = matchesNavPath(pathname, { to, exact: true });
-                const link = (
-                  <Link
-                    key={to}
-                    to={to}
-                    search={currentPath ? true : undefined}
-                    hash={currentPath ? hash : undefined}
-                    activeOptions={{ exact: exact ?? false, includeSearch: false }}
-                    onClick={onNavigate}
-                    // Collapsed, the label span is opacity-0 — the accessible
-                    // name must survive on the link itself, and the visual
-                    // label moves into a tooltip (title="" is mouse-only).
-                    aria-label={collapsed ? label : undefined}
-                    aria-current={isActive ? 'page' : undefined}
-                    className={cn(
-                      'pressable relative isolate flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
-                      isActive
-                        ? 'text-brand'
-                        : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-                      isActive && reduce && 'bg-brand/10 ring-1 ring-inset ring-brand/15'
-                    )}
-                  >
-                    <>
-                      {isActive && !reduce && (
-                        <motion.span
-                          aria-hidden="true"
-                          layoutId="sidebar-active"
-                          className="absolute inset-0 -z-10 rounded-md bg-brand/10 ring-1 ring-inset ring-brand/15"
-                          transition={{
-                            type: 'spring',
-                            stiffness: 500,
-                            damping: 40,
-                          }}
-                        />
-                      )}
-                      <Icon
-                        aria-hidden="true"
-                        className={cn(
-                          'h-4 w-4 shrink-0 transition-colors duration-150',
-                          isActive ? 'text-brand' : sidebarIconClassName
-                        )}
+            <ul className="flex flex-col gap-0.5">
+              {group.items.map((hub) => {
+                // Collapsed, the rail is 40px of icons — there is no room for a
+                // second level, and the hub tooltip is the whole affordance.
+                const disclosure = !collapsed && isDisclosureHub(hub);
+                const onBranch = currentHub?.to === hub.to;
+                if (!disclosure) {
+                  return (
+                    <li key={hub.to}>
+                      <NavRow
+                        item={hub}
+                        collapsed={collapsed}
+                        labelCls={labelCls}
+                        reduce={reduce}
+                        onNavigate={onNavigate}
+                        pathname={pathname}
+                        hash={hash}
+                        current={onBranch}
                       />
-                      <span aria-hidden={collapsed} className={labelCls}>
-                        {label}
-                      </span>
-                    </>
-                  </Link>
-                );
-                // Keep the same link mounted while focus expands the rail.
+                    </li>
+                  );
+                }
+                const sections = sidebarSectionsFor(hub);
+                // Open unless shut: a hub nobody has closed is a hub whose
+                // contents should be readable without being asked for.
+                const open = !closedGroups.includes(hub.to);
                 return (
-                  <Tooltip key={to} content={label} side="right">
-                    {link}
-                  </Tooltip>
+                  <li key={hub.to}>
+                    <NavDisclosure
+                      hub={hub}
+                      open={open}
+                      onToggle={() => toggleGroup(hub.to)}
+                      onBranch={onBranch}
+                      collapsed={collapsed}
+                      labelCls={labelCls}
+                    >
+                      {sections.map((section) => (
+                        <li key={`${section.to}-${section.label}`}>
+                          <NavRow
+                            item={section}
+                            nested
+                            collapsed={collapsed}
+                            labelCls={labelCls}
+                            reduce={reduce}
+                            onNavigate={onNavigate}
+                            pathname={pathname}
+                            hash={hash}
+                            current={matchesNavPath(pathname, section)}
+                          />
+                        </li>
+                      ))}
+                    </NavDisclosure>
+                  </li>
                 );
               })}
-            </nav>
+            </ul>
           </div>
         ))}
-      </div>
+      </nav>
     </LayoutGroup>
   );
 }
@@ -568,7 +833,11 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                 collapsed && !railCollapsed && 'shadow-elevation-3'
               )}
             >
-              <SidebarBody id="desktop" collapsed={railCollapsed} />
+              <SidebarBody
+                id="desktop"
+                collapsed={railCollapsed}
+                onOpenSearch={() => setPaletteOpen(true)}
+              />
 
               {/* Identity and sign-out live in the top bar's account menu, so the
             sidebar footer holds only the collapse toggle. */}
@@ -642,7 +911,11 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                   >
                     <Xmark className="h-4 w-4" />
                   </button>
-                  <SidebarBody id="mobile" onNavigate={() => setMobileOpen(false)} />
+                  <SidebarBody
+                    id="mobile"
+                    onNavigate={() => setMobileOpen(false)}
+                    onOpenSearch={() => setPaletteOpen(true)}
+                  />
                 </motion.aside>
               )}
             </AnimatePresence>

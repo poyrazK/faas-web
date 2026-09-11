@@ -1,5 +1,11 @@
 import { Link, useRouterState } from '@tanstack/react-router';
-import { APP_SECTIONS, findNavHub, matchesNavPath, type NavItem } from './nav-config';
+import {
+  APP_SECTIONS,
+  findNavHub,
+  matchesNavPath,
+  type NavItem,
+  sidebarSectionsFor,
+} from './nav-config';
 import { validateSettingsSearch } from './settings-search';
 
 /** Route navigation uses native links: Tab/Enter, new tabs and history all work. */
@@ -56,9 +62,17 @@ export function DashboardSecondaryNavigation() {
   // App detail already has scoped URL tabs, and New app owns its own flow.
   const showAppSections =
     hub.label === 'Apps' && !pathname.replace(/\/$/, '').startsWith('/dashboard/workflows/');
+  // A hub whose sections are nested rows in the rail must not restate them as
+  // a tab strip: two controls for one choice, one of which silently scrolls
+  // away. Settings keeps its strip — its eight `?section=` panels are the
+  // page's own tabs and deliberately stay out of the rail.
+  const showHubSections = sidebarSectionsFor(hub).length === 0;
+  if (!showHubSections && !showAppSections) return null;
   return (
     <div className="flex min-w-0 flex-col gap-3">
-      <SecondaryNavigation label={`${hub.label} sections`} items={hub.sections} />
+      {showHubSections && (
+        <SecondaryNavigation label={`${hub.label} sections`} items={hub.sections} />
+      )}
       {showAppSections && (
         <details open={appSection} className="min-w-0">
           <summary className="pressable w-fit cursor-pointer rounded-md px-3 py-1 text-xs text-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand">

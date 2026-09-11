@@ -266,7 +266,9 @@ describe('Debugger investigation navigation', () => {
     expect(fixtures.calls.every((slug) => slug === 'beta')).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-    fireEvent.change(screen.getByLabelText('Select an app'), { target: { value: 'alpha' } });
+    // The app picker is a listbox, not a native <select>: open it and choose.
+    await userEvent.click(screen.getByLabelText('Select an app'));
+    await userEvent.click(await screen.findByRole('option', { name: 'alpha' }));
     await waitFor(() =>
       expect(router.state.location.search).toMatchObject({ app: 'alpha', keep: 'yes' })
     );
@@ -277,7 +279,8 @@ describe('Debugger investigation navigation', () => {
   it('does not silently investigate another app when the linked app is missing', async () => {
     await mount('/dashboard/debug?app=deleted&request=failed');
     expect(screen.getByText(/selected app is unavailable/i)).toBeInTheDocument();
-    expect(screen.getByLabelText('Select an app')).toHaveValue('deleted');
+    // A trigger carries its value as its label, not as a form value.
+    expect(screen.getByLabelText('Select an app')).toHaveTextContent('deleted');
     expect(fixtures.calls).toEqual([]);
   });
 
