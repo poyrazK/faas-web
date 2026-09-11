@@ -45,7 +45,7 @@ export function AnalyticsSection({
   const [picking, setPicking] = useState(false);
   const since = range.kind === 'preset' ? range.value : range.since;
   const until = range.kind === 'custom' ? range.until : undefined;
-  const series = useAppAnalyticsTimeseries(slug, since, until);
+  const series = useAppAnalyticsTimeseries(slug, since, { until });
   // Free has no hourly series (`DebugTelemetryEnabled`), but it does have the
   // account rollup — same metrics, no history. So the gate costs the charts and
   // the deltas, not the section. The Overview already holds this query, so the

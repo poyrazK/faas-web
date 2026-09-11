@@ -36,7 +36,7 @@ const pick = <T>(xs: readonly T[]): T => xs[int(0, xs.length - 1)];
 const hex = (n: number) => Array.from({ length: n }, () => int(0, 15).toString(16)).join('');
 export const id = () => hex(32);
 
-/** Fixed "now" so relative timestamps stay stable across requests. */
+/** Shared startup time keeps seeded fixture ages relative to the running mock server. */
 export const NOW = Date.now();
 const H = 3_600_000;
 const D = 24 * H;
