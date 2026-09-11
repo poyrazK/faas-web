@@ -3199,18 +3199,69 @@ route('GET', '/v1/usage/storage', () => ({ items: db.storage }));
 route('GET', '/v1/invoices', () => ({ items: db.invoices, next_before: null }));
 route('GET', '/v1/billing/portal', () => db.billingPortal);
 
-route('GET', '/v1/orgs', () => ({ orgs: db.orgs }));
-route('GET', '/v1/orgs/{slug}/members', () => ({ members: db.members }));
-route('GET', '/v1/orgs/{slug}/invitations', () => ({ invitations: db.invitations }));
-route('POST', '/v1/orgs/{slug}/members', ({ params, body }) => {
-  const org = db.orgs.find((o) => o.slug === params.slug);
+const orgMembers = new Map(
+  db.orgs.map((org) => [
+    org.slug,
+    db.members
+      .filter((member) => !org.personal || member.role === 'owner')
+      .map((member) => ({ ...member })),
+  ])
+);
+function mockOrg(slug: string) {
+  const org = db.orgs.find((org) => org.slug === slug);
   if (!org) throw new Problem(404, 'org_not_found');
+  return org;
+}
+function mockOrgMembers(slug: string) {
+  mockOrg(slug);
+  return orgMembers.get(slug) ?? [];
+}
+function requireOrgRole(slug: string, roles: string[], mutable = false) {
+  const org = mockOrg(slug);
+  if (mutable && org.personal) throw new Problem(409, 'org_personal_immutable');
+  const role = mockOrgMembers(slug).find((member) => member.email === db.account.email)?.role;
+  if (!role || !roles.includes(role)) throw new Problem(403, 'org_role_forbidden');
+  return org;
+}
+route('GET', '/v1/orgs', () => ({
+  orgs: db.orgs
+    .filter((org) => org.status !== 'deleted_pending')
+    .sort((a, b) => a.slug.localeCompare(b.slug)),
+}));
+route('POST', '/v1/orgs', ({ body }) => {
+  const slug = String(body.slug ?? '');
+  const name = String(body.name ?? '').trim();
+  if (!/^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/.test(slug)) throw new Problem(422, 'org_slug_invalid');
+  if (!name || name.length > 256) throw new Problem(400, 'validation_failed');
+  if (db.orgs.some((org) => org.slug === slug)) throw new Problem(409, 'org_slug_taken');
+  const org: (typeof db.orgs)[number] = {
+    id: db.id(),
+    slug,
+    name,
+    personal: false,
+    plan: 'free',
+    status: 'active',
+    created_at: db.iso(0),
+    updated_at: db.iso(0),
+  };
+  db.orgs.push(org);
+  orgMembers.set(slug, [
+    { ...db.members[0], email: db.account.email, role: 'owner', joined_at: db.iso(0) },
+  ]);
+  return status(201, org);
+});
+route('GET', '/v1/orgs/{slug}/members', ({ params }) => ({ members: mockOrgMembers(params.slug) }));
+route('GET', '/v1/orgs/{slug}/invitations', ({ params }) => ({
+  invitations: db.invitations.filter((invitation) => invitation.org_slug === params.slug),
+}));
+route('POST', '/v1/orgs/{slug}/members', ({ params, body }) => {
+  const org = requireOrgRole(params.slug, ['owner', 'admin'], true);
   const email = String(body.email ?? '')
     .trim()
     .toLowerCase();
   if (!email.includes('@'))
     throw new Problem(400, 'invalid_email', 'That does not look like an email address.');
-  if (db.members.some((m) => m.email === email))
+  if (mockOrgMembers(params.slug).some((m) => m.email === email))
     throw new Problem(409, 'already_member', `${email} is already a member.`);
   const inv: (typeof db.invitations)[number] = {
     id: db.id(),
@@ -3227,7 +3278,8 @@ route('POST', '/v1/orgs/{slug}/members', ({ params, body }) => {
   return status(201, { ...inv, token: `inv_${db.id()}` });
 });
 route('PATCH', '/v1/orgs/{slug}/members/{user_id}', ({ params, body }) => {
-  const m = db.members.find((x) => x.account_id === params.user_id);
+  requireOrgRole(params.slug, ['owner']);
+  const m = mockOrgMembers(params.slug).find((x) => x.account_id === params.user_id);
   if (!m) throw new Problem(404, 'member_not_found');
   if (m.role === 'owner')
     throw new Problem(409, 'cannot_change_owner_role', 'Transfer ownership instead.');
@@ -3235,15 +3287,18 @@ route('PATCH', '/v1/orgs/{slug}/members/{user_id}', ({ params, body }) => {
   return m;
 });
 route('DELETE', '/v1/orgs/{slug}/members/{user_id}', ({ params }) => {
-  const i = db.members.findIndex((x) => x.account_id === params.user_id);
+  requireOrgRole(params.slug, ['owner']);
+  const members = mockOrgMembers(params.slug);
+  const i = members.findIndex((x) => x.account_id === params.user_id);
   if (i < 0) throw new Problem(404, 'member_not_found');
-  if (db.members[i].role === 'owner')
+  if (members[i].role === 'owner')
     throw new Problem(409, 'cannot_remove_owner', 'Transfer ownership first.');
-  db.members.splice(i, 1);
+  members.splice(i, 1);
   return NO_CONTENT;
 });
 route('DELETE', '/v1/orgs/{slug}/invitations/{token}', ({ params }) => {
-  const inv = db.invitations.find((x) => x.id === params.token);
+  requireOrgRole(params.slug, ['owner', 'admin']);
+  const inv = db.invitations.find((x) => x.id === params.token && x.org_slug === params.slug);
   if (!inv) throw new Problem(404, 'invitation_not_found');
   inv.status = 'revoked';
   return NO_CONTENT;
@@ -3266,38 +3321,49 @@ route('POST', '/v1/apps/{slug}/install/bind', async ({ body }) => ({
 }));
 
 // --- Organisations, org keys, invitations ---
-route('GET', '/v1/orgs/{slug}', ({ params }) => ({
-  id: hex(32),
-  slug: params.slug,
-  name: 'Acme Corp',
-  personal: false,
-  plan: db.account.plan,
-  status: 'active',
-  created_at: db.iso(200 * 24),
-  updated_at: db.iso(2 * 24),
+route('GET', '/v1/orgs/{slug}', ({ params }) => mockOrg(params.slug));
+route('PATCH', '/v1/orgs/{slug}', ({ params, body }) => {
+  const org = requireOrgRole(
+    params.slug,
+    body.plan == null ? ['owner', 'billing'] : ['owner'],
+    true
+  );
+  if (body.name != null) {
+    const name = String(body.name).trim();
+    if (!name || name.length > 256) throw new Problem(400, 'validation_failed');
+    org.name = name;
+  }
+  if (body.plan != null) {
+    if (!['free', 'hobby', 'pro', 'scale'].includes(String(body.plan)))
+      throw new Problem(400, 'validation_failed');
+    org.plan = body.plan as typeof org.plan;
+  }
+  org.updated_at = db.iso(0);
+  return org;
+});
+route('DELETE', '/v1/orgs/{slug}', ({ params }) => {
+  const org = requireOrgRole(params.slug, ['owner'], true);
+  org.status = 'deleted_pending';
+  org.updated_at = db.iso(0);
+  return NO_CONTENT;
+});
+route('GET', '/v1/orgs/{slug}/seat_usage', ({ params }) => ({
+  used: mockOrgMembers(params.slug).length,
+  limit: 5,
+  plan: mockOrg(params.slug).plan,
 }));
-route('PATCH', '/v1/orgs/{slug}', async ({ params, body }) => ({
-  id: hex(32),
-  slug: params.slug,
-  name: String(body.name ?? 'Acme Corp'),
-  personal: false,
-  plan: String(body.plan ?? db.account.plan),
-  status: 'active',
-  created_at: db.iso(200 * 24),
-  updated_at: new Date().toISOString(),
-}));
-route('DELETE', '/v1/orgs/{slug}', () => ({}));
-route('GET', '/v1/orgs/{slug}/seat_usage', () => ({ used: 3, limit: 5, plan: db.account.plan }));
-route('POST', '/v1/orgs/{slug}/transfer_ownership', ({ params }) => ({
-  id: hex(32),
-  slug: params.slug,
-  name: 'Acme Corp',
-  personal: false,
-  plan: db.account.plan,
-  status: 'active',
-  created_at: db.iso(200 * 24),
-  updated_at: new Date().toISOString(),
-}));
+route('POST', '/v1/orgs/{slug}/transfer_ownership', ({ params, body }) => {
+  const org = requireOrgRole(params.slug, ['owner']);
+  const members = mockOrgMembers(params.slug);
+  const target = members.find((member) => member.account_id === body.new_owner_account_id);
+  if (!target) throw new Problem(404, 'not_found');
+  if (target.role === 'owner') throw new Problem(409, 'org_last_owner');
+  const owner = members.find((member) => member.role === 'owner')!;
+  owner.role = 'admin';
+  target.role = 'owner';
+  org.updated_at = db.iso(0);
+  return org;
+});
 const orgKeys: Record<string, unknown>[] = [
   {
     id: hex(32),

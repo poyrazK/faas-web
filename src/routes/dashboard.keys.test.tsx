@@ -25,8 +25,7 @@ vi.mock('@/components/dashboard/resource-table', () => ({
   ResourceTable: () => null,
 }));
 
-const { Route } = await import('./dashboard.keys');
-const KeysPage = (Route as unknown as { component: React.ComponentType }).component;
+const { PersonalKeysBody: KeysPage } = await import('@/components/dashboard/personal-keys');
 
 beforeEach(() => {
   setGraceWindow

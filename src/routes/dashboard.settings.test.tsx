@@ -39,8 +39,7 @@ vi.mock('@/lib/api/queries', () => ({
 }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }));
 
-const { Route } = await import('./dashboard.settings');
-const SettingsPage = (Route as unknown as { component: React.ComponentType }).component;
+const { SettingsPanels } = await import('@/components/dashboard/settings-panels');
 
 beforeEach(() => {
   setEgressExtra
@@ -62,7 +61,7 @@ beforeEach(() => {
 
 describe('settings form trust and validation', () => {
   it('does not turn an empty egress-budget submission into zero', async () => {
-    render(<SettingsPage />);
+    render(<SettingsPanels section="platform-limits" />);
     const extra = screen.getByRole('spinbutton', { name: 'Extra entries' });
     await userEvent.type(extra, '{Enter}');
 
@@ -71,7 +70,7 @@ describe('settings form trust and validation', () => {
   });
 
   it('blocks non-integer and over-limit egress budgets, then supports API retry and success', async () => {
-    render(<SettingsPage />);
+    render(<SettingsPanels section="platform-limits" />);
     const extra = screen.getByRole('spinbutton', { name: 'Extra entries' });
 
     await userEvent.clear(extra);
@@ -91,7 +90,7 @@ describe('settings form trust and validation', () => {
   });
 
   it('labels browser-only reset separately and never calls account deletion', async () => {
-    render(<SettingsPage />);
+    render(<SettingsPanels section="data-and-privacy" />);
     await userEvent.click(screen.getByRole('button', { name: 'Clear browser data and sign out' }));
 
     expect(clearWorkspace).toHaveBeenCalledTimes(1);
@@ -101,7 +100,7 @@ describe('settings form trust and validation', () => {
   });
 
   it('stages real account deletion through the API and leaves restoration available', async () => {
-    render(<SettingsPage />);
+    render(<SettingsPanels section="data-and-privacy" />);
     await userEvent.click(screen.getByRole('button', { name: 'Schedule account deletion' }));
     expect(screen.getByRole('heading', { name: 'Schedule account deletion?' })).toBeInTheDocument();
 
@@ -125,7 +124,7 @@ describe('settings form trust and validation', () => {
       scheduled_at: '2026-09-11T00:00:00Z',
       restore_until: '2026-10-11T00:00:00Z',
     });
-    render(<SettingsPage />);
+    render(<SettingsPanels section="data-and-privacy" />);
     await userEvent.click(screen.getByRole('button', { name: 'Schedule account deletion' }));
     const confirmation = screen.getByRole('textbox', { name: /type owner@example.com/i });
 
@@ -153,7 +152,7 @@ describe('settings form trust and validation', () => {
     const failedRefresh = Promise.reject(new Error('refresh offline'));
     void failedRefresh.catch(() => undefined);
     refreshAccount.mockReset().mockReturnValueOnce(failedRefresh);
-    render(<SettingsPage />);
+    render(<SettingsPanels section="data-and-privacy" />);
     await userEvent.click(screen.getByRole('button', { name: 'Schedule account deletion' }));
     const confirmation = screen.getByRole('textbox', { name: /type owner@example.com/i });
     await userEvent.type(confirmation, 'owner@example.com{Enter}');

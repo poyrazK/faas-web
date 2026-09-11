@@ -1,13 +1,31 @@
 import { Link, useRouterState } from '@tanstack/react-router';
 import { APP_SECTIONS, findNavHub, matchesNavPath, type NavItem } from './nav-config';
+import { validateSettingsSearch } from './settings-search';
 
 /** Route navigation uses native links: Tab/Enter, new tabs and history all work. */
 export function SecondaryNavigation({ label, items }: { label: string; items: NavItem[] }) {
-  const { pathname, hash } = useRouterState({ select: (s) => s.location });
+  const { pathname, hash, search } = useRouterState({ select: (s) => s.location });
   return (
     <nav aria-label={label} className="flex flex-wrap gap-1 border-b border-border pb-1">
       {items.map((item) => {
         const currentPath = matchesNavPath(pathname, { ...item, exact: true });
+        if (item.search) {
+          const active =
+            currentPath &&
+            item.search.section === (validateSettingsSearch(search).section ?? 'general');
+          return (
+            <Link
+              key={`${item.to}-${item.search.section}`}
+              to={item.to}
+              search={(previous) => ({ ...previous, ...item.search })}
+              hash={hash}
+              aria-current={active ? 'page' : undefined}
+              className={`pressable rounded-t-md border-b-2 px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ${active ? 'border-brand text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+            >
+              {item.label}
+            </Link>
+          );
+        }
         return (
           <Link
             key={item.to}

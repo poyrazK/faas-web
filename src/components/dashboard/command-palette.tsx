@@ -43,7 +43,18 @@ function readRecent(): string[] {
     return Array.isArray(parsed)
       ? parsed
           .filter((x): x is string => typeof x === 'string')
-          .map((id) => id.replace(/^nav-app-/, 'nav-/dashboard/'))
+          .map((id) => {
+            const legacy: Record<string, string> = {
+              team: 'members',
+              keys: 'api-keys',
+              account: 'integrations',
+              security: 'security',
+            };
+            const section = legacy[id.replace('nav-/dashboard/', '')];
+            return section
+              ? `nav-/dashboard/settings-${section}`
+              : id.replace(/^nav-app-/, 'nav-/dashboard/');
+          })
       : [];
   } catch {
     return [];
@@ -87,9 +98,9 @@ export function CommandPalette({
   useFocusTrap(dialogRef, open);
 
   const commands = useMemo<Command[]>(() => {
-    const go = (to: string) => () => {
+    const go = (to: string, search?: Record<string, string>) => () => {
       close();
-      navigate({ to });
+      navigate(search ? { to, search } : { to });
     };
 
     return [
@@ -97,11 +108,13 @@ export function CommandPalette({
       // moment it appears in the sidebar.
       ...NAV_ITEMS.map((item) => ({
         // Keep existing recent page commands while giving hub aliases their own IDs.
-        id: `${item.to !== '/dashboard' && item.label !== SECTION_LABELS[item.to.split('/').pop()!] ? 'hub' : 'nav'}-${item.to}`,
+        id: item.search
+          ? `nav-${item.to}-${item.search.section}`
+          : `${item.to !== '/dashboard' && item.label !== SECTION_LABELS[item.to.split('/').pop()!] ? 'hub' : 'nav'}-${item.to}`,
         label: item.label,
         group: 'Go to',
         icon: item.icon,
-        run: go(item.to),
+        run: go(item.to, item.search),
       })),
       {
         id: 'act-new',

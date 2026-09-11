@@ -1,4 +1,5 @@
 import type { ComponentType, SVGProps } from 'react';
+import { SETTINGS_SECTIONS } from './settings-search';
 import {
   Activity,
   Antenna,
@@ -34,6 +35,7 @@ export interface NavItem {
   label: string;
   icon: NavIcon;
   exact?: boolean;
+  search?: Record<string, string>;
 }
 
 export interface NavGroup {
@@ -113,13 +115,21 @@ export const NAV_HUBS: NavHub[] = [
     to: '/dashboard/settings',
     label: 'Settings',
     icon: Settings,
-    sections: [
-      { to: '/dashboard/settings', label: 'Settings', icon: Settings },
-      { to: '/dashboard/keys', label: 'API Keys', icon: Key },
-      { to: '/dashboard/team', label: 'Team', icon: Group },
-      { to: '/dashboard/account', label: 'Account', icon: Github },
-      { to: '/dashboard/security', label: 'Security', icon: ShieldCheck },
-    ],
+    sections: SETTINGS_SECTIONS.map(([section, label]) => ({
+      to: '/dashboard/settings',
+      label,
+      icon:
+        section === 'members'
+          ? Group
+          : section === 'api-keys'
+            ? Key
+            : section === 'integrations'
+              ? Github
+              : section === 'security'
+                ? ShieldCheck
+                : Settings,
+      search: { section },
+    })),
   },
 ];
 
@@ -175,6 +185,12 @@ export function matchesNavPath(pathname: string, item: Pick<NavItem, 'to' | 'exa
 
 /** Shared ownership for primary active states, breadcrumbs and section links. */
 export function findNavHub(pathname: string): NavHub | undefined {
+  if (
+    ['/dashboard/team', '/dashboard/keys', '/dashboard/account', '/dashboard/security'].includes(
+      pathname.replace(/\/$/, '')
+    )
+  )
+    return NAV_HUBS.find((hub) => hub.label === 'Settings');
   const hub = NAV_HUBS.find(
     (item) =>
       matchesNavPath(pathname, item) ||
@@ -196,6 +212,13 @@ export const SECTION_LABELS: Record<string, string> = {
   // was missing entirely).
   ...Object.fromEntries(APP_TABS.map((t) => [t.segment, t.tab])),
   ...Object.fromEntries(
-    NAV_ITEMS.filter((i) => i.to !== '/dashboard').map((i) => [i.to.split('/').pop()!, i.label])
+    NAV_ITEMS.filter((i) => i.to !== '/dashboard' && !i.search).map((i) => [
+      i.to.split('/').pop()!,
+      i.label,
+    ])
   ),
+  team: 'Team',
+  keys: 'API Keys',
+  account: 'Account',
+  security: 'Security',
 };

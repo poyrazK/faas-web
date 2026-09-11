@@ -145,11 +145,14 @@ const GROUPS = [
     hub: 'Settings',
     anchor: '/dashboard/settings',
     links: [
-      ['Settings', '/dashboard/settings'],
-      ['API Keys', '/dashboard/keys'],
-      ['Team', '/dashboard/team'],
-      ['Account', '/dashboard/account'],
-      ['Security', '/dashboard/security'],
+      ['General', '/dashboard/settings?section=general'],
+      ['Organization', '/dashboard/settings?section=organization'],
+      ['Members', '/dashboard/settings?section=members'],
+      ['API keys', '/dashboard/settings?section=api-keys'],
+      ['Security', '/dashboard/settings?section=security'],
+      ['Integrations', '/dashboard/settings?section=integrations'],
+      ['Platform limits', '/dashboard/settings?section=platform-limits'],
+      ['Data and privacy', '/dashboard/settings?section=data-and-privacy'],
     ],
   },
 ];
@@ -193,7 +196,9 @@ describe('dashboard navigation foundation', () => {
         const link = within(secondary).getByRole('link', { name: label });
         expect(link).toHaveAttribute('href', path);
         await user.click(link);
-        await waitFor(() => expect(screen.getByTestId('page').textContent).toBe(path));
+        await waitFor(() =>
+          expect(screen.getByTestId('page').textContent).toBe(path.split('?')[0])
+        );
         expect(
           within(screen.getByRole('navigation', { name: `${hub} sections` })).getByRole('link', {
             name: label,
@@ -313,6 +318,24 @@ describe('dashboard navigation foundation', () => {
     expect(options.slice(0, 2).map((option) => option.textContent)).toEqual(['Builds', 'Logs']);
   });
 
+  it('restores saved Team and Keys commands as canonical Settings destinations', async () => {
+    window.localStorage.setItem(
+      'gregale.palette.recent',
+      JSON.stringify(['nav-/dashboard/team', 'nav-/dashboard/keys'])
+    );
+    const router = await renderShell();
+    await userEvent.keyboard('{Control>}k{/Control}');
+    await screen.findByRole('combobox', { name: 'Search commands' });
+    expect(
+      screen
+        .getAllByRole('option')
+        .slice(0, 2)
+        .map((option) => option.textContent)
+    ).toEqual(['Members', 'API keys']);
+    await userEvent.click(screen.getAllByRole('option')[0]);
+    await waitFor(() => expect(router.state.location.search).toEqual({ section: 'members' }));
+  });
+
   it('keeps overview search results unique while changing between hub and page searches', async () => {
     await renderShell('/dashboard', <OverviewSearch workflows={[app]} />);
     const user = userEvent.setup();
@@ -325,7 +348,7 @@ describe('dashboard navigation foundation', () => {
         .getAllByRole('option')
         .map((option) => option.textContent)
         .filter((text) => text?.endsWith('Page'))
-    ).toEqual(['DataPage']);
+    ).toEqual(['DataPage', 'Data and privacyPage']);
     await user.clear(input);
     await user.type(input, 'Storage');
     expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([

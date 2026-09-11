@@ -39,8 +39,7 @@ vi.mock('@/lib/api/queries', () => ({
   useSetGraceWindow: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 
-const { Route } = await import('@/routes/dashboard.keys');
-const Personal = (Route as unknown as { component: React.ComponentType }).component;
+const { PersonalKeysBody: Personal } = await import('./personal-keys');
 const { OrgKeysPanel } = await import('./org-panels');
 
 beforeEach(() => {

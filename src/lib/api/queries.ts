@@ -144,6 +144,15 @@ export function useBindRepoFor() {
  * Organisations — identity, seats, ownership, org-scoped keys
  * ------------------------------------------------------------------ */
 
+export function useCreateOrg() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: components['schemas']['CreateOrgRequest']) =>
+      unwrap(api.POST('/v1/orgs', { body })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['orgs'] }),
+  });
+}
+
 export function useOrg(slug: string) {
   return useQuery({
     queryKey: ['orgs', slug],
@@ -166,7 +175,13 @@ export function useDeleteOrg() {
   return useMutation({
     mutationFn: (slug: string) =>
       unwrap(api.DELETE('/v1/orgs/{slug}', { params: { path: { slug } } })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['orgs'] }),
+    onSuccess: async (_data, slug) => {
+      qc.setQueryData<components['schemas']['OrgListResponse']>(['orgs'], (data) =>
+        data ? { orgs: data.orgs.filter((org) => org.slug !== slug) } : data
+      );
+      qc.removeQueries({ queryKey: ['orgs', slug] });
+      await qc.invalidateQueries({ queryKey: ['orgs'] });
+    },
   });
 }
 

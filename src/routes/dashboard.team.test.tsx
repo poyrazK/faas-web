@@ -77,8 +77,11 @@ vi.mock('@/components/dashboard/org-panels', () => ({
   OrgKeysPanel: () => null,
 }));
 
-const { Route } = await import('./dashboard.team');
-const TeamPage = (Route as unknown as { component: React.ComponentType }).component;
+const { TeamMembersBody } = await import('@/components/dashboard/team-members');
+const { useOrgs } = await import('@/lib/api/queries');
+function TeamPage({ active = 'acme' }: { active?: string }) {
+  return <TeamMembersBody key={active} active={active} orgs={useOrgs()} />;
+}
 
 beforeEach(() => {
   reduce = true;
@@ -219,15 +222,9 @@ describe('invitation disclosure and one-time evidence', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Invite member' }));
     await userEvent.type(screen.getByRole('textbox', { name: 'Email' }), 'dev@example.com{Enter}');
     await userEvent.click(await screen.findByRole('button', { name: 'Reveal' }));
-    await userEvent.selectOptions(
-      screen.getByRole('combobox', { name: 'Select an organisation' }),
-      'other'
-    );
+    view.rerender(<TeamPage active="other" />);
     expect(view.container.innerHTML).not.toContain('invite-once');
-    await userEvent.selectOptions(
-      screen.getByRole('combobox', { name: 'Select an organisation' }),
-      'acme'
-    );
+    view.rerender(<TeamPage active="acme" />);
     expect(screen.queryByRole('button', { name: 'Reveal' })).not.toBeInTheDocument();
     view.unmount();
     render(<TeamPage />);

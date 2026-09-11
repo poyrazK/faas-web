@@ -76,7 +76,7 @@ export function OverviewSearch({ workflows }: { workflows: Workflow[] }) {
         label: n.label,
         group: 'Page',
         icon: n.icon,
-        go: () => void navigate({ to: n.to }),
+        go: () => void navigate(n.search ? { to: n.to, search: n.search } : { to: n.to }),
       })),
     ],
     [workflows, navigate]
