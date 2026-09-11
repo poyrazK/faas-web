@@ -9,11 +9,13 @@ import {
 } from '@tanstack/react-router';
 import { QueryClient, QueryClientProvider, useMutation } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import userEvent from '@testing-library/user-event';
 import { Route as Debug } from './dashboard.debug';
 import { Route as App } from './dashboard.workflows.$workflowId';
 
 const fixtures = vi.hoisted(() => ({
   requestState: 'ready',
+  requestSample: 'normal',
   regressionState: 'ready',
   calls: [] as string[],
   compare: vi.fn(),
@@ -124,10 +126,21 @@ vi.mock('@/lib/api/queries', async (original) => {
     useDeployment: () => ok(deployments[0]),
     useBuilds: () => ok({ items: [] }),
     useAppMetrics: () => ok(undefined),
-    useDebugRequests: (slug: string) => {
+    useDebugRequests: (slug: string, _since: string, route?: string) => {
       fixtures.calls.push(slug);
+      const requests =
+        fixtures.requestSample === 'route-beyond-page'
+          ? route === '/failed'
+            ? [fixtures.requests[0]]
+            : Array.from({ length: 20 }, (_, i) => ({
+                ...fixtures.requests[1],
+                id: `unrelated-${i}`,
+              }))
+          : fixtures.requestSample === 'other-deployment'
+            ? [fixtures.requests[3]]
+            : fixtures.requests;
       return {
-        ...ok({ since: '1h', requests: fixtures.requests }),
+        ...ok({ since: '1h', requests }),
         isPending: fixtures.requestState === 'loading',
         error: fixtures.requestState === 'error' ? new Error('Telemetry unavailable') : null,
       };
@@ -186,6 +199,7 @@ async function mount(entry = '/dashboard/debug?app=alpha') {
 }
 beforeEach(() => {
   fixtures.requestState = 'ready';
+  fixtures.requestSample = 'normal';
   fixtures.regressionState = 'ready';
   fixtures.calls = [];
   fixtures.compare.mockReset().mockResolvedValue({ routes: [] });
@@ -434,5 +448,178 @@ describe('Debugger investigation navigation', () => {
   it('falls back to Metrics for an invalid app tab while preserving debugger and unrelated parameters', async () => {
     await mount('/dashboard/workflows/alpha?tab=invalid&debugFilter=slow&keep=yes');
     expect(screen.getByRole('tab', { name: 'Metrics' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('restores comparison result text filtering through Back, Forward, and copied URL reload after explicitly rerunning', async () => {
+    fixtures.compare.mockResolvedValue({
+      source: 'dep-old',
+      mirror: 'dep-new',
+      routes: [
+        { route: '/orders', source_p95_ms: 50, mirror_p95_ms: 100 },
+        { route: '/users', source_p95_ms: 20, mirror_p95_ms: 40 },
+      ],
+    });
+    const router = await mount(
+      '/dashboard/debug?app=alpha&debugView=compare&debugSource=dep-old&debugMirror=dep-new&keep=yes#context'
+    );
+    fireEvent.click(screen.getAllByRole('button', { name: 'Compare' }).at(-1)!);
+    expect(await screen.findByText('/orders')).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText('Filter by route…'), {
+      target: { value: 'orders' },
+    });
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject({ debugQuery: 'orders', keep: 'yes' })
+    );
+    expect(router.state.location.hash).toBe('context');
+    expect(screen.queryByText('/users')).not.toBeInTheDocument();
+    await act(async () => router.history.back());
+    expect(await screen.findByText('/users')).toBeInTheDocument();
+    await act(async () => router.history.forward());
+    await waitFor(() => expect(screen.queryByText('/users')).not.toBeInTheDocument());
+    const copiedURL = router.state.location.href;
+    cleanup();
+    await mount(copiedURL);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Compare' }).at(-1)!);
+    expect(await screen.findByText('/orders')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Filter by route…')).toHaveValue('orders');
+    expect(screen.queryByText('/users')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['Compare window', '1h'],
+    ['Deployment A', 'dep-new'],
+    ['Deployment B', 'dep-old'],
+  ])(
+    'keeps the focused %s control connected when its selection changes and removes stale results',
+    async (label, value) => {
+      fixtures.compare.mockResolvedValue({
+        source: 'dep-old',
+        mirror: 'dep-new',
+        routes: [{ route: '/stale', source_p95_ms: 50, mirror_p95_ms: 100 }],
+      });
+      await mount(
+        '/dashboard/debug?app=alpha&debugView=compare&debugSource=dep-old&debugMirror=dep-new'
+      );
+      fireEvent.click(screen.getAllByRole('button', { name: 'Compare' }).at(-1)!);
+      expect(await screen.findByText('/stale')).toBeInTheDocument();
+      const control = screen.getByLabelText(label);
+      control.focus();
+      fireEvent.keyDown(control, { key: 'ArrowDown' });
+      fireEvent.change(control, { target: { value } });
+      await waitFor(() => expect(screen.getByLabelText(label)).toHaveValue(value));
+      expect(control).toHaveFocus();
+      expect(control.isConnected).toBe(true);
+      expect(screen.queryByText('/stale')).not.toBeInTheDocument();
+    }
+  );
+
+  it('keeps keyboard focus while editing the exact route and hides the previous route result', async () => {
+    const user = userEvent.setup();
+    fixtures.compare.mockResolvedValue({
+      source: 'dep-old',
+      mirror: 'dep-new',
+      routes: [{ route: '/stale-route', source_p95_ms: 50, mirror_p95_ms: 100 }],
+    });
+    const router = await mount(
+      '/dashboard/debug?app=alpha&debugView=compare&debugSource=dep-old&debugMirror=dep-new&debugRoute=%2Forders'
+    );
+    fireEvent.click(screen.getAllByRole('button', { name: 'Compare' }).at(-1)!);
+    expect(await screen.findByText('/stale-route')).toBeInTheDocument();
+    const control = screen.getByLabelText('Exact route');
+    control.focus();
+    await user.keyboard('{End}/new');
+    await waitFor(() => expect(router.state.location.search.debugRoute).toBe('/orders/new'));
+    expect(control).toHaveFocus();
+    expect(screen.queryByText('/stale-route')).not.toBeInTheDocument();
+  });
+
+  it('discards errors without replacing the focused controls and ignores late responses for previous parameters', async () => {
+    fixtures.compare.mockRejectedValueOnce(new Error('Old comparison failure'));
+    await mount(
+      '/dashboard/debug?app=alpha&debugView=compare&debugSource=dep-old&debugMirror=dep-new'
+    );
+    fireEvent.click(screen.getAllByRole('button', { name: 'Compare' }).at(-1)!);
+    expect(await screen.findByText('Old comparison failure')).toBeInTheDocument();
+    const control = screen.getByLabelText('Compare window');
+    control.focus();
+    fireEvent.change(control, { target: { value: '1h' } });
+    await waitFor(() =>
+      expect(screen.queryByText('Old comparison failure')).not.toBeInTheDocument()
+    );
+    expect(control).toHaveFocus();
+    let resolve!: (value: unknown) => void;
+    fixtures.compare.mockImplementationOnce(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        })
+    );
+    fireEvent.click(screen.getAllByRole('button', { name: 'Compare' }).at(-1)!);
+    await waitFor(() => expect(resolve).toBeDefined());
+    fireEvent.change(control, { target: { value: '6h' } });
+    await waitFor(() => expect(control).toHaveValue('6h'));
+    await act(async () =>
+      resolve({ routes: [{ route: '/late-old-window', source_p95_ms: 50, mirror_p95_ms: 100 }] })
+    );
+    expect(screen.queryByText('/late-old-window')).not.toBeInTheDocument();
+  });
+
+  it('requests the selected regression route before sampling so unrelated recent traffic cannot hide it', async () => {
+    fixtures.requestSample = 'route-beyond-page';
+    await mount(
+      '/dashboard/debug?app=alpha&debugView=regressions&regression=%5B%22dep-new%22%2C%22%2Ffailed%22%5D'
+    );
+    const detail = screen.getByRole('region', { name: 'Regression details' });
+    expect(within(detail).getByRole('button', { name: /failed.*500/ })).toBeInTheDocument();
+    expect(
+      within(detail).getByText(/up to 20 recent.*exact route.*all deployments/i)
+    ).toBeInTheDocument();
+  });
+
+  it('qualifies affected-request and quick-filter emptiness as bounded samples', async () => {
+    fixtures.requestSample = 'other-deployment';
+    await mount(
+      '/dashboard/debug?app=alpha&debugView=regressions&regression=%5B%22dep-new%22%2C%22%2Ffailed%22%5D'
+    );
+    expect(
+      screen.getByText(/No request rows for this deployment in the loaded route sample/i)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Other matching requests may exist outside this sample/i)
+    ).toBeInTheDocument();
+    cleanup();
+    await mount('/dashboard/debug?app=alpha&debugFilter=cold');
+    expect(
+      screen.getByText(/No requests match these filters in the loaded sample/i)
+    ).toBeInTheDocument();
+    expect(screen.getByText(/up to 20 recent.*across all routes/i)).toBeInTheDocument();
+  });
+
+  it('does not describe text-hidden regression or comparison rows as absent observations or traffic', async () => {
+    await mount('/dashboard/debug?app=alpha&debugView=regressions&debugQuery=unmatched');
+    expect(screen.getByText('No returned regressions match this text filter.')).toBeInTheDocument();
+    cleanup();
+    fixtures.compare.mockResolvedValue({
+      routes: [{ route: '/orders', source_p95_ms: 50, mirror_p95_ms: 100 }],
+    });
+    await mount(
+      '/dashboard/debug?app=alpha&debugView=compare&debugSource=dep-old&debugMirror=dep-new&debugQuery=unmatched'
+    );
+    fireEvent.click(screen.getAllByRole('button', { name: 'Compare' }).at(-1)!);
+    expect(
+      await screen.findByText('No returned comparison routes match this text filter.')
+    ).toBeInTheDocument();
+  });
+
+  it('qualifies an empty exact-route comparison without claiming the deployments served no traffic elsewhere', async () => {
+    await mount(
+      '/dashboard/debug?app=alpha&debugView=compare&debugSource=dep-old&debugMirror=dep-new&debugRoute=%2Forders'
+    );
+    fireEvent.click(screen.getAllByRole('button', { name: 'Compare' }).at(-1)!);
+    expect(
+      await screen.findByText(
+        'No comparison traffic was returned for the selected route in this window.'
+      )
+    ).toBeInTheDocument();
   });
 });

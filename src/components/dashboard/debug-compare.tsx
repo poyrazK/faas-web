@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   ErrorState,
@@ -65,13 +65,7 @@ export function DebugCompare({
 
   return (
     <AppDeploymentCompare
-      key={JSON.stringify([
-        slug,
-        search?.debugSource,
-        search?.debugMirror,
-        search?.debugWindow,
-        search?.debugRoute,
-      ])}
+      key={slug}
       slug={slug}
       since={since}
       onSinceChange={
@@ -100,13 +94,16 @@ function AppDeploymentCompare({
   const compare = useCompareDeployments(slug);
   const [localSource, setSource] = useState('');
   const [localMirror, setMirror] = useState('');
+  const [localRoute, setRoute] = useState('');
+  const routeInput = useRef<HTMLInputElement>(null);
   const source = search ? (search.debugSource ?? '') : localSource;
   const mirror = search ? (search.debugMirror ?? '') : localMirror;
+  const route = search ? (search.debugRoute ?? '') : localRoute;
   const resetCompare = compare.reset;
 
   useEffect(() => {
     resetCompare();
-  }, [resetCompare, source, mirror, since]);
+  }, [resetCompare, source, mirror, since, route]);
 
   const deploymentItems = deployments.data?.pages.flatMap((page) => page.items) ?? [];
   const deploymentPhase = queryPhase({
@@ -125,7 +122,18 @@ function AppDeploymentCompare({
   const sourceId = options.some((option) => option.id === source) ? source : '';
   const mirrorId = options.some((option) => option.id === mirror) ? mirror : '';
 
-  const rows: Row[] = (compare.data?.routes ?? []).map((r) => ({
+  // Mutation variables belong to its data/error, so a response can only be
+  // shown beside the controls that requested it. Parameter changes clear the
+  // observer, not the controls; keyboard focus and DOM identity survive.
+  const currentComparison =
+    compare.variables?.source === sourceId &&
+    compare.variables?.mirror === mirrorId &&
+    compare.variables?.since === since &&
+    (compare.variables?.route ?? '') === route;
+  const result = currentComparison ? compare.data : undefined;
+  const compareError = currentComparison ? compare.error : null;
+
+  const rows: Row[] = (result?.routes ?? []).map((r) => ({
     id: r.route,
     route: r.route,
     sourceP50: r.source_p50_ms ?? null,
@@ -195,7 +203,7 @@ function AppDeploymentCompare({
   const ready = sourceId !== '' && mirrorId !== '' && sourceId !== mirrorId;
 
   return (
-    <DebugGate error={isPlanGated(compare.error) ? compare.error : null}>
+    <DebugGate error={isPlanGated(compareError) ? compareError : null}>
       {deploymentPhase === 'unreachable' ? (
         <UnreachableState onRetry={() => void deployments.refetch()} />
       ) : deploymentPhase === 'error' ? (
@@ -250,17 +258,33 @@ function AppDeploymentCompare({
               </select>
             </label>
 
+            <label className="flex flex-col gap-1.5">
+              <span className="label-mono text-muted-foreground">Exact route</span>
+              <input
+                ref={routeInput}
+                aria-label="Exact route"
+                value={route}
+                placeholder="All routes"
+                onChange={(event) =>
+                  onSelect
+                    ? onSelect({ debugRoute: event.target.value || undefined })
+                    : setRoute(event.target.value)
+                }
+                className="h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-brand/50"
+              />
+            </label>
+
             <Button
               size="sm"
               disabled={!ready}
-              busy={compare.isPending}
+              busy={currentComparison && compare.isPending}
               onClick={() =>
                 void compare
                   .mutateAsync({
                     source: sourceId,
                     mirror: mirrorId,
                     since,
-                    ...(search?.debugRoute ? { route: search.debugRoute } : {}),
+                    ...(route ? { route } : {}),
                   })
                   .catch(() => undefined)
               }
@@ -272,15 +296,19 @@ function AppDeploymentCompare({
             A is the baseline selection; B is the current selection. Git ref metadata is not
             returned by deployment history.
           </p>
-          {search?.debugRoute && (
+          {route && (
             <div className="flex items-center gap-3 text-xs">
               <span>
-                Comparing route: <code>{search.debugRoute}</code>
+                Comparing route: <code>{route}</code>
               </span>
               <Button
                 size="xs"
                 variant="ghost"
-                onClick={() => onSelect?.({ debugRoute: undefined })}
+                onClick={() => {
+                  if (onSelect) onSelect({ debugRoute: undefined });
+                  else setRoute('');
+                  routeInput.current?.focus();
+                }}
               >
                 Compare all routes
               </Button>
@@ -318,20 +346,32 @@ function AppDeploymentCompare({
             </p>
           )}
 
-          {compare.error && !isPlanGated(compare.error) && (
+          {compareError && !isPlanGated(compareError) && (
             <p className="text-sm text-[color:var(--status-critical)]">
-              {errorMessage(compare.error)}
+              {errorMessage(compareError)}
             </p>
           )}
 
-          {compare.data ? (
+          {result ? (
             <ResourceTable
               rows={rows}
               columns={columns}
               initialSort={{ key: 'route', dir: 'asc' }}
               searchKeys={['route']}
               searchPlaceholder="Filter by route…"
-              emptyMessage="Neither deployment served traffic in this window."
+              query={search ? (search.debugQuery ?? '') : undefined}
+              onQueryChange={
+                onSelect
+                  ? (debugQuery) => onSelect({ debugQuery: debugQuery || undefined })
+                  : undefined
+              }
+              emptyMessage={
+                search?.debugQuery?.trim()
+                  ? 'No returned comparison routes match this text filter.'
+                  : route
+                    ? 'No comparison traffic was returned for the selected route in this window.'
+                    : 'No comparison traffic was returned for these deployments in this window.'
+              }
               minWidth="min-w-[860px]"
             />
           ) : (

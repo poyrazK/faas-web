@@ -1,5 +1,9 @@
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
-import { useDebugRequests, useDebugRegressions } from '@/lib/api/queries';
+import {
+  DEBUG_REQUEST_SAMPLE_LIMIT,
+  useDebugRequests,
+  useDebugRegressions,
+} from '@/lib/api/queries';
 import { formatRelative } from '@/lib/mock-data';
 import { DebugGate } from './debug-gate';
 import {
@@ -141,6 +145,11 @@ export function DebugRequests({ slug, search, onSelect }: { slug: string } & Deb
           Failed: HTTP 4xx / 5xx. Slow: latency ≥ 1,000 ms. Cold start: recorded cold boot only.
           Regressions: matching release and route observations in this window.
         </p>
+        <p className="text-xs text-muted-foreground">
+          Sample: up to {DEBUG_REQUEST_SAMPLE_LIMIT} recent telemetry rows in the selected window
+          across all routes. Quick and text filters apply only to this loaded sample; other matching
+          requests may exist.
+        </p>
         <label className="flex items-center gap-2 self-start text-xs text-muted-foreground">
           Window
           <select
@@ -174,8 +183,8 @@ export function DebugRequests({ slug, search, onSelect }: { slug: string } & Deb
           onQueryChange={(debugQuery) => onSelect({ debugQuery: debugQuery || undefined })}
           emptyMessage={
             data?.requests.length
-              ? 'No requests match these filters in this window.'
-              : 'No requests recorded in this window.'
+              ? `No requests match these filters in the loaded sample (up to ${DEBUG_REQUEST_SAMPLE_LIMIT} recent rows).`
+              : 'No request rows were returned in this bounded sample.'
           }
           minWidth="min-w-[760px]"
           loading={isPending || (filter === 'regressions' && regressions.isPending)}

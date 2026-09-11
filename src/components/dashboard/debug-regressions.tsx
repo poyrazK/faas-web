@@ -1,6 +1,10 @@
 import { Button } from '@/components/ui/button';
 import { ResourceTable, type Column } from '@/components/dashboard/resource-table';
-import { useDebugRegressions, useDebugRequests } from '@/lib/api/queries';
+import {
+  DEBUG_REQUEST_SAMPLE_LIMIT,
+  useDebugRegressions,
+  useDebugRequests,
+} from '@/lib/api/queries';
 import { formatRelative } from '@/lib/mock-data';
 import { DebugGate } from './debug-gate';
 import {
@@ -138,7 +142,11 @@ export function DebugRegressions({ slug, search, onSelect }: { slug: string } & 
           searchPlaceholder="Filter by route…"
           query={search.debugQuery ?? ''}
           onQueryChange={(debugQuery) => onSelect({ debugQuery: debugQuery || undefined })}
-          emptyMessage="Nothing has regressed in this window."
+          emptyMessage={
+            search.debugQuery?.trim()
+              ? 'No returned regressions match this text filter.'
+              : 'No regression observations were returned for this window.'
+          }
           minWidth="min-w-[820px]"
           loading={isPending}
           error={error}
@@ -184,7 +192,7 @@ function RegressionDetail({
   since: string;
   onSelect: DebugSelection['onSelect'];
 }) {
-  const requests = useDebugRequests(slug, since);
+  const requests = useDebugRequests(slug, since, regression.route);
   const matched = (requests.data?.requests ?? []).filter((request) =>
     matchesRegression(request, regression)
   );
@@ -235,9 +243,10 @@ function RegressionDetail({
       </a>
       <h4 className="text-sm font-medium">Requests on this release and route</h4>
       <p className="text-xs text-muted-foreground">
-        Matching retained telemetry in the selected window; individual membership in the regression
-        is confirmed in request evidence. This list may cover fewer requests than the aggregate
-        count.
+        Sample: up to {DEBUG_REQUEST_SAMPLE_LIMIT} recent rows for this exact route in the selected
+        window across all deployments, then filtered to this deployment. Individual regression
+        membership is confirmed in request evidence. Other matching requests may exist outside this
+        sample; it is not the aggregate count.
       </p>
       {requests.error || requests.isPending ? (
         <>
@@ -263,7 +272,8 @@ function RegressionDetail({
         </ul>
       ) : (
         <p className="text-sm text-muted-foreground">
-          No matching request rows are retained in this window.
+          No request rows for this deployment in the loaded route sample (up to{' '}
+          {DEBUG_REQUEST_SAMPLE_LIMIT} recent rows).
         </p>
       )}
     </div>

@@ -1453,14 +1453,26 @@ export type JobTask = components['schemas']['JobTaskResponse'];
  * 3-day plan silently returns 3, and a console that showed "7 days" over that
  * would be lying about what it drew.
  */
-export function useDebugRequests(slug: string, since: string) {
+export const DEBUG_REQUEST_SAMPLE_LIMIT = 20;
+
+export function useDebugRequests(slug: string, since: string, route?: string) {
   return useQuery({
-    queryKey: ['apps', slug, 'debug', 'requests', since],
+    queryKey: [
+      'apps',
+      slug,
+      'debug',
+      'requests',
+      since,
+      { route: route || null, limit: DEBUG_REQUEST_SAMPLE_LIMIT },
+    ],
     enabled: Boolean(slug),
     queryFn: () =>
       unwrap(
         api.GET('/v1/apps/{slug}/debug/requests', {
-          params: { path: { slug }, query: { since } },
+          params: {
+            path: { slug },
+            query: { since, limit: DEBUG_REQUEST_SAMPLE_LIMIT, ...(route ? { route } : {}) },
+          },
         })
       ),
   });
