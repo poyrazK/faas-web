@@ -9,16 +9,16 @@ vi.mock('./client', async (original) => ({ ...(await original<object>()), api: {
 it('uses the last invocation id as the cursor for older pages', async () => {
   get
     .mockResolvedValueOnce({
-      data: { invocations: [{ id: 'invocation-1' }] },
+      data: { invocations: [{ id: 'invocation-1' }, { id: 'invocation-2' }] },
       response: new Response(),
     })
     .mockResolvedValueOnce({
-      data: { invocations: [{ id: 'invocation-2' }] },
+      data: { invocations: [{ id: 'invocation-3' }] },
       response: new Response(),
     });
 
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const { result } = renderHook(() => queries.useInfiniteInvocations(1), {
+  const { result } = renderHook(() => queries.useInfiniteInvocations(2), {
     wrapper: ({ children }) => (
       <QueryClientProvider client={client}>{children}</QueryClientProvider>
     ),
@@ -30,10 +30,15 @@ it('uses the last invocation id as the cursor for older pages', async () => {
   });
 
   expect(get).toHaveBeenLastCalledWith('/v1/invocations', {
-    params: { query: { limit: 1, before: 'invocation-1' } },
+    params: { query: { limit: 2, before: 'invocation-2' } },
   });
-  expect(result.current.data?.pages.flatMap((page) => page.invocations).map((i) => i.id)).toEqual([
+  await waitFor(() => expect(result.current.hasNextPage).toBe(false));
+  const cached = client.getQueryData<{
+    pages: Array<{ invocations: Array<{ id: string }> }>;
+  }>(['invocations', 'history', 2]);
+  expect(cached?.pages.flatMap((page) => page.invocations).map((i) => i.id)).toEqual([
     'invocation-1',
     'invocation-2',
+    'invocation-3',
   ]);
 });
