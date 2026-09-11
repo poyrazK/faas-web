@@ -24,9 +24,20 @@ describe('Hero', () => {
   it('keeps the landing headline, with the wake time as the accent', async () => {
     renderHero();
     const h1 = await screen.findByRole('heading', { level: 1 });
-    expect(h1).toHaveTextContent(
+    // The accent rotates, but the accessible name does not: the rotating
+    // spans are aria-hidden, so a screen reader gets one stable sentence
+    // rather than all six phrases concatenated.
+    expect(h1).toHaveAccessibleName(
       'Serverless on real microVMs. Scale to zero. Wake in under 350 ms.'
     );
+  });
+
+  it('shows the first phrase, so the headline is never blank', async () => {
+    renderHero();
+    const h1 = await screen.findByRole('heading', { level: 1 });
+    // DiaText renders one phrase at a time and rotates; the first is what a
+    // reader sees before any rotation has happened.
+    expect(h1).toHaveTextContent('Wake in under 350 ms.');
   });
 
   it('keeps the primary action and the install command as real controls', async () => {

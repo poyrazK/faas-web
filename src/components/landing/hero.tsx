@@ -5,6 +5,7 @@ import { SweepLink } from '@/components/sweep-link';
 import { DeployTerminal } from './deploy-terminal';
 import { INSTALL_COMMAND } from './install-command';
 import { EASE } from './reveal';
+import { DiaText } from '@/components/ui/dia-text';
 import { LIQUID_PRESETS, LiquidField } from './liquid-field';
 
 /**
@@ -76,6 +77,31 @@ function Emblem() {
   );
 }
 
+/**
+ * The headline's rotating accent.
+ *
+ * Every phrase is a claim the platform can back, because this is the most
+ * prominent line on the site: the wake budget is spec §6.3, "idle costs you
+ * nothing" is invariant 4 (a parked app holds no resident RAM and bills no
+ * running seconds), snapshot park/wake is ADR-005, builds in their own
+ * microVM is ADR-003, and push-to-deploy is the M7.5 GitHub App.
+ *
+ * They are kept within a few characters of each other so the balanced h1
+ * cannot gain a line as they cycle; the stack sizes itself to the longest.
+ * The first is what the prerendered HTML paints, so it is also the one the
+ * accessible name and a no-animation reader keep.
+ */
+const SWEEP_COLORS = ['#3987e5', '#2f9d86', '#51deaa', '#2f9d86', '#006f40'];
+
+const HERO_PHRASES = [
+  'Wake in under 350\u00a0ms.',
+  'Idle costs you nothing.',
+  'Park as a snapshot.',
+  'Build inside a microVM.',
+  'Run on your own kernel.',
+  'Deploy from a git push.',
+] as const;
+
 export function Hero() {
   const reduce = useReducedMotion();
 
@@ -90,13 +116,24 @@ export function Hero() {
 
         <div className="relative z-10 flex w-full max-w-[46rem] flex-col items-center text-center">
           <h1
+            aria-label={`Serverless on real microVMs. Scale to zero. ${HERO_PHRASES[0].replace('\u00a0', ' ')}`}
             className="animate-hero-enter relative text-balance text-[40px] font-semibold leading-[0.98] tracking-[-0.065em] text-[#212121] sm:text-[58px] lg:text-[62px]"
             style={{ animationDelay: '0.06s' }}
           >
             Serverless on real microVMs. Scale to zero.{' '}
-            <span className="bg-gradient-to-r from-[color-mix(in_oklab,var(--brand)_70%,#3987e5)] via-brand to-[#2f9d86] bg-clip-text text-transparent">
-              Wake in under 350&nbsp;ms.
-            </span>
+            {/* The h1's accessible name is pinned by aria-label above, so a
+                screen reader gets one stable sentence rather than a headline
+                that renames itself every 2.1s. That supersedes the component's
+                own sr-only copy, which is why it is not doubled up here. */}
+            <DiaText
+              text={[...HERO_PHRASES]}
+              colors={SWEEP_COLORS}
+              textColor="var(--brand)"
+              duration={2.1}
+              repeat
+              repeatDelay={0.35}
+              fixedWidth
+            />
           </h1>
 
           <p
