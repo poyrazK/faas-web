@@ -1,11 +1,23 @@
 import { useState } from 'react';
 import { Plus, Refresh } from 'iconoir-react';
 import { AppSelect } from '@/components/dashboard/app-select';
-import { PlanGated } from '@/components/dashboard/plan-gated';
+import { isPlanGate } from '@/components/dashboard/plan-gated';
 import { errorMessage } from '@/lib/api/errors';
-import { useAppAnalyticsTimeseries } from '@/lib/api/queries';
-import { AnalyticsGrid, type AnalyticsPoint } from './analytics-grid';
-import { RangePicker, rangeHalfLabel, type Range } from './range-picker';
+import { useAppAnalyticsTimeseries, useAppsMetrics } from '@/lib/api/queries';
+import {
+  AnalyticsGrid,
+  chosenCards,
+  scalarCards,
+  type AnalyticsPoint,
+  type AppMetricsRow,
+} from './analytics-grid';
+import {
+  RangePicker,
+  rangeHalfLabel,
+  rollupWindow,
+  ROLLUP_PRESETS,
+  type Range,
+} from './range-picker';
 
 /**
  * Analytics on the overview, scoped to one app.
@@ -34,7 +46,15 @@ export function AnalyticsSection({
   const since = range.kind === 'preset' ? range.value : range.since;
   const until = range.kind === 'custom' ? range.until : undefined;
   const series = useAppAnalyticsTimeseries(slug, since, until);
-  const points = (series.data?.points ?? []) as AnalyticsPoint[];
+  // Free has no hourly series (`DebugTelemetryEnabled`), but it does have the
+  // account rollup — same metrics, no history. So the gate costs the charts and
+  // the deltas, not the section. The Overview already holds this query, so the
+  // fallback is a cache hit rather than a second request.
+  const gated = isPlanGate(series.error);
+  const rollupRange = rollupWindow(range);
+  const rollup = useAppsMetrics(rollupRange, { enabled: gated });
+  const row = rollup.data?.apps?.[slug] as AppMetricsRow | undefined;
+  const points = (gated ? [] : (series.data?.points ?? [])) as AnalyticsPoint[];
   // The server clamps to what the plan retains. When it does, the control says
   // what was drawn rather than what was asked for — a button still reading
   // "Last 14 days" over three days of data is the console lying about its own
@@ -55,7 +75,12 @@ export function AnalyticsSection({
         </h2>
         <div className="flex flex-wrap items-center gap-2">
           <AppSelect slug={slug} onSelect={onSelectApp} apps={apps} />
-          <RangePicker range={drawn} onChange={setRange} />
+          <RangePicker
+            range={drawn}
+            onChange={setRange}
+            presets={gated ? ROLLUP_PRESETS : undefined}
+            allowCustom={!gated}
+          />
           <button
             type="button"
             onClick={() => setPicking(true)}
@@ -75,28 +100,43 @@ export function AnalyticsSection({
         </div>
       </div>
 
-      {/* Matched on the problem code, never the status: 402 is also an unpaid
-          invoice, and reading one as the other turns "upgrade to use this" into
-          "something is broken". PlanGated owns that distinction. */}
-      <PlanGated error={series.error} feature="Request analytics">
-        {series.error ? (
-          <p className="rounded-xl border border-border bg-card p-5 text-xs text-muted-foreground">
-            {errorMessage(series.error)}
-          </p>
-        ) : !series.isPending && points.length === 0 ? (
-          <p className="rounded-xl border border-border bg-card p-5 text-xs text-muted-foreground">
-            No requests in this window.
-          </p>
-        ) : (
-          <AnalyticsGrid
-            points={points}
-            halfLabel={rangeHalfLabel(drawn)}
-            loading={series.isPending}
-            picking={picking}
-            onPicking={setPicking}
-          />
-        )}
-      </PlanGated>
+      {series.error && !gated ? (
+        <p className="rounded-xl border border-border bg-card p-5 text-xs text-muted-foreground">
+          {errorMessage(series.error)}
+        </p>
+      ) : gated && rollup.error ? (
+        <p className="rounded-xl border border-border bg-card p-5 text-xs text-muted-foreground">
+          {errorMessage(rollup.error)}
+        </p>
+      ) : gated && !rollup.isPending && !row ? (
+        <p className="rounded-xl border border-border bg-card p-5 text-xs text-muted-foreground">
+          No metrics for this app in this window.
+        </p>
+      ) : !gated && !series.isPending && points.length === 0 ? (
+        <p className="rounded-xl border border-border bg-card p-5 text-xs text-muted-foreground">
+          No requests in this window.
+        </p>
+      ) : (
+        <AnalyticsGrid
+          points={points}
+          build={(chosen) =>
+            gated
+              ? row
+                ? scalarCards(chosen, row)
+                : []
+              : chosenCards(chosen, points, rangeHalfLabel(drawn))
+          }
+          loading={gated ? rollup.isPending : series.isPending}
+          picking={picking}
+          onPicking={setPicking}
+        />
+      )}
+
+      {gated && (
+        <p className="text-xs text-muted-foreground">
+          These are the current figures. Hourly history, trends and charts need Hobby or above.
+        </p>
+      )}
 
       {series.data?.window_clamped && (
         <p className="text-xs text-muted-foreground">

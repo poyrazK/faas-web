@@ -17,6 +17,9 @@ vi.mock('@/lib/api/queries', () => ({
     error: null,
     refetch: vi.fn(),
   }),
+  // The section falls back to the account rollup when the series is plan-gated,
+  // so the module mock has to answer for it even on the ungated path.
+  useAppsMetrics: () => ({ data: undefined, isPending: false, error: null }),
 }));
 
 const { AnalyticsSection } = await import('./analytics-section');

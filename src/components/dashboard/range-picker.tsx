@@ -33,6 +33,26 @@ export const PRESETS: Preset[] = [
 ];
 
 /**
+ * The windows the account rollup can answer.
+ *
+ * Its `range` is a closed enum and a narrower one than the series takes, with
+ * no custom range at all. Offering "Last 3 days" on a surface backed by the
+ * rollup would quietly return something else, so the picker offers only the
+ * intersection when that is where the figures come from.
+ */
+export const ROLLUP_PRESETS: Preset[] = PRESETS.filter((p) =>
+  ['1h', '6h', '24h', '7d'].includes(p.value)
+);
+
+/** The rollup's own window for a chosen range; 24h when it cannot express it. */
+export function rollupWindow(range: Range): '1h' | '6h' | '24h' | '7d' {
+  if (range.kind === 'preset' && ['1h', '6h', '24h', '7d'].includes(range.value)) {
+    return range.value as '1h' | '6h' | '24h' | '7d';
+  }
+  return '24h';
+}
+
+/**
  * The zone the reader is in, named the way their system names it.
  *
  * Shown, not chosen. Timestamps go to the API with an offset and come back in
@@ -92,9 +112,14 @@ export function toLocalInput(d: Date): string {
 export function RangePicker({
   range,
   onChange,
+  presets = PRESETS,
+  allowCustom = true,
 }: {
   range: Range;
   onChange: (next: Range) => void;
+  /** Narrowed when the figures come from a source with a smaller vocabulary. */
+  presets?: Preset[];
+  allowCustom?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const now = new Date();
@@ -136,63 +161,67 @@ export function RangePicker({
           sideOffset={6}
           className="z-50 w-[min(34rem,calc(100vw-2rem))] rounded-xl border border-border bg-popover p-0 shadow-[var(--elevation-3)]"
         >
-          <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto]">
-            <div className="border-border p-4 sm:border-r">
-              <div className="mb-3 flex items-center justify-between">
-                <p className="text-sm font-medium">
-                  {page.toLocaleString([], { month: 'long', year: 'numeric' })}
-                </p>
-                <div className="flex items-center gap-1">
-                  <CalendarNav
-                    label="Previous month"
-                    onClick={() => setPage(new Date(page.getFullYear(), page.getMonth() - 1, 1))}
-                  >
-                    <NavArrowLeft aria-hidden="true" className="h-4 w-4" />
-                  </CalendarNav>
-                  <CalendarNav
-                    label="Next month"
-                    onClick={() => setPage(new Date(page.getFullYear(), page.getMonth() + 1, 1))}
-                  >
-                    <NavArrowRight aria-hidden="true" className="h-4 w-4" />
-                  </CalendarNav>
+          <div className={cn('grid grid-cols-1', allowCustom && 'sm:grid-cols-[1fr_auto]')}>
+            {/* No calendar when the source takes no custom range: a control that
+                cannot be honoured is worse than one that is absent. */}
+            {allowCustom && (
+              <div className="border-border p-4 sm:border-r">
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="text-sm font-medium">
+                    {page.toLocaleString([], { month: 'long', year: 'numeric' })}
+                  </p>
+                  <div className="flex items-center gap-1">
+                    <CalendarNav
+                      label="Previous month"
+                      onClick={() => setPage(new Date(page.getFullYear(), page.getMonth() - 1, 1))}
+                    >
+                      <NavArrowLeft aria-hidden="true" className="h-4 w-4" />
+                    </CalendarNav>
+                    <CalendarNav
+                      label="Next month"
+                      onClick={() => setPage(new Date(page.getFullYear(), page.getMonth() + 1, 1))}
+                    >
+                      <NavArrowRight aria-hidden="true" className="h-4 w-4" />
+                    </CalendarNav>
+                  </div>
+                </div>
+                <div className="grid grid-cols-7 gap-y-1 text-center">
+                  {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d) => (
+                    <span key={d} className="pb-1 text-xs text-muted-foreground">
+                      {d}
+                    </span>
+                  ))}
+                  {cells.map((day, i) => {
+                    if (!day) return <span key={`pad-${i}`} />;
+                    const future = day > now;
+                    const isStart = start && sameDay(day, start);
+                    const isEnd = end && sameDay(day, end);
+                    const inside = start && end && day > start && day < end;
+                    return (
+                      <button
+                        key={day.toISOString()}
+                        type="button"
+                        disabled={future}
+                        onClick={() => pickDay(day)}
+                        aria-pressed={Boolean(isStart || isEnd)}
+                        className={cn(
+                          'mx-auto flex h-8 w-8 items-center justify-center rounded-md text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
+                          future && 'cursor-not-allowed text-muted-foreground/40',
+                          !future && !isStart && !isEnd && !inside && 'hover:bg-muted',
+                          inside && 'bg-muted',
+                          (isStart || isEnd) && 'bg-foreground text-background'
+                        )}
+                      >
+                        {day.getDate()}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
-              <div className="grid grid-cols-7 gap-y-1 text-center">
-                {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d) => (
-                  <span key={d} className="pb-1 text-xs text-muted-foreground">
-                    {d}
-                  </span>
-                ))}
-                {cells.map((day, i) => {
-                  if (!day) return <span key={`pad-${i}`} />;
-                  const future = day > now;
-                  const isStart = start && sameDay(day, start);
-                  const isEnd = end && sameDay(day, end);
-                  const inside = start && end && day > start && day < end;
-                  return (
-                    <button
-                      key={day.toISOString()}
-                      type="button"
-                      disabled={future}
-                      onClick={() => pickDay(day)}
-                      aria-pressed={Boolean(isStart || isEnd)}
-                      className={cn(
-                        'mx-auto flex h-8 w-8 items-center justify-center rounded-md text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
-                        future && 'cursor-not-allowed text-muted-foreground/40',
-                        !future && !isStart && !isEnd && !inside && 'hover:bg-muted',
-                        inside && 'bg-muted',
-                        (isStart || isEnd) && 'bg-foreground text-background'
-                      )}
-                    >
-                      {day.getDate()}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+            )}
 
             <ul className="max-h-64 overflow-y-auto p-2 sm:max-h-none">
-              {PRESETS.map((preset) => {
+              {presets.map((preset) => {
                 const active = range.kind === 'preset' && range.value === preset.value;
                 return (
                   <li key={preset.value}>
@@ -218,25 +247,29 @@ export function RangePicker({
             </ul>
           </div>
 
-          <div className="grid gap-3 border-t border-border p-4 sm:grid-cols-2">
-            <LabelledTime
-              label="Start"
-              value={start ? toLocalInput(start) : ''}
-              onChange={(v) => setStart(v ? new Date(v) : null)}
-            />
-            <LabelledTime
-              label="End"
-              value={end ? toLocalInput(end) : ''}
-              onChange={(v) => setEnd(v ? new Date(v) : null)}
-            />
-          </div>
+          {allowCustom && (
+            <div className="grid gap-3 border-t border-border p-4 sm:grid-cols-2">
+              <LabelledTime
+                label="Start"
+                value={start ? toLocalInput(start) : ''}
+                onChange={(v) => setStart(v ? new Date(v) : null)}
+              />
+              <LabelledTime
+                label="End"
+                value={end ? toLocalInput(end) : ''}
+                onChange={(v) => setEnd(v ? new Date(v) : null)}
+              />
+            </div>
+          )}
 
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border p-4">
-            <p className="text-xs text-muted-foreground">{localZoneLabel(now)}</p>
-            <Button size="sm" onClick={apply} disabled={!start || !end}>
-              Apply
-            </Button>
-          </div>
+          {allowCustom && (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border p-4">
+              <p className="text-xs text-muted-foreground">{localZoneLabel(now)}</p>
+              <Button size="sm" onClick={apply} disabled={!start || !end}>
+                Apply
+              </Button>
+            </div>
+          )}
         </PopoverPrimitive.Content>
       </PopoverPrimitive.Portal>
     </PopoverPrimitive.Root>

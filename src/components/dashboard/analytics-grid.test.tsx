@@ -8,6 +8,7 @@ import {
   CATALOG,
   chosenCards,
   DEFAULT_IDS,
+  scalarCards,
   type AnalyticsPoint,
   type MetricDef,
 } from './analytics-grid';
@@ -116,7 +117,7 @@ describe('the card menu', () => {
     // around it is a drag surface, so an earlier version stopped the event in
     // the capture phase — which halts it before the target phase and stops the
     // trigger's own handler from ever running. The menu could not open at all.
-    render(<AnalyticsGrid points={points4} halfLabel="x" />);
+    render(<AnalyticsGrid points={points4} build={(c) => chosenCards(c, points4, 'x')} />);
     expect(screen.getByText('Latency p95')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Latency p95 options' }));
@@ -129,12 +130,51 @@ describe('the card menu', () => {
   });
 
   it('offers a removed metric back in the picker', async () => {
-    render(<AnalyticsGrid points={points4} halfLabel="x" />);
+    render(<AnalyticsGrid points={points4} build={(c) => chosenCards(c, points4, 'x')} />);
     await userEvent.click(screen.getByRole('button', { name: 'Latency p95 options' }));
     await userEvent.click(await screen.findByRole('menuitem', { name: 'Remove' }));
 
     await userEvent.click(screen.getByRole('button', { name: 'Add a metric' }));
     await userEvent.click(screen.getByRole('button', { name: 'Latency p95' }));
     await waitFor(() => expect(screen.getByText('Latency p95')).toBeInTheDocument());
+  });
+});
+
+describe('scalarCards', () => {
+  const row = {
+    request_count: 1000,
+    latency_p50_ms: 12,
+    latency_p95_ms: 88,
+    latency_p99_ms: 210,
+    error_rate_pct: 2.5,
+    cold_start_pct: 4.9,
+  };
+
+  it('answers every default metric without a series', () => {
+    // The point of the fallback: a Free account loses the history, not the
+    // figures. Every default card still has something true to show.
+    expect(scalarCards(DEFAULT_IDS, row).map((c) => c.id)).toEqual(DEFAULT_IDS);
+  });
+
+  it('never carries a delta, because there is no series to halve', () => {
+    for (const card of scalarCards(DEFAULT_IDS, row)) expect(card.delta).toBeNull();
+  });
+
+  it('renames the card when the rollup answers a different question', () => {
+    // The series counts wakes; the rollup reports the share of requests that
+    // caused one. Keeping the label while changing the unit would be the lie.
+    const cold = scalarCards(['cold_boots'], row)[0];
+    expect(cold.label).toBe('Cold starts');
+    expect(cold.value).toBe('4.9%');
+  });
+
+  it('says when a figure is derived rather than reported', () => {
+    const errors = scalarCards(['errors'], row)[0];
+    expect(errors.value).toBe('25');
+    expect(errors.caption).toMatch(/derived/i);
+  });
+
+  it('names no series, so the grid draws no chart', () => {
+    for (const card of scalarCards(DEFAULT_IDS, row)) expect(card.series).toBeUndefined();
   });
 });
