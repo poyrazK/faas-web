@@ -12,9 +12,10 @@ export const Route = createFileRoute('/dashboard/workers')({
   component: WorkersPage,
   validateSearch: (
     raw: Record<string, unknown>
-  ): Record<string, unknown> & { instance?: string } => ({
+  ): Record<string, unknown> & { instance?: string; q?: string } => ({
     ...raw,
     instance: typeof raw.instance === 'string' && raw.instance.trim() ? raw.instance : undefined,
+    q: typeof raw.q === 'string' && raw.q.trim() ? raw.q : undefined,
   }),
   head: () => consoleHead('workers'),
 });
@@ -54,7 +55,7 @@ function WorkersPage() {
   const { data, isPending, error, refetch } = useInstances();
   const appQuery = useApps();
   const apps = appQuery.data;
-  const { instance: selectedId } = Route.useSearch();
+  const { instance: selectedId, q = '' } = Route.useSearch();
   const [revealRequest, setRevealRequest] = useState(0);
   const navigate = Route.useNavigate();
   const select = (instance?: string) =>
@@ -93,6 +94,7 @@ function WorkersPage() {
     {
       key: 'ramMb',
       label: 'RAM',
+      priority: 'secondary',
       numeric: true,
       width: 'w-28',
       render: (i) => <span className="[font-variant-numeric:tabular-nums]">{i.ramMb} MB</span>,
@@ -100,6 +102,7 @@ function WorkersPage() {
     {
       key: 'startedAt',
       label: 'Started',
+      priority: 'secondary',
       numeric: true,
       render: (i) => (
         <span className="text-xs text-muted-foreground">{formatWhen(i.startedAt)}</span>
@@ -108,6 +111,7 @@ function WorkersPage() {
     {
       key: 'lastRequestAt',
       label: 'Last request',
+      priority: 'secondary',
       numeric: true,
       render: (i) => (
         <span className="text-xs text-muted-foreground">{formatWhen(i.lastRequestAt)}</span>
@@ -132,7 +136,20 @@ function WorkersPage() {
         initialSort={{ key: 'startedAt', dir: 'desc' }}
         searchKeys={['app', 'state', 'id']}
         searchPlaceholder="Filter by app or state…"
+        query={q}
+        onQueryChange={(query) =>
+          void navigate({
+            search: (current) => ({ ...current, q: query || undefined }),
+            hash: true,
+            resetScroll: false,
+          })
+        }
         emptyMessage="No instances running — everything is parked."
+        emptyAction={
+          <Link to="/dashboard/workflows" className="text-sm underline underline-offset-4">
+            View apps
+          </Link>
+        }
         minWidth="min-w-[900px]"
         loading={isPending}
         error={error}
@@ -142,11 +159,6 @@ function WorkersPage() {
           else select(instance.id);
         }}
       />
-      {!isPending && !error && rows.length === 0 && (
-        <Link to="/dashboard/workflows" className="text-sm underline underline-offset-4">
-          View apps
-        </Link>
-      )}
       {selectedId && (
         <InstanceDetail
           id={selectedId}

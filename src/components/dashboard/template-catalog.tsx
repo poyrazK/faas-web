@@ -1,7 +1,7 @@
 import { ArrowRight } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { CopyIconButton } from '@/components/ui/copy-button';
-import { InlinePhase, queryPhase } from '@/components/dashboard/primitives';
+import { EmptyState, InlinePhase, queryPhase } from '@/components/dashboard/primitives';
 import { Pill } from '@/components/dashboard/resource-table';
 import { useTemplates, type TemplateView } from '@/lib/api/queries';
 
@@ -36,9 +36,11 @@ const CATEGORY_ORDER: TemplateView['category'][] = [
 export function TemplateCatalog({
   selected,
   onSelect,
+  onChooseEmpty,
 }: {
   selected?: string;
   onSelect: (slug: string) => void;
+  onChooseEmpty?: () => void;
 }) {
   const templates = useTemplates();
   const list = templates.data ?? [];
@@ -55,12 +57,23 @@ export function TemplateCatalog({
         <code>gregale init</code> after creation.
       </p>
 
-      {phase !== 'ready' ? (
+      {phase === 'empty' ? (
+        <EmptyState
+          message="The catalog is empty on this deployment."
+          action={
+            onChooseEmpty && (
+              <Button size="sm" onClick={onChooseEmpty}>
+                Continue with an empty app
+              </Button>
+            )
+          }
+        />
+      ) : phase !== 'ready' ? (
         <InlinePhase
           phase={phase}
           error={templates.error}
           loadingMessage="Loading the catalog…"
-          emptyMessage="The catalog is empty on this deployment."
+          onRetry={() => void templates.refetch()}
         />
       ) : (
         CATEGORY_ORDER.filter((c) => list.some((t) => t.category === c)).map((category) => (

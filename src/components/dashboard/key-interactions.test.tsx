@@ -358,21 +358,29 @@ describe.each([
   });
 
   it('returns keyboard focus to the originating Rotate action when standalone evidence is dismissed', async () => {
-    show();
-    const origin = screen.getByRole('button', {
-      name: name === 'personal' ? 'Rotate CI' : 'Rotate key CI',
-    });
-    origin.focus();
-    await userEvent.keyboard('{Enter}');
-    const confirm = within(screen.getByRole('dialog')).getByRole('button', { name: 'Rotate key' });
-    confirm.focus();
-    await userEvent.keyboard('{Enter}');
-    await screen.findByRole('button', { name: 'Reveal' });
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-    screen.getByRole('button', { name: 'Dismiss' }).focus();
-    await userEvent.keyboard('{Enter}');
-    expect(origin).toHaveFocus();
-    expect(screen.queryByRole('button', { name: 'Reveal' })).not.toBeInTheDocument();
+    const errors = vi.spyOn(console, 'error');
+    try {
+      show();
+      const origin = screen.getByRole('button', {
+        name: name === 'personal' ? 'Rotate CI' : 'Rotate key CI',
+      });
+      act(() => origin.focus());
+      await userEvent.keyboard('{Enter}');
+      const confirm = within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Rotate key',
+      });
+      act(() => confirm.focus());
+      await userEvent.keyboard('{Enter}');
+      await screen.findByRole('button', { name: 'Reveal' });
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      act(() => screen.getByRole('button', { name: 'Dismiss' }).focus());
+      await userEvent.keyboard('{Enter}');
+      expect(origin).toHaveFocus();
+      expect(screen.queryByRole('button', { name: 'Reveal' })).not.toBeInTheDocument();
+      expect(errors).not.toHaveBeenCalled();
+    } finally {
+      errors.mockRestore();
+    }
   });
 
   it('starts a replacement key masked even if the previous one was revealed', async () => {

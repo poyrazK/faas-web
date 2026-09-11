@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { Link } from '@tanstack/react-router';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import {
@@ -136,6 +137,7 @@ export function TriggersBody({ search, onSelection }: JobsSelectionProps) {
     {
       key: 'kind',
       label: 'Kind',
+      priority: 'secondary',
       width: 'w-36',
       render: (t) => <Pill label={t.kind} color={KIND_COLOR[t.kind]} />,
     },
@@ -160,16 +162,19 @@ export function TriggersBody({ search, onSelection }: JobsSelectionProps) {
     {
       key: 'app',
       label: 'Fires',
+      priority: 'secondary',
       render: (t) => <span className="font-mono text-xs text-muted-foreground">{t.app}</span>,
     },
     {
       key: 'batch',
       label: 'Batch / window',
+      priority: 'secondary',
       render: (t) => <span className="font-mono text-xs text-muted-foreground">{t.batch}</span>,
     },
     {
       key: 'attempts',
       label: 'Attempts',
+      priority: 'secondary',
       numeric: true,
       width: 'w-24',
       render: (t) => <span className="[font-variant-numeric:tabular-nums]">{t.attempts}</span>,
@@ -205,6 +210,15 @@ export function TriggersBody({ search, onSelection }: JobsSelectionProps) {
         searchKeys={['slug', 'app', 'kind']}
         searchPlaceholder="Filter by trigger, app, or kind…"
         emptyMessage="No triggers yet. Declare them in gregale.yaml and deploy."
+        emptyAction={
+          <Link
+            to="/docs/$slug"
+            params={{ slug: 'cli' }}
+            className="text-sm underline underline-offset-4"
+          >
+            Read the CLI guide
+          </Link>
+        }
         minWidth="min-w-[880px]"
         loading={isPending}
         error={error}

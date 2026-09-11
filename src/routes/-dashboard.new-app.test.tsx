@@ -21,6 +21,8 @@ const mocks = vi.hoisted(() => ({
   scan: vi.fn(),
   apply: vi.fn(),
   toast: vi.fn(),
+  templateRead: 'ready',
+  templateRetry: vi.fn(),
 }));
 vi.mock('@/lib/auth', () => ({
   useAuth: () => ({
@@ -45,9 +47,13 @@ vi.mock('@/lib/api/queries', () => ({
   useDeployFromRefFor: () => ({ mutateAsync: mocks.deploy }),
   useUpdateAppFor: () => ({ mutateAsync: vi.fn() }),
   useTemplates: () => ({
-    data: [{ name: 'hello-python', category: 'hello', description: 'A minimal Python server.' }],
+    data:
+      mocks.templateRead === 'ready'
+        ? [{ name: 'hello-python', category: 'hello', description: 'A minimal Python server.' }]
+        : [],
     isPending: false,
-    error: null,
+    error: mocks.templateRead === 'error' ? new Error('Template catalog offline') : null,
+    refetch: mocks.templateRetry,
   }),
   useProjectScan: () => ({ mutateAsync: mocks.scan, isPending: false }),
   useProjectApply: () => ({ mutateAsync: mocks.apply, isPending: false }),
@@ -110,6 +116,7 @@ async function mount(entry = '/dashboard/workflows/new') {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.templateRead = 'ready';
   vi.spyOn(window, 'confirm').mockReturnValue(false);
   mocks.create.mockResolvedValue({ id: 'sample', url: 'https://sample.example' });
   mocks.scan.mockResolvedValue(plan);
@@ -117,6 +124,25 @@ beforeEach(() => {
 });
 
 describe('New App source flow', () => {
+  it('continues to an empty app when the template catalog has no starters', async () => {
+    mocks.templateRead = 'empty';
+    const router = await mount('/dashboard/workflows/new?source=template');
+    await userEvent.click(screen.getByRole('button', { name: 'Continue with an empty app' }));
+    expect(router.state.location.search.source).toBe('empty');
+    expect(mocks.create).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: /Continue/ }));
+    expect(await screen.findByRole('textbox', { name: /App name/ })).toBeInTheDocument();
+  });
+  it('preserves the template read failure and provides retry', async () => {
+    mocks.templateRead = 'error';
+    await mount('/dashboard/workflows/new?source=template');
+    expect(screen.getByRole('alert')).toHaveTextContent('Template catalog offline');
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(mocks.templateRetry).toHaveBeenCalledOnce();
+    expect(
+      screen.queryByRole('button', { name: 'Continue with an empty app' })
+    ).not.toBeInTheDocument();
+  });
   it('requires a source choice before configuration and exposes all four sources', async () => {
     const user = userEvent.setup();
     const router = await mount();

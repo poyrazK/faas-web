@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { Link } from '@tanstack/react-router';
 import { PageHeader, Panel } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { PlanGated } from '@/components/dashboard/plan-gated';
@@ -80,6 +81,7 @@ export function WorkloadsBody({ search, onSelection }: JobsSelectionProps) {
     {
       key: 'kind',
       label: 'Kind',
+      priority: 'secondary',
       width: 'w-28',
       render: (j) => (
         <Pill
@@ -97,6 +99,7 @@ export function WorkloadsBody({ search, onSelection }: JobsSelectionProps) {
     {
       key: 'image',
       label: 'Image',
+      priority: 'secondary',
       render: (j) => (
         <span className="truncate font-mono text-xs text-muted-foreground" title={j.image}>
           {j.image}
@@ -106,6 +109,7 @@ export function WorkloadsBody({ search, onSelection }: JobsSelectionProps) {
     {
       key: 'ram',
       label: 'RAM',
+      priority: 'secondary',
       numeric: true,
       width: 'w-24',
       render: (j) => <span className="[font-variant-numeric:tabular-nums]">{j.ram} MB</span>,
@@ -113,6 +117,7 @@ export function WorkloadsBody({ search, onSelection }: JobsSelectionProps) {
     {
       key: 'parallelism',
       label: 'Parallel',
+      priority: 'secondary',
       numeric: true,
       width: 'w-24',
       render: (j) => <span className="[font-variant-numeric:tabular-nums]">{j.parallelism}</span>,
@@ -120,6 +125,7 @@ export function WorkloadsBody({ search, onSelection }: JobsSelectionProps) {
     {
       key: 'retries',
       label: 'Retries',
+      priority: 'secondary',
       numeric: true,
       width: 'w-24',
       render: (j) => <span className="[font-variant-numeric:tabular-nums]">{j.retries}</span>,
@@ -142,6 +148,15 @@ export function WorkloadsBody({ search, onSelection }: JobsSelectionProps) {
           searchKeys={['name', 'image', 'kind']}
           searchPlaceholder="Filter by job, image, or kind…"
           emptyMessage="No jobs yet. Create one with the CLI."
+          emptyAction={
+            <Link
+              to="/docs/$slug"
+              params={{ slug: 'cli' }}
+              className="text-sm underline underline-offset-4"
+            >
+              Read the CLI guide
+            </Link>
+          }
           minWidth="min-w-[900px]"
           loading={isPending}
           error={error}

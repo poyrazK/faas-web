@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Refresh, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import {
   FIELD,
   Select,
@@ -13,7 +14,7 @@ import { useToast } from '@/components/ui/toast';
 import { ActionDisclosure } from '@/components/ui/action-disclosure';
 import { OneTimeSecret, useOneTimeSecret } from '@/components/ui/one-time-secret';
 import { KeyRotationContext, useKeyRotationPolicy } from './key-rotation-policy';
-import { InlinePhase, Panel, queryPhase } from './primitives';
+import { EmptyState, InlinePhase, Panel, queryPhase } from './primitives';
 import {
   useCreateOrgKey,
   useOrgKeys,
@@ -325,12 +326,26 @@ function OrgKeysBody({ slug, canManage }: { slug: string; canManage: boolean }) 
       <div className="mt-4 border-t border-border pt-1">
         {phase !== 'ready' ? (
           <div className="pt-3">
-            <InlinePhase
-              phase={phase}
-              error={keys.error}
-              loadingMessage="Reading keys…"
-              emptyMessage="No organisation keys yet."
-            />
+            {phase === 'empty' ? (
+              <EmptyState
+                message="No organization keys yet."
+                action={
+                  canManage && !creating ? (
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        evidence.clear();
+                        setCreating(true);
+                      }}
+                    >
+                      Create your first key
+                    </Button>
+                  ) : undefined
+                }
+              />
+            ) : (
+              <InlinePhase phase={phase} error={keys.error} loadingMessage="Loading keys…" />
+            )}
             {keys.error && (
               <Button
                 className="mt-3"
@@ -356,7 +371,7 @@ function OrgKeysBody({ slug, canManage }: { slug: string; canManage: boolean }) 
                 <span className="ml-auto flex items-center gap-2">
                   {canManage && (
                     <>
-                      <button
+                      <IconButton
                         type="button"
                         aria-label={`Rotate key ${k.label ?? k.prefix}`}
                         disabled={policy.days === undefined || rotate.isPending}
@@ -390,8 +405,8 @@ function OrgKeysBody({ slug, canManage }: { slug: string; canManage: boolean }) 
                         className="pressable rounded p-1 text-muted-foreground hover:text-foreground"
                       >
                         <Refresh className="h-3.5 w-3.5" />
-                      </button>
-                      <button
+                      </IconButton>
+                      <IconButton
                         type="button"
                         aria-label={`Revoke key ${k.label ?? k.prefix}`}
                         onClick={async () => {
@@ -418,7 +433,7 @@ function OrgKeysBody({ slug, canManage }: { slug: string; canManage: boolean }) 
                         className="pressable rounded p-1 text-muted-foreground hover:text-foreground"
                       >
                         <Trash className="h-3.5 w-3.5" />
-                      </button>
+                      </IconButton>
                     </>
                   )}
                 </span>

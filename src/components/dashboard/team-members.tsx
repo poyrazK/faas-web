@@ -4,6 +4,7 @@ import { ActionDisclosure } from '@/components/ui/action-disclosure';
 import { OneTimeSecret, useOneTimeSecret } from '@/components/ui/one-time-secret';
 import { FIELD, FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Panel } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { useToast } from '@/components/ui/toast';
@@ -180,6 +181,7 @@ export function TeamMembersBody({
     {
       key: 'joinedAt',
       label: 'Joined',
+      priority: 'secondary',
       numeric: true,
       render: (m) => <span className="text-xs text-muted-foreground">{when(m.joinedAt)}</span>,
     },
@@ -189,7 +191,7 @@ export function TeamMembersBody({
       width: 'w-12',
       render: (m) =>
         !canManage || m.role === 'owner' || m.email === user?.email ? null : (
-          <button
+          <IconButton
             type="button"
             aria-label={`Remove ${m.email}`}
             onClick={async () => {
@@ -217,14 +219,20 @@ export function TeamMembersBody({
             className="text-muted-foreground transition-colors hover:text-foreground"
           >
             <Trash className="h-3.5 w-3.5" />
-          </button>
+          </IconButton>
         ),
     },
   ];
 
   const inviteColumns: Column<InviteRow>[] = [
     { key: 'email', label: 'Invited' },
-    { key: 'role', label: 'Role', width: 'w-28', render: (i) => <Pill label={i.role} /> },
+    {
+      key: 'role',
+      label: 'Role',
+      priority: 'secondary',
+      width: 'w-28',
+      render: (i) => <Pill label={i.role} />,
+    },
     {
       key: 'status',
       label: 'Status',
@@ -245,6 +253,7 @@ export function TeamMembersBody({
     {
       key: 'expiresAt',
       label: 'Expires',
+      priority: 'secondary',
       numeric: true,
       render: (i) => (
         <span className="text-xs text-muted-foreground">
@@ -354,6 +363,11 @@ export function TeamMembersBody({
           </form>
         )}
       </ActionDisclosure>
+      {!personal && !canInvite && members.data && !members.error && (
+        <p className="text-sm text-muted-foreground">
+          Only organization owners and admins can invite members.
+        </p>
+      )}
 
       <Panel title="Members">
         <ResourceTable
@@ -385,6 +399,13 @@ export function TeamMembersBody({
           rows={inviteRows}
           columns={inviteColumns}
           emptyMessage="No invitations."
+          emptyAction={
+            canInvite && !inviting ? (
+              <Button size="sm" onClick={() => setInviting(true)}>
+                Invite your first member
+              </Button>
+            ) : undefined
+          }
           minWidth="min-w-[640px]"
           loading={orgs.isPending || (Boolean(active) && invitations.isPending)}
           error={orgs.error ?? invitations.error}

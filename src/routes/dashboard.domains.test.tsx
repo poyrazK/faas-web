@@ -6,7 +6,11 @@ const addDomain = vi.fn();
 const toast = vi.fn();
 
 vi.mock('@tanstack/react-router', () => ({
-  createFileRoute: () => (options: unknown) => options,
+  createFileRoute: () => (options: object) => ({
+    ...options,
+    useSearch: () => ({}),
+    useNavigate: () => vi.fn(),
+  }),
 }));
 vi.mock('@/lib/api/queries', () => ({
   useDomains: () => ({ data: [], isPending: false, error: null, refetch: vi.fn() }),

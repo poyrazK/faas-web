@@ -18,6 +18,7 @@ const fixtures = vi.hoisted(() => ({
   omitBuildFromHistory: false,
   deploymentRead: 'ready',
   rowCount: 1,
+  appMissing: false,
   deployment: {
     id: 'dep-1',
     app_id: 'app-1',
@@ -61,13 +62,16 @@ vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn().mockResolv
 vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { plan: 'pro' }, loading: false }) }));
 vi.mock('@/lib/store', () => ({
   useData: () => ({
-    getWorkflow: () => ({
-      id: 'alpha',
-      name: 'alpha',
-      runtime: 'node',
-      memoryMb: 256,
-      state: 'running',
-    }),
+    getWorkflow: () =>
+      fixtures.appMissing
+        ? undefined
+        : {
+            id: 'alpha',
+            name: 'alpha',
+            runtime: 'node',
+            memoryMb: 256,
+            state: 'running',
+          },
     redeploy: vi.fn(),
     loading: false,
     error: null,
@@ -211,6 +215,7 @@ beforeEach(() => {
   fixtures.omitBuildFromHistory = false;
   fixtures.deploymentRead = 'ready';
   fixtures.rowCount = 1;
+  fixtures.appMissing = false;
   fixtures.orphan.deployment_id = '';
   fixtures.build.status = 'failed';
   Stream.instances = [];
@@ -224,6 +229,44 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('Releases hub', () => {
+  it('names the active Builds view when filters match nothing', async () => {
+    const router = await mount(
+      '/dashboard/deployments?view=builds&status=missing&campaign=handoff#builds'
+    );
+    expect(screen.getByText('No builds match these filters.')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
+    expect(router.state.location.search).toMatchObject({ view: 'builds', campaign: 'handoff' });
+    expect(router.state.location.search.status).toBeUndefined();
+    expect(router.state.location.hash).toBe('builds');
+  });
+  it('uses App terminology when a selected app no longer exists', async () => {
+    fixtures.appMissing = true;
+    await mount('/dashboard/workflows/missing');
+    expect(screen.getByRole('heading', { name: 'App not found' })).toBeInTheDocument();
+    expect(screen.getByText('This app does not exist or has been deleted.')).toBeInTheDocument();
+    expect(document.title).toContain('App not found');
+  });
+  it('offers choosing an app when there are no releases', async () => {
+    fixtures.rowCount = 0;
+    await mount();
+    expect(screen.getByText('No releases yet.')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Choose an app to deploy' })).toHaveAttribute(
+      'href',
+      '/dashboard/workflows'
+    );
+  });
+
+  it('keeps deployment status and identity primary while preserving compact build facts', async () => {
+    await mount();
+    expect(screen.getByRole('columnheader', { name: 'Source size' })).toHaveClass(
+      'hidden',
+      'md:table-cell'
+    );
+    expect(screen.getByRole('columnheader', { name: 'Deployment state' })).not.toHaveClass(
+      'hidden'
+    );
+  });
+
   it.each(['error', 'pending'])(
     'keeps selected build evidence and SBOM available while its deployment read is %s',
     async (state) => {

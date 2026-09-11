@@ -9,6 +9,7 @@ const revoke = vi.fn();
 const changeRole = vi.fn();
 const remove = vi.fn();
 let reduce = true;
+let noInvitations = false;
 
 vi.mock('@tanstack/react-router', () => ({
   createFileRoute: () => (options: unknown) => options,
@@ -47,15 +48,17 @@ vi.mock('@/lib/api/queries', () => ({
   }),
   useOrgInvitations: () => ({
     data: {
-      invitations: [
-        {
-          id: 'invite1',
-          email: 'pending@example.com',
-          role: 'viewer',
-          status: 'pending',
-          expires_at: '2026-09-18T00:00:00Z',
-        },
-      ],
+      invitations: noInvitations
+        ? []
+        : [
+            {
+              id: 'invite1',
+              email: 'pending@example.com',
+              role: 'viewer',
+              status: 'pending',
+              expires_at: '2026-09-18T00:00:00Z',
+            },
+          ],
     },
     isPending: false,
     error: null,
@@ -84,6 +87,7 @@ function TeamPage({ active = 'acme' }: { active?: string }) {
 }
 
 beforeEach(() => {
+  noInvitations = false;
   reduce = true;
   confirm.mockReset().mockResolvedValue(true);
   revoke.mockReset().mockResolvedValue(undefined);
@@ -141,6 +145,22 @@ describe('invitation form validation', () => {
 });
 
 describe('invitation disclosure and one-time evidence', () => {
+  it('opens invitation creation from the empty invitations list', async () => {
+    noInvitations = true;
+    render(<TeamPage />);
+    await userEvent.click(screen.getByRole('button', { name: 'Invite your first member' }));
+    expect(screen.getByRole('textbox', { name: 'Email' })).toHaveFocus();
+  });
+
+  it('makes member removal discoverable and retains joined dates in compact details', async () => {
+    render(<TeamPage />);
+    expect(screen.getByRole('columnheader', { name: 'Joined' })).toHaveClass(
+      'hidden',
+      'md:table-cell'
+    );
+    await userEvent.hover(screen.getByRole('button', { name: 'Remove member@example.com' }));
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Remove member@example.com');
+  });
   it.each([false, true])('opens the shared disclosure with reduced motion=%s', (reduced) => {
     reduce = reduced;
     render(<TeamPage />);

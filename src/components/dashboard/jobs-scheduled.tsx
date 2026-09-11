@@ -1,6 +1,8 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
+import { Link } from '@tanstack/react-router';
 import { Clock, Play, Plus, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { FIELD, FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
 import { Switch } from '@/components/ui/switch';
 import { Modal } from '@/components/ui/modal';
@@ -219,6 +221,7 @@ function RunHistory({
           error={runs.error}
           loadingMessage="Loading runs…"
           emptyMessage="This cron has not run yet."
+          onRetry={() => void runs.refetch()}
         />
       ) : (
         <ul className="flex flex-col divide-y divide-border">
@@ -257,7 +260,8 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
   const { toast } = useToast();
   const confirm = useConfirm();
   const { data, isPending, error, refetch } = useCrons();
-  const { data: apps } = useApps();
+  const appQuery = useApps();
+  const apps = appQuery.data;
   const runCron = useRunCron();
   const deleteCron = useDeleteCron();
   const updateCron = useUpdateCron();
@@ -265,6 +269,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
 
   const [appId, setAppId] = useState('');
   const [schedule, setSchedule] = useState('');
+  const scheduleInput = useRef<HTMLInputElement>(null);
   const [path, setPath] = useState('/');
   const [fireRequest, setFireRequest] = useState<string | null>(null);
   const validation = useFormValidation<'schedule'>();
@@ -304,11 +309,13 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
     {
       key: 'app',
       label: 'App',
+      priority: 'secondary',
       render: (c) => <span className="font-mono text-xs text-muted-foreground">{c.app}</span>,
     },
     {
       key: 'path',
       label: 'Path',
+      priority: 'secondary',
       render: (c) => <span className="font-mono text-xs text-muted-foreground">{c.path}</span>,
     },
     {
@@ -328,6 +335,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
     {
       key: 'lastFiredAt',
       label: 'Last fired',
+      priority: 'secondary',
       numeric: true,
       render: (c) => (
         <span className="text-xs text-muted-foreground">{formatWhen(c.lastFiredAt)}</span>
@@ -339,15 +347,15 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
       width: 'w-28',
       render: (c) => (
         <span className="flex items-center gap-3">
-          <button
+          <IconButton
             type="button"
             aria-label={`Run history for ${c.schedule}`}
             onClick={() => onSelection({ schedule: c.id, execution: undefined })}
             className="text-muted-foreground transition-colors hover:text-foreground"
           >
             <Clock className="h-3.5 w-3.5" />
-          </button>
-          <button
+          </IconButton>
+          <IconButton
             type="button"
             aria-label={`Run ${c.schedule} now`}
             onClick={() => {
@@ -366,8 +374,8 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
             className="text-muted-foreground transition-colors hover:text-foreground"
           >
             <Play className="h-3.5 w-3.5" />
-          </button>
-          <button
+          </IconButton>
+          <IconButton
             type="button"
             aria-label={`Delete cron ${c.id}`}
             onClick={async () => {
@@ -394,7 +402,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
             className="text-muted-foreground transition-colors hover:text-foreground"
           >
             <Trash className="h-3.5 w-3.5" />
-          </button>
+          </IconButton>
         </span>
       ),
     },
@@ -420,6 +428,8 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
             if (
               !validation.validate({ schedule: scheduleError }, e.currentTarget) ||
               !targetApp ||
+              appQuery.isPending ||
+              appQuery.error ||
               createCron.isPending
             )
               return;
@@ -461,6 +471,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
           <label className="flex min-w-48 flex-1 flex-col gap-1.5">
             <span className="label-mono text-muted-foreground">Schedule</span>
             <input
+              ref={scheduleInput}
               name="schedule"
               value={schedule}
               onChange={(e) => setSchedule(e.target.value)}
@@ -487,7 +498,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
             type="submit"
             size="sm"
             className="gap-1.5"
-            disabled={!targetApp}
+            disabled={!targetApp || appQuery.isPending || Boolean(appQuery.error)}
             busy={createCron.isPending}
           >
             <Plus className="h-3.5 w-3.5" />
@@ -498,6 +509,16 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
             to the path on a fresh or warm instance.
           </p>
         </form>
+        {(appQuery.isPending || appQuery.error) && (
+          <div className="mt-3">
+            <InlinePhase
+              phase={queryPhase({ loading: appQuery.isPending, error: appQuery.error })}
+              loadingMessage="Loading apps…"
+              error={appQuery.error}
+              onRetry={() => void appQuery.refetch()}
+            />
+          </div>
+        )}
       </Panel>
 
       <ResourceTable
@@ -507,6 +528,23 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
         searchKeys={['schedule', 'path', 'app']}
         searchPlaceholder="Filter by schedule or path…"
         emptyMessage="No scheduled requests yet."
+        emptyAction={
+          appQuery.isPending || appQuery.error ? undefined : targetApp ? (
+            <Button
+              size="sm"
+              onClick={() => {
+                scheduleInput.current?.scrollIntoView({ block: 'center' });
+                scheduleInput.current?.focus();
+              }}
+            >
+              Create your first scheduled request
+            </Button>
+          ) : (
+            <Link to="/dashboard/workflows/new" className="text-sm underline underline-offset-4">
+              Create an app
+            </Link>
+          )
+        }
         minWidth="min-w-[820px]"
         loading={isPending}
         error={error}

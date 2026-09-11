@@ -169,6 +169,32 @@ async function section(name: string) {
 }
 
 describe('canonical Settings', () => {
+  it.each(['personal', 'organization'])(
+    'opens creation from the empty %s key list',
+    async (scope) => {
+      const get = api.GET.getMockImplementation()!;
+      api.GET.mockImplementation((path, options) =>
+        path === '/v1/keys'
+          ? ok([])
+          : path === '/v1/orgs/{slug}/keys'
+            ? ok({ keys: [] })
+            : get(path, options)
+      );
+      await mount(`/dashboard/settings?section=api-keys&scope=${scope}`);
+      await userEvent.click(await screen.findByRole('button', { name: 'Create your first key' }));
+      expect(screen.getByRole('textbox', { name: 'Label' })).toHaveFocus();
+    }
+  );
+
+  it.each([
+    ['personal', 'Rotate personal CI'],
+    ['organization', 'Revoke key acme CI'],
+  ])('makes %s key actions discoverable by pointer', async (scope, label) => {
+    await mount(`/dashboard/settings?section=api-keys&scope=${scope}`);
+    await userEvent.hover(await screen.findByRole('button', { name: label }));
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(label);
+  });
+
   it('defaults invalid sections to General with only browser-local labeling and read-only account details', async () => {
     await mount('/dashboard/settings?section=garbage&scope=bad');
     expect(screen.getByRole('textbox', { name: 'Console label' })).toBeInTheDocument();
@@ -421,6 +447,10 @@ describe('canonical Settings', () => {
         'disabled',
         memberRole !== 'admin'
       );
+      if (memberRole !== 'admin')
+        expect(
+          screen.getByText('Only organization owners and admins can invite members.')
+        ).toBeInTheDocument();
     }
   );
 

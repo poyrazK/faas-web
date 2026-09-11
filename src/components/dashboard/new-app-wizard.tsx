@@ -639,6 +639,7 @@ export function NewAppWizard({
                 )}
                 <TemplateCatalog
                   selected={templateSlug}
+                  onChooseEmpty={() => setSource('empty')}
                   onSelect={(slug) =>
                     changeSearch({ ...search, source: 'template', template: slug, step: undefined })
                   }

@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   createMemoryHistory,
@@ -110,6 +110,46 @@ afterEach(() => {
 });
 
 describe('Instance details', () => {
+  it('preserves instance searches through selection, copied URLs and browser history', async () => {
+    rows.push({ ...instance, id: 'vm-2', app_id: 'app-2', state: 'running' });
+    apps.push({ id: 'app-2', slug: 'bravo' });
+    const router = await mount('/dashboard/workers?q=alpha&campaign=handoff#lifecycle');
+    const filter = screen.getByRole('searchbox');
+    expect(filter).toHaveValue('alpha');
+    expect(await screen.findByRole('button', { name: /alpha.*vm-1/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /bravo.*vm-2/ })).not.toBeInTheDocument();
+    fireEvent.change(filter, { target: { value: 'bravo' } });
+    await userEvent.click(await screen.findByRole('button', { name: /bravo.*vm-2/ }));
+    expect(router.state.location.search).toMatchObject({
+      q: 'bravo',
+      instance: 'vm-2',
+      campaign: 'handoff',
+    });
+    expect(router.state.location.hash).toBe('lifecycle');
+    const copied = router.state.location.href;
+    await act(async () => router.history.back());
+    await act(async () => router.history.back());
+    await waitFor(() => expect(filter).toHaveValue('alpha'));
+    await act(async () => router.history.forward());
+    await waitFor(() => expect(filter).toHaveValue('bravo'));
+    cleanup();
+    await mount(copied);
+    expect(screen.getByRole('searchbox')).toHaveValue('bravo');
+    expect(await screen.findByRole('region', { name: 'Instance details' })).toHaveTextContent(
+      'vm-2'
+    );
+  });
+
+  it('keeps instance identity visible and moves secondary measurements into compact details', async () => {
+    await mount();
+    expect(await screen.findByRole('columnheader', { name: 'RAM' })).toHaveClass(
+      'hidden',
+      'md:table-cell'
+    );
+    expect(screen.getByRole('columnheader', { name: 'Instance' })).not.toHaveClass('hidden');
+    expect(screen.getByText('More details for alpha (vm-1)')).toBeInTheDocument();
+  });
+
   it('restores the full returned record and wake frames from a copied URL', async () => {
     vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-09-11T10:10:30Z'));
     await mount('/dashboard/workers?instance=vm-1');

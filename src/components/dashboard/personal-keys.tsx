@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Plus, Refresh, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { ActionDisclosure } from '@/components/ui/action-disclosure';
 import { OneTimeSecret, useOneTimeSecret } from '@/components/ui/one-time-secret';
 import {
@@ -189,6 +190,7 @@ export function PersonalKeysBody() {
     {
       key: 'scopes',
       label: 'Scopes',
+      priority: 'secondary',
       render: (k) => (
         <span className="flex flex-wrap gap-1">
           {k.scopes ? (
@@ -202,6 +204,7 @@ export function PersonalKeysBody() {
     {
       key: 'lastUsedAt',
       label: 'Last used',
+      priority: 'secondary',
       numeric: true,
       render: (k) => (
         <span className="text-xs text-muted-foreground">{formatWhen(k.lastUsedAt)}</span>
@@ -213,7 +216,7 @@ export function PersonalKeysBody() {
       width: 'w-20',
       render: (k) => (
         <span className="flex items-center gap-3">
-          <button
+          <IconButton
             type="button"
             aria-label={`Rotate ${k.label}`}
             disabled={policy.days === undefined || rotateKey.isPending}
@@ -251,8 +254,8 @@ export function PersonalKeysBody() {
             className="text-muted-foreground transition-colors hover:text-foreground"
           >
             <Refresh className="h-3.5 w-3.5" />
-          </button>
-          <button
+          </IconButton>
+          <IconButton
             type="button"
             aria-label={`Revoke ${k.label}`}
             onClick={async () => {
@@ -280,7 +283,7 @@ export function PersonalKeysBody() {
             className="text-muted-foreground transition-colors hover:text-foreground"
           >
             <Trash className="h-3.5 w-3.5" />
-          </button>
+          </IconButton>
         </span>
       ),
     },
@@ -436,6 +439,19 @@ export function PersonalKeysBody() {
         searchKeys={['label', 'prefix']}
         searchPlaceholder="Filter by label…"
         emptyMessage="No API keys yet."
+        emptyAction={
+          !creating && (
+            <Button
+              size="sm"
+              onClick={() => {
+                evidence.clear();
+                setCreating(true);
+              }}
+            >
+              Create your first key
+            </Button>
+          )
+        }
         minWidth="min-w-[820px]"
         loading={isPending}
         error={error}

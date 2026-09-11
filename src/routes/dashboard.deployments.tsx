@@ -156,16 +156,18 @@ export function DeploymentsPage() {
           {
             key: 'buildStatus' as const,
             label: 'Build status',
+            priority: 'secondary' as const,
             render: (r: ReleaseRow) => (
               <Pill label={r.buildStatus} color={releaseStatusColor(r.buildStatus)} />
             ),
           },
         ]
       : []),
-    { key: 'source', label: 'Source' },
+    { key: 'source', label: 'Source', priority: 'secondary' },
     {
       key: 'failure',
       label: 'Failure',
+      priority: 'secondary',
       render: (r) =>
         r.failure ? (
           <Pill
@@ -179,18 +181,21 @@ export function DeploymentsPage() {
     {
       key: 'sourceBytes',
       label: 'Source size',
+      priority: 'secondary',
       numeric: true,
       render: (r) => (r.sourceBytes == null ? '—' : sourceSize(r.sourceBytes)),
     },
     {
       key: 'duration',
       label: 'Duration',
+      priority: 'secondary',
       numeric: true,
       render: (r) => (r.duration == null ? '—' : `${r.duration}s`),
     },
     {
       key: 'createdAt',
       label: 'When',
+      priority: 'secondary',
       numeric: true,
       render: (r) => formatRelative(Date.parse(r.createdAt)),
     },
@@ -237,7 +242,26 @@ export function DeploymentsPage() {
         searchKeys={['id', 'image', 'app', 'status', 'source', 'failure', 'buildId', 'buildStatus']}
         searchPlaceholder="Filter by release, build, image or source…"
         emptyMessage={
-          view === 'builds' ? 'No builds match these filters.' : 'No releases match these filters.'
+          loadedItems.length
+            ? `No ${view === 'builds' ? 'builds' : 'releases'} match these filters.`
+            : view === 'builds'
+              ? 'No builds yet.'
+              : 'No releases yet.'
+        }
+        emptyAction={
+          loadedItems.length ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => select({ q: undefined, status: undefined, kind: undefined })}
+            >
+              Clear filters
+            </Button>
+          ) : (
+            <Button asChild size="sm">
+              <Link to="/dashboard/workflows">Choose an app to deploy</Link>
+            </Button>
+          )
         }
         loading={
           loadedItems.length === 0 &&

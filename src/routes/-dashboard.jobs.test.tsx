@@ -8,10 +8,24 @@ import {
   Outlet,
   RouterProvider,
 } from '@tanstack/react-router';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Route as Jobs } from './dashboard.jobs';
 import { Route as Crons } from './dashboard.crons';
 import { Route as Triggers } from './dashboard.triggers';
+const lists = vi.hoisted(() => ({
+  empty: false,
+  appsRead: 'ready',
+  historyError: false,
+  retryApps: vi.fn(),
+  retryHistory: vi.fn(),
+}));
+beforeEach(() => {
+  lists.empty = false;
+  lists.appsRead = 'ready';
+  lists.historyError = false;
+  lists.retryApps.mockReset();
+  lists.retryHistory.mockReset();
+});
 
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn() }));
@@ -54,7 +68,7 @@ vi.mock('@/lib/api/queries', () => {
     config: { topic: 'orders' },
   };
   return {
-    useJobs: () => ok({ jobs: [job] }),
+    useJobs: () => ok({ jobs: lists.empty ? [] : [job] }),
     useJob: () => ok(job),
     useJobRuns: () => ok({ runs: [run] }),
     useJobRun: () => ok(run),
@@ -62,19 +76,34 @@ vi.mock('@/lib/api/queries', () => {
     useJobTasks: () =>
       ok({ tasks: [{ run_id: 'run-1', task_index: 0, status: 'succeeded', attempt: 1 }] }),
     useJobTaskLog: () => ok({ log_content: 'export complete', truncated: false, max_bytes: 65536 }),
-    useApps: () => ok([{ id: 'app-1', slug: 'api' }]),
+    useApps: () => ({
+      ...ok(
+        lists.appsRead === 'ready'
+          ? [{ id: 'app-1', slug: 'api' }]
+          : lists.appsRead === 'empty'
+            ? []
+            : undefined
+      ),
+      isPending: lists.appsRead === 'pending',
+      error: lists.appsRead === 'error' ? new Error('App lookup offline') : null,
+      refetch: lists.retryApps,
+    }),
     useCrons: () =>
-      ok([
-        {
-          id: 'schedule-1',
-          app_id: 'app-1',
-          schedule: '*/15 * * * *',
-          path: '/refresh',
-          enabled: true,
-        },
-      ]),
-    useCronRuns: () =>
-      ok({
+      ok(
+        lists.empty
+          ? []
+          : [
+              {
+                id: 'schedule-1',
+                app_id: 'app-1',
+                schedule: '*/15 * * * *',
+                path: '/refresh',
+                enabled: true,
+              },
+            ]
+      ),
+    useCronRuns: () => ({
+      ...ok({
         runs: [
           {
             id: 'execution-1',
@@ -85,12 +114,15 @@ vi.mock('@/lib/api/queries', () => {
           },
         ],
       }),
+      error: lists.historyError ? new Error('Run history offline') : null,
+      refetch: lists.retryHistory,
+    }),
     useCreateCron: mutation,
     useRunCron: mutation,
     useDeleteCron: mutation,
     useUpdateCron: mutation,
     useFireNowRequest: () => ok(undefined),
-    useTriggers: () => ok([trigger]),
+    useTriggers: () => ok(lists.empty ? [] : [trigger]),
     useTrigger: () => ok(trigger),
     useSetTriggerEnabled: mutation,
     useTriggerMetrics: () =>
@@ -134,6 +166,79 @@ async function mount(entry = '/dashboard/jobs') {
 }
 
 describe('Jobs hub', () => {
+  it.each(['pending', 'error'])(
+    'does not mistake an %s app lookup for an empty app list',
+    async (state) => {
+      lists.empty = true;
+      lists.appsRead = state;
+      await mount('/dashboard/jobs?section=scheduled');
+      expect(
+        screen.getByText(state === 'pending' ? 'Loading apps…' : 'App lookup offline')
+      ).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Add cron' })).toBeDisabled();
+      expect(screen.queryByRole('link', { name: 'Create an app' })).not.toBeInTheDocument();
+      if (state === 'error') {
+        await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+        expect(lists.retryApps).toHaveBeenCalledOnce();
+      }
+    }
+  );
+
+  it('offers app creation only after an empty app lookup succeeds', async () => {
+    lists.empty = true;
+    lists.appsRead = 'empty';
+    await mount('/dashboard/jobs?section=scheduled');
+    expect(screen.getByRole('link', { name: 'Create an app' })).toHaveAttribute(
+      'href',
+      '/dashboard/workflows/new'
+    );
+  });
+
+  it('keeps the run-history error and offers a retry', async () => {
+    lists.historyError = true;
+    await mount('/dashboard/jobs?section=scheduled&schedule=schedule-1');
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('Run history offline');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Try again' }));
+    expect(lists.retryHistory).toHaveBeenCalledOnce();
+  });
+
+  it.each(['workloads', 'triggers'])(
+    'offers the CLI guide from the empty %s list',
+    async (section) => {
+      lists.empty = true;
+      await mount(`/dashboard/jobs?section=${section}`);
+      expect(screen.getByRole('link', { name: 'Read the CLI guide' })).toHaveAttribute(
+        'href',
+        '/docs/cli'
+      );
+    }
+  );
+
+  it('focuses schedule creation from an empty list', async () => {
+    lists.empty = true;
+    await mount('/dashboard/jobs?section=scheduled');
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Create your first scheduled request' })
+    );
+    expect(screen.getByRole('textbox', { name: 'Schedule' })).toHaveFocus();
+  });
+
+  it('uses compact workload columns and discoverable schedule actions', async () => {
+    await mount();
+    expect(screen.getByRole('columnheader', { name: 'Image' })).toHaveClass(
+      'hidden',
+      'md:table-cell'
+    );
+    await userEvent.click(screen.getByRole('link', { name: 'Scheduled requests' }));
+    expect(screen.getByRole('columnheader', { name: 'Last fired' })).toHaveClass(
+      'hidden',
+      'md:table-cell'
+    );
+    await userEvent.hover(screen.getByRole('button', { name: 'Run history for */15 * * * *' }));
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Run history for */15 * * * *');
+  });
+
   it('composes model-specific sections with accessible navigation', async () => {
     const router = await mount('/dashboard/jobs?campaign=handoff#details');
     const navigation = screen.getByRole('navigation', { name: 'Jobs sections' });
