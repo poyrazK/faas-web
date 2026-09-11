@@ -211,7 +211,21 @@ export function sidebarSectionsFor(hub: NavHub): NavItem[] {
   // in the rail would offer a second, staler way to make a choice the page
   // already owns. Settings opts out for the same reason by flag.
   if (hub.sidebarSections === false || hub.pageOwnsNavigation) return [];
-  return (hub.sections ?? []).filter((section) => section.label !== hub.label);
+  // The hub's own page becomes the group's first child rather than a second
+  // link on the parent row. The parent is a disclosure, not a destination, so
+  // "Apps › Apps" would say the same word twice — and "Overview" would collide
+  // with the rail's own Overview row, leaving two links of that name meaning
+  // different things. "All apps" is what the row actually is.
+  return (hub.sections ?? []).map((section) =>
+    section.to === hub.to && section.label === hub.label
+      ? { ...section, label: `All ${hub.label.toLowerCase()}` }
+      : section
+  );
+}
+
+/** A hub is a disclosure when it has rail sections, and a link otherwise. */
+export function isDisclosureHub(hub: NavHub): boolean {
+  return sidebarSectionsFor(hub).length > 0;
 }
 
 /** Path segment -> label, for breadcrumb section titles. */

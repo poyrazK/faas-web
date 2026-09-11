@@ -92,7 +92,7 @@ async function renderShell(initialEntry = '/dashboard', content?: ReactNode) {
  */
 const RAIL = [
   'Overview',
-  'Apps',
+  'All apps',
   'Templates',
   'Import',
   'Jobs',
@@ -111,14 +111,14 @@ const RAIL = [
 ];
 
 /**
- * Hubs that name a group rather than link to one.
+ * Hubs that disclose a group rather than link to one.
  *
- * Their page is already owned by a section directly beneath them, and the
- * router marks every active link `aria-current="page"` last and unconditionally
- * — so a second link to the same URL is a second current page that no prop can
- * suppress. These read as parent labels, like Build / Operate / Account above.
+ * Their landing page rides along as the group's first child, which is what lets
+ * the parent be a button: the router marks every active link
+ * `aria-current="page"` last and unconditionally, so a second link to the same
+ * URL would be a second current page that no prop can suppress.
  */
-const RAIL_PARENTS = ['Data', 'Observe', 'Billing'];
+const RAIL_PARENTS = ['Apps', 'Data', 'Observe', 'Billing'];
 
 /** The group headings that give the rail its scent. */
 const RAIL_GROUPS = ['Build', 'Operate', 'Account'];
@@ -137,7 +137,7 @@ const GROUPS = [
     hub: 'Apps',
     anchor: '/dashboard/workflows',
     links: [
-      ['Apps', '/dashboard/workflows'],
+      ['All apps', '/dashboard/workflows'],
       ['Templates', '/dashboard/templates'],
       ['Import', '/dashboard/import'],
     ],
@@ -195,8 +195,13 @@ describe('dashboard navigation foundation', () => {
     ).toEqual(RAIL);
     for (const title of [...RAIL_GROUPS, ...RAIL_PARENTS])
       expect(within(main).getByText(title)).toBeInTheDocument();
-    for (const parent of RAIL_PARENTS)
+    for (const parent of RAIL_PARENTS) {
       expect(within(main).queryByRole('link', { name: parent })).toBeNull();
+      expect(within(main).getByRole('button', { name: parent })).toHaveAttribute(
+        'aria-expanded',
+        'true'
+      );
+    }
     expect(within(main).getByRole('link', { name: 'Overview' })).toHaveAttribute(
       'aria-current',
       'page'
@@ -216,6 +221,32 @@ describe('dashboard navigation foundation', () => {
       expect(screen.queryByRole('dialog', { name: 'Navigation' })).not.toBeInTheDocument()
     );
     expect(screen.getByTestId('page')).toHaveTextContent('/dashboard/postgres');
+  });
+
+  it('shuts a disclosure, remembers it, and leaves the others open', async () => {
+    await renderShell();
+    const main = screen.getByRole('navigation', { name: 'Main' });
+    const observe = within(main).getByRole('button', { name: 'Observe' });
+
+    expect(within(main).getByRole('link', { name: 'Invocations' })).toBeInTheDocument();
+    await userEvent.click(observe);
+    expect(observe).toHaveAttribute('aria-expanded', 'false');
+    expect(within(main).queryByRole('link', { name: 'Invocations' })).toBeNull();
+    // Shutting one group must not shut its neighbours.
+    expect(within(main).getByRole('link', { name: 'Storage' })).toBeInTheDocument();
+
+    // Stored as the closed set, so a hub nobody has shut stays open — including
+    // one that does not exist yet.
+    expect(JSON.parse(window.localStorage.getItem('gregale.sidebar.closedGroups') ?? '[]')).toEqual(
+      ['/dashboard/debug']
+    );
+
+    await userEvent.click(observe);
+    expect(observe).toHaveAttribute('aria-expanded', 'true');
+    expect(within(main).getByRole('link', { name: 'Invocations' })).toBeInTheDocument();
+    expect(JSON.parse(window.localStorage.getItem('gregale.sidebar.closedGroups') ?? '[]')).toEqual(
+      []
+    );
   });
 
   it.each(GROUPS)(
@@ -262,9 +293,11 @@ describe('dashboard navigation foundation', () => {
     await waitFor(() =>
       expect(screen.getByTestId('page')).toHaveTextContent('/dashboard/edge-rules')
     );
+    // Edge rules is an app section with no rail row of its own, so the rail
+    // shows the branch rather than claiming a current page it does not have.
     expect(
-      within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', { name: 'Apps' })
-    ).toHaveAttribute('aria-current', 'page');
+      within(screen.getByRole('navigation', { name: 'Main' })).getByRole('button', { name: 'Apps' })
+    ).toBeInTheDocument();
     expect(
       within(screen.getByRole('navigation', { name: 'App sections' })).getByRole('link', {
         name: 'Edge rules',
@@ -320,7 +353,7 @@ describe('dashboard navigation foundation', () => {
   it('preserves an Apps list bookmark when its primary destination is reselected', async () => {
     const router = await renderShell('/dashboard/workflows?q=api&state=running#list');
     const link = within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', {
-      name: 'Apps',
+      name: 'All apps',
     });
     expect(link).toHaveAttribute('href', '/dashboard/workflows?q=api&state=running#list');
     await userEvent.click(link);
