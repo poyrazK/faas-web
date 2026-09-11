@@ -1626,8 +1626,31 @@ export function useUsageSummary() {
 export function useInstances(options?: Options<components['schemas']['ListInstancesResponse']>) {
   return useQuery({
     queryKey: keys.instances,
-    queryFn: () => unwrap(api.GET('/v1/instances', {})),
+    // The overview only needs a single fresh snapshot. Ask for the largest
+    // page so the common case is complete; it checks next_before and fails
+    // closed when an unusually large fleet needs the full history view.
+    queryFn: () => unwrap(api.GET('/v1/instances', { params: { query: { limit: 100 } } })),
     ...options,
+  });
+}
+
+/**
+ * Account-wide live instances, paged newest-first by the instance UUIDv7
+ * cursor. The workers page opts into this query so a busy account can inspect
+ * the full fleet without changing the bounded snapshot used by the overview.
+ */
+export function useInfiniteInstances(limit = 50) {
+  return useInfiniteQuery({
+    queryKey: [...keys.instances, 'history', limit],
+    queryFn: ({ pageParam }) =>
+      unwrap(
+        api.GET('/v1/instances', {
+          params: { query: { limit, ...(pageParam ? { before: pageParam } : {}) } },
+        })
+      ),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.next_before ?? undefined,
+    retry: retryPolicy,
   });
 }
 

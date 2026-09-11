@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { PageHeader } from '@/components/dashboard/primitives';
+import { InlinePhase, PageHeader, queryPhase } from '@/components/dashboard/primitives';
 import { InstanceDetail } from '@/components/dashboard/instance-detail';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
-import { useApps, useInstances } from '@/lib/api/queries';
+import { Button } from '@/components/ui/button';
+import { useApps, useInfiniteInstances } from '@/lib/api/queries';
 import { slugIndex } from '@/lib/api/adapters';
 import { formatRelative } from '@/lib/mock-data';
 import { consoleHead } from '@/lib/seo';
@@ -52,24 +53,32 @@ function formatWhen(value: string | null | undefined): string {
 }
 
 function WorkersPage() {
-  const { data, isPending, error, refetch } = useInstances();
+  const instances = useInfiniteInstances();
   const appQuery = useApps();
   const apps = appQuery.data;
   const { instance: selectedId, q = '' } = Route.useSearch();
   const [revealRequest, setRevealRequest] = useState(0);
   const navigate = Route.useNavigate();
+  const data = useMemo(
+    () => instances.data?.pages.flatMap((page) => page.instances) ?? [],
+    [instances.data]
+  );
+  // Keep already loaded rows usable if a later page fails; only an initial
+  // failure should replace the table with its full-page error state.
+  const listError = data.length === 0 ? instances.error : undefined;
+  const listLoading = instances.isPending && !instances.error && data.length === 0;
   const select = (instance?: string) =>
     void navigate({
       search: (current) => ({ ...current, instance }),
       hash: true,
       resetScroll: false,
     });
-  const selected = data?.instances.find((instance) => instance.id === selectedId);
+  const selected = data.find((instance) => instance.id === selectedId);
   const selectedSlug = apps?.find((app) => app.id === selected?.app_id)?.slug;
 
   const rows = useMemo<InstanceRow[]>(() => {
     const bySlug = slugIndex(apps ?? []);
-    return (data?.instances ?? []).map((i) => ({
+    return data.map((i) => ({
       id: i.id,
       app: bySlug.get(i.app_id) ?? i.app_id,
       state: i.state,
@@ -152,23 +161,51 @@ function WorkersPage() {
           </Link>
         }
         minWidth="min-w-[900px]"
-        loading={isPending}
-        error={error}
-        onRetry={() => void refetch()}
+        loading={listLoading}
+        error={listError}
+        onRetry={() => void instances.refetch()}
         onRowClick={(instance) => {
           if (instance.id === selectedId) setRevealRequest((request) => request + 1);
           else select(instance.id);
         }}
       />
+      {data.length > 0 && Boolean(instances.error) && (
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <InlinePhase phase={queryPhase({ error: instances.error })} error={instances.error} />
+          <Button
+            size="xs"
+            variant="ghost"
+            onClick={() =>
+              void (
+                instances.isFetchNextPageError ? instances.fetchNextPage() : instances.refetch()
+              ).catch(() => undefined)
+            }
+          >
+            Retry
+          </Button>
+        </div>
+      )}
+      {instances.hasNextPage && (
+        <div className="flex justify-center">
+          <Button
+            size="sm"
+            variant="outline"
+            busy={instances.isFetchingNextPage}
+            onClick={() => void instances.fetchNextPage().catch(() => undefined)}
+          >
+            Load older instances
+          </Button>
+        </div>
+      )}
       {selectedId && (
         <InstanceDetail
           id={selectedId}
           revealRequest={revealRequest}
           instance={selected}
           slug={selectedSlug}
-          loading={isPending}
-          error={error}
-          onRetry={() => void refetch()}
+          loading={listLoading}
+          error={listError}
+          onRetry={() => void instances.refetch()}
           appsLoading={appQuery.isPending}
           appsError={appQuery.error}
           onRetryApps={() => void appQuery.refetch()}
