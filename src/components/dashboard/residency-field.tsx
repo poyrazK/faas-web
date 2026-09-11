@@ -55,8 +55,8 @@ uniform float u_count;
 // The mint ramp, matching --mint-7 and --mint-9 in index.css. A shader cannot
 // read a custom property, so these are the one place the console's brand is
 // restated; if the ramp moves, move them with it.
-const vec3 MINT_LO = vec3(0.318, 0.871, 0.667);
-const vec3 MINT_HI = vec3(0.000, 0.808, 0.569);
+const vec3 MINT_DEEP  = vec3(0.000, 0.808, 0.569);
+const vec3 MINT_LIGHT = vec3(0.318, 0.871, 0.667);
 
 void main() {
   vec2 uv = gl_FragCoord.xy / u_res;
@@ -70,7 +70,11 @@ void main() {
     if (float(i) >= u_count) break;
     vec4 c = u_cells[i];
     vec2 d = p - vec2(c.x * aspect, c.y);
-    float r = max(c.z, 0.0001);
+    // The field is aspect x 1, not a unit square. Radii arrive normalised to a
+    // unit square, so sqrt(aspect) restores the intended *coverage fraction* —
+    // without it a wide panel dilutes the fleet into specks, and the constant
+    // that compensates for one panel shape is wrong for every other.
+    float r = max(c.z, 0.0001) * sqrt(aspect);
     field += (1.0 - smoothstep(r * 0.30, r, length(d))) * c.w;
   }
 
@@ -84,13 +88,20 @@ void main() {
   // gradient invites reading precision that is not there; steps say "about
   // this much" honestly, and match the dither language the charts already use.
   float lit = clamp(field, 0.0, 1.0);
-  float stepped = floor(lit * 4.0 + threshold * 0.85) / 4.0;
+  // threshold stays below 1 so an empty fragment floors to zero: a dither that
+  // can reach 1.0 lifts the whole panel off transparent by one step.
+  float stepped = floor(lit * 4.0 + min(threshold, 0.999)) / 4.0;
 
   // Hue never carries state here: there is no threshold this panel can know,
-  // so the ramp is depth only — more resident memory under a fragment, deeper
-  // mint. Anything else would be inventing a status.
-  vec3 col = mix(MINT_LO, MINT_HI, clamp(field * 0.6, 0.0, 1.0));
-  gl_FragColor = vec4(col, stepped * 0.85);
+  // so the ramp is density only — more resident memory under a fragment, more
+  // light. Anything else would be inventing a status.
+  vec3 col = mix(MINT_DEEP, MINT_LIGHT, clamp(field * 0.6, 0.0, 1.0));
+  // Premultiplied, as every other shader here is and as the context demands:
+  // premultipliedAlpha defaults to true, so straight-alpha output paints its
+  // full colour even where alpha is zero — which rendered this panel as a solid
+  // mint slab with the cells showing through as darker blobs.
+  float a = stepped * 0.85;
+  gl_FragColor = vec4(col * a, a);
 }
 `;
 
@@ -117,13 +128,17 @@ function placeById(id: string): { x: number; y: number } {
 }
 
 /**
- * Panel area one megabyte of resident RAM draws.
+ * Share of the panel one megabyte of resident memory covers.
  *
  * A drawing scale, not a budget: it sets how big a 512 MB instance looks, and
- * nothing here claims to know how many of them fit. Tuned so a handful of
- * typical instances read as a body rather than as specks.
+ * nothing here claims to know how many of them fit. Tuned against a numeric
+ * simulation of the fragment shader rather than by eye — at this value a
+ * twelve-instance, 6,912 MB fleet covers about 30% of the panel, which reads
+ * as a fleet with room around it. Three times this covers it completely.
  */
-const AREA_PER_MB = 0.000045;
+const COVERAGE_PER_MB = 0.000014;
+/** Coverage past which more memory stops adding area and the field saturates. */
+const MAX_COVERAGE = 0.55;
 
 export function ResidencyField({
   instances,
@@ -187,10 +202,10 @@ export function ResidencyField({
     data.fill(0);
     let i = 0;
     // Area is what the eye compares, so the radius is the square root of the
-    // megabytes, not the megabytes. Clamped so a very large fleet saturates
-    // the panel instead of drawing cells past its edges.
-    const totalArea = Math.min(residentMb * AREA_PER_MB, 0.72);
-    const areaBudget = totalArea;
+    // megabytes, not the megabytes. Coverage converts to a radius budget
+    // through pi; the shader restores the panel's aspect.
+    const coverage = Math.min(residentMb * COVERAGE_PER_MB, MAX_COVERAGE);
+    const areaBudget = coverage / Math.PI;
     for (const cell of cells.current.values()) {
       if (i >= MAX_CELLS) break;
       const t = Math.min((at - cell.since) / TRANSITION_MS, 1);
