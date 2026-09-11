@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { createHash, randomBytes } from 'node:crypto';
 import type { Plugin } from 'vite';
 import * as db from './data';
 
@@ -112,6 +113,8 @@ route('POST', '/v1/auth/sessions/revoke_all', () => {
 
 // --- Apps --------------------------------------------------------------------
 
+const deletedApps = new Map<string, { app: db.App; expiresAt: number }>();
+
 function app(slug: string) {
   const found = db.appBySlug(slug);
   if (!found) throw new Problem(404, 'app_not_found', `No app named "${slug}".`);
@@ -132,7 +135,8 @@ route('POST', '/v1/apps', ({ body }) => {
   const slug = String(body.slug ?? '').trim();
   if (!/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(slug))
     throw new Problem(400, 'invalid_slug', 'Slugs are lowercase letters, digits, and dashes.');
-  if (db.appBySlug(slug)) throw new Problem(409, 'app_exists', `"${slug}" already exists.`);
+  if (db.appBySlug(slug) || deletedApps.has(slug))
+    throw new Problem(409, 'app_exists', `"${slug}" already exists.`);
   const created: db.App = {
     ...db.apps[0],
     id: db.id(),
@@ -150,6 +154,8 @@ route('POST', '/v1/apps', ({ body }) => {
 route('GET', '/v1/apps/{slug}', ({ params }) => app(params.slug));
 route('DELETE', '/v1/apps/{slug}', ({ params }) => {
   const a = app(params.slug);
+  // Active reads hide tombstones; the restore API retains the same app identity.
+  deletedApps.set(a.slug, { app: a, expiresAt: Date.now() + 7 * 86400e3 });
   db.apps.splice(db.apps.indexOf(a), 1);
   return NO_CONTENT;
 });
@@ -1414,10 +1420,17 @@ route('POST', '/v1/apps/{slug}/restart', ({ params }) => {
 });
 
 route('POST', '/v1/apps/{slug}/restore', ({ params }) => {
-  const a = app(params.slug);
-  if (a.status !== 'deleted_pending')
-    throw new Problem(409, 'conflict', 'the app is not pending deletion.');
+  const deleted = deletedApps.get(params.slug);
+  if (!deleted) {
+    app(params.slug);
+    throw new Problem(409, 'app_not_restorable', 'the app is not pending deletion.');
+  }
+  if (deleted.expiresAt <= Date.now())
+    throw new Problem(409, 'app_not_restorable', 'the app deletion grace window has expired.');
+  const a = deleted.app;
   a.status = 'active';
+  db.apps.push(a);
+  deletedApps.delete(params.slug);
   return a;
 });
 
@@ -2275,6 +2288,20 @@ route('GET', '/v1/deployments', ({ query }) => ({
   items: db.deployments.slice(0, Number(query.get('limit') ?? 50)),
   next_before: null,
 }));
+route('GET', '/v1/deployments/latest-by-app', () => {
+  const latest = new Map<string, db.Deployment>();
+  const activeAppIds = new Set(db.apps.map((app) => app.id));
+
+  for (const deployment of db.deployments) {
+    if (!activeAppIds.has(deployment.app_id)) continue;
+    const current = latest.get(deployment.app_id);
+    if (!current || Date.parse(deployment.created_at) > Date.parse(current.created_at)) {
+      latest.set(deployment.app_id, deployment);
+    }
+  }
+
+  return { items: [...latest.values()] };
+});
 route('GET', '/v1/deployments/{id}', ({ params }) => {
   const d = db.deployments.find((x) => x.id === params.id);
   if (!d) throw new Problem(404, 'deployment_not_found');
@@ -3185,18 +3212,70 @@ route('GET', '/v1/usage/storage', () => ({ items: db.storage }));
 route('GET', '/v1/invoices', () => ({ items: db.invoices, next_before: null }));
 route('GET', '/v1/billing/portal', () => db.billingPortal);
 
-route('GET', '/v1/orgs', () => ({ orgs: db.orgs }));
-route('GET', '/v1/orgs/{slug}/members', () => ({ members: db.members }));
-route('GET', '/v1/orgs/{slug}/invitations', () => ({ invitations: db.invitations }));
-route('POST', '/v1/orgs/{slug}/members', ({ params, body }) => {
-  const org = db.orgs.find((o) => o.slug === params.slug);
+const orgMembers = new Map(
+  db.orgs.map((org) => [
+    org.slug,
+    db.members
+      .filter((member) => !org.personal || member.role === 'owner')
+      .map((member) => ({ ...member })),
+  ])
+);
+function mockOrg(slug: string) {
+  const org = db.orgs.find((org) => org.slug === slug);
   if (!org) throw new Problem(404, 'org_not_found');
+  return org;
+}
+function mockOrgMembers(slug: string) {
+  mockOrg(slug);
+  return orgMembers.get(slug) ?? [];
+}
+function requireOrgRole(slug: string, roles: string[], mutable = false) {
+  const org = mockOrg(slug);
+  if (mutable && org.personal) throw new Problem(409, 'org_personal_immutable');
+  const role = mockOrgMembers(slug).find((member) => member.email === db.account.email)?.role;
+  if (!role || !roles.includes(role)) throw new Problem(403, 'org_role_forbidden');
+  return org;
+}
+route('GET', '/v1/orgs', () => ({
+  orgs: db.orgs
+    .filter((org) => org.status !== 'deleted_pending')
+    .sort((a, b) => a.slug.localeCompare(b.slug)),
+}));
+route('POST', '/v1/orgs', ({ body }) => {
+  const slug = String(body.slug ?? '');
+  const name = String(body.name ?? '').trim();
+  if (!/^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/.test(slug)) throw new Problem(422, 'org_slug_invalid');
+  if (!name || name.length > 256) throw new Problem(400, 'validation_failed');
+  if (db.orgs.some((org) => org.slug === slug)) throw new Problem(409, 'org_slug_taken');
+  const org: (typeof db.orgs)[number] = {
+    id: db.id(),
+    slug,
+    name,
+    personal: false,
+    plan: 'free',
+    status: 'active',
+    created_at: db.iso(0),
+    updated_at: db.iso(0),
+  };
+  db.orgs.push(org);
+  orgMembers.set(slug, [
+    { ...db.members[0], email: db.account.email, role: 'owner', joined_at: db.iso(0) },
+  ]);
+  return status(201, org);
+});
+route('GET', '/v1/orgs/{slug}/members', ({ params }) => ({ members: mockOrgMembers(params.slug) }));
+route('GET', '/v1/orgs/{slug}/invitations', ({ params }) => ({
+  invitations: db.invitations.filter((invitation) => invitation.org_slug === params.slug),
+}));
+const invitationTokenHashes = new Map<string, string>();
+route('POST', '/v1/orgs/{slug}/members', ({ params, body }) => {
+  const org = requireOrgRole(params.slug, ['owner', 'admin'], true);
   const email = String(body.email ?? '')
     .trim()
     .toLowerCase();
   if (!email.includes('@'))
     throw new Problem(400, 'invalid_email', 'That does not look like an email address.');
-  if (db.members.some((m) => m.email === email))
+  if (mockOrgMembers(params.slug).some((m) => m.email === email))
     throw new Problem(409, 'already_member', `${email} is already a member.`);
   const inv: (typeof db.invitations)[number] = {
     id: db.id(),
@@ -3210,10 +3289,13 @@ route('POST', '/v1/orgs/{slug}/members', ({ params, body }) => {
   };
   db.invitations.unshift(inv);
   // The plaintext token is returned exactly once, like a minted API key.
-  return status(201, { ...inv, token: `inv_${db.id()}` });
+  const plaintext = randomBytes(32);
+  invitationTokenHashes.set(inv.id, createHash('sha256').update(plaintext).digest('hex'));
+  return status(201, { ...inv, token: plaintext.toString('base64url') });
 });
 route('PATCH', '/v1/orgs/{slug}/members/{user_id}', ({ params, body }) => {
-  const m = db.members.find((x) => x.account_id === params.user_id);
+  requireOrgRole(params.slug, ['owner']);
+  const m = mockOrgMembers(params.slug).find((x) => x.account_id === params.user_id);
   if (!m) throw new Problem(404, 'member_not_found');
   if (m.role === 'owner')
     throw new Problem(409, 'cannot_change_owner_role', 'Transfer ownership instead.');
@@ -3221,16 +3303,23 @@ route('PATCH', '/v1/orgs/{slug}/members/{user_id}', ({ params, body }) => {
   return m;
 });
 route('DELETE', '/v1/orgs/{slug}/members/{user_id}', ({ params }) => {
-  const i = db.members.findIndex((x) => x.account_id === params.user_id);
+  requireOrgRole(params.slug, ['owner']);
+  const members = mockOrgMembers(params.slug);
+  const i = members.findIndex((x) => x.account_id === params.user_id);
   if (i < 0) throw new Problem(404, 'member_not_found');
-  if (db.members[i].role === 'owner')
+  if (members[i].role === 'owner')
     throw new Problem(409, 'cannot_remove_owner', 'Transfer ownership first.');
-  db.members.splice(i, 1);
+  members.splice(i, 1);
   return NO_CONTENT;
 });
 route('DELETE', '/v1/orgs/{slug}/invitations/{token}', ({ params }) => {
-  const inv = db.invitations.find((x) => x.id === params.token);
-  if (!inv) throw new Problem(404, 'invitation_not_found');
+  requireOrgRole(params.slug, ['owner', 'admin']);
+  const hash = createHash('sha256').update(Buffer.from(params.token, 'base64url')).digest('hex');
+  const inv = db.invitations.find(
+    (x) => invitationTokenHashes.get(x.id) === hash && x.org_slug === params.slug
+  );
+  if (!inv || inv.status !== 'pending' || Date.parse(inv.expires_at) <= Date.now())
+    throw new Problem(410, 'org_invitation_invalid');
   inv.status = 'revoked';
   return NO_CONTENT;
 });
@@ -3252,38 +3341,50 @@ route('POST', '/v1/apps/{slug}/install/bind', async ({ body }) => ({
 }));
 
 // --- Organisations, org keys, invitations ---
-route('GET', '/v1/orgs/{slug}', ({ params }) => ({
-  id: hex(32),
-  slug: params.slug,
-  name: 'Acme Corp',
-  personal: false,
-  plan: db.account.plan,
-  status: 'active',
-  created_at: db.iso(200 * 24),
-  updated_at: db.iso(2 * 24),
-}));
-route('PATCH', '/v1/orgs/{slug}', async ({ params, body }) => ({
-  id: hex(32),
-  slug: params.slug,
-  name: String(body.name ?? 'Acme Corp'),
-  personal: false,
-  plan: String(body.plan ?? db.account.plan),
-  status: 'active',
-  created_at: db.iso(200 * 24),
-  updated_at: new Date().toISOString(),
-}));
-route('DELETE', '/v1/orgs/{slug}', () => ({}));
-route('GET', '/v1/orgs/{slug}/seat_usage', () => ({ used: 3, limit: 5, plan: db.account.plan }));
-route('POST', '/v1/orgs/{slug}/transfer_ownership', ({ params }) => ({
-  id: hex(32),
-  slug: params.slug,
-  name: 'Acme Corp',
-  personal: false,
-  plan: db.account.plan,
-  status: 'active',
-  created_at: db.iso(200 * 24),
-  updated_at: new Date().toISOString(),
-}));
+route('GET', '/v1/orgs/{slug}', ({ params }) => mockOrg(params.slug));
+route('PATCH', '/v1/orgs/{slug}', ({ params, body }) => {
+  const org = requireOrgRole(
+    params.slug,
+    body.plan == null ? ['owner', 'billing'] : ['owner'],
+    true
+  );
+  if (body.name != null) {
+    const name = String(body.name).trim();
+    if (!name || name.length > 256) throw new Problem(400, 'validation_failed');
+    org.name = name;
+  }
+  if (body.plan != null) {
+    if (!['free', 'hobby', 'pro', 'scale'].includes(String(body.plan)))
+      throw new Problem(400, 'validation_failed');
+    org.plan = body.plan as typeof org.plan;
+  }
+  org.updated_at = db.iso(0);
+  return org;
+});
+route('DELETE', '/v1/orgs/{slug}', ({ params }) => {
+  const org = requireOrgRole(params.slug, ['owner'], true);
+  org.status = 'deleted_pending';
+  org.updated_at = db.iso(0);
+  return NO_CONTENT;
+});
+route('GET', '/v1/orgs/{slug}/seat_usage', ({ params }) => {
+  const { plan } = mockOrg(params.slug);
+  // Plan.OrgMembersMax (ADR-061): Free is personal-only; paid tiers use the member ladder.
+  const limits = { free: 0, hobby: 10, pro: 50, scale: 200 };
+  return { used: mockOrgMembers(params.slug).length, limit: limits[plan] ?? 0, plan };
+});
+route('POST', '/v1/orgs/{slug}/transfer_ownership', ({ params, body }) => {
+  const org = requireOrgRole(params.slug, ['owner']);
+  const members = mockOrgMembers(params.slug);
+  const target = members.find((member) => member.account_id === body.new_owner_account_id);
+  if (!target) throw new Problem(404, 'not_found');
+  if (target.role === 'owner') throw new Problem(409, 'org_last_owner');
+  const owner = members.find((member) => member.role === 'owner')!;
+  owner.role = 'admin';
+  target.role = 'owner';
+  org.updated_at = db.iso(0);
+  return org;
+});
 const orgKeys: Record<string, unknown>[] = [
   {
     id: hex(32),
@@ -3455,11 +3556,23 @@ route('GET', '/v1/account/export', () => ({
   crons: db.crons,
   api_keys: db.keys ?? [],
 }));
-route('POST', '/v1/account/restore', () => ({ ...db.account, app_count: db.apps.length }));
-let graceDays = 7;
+route('DELETE', '/v1/account', () => {
+  db.account.status = 'deleted_pending';
+  const scheduledAt = new Date().toISOString();
+  return {
+    status: 'deleted_pending',
+    scheduled_at: scheduledAt,
+    restore_until: new Date(Date.now() + 30 * 86400e3).toISOString(),
+  };
+});
+route('POST', '/v1/account/restore', () => {
+  db.account.status = 'active';
+  return { ...db.account, app_count: db.apps.length };
+});
+let graceDays: number | null = 7;
 route('GET', '/v1/account/keys/grace_window_days', () => ({ days: graceDays, plan_default: 7 }));
 route('PATCH', '/v1/account/keys/grace_window_days', async ({ body }) => {
-  graceDays = Number(body.days ?? graceDays);
+  if ('days' in body) graceDays = body.days === null ? null : Number(body.days);
   return { days: graceDays, plan_default: 7 };
 });
 let egressExtra = 0;

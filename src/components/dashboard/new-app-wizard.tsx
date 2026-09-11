@@ -1,15 +1,22 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useUnsavedGuard } from '@/lib/use-unsaved-guard';
 import { RepoPicker } from '@/components/dashboard/repo-picker';
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { ArrowLeft, ArrowRight, Check, Github, Package } from 'iconoir-react';
+import { ArrowLeft, ArrowRight, Check, Github, Package, Page, Upload } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/components/ui/toast';
 import { DeploymentProgress } from '@/components/dashboard/deployment-progress';
 import { PageHeader, Panel } from '@/components/dashboard/primitives';
-import { isValidGitHubRepo, isValidGitRef } from '@/components/dashboard/new-app-source';
+import {
+  isValidGitHubRepo,
+  isValidGitRef,
+  type AppSource,
+  type NewAppSearch,
+} from '@/components/dashboard/new-app-source';
+import { TemplateCatalog } from '@/components/dashboard/template-catalog';
+import { ProjectImport } from '@/components/dashboard/project-import';
 import { CopyIconButton } from '@/components/ui/copy-button';
 import { templateBySlug } from '@/lib/templates';
 import { type Runtime } from '@/lib/mock-data';
@@ -33,25 +40,32 @@ import { cn } from '@/lib/utils';
 const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
 const STEPS = ['Source', 'Configure', 'Review'] as const;
 
-/**
- * Two sources, both real. The earlier list offered a template and an upload
- * alongside Git, and all three were decoration: the choice was collected,
- * shown on the review screen, and never sent anywhere. Now Git means a
- * source-ref deploy fires the moment the app exists, and Empty means exactly
- * that — an app waiting for its first `gregale deploy`.
- */
+/** Git deploys immediately; empty/template apps await CLI deployment.
+ * Import keeps the existing project scan/apply contract inside this flow. */
 const SOURCES = [
   {
     id: 'git',
-    name: 'Deploy from Git',
+    name: 'Git repository',
     desc: 'Build the ref right after the app is created.',
     icon: Github,
   },
   {
     id: 'empty',
-    name: 'Create empty',
+    name: 'Empty app',
     desc: 'Set up the app now and deploy it from the CLI or CI later.',
     icon: Package,
+  },
+  {
+    id: 'template',
+    name: 'Template',
+    desc: 'Choose a starter, create the app, then deploy its scaffold with the CLI.',
+    icon: Page,
+  },
+  {
+    id: 'import',
+    name: 'Import',
+    desc: 'Scan a repository archive and apply its project plan to create apps.',
+    icon: Upload,
   },
 ] as const;
 
@@ -73,7 +87,9 @@ const APP_TYPES: { id: 'function' | 'app'; label: string; desc: string }[] = [
 const MEMORY = [128, 256, 512, 1024, 2048];
 
 interface NewAppWizardProps {
-  /** Template gallery selection. Unknown slugs intentionally degrade to the plain wizard. */
+  search?: NewAppSearch;
+  onSearchChange?: (search: NewAppSearch, options?: { replace?: boolean }) => void;
+  /** Existing direct template launches remain supported alongside URL search state. */
   templateSlug?: string;
   /** Removes dashboard chrome and keeps onboarding focused on a real Git deployment. */
   onboarding?: boolean;
@@ -84,7 +100,9 @@ interface NewAppWizardProps {
 }
 
 export function NewAppWizard({
-  templateSlug,
+  templateSlug: initialTemplateSlug,
+  search: urlSearch,
+  onSearchChange,
   onboarding = false,
   onDeploymentAccepted,
   onConnectGitHub,
@@ -93,8 +111,29 @@ export function NewAppWizard({
   const { toast } = useToast();
   const { addWorkflow } = useData();
   const { account, loading: authLoading } = useAuth();
-  // A template prefills the wizard: empty source (the scaffold deploys from
-  // the CLI), the template's runtime and memory, and a name suggestion.
+  const reduce = useReducedMotion();
+  const [localSearch, setLocalSearch] = useState<NewAppSearch>({
+    source: onboarding ? 'git' : undefined,
+    template: initialTemplateSlug,
+  });
+  // After submission, completion and retries describe the app we actually
+  // created even if browser history moves to an earlier source selection.
+  const [submittedSearch, setSubmittedSearch] = useState<NewAppSearch | null>(null);
+  const search = submittedSearch ?? urlSearch ?? localSearch;
+  const changeSearch = onSearchChange ?? setLocalSearch;
+  const source = search.source ?? (search.template ? 'template' : undefined);
+  const templateSlug = source === 'template' ? search.template : undefined;
+  const setSource = (next: AppSource) =>
+    changeSearch({
+      ...search,
+      source: next,
+      template: next === 'template' ? templateSlug : undefined,
+      step: undefined,
+    });
+  const setStep = (next: number) =>
+    changeSearch({ ...search, step: next === 2 ? 'review' : next === 1 ? 'configure' : undefined });
+  // A template prefills runtime, memory and name; its scaffold is deployed
+  // from the CLI once the app exists.
   const template = templateBySlug(templateSlug);
   // The API's starter catalog and the local scaffolds share no names, so a
   // catalog pick prefills what it can and hands the scaffold to the CLI. Only
@@ -102,8 +141,8 @@ export function NewAppWizard({
   // customer chooses, rather than the wizard guessing.
   const catalog = useTemplates();
   const catalogTemplate = (catalog.data ?? []).find((t) => t.name === templateSlug);
-  const picked = Boolean(template) || Boolean(templateSlug);
-  const initialName = template?.slug ?? templateSlug ?? '';
+  const picked = Boolean(template || catalogTemplate);
+  const initialName = template?.slug ?? catalogTemplate?.name ?? '';
   const catalogRuntime: Runtime | null = /-node$/.test(templateSlug ?? '')
     ? 'node24'
     : /-python$/.test(templateSlug ?? '')
@@ -116,19 +155,20 @@ export function NewAppWizard({
   // The endpoint the API assigned. Constructing one from the slug would be a
   // guess about the platform's hostname scheme; this is the real value.
   const [createdUrl, setCreatedUrl] = useState<string | null>(null);
-  const [step, setStep] = useState(0);
-  const [source, setSource] = useState(picked ? 'empty' : 'git');
   const [repo, setRepo] = useState('');
   const [ref, setRef] = useState('main');
-  const [name, setName] = useState(initialName);
+  const [nameDraft, setName] = useState<string | null>(null);
+  const name = nameDraft ?? initialName;
   const bindRepo = useBindRepoFor();
   const deployFromRef = useDeployFromRefFor();
   const updateApp = useUpdateAppFor();
   const [appType, setAppType] = useState<'function' | 'app'>('function');
-  const [runtime, setRuntime] = useState<Runtime>(template?.runtime ?? catalogRuntime ?? 'node22');
+  const [runtimeDraft, setRuntime] = useState<Runtime | null>(null);
+  const runtime = runtimeDraft ?? template?.runtime ?? (picked ? catalogRuntime : null) ?? 'node22';
   // Start at the platform floor. The previous 512 MB default guaranteed a
   // failed Free-plan submission before the customer had seen the limit.
-  const [memoryMb, setMemoryMb] = useState(template ? template.memoryMb : 128);
+  const [memoryDraft, setMemoryMb] = useState<number | null>(null);
+  const memoryMb = memoryDraft ?? template?.memoryMb ?? 128;
   const [scaleToZero, setScaleToZero] = useState(true);
   const githubConnected = Boolean(account?.github_install_id);
   const canKeepResident = residentInstancesAllowed(account);
@@ -142,13 +182,42 @@ export function NewAppWizard({
   // A half-filled wizard asks before it is discarded. Once the app exists
   // (or nothing was typed) leaving is free. A template's prefilled name is
   // not the user's typing — only their own edits arm the guard.
-  useUnsavedGuard(!createdId && Boolean(repo.trim() || (name.trim() && name !== initialName)));
+  useUnsavedGuard(
+    !createdId && Boolean(repo.trim() || (name.trim() && name !== initialName)),
+    undefined,
+    '/dashboard/workflows/new'
+  );
 
   const nameValid = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(name);
   const normalizedRef = ref.trim() || 'main';
   const repoValid = isValidGitHubRepo(repo);
   const refValid = isValidGitRef(normalizedRef);
   const gitSourceValid = source !== 'git' || (repoValid && refValid);
+  const sourceValid =
+    Boolean(source) &&
+    source !== 'import' &&
+    (source !== 'template' || picked) &&
+    gitSourceValid &&
+    (source !== 'git' || githubConnected);
+  // Reloaded URLs restore the source; missing in-memory fields return to the
+  // earliest incomplete step instead of exposing an invalid review/create.
+  const step = !sourceValid ? 0 : search.step === 'review' && nameValid ? 2 : search.step ? 1 : 0;
+  const normalizedStep = step === 2 ? 'review' : step === 1 ? 'configure' : undefined;
+  const sourcePending =
+    (source === 'template' && catalog.isPending) || (source === 'git' && authLoading);
+  // Replace an incomplete restored step, rather than leaving a review URL
+  // armed to advance as soon as typing makes the missing fields valid.
+  useEffect(() => {
+    if (
+      urlSearch &&
+      onSearchChange &&
+      !submittedSearch &&
+      !sourcePending &&
+      urlSearch.step !== normalizedStep
+    ) {
+      onSearchChange({ ...urlSearch, step: normalizedStep }, { replace: true });
+    }
+  }, [urlSearch, onSearchChange, submittedSearch, sourcePending, normalizedStep]);
   const maxMemoryMb = account?.limits.ram_mb ?? 128;
   const selectedMemoryMb = Math.min(memoryMb, maxMemoryMb);
   const quotaRemaining = appQuotaRemaining(account);
@@ -197,10 +266,11 @@ export function NewAppWizard({
   }
 
   async function createFunction() {
-    if (deployBlocked || !nameValid || !gitSourceValid || (source === 'git' && !githubConnected)) {
+    if (deployBlocked || !nameValid || !sourceValid) {
       return;
     }
     setDeploying(true);
+    setSubmittedSearch(search);
     setSubmissionError(null);
     try {
       // App creation is the durable first step. The UI only advances to build
@@ -257,6 +327,7 @@ export function NewAppWizard({
       }
     } catch (err) {
       setDeploying(false);
+      setSubmittedSearch(null);
       toast({
         kind: 'error',
         title: 'Could not create the app',
@@ -265,11 +336,11 @@ export function NewAppWizard({
     }
   }
 
-  if (deploying) {
+  function renderCompletion() {
     return (
       <div className="mx-auto flex max-w-2xl flex-col gap-6">
         <PageHeader
-          title={onboarding ? 'Your first deployment' : 'New function'}
+          title={onboarding ? 'Your first deployment' : 'New app'}
           description="Track the app and its first deployment from the platform state."
         />
 
@@ -353,9 +424,9 @@ export function NewAppWizard({
 
         {createdId && (
           <motion.div
-            initial={{ opacity: 0, y: 8 }}
+            initial={reduce ? false : { opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, ease: EASE }}
+            transition={{ duration: reduce ? 0 : 0.3, ease: EASE }}
             className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-4"
           >
             <div className="min-w-0">
@@ -377,7 +448,7 @@ export function NewAppWizard({
                 size="sm"
                 onClick={() => navigate({ to: '/dashboard/workflows' })}
               >
-                All workflows
+                All apps
               </Button>
               <Button
                 variant="cta"
@@ -390,7 +461,7 @@ export function NewAppWizard({
                   })
                 }
               >
-                View function
+                View app
                 <ArrowRight className="h-3.5 w-3.5" />
               </Button>
             </div>
@@ -400,62 +471,73 @@ export function NewAppWizard({
     );
   }
 
-  return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-6">
+  const form = (
+    <div
+      className={cn(
+        'mx-auto flex w-full flex-col gap-6',
+        source === 'template' || source === 'import' ? 'max-w-5xl' : 'max-w-2xl'
+      )}
+    >
       {!onboarding && (
         <Link
           to="/dashboard/workflows"
           className="inline-flex w-fit items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
         >
           <ArrowLeft className="h-3 w-3" />
-          All workflows
+          All apps
         </Link>
       )}
 
       <PageHeader
-        title={onboarding ? 'Deploy your first app' : 'New function'}
+        title={onboarding ? 'Deploy your first app' : 'New app'}
         description={
           onboarding
             ? 'Choose a Git repository, configure its runtime, and watch the real build go live.'
             : template
               ? `Starting from the ${template.name} template — source, runtime, and memory are prefilled; the scaffold arrives once the app exists.`
-              : 'Deploy a function to bare metal.'
+              : 'Choose a source to create your app.'
         }
       />
 
       {/* Step rail */}
-      <ol className="flex items-center gap-2">
-        {STEPS.map((label, i) => (
-          <li key={label} className="flex items-center gap-2">
-            <span
-              className={cn(
-                'flex h-6 w-6 items-center justify-center rounded-full border text-[11px]',
-                i < step && 'border-transparent text-black',
-                i === step && 'border-brand text-brand',
-                i > step && 'border-border text-muted-foreground'
-              )}
-              style={i < step ? { background: 'var(--status-good)' } : undefined}
+      {source !== 'import' && (
+        <ol aria-label="App creation steps" className="flex items-center gap-2">
+          {STEPS.map((label, i) => (
+            <li
+              key={label}
+              aria-current={i === step ? 'step' : undefined}
+              className="flex items-center gap-2"
             >
-              {i < step ? <Check className="h-3 w-3" /> : i + 1}
-            </span>
-            <span
-              className={cn('text-sm', i === step ? 'text-foreground' : 'text-muted-foreground')}
-            >
-              {label}
-            </span>
-            {i < STEPS.length - 1 && <span className="mx-1 h-px w-6 bg-border sm:w-10" />}
-          </li>
-        ))}
-      </ol>
+              <span
+                className={cn(
+                  'flex h-6 w-6 items-center justify-center rounded-full border text-[11px]',
+                  i < step && 'border-transparent text-black',
+                  i === step && 'border-brand text-brand',
+                  i > step && 'border-border text-muted-foreground'
+                )}
+                style={i < step ? { background: 'var(--status-good)' } : undefined}
+              >
+                {i < step ? <Check className="h-3 w-3" /> : i + 1}
+              </span>
+              <span
+                className={cn('text-sm', i === step ? 'text-foreground' : 'text-muted-foreground')}
+              >
+                {label}
+              </span>
+              {i < STEPS.length - 1 && <span className="mx-1 h-px w-6 bg-border sm:w-10" />}
+            </li>
+          ))}
+        </ol>
+      )}
 
       <AnimatePresence mode="wait" initial={false}>
         {step === 0 && (
           <motion.div
             key="source"
-            initial={{ opacity: 0, y: 10 }}
+            initial={reduce ? false : { opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.25, ease: EASE }}
+            exit={reduce ? { opacity: 1 } : { opacity: 0, y: -10 }}
+            transition={{ duration: reduce ? 0 : 0.25, ease: EASE }}
             className="flex flex-col gap-4"
           >
             <div className="flex flex-col gap-2">
@@ -469,7 +551,7 @@ export function NewAppWizard({
                       onClick={() => setSource(s.id)}
                       aria-pressed={source === s.id}
                       className={cn(
-                        'flex items-start gap-3 rounded-lg border p-4 text-left transition-colors',
+                        'flex items-start gap-3 rounded-lg border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
                         source === s.id
                           ? 'border-brand bg-brand/5'
                           : 'border-border bg-card hover:border-border-secondary'
@@ -542,37 +624,66 @@ export function NewAppWizard({
               </div>
             ) : null}
 
-            <div className="flex justify-end">
-              <Button
-                variant="cta"
-                disabled={source === 'git' && (!githubConnected || !gitSourceValid)}
-                onClick={() => setStep(1)}
-                className="h-10 gap-2 rounded-lg"
-              >
-                Continue
-                <ArrowRight className="h-4 w-4" />
-              </Button>
-            </div>
+            {source === 'template' && (
+              <>
+                {picked && (
+                  <p role="status" className="text-sm text-muted-foreground">
+                    Selected template: <strong>{template?.name ?? catalogTemplate?.name}</strong>.
+                    Create the app, then deploy the scaffold from the CLI.
+                  </p>
+                )}
+                {templateSlug && !picked && !catalog.isPending && (
+                  <p role="status" className="text-sm text-muted-foreground">
+                    This template is unavailable. Choose a starter below or another source.
+                  </p>
+                )}
+                <TemplateCatalog
+                  selected={templateSlug}
+                  onChooseEmpty={() => setSource('empty')}
+                  onSelect={(slug) =>
+                    changeSearch({ ...search, source: 'template', template: slug, step: undefined })
+                  }
+                />
+              </>
+            )}
+
+            {source !== 'import' && (
+              <div className="flex justify-end">
+                <Button
+                  variant="cta"
+                  disabled={!sourceValid}
+                  onClick={() => setStep(1)}
+                  className="h-10 gap-2 rounded-lg"
+                >
+                  Continue
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
           </motion.div>
         )}
 
         {step === 1 && (
           <motion.div
             key="configure"
-            initial={{ opacity: 0, y: 10 }}
+            initial={reduce ? false : { opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.25, ease: EASE }}
+            exit={reduce ? { opacity: 1 } : { opacity: 0, y: -10 }}
+            transition={{ duration: reduce ? 0 : 0.25, ease: EASE }}
             className="flex flex-col gap-5"
           >
             <Panel>
               <div className="grid gap-5 sm:grid-cols-2">
-                <label className="flex flex-col gap-1.5">
-                  <span className="label-mono text-muted-foreground">Function name</span>
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor="new-app-name" className="label-mono text-muted-foreground">
+                    App name
+                  </label>
                   <input
+                    id="new-app-name"
                     value={name}
                     onChange={(e) => setName(e.target.value.toLowerCase())}
                     aria-invalid={!nameValid || undefined}
+                    aria-describedby={!nameValid ? 'new-app-name-error' : undefined}
                     className={cn(
                       'h-10 rounded-lg border bg-background px-3 font-mono text-sm outline-none focus:ring-2 focus:ring-brand/25',
                       nameValid
@@ -581,11 +692,15 @@ export function NewAppWizard({
                     )}
                   />
                   {!nameValid && (
-                    <span className="text-xs" style={{ color: 'var(--status-critical)' }}>
+                    <span
+                      id="new-app-name-error"
+                      className="text-xs"
+                      style={{ color: 'var(--status-critical)' }}
+                    >
                       Lowercase letters, numbers, and dashes.
                     </span>
                   )}
-                </label>
+                </div>
 
                 <label className="flex flex-col gap-1.5">
                   <span className="label-mono text-muted-foreground">Type</span>
@@ -702,16 +817,17 @@ export function NewAppWizard({
         {step === 2 && (
           <motion.div
             key="review"
-            initial={{ opacity: 0, y: 10 }}
+            initial={reduce ? false : { opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.25, ease: EASE }}
+            exit={reduce ? { opacity: 1 } : { opacity: 0, y: -10 }}
+            transition={{ duration: reduce ? 0 : 0.25, ease: EASE }}
             className="flex flex-col gap-5"
           >
             <Panel title="Review">
               <dl className="grid gap-x-8 gap-y-4 sm:grid-cols-2">
                 {[
                   ['Name', name],
+                  ['Source', SOURCES.find((option) => option.id === source)?.name ?? ''],
                   ['Type', APP_TYPES.find((t) => t.id === appType)?.label ?? ''],
                   [
                     'First deploy',
@@ -790,7 +906,7 @@ export function NewAppWizard({
                 onClick={() => void createFunction()}
                 className="h-10 gap-2 rounded-lg px-6"
               >
-                Deploy function
+                {source === 'git' ? 'Deploy app' : 'Create app'}
                 <ArrowRight className="h-4 w-4" />
               </Button>
             </div>
@@ -798,5 +914,18 @@ export function NewAppWizard({
         )}
       </AnimatePresence>
     </div>
+  );
+
+  return (
+    <>
+      {deploying ? renderCompletion() : form}
+      {/* Keep the archive and plan mounted through source switches and
+          submission/completion, including a failed attempt from another source. */}
+      {!onboarding && (
+        <div hidden={deploying || source !== 'import'} className="mx-auto mt-6 w-full max-w-5xl">
+          <ProjectImport initialSlug={search.slug} initialBranch={search.branch} />
+        </div>
+      )}
+    </>
   );
 }

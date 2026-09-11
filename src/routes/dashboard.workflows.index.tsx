@@ -35,7 +35,11 @@ export const Route = createFileRoute('/dashboard/workflows/')({
   // string behind.
   validateSearch: (
     search: Record<string, unknown>
-  ): { q?: string; state?: RunState | 'all'; runtime?: string } => ({
+  ): Record<string, unknown> & { q?: string; state?: RunState | 'all'; runtime?: string } => ({
+    ...search,
+    q: undefined,
+    state: undefined,
+    runtime: undefined,
     ...(typeof search.q === 'string' && search.q ? { q: search.q } : {}),
     ...(STATE_KEYS.includes(search.state as RunState | 'all') && search.state !== 'all'
       ? { state: search.state as RunState }
@@ -57,7 +61,7 @@ export const Route = createFileRoute('/dashboard/workflows/')({
 const COLUMNS: Column<Workflow>[] = [
   {
     key: 'name',
-    label: 'Function',
+    label: 'App',
     render: (fn) => (
       <>
         <span className="font-mono">{fn.name}</span>
@@ -69,6 +73,7 @@ const COLUMNS: Column<Workflow>[] = [
   {
     key: 'runtime',
     label: 'Runtime',
+    priority: 'secondary',
     render: (fn) => (
       <span className="text-muted-foreground">
         <span className="font-mono text-xs">{fn.runtime}</span>
@@ -79,12 +84,14 @@ const COLUMNS: Column<Workflow>[] = [
   {
     key: 'invocations24h',
     label: 'Invocations 24h',
+    priority: 'secondary',
     numeric: true,
     render: (fn) => <>{formatCompact(fn.invocations24h)}</>,
   },
   {
     key: 'avgDurationMs',
     label: 'Avg duration',
+    priority: 'secondary',
     numeric: true,
     render: (fn) => <>{formatMs(fn.avgDurationMs)}</>,
   },
@@ -101,6 +108,7 @@ const COLUMNS: Column<Workflow>[] = [
   {
     key: 'lastDeployedAt',
     label: 'Deployed',
+    priority: 'secondary',
     numeric: true,
     render: (fn) => (
       <span className="text-muted-foreground">{formatRelative(fn.lastDeployedAt)}</span>
@@ -114,11 +122,16 @@ function FunctionsPage() {
   // Filter changes replace rather than push — refining a filter is not
   // history the back button should replay keystroke by keystroke.
   const setQuery = (next: string) =>
-    routeNavigate({ search: (prev) => ({ ...prev, q: next || undefined }), replace: true });
+    routeNavigate({
+      search: (prev) => ({ ...prev, q: next || undefined }),
+      replace: true,
+      hash: true,
+    });
   const setState = (next: RunState | 'all') =>
     routeNavigate({
       search: (prev) => ({ ...prev, state: next === 'all' ? undefined : next }),
       replace: true,
+      hash: true,
     });
   // Was a project filter. The API has no projects — apps are flat per account —
   // so this filters on the one grouping that is real: the runtime.
@@ -126,6 +139,7 @@ function FunctionsPage() {
     routeNavigate({
       search: (prev) => ({ ...prev, runtime: next === 'all' ? undefined : next }),
       replace: true,
+      hash: true,
     });
   const { workflows, loading, error, refresh } = useData();
   const navigate = useNavigate();
@@ -174,7 +188,7 @@ function FunctionsPage() {
         onQueryChange={setQuery}
         filters={
           <>
-            <div className="flex rounded-md border border-border p-0.5">
+            <div className="flex flex-wrap rounded-md border border-border p-0.5">
               {STATE_FILTERS.map((f) => (
                 <button
                   key={f.key}
@@ -209,6 +223,31 @@ function FunctionsPage() {
         }
         emptyMessage={
           workflows.length === 0 ? 'No apps on this account yet.' : 'No apps match these filters.'
+        }
+        emptyAction={
+          workflows.length === 0 ? (
+            <Button asChild size="sm">
+              <Link to="/dashboard/workflows/new">Create your first app</Link>
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                void routeNavigate({
+                  search: (current) => ({
+                    ...current,
+                    q: undefined,
+                    state: undefined,
+                    runtime: undefined,
+                  }),
+                  hash: true,
+                })
+              }
+            >
+              Clear filters
+            </Button>
+          )
         }
         loading={loading}
         error={error}

@@ -87,6 +87,6 @@ describe('DomainDoctor', () => {
       error: new ApiError({ status: 500, code: 'internal', title: 'Boom' }),
     });
     render(<DomainDoctor domain="app.example.com" />);
-    expect(screen.getByText(/could not/i)).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Boom');
   });
 });

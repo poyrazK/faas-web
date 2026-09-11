@@ -1,7 +1,9 @@
 import {
   useInfiniteQuery,
   useMutation,
+  useQueries,
   useQuery,
+  queryOptions,
   useQueryClient,
   type QueryClient,
   type QueryFilters,
@@ -142,6 +144,15 @@ export function useBindRepoFor() {
  * Organisations — identity, seats, ownership, org-scoped keys
  * ------------------------------------------------------------------ */
 
+export function useCreateOrg() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: components['schemas']['CreateOrgRequest']) =>
+      unwrap(api.POST('/v1/orgs', { body })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['orgs'] }),
+  });
+}
+
 export function useOrg(slug: string) {
   return useQuery({
     queryKey: ['orgs', slug],
@@ -164,7 +175,13 @@ export function useDeleteOrg() {
   return useMutation({
     mutationFn: (slug: string) =>
       unwrap(api.DELETE('/v1/orgs/{slug}', { params: { path: { slug } } })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['orgs'] }),
+    onSuccess: async (_data, slug) => {
+      qc.setQueryData<components['schemas']['OrgListResponse']>(['orgs'], (data) =>
+        data ? { orgs: data.orgs.filter((org) => org.slug !== slug) } : data
+      );
+      qc.removeQueries({ queryKey: ['orgs', slug] });
+      await qc.invalidateQueries({ queryKey: ['orgs'] });
+    },
   });
 }
 
@@ -201,6 +218,8 @@ export function useOrgKeys(slug: string) {
 export function useCreateOrgKey(slug: string) {
   const qc = useQueryClient();
   return useMutation({
+    // One-time credentials must leave the mutation cache on reset/unmount.
+    gcTime: 0,
     mutationFn: (body: components['schemas']['CreateOrgAPIKeyRequest']) =>
       unwrap(api.POST('/v1/orgs/{slug}/keys', { params: { path: { slug } }, body })),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['orgs', slug, 'keys'] }),
@@ -219,6 +238,7 @@ export function useDeleteOrgKey(slug: string) {
 export function useRotateOrgKey(slug: string) {
   const qc = useQueryClient();
   return useMutation({
+    gcTime: 0,
     mutationFn: (id: string) =>
       unwrap(
         api.POST('/v1/orgs/{slug}/keys/{id}/rotate', {
@@ -256,11 +276,11 @@ export function useAcceptInvitation() {
  * Billing & account controls
  * ------------------------------------------------------------------ */
 
-/** Set (or clear with 0) a hard ceiling on monthly overage spend. */
+/** Set a monthly overage ceiling; zero forbids overage and null clears the cap. */
 export function useSetOverageCap() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (capCents: number) =>
+    mutationFn: (capCents: number | null) =>
       unwrap(api.POST('/v1/account/overage-cap', { body: { overage_cap_cents: capCents } })),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.account }),
   });
@@ -291,6 +311,15 @@ export function useAccountExport() {
   });
 }
 
+/** Stage account deletion; data remains restorable for the API's 30-day grace period. */
+export function useDeleteAccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => unwrap(api.DELETE('/v1/account', {})),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.account }),
+  });
+}
+
 /** Bring a deleted_pending account back inside the 30-day window. */
 export function useRestoreAccount() {
   const qc = useQueryClient();
@@ -311,7 +340,7 @@ export function useGraceWindow() {
 export function useSetGraceWindow() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (days: number) =>
+    mutationFn: (days: number | null) =>
       unwrap(api.PATCH('/v1/account/keys/grace_window_days', { body: { days } })),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['account', 'grace-window'] }),
   });
@@ -557,12 +586,25 @@ export function useAppDiff(slug: string) {
 }
 
 /** One build's record — status, timings, failure class. */
-export function useBuild(id: string) {
-  return useQuery({
+function buildOptions(id: string) {
+  return queryOptions({
     queryKey: ['builds', id],
     queryFn: () => unwrap(api.GET('/v1/builds/{id}', { params: { path: { id } } })),
     enabled: Boolean(id),
+    refetchInterval: (query) =>
+      query.state.data?.status === 'queued' || query.state.data?.status === 'running'
+        ? 2_500
+        : false,
   });
+}
+
+export function useBuild(id: string) {
+  return useQuery(buildOptions(id));
+}
+
+/** Resolve deployment-linked builds outside the independently paged build feed. */
+export function useBuildRecords(ids: string[]) {
+  return useQueries({ queries: [...new Set(ids)].map(buildOptions) });
 }
 
 /** The build's provenance: toolchain versions, digests, source identity. */
@@ -1247,10 +1289,26 @@ export function useTriggers() {
  * The spec's prose also mentions a 404 for the same gate; the handler returns
  * 402, so that is what the UI branches on.
  */
-export function useJobs() {
+export function useJobs(selectedId?: string) {
   return useQuery({
-    queryKey: keys.jobs,
-    queryFn: () => unwrap(api.GET('/v1/jobs', {})),
+    queryKey: selectedId ? [...keys.jobs, { selectedId }] : keys.jobs,
+    queryFn: async ({ signal }) => {
+      let offset = 0;
+      const read = (next: number) =>
+        unwrap(api.GET('/v1/jobs', { params: { query: { offset: next } }, signal }));
+      let page = await read(offset);
+      const jobs = [...page.jobs];
+      while (
+        selectedId &&
+        !jobs.some((job) => job.id === selectedId) &&
+        page.next_offset > offset
+      ) {
+        offset = page.next_offset;
+        page = await read(offset);
+        jobs.push(...page.jobs);
+      }
+      return { ...page, jobs };
+    },
   });
 }
 
@@ -1283,24 +1341,68 @@ export function useJobRun(name: string | null, runId: string | null) {
   });
 }
 
-export function useJobRuns(name: string | null) {
+export function useJobRuns(name: string | null, selectedId?: string | null) {
   return useQuery({
-    queryKey: ['jobs', name, 'runs'],
+    queryKey: selectedId ? ['jobs', name, 'runs', { selectedId }] : ['jobs', name, 'runs'],
     enabled: name !== null,
-    queryFn: () => unwrap(api.GET('/v1/jobs/{name}/runs', { params: { path: { name: name! } } })),
+    queryFn: async ({ signal }) => {
+      let offset = 0;
+      const read = (next: number) =>
+        unwrap(
+          api.GET('/v1/jobs/{name}/runs', {
+            params: { path: { name: name! }, query: { offset: next } },
+            signal,
+          })
+        );
+      let page = await read(offset);
+      const runs = [...page.runs];
+      while (
+        selectedId &&
+        !runs.some((run) => run.id === selectedId) &&
+        page.next_offset > offset
+      ) {
+        offset = page.next_offset;
+        page = await read(offset);
+        runs.push(...page.runs);
+      }
+      return { ...page, runs };
+    },
   });
 }
 
-export function useJobTasks(name: string | null, runId: string | null) {
+export function useJobTasks(
+  name: string | null,
+  runId: string | null,
+  selectedIndex?: number | null
+) {
   return useQuery({
-    queryKey: ['jobs', name, 'runs', runId, 'tasks'],
+    queryKey:
+      selectedIndex != null
+        ? ['jobs', name, 'runs', runId, 'tasks', { selectedIndex }]
+        : ['jobs', name, 'runs', runId, 'tasks'],
     enabled: name !== null && runId !== null,
-    queryFn: () =>
-      unwrap(
-        api.GET('/v1/jobs/{name}/runs/{id}/tasks', {
-          params: { path: { name: name!, id: runId! } },
-        })
-      ),
+    queryFn: async ({ signal }) => {
+      let offset = 0;
+      const read = (next: number) =>
+        unwrap(
+          api.GET('/v1/jobs/{name}/runs/{id}/tasks', {
+            params: { path: { name: name!, id: runId! }, query: { offset: next } },
+            signal,
+          })
+        );
+      let page = await read(offset);
+      const tasks = [...page.tasks];
+      while (
+        selectedIndex != null &&
+        !tasks.some((task) => task.task_index === selectedIndex) &&
+        page.next_offset > offset
+      ) {
+        offset = page.next_offset;
+        page = await read(offset);
+        tasks.push(...page.tasks);
+      }
+      return { ...page, tasks };
+    },
   });
 }
 
@@ -1351,14 +1453,26 @@ export type JobTask = components['schemas']['JobTaskResponse'];
  * 3-day plan silently returns 3, and a console that showed "7 days" over that
  * would be lying about what it drew.
  */
-export function useDebugRequests(slug: string, since: string) {
+export const DEBUG_REQUEST_SAMPLE_LIMIT = 20;
+
+export function useDebugRequests(slug: string, since: string, route?: string) {
   return useQuery({
-    queryKey: ['apps', slug, 'debug', 'requests', since],
+    queryKey: [
+      'apps',
+      slug,
+      'debug',
+      'requests',
+      since,
+      { route: route || null, limit: DEBUG_REQUEST_SAMPLE_LIMIT },
+    ],
     enabled: Boolean(slug),
     queryFn: () =>
       unwrap(
         api.GET('/v1/apps/{slug}/debug/requests', {
-          params: { path: { slug }, query: { since } },
+          params: {
+            path: { slug },
+            query: { since, limit: DEBUG_REQUEST_SAMPLE_LIMIT, ...(route ? { route } : {}) },
+          },
         })
       ),
   });
@@ -1675,10 +1789,26 @@ export function useInvokeAppAsync() {
   });
 }
 
-export function useCronRuns(id: string) {
+export function useCronRuns(id: string, selectedId?: string) {
   return useQuery({
-    queryKey: ['crons', id, 'runs'],
-    queryFn: () => unwrap(api.GET('/v1/crons/{id}/runs', { params: { path: { id } } })),
+    queryKey: selectedId ? ['crons', id, 'runs', { selectedId }] : ['crons', id, 'runs'],
+    queryFn: async ({ signal }) => {
+      const read = (before?: string) =>
+        unwrap(
+          api.GET('/v1/crons/{id}/runs', { params: { path: { id }, query: { before } }, signal })
+        );
+      let page = await read();
+      const runs = [...page.runs];
+      const seen = new Set<string>();
+      while (selectedId && !runs.some((run) => run.id === selectedId)) {
+        const before = page.runs.at(-1)?.id;
+        if (!before || seen.has(before)) break;
+        seen.add(before);
+        page = await read(before);
+        runs.push(...page.runs);
+      }
+      return { ...page, runs };
+    },
     enabled: Boolean(id),
   });
 }
@@ -1688,7 +1818,7 @@ export function useDeleteCron() {
   return useMutation({
     mutationFn: (id: string) => unwrap(api.DELETE('/v1/crons/{id}', { params: { path: { id } } })),
     onMutate: (id) =>
-      applyOptimistic<CronsList>(qc, { queryKey: keys.crons }, (old) =>
+      applyOptimistic<CronsList>(qc, { queryKey: keys.crons, exact: true }, (old) =>
         old.filter((c) => c.id !== id)
       ),
     onError: (_err, _id, rollback) => rollback?.(),
@@ -1715,6 +1845,7 @@ export function useRunCron() {
 export function useCreateApiKey() {
   const qc = useQueryClient();
   return useMutation({
+    gcTime: 0,
     mutationFn: (body: components['schemas']['CreateKeyRequest']) =>
       unwrap(api.POST('/v1/keys', { body })),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.keys }),
@@ -1739,6 +1870,7 @@ type ApiKeysList = NonNullable<ReturnType<typeof useApiKeys>['data']>;
 export function useRotateApiKey() {
   const qc = useQueryClient();
   return useMutation({
+    gcTime: 0,
     mutationFn: (id: string) =>
       unwrap(api.POST('/v1/keys/{id}/rotate', { params: { path: { id } } })),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.keys }),
@@ -2292,6 +2424,28 @@ export function useBuilds(options?: Options<components['schemas']['BuildListResp
   });
 }
 
+/** Full build history, including builds without an attached deployment. */
+export function useInfiniteBuilds(limit = 50) {
+  return useInfiniteQuery({
+    queryKey: ['builds', 'history', limit],
+    queryFn: ({ pageParam }) =>
+      unwrap(
+        api.GET('/v1/builds', {
+          params: { query: { limit, ...(pageParam ? { before: pageParam } : {}) } },
+        })
+      ),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.next_before || undefined,
+    retry: retryPolicy,
+    refetchInterval: (query) =>
+      query.state.data?.pages.some((page) =>
+        page.items.some((build) => build.status === 'queued' || build.status === 'running')
+      )
+        ? 2_500
+        : false,
+  });
+}
+
 export function useBuildSbom(id: string) {
   return useQuery({
     queryKey: ['builds', id, 'sbom'],
@@ -2580,6 +2734,7 @@ const orgKey = (slug: string, what: 'members' | 'invitations') => ['orgs', slug,
 export function useInviteMember(org: string) {
   const qc = useQueryClient();
   return useMutation({
+    gcTime: 0,
     mutationFn: (body: components['schemas']['InviteMemberRequest']) =>
       unwrap(api.POST('/v1/orgs/{slug}/members', { params: { path: { slug: org } }, body })),
     onSuccess: () => qc.invalidateQueries({ queryKey: orgKey(org, 'invitations') }),

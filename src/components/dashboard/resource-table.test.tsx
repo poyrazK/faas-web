@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ResourceTable, type Column } from './resource-table';
@@ -127,7 +127,7 @@ describe('filtering', () => {
     const user = userEvent.setup();
     setup({ ...filterable, emptyMessage: 'Nothing matched.' });
     await user.type(screen.getByRole('searchbox'), 'zzzz');
-    expect(screen.getByText('Nothing matched.')).toBeInTheDocument();
+    expect(screen.getByText('No matching results.')).toBeInTheDocument();
   });
 
   it('clears via the clear button', async () => {
@@ -245,6 +245,124 @@ describe('row activation', () => {
     for (const row of bodyRows) {
       expect(row).not.toHaveAttribute('role', 'button');
       expect(row).not.toHaveAttribute('tabindex');
+    }
+  });
+});
+
+describe('usable resource states and compact tables', () => {
+  it('preserves caller-specific filtered evidence wording alongside the clear action', async () => {
+    setup({
+      searchKeys: ['name'],
+      filteredEmptyMessage: 'No returned observations match this filter.',
+    });
+    await userEvent.type(screen.getByRole('searchbox'), 'unknown');
+    expect(screen.getByText('No returned observations match this filter.')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Show all results' }));
+    expect(names()).toEqual(['checkout', 'alpha-resize', 'webhook']);
+  });
+  it('offers a real empty-state action and withholds it while loading or failed', async () => {
+    const create = vi.fn();
+    const props = {
+      rows: [] as Row[],
+      columns: COLUMNS,
+      emptyMessage: 'No apps yet.',
+      emptyAction: <button onClick={create}>Create app</button>,
+    };
+    const view = render(<ResourceTable {...props} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Create app' }));
+    expect(create).toHaveBeenCalledOnce();
+    view.rerender(<ResourceTable {...props} loading />);
+    expect(screen.queryByRole('button', { name: 'Create app' })).not.toBeInTheDocument();
+    const retry = vi.fn();
+    view.rerender(
+      <ResourceTable {...props} error={new Error('Apps unavailable')} onRetry={retry} />
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent('Apps unavailable');
+    expect(screen.queryByRole('button', { name: 'Create app' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(retry).toHaveBeenCalledOnce();
+  });
+
+  it('offers clearing a search instead of creation when existing resources do not match', async () => {
+    setup({
+      searchKeys: ['name'],
+      emptyMessage: 'No apps yet.',
+      emptyAction: <button>Create app</button>,
+    });
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Filter resources' }), 'unknown');
+    expect(screen.getByText('No matching results.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Create app' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Show all results' }));
+    expect(names()).toEqual(['checkout', 'alpha-resize', 'webhook']);
+  });
+
+  it('makes the clear control discoverable by pointer and keyboard', async () => {
+    const user = userEvent.setup();
+    setup({ searchKeys: ['name'], query: 'web', onQueryChange: vi.fn() });
+    const button = screen.getByRole('button', { name: 'Clear filter' });
+    await user.hover(button);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Clear filter');
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('tooltip')).not.toBeInTheDocument());
+    await user.tab();
+    await user.tab();
+    expect(button).toHaveFocus();
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Clear filter');
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+  });
+
+  it('retains secondary values in a named compact disclosure without activating the row', async () => {
+    const onRowClick = vi.fn();
+    setup({ columns: [COLUMNS[0], { ...COLUMNS[1], priority: 'secondary' }], onRowClick });
+    expect(screen.getByRole('columnheader', { name: 'Calls' })).toHaveClass(
+      'hidden',
+      'md:table-cell'
+    );
+    expect(screen.getByRole('table')).toHaveClass('min-w-0');
+    const details = screen.getByText(/More details for checkout/).closest('details')!;
+    expect(details).toHaveClass('md:hidden');
+    await userEvent.click(within(details).getByText(/More details for checkout/));
+    expect(details).toHaveAttribute('open');
+    expect(within(details).getByText('Calls')).toBeInTheDocument();
+    expect(within(details).getByText('30')).toBeInTheDocument();
+    expect(onRowClick).not.toHaveBeenCalled();
+  });
+
+  it('names compact disclosures by identity even when primary status values repeat', () => {
+    render(
+      <ResourceTable
+        rows={[
+          { id: 'release-1', status: 'failed', image: 'a'.repeat(80) },
+          { id: 'release-2', status: 'failed', image: 'b'.repeat(80) },
+        ]}
+        columns={[
+          { key: 'status', label: 'Status' },
+          { key: 'image', label: 'Image', priority: 'secondary' },
+        ]}
+      />
+    );
+    expect(screen.getByText('More details for failed (release-1)')).toBeInTheDocument();
+    expect(screen.getByText('More details for failed (release-2)')).toBeInTheDocument();
+    expect(screen.getByText('a'.repeat(80)).closest('td')).toHaveClass('[overflow-wrap:anywhere]');
+  });
+
+  it('supports two columns reading the same field without duplicate keys or unnamed sort controls', async () => {
+    const errors = vi.spyOn(console, 'error');
+    try {
+      setup({
+        columns: [
+          ...COLUMNS,
+          { key: 'name', label: '', render: (row) => <button>Inspect {row.name}</button> },
+        ],
+      });
+      expect(screen.getAllByRole('columnheader')).toHaveLength(3);
+      expect(screen.queryByRole('button', { name: '' })).not.toBeInTheDocument();
+      expect(screen.getByRole('columnheader', { name: 'Actions' })).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Inspect checkout' }));
+      expect(errors).not.toHaveBeenCalled();
+    } finally {
+      errors.mockRestore();
     }
   });
 });

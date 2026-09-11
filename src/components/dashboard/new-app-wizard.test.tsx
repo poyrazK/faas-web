@@ -57,9 +57,9 @@ async function submitGitApp(onDeploymentAccepted = vi.fn()) {
   render(<NewAppWizard onboarding onDeploymentAccepted={onDeploymentAccepted} />);
   await user.type(screen.getByLabelText(/repository/i), 'gregale/demo');
   await user.click(screen.getByRole('button', { name: /continue/i }));
-  await user.type(await screen.findByLabelText(/function name/i), 'demo-app');
+  await user.type(await screen.findByLabelText(/app name/i), 'demo-app');
   await user.click(screen.getByRole('button', { name: /review/i }));
-  await user.click(await screen.findByRole('button', { name: /deploy function/i }));
+  await user.click(await screen.findByRole('button', { name: /deploy app/i }));
   return { onDeploymentAccepted };
 }
 

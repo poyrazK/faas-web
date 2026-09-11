@@ -1,452 +1,386 @@
-import { useMemo, useState } from 'react';
-import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { useMemo } from 'react';
+import { createFileRoute, Link } from '@tanstack/react-router';
 import { InlinePhase, PageHeader, queryPhase } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
-import { formatRelative, type Deployment } from '@/lib/mock-data';
-import { slugIndex, toDeployment } from '@/lib/api/adapters';
+import { formatRelative } from '@/lib/mock-data';
 import {
   useApps,
-  useBuilds,
-  useDeployment,
-  useDeploymentScan,
-  useDeploymentSecretScan,
+  useBuildRecords,
+  useInfiniteBuilds,
   useInfiniteDeployments,
 } from '@/lib/api/queries';
-import { Modal } from '@/components/ui/modal';
-import { Button } from '@/components/ui/button';
-import { useConfirm } from '@/components/ui/confirm';
-import { useToast } from '@/components/ui/toast';
-import { errorMessage } from '@/lib/api/errors';
-import { useUpdateDeploymentMinInstances, useUpdateDeploymentTraffic } from '@/lib/api/queries';
 import type { components } from '@/lib/api/schema';
-import { DeploymentLifecycle } from '@/components/dashboard/deployment-lifecycle';
+import { Button } from '@/components/ui/button';
+import { ReleaseDetailPanel } from '@/components/dashboard/release-detail';
+import {
+  sourceSize,
+  validateReleasesSearch,
+  type ReleasesSearch,
+} from '@/components/dashboard/releases-search';
 import { consoleHead } from '@/lib/seo';
+import { releaseStatusColor } from '@/components/dashboard/release-status';
 
 export const Route = createFileRoute('/dashboard/deployments')({
   component: DeploymentsPage,
+  validateSearch: validateReleasesSearch,
   head: () => consoleHead('deployments'),
 });
 
-const STATE_COLOR: Record<Deployment['state'], string> = {
-  succeeded: 'var(--status-good)',
-  failed: 'var(--status-critical)',
-  building: 'var(--status-warning)',
-};
-
-const SEVERITY_COLOR: Record<string, string> = {
-  CRITICAL: 'var(--status-critical)',
-  HIGH: 'var(--status-serious)',
-  MEDIUM: 'var(--status-warning)',
-};
-
-function DeploymentControls({
-  deployment,
-  version,
-}: {
-  deployment: components['schemas']['DeploymentResponse'];
-  version: string;
-}) {
-  const updateMinInstances = useUpdateDeploymentMinInstances();
-  const updateTraffic = useUpdateDeploymentTraffic();
-  const { toast } = useToast();
-  const confirm = useConfirm();
-  const [minInstances, setMinInstances] = useState(deployment.min_instances ?? 0);
-  const [trafficPercent, setTrafficPercent] = useState(deployment.traffic_percent ?? 0);
-
-  return (
-    <div className="rounded-lg border border-border p-4">
-      <p className="label-mono mb-3 text-muted-foreground">Runtime controls</p>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <label className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium">Minimum instances</span>
-          <span className="text-xs text-muted-foreground">
-            0 inherits the app setting. Higher values keep this deployment warm.
-          </span>
-          <div className="mt-1 flex gap-2">
-            <input
-              type="number"
-              min={0}
-              value={minInstances}
-              onChange={(e) => setMinInstances(Math.max(0, Number(e.target.value) || 0))}
-              className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2 font-mono text-sm outline-none focus:border-brand/50"
-            />
-            <Button
-              size="xs"
-              variant="outline"
-              disabled={minInstances === deployment.min_instances}
-              busy={updateMinInstances.isPending}
-              onClick={() => {
-                void updateMinInstances
-                  .mutateAsync({ id: deployment.id, min_instances: minInstances })
-                  .then(() => toast({ kind: 'success', title: 'Minimum instances updated' }))
-                  .catch((error: unknown) =>
-                    toast({
-                      kind: 'error',
-                      title: 'Could not update instances',
-                      description: errorMessage(error),
-                    })
-                  );
-              }}
-            >
-              Save
-            </Button>
-          </div>
-        </label>
-
-        <label className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium">Traffic weight</span>
-          <span className="text-xs text-muted-foreground">
-            Setting this deployment's weight sets other live deployments for the app to 0.
-          </span>
-          <div className="mt-1 flex gap-2">
-            <input
-              type="number"
-              min={0}
-              max={100}
-              value={trafficPercent}
-              onChange={(e) =>
-                setTrafficPercent(Math.min(100, Math.max(0, Number(e.target.value) || 0)))
-              }
-              className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2 font-mono text-sm outline-none focus:border-brand/50"
-            />
-            <Button
-              size="xs"
-              variant="outline"
-              disabled={trafficPercent === deployment.traffic_percent}
-              busy={updateTraffic.isPending}
-              onClick={async () => {
-                if (
-                  !(await confirm({
-                    title: `Set ${trafficPercent}% traffic for ${version}?`,
-                    description:
-                      'The traffic API rebalances the app by setting every other live deployment to 0%. Continue only if this is intentional.',
-                    confirmLabel: 'Update traffic',
-                  }))
-                )
-                  return;
-                void updateTraffic
-                  .mutateAsync({ id: deployment.id, traffic_percent: trafficPercent })
-                  .then(() => toast({ kind: 'success', title: 'Traffic weight updated' }))
-                  .catch((error: unknown) =>
-                    toast({
-                      kind: 'error',
-                      title: 'Could not update traffic',
-                      description: errorMessage(error),
-                    })
-                  );
-              }}
-            >
-              Save
-            </Button>
-          </div>
-        </label>
-      </div>
-    </div>
-  );
-}
-
-/**
- * One deployment: what shipped, what it carries, and what the scanner found.
- * `useDeployment` and `useDeploymentScan` existed with no caller — the rows
- * used to jump straight to the app's tab and the scan was never shown.
- */
-function DeploymentDrawer({
-  deployment,
-  appName,
-  onClose,
-  onOpenApp,
-}: {
-  deployment: Deployment | null;
-  appName: string;
-  onClose: () => void;
-  onOpenApp: () => void;
-}) {
-  const detail = useDeployment(deployment?.id ?? '');
-  const scan = useDeploymentScan(deployment?.id ?? '');
-  const secretScan = useDeploymentSecretScan(deployment?.id ?? '');
-  const d = detail.data;
-  const detailPhase = queryPhase({ error: detail.error, loading: detail.isPending, isEmpty: !d });
-  const scanPhase = queryPhase({
-    error: scan.error,
-    loading: scan.isPending,
-    isEmpty: !scan.data,
-  });
-
-  return (
-    <Modal
-      open={deployment !== null}
-      onClose={onClose}
-      title={deployment ? `${appName} · ${deployment.version}` : ''}
-      description={deployment?.message}
-      width="max-w-2xl"
-      footer={
-        <Button size="sm" variant="outline" onClick={onOpenApp}>
-          Open {appName}
-        </Button>
-      }
-    >
-      {detailPhase !== 'ready' || !d ? (
-        <InlinePhase
-          phase={detailPhase}
-          error={detail.error}
-          emptyMessage="This deployment has no recorded detail."
-        />
-      ) : (
-        <div className="flex flex-col gap-5">
-          <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
-            {[
-              ['Status', d.status],
-              ['Kind', d.kind],
-              ['Traffic', d.traffic_percent != null ? `${d.traffic_percent}%` : '—'],
-              ['Min instances', String(d.min_instances ?? 0)],
-              ['Image', d.image_digest],
-              ['Build', d.build_id ?? '—'],
-              ['Created', formatRelative(Date.parse(d.created_at))],
-              ['Error', d.error ?? '—'],
-            ].map(([k, v]) => (
-              <div key={k} className="flex min-w-0 flex-col gap-0.5">
-                <dt className="label-mono text-muted-foreground">{k}</dt>
-                <dd className="truncate font-mono text-xs" title={v}>
-                  {v}
-                </dd>
-              </div>
-            ))}
-          </dl>
-
-          <DeploymentControls deployment={d} version={deployment?.version ?? d.id} />
-
-          <DeploymentLifecycle deployment={d} />
-
-          <div>
-            <p className="label-mono mb-2 text-muted-foreground">Vulnerability scan</p>
-            {scanPhase !== 'ready' || !scan.data ? (
-              <InlinePhase
-                phase={scanPhase}
-                error={scan.error}
-                loadingMessage="Reading scan…"
-                emptyMessage="No scan has been recorded."
-              />
-            ) : scan.data.status !== 'complete' ? (
-              <p className="text-sm text-muted-foreground">
-                Scan {scan.data.status}
-                {scan.data.error ? ` — ${scan.data.error}` : '.'}
-              </p>
-            ) : scan.data.vulnerabilities.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Nothing known in this image.</p>
-            ) : (
-              <ul className="flex flex-col divide-y divide-border">
-                {scan.data.vulnerabilities.map((v) => (
-                  <li
-                    key={v.id}
-                    className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm"
-                  >
-                    <Pill label={v.severity.toLowerCase()} color={SEVERITY_COLOR[v.severity]} />
-                    <span className="font-mono text-xs">{v.id}</span>
-                    <span className="font-mono text-xs text-muted-foreground">
-                      {v.package}@{v.version}
-                      {v.fixed_in ? ` → ${v.fixed_in}` : ''}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          <div>
-            <p className="label-mono mb-2 text-muted-foreground">Secret scan</p>
-            {/* Image-layer secret scan: keys and tokens baked into the image
-                by mistake. A clean pass says so plainly. */}
-            {secretScan.isPending ? (
-              <InlinePhase phase="loading" loadingMessage="Reading secret scan…" />
-            ) : secretScan.error || !secretScan.data ? (
-              <p className="text-sm text-muted-foreground">No secret scan recorded.</p>
-            ) : (secretScan.data.findings?.length ?? 0) === 0 ? (
-              <p className="text-sm text-muted-foreground">No secrets found in the image layers.</p>
-            ) : (
-              <ul className="flex flex-col divide-y divide-border">
-                {secretScan.data.findings?.map((f, i) => (
-                  <li
-                    key={`${f.file}-${f.line}-${i}`}
-                    className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm"
-                  >
-                    <Pill label={f.severity} color="var(--status-critical)" />
-                    <span className="font-mono text-xs">{f.provider}</span>
-                    <span className="font-mono text-xs text-muted-foreground">
-                      {f.file}:{f.line}
-                    </span>
-                    <span className="font-mono text-xs text-muted-foreground">{f.key}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
-      )}
-    </Modal>
-  );
+type Build = components['schemas']['BuildResponse'];
+type Deployment = components['schemas']['DeploymentResponse'];
+interface ReleaseRow {
+  id: string;
+  deploymentId?: string;
+  buildId?: string;
+  image: string;
+  app: string;
+  status: string;
+  buildStatus: string;
+  source: string;
+  failure: string;
+  sourceBytes?: number;
+  duration?: number;
+  createdAt: string;
 }
 
 export function DeploymentsPage() {
+  const search = Route.useSearch();
+  const navigate = Route.useNavigate();
   const apps = useApps();
   const deploymentsQuery = useInfiniteDeployments();
-  const builds = useBuilds();
-  const navigate = useNavigate();
-  const [selected, setSelected] = useState<Deployment | null>(null);
-
-  const deployments = useMemo(() => {
-    const slugById = slugIndex(apps.data ?? []);
-    return (
-      deploymentsQuery.data?.pages
-        .flatMap((page) => page.items)
-        .map((deployment) => toDeployment(deployment, slugById)) ?? []
+  const buildsQuery = useInfiniteBuilds();
+  const view = search.view ?? (search.build && !search.deployment ? 'builds' : 'releases');
+  const select = (patch: Partial<ReleasesSearch>, replace = false) => {
+    void navigate({
+      search: (current) => ({ ...current, ...patch }),
+      hash: true,
+      replace,
+      resetScroll: false,
+    });
+  };
+  const builds = useMemo(
+    () => buildsQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    [buildsQuery.data]
+  );
+  const deployments = useMemo(
+    () => deploymentsQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    [deploymentsQuery.data]
+  );
+  const missingBuilds = useBuildRecords(
+    view === 'releases'
+      ? deployments.flatMap((deployment) =>
+          deployment.build_id && !builds.some((build) => build.id === deployment.build_id)
+            ? [deployment.build_id]
+            : []
+        )
+      : []
+  );
+  const joinedBuilds = useMemo(() => {
+    const byId = new Map(builds.map((build) => [build.id, build]));
+    for (const result of missingBuilds) if (result.data) byId.set(result.data.id, result.data);
+    const byDeployment = new Map<string, Build>();
+    for (const build of builds) {
+      const previous = byDeployment.get(build.deployment_id);
+      if (!previous || build.enqueued_at > previous.enqueued_at)
+        byDeployment.set(build.deployment_id, build);
+    }
+    return new Map(
+      deployments.map((deployment) => [
+        deployment.id,
+        deployment.build_id ? byId.get(deployment.build_id) : byDeployment.get(deployment.id),
+      ])
     );
-  }, [apps.data, deploymentsQuery.data]);
-  const appNames = useMemo(
-    () => new Map((apps.data ?? []).map((app) => [app.slug, app.slug])),
+  }, [builds, deployments, missingBuilds]);
+  const appById = useMemo(
+    () => new Map((apps.data ?? []).map((app) => [app.id, app.slug])),
     [apps.data]
   );
-  const loading = deployments.length === 0 && (apps.isPending || deploymentsQuery.isPending);
-  const error = apps.error ?? (deployments.length === 0 ? deploymentsQuery.error : undefined);
+  const rows = useMemo<ReleaseRow[]>(() => {
+    const row = (build?: Build, deployment?: Deployment): ReleaseRow => ({
+      id: deployment?.id ?? build!.id,
+      deploymentId: deployment?.id,
+      buildId: build?.id,
+      image: deployment?.image_digest ?? '',
+      app: deployment ? (appById.get(deployment.app_id) ?? deployment.app_id) : '—',
+      status: deployment?.status ?? build!.status,
+      buildStatus: build?.status ?? '—',
+      source: build?.kind ?? deployment?.kind ?? '—',
+      failure: build?.failure_class ?? '',
+      sourceBytes: build?.source_bytes,
+      duration: build?.duration_seconds,
+      createdAt: deployment?.created_at ?? build!.enqueued_at,
+    });
+    const result =
+      view === 'builds'
+        ? builds.map((build) => row(build))
+        : deployments.map((deployment) => row(joinedBuilds.get(deployment.id), deployment));
+    return result.filter(
+      (item) =>
+        (!search.status || item.status === search.status) &&
+        (!search.kind || item.source === search.kind)
+    );
+  }, [builds, deployments, joinedBuilds, appById, view, search.status, search.kind]);
+  const currentQuery = view === 'builds' ? buildsQuery : deploymentsQuery;
+  const loadedItems = view === 'builds' ? builds : deployments;
+  const error =
+    view === 'releases'
+      ? (apps.error ?? (loadedItems.length === 0 ? currentQuery.error : undefined))
+      : loadedItems.length === 0
+        ? currentQuery.error
+        : undefined;
   const retry = () => {
-    void apps.refetch();
-    void deploymentsQuery.refetch();
+    if (view === 'releases') void apps.refetch();
+    void currentQuery.refetch();
   };
-  const retryNextPage = () => {
-    void deploymentsQuery.fetchNextPage().catch(() => undefined);
-  };
-  const retryBackgroundRefetch = () => {
-    void deploymentsQuery.refetch();
-  };
-  const loadedDataError =
-    deployments.length > 0 &&
-    deploymentsQuery.error != null &&
-    (deploymentsQuery.isFetchNextPageError || deploymentsQuery.isRefetchError);
-  const retryLoadedData = deploymentsQuery.isFetchNextPageError
-    ? retryNextPage
-    : retryBackgroundRefetch;
-
-  // Build duration lives on the build record, not the deployment, so the two
-  // have to be joined here. Every row showed "0.0s" before this: the adapter
-  // hard-codes durationMs because DeploymentResponse has no such field, and
-  // nothing ever read /v1/builds to fill it in.
-  const buildSeconds = useMemo(() => {
-    const byDeployment = new Map<string, number>();
-    for (const b of builds.data?.items ?? []) {
-      if (b.duration_seconds != null) byDeployment.set(b.deployment_id, b.duration_seconds);
-    }
-    return byDeployment;
-  }, [builds.data]);
-
-  const columns: Column<Deployment>[] = [
+  const columns: Column<ReleaseRow>[] = [
     {
-      key: 'state',
-      label: 'State',
-      width: 'w-28',
-      render: (d) => <Pill label={d.state} color={STATE_COLOR[d.state]} />,
+      key: 'status',
+      label: view === 'builds' ? 'Build status' : 'Deployment state',
+      render: (r) => <Pill label={r.status} color={releaseStatusColor(r.status)} />,
     },
     {
-      key: 'message',
-      label: 'Deployment',
-      render: (d) => (
+      key: 'id',
+      label: view === 'builds' ? 'Build' : 'Release',
+      render: (r) => (
         <span className="flex min-w-0 flex-col">
-          <span className="truncate">{d.message}</span>
-          <span className="mt-0.5 font-mono text-xs text-muted-foreground">
-            image {d.version || '—'}
-          </span>
+          <span className="font-mono text-xs">{r.id}</span>
+          {r.image && (
+            <span className="truncate text-xs text-muted-foreground">image {r.image}</span>
+          )}
         </span>
       ),
     },
+    ...(view === 'releases'
+      ? [
+          { key: 'app' as const, label: 'App' },
+          {
+            key: 'buildStatus' as const,
+            label: 'Build status',
+            priority: 'secondary' as const,
+            render: (r: ReleaseRow) => (
+              <Pill label={r.buildStatus} color={releaseStatusColor(r.buildStatus)} />
+            ),
+          },
+        ]
+      : []),
+    { key: 'source', label: 'Source', priority: 'secondary' },
     {
-      key: 'workflowId',
-      label: 'App',
-      render: (d) => (
-        <span className="font-mono text-xs text-muted-foreground">
-          {appNames.get(d.workflowId) ?? d.workflowId}
-        </span>
-      ),
+      key: 'failure',
+      label: 'Failure',
+      priority: 'secondary',
+      render: (r) =>
+        r.failure ? (
+          <Pill
+            label={r.failure}
+            color={r.failure === 'user_error' ? 'var(--status-warning)' : 'var(--status-critical)'}
+          />
+        ) : (
+          '—'
+        ),
     },
     {
-      key: 'durationMs',
-      label: 'Build',
+      key: 'sourceBytes',
+      label: 'Source size',
+      priority: 'secondary',
       numeric: true,
-      // Sorting would order by the placeholder on the row, not the joined
-      // figure shown, so the header does not offer it.
-      sortable: false,
-      render: (d) => {
-        const seconds = buildSeconds.get(d.id);
-        return (
-          <span className="text-xs text-muted-foreground">
-            {seconds == null ? '—' : seconds >= 60 ? `${Math.round(seconds / 60)}m` : `${seconds}s`}
-          </span>
-        );
-      },
+      render: (r) => (r.sourceBytes == null ? '—' : sourceSize(r.sourceBytes)),
+    },
+    {
+      key: 'duration',
+      label: 'Duration',
+      priority: 'secondary',
+      numeric: true,
+      render: (r) => (r.duration == null ? '—' : `${r.duration}s`),
     },
     {
       key: 'createdAt',
       label: 'When',
+      priority: 'secondary',
       numeric: true,
-      render: (d) => formatRelative(d.createdAt),
+      render: (r) => formatRelative(Date.parse(r.createdAt)),
     },
   ];
-
+  const selected = deployments.find((deployment) => deployment.id === search.deployment);
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Deployments"
-        description="Every build across the workspace, newest first."
-      />
+      <PageHeader title="Releases" description="Deployment history and the builds behind it." />
+      <nav aria-label="Releases views" className="flex flex-wrap gap-2 border-b border-border pb-3">
+        {(['releases', 'builds'] as const).map((value) => (
+          <Link
+            key={value}
+            to="/dashboard/deployments"
+            search={(current) => ({
+              ...current,
+              view: value,
+              deployment: undefined,
+              build: undefined,
+              releaseSection: undefined,
+            })}
+            hash
+            aria-current={view === value ? 'page' : undefined}
+            className={
+              view === value
+                ? 'rounded-md bg-muted px-3 py-2 text-sm font-medium'
+                : 'rounded-md px-3 py-2 text-sm text-muted-foreground'
+            }
+          >
+            {value === 'releases' ? 'Releases' : 'Builds'}
+          </Link>
+        ))}
+      </nav>
+      {view === 'builds' && (
+        <p className="text-sm text-muted-foreground">
+          All image builds, including builds without an attached deployment.
+        </p>
+      )}
       <ResourceTable
-        rows={deployments}
+        rows={rows}
         columns={columns}
         initialSort={{ key: 'createdAt', dir: 'desc' }}
-        searchKeys={['message', 'commit', 'version']}
-        searchPlaceholder="Filter by deployment or image…"
-        emptyMessage="No deployments match these filters."
-        loading={loading}
+        query={search.q ?? ''}
+        onQueryChange={(q) => select({ q: q || undefined }, true)}
+        searchKeys={['id', 'image', 'app', 'status', 'source', 'failure', 'buildId', 'buildStatus']}
+        searchPlaceholder="Filter by release, build, image or source…"
+        emptyMessage={
+          loadedItems.length
+            ? `No ${view === 'builds' ? 'builds' : 'releases'} match these filters.`
+            : view === 'builds'
+              ? 'No builds yet.'
+              : 'No releases yet.'
+        }
+        emptyAction={
+          loadedItems.length ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => select({ q: undefined, status: undefined, kind: undefined })}
+            >
+              Clear filters
+            </Button>
+          ) : (
+            <Button asChild size="sm">
+              <Link to="/dashboard/workflows">Choose an app to deploy</Link>
+            </Button>
+          )
+        }
+        loading={
+          loadedItems.length === 0 &&
+          (currentQuery.isPending || (view === 'releases' && apps.isPending))
+        }
         error={error}
         onRetry={retry}
-        onRowClick={(d) => setSelected(d)}
+        filters={
+          <>
+            <label className="text-xs text-muted-foreground">
+              Status{' '}
+              <input
+                aria-label="Status filter"
+                value={search.status ?? ''}
+                onChange={(event) => select({ status: event.target.value || undefined }, true)}
+                className="rounded-md border border-border bg-background p-2"
+              />
+            </label>
+            <label className="text-xs text-muted-foreground">
+              Source{' '}
+              <select
+                aria-label="Source filter"
+                value={search.kind ?? ''}
+                onChange={(event) => select({ kind: event.target.value || undefined }, true)}
+                className="rounded-md border border-border bg-background p-2"
+              >
+                <option value="">All sources</option>
+                {['github', 'tarball', 'railpack', 'dockerfile'].map((kind) => (
+                  <option key={kind}>{kind}</option>
+                ))}
+              </select>
+            </label>
+          </>
+        }
+        onRowClick={(row) =>
+          select({
+            deployment: row.deploymentId,
+            build: row.deploymentId ? undefined : row.buildId,
+            releaseSection: undefined,
+          })
+        }
       />
-
-      {loadedDataError && (
+      {loadedItems.length > 0 && Boolean(currentQuery.error) && (
         <div className="flex flex-wrap items-center justify-center gap-3">
           <InlinePhase
-            phase={queryPhase({ error: deploymentsQuery.error })}
-            error={deploymentsQuery.error}
+            phase={queryPhase({ error: currentQuery.error })}
+            error={currentQuery.error}
           />
-          <Button size="xs" variant="ghost" onClick={retryLoadedData}>
+          <Button
+            size="xs"
+            variant="ghost"
+            onClick={() =>
+              void (
+                currentQuery.isFetchNextPageError
+                  ? currentQuery.fetchNextPage()
+                  : currentQuery.refetch()
+              ).catch(() => undefined)
+            }
+          >
             Retry
           </Button>
         </div>
       )}
-
-      {deploymentsQuery.hasNextPage && (
+      {view === 'releases' && Boolean(buildsQuery.error) && (
+        <div className="flex items-center gap-3">
+          <InlinePhase phase={queryPhase({ error: buildsQuery.error })} error={buildsQuery.error} />
+          <Button size="xs" variant="ghost" onClick={() => void buildsQuery.refetch()}>
+            Retry build evidence
+          </Button>
+        </div>
+      )}
+      {currentQuery.hasNextPage && (
         <div className="flex justify-center">
           <Button
             size="sm"
             variant="outline"
-            busy={deploymentsQuery.isFetchingNextPage}
-            onClick={() => void deploymentsQuery.fetchNextPage().catch(() => undefined)}
+            busy={currentQuery.isFetchingNextPage}
+            onClick={() => void currentQuery.fetchNextPage().catch(() => undefined)}
           >
-            Load older deployments
+            Load older {view === 'builds' ? 'builds' : 'deployments'}
           </Button>
         </div>
       )}
-
-      <DeploymentDrawer
-        key={selected?.id ?? 'none'}
-        deployment={selected}
-        appName={selected ? (appNames.get(selected.workflowId) ?? selected.workflowId) : ''}
-        onClose={() => setSelected(null)}
-        onOpenApp={() => {
-          if (!selected) return;
-          void navigate({
-            to: '/dashboard/workflows/$workflowId',
-            params: { workflowId: selected.workflowId },
-            search: { tab: 'Deployments' },
-          });
-        }}
-      />
+      {view === 'releases' && buildsQuery.hasNextPage && (
+        <Button
+          size="xs"
+          variant="ghost"
+          busy={buildsQuery.isFetchingNextPage}
+          onClick={() => void buildsQuery.fetchNextPage().catch(() => undefined)}
+        >
+          Load older build evidence
+        </Button>
+      )}
+      {(search.deployment || search.build) && (
+        <ReleaseDetailPanel
+          key={search.deployment ?? search.build}
+          deploymentId={search.deployment}
+          buildId={search.build}
+          fallbackBuildId={selected ? joinedBuilds.get(selected.id)?.id : undefined}
+          section={search.releaseSection ?? 'overview'}
+          onSectionChange={(releaseSection, replace) => select({ releaseSection }, replace)}
+          onClose={() =>
+            select({ deployment: undefined, build: undefined, releaseSection: undefined })
+          }
+        />
+      )}
+      {selected && appById.has(selected.app_id) && (
+        <Link
+          to="/dashboard/workflows/$workflowId"
+          params={{ workflowId: appById.get(selected.app_id)! }}
+          search={{
+            tab: 'Deployments',
+            deployment: selected.id,
+            releaseSection: search.releaseSection,
+          }}
+        >
+          Open {appById.get(selected.app_id)}
+        </Link>
+      )}
     </div>
   );
 }

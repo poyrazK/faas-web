@@ -49,6 +49,14 @@ beforeEach(() => {
 });
 
 describe('JobRuns', () => {
+  it('offers retry after a run-list failure while retaining the error', async () => {
+    const refetch = vi.fn();
+    useJobRuns.mockReturnValue({ ...ok([]), error: new Error('Runs offline'), refetch });
+    render(<JobRuns name="nightly-export" onSelect={vi.fn()} selectedRunId={null} />);
+    expect(screen.getByRole('alert')).toHaveTextContent('Runs offline');
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(refetch).toHaveBeenCalledOnce();
+  });
   it('shows task progress against the total, not just a status word', () => {
     render(<JobRuns name="nightly-export" onSelect={vi.fn()} selectedRunId={null} />);
     expect(screen.getByText(/12\s*\/\s*24/)).toBeInTheDocument();

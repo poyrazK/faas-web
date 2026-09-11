@@ -7,6 +7,7 @@ import {
   CloudXmark,
   LogOut,
   Menu,
+  Plus,
   SidebarCollapse,
   SidebarExpand,
   Settings,
@@ -26,9 +27,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipProvider } from '@/components/ui/tooltip';
+import { Button } from '@/components/ui/button';
 import { CommandPalette } from './command-palette';
 import { EASE } from './motion';
-import { NAV_GROUPS, SECTION_LABELS } from './nav-config';
+import { findNavHub, matchesNavPath, NAV_GROUPS, SECTION_LABELS } from './nav-config';
+import { DashboardSecondaryNavigation } from './secondary-navigation';
 import { recordVisit } from '@/lib/recents';
 import { cn } from '@/lib/utils';
 import { useFocusTrap } from '@/lib/use-focus-trap';
@@ -54,6 +57,8 @@ function SidebarBody({
   collapsed?: boolean;
 }) {
   const reduce = useReducedMotion();
+  const { pathname, hash } = useRouterState({ select: (s) => s.location });
+  const currentHub = findNavHub(pathname);
   // Everything below shares one rule: geometry is constant between the two
   // widths. Icons never change alignment, headings never unmount, rows never
   // re-pad — only the rail's width moves, and text fades in place. That is
@@ -119,52 +124,52 @@ function SidebarBody({
 
             <nav aria-label={group.title ?? 'Main'} className="flex flex-col gap-0.5">
               {group.items.map(({ to, label, icon: Icon, exact }) => {
+                const isActive = currentHub?.to === to;
+                const currentPath = matchesNavPath(pathname, { to, exact: true });
                 const link = (
                   <Link
                     key={to}
                     to={to}
-                    activeOptions={{ exact: exact ?? false }}
+                    search={currentPath ? true : undefined}
+                    hash={currentPath ? hash : undefined}
+                    activeOptions={{ exact: exact ?? false, includeSearch: false }}
                     onClick={onNavigate}
                     // Collapsed, the label span is opacity-0 — the accessible
                     // name must survive on the link itself, and the visual
                     // label moves into a tooltip (title="" is mouse-only).
                     aria-label={collapsed ? label : undefined}
-                    className="pressable relative isolate flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-                    activeProps={{
-                      // Reduced motion keeps the plain static fill; otherwise
-                      // the shared pill below carries the background.
-                      className: cn('!text-foreground', reduce && 'bg-muted'),
-                      'aria-current': 'page',
-                    }}
-                  >
-                    {({ isActive }) => (
-                      <>
-                        {isActive && !reduce && (
-                          <motion.span
-                            aria-hidden="true"
-                            layoutId="sidebar-active"
-                            className="absolute inset-0 -z-10 rounded-md bg-muted"
-                            transition={{
-                              type: 'spring',
-                              stiffness: 500,
-                              damping: 40,
-                            }}
-                          />
-                        )}
-                        <Icon className="h-4 w-4 shrink-0" />
-                        <span aria-hidden={collapsed} className={labelCls}>
-                          {label}
-                        </span>
-                      </>
+                    aria-current={isActive ? 'page' : undefined}
+                    className={cn(
+                      'pressable relative isolate flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
+                      isActive && '!text-foreground',
+                      isActive && reduce && 'bg-muted'
                     )}
+                  >
+                    <>
+                      {isActive && !reduce && (
+                        <motion.span
+                          aria-hidden="true"
+                          layoutId="sidebar-active"
+                          className="absolute inset-0 -z-10 rounded-md bg-muted"
+                          transition={{
+                            type: 'spring',
+                            stiffness: 500,
+                            damping: 40,
+                          }}
+                        />
+                      )}
+                      <Icon className="h-4 w-4 shrink-0" />
+                      <span aria-hidden={collapsed} className={labelCls}>
+                        {label}
+                      </span>
+                    </>
                   </Link>
                 );
-                return collapsed ? (
+                // Keep the same link mounted while focus expands the rail.
+                return (
                   <Tooltip key={to} content={label} side="right">
                     {link}
                   </Tooltip>
-                ) : (
-                  link
                 );
               })}
             </nav>
@@ -179,12 +184,7 @@ function SidebarBody({
 // drift out of sync with the breadcrumb.
 
 /**
- * Page identity as a shell path, not a breadcrumb trail.
- *
- * Gregale is CLI-first — the location reads the way the product talks:
- * `workspace/section/detail` in the mono voice, separators as slashes.
- * The workspace is the one link (home); the current segment carries
- * `aria-current`.
+ * Keep the workspace/path voice while linking back to the owning hub.
  */
 function Breadcrumbs() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -196,45 +196,71 @@ function Breadcrumbs() {
     .split('/')
     .filter(Boolean);
   const [section, detail] = segments;
-
-  const trail: string[] = [section ? (SECTION_LABELS[section] ?? section) : 'Overview'];
-  if (section === 'workflows' && detail) {
-    trail.push(
-      detail === 'new' ? 'new' : (workflows.find((w) => w.id === detail)?.name ?? 'workflow')
-    );
+  const hub = findNavHub(pathname);
+  const pageLabel = section ? (SECTION_LABELS[section] ?? section) : 'Overview';
+  const trail: { label: string; to?: string }[] = [];
+  if (hub && (hub.label !== pageLabel || detail)) {
+    trail.push({ label: hub.label, to: hub.to });
   }
+  if (!(section === 'workflows' && detail)) trail.push({ label: pageLabel });
+  if (section === 'workflows' && detail) {
+    trail.push({
+      label: detail === 'new' ? 'New app' : (workflows.find((w) => w.id === detail)?.name ?? 'App'),
+    });
+  }
+
+  const workspaceIdentity = (
+    <>
+      <span className="flex h-5 w-5 items-center justify-center rounded bg-brand/20 text-[9px] font-semibold uppercase text-brand">
+        {workspace.charAt(0)}
+      </span>
+      <span className="hidden text-muted-foreground sm:inline">{workspace}</span>
+    </>
+  );
 
   return (
     <nav
       aria-label="Breadcrumb"
       className="flex min-w-0 items-center gap-1.5 font-mono text-xs [font-variant-numeric:tabular-nums]"
     >
-      <Link
-        to="/dashboard"
-        className="pressable flex shrink-0 items-center gap-2 rounded-md px-1.5 py-1 hover:bg-muted"
-      >
-        <span className="flex h-5 w-5 items-center justify-center rounded bg-brand/20 text-[9px] font-semibold uppercase text-brand">
-          {workspace.charAt(0)}
-        </span>
-        <span className="hidden text-muted-foreground sm:inline">{workspace}</span>
-      </Link>
+      {section ? (
+        <Link
+          to="/dashboard"
+          activeOptions={{ exact: true }}
+          className="pressable flex shrink-0 items-center gap-2 rounded-md px-1.5 py-1 hover:bg-muted"
+        >
+          {workspaceIdentity}
+        </Link>
+      ) : (
+        <span className="flex shrink-0 items-center gap-2 px-1.5 py-1">{workspaceIdentity}</span>
+      )}
 
-      {trail.map((label, i) => {
+      {trail.map(({ label, to }, i) => {
         const last = i === trail.length - 1;
         return (
-          <span key={label} className="flex min-w-0 items-center gap-1.5">
+          <span key={i} className="flex min-w-0 items-center gap-1.5">
             <span aria-hidden className="shrink-0 text-muted-foreground/40">
               /
             </span>
-            <span
-              aria-current={last ? 'page' : undefined}
-              className={cn(
-                'truncate lowercase',
-                last ? 'text-foreground' : 'text-muted-foreground'
-              )}
-            >
-              {label}
-            </span>
+            {to && !last && !matchesNavPath(pathname, { to, exact: true }) ? (
+              <Link
+                to={to}
+                activeOptions={{ exact: true }}
+                className="pressable truncate rounded-md px-1 py-1 lowercase text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                {label}
+              </Link>
+            ) : (
+              <span
+                aria-current={last ? 'page' : undefined}
+                className={cn(
+                  'truncate lowercase',
+                  last ? 'text-foreground' : 'text-muted-foreground'
+                )}
+              >
+                {label}
+              </span>
+            )}
           </span>
         );
       })}
@@ -630,6 +656,12 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                 <Breadcrumbs />
 
                 <div className="ml-auto flex items-center gap-1.5">
+                  <Button asChild size="sm" className="gap-1.5">
+                    <Link to="/dashboard/workflows/new" aria-label="New app">
+                      <Plus className="h-3.5 w-3.5" />
+                      <span className="hidden sm:inline">New app</span>
+                    </Link>
+                  </Button>
                   {/* Search lives on the overview as the page's own field;
                       ⌘K still opens the palette from anywhere. */}
                   <AccountMenu onSignOut={handleSignOut} />
@@ -648,6 +680,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                   exactly that late content stranded at opacity 0. */}
                 <div className="mx-auto flex max-w-[1100px] flex-col gap-6">
                   <UnreachableBanner />
+                  <DashboardSecondaryNavigation />
                   {children}
                 </div>
               </main>

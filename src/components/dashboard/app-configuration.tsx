@@ -635,15 +635,16 @@ function DangerZone({ app }: { app: App }) {
   return (
     <Panel
       title="Danger zone"
-      description="Permanent. The console asks you to type the slug before it goes through."
+      description="Stops serving traffic. The console asks you to type the slug before it goes through."
       className="border-[color:color-mix(in_oklab,var(--status-critical)_35%,transparent)]"
     >
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <p className="text-sm font-medium">Delete {app.slug}</p>
           <p className="mt-1 max-w-lg text-xs leading-relaxed text-muted-foreground">
-            Every deployment, secret, env var, domain binding, and queue message goes with it. There
-            is no grace period for an app.
+            The app is hidden from active lists and enters a 7-day grace window before permanent
+            cleanup. Restore it through the API during that window; this console has no restore
+            action. Delete any object storage buckets first.
           </p>
         </div>
         <Button
@@ -655,7 +656,7 @@ function DangerZone({ app }: { app: App }) {
               !(await confirm({
                 title: `Delete ${app.slug}?`,
                 description:
-                  'This cannot be undone. Traffic to its URL and any bound domain starts failing immediately.',
+                  'Traffic to this app stops. Use the restore API within 7 days to recover the app; after the grace window it is eligible for permanent cleanup.',
                 confirmLabel: 'Delete app',
                 destructive: true,
                 typeToConfirm: app.slug,
@@ -665,7 +666,11 @@ function DangerZone({ app }: { app: App }) {
             void remove
               .mutateAsync(app.slug)
               .then(() => {
-                toast({ kind: 'success', title: `Deleted ${app.slug}` });
+                toast({
+                  kind: 'success',
+                  title: 'App deletion scheduled',
+                  description: `${app.slug} can be restored through the API within 7 days.`,
+                });
                 void navigate({ to: '/dashboard/workflows' });
               })
               .catch((err: unknown) =>

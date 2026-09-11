@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
-import { createFileRoute } from '@tanstack/react-router';
+import { useMemo, useRef, useState } from 'react';
+import { createFileRoute, Link } from '@tanstack/react-router';
 import { Activity, Plus, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
-import { PageHeader, Panel } from '@/components/dashboard/primitives';
+import { IconButton } from '@/components/ui/icon-button';
+import { InlinePhase, PageHeader, Panel, queryPhase } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { useToast } from '@/components/ui/toast';
 import { useConfirm } from '@/components/ui/confirm';
@@ -16,7 +17,7 @@ import {
 import { DomainDoctor } from '@/components/dashboard/domain-doctor';
 import { slugIndex } from '@/lib/api/adapters';
 import { errorMessage } from '@/lib/api/errors';
-import { FieldError } from '@/components/ui/field';
+import { FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
 import { cn } from '@/lib/utils';
 
 /** A registrable hostname: labels of letters/digits/hyphens, at least one dot. */
@@ -25,6 +26,18 @@ import { consoleHead } from '@/lib/seo';
 
 export const Route = createFileRoute('/dashboard/domains')({
   component: DomainsPage,
+  validateSearch: (
+    raw: Record<string, unknown>
+  ): Record<string, unknown> & {
+    q?: string;
+    status?: 'pending' | 'verified';
+    doctor?: string;
+  } => ({
+    ...raw,
+    q: typeof raw.q === 'string' && raw.q.trim() ? raw.q : undefined,
+    status: raw.status === 'pending' || raw.status === 'verified' ? raw.status : undefined,
+    doctor: typeof raw.doctor === 'string' && HOST_RULE.test(raw.doctor) ? raw.doctor : undefined,
+  }),
   head: () => consoleHead('domains'),
 });
 
@@ -55,7 +68,8 @@ function DomainsPage() {
   const { toast } = useToast();
   const confirm = useConfirm();
   const { data, isPending, error, refetch } = useDomains();
-  const { data: apps } = useApps();
+  const appQuery = useApps();
+  const apps = appQuery.data;
   const addDomain = useAddDomain();
   const deleteDomain = useDeleteDomain();
   const verifyDomain = useVerifyDomain();
@@ -63,13 +77,25 @@ function DomainsPage() {
   // Which domain the doctor panel is reporting on. Null closes it; the panel
   // sits under the table rather than in a dialog so the TXT record above stays
   // readable while the remediation is being applied.
-  const [doctorFor, setDoctorFor] = useState<string | null>(null);
+  const search = Route.useSearch();
+  const navigate = Route.useNavigate();
+  const doctorFor = search.doctor;
+  const select = (patch: Partial<typeof search>, replace = false) =>
+    void navigate({
+      search: (current) => ({ ...current, ...patch }),
+      hash: true,
+      replace,
+      resetScroll: false,
+    });
+  const setDoctorFor = (doctor?: string) => select({ doctor });
+  const hostInput = useRef<HTMLInputElement>(null);
 
   const [host, setHost] = useState('');
   const [appSlug, setAppSlug] = useState('');
-  const [hostTouched, setHostTouched] = useState(false);
+  const validation = useFormValidation<'host'>();
   const hostOk = HOST_RULE.test(host.trim());
-  const showHostError = hostTouched && host.trim().length > 0 && !hostOk;
+  const hostError = hostOk ? undefined : 'Enter a full hostname, like api.example.com.';
+  const showHostError = validation.submitAttempted ? hostError : undefined;
 
   const rows = useMemo<DomainRow[]>(() => {
     const bySlug = slugIndex(apps ?? []);
@@ -104,11 +130,13 @@ function DomainsPage() {
     {
       key: 'app',
       label: 'Routes to',
+      priority: 'secondary',
       render: (d) => <span className="font-mono text-xs text-muted-foreground">{d.app}</span>,
     },
     {
       key: 'txtRecord',
       label: 'TXT record',
+      priority: 'secondary',
       render: (d) =>
         d.verified ? (
           <span className="text-xs text-muted-foreground">—</span>
@@ -121,6 +149,7 @@ function DomainsPage() {
     {
       key: 'verifiedAt',
       label: 'Verified',
+      priority: 'secondary',
       numeric: true,
       render: (d) => formatDate(d.verifiedAt),
     },
@@ -162,16 +191,16 @@ function DomainsPage() {
             </Button>
           )}
 
-          <button
+          <IconButton
             type="button"
             aria-label={`Diagnose ${d.domain}`}
-            onClick={() => setDoctorFor((current) => (current === d.domain ? null : d.domain))}
+            onClick={() => setDoctorFor(doctorFor === d.domain ? undefined : d.domain)}
             className="text-muted-foreground transition-colors hover:text-foreground"
           >
             <Activity className="h-3.5 w-3.5" />
-          </button>
+          </IconButton>
 
-          <button
+          <IconButton
             type="button"
             aria-label={`Remove ${d.domain}`}
             onClick={async () => {
@@ -199,7 +228,7 @@ function DomainsPage() {
             className="text-muted-foreground transition-colors hover:text-foreground"
           >
             <Trash className="h-3.5 w-3.5" />
-          </button>
+          </IconButton>
         </div>
       ),
     },
@@ -218,6 +247,7 @@ function DomainsPage() {
       .mutateAsync({ domain: host.trim(), app_id: target.id })
       .then((created) => {
         setHost('');
+        validation.resetValidation();
         toast({
           kind: 'success',
           title: 'Domain added',
@@ -243,28 +273,26 @@ function DomainsPage() {
           className="flex flex-wrap items-end gap-3"
           onSubmit={(e) => {
             e.preventDefault();
-            if (hostOk && !addDomain.isPending) submit();
+            if (!validation.validate({ host: hostError }, e.currentTarget) || addDomain.isPending)
+              return;
+            submit();
           }}
         >
           <label className="flex min-w-56 flex-1 flex-col gap-1.5">
             <span className="label-mono text-muted-foreground">Hostname</span>
             <input
+              ref={hostInput}
+              name="host"
               value={host}
               onChange={(e) => setHost(e.target.value)}
-              onBlur={() => setHostTouched(true)}
-              aria-invalid={showHostError || undefined}
-              aria-describedby={showHostError ? 'domain-host-error' : undefined}
+              {...fieldErrorProps(showHostError, 'domain-host-error')}
               placeholder="api.example.com"
               className={cn(
                 'h-10 rounded-lg border bg-background px-3 text-sm outline-none focus:border-brand',
                 showHostError ? 'border-[color:var(--status-critical)]' : 'border-border'
               )}
             />
-            {showHostError && (
-              <FieldError id="domain-host-error">
-                A full hostname with at least one dot, like api.example.com.
-              </FieldError>
-            )}
+            {showHostError && <FieldError id="domain-host-error">{showHostError}</FieldError>}
           </label>
 
           <label className="flex flex-col gap-1.5">
@@ -282,20 +310,82 @@ function DomainsPage() {
             </select>
           </label>
 
-          <Button type="submit" size="sm" className="gap-1.5" busy={addDomain.isPending}>
+          <Button
+            type="submit"
+            size="sm"
+            className="gap-1.5"
+            busy={addDomain.isPending}
+            disabled={!apps?.length || Boolean(appQuery.error)}
+          >
             <Plus className="h-3.5 w-3.5" />
             Add domain
           </Button>
         </form>
+        {appQuery.error && (
+          <div className="mt-3">
+            <InlinePhase
+              phase={queryPhase({ error: appQuery.error })}
+              error={appQuery.error}
+              onRetry={() => void appQuery.refetch()}
+            />
+          </div>
+        )}
       </Panel>
 
       <ResourceTable
-        rows={rows}
+        rows={
+          search.status
+            ? rows.filter((row) => row.verified === (search.status === 'verified'))
+            : rows
+        }
         columns={columns}
         initialSort={{ key: 'domain', dir: 'asc' }}
         searchKeys={['domain', 'app']}
         searchPlaceholder="Filter by hostname…"
-        emptyMessage="No custom domains yet."
+        query={search.q ?? ''}
+        onQueryChange={(q) => select({ q: q || undefined }, true)}
+        filters={
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            Domain status
+            <select
+              className="rounded-md border border-border bg-card p-2"
+              value={search.status ?? ''}
+              onChange={(event) =>
+                select({ status: (event.target.value as 'pending' | 'verified') || undefined })
+              }
+            >
+              <option value="">All statuses</option>
+              <option value="pending">Pending</option>
+              <option value="verified">Verified</option>
+            </select>
+          </label>
+        }
+        emptyMessage={rows.length ? 'No domains match these filters.' : 'No custom domains yet.'}
+        emptyAction={
+          rows.length ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => select({ q: undefined, status: undefined })}
+            >
+              Clear filters
+            </Button>
+          ) : appQuery.isPending || appQuery.error ? undefined : apps?.length ? (
+            <Button
+              size="sm"
+              onClick={() => {
+                hostInput.current?.scrollIntoView({ block: 'center' });
+                hostInput.current?.focus();
+              }}
+            >
+              Add your first domain
+            </Button>
+          ) : apps ? (
+            <Button asChild size="sm">
+              <Link to="/dashboard/workflows/new">Create an app</Link>
+            </Button>
+          ) : undefined
+        }
         minWidth="min-w-[820px]"
         loading={isPending}
         error={error}
@@ -307,7 +397,7 @@ function DomainsPage() {
           title={`Doctor — ${doctorFor}`}
           description="What the platform observes for this hostname right now."
           actions={
-            <Button size="sm" variant="secondary" onClick={() => setDoctorFor(null)}>
+            <Button size="sm" variant="secondary" onClick={() => setDoctorFor()}>
               Close
             </Button>
           }

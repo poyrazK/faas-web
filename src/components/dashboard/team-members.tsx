@@ -1,0 +1,420 @@
+import { useMemo, useState } from 'react';
+import { SendMail, Trash } from 'iconoir-react';
+import { ActionDisclosure } from '@/components/ui/action-disclosure';
+import { OneTimeSecret, useOneTimeSecret } from '@/components/ui/one-time-secret';
+import { FIELD, FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
+import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
+import { Panel } from '@/components/dashboard/primitives';
+import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
+import { useToast } from '@/components/ui/toast';
+import { useConfirm } from '@/components/ui/confirm';
+import {
+  useChangeMemberRole,
+  useInviteMember,
+  useOrgInvitations,
+  useOrgMembers,
+  useOrgs,
+  useRemoveMember,
+} from '@/lib/api/queries';
+import { isValidEmail, useAuth } from '@/lib/auth';
+import { errorMessage } from '@/lib/api/errors';
+import { formatRelative } from '@/lib/mock-data';
+
+/**
+ * Members and invitations of an organisation.
+ *
+ * Invitation tokens are returned once and never stored for later row actions.
+ * The list's opaque ID cannot be used with the token-based revoke endpoint.
+ */
+
+interface MemberRow {
+  id: string;
+  email: string;
+  role: Role;
+  joinedAt: string;
+}
+
+interface InviteRow {
+  id: string;
+  email: string;
+  role: string;
+  status: string;
+  expiresAt: string;
+}
+
+const ROLES = ['admin', 'developer', 'viewer', 'billing'] as const;
+type Role = 'owner' | (typeof ROLES)[number];
+
+const ROLE_COLOR: Record<string, string> = {
+  owner: 'var(--brand)',
+  admin: 'var(--status-good)',
+  billing: 'var(--status-warning)',
+};
+
+const ROLE_HINT: Record<(typeof ROLES)[number], string> = {
+  admin: 'Everything but transfer ownership.',
+  developer: 'Deploy and configure apps. No billing, no members.',
+  viewer: 'Read everything, change nothing.',
+  billing: 'Invoices and the plan. Nothing else.',
+};
+
+function when(value: string | undefined): string {
+  if (!value) return '—';
+  const ms = Date.parse(value);
+  return Number.isNaN(ms) ? '—' : formatRelative(ms);
+}
+
+/** Keying by organisation also discards form drafts and late token responses. */
+export function TeamMembersBody({
+  active,
+  orgs,
+}: {
+  active: string;
+  orgs: ReturnType<typeof useOrgs>;
+}) {
+  const { toast } = useToast();
+  const confirm = useConfirm();
+  const { user } = useAuth();
+  const members = useOrgMembers(active);
+  const invitations = useOrgInvitations(active);
+  const invite = useInviteMember(active);
+  const changeRole = useChangeMemberRole(active);
+  const removeMember = useRemoveMember(active);
+  const memberRole = members.error
+    ? undefined
+    : members.data?.members.find((m) => m.email === user?.email)?.role;
+  const personal = orgs.data?.orgs.find((o) => o.slug === active)?.personal;
+  const canInvite = !personal && (memberRole === 'owner' || memberRole === 'admin');
+  const canManage = !personal && memberRole === 'owner';
+
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState<(typeof ROLES)[number]>('developer');
+  const [inviting, setInviting] = useState(false);
+  const evidence = useOneTimeSecret<{ email: string; token: string }>();
+  const validation = useFormValidation<'email'>();
+  const emailError = !isValidEmail(email)
+    ? 'Enter a valid email address.'
+    : email.length > 320
+      ? 'Enter a valid email address (320 characters max).'
+      : undefined;
+  const shownEmailError = validation.submitAttempted ? emailError : undefined;
+
+  const memberRows = useMemo<MemberRow[]>(
+    () =>
+      (members.data?.members ?? []).map((m) => ({
+        id: m.account_id,
+        email: m.email,
+        role: m.role,
+        joinedAt: m.joined_at,
+      })),
+    [members.data]
+  );
+
+  const inviteRows = useMemo<InviteRow[]>(
+    () =>
+      (invitations.data?.invitations ?? []).map((i) => ({
+        id: i.id,
+        email: i.email,
+        role: i.role,
+        status: i.status,
+        expiresAt: i.expires_at,
+      })),
+    [invitations.data]
+  );
+
+  const memberColumns: Column<MemberRow>[] = [
+    {
+      key: 'email',
+      label: 'Member',
+      render: (m) => (
+        <span>
+          {m.email}
+          {m.email === user?.email && (
+            <span className="ml-2 text-xs text-muted-foreground">you</span>
+          )}
+        </span>
+      ),
+    },
+    {
+      key: 'role',
+      label: 'Role',
+      width: 'w-40',
+      render: (m) =>
+        m.role === 'owner' || !canManage ? (
+          <Pill label={m.role} color={ROLE_COLOR[m.role]} />
+        ) : (
+          <select
+            value={m.role}
+            aria-label={`Role for ${m.email}`}
+            onChange={async (e) => {
+              const next = e.target.value as (typeof ROLES)[number];
+              if (
+                !(await confirm({
+                  title: `Make ${m.email} ${next === 'admin' ? 'an' : 'a'} ${next}?`,
+                  description: ROLE_HINT[next],
+                  confirmLabel: 'Change role',
+                }))
+              )
+                return;
+              void changeRole
+                .mutateAsync({ userId: m.id, role: next })
+                .then(() => toast({ kind: 'success', title: `${m.email} is now ${next}` }))
+                .catch((err: unknown) =>
+                  toast({
+                    kind: 'error',
+                    title: 'Could not change role',
+                    description: errorMessage(err),
+                  })
+                );
+            }}
+            className="h-8 rounded-md border border-border bg-card px-2 text-xs outline-none focus:border-brand/50"
+          >
+            {ROLES.map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </select>
+        ),
+    },
+    {
+      key: 'joinedAt',
+      label: 'Joined',
+      priority: 'secondary',
+      numeric: true,
+      render: (m) => <span className="text-xs text-muted-foreground">{when(m.joinedAt)}</span>,
+    },
+    {
+      key: 'id',
+      label: '',
+      width: 'w-12',
+      render: (m) =>
+        !canManage || m.role === 'owner' || m.email === user?.email ? null : (
+          <IconButton
+            type="button"
+            aria-label={`Remove ${m.email}`}
+            onClick={async () => {
+              if (
+                !(await confirm({
+                  title: `Remove ${m.email}?`,
+                  description:
+                    'They lose access to this organisation immediately. Their API keys minted against it stop working.',
+                  confirmLabel: 'Remove member',
+                  destructive: true,
+                }))
+              )
+                return;
+              void removeMember
+                .mutateAsync(m.id)
+                .then(() => toast({ kind: 'success', title: `Removed ${m.email}` }))
+                .catch((err: unknown) =>
+                  toast({
+                    kind: 'error',
+                    title: 'Could not remove',
+                    description: errorMessage(err),
+                  })
+                );
+            }}
+            className="text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <Trash className="h-3.5 w-3.5" />
+          </IconButton>
+        ),
+    },
+  ];
+
+  const inviteColumns: Column<InviteRow>[] = [
+    { key: 'email', label: 'Invited' },
+    {
+      key: 'role',
+      label: 'Role',
+      priority: 'secondary',
+      width: 'w-28',
+      render: (i) => <Pill label={i.role} />,
+    },
+    {
+      key: 'status',
+      label: 'Status',
+      width: 'w-28',
+      render: (i) => (
+        <Pill
+          label={i.status}
+          color={
+            i.status === 'pending'
+              ? 'var(--status-warning)'
+              : i.status === 'consumed'
+                ? 'var(--status-good)'
+                : undefined
+          }
+        />
+      ),
+    },
+    {
+      key: 'expiresAt',
+      label: 'Expires',
+      priority: 'secondary',
+      numeric: true,
+      render: (i) => (
+        <span className="text-xs text-muted-foreground">
+          {i.status === 'pending' ? when(i.expiresAt).replace(' ago', '') : '—'}
+        </span>
+      ),
+    },
+  ];
+
+  return (
+    <div className="flex flex-col gap-6">
+      <ActionDisclosure
+        action="Invite member"
+        title="Invite a member"
+        open={inviting}
+        disabled={!active || !canInvite}
+        onOpenChange={(open) => {
+          evidence.clear();
+          setEmail('');
+          setRole('developer');
+          validation.resetValidation();
+          setInviting(open);
+        }}
+      >
+        {evidence.secret ? (
+          <OneTimeSecret
+            key={evidence.version}
+            value={evidence.secret.token}
+            title="Invitation created"
+            description={`Send this token to ${evidence.secret.email}. The server keeps only a hash.`}
+            onDismiss={evidence.clear}
+          />
+        ) : (
+          <form
+            noValidate
+            className="flex flex-wrap items-end gap-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (
+                !validation.validate({ email: emailError }, e.currentTarget) ||
+                !active ||
+                !canInvite ||
+                invite.isPending
+              )
+                return;
+              const receive = evidence.capture();
+              void invite
+                .mutateAsync({ email: email.trim(), role })
+                .then((result) => {
+                  if (receive({ email: result.email, token: result.token })) {
+                    setEmail('');
+                    validation.resetValidation();
+                  }
+                })
+                .catch((err: unknown) =>
+                  toast({
+                    kind: 'error',
+                    title: 'Could not invite',
+                    description: errorMessage(err),
+                  })
+                )
+                .finally(() => invite.reset());
+            }}
+          >
+            <label className="flex min-w-64 flex-1 flex-col gap-1.5">
+              <span className="label-mono text-muted-foreground">Email</span>
+              <input
+                autoFocus
+                name="email"
+                type="email"
+                maxLength={320}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                {...fieldErrorProps(shownEmailError, 'invite-email-error')}
+                placeholder="name@company.com"
+                className={FIELD}
+              />
+              {shownEmailError && (
+                <FieldError id="invite-email-error">{shownEmailError}</FieldError>
+              )}
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="label-mono text-muted-foreground">Role</span>
+              <select
+                value={role}
+                onChange={(e) => setRole(e.target.value as (typeof ROLES)[number])}
+                className={`${FIELD} min-w-36`}
+              >
+                {ROLES.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <Button
+              type="submit"
+              size="sm"
+              className="gap-1.5"
+              disabled={!active || !canInvite}
+              busy={invite.isPending}
+            >
+              <SendMail className="h-3.5 w-3.5" />
+              Invite
+            </Button>
+            <p className="basis-full text-xs text-muted-foreground">{ROLE_HINT[role]}</p>
+          </form>
+        )}
+      </ActionDisclosure>
+      {!personal && !canInvite && members.data && !members.error && (
+        <p className="text-sm text-muted-foreground">
+          Only organization owners and admins can invite members.
+        </p>
+      )}
+
+      <Panel title="Members">
+        <ResourceTable
+          rows={memberRows}
+          columns={memberColumns}
+          initialSort={{ key: 'email', dir: 'asc' }}
+          searchKeys={['email', 'role']}
+          searchPlaceholder="Filter by email…"
+          emptyMessage={active ? 'No members yet.' : 'No organisations on this account.'}
+          minWidth="min-w-[700px]"
+          loading={orgs.isPending || (Boolean(active) && members.isPending)}
+          error={orgs.error ?? members.error}
+          onRetry={() => {
+            void orgs.refetch();
+            void members.refetch();
+          }}
+        />
+      </Panel>
+
+      <Panel title="Invitations">
+        {canInvite && (
+          <p className="mb-4 text-sm text-muted-foreground">
+            Invitation revocation is unavailable here. The API requires the original invitation
+            token, which is shown only when an invitation is created and is not available in this
+            list.
+          </p>
+        )}
+        <ResourceTable
+          rows={inviteRows}
+          columns={inviteColumns}
+          emptyMessage="No invitations."
+          emptyAction={
+            canInvite && !inviting ? (
+              <Button size="sm" onClick={() => setInviting(true)}>
+                Invite your first member
+              </Button>
+            ) : undefined
+          }
+          minWidth="min-w-[640px]"
+          loading={orgs.isPending || (Boolean(active) && invitations.isPending)}
+          error={orgs.error ?? invitations.error}
+          onRetry={() => {
+            void orgs.refetch();
+            void invitations.refetch();
+          }}
+        />
+      </Panel>
+    </div>
+  );
+}

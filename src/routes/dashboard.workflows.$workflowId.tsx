@@ -41,7 +41,8 @@ import { EnvBody } from './dashboard.env';
 import { QueuesBody } from './dashboard.queues';
 import { UpstreamsBody } from './dashboard.databases';
 import { AlertsBody } from './dashboard.alerts';
-import { DebugBody } from './dashboard.debug';
+import { DebugBody } from '@/components/dashboard/debug-body';
+import { validateDebugSearch, type DebugSearch } from '@/components/dashboard/debug-search';
 import { MirrorsBody } from './dashboard.mirrors';
 import { TenantSurfacesBody } from './dashboard.tenant-surfaces';
 import { OpenAPIBody } from './dashboard.openapi';
@@ -58,7 +59,11 @@ import { TearDownPreviewButton } from '@/components/dashboard/preview-actions';
 import { Swap } from '@/components/dashboard/motion';
 import { RepoPicker } from '@/components/dashboard/repo-picker';
 import { DeploymentProgress } from '@/components/dashboard/deployment-progress';
-import { DeploymentDetailPanel } from '@/components/dashboard/deployment-detail';
+import { ReleaseDetailPanel } from '@/components/dashboard/release-detail';
+import {
+  validateReleasesSearch,
+  type ReleaseSection,
+} from '@/components/dashboard/releases-search';
 import { DeploymentHistoryPanel } from '@/components/dashboard/deployment-history';
 import { ClearObsoleteDeploymentsButton } from '@/components/dashboard/deployment-actions';
 import { Modal } from '@/components/ui/modal';
@@ -125,25 +130,30 @@ function DeploymentCapability({
 }
 
 export const Route = createFileRoute('/dashboard/workflows/$workflowId')({
-  head: () => pageHead({ title: 'Workflow' }),
+  head: () => pageHead({ title: 'App' }),
   // Tab lives in the URL, so a refresh or a shared link lands on the same one.
   // Optional, so links elsewhere need not pass it and the default tab leaves
   // no query string behind.
-  validateSearch: (search: Record<string, unknown>): { tab?: Tab; deployment?: string } => ({
-    ...(TABS.includes(search.tab as Tab) ? { tab: search.tab as Tab } : {}),
-    ...(typeof search.deployment === 'string' && search.deployment
-      ? { deployment: search.deployment }
-      : {}),
+  validateSearch: (
+    search: Record<string, unknown>
+  ): DebugSearch & { tab?: Tab; deployment?: string; releaseSection?: ReleaseSection } => ({
+    ...validateDebugSearch(search),
+    tab: TABS.includes(search.tab as Tab) ? (search.tab as Tab) : undefined,
+    deployment:
+      typeof search.deployment === 'string' && search.deployment ? search.deployment : undefined,
+    releaseSection: validateReleasesSearch({ ...search, build: undefined }).releaseSection,
   }),
   component: FunctionDetailPage,
 });
 
 function FunctionDetailPage() {
   const { workflowId } = useParams({ from: '/dashboard/workflows/$workflowId' });
-  const { tab = 'Metrics', deployment: selectedDeploymentId } = Route.useSearch();
+  const search = Route.useSearch();
+  const { tab = 'Metrics', deployment: selectedDeploymentId, releaseSection } = search;
   const navigate = Route.useNavigate();
-  // Replace rather than push, so tab switching does not fill the back stack.
-  const setTab = (next: Tab) => navigate({ search: { tab: next }, replace: true });
+  // Preserve nested investigations when the operator leaves and returns to a tab.
+  const setTab = (next: Tab) =>
+    navigate({ search: (current) => ({ ...current, tab: next }), hash: true });
   const tabsId = useId();
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const reduce = useReducedMotion();
@@ -183,7 +193,7 @@ function FunctionDetailPage() {
   const fn = getWorkflow(workflowId);
   // The route's `head` can only name the id, so the real name is applied here
   // once the store resolves it. Above the early return — it is a hook.
-  useDocumentTitle(fn?.name ?? 'Function not found');
+  useDocumentTitle(fn?.name ?? 'App not found');
 
   // Real per-app aggregates for the Metrics tab. Called with the slug, which is
   // what `workflowId` is.
@@ -266,8 +276,8 @@ function FunctionDetailPage() {
   if (!fn) {
     return (
       <div className="flex flex-col gap-6">
-        <PageHeader title="Function not found" />
-        <EmptyState message="This function does not exist or has been deleted." />
+        <PageHeader title="App not found" />
+        <EmptyState message="This app does not exist or has been deleted." />
       </div>
     );
   }
@@ -588,8 +598,14 @@ function FunctionDetailPage() {
                   buildTimings={buildTimings}
                   onSelect={(id) =>
                     void navigate({
-                      search: { tab: 'Deployments', deployment: id },
-                      replace: true,
+                      search: (current) => ({
+                        ...current,
+                        tab: 'Deployments',
+                        deployment: id,
+                        releaseSection: undefined,
+                      }),
+                      hash: true,
+                      resetScroll: false,
                     })
                   }
                   actions={<ClearObsoleteDeploymentsButton slug={fn.id} />}
@@ -602,18 +618,49 @@ function FunctionDetailPage() {
                     slug={fn.id}
                     onDeployed={(id) =>
                       void navigate({
-                        search: { tab: 'Deployments', deployment: id },
+                        search: (current) => ({
+                          ...current,
+                          tab: 'Deployments',
+                          deployment: id,
+                          releaseSection: undefined,
+                        }),
+                        hash: true,
                         replace: true,
                       })
                     }
                   />
                 </Panel>
                 {selectedDeploymentId && (
-                  <DeploymentDetailPanel
+                  <ReleaseDetailPanel
+                    key={selectedDeploymentId}
                     deploymentId={selectedDeploymentId}
                     appSlug={fn.id}
                     timing={buildTimings.get(selectedDeploymentId)}
-                    onClose={() => void navigate({ search: { tab: 'Deployments' }, replace: true })}
+                    fallbackBuildId={
+                      builds.data?.items.find(
+                        (build) => build.deployment_id === selectedDeploymentId
+                      )?.id
+                    }
+                    section={releaseSection ?? 'overview'}
+                    onSectionChange={(next) =>
+                      void navigate({
+                        search: (current) => ({ ...current, releaseSection: next }),
+                        hash: true,
+                        resetScroll: false,
+                      })
+                    }
+                    onClose={() =>
+                      void navigate({
+                        search: (current) => ({
+                          ...current,
+                          tab: 'Deployments',
+                          deployment: undefined,
+                          releaseSection: undefined,
+                        }),
+                        hash: true,
+                        resetScroll: false,
+                      })
+                    }
                   />
                 )}
               </>
@@ -640,7 +687,19 @@ function FunctionDetailPage() {
             {tab === 'Alerts' && <AlertsBody slug={fn.id} />}
             {tab === 'Webhooks' && <WebhooksBody slug={fn.id} />}
             {tab === 'Edge rules' && <EdgeRulesBody slug={fn.id} />}
-            {tab === 'Debugger' && <DebugBody slug={fn.id} />}
+            {tab === 'Debugger' && (
+              <DebugBody
+                slug={fn.id}
+                search={search}
+                onSelect={(patch) =>
+                  void navigate({
+                    search: (current) => ({ ...current, ...patch }),
+                    hash: true,
+                    resetScroll: false,
+                  })
+                }
+              />
+            )}
             {tab === 'Mirrors' && <MirrorsBody slug={fn.id} />}
             {tab === 'Tenant surfaces' && <TenantSurfacesBody slug={fn.id} />}
             {tab === 'OpenAPI' && <OpenAPIBody slug={fn.id} />}
@@ -683,7 +742,13 @@ function FunctionDetailPage() {
                     });
                     setDeployOpen(false);
                     void navigate({
-                      search: { tab: 'Deployments', deployment: deployment.id },
+                      search: (current) => ({
+                        ...current,
+                        tab: 'Deployments',
+                        deployment: deployment.id,
+                        releaseSection: undefined,
+                      }),
+                      hash: true,
                       replace: true,
                     });
                     toast({

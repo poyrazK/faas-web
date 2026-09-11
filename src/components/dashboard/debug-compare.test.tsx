@@ -8,6 +8,12 @@ const resetCompare = vi.fn();
 vi.mock('@/lib/api/queries', () => ({
   useAppDeployments: (slug: string) => useAppDeployments(slug) as unknown,
   useCompareDeployments: () => {
+    const [variables, setVariables] = useState<{
+      source: string;
+      mirror: string;
+      since: string;
+      route?: string;
+    }>();
     const [data, setData] = useState<
       | {
           routes: Array<{
@@ -21,14 +27,19 @@ vi.mock('@/lib/api/queries', () => ({
     const reset = useCallback(() => {
       resetCompare();
       setData(undefined);
+      setVariables(undefined);
     }, []);
-    const mutateAsync = useCallback(async () => {
-      setData({
-        routes: [{ route: '/alpha-only', source_p95_ms: 10, mirror_p95_ms: 12 }],
-      });
-    }, []);
+    const mutateAsync = useCallback(
+      async (body: { source: string; mirror: string; since: string; route?: string }) => {
+        setVariables(body);
+        setData({
+          routes: [{ route: '/alpha-only', source_p95_ms: 10, mirror_p95_ms: 12 }],
+        });
+      },
+      []
+    );
 
-    return { data, error: null, isPending: false, mutateAsync, reset };
+    return { data, variables, error: null, isPending: false, mutateAsync, reset };
   },
 }));
 vi.mock('./debug-gate', () => ({
