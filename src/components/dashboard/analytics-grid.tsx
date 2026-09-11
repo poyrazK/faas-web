@@ -196,6 +196,14 @@ export function AnalyticsGrid({
   const reduce = useReducedMotion();
   const [order, setOrder] = useState<string[]>(readOrder);
   const nodes = useRef(new Map<string, HTMLElement>());
+  // The card we last swapped with, held until the pointer leaves it.
+  //
+  // Without this the grid oscillates: onDrag fires on every pointer move and
+  // hit-tests with getBoundingClientRect, which during a layout animation
+  // returns the in-flight rect. The card we just swapped with spends the next
+  // ~250ms travelling out from under a stationary pointer, and every frame of
+  // that journey looks like a fresh reason to swap back.
+  const lastPartner = useRef<string | null>(null);
   const ordered = applyOrder(cards, order);
 
   const persist = useCallback((next: string[]) => {
@@ -212,20 +220,31 @@ export function AnalyticsGrid({
   // the same at both sizes.
   const onDrag = useCallback(
     (id: string, clientX: number, clientY: number) => {
+      let over: string | null = null;
       for (const [otherId, el] of nodes.current) {
         if (otherId === id) continue;
         const r = el.getBoundingClientRect();
         if (clientX < r.left || clientX > r.right || clientY < r.top || clientY > r.bottom)
           continue;
-        setOrder((previous) => {
-          const current = applyOrder(cards, previous).map((card) => card.id);
-          const next = move(current, current.indexOf(id), current.indexOf(otherId));
-          if (next === current) return previous;
-          persist(next);
-          return next;
-        });
+        over = otherId;
+        break;
+      }
+      // Off every sibling — the pointer is over the dragged card's own slot,
+      // which is where a completed swap leaves it. Release the guard so the
+      // next card met is a fresh partner.
+      if (over === null) {
+        lastPartner.current = null;
         return;
       }
+      if (over === lastPartner.current) return;
+      lastPartner.current = over;
+      setOrder((previous) => {
+        const current = applyOrder(cards, previous).map((card) => card.id);
+        const next = move(current, current.indexOf(id), current.indexOf(over));
+        if (next === current) return previous;
+        persist(next);
+        return next;
+      });
     },
     [cards, persist]
   );
@@ -240,7 +259,7 @@ export function AnalyticsGrid({
               if (el) nodes.current.set(card.id, el);
               else nodes.current.delete(card.id);
             }}
-            layout={reduce ? false : true}
+            layout={reduce ? false : 'position'}
             transition={REFLOW}
             drag={reduce ? false : true}
             dragSnapToOrigin
@@ -250,8 +269,14 @@ export function AnalyticsGrid({
             dragElastic={0}
             dragMomentum={false}
             onDrag={(event) => {
-              const p = event as PointerEvent;
-              onDrag(card.id, p.clientX, p.clientY);
+              const point =
+                'touches' in event && event.touches.length > 0
+                  ? event.touches[0]
+                  : (event as PointerEvent);
+              onDrag(card.id, point.clientX, point.clientY);
+            }}
+            onDragEnd={() => {
+              lastPartner.current = null;
             }}
             whileDrag={{ scale: 1.015, zIndex: 30, cursor: 'grabbing' }}
             className={cn(
