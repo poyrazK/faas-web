@@ -110,9 +110,12 @@ describe('analytics query contracts', () => {
         .getQueryCache()
         .getAll()
         .map((query) => query.queryKey)
+      // `until` sits between the window and the filters: a preset and an
+      // explicit range that happen to start at the same moment are different
+      // questions, and sharing a cache entry would answer one with the other.
     ).toEqual([
-      ['apps', 'api-gateway', 'analytics', 'timeseries', '24h', '/orders', 'GET', 'route'],
-      ['apps', 'api-gateway', 'analytics', 'timeseries', '24h', null, null, 'country'],
+      ['apps', 'api-gateway', 'analytics', 'timeseries', '24h', null, '/orders', 'GET', 'route'],
+      ['apps', 'api-gateway', 'analytics', 'timeseries', '24h', null, null, null, 'country'],
     ]);
   });
 });
