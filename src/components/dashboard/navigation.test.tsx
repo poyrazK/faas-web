@@ -83,18 +83,55 @@ async function renderShell(initialEntry = '/dashboard', content?: ReactNode) {
   return router;
 }
 
-const PRIMARY = [
+/**
+ * Every rail row, in order — hubs and the sections nested under them.
+ *
+ * Consolidating pages into hubs must not consolidate navigation: a destination
+ * that exists only after guessing which hub owns it is a destination nobody
+ * finds. This list is the contract that the second level stays visible.
+ */
+const RAIL = [
   'Overview',
   'Apps',
+  'Templates',
+  'Import',
   'Jobs',
   'Releases',
   'Instances',
   'Domains',
-  'Data',
-  'Observe',
-  'Billing',
+  'Storage',
+  'Postgres',
+  'Debugger',
+  'Invocations',
+  'Audit Log',
+  'Usage',
+  'Invoices',
+  'Plans',
   'Settings',
 ];
+
+/**
+ * Hubs that name a group rather than link to one.
+ *
+ * Their page is already owned by a section directly beneath them, and the
+ * router marks every active link `aria-current="page"` last and unconditionally
+ * — so a second link to the same URL is a second current page that no prop can
+ * suppress. These read as parent labels, like Build / Operate / Account above.
+ */
+const RAIL_PARENTS = ['Data', 'Observe', 'Billing'];
+
+/** The group headings that give the rail its scent. */
+const RAIL_GROUPS = ['Build', 'Operate', 'Account'];
+
+/**
+ * Where a hub's sections live. They are rail rows for every hub but Settings,
+ * whose eight `?section=` panels stay the page's own tabs.
+ */
+function sectionsNav(hub: string) {
+  return screen.getByRole('navigation', {
+    name: hub === 'Settings' ? 'Settings sections' : 'Main',
+  });
+}
 const GROUPS = [
   {
     hub: 'Apps',
@@ -148,18 +185,23 @@ const GROUPS = [
 ];
 
 describe('dashboard navigation foundation', () => {
-  it('offers only the ten approved primary destinations in desktop and mobile navigation', async () => {
+  it('keeps every hub and section visible in desktop and mobile navigation', async () => {
     await renderShell();
     const main = screen.getByRole('navigation', { name: 'Main' });
     expect(
       within(main)
         .getAllByRole('link')
         .map((link) => link.getAttribute('aria-label') ?? link.textContent)
-    ).toEqual(PRIMARY);
+    ).toEqual(RAIL);
+    for (const title of [...RAIL_GROUPS, ...RAIL_PARENTS])
+      expect(within(main).getByText(title)).toBeInTheDocument();
+    for (const parent of RAIL_PARENTS)
+      expect(within(main).queryByRole('link', { name: parent })).toBeNull();
     expect(within(main).getByRole('link', { name: 'Overview' })).toHaveAttribute(
       'aria-current',
       'page'
     );
+    expect(main.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
 
     await userEvent.click(screen.getByRole('button', { name: 'Open navigation' }));
     const drawer = screen.getByRole('dialog', { name: 'Navigation' });
@@ -168,12 +210,12 @@ describe('dashboard navigation foundation', () => {
       within(mobile)
         .getAllByRole('link')
         .map((link) => link.textContent)
-    ).toEqual(PRIMARY);
-    await userEvent.click(within(mobile).getByRole('link', { name: 'Jobs' }));
+    ).toEqual(RAIL);
+    await userEvent.click(within(mobile).getByRole('link', { name: 'Postgres' }));
     await waitFor(() =>
       expect(screen.queryByRole('dialog', { name: 'Navigation' })).not.toBeInTheDocument()
     );
-    expect(screen.getByTestId('page')).toHaveTextContent('/dashboard/jobs');
+    expect(screen.getByTestId('page')).toHaveTextContent('/dashboard/postgres');
   });
 
   it.each(GROUPS)(
@@ -182,23 +224,19 @@ describe('dashboard navigation foundation', () => {
       await renderShell(anchor);
       const user = userEvent.setup();
       for (const [label, path] of links) {
-        const secondary = screen.getByRole('navigation', { name: `${hub} sections` });
-        const link = within(secondary).getByRole('link', { name: label });
+        const link = within(sectionsNav(hub)).getByRole('link', { name: label });
         expect(link).toHaveAttribute('href', path);
         await user.click(link);
         await waitFor(() =>
           expect(screen.getByTestId('page').textContent).toBe(path.split('?')[0])
         );
-        expect(
-          within(screen.getByRole('navigation', { name: `${hub} sections` })).getByRole('link', {
-            name: label,
-          })
-        ).toHaveAttribute('aria-current', 'page');
-        const main = screen.getByRole('navigation', { name: 'Main' });
-        expect(within(main).getByRole('link', { name: hub })).toHaveAttribute(
+        expect(within(sectionsNav(hub)).getByRole('link', { name: label })).toHaveAttribute(
           'aria-current',
           'page'
         );
+        // One marker, on the page itself. Marking the hub too would leave a
+        // screen reader with two current pages and no way to tell them apart.
+        const main = screen.getByRole('navigation', { name: 'Main' });
         expect(main.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
       }
     }
@@ -237,7 +275,7 @@ describe('dashboard navigation foundation', () => {
   it('uses link keyboard navigation and restores hub selection with browser Back', async () => {
     const router = await renderShell('/dashboard/storage');
     const user = userEvent.setup();
-    const sections = screen.getByRole('navigation', { name: 'Data sections' });
+    const sections = screen.getByRole('navigation', { name: 'Main' });
     const storage = within(sections).getByRole('link', { name: 'Storage' });
     storage.focus();
     await user.tab();
@@ -264,10 +302,9 @@ describe('dashboard navigation foundation', () => {
 
   it('preserves search and hash state when the current section is reselected', async () => {
     const router = await renderShell('/dashboard/storage?q=assets&campaign=handoff#buckets');
-    const link = within(screen.getByRole('navigation', { name: 'Data sections' })).getByRole(
-      'link',
-      { name: 'Storage' }
-    );
+    const link = within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', {
+      name: 'Storage',
+    });
     await userEvent.click(link);
     expect(router.state.location.href).toBe('/dashboard/storage?q=assets&campaign=handoff#buckets');
   });

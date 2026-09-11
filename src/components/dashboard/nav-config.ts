@@ -43,13 +43,21 @@ export interface NavItem {
 export interface NavGroup {
   /** Undefined for the ungrouped lead item. */
   title?: string;
-  items: NavItem[];
+  items: NavHub[];
 }
 
 export interface NavHub extends NavItem {
   sections?: NavItem[];
   /** Page tabs own navigation; section destinations still support search and legacy URLs. */
   pageOwnsNavigation?: boolean;
+  /**
+   * Sections render as nested sidebar rows unless this is false.
+   *
+   * Settings opts out: its eight `?section=` panels are one page's internal
+   * tabs, not eight destinations, and listing them in the rail would triple
+   * the Account group to sell navigation that the page already does better.
+   */
+  sidebarSections?: boolean;
 }
 
 /** Existing pages anchor each hub until its feature composition is ready. */
@@ -142,6 +150,7 @@ export const NAV_HUBS: NavHub[] = [
     to: '/dashboard/settings',
     label: 'Settings',
     icon: Settings,
+    sidebarSections: false,
     sections: SETTINGS_SECTIONS.map(([section, label]) => ({
       to: '/dashboard/settings',
       label,
@@ -160,7 +169,50 @@ export const NAV_HUBS: NavHub[] = [
   },
 ];
 
-export const NAV_GROUPS: NavGroup[] = [{ items: NAV_HUBS }];
+/**
+ * The sidebar's shape.
+ *
+ * Hubs consolidate *pages*; they must not consolidate *navigation*. An earlier
+ * pass did both at once — ten untitled rows, every second-level destination
+ * reachable only after guessing which hub owned it — and the rail lost both its
+ * scent and two thirds of its rows. Titles and nested sections come back here;
+ * the hub pages themselves are untouched.
+ */
+const SIDEBAR_GROUPS: { title?: string; hubs: string[] }[] = [
+  { hubs: ['Overview'] },
+  { title: 'Build', hubs: ['Apps', 'Jobs', 'Releases', 'Instances'] },
+  { title: 'Operate', hubs: ['Domains', 'Data', 'Observe'] },
+  { title: 'Account', hubs: ['Billing', 'Settings'] },
+];
+
+export const NAV_GROUPS: NavGroup[] = SIDEBAR_GROUPS.map(({ title, hubs }) => ({
+  ...(title ? { title } : {}),
+  items: hubs.map((label) => {
+    const hub = NAV_HUBS.find((item) => item.label === label);
+    // A hub missing from a group would silently vanish from the rail. Fail at
+    // module load instead, where the test suite and the dev server both see it.
+    if (!hub) throw new Error(`nav-config: no hub labelled ${label}`);
+    return hub;
+  }),
+}));
+
+/**
+ * The sections a hub contributes to the rail as nested rows.
+ *
+ * A section pointing at the hub's own label is dropped — "Apps › Apps" is the
+ * hub row restated, and the row above already links there. Sections whose label
+ * differs (Releases › Deployments) stay, because the hub renamed the page and
+ * the old name is still the one people search for.
+ */
+export function sidebarSectionsFor(hub: NavHub): NavItem[] {
+  // A hub whose page owns its navigation has no section *routes* — Jobs and
+  // Releases switch views with `?section=` / `?view=` on a single path, and the
+  // entries here are the legacy URLs kept alive for old bookmarks. Listing them
+  // in the rail would offer a second, staler way to make a choice the page
+  // already owns. Settings opts out for the same reason by flag.
+  if (hub.sidebarSections === false || hub.pageOwnsNavigation) return [];
+  return (hub.sections ?? []).filter((section) => section.label !== hub.label);
+}
 
 /** Path segment -> label, for breadcrumb section titles. */
 /**

@@ -28,7 +28,14 @@ import { Tooltip, TooltipProvider } from '@/components/ui/tooltip';
 import { NewAppButton } from './new-app-button';
 import { CommandPalette } from './command-palette';
 import { EASE } from './motion';
-import { findNavHub, matchesNavPath, NAV_GROUPS, SECTION_LABELS } from './nav-config';
+import {
+  findNavHub,
+  matchesNavPath,
+  NAV_GROUPS,
+  type NavItem,
+  SECTION_LABELS,
+  sidebarSectionsFor,
+} from './nav-config';
 import { DashboardSecondaryNavigation } from './secondary-navigation';
 import { recordVisit } from '@/lib/recents';
 import { cn } from '@/lib/utils';
@@ -37,10 +44,129 @@ import { useFocusTrap } from '@/lib/use-focus-trap';
 const COLLAPSE_KEY = 'gregale.sidebar.collapsed';
 
 function readCollapsed(): boolean {
-  // Collapsed is the default: the rail expands on hover, and pinning it
-  // open (⌘B) is the stored exception.
-  if (typeof window === 'undefined') return true;
-  return window.localStorage.getItem(COLLAPSE_KEY) !== '0';
+  // Expanded is the default, and collapsing (⌘B) is the stored exception.
+  //
+  // It was the other way round, which worked when the rail was a flat list of
+  // twenty-six icons: dense enough to aim at, and the labels were a hover away.
+  // Against hubs-plus-sections it stops working — the second level cannot fit
+  // in 40px, so the default state became ten unlabelled glyphs and a long
+  // emptiness under them, and every destination cost a hover before it could
+  // even be read. A console this wide is scanned far more often than it is
+  // aimed at; the rail should answer "what is here" without being asked.
+  if (typeof window === 'undefined') return false;
+  return window.localStorage.getItem(COLLAPSE_KEY) === '1';
+}
+
+/**
+ * One row of the rail, at either level.
+ *
+ * Hub and section share an implementation so they can never drift in padding,
+ * focus ring or active treatment — only indent, weight and colour separate
+ * them, which is exactly the difference a reader should see.
+ */
+function NavRow({
+  item,
+  asLabel = false,
+  nested = false,
+  collapsed = false,
+  labelCls,
+  reduce,
+  onNavigate,
+  pathname,
+  hash,
+  current,
+  onBranch = false,
+}: {
+  item: NavItem;
+  /** Render as an inert parent label rather than a link. */
+  asLabel?: boolean;
+  nested?: boolean;
+  collapsed?: boolean;
+  labelCls: string;
+  reduce: boolean | null;
+  onNavigate?: () => void;
+  pathname: string;
+  hash: string;
+  current: boolean;
+  onBranch?: boolean;
+}) {
+  const { to, label, icon: Icon, exact } = item;
+  const onThisPath = matchesNavPath(pathname, { to, exact: true });
+  if (asLabel) {
+    // The router stamps aria-current on every active link and spreads it last
+    // (STATIC_ACTIVE_PROPS), so two links to one URL are always two current
+    // pages — no prop can suppress it. A hub whose page a section already owns
+    // therefore stops being a link and becomes what it actually is: the name of
+    // the group below it, one level down from Build / Operate / Account.
+    return (
+      <div
+        className={cn(
+          'flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm',
+          onBranch ? 'text-foreground/80' : 'text-muted-foreground'
+        )}
+      >
+        <Icon className="h-4 w-4 shrink-0" />
+        <span aria-hidden={collapsed} className={labelCls}>
+          {label}
+        </span>
+      </div>
+    );
+  }
+  const link = (
+    <Link
+      to={to}
+      search={onThisPath ? true : undefined}
+      hash={onThisPath ? hash : undefined}
+      activeOptions={{ exact: exact ?? false, includeSearch: false }}
+      onClick={onNavigate}
+      // Collapsed, the label span is opacity-0 — the accessible name must
+      // survive on the link itself, and the visual label moves into a tooltip
+      // (title="" is mouse-only).
+      aria-label={collapsed ? label : undefined}
+      aria-current={current ? 'page' : undefined}
+      className={cn(
+        'pressable relative isolate flex items-center rounded-md py-1.5 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
+        // The nested row trades its icon for indent: a second column of glyphs
+        // reads as ten more destinations rather than as detail under one.
+        nested ? 'gap-2.5 py-1 pl-9 pr-2.5 text-[13px]' : 'gap-2.5 px-2.5',
+        'text-muted-foreground hover:bg-muted hover:text-foreground',
+        current && '!text-foreground',
+        // The hub above the current section stays lit but unemphasised, so the
+        // eye can walk group → hub → page without losing the branch.
+        !current && onBranch && 'text-foreground/80',
+        current && reduce && 'bg-muted'
+      )}
+    >
+      <>
+        {current && !reduce && (
+          <motion.span
+            aria-hidden="true"
+            layoutId="sidebar-active"
+            className="absolute inset-0 -z-10 rounded-md bg-muted"
+            transition={{ type: 'spring', stiffness: 500, damping: 40 }}
+          />
+        )}
+        {!nested && <Icon className="h-4 w-4 shrink-0" />}
+        {nested && (
+          <span
+            aria-hidden="true"
+            className={cn('absolute left-[18px] h-4 w-px', current ? 'bg-brand' : 'bg-border')}
+          />
+        )}
+        <span aria-hidden={collapsed} className={labelCls}>
+          {label}
+        </span>
+      </>
+    </Link>
+  );
+  // Keep the same link mounted while focus expands the rail.
+  return nested ? (
+    link
+  ) : (
+    <Tooltip content={label} side="right">
+      {link}
+    </Tooltip>
+  );
 }
 
 function SidebarBody({
@@ -94,7 +220,10 @@ function SidebarBody({
 
       {/* scrollbar-none: at 40px-wide rows a native scrollbar eats the rail
           and shoves the icons off-center (it did). */}
-      <div className="scrollbar-none mt-6 flex flex-col gap-4 overflow-x-hidden overflow-y-auto">
+      <nav
+        aria-label="Main"
+        className="scrollbar-none mt-6 flex flex-col gap-4 overflow-x-hidden overflow-y-auto"
+      >
         {NAV_GROUPS.map((group, gi) => (
           <div key={group.title ?? `group-${gi}`}>
             {/* One fixed-height slot per group header, whichever face it
@@ -120,68 +249,61 @@ function SidebarBody({
               </div>
             )}
 
-            <nav aria-label={group.title ?? 'Main'} className="flex flex-col gap-0.5">
-              {group.items.map(({ to, label, icon: Icon, exact, sidebarIconClassName }) => {
-                const isActive = currentHub?.to === to;
-                const currentPath = matchesNavPath(pathname, { to, exact: true });
-                const link = (
-                  <Link
-                    key={to}
-                    to={to}
-                    search={currentPath ? true : undefined}
-                    hash={currentPath ? hash : undefined}
-                    activeOptions={{ exact: exact ?? false, includeSearch: false }}
-                    onClick={onNavigate}
-                    // Collapsed, the label span is opacity-0 — the accessible
-                    // name must survive on the link itself, and the visual
-                    // label moves into a tooltip (title="" is mouse-only).
-                    aria-label={collapsed ? label : undefined}
-                    aria-current={isActive ? 'page' : undefined}
-                    className={cn(
-                      'pressable relative isolate flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
-                      isActive
-                        ? 'text-brand'
-                        : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-                      isActive && reduce && 'bg-brand/10 ring-1 ring-inset ring-brand/15'
-                    )}
-                  >
-                    <>
-                      {isActive && !reduce && (
-                        <motion.span
-                          aria-hidden="true"
-                          layoutId="sidebar-active"
-                          className="absolute inset-0 -z-10 rounded-md bg-brand/10 ring-1 ring-inset ring-brand/15"
-                          transition={{
-                            type: 'spring',
-                            stiffness: 500,
-                            damping: 40,
-                          }}
-                        />
-                      )}
-                      <Icon
-                        aria-hidden="true"
-                        className={cn(
-                          'h-4 w-4 shrink-0 transition-colors duration-150',
-                          isActive ? 'text-brand' : sidebarIconClassName
-                        )}
-                      />
-                      <span aria-hidden={collapsed} className={labelCls}>
-                        {label}
-                      </span>
-                    </>
-                  </Link>
+            <ul className="flex flex-col gap-0.5">
+              {group.items.map((hub) => {
+                // Collapsed, the rail is 40px of icons — there is no room for a
+                // second level, and the hub tooltip is the whole affordance.
+                const sections = collapsed ? [] : sidebarSectionsFor(hub);
+                const onBranch = currentHub?.to === hub.to;
+                // Exactly one aria-current in the rail: the nested row when the
+                // page has one, the hub otherwise. An app section (Edge rules,
+                // Logs) has no row of its own, so its hub keeps the scent.
+                const currentSection = sections.find((section) =>
+                  matchesNavPath(pathname, section)
                 );
-                // Keep the same link mounted while focus expands the rail.
+                // A section already links to the hub's page, so the hub row
+                // must not link there too (see NavRow's label face).
+                const hubIsLabel = sections.some((section) => section.to === hub.to);
                 return (
-                  <Tooltip key={to} content={label} side="right">
-                    {link}
-                  </Tooltip>
+                  <li key={hub.to}>
+                    <NavRow
+                      item={hub}
+                      asLabel={hubIsLabel}
+                      collapsed={collapsed}
+                      labelCls={labelCls}
+                      reduce={reduce}
+                      onNavigate={onNavigate}
+                      pathname={pathname}
+                      hash={hash}
+                      current={onBranch && !currentSection}
+                      onBranch={onBranch}
+                    />
+                    {sections.length > 0 && (
+                      <ul className="flex flex-col gap-0.5">
+                        {sections.map((section) => (
+                          <li key={`${section.to}-${section.label}`}>
+                            <NavRow
+                              item={section}
+                              nested
+                              collapsed={collapsed}
+                              labelCls={labelCls}
+                              reduce={reduce}
+                              onNavigate={onNavigate}
+                              pathname={pathname}
+                              hash={hash}
+                              current={section === currentSection}
+                            />
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </li>
                 );
               })}
-            </nav>
+            </ul>
           </div>
         ))}
-      </div>
+      </nav>
     </LayoutGroup>
   );
 }
