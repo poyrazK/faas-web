@@ -49,7 +49,11 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
 });
-async function mount(entry = '/dashboard/domains', cachedEmptyApps = false) {
+async function mount(
+  entry = '/dashboard/domains',
+  cachedEmptyApps = false,
+  previousEntry?: string
+) {
   const root = createRootRoute({ component: Outlet });
   const dashboard = createRoute({
     getParentRoute: () => root,
@@ -64,7 +68,9 @@ async function mount(entry = '/dashboard/domains', cachedEmptyApps = false) {
   });
   const router = createRouter({
     routeTree: root.addChildren([dashboard.addChildren([route])]),
-    history: createMemoryHistory({ initialEntries: [entry] }),
+    history: createMemoryHistory({
+      initialEntries: previousEntry ? [previousEntry, entry] : [entry],
+    }),
   });
   await router.load();
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
@@ -134,14 +140,37 @@ describe('Domains operational state', () => {
     ).toBeInTheDocument();
   });
 
-  it('records text changes without discarding status, foreign search or hash', async () => {
-    const router = await mount('/dashboard/domains?status=pending&campaign=handoff#dns');
-    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'alpha' } });
-    await waitFor(() => expect(router.state.location.search.q).toBe('alpha'));
+  it('skips sequential text edits on Back while retaining status steps and foreign URL context', async () => {
+    const router = await mount(
+      '/dashboard/domains?status=pending&campaign=handoff#dns',
+      false,
+      '/dashboard'
+    );
+    for (const query of ['a', 'al', 'alp', 'alph', 'alpha']) {
+      fireEvent.change(screen.getByRole('searchbox'), { target: { value: query } });
+      await waitFor(() => expect(router.state.location.search.q).toBe(query));
+      expect(router.state.location.search).toMatchObject({
+        status: 'pending',
+        campaign: 'handoff',
+      });
+      expect(router.state.location.hash).toBe('dns');
+    }
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: 'Domain status' }),
+      'verified'
+    );
+    expect(router.state.location.search.status).toBe('verified');
+    await act(async () => router.history.back());
+    await waitFor(() =>
+      expect(screen.getByRole('combobox', { name: 'Domain status' })).toHaveValue('pending')
+    );
+    expect(screen.getByRole('searchbox')).toHaveValue('alpha');
+    await act(async () => router.history.back());
+    await waitFor(() => expect(router.state.location.pathname).toBe('/dashboard'));
+    await act(async () => router.history.forward());
+    await waitFor(() => expect(screen.getByRole('searchbox')).toHaveValue('alpha'));
     expect(router.state.location.search).toMatchObject({ status: 'pending', campaign: 'handoff' });
     expect(router.state.location.hash).toBe('dns');
-    await act(async () => router.history.back());
-    await waitFor(() => expect(screen.getByRole('searchbox')).toHaveValue(''));
   });
 
   it('offers an actionable empty state that focuses the add form', async () => {

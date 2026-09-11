@@ -37,7 +37,7 @@ let appState: 'ready' | 'pending' | 'error';
 let wakeState: 'ready' | 'pending' | 'error' | 'empty';
 let reads: string[];
 
-async function mount(entry = '/dashboard/workers') {
+async function mount(entry = '/dashboard/workers', previousEntry?: string) {
   const root = createRootRoute({ component: Outlet });
   const dashboard = createRoute({
     getParentRoute: () => root,
@@ -52,7 +52,9 @@ async function mount(entry = '/dashboard/workers') {
   });
   const router = createRouter({
     routeTree: root.addChildren([dashboard.addChildren([route])]),
-    history: createMemoryHistory({ initialEntries: [entry] }),
+    history: createMemoryHistory({
+      initialEntries: previousEntry ? [previousEntry, entry] : [entry],
+    }),
   });
   await router.load();
   await act(async () => {
@@ -110,15 +112,23 @@ afterEach(() => {
 });
 
 describe('Instance details', () => {
-  it('preserves instance searches through selection, copied URLs and browser history', async () => {
+  it('skips sequential text edits on Back while preserving instance selection and copied URLs', async () => {
     rows.push({ ...instance, id: 'vm-2', app_id: 'app-2', state: 'running' });
     apps.push({ id: 'app-2', slug: 'bravo' });
-    const router = await mount('/dashboard/workers?q=alpha&campaign=handoff#lifecycle');
+    const router = await mount(
+      '/dashboard/workers?q=alpha&campaign=handoff#lifecycle',
+      '/dashboard'
+    );
     const filter = screen.getByRole('searchbox');
     expect(filter).toHaveValue('alpha');
     expect(await screen.findByRole('button', { name: /alpha.*vm-1/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /bravo.*vm-2/ })).not.toBeInTheDocument();
-    fireEvent.change(filter, { target: { value: 'bravo' } });
+    for (const query of ['b', 'br', 'bra', 'brav', 'bravo']) {
+      fireEvent.change(filter, { target: { value: query } });
+      await waitFor(() => expect(router.state.location.search.q).toBe(query));
+      expect(router.state.location.search.campaign).toBe('handoff');
+      expect(router.state.location.hash).toBe('lifecycle');
+    }
     await userEvent.click(await screen.findByRole('button', { name: /bravo.*vm-2/ }));
     expect(router.state.location.search).toMatchObject({
       q: 'bravo',
@@ -128,10 +138,16 @@ describe('Instance details', () => {
     expect(router.state.location.hash).toBe('lifecycle');
     const copied = router.state.location.href;
     await act(async () => router.history.back());
+    await waitFor(() =>
+      expect(screen.queryByRole('region', { name: 'Instance details' })).not.toBeInTheDocument()
+    );
+    expect(filter).toHaveValue('bravo');
     await act(async () => router.history.back());
-    await waitFor(() => expect(filter).toHaveValue('alpha'));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/dashboard'));
     await act(async () => router.history.forward());
-    await waitFor(() => expect(filter).toHaveValue('bravo'));
+    await waitFor(() => expect(screen.getByRole('searchbox')).toHaveValue('bravo'));
+    expect(router.state.location.search.campaign).toBe('handoff');
+    expect(router.state.location.hash).toBe('lifecycle');
     cleanup();
     await mount(copied);
     expect(screen.getByRole('searchbox')).toHaveValue('bravo');

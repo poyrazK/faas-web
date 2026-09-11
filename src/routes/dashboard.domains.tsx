@@ -80,10 +80,11 @@ function DomainsPage() {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
   const doctorFor = search.doctor;
-  const select = (patch: Partial<typeof search>) =>
+  const select = (patch: Partial<typeof search>, replace = false) =>
     void navigate({
       search: (current) => ({ ...current, ...patch }),
       hash: true,
+      replace,
       resetScroll: false,
     });
   const setDoctorFor = (doctor?: string) => select({ doctor });
@@ -342,7 +343,7 @@ function DomainsPage() {
         searchKeys={['domain', 'app']}
         searchPlaceholder="Filter by hostname…"
         query={search.q ?? ''}
-        onQueryChange={(q) => select({ q: q || undefined })}
+        onQueryChange={(q) => select({ q: q || undefined }, true)}
         filters={
           <label className="flex items-center gap-2 text-xs text-muted-foreground">
             Domain status

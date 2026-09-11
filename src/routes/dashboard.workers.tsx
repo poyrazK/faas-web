@@ -141,6 +141,7 @@ function WorkersPage() {
           void navigate({
             search: (current) => ({ ...current, q: query || undefined }),
             hash: true,
+            replace: true,
             resetScroll: false,
           })
         }
