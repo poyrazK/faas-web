@@ -40,6 +40,7 @@ export const keys = {
   appsMetrics: (range: MetricsRange) => ['apps', 'metrics', range] as const,
   appMetrics: (slug: string, range: MetricsRange) => ['apps', slug, 'metrics', range] as const,
   appSlo: (slug: string, window: AppSLOWindow) => ['apps', slug, 'slo', window] as const,
+  accountSlo: (window: AppSLOWindow) => ['account', 'slo', window] as const,
   deployments: ['deployments'] as const,
   appDeployments: (slug: string) => ['apps', slug, 'deployments'] as const,
   latestDeploymentsByApp: ['deployments', 'latest-by-app'] as const,
@@ -2617,10 +2618,10 @@ export function useChangePlan() {
   });
 }
 
-export function useAccountSlo() {
+export function useAccountSlo(window: AppSLOWindow = '24h') {
   return useQuery({
-    queryKey: ['account', 'slo'],
-    queryFn: () => unwrap(api.GET('/v1/account/slo', {})),
+    queryKey: keys.accountSlo(window),
+    queryFn: () => unwrap(api.GET('/v1/account/slo', { params: { query: { window } } })),
   });
 }
 
@@ -3095,6 +3096,18 @@ export type RequestAnalytics = components['schemas']['RequestAnalyticsResponse']
 export type RequestAnalyticsTimeseries =
   components['schemas']['RequestAnalyticsTimeseriesResponse'];
 export type AnalyticsGroupBy = RequestAnalytics['group_by'];
+export type AppAnalyticsTimeseriesOptions = {
+  /**
+   * Exclusive upper bound, for an explicit range.
+   *
+   * Sent only when present: a duration `since` means "up to now" and has to
+   * keep meaning that as time passes, which pinning an `until` would stop.
+   */
+  until?: string;
+  route?: string;
+  method?: NonNullable<RequestAnalyticsTimeseries['method']>;
+  groupBy?: AnalyticsGroupBy;
+};
 export type DebugRequestEvidence = components['schemas']['DebugRequestEvidenceResponse'];
 export type UpstreamHistory = components['schemas']['DataUpstreamHistoryResponse'];
 
@@ -3114,16 +3127,29 @@ export function useAppAnalytics(slug: string, since: string, groupBy: AnalyticsG
 }
 
 /** Hourly buckets, zero-filled by the API — a real series, so a line is honest. */
-export function useAppAnalyticsTimeseries(slug: string, since: string, until?: string) {
+export function useAppAnalyticsTimeseries(
+  slug: string,
+  since: string,
+  options?: AppAnalyticsTimeseriesOptions
+) {
+  const route = options?.route && options.method ? options.route : null;
+  const method = options?.route && options.method ? options.method : null;
+  const groupBy = options?.groupBy ?? null;
+  const until = options?.until ?? null;
   return useQuery({
-    queryKey: ['apps', slug, 'analytics', 'timeseries', since, until ?? null],
+    queryKey: ['apps', slug, 'analytics', 'timeseries', since, until, route, method, groupBy],
     queryFn: () =>
       unwrap(
         api.GET('/v1/apps/{slug}/analytics/timeseries', {
-          // `until` is the exclusive upper bound and defaults to now, so it is
-          // sent only for an explicit range — a preset means "up to now" and
-          // has to keep meaning that as time passes.
-          params: { path: { slug }, query: until ? { since, until } : { since } },
+          params: {
+            path: { slug },
+            query: {
+              since,
+              ...(until ? { until } : {}),
+              ...(route && method ? { route, method } : {}),
+              ...(groupBy ? { group_by: groupBy } : {}),
+            },
+          },
         })
       ),
     enabled: Boolean(slug),

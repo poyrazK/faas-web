@@ -5,6 +5,7 @@ import {
   ErrorState,
   LoadingState,
   PageHeader,
+  RangeSelector,
   UnreachableState,
   queryPhase,
 } from '@/components/dashboard/primitives';
@@ -27,6 +28,7 @@ import {
   useDeployments,
   useInstances,
   useUsageSummary,
+  type MetricsRange,
 } from '@/lib/api/queries';
 import { formatCompact, formatRelative, type Workflow } from '@/lib/mock-data';
 import type { Deployment } from '@/lib/mock-data';
@@ -38,6 +40,11 @@ import { cn } from '@/lib/utils';
 export const Route = createFileRoute('/dashboard/')({
   component: OverviewPage,
   head: () => consoleHead('overview'),
+  validateSearch: (search: Record<string, unknown>): { range?: MetricsRange } => ({
+    ...(OVERVIEW_RANGES.some(({ key }) => key === search.range)
+      ? { range: search.range as MetricsRange }
+      : {}),
+  }),
 });
 
 /**
@@ -64,6 +71,26 @@ function formatMoney(cents: number | undefined): string {
 }
 
 const UNKNOWN = <span className="text-muted-foreground">—</span>;
+
+const OVERVIEW_RANGES: { key: MetricsRange; label: string }[] = [
+  { key: '5m', label: '5m' },
+  { key: '15m', label: '15m' },
+  { key: '1h', label: '1h' },
+  { key: '6h', label: '6h' },
+  { key: '24h', label: '24h' },
+  { key: '7d', label: '7d' },
+  { key: '15d', label: '15d' },
+];
+
+const RANGE_DESCRIPTION: Record<MetricsRange, string> = {
+  '5m': 'last 5 minutes',
+  '15m': 'last 15 minutes',
+  '1h': 'last hour',
+  '6h': 'last 6 hours',
+  '24h': 'last 24 hours',
+  '7d': 'last 7 days',
+  '15d': 'last 15 days',
+};
 
 /* ------------------------------------------------------------------ *
  * Verdict pill
@@ -295,9 +322,12 @@ function StatCard({
 function OverviewPage() {
   const { workflows, deployments, loading, error, refresh } = useData();
   const { account, user } = useAuth();
+  const { range = '24h' } = Route.useSearch();
+  const navigate = Route.useNavigate();
   const usage = useUsageSummary();
-  // Same key the store already reads — a cache hit, here for `source`.
-  const metrics = useAppsMetrics('24h');
+  // The default remains a cache hit with the store. Other windows are queried
+  // directly so the overview changes the underlying rollup, not just its label.
+  const metrics = useAppsMetrics(range);
   // The overview breathes on a gentle poll while it is on screen: this
   // observer's interval joins the store's own (TanStack runs the smallest
   // among observers) and leaves with the page. Real reads on a cadence —
@@ -309,6 +339,7 @@ function OverviewPage() {
 
   const phase = queryPhase({ error, loading });
   const metricsDegraded = Boolean(metrics.data && metrics.data.source !== 'prometheus');
+  const metricsUnavailable = metrics.isPending || Boolean(metrics.error) || metricsDegraded;
   const failing = useMemo(() => workflows.filter((w) => w.state === 'error'), [workflows]);
 
   // Resident RAM right now: non-parked instances only — a parked instance's
@@ -328,18 +359,27 @@ function OverviewPage() {
   }, [instances.data]);
 
   const { requests, errorPct, wakeP95 } = useMemo(() => {
-    const total = workflows.reduce((sum, w) => sum + w.invocations24h, 0);
+    const rows = Object.values(metrics.data?.apps ?? {});
+    const total = rows.reduce((sum, row) => sum + row.request_count, 0);
     // Weighted by traffic, not a mean of percentages: one idle app at 100%
     // must not outweigh a busy one at 0.01%.
-    const errored = workflows.reduce(
-      (sum, w) => sum + w.invocations24h * (w.errorRatePct / 100),
+    const errored = rows.reduce(
+      (sum, row) => sum + row.request_count * (row.error_rate_pct / 100),
       0
     );
     // The wake histogram is unlabelled upstream — every row carries the same
     // fleet figure, so the first non-zero one is the figure.
-    const wake = workflows.find((w) => w.coldStartP50Ms > 0)?.coldStartP50Ms ?? 0;
+    const wake = rows.find((row) => row.wake_p95_ms > 0)?.wake_p95_ms ?? 0;
     return { requests: total, errorPct: total > 0 ? (errored / total) * 100 : 0, wakeP95: wake };
-  }, [workflows]);
+  }, [metrics.data]);
+
+  const setRange = (next: MetricsRange) =>
+    void navigate({
+      search: next === '24h' ? {} : { range: next },
+      replace: true,
+      resetScroll: false,
+    });
+  const rangeDescription = RANGE_DESCRIPTION[range];
 
   const usageData = usage.data;
   const included = usageData?.included_gb_hours ?? 0;
@@ -481,9 +521,7 @@ function OverviewPage() {
                 metrics degraded — unknowns read as —
               </span>
             )}
-            <span className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">
-              Last 24 hours
-            </span>
+            <RangeSelector value={range} options={OVERVIEW_RANGES} onChange={setRange} />
             <button
               type="button"
               onClick={refreshAll}
@@ -501,14 +539,16 @@ function OverviewPage() {
             label="Total requests"
             large
             className="col-span-2"
-            hint="Requests served across the fleet, last 24 hours."
+            hint={`Requests served across the fleet over the ${rangeDescription}.`}
             sub={
-              metricsDegraded
-                ? 'metrics degraded'
-                : `Across ${workflows.length} ${workflows.length === 1 ? 'app' : 'apps'}, last 24 hours`
+              metricsUnavailable
+                ? metricsDegraded
+                  ? 'metrics degraded'
+                  : 'metrics unavailable'
+                : `Across ${workflows.length} ${workflows.length === 1 ? 'app' : 'apps'}, ${rangeDescription}`
             }
           >
-            {metricsDegraded ? UNKNOWN : <Odometer value={requests} format={formatCompact} />}
+            {metricsUnavailable ? UNKNOWN : <Odometer value={requests} format={formatCompact} />}
           </StatCard>
           <StatCard
             label="Error rate"
@@ -516,12 +556,14 @@ function OverviewPage() {
             className="col-span-2"
             hint="Errored share of served requests, weighted by traffic."
             sub={
-              metricsDegraded
-                ? 'metrics degraded'
+              metricsUnavailable
+                ? metricsDegraded
+                  ? 'metrics degraded'
+                  : 'metrics unavailable'
                 : `${formatCompact(Math.round((requests * errorPct) / 100))} errored, weighted by traffic`
             }
           >
-            {metricsDegraded ? (
+            {metricsUnavailable ? (
               UNKNOWN
             ) : (
               <span style={errorPct > 1 ? { color: 'var(--status-critical)' } : undefined}>
@@ -535,7 +577,7 @@ function OverviewPage() {
             hint="95th-percentile cold-start time across the fleet."
             sub="Cold start, fleet-wide"
           >
-            {metricsDegraded || !wakeP95 ? (
+            {metricsUnavailable || !wakeP95 ? (
               UNKNOWN
             ) : (
               <>

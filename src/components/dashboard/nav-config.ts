@@ -22,6 +22,7 @@ import {
   Server,
   Settings,
   ShieldCheck,
+  StatsReport,
   Timer,
   Upload,
   ViewGrid,
@@ -131,6 +132,10 @@ export const NAV_HUBS: NavHub[] = [
     icon: Search,
     sidebarIconClassName: 'text-cat-security/80',
     sections: [
+      // #70's destination, rehomed: it arrived as a flat "Observability" group
+      // from before the rail had hubs, and this is where the other read-only
+      // investigation surfaces already live.
+      { to: '/dashboard/analytics', label: 'Analytics', icon: StatsReport },
       { to: '/dashboard/debug', label: 'Debugger', icon: Search },
       { to: '/dashboard/traces', label: 'Invocations', icon: Activity },
       { to: '/dashboard/audit', label: 'Audit Log', icon: Journal },

@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createHash, randomBytes } from 'node:crypto';
 import type { Plugin } from 'vite';
+import type { components } from '../src/lib/api/schema';
 import * as db from './data';
 
 /**
@@ -89,6 +90,58 @@ route('POST', '/v1/auth/logout', ({ res }) => {
 });
 
 route('GET', '/v1/account', () => ({ ...db.account, app_count: db.apps.length }));
+const SLO_WINDOWS = new Set(['1h', '24h', '7d']);
+// Keep analytics screenshots stable without aging unrelated lifecycle fixtures.
+const ANALYTICS_NOW = Date.parse('2026-09-05T13:00:00.123Z');
+const analyticsIso = (msAgo: number) => new Date(ANALYTICS_NOW - msAgo).toISOString();
+
+function sloWindow(query: URLSearchParams) {
+  const window = query.get('window') ?? '24h';
+  if (!SLO_WINDOWS.has(window))
+    throw new Problem(400, 'validation_failed', `unknown SLO window "${window}".`);
+  return window as '1h' | '24h' | '7d';
+}
+
+function accountSlo(
+  window: ReturnType<typeof sloWindow>
+): components['schemas']['AccountSLOResponse'] {
+  return {
+    window,
+    source: 'prometheus',
+    as_of: analyticsIso(0),
+    request_duration: { p50_ms: 22.1, p95_ms: 91, p99_ms: 410 },
+    error_rate_pct: 0.55,
+    cold_boot_rate_pct: 4.2,
+    instance_hours: 12,
+    gb_hours: 3,
+    wake_queue_p95_ms: 14,
+    requests_total: 12000,
+    throttled_total: 23,
+  };
+}
+
+function appSlo(
+  a: db.App,
+  window: ReturnType<typeof sloWindow>
+): components['schemas']['AppSLOResponse'] {
+  return {
+    app_id: a.id,
+    app_slug: a.slug,
+    window,
+    source: 'prometheus',
+    as_of: analyticsIso(0),
+    request_duration: { p50_ms: 14.2, p95_ms: 87, p99_ms: 312.5 },
+    error_rate_pct: 0.41,
+    cold_boot_rate_pct: 3.1,
+    instance_hours: 0,
+    gb_hours: 0,
+    wake_queue_p95_ms: 12,
+    requests_total: 4321,
+    throttled_total: 0,
+  };
+}
+
+route('GET', '/v1/account/slo', ({ query }) => accountSlo(sloWindow(query)));
 route('PATCH', '/v1/account/plan', ({ body }) => {
   const plan = String(body.plan ?? '') as typeof db.account.plan;
   if (!['free', 'hobby', 'pro', 'scale'].includes(plan)) throw new Problem(400, 'invalid_plan');
@@ -234,6 +287,9 @@ route('POST', '/v1/apps/{slug}/rollback', ({ params }) => {
 });
 route('GET', '/v1/apps/{slug}/metrics', ({ params, query }) =>
   db.metricsFor(app(params.slug), query.get('range') ?? '24h')
+);
+route('GET', '/v1/apps/{slug}/slo', ({ params, query }) =>
+  appSlo(app(params.slug), sloWindow(query))
 );
 route('GET', '/v1/apps/{slug}/routes', ({ params }) => db.routesFor(app(params.slug)));
 
@@ -1197,14 +1253,29 @@ route('POST', '/v1/preview/{slug}/destroy', ({ params }) => {
 
 // Request analytics, request evidence, app lifecycle, upstream history,
 // rollout recovery and the tarball deploy.
+type AnalyticsTimeseries = components['schemas']['RequestAnalyticsTimeseriesResponse'];
+type AnalyticsGroupBy = NonNullable<AnalyticsTimeseries['group_by']>;
+type AnalyticsMethod = NonNullable<AnalyticsTimeseries['method']>;
+
 const ANALYTICS_WINDOW_HOURS: Record<string, number> = { '24h': 24, '3d': 72, '7d': 168 };
-const ANALYTICS_GROUPS: Record<string, string[]> = {
+const ANALYTICS_GROUPS: Record<AnalyticsGroupBy, string[]> = {
   route: ['/orders', '/orders/{id}', '/health', '/search'],
   country: ['DE', 'TR', 'US', 'FR'],
   referrer_host: ['acme.example', 'news.example', '(direct)'],
   ua_family: ['Chrome', 'Safari', 'curl', 'Googlebot'],
   status: ['200', '404', '500'],
 };
+const ANALYTICS_METHODS = new Set<AnalyticsMethod>([
+  'GET',
+  'POST',
+  'PUT',
+  'PATCH',
+  'DELETE',
+  'HEAD',
+  'OPTIONS',
+]);
+const isAnalyticsGroupBy = (value: string): value is AnalyticsGroupBy =>
+  Object.hasOwn(ANALYTICS_GROUPS, value);
 
 function analyticsWindow(query: URLSearchParams) {
   const since = query.get('since') ?? '24h';
@@ -1223,8 +1294,9 @@ route('GET', '/v1/apps/{slug}/analytics', ({ params, query }) => {
     );
   const { since, hours, clamped } = analyticsWindow(query);
   const groupBy = query.get('group_by') ?? 'route';
+  if (!isAnalyticsGroupBy(groupBy))
+    throw new Problem(400, 'validation_failed', `unknown group_by "${groupBy}".`);
   const values = ANALYTICS_GROUPS[groupBy];
-  if (!values) throw new Problem(400, 'validation_failed', `unknown group_by "${groupBy}".`);
   const requests = hours * 351;
   const errors = Math.round(requests * 0.0044);
   const group = (value: string, i: number) => {
@@ -1246,8 +1318,8 @@ route('GET', '/v1/apps/{slug}/analytics', ({ params, query }) => {
   return {
     slug: a.slug,
     since,
-    from: db.iso(hours * 3_600_000),
-    until: db.iso(0),
+    from: analyticsIso(hours * 3_600_000),
+    until: analyticsIso(0),
     window_clamped: clamped,
     requests,
     error_requests: errors,
@@ -1263,11 +1335,11 @@ route('GET', '/v1/apps/{slug}/analytics', ({ params, query }) => {
     routes: ANALYTICS_GROUPS.route.map(group),
     routes_limit: 50,
     routes_truncated: false,
-    as_of: db.iso(0),
+    as_of: analyticsIso(0),
   };
 });
 
-route('GET', '/v1/apps/{slug}/analytics/timeseries', ({ params, query }) => {
+function analyticsTimeseries({ params, query }: Parameters<Handler>[0]): AnalyticsTimeseries {
   const a = app(params.slug);
   if (process.env.MOCK_PLAN === 'free')
     throw new Problem(
@@ -1276,8 +1348,8 @@ route('GET', '/v1/apps/{slug}/analytics/timeseries', ({ params, query }) => {
       'the free plan does not include per-app metrics; upgrade to Hobby or above.'
     );
   const { since, hours, clamped } = analyticsWindow(query);
-  const now = Date.now();
-  const points = Array.from({ length: hours }, (_, i) => {
+  const now = ANALYTICS_NOW;
+  const unfilteredPoints = Array.from({ length: hours }, (_, i) => {
     const hour = hours - 1 - i;
     // A diurnal shape, so the line is a shape rather than a flat run.
     const at = new Date(now - hour * 3_600_000);
@@ -1296,17 +1368,61 @@ route('GET', '/v1/apps/{slug}/analytics/timeseries', ({ params, query }) => {
       p99_ms: Math.round(420 * wave),
     };
   });
+  const requestedRoute = query.get('route');
+  const requestedMethod = query.get('method');
+  let routeMethodFilter: { route: string; method: AnalyticsMethod } | undefined;
+  if (requestedRoute !== null || requestedMethod !== null) {
+    if (requestedRoute === null || requestedMethod === null)
+      throw new Problem(400, 'validation_failed', 'route and method must be provided together.');
+    if (!ANALYTICS_METHODS.has(requestedMethod as AnalyticsMethod))
+      throw new Problem(400, 'validation_failed', `unknown method "${requestedMethod}".`);
+    routeMethodFilter = { route: requestedRoute, method: requestedMethod as AnalyticsMethod };
+  }
+  const scale = (point: (typeof unfilteredPoints)[number], factor: number) => {
+    const requests = Math.round(point.requests * factor);
+    const errorRequests = Math.min(requests, Math.round(point.error_requests * factor));
+    return {
+      ...point,
+      requests,
+      error_requests: errorRequests,
+      error_rate_pct: requests === 0 ? 0 : Math.round((errorRequests / requests) * 10000) / 100,
+      cold_boots: Math.round(point.cold_boots * factor),
+    };
+  };
+  const points = routeMethodFilter
+    ? unfilteredPoints.map((point) => scale(point, 0.44))
+    : unfilteredPoints;
+  const requestedGroupBy = query.get('group_by');
+  if (requestedGroupBy !== null && !isAnalyticsGroupBy(requestedGroupBy))
+    throw new Problem(400, 'validation_failed', `unknown group_by "${requestedGroupBy}".`);
+  const groupBy = requestedGroupBy ?? undefined;
+  if (routeMethodFilter && groupBy !== undefined && groupBy !== 'route')
+    throw new Problem(
+      400,
+      'validation_failed',
+      'route and method filters require group_by=route or no group_by.'
+    );
+  const values = groupBy === undefined ? undefined : ANALYTICS_GROUPS[groupBy];
+  const series = values?.map((value, i) => ({
+    value,
+    ...(groupBy === 'route' ? { method: (['GET', 'POST', 'GET', 'PUT'] as const)[i % 4] } : {}),
+    points: points.map((point) => scale(point, [0.44, 0.3, 0.18, 0.08][i] ?? 0.05)),
+  }));
   return {
     slug: a.slug,
+    ...routeMethodFilter,
     since,
-    from: points[0]?.start ?? db.iso(hours * 3_600_000),
-    until: db.iso(0),
+    from: points[0]?.start ?? analyticsIso(hours * 3_600_000),
+    until: analyticsIso(0),
     window_clamped: clamped,
     bucket: '1h',
     points,
-    as_of: db.iso(0),
+    ...(groupBy !== undefined ? { group_by: groupBy, series } : {}),
+    as_of: analyticsIso(0),
   };
-});
+}
+
+route('GET', '/v1/apps/{slug}/analytics/timeseries', analyticsTimeseries);
 
 route('GET', '/v1/apps/{slug}/debug/requests/{req_id}', ({ params }) => {
   gateDebug();
@@ -2289,18 +2405,17 @@ route('GET', '/v1/deployments', ({ query }) => ({
   next_before: null,
 }));
 route('GET', '/v1/deployments/latest-by-app', () => {
-  const latest = new Map<string, db.Deployment>();
-  const activeAppIds = new Set(db.apps.map((app) => app.id));
-
-  for (const deployment of db.deployments) {
-    if (!activeAppIds.has(deployment.app_id)) continue;
-    const current = latest.get(deployment.app_id);
-    if (!current || Date.parse(deployment.created_at) > Date.parse(current.created_at)) {
-      latest.set(deployment.app_id, deployment);
-    }
-  }
-
-  return { items: [...latest.values()] };
+  const appIDs = new Set(db.apps.map((app) => app.id));
+  const seen = new Set<string>();
+  const items = [...db.deployments]
+    .filter((deployment) => appIDs.has(deployment.app_id))
+    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at) || b.id.localeCompare(a.id))
+    .filter((deployment) => {
+      if (seen.has(deployment.app_id)) return false;
+      seen.add(deployment.app_id);
+      return true;
+    });
+  return { items } satisfies components['schemas']['LatestDeploymentsByAppResponse'];
 });
 route('GET', '/v1/deployments/{id}', ({ params }) => {
   const d = db.deployments.find((x) => x.id === params.id);
