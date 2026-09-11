@@ -5,6 +5,59 @@ import { describe, expect, it, vi } from 'vitest';
 import { mockApi } from '../mock/plugin';
 
 describe('mock API', () => {
+  it('keeps deleted apps hidden but restorable during their grace window', async () => {
+    const plugin = mockApi();
+    let middleware: Connect.NextHandleFunction | undefined;
+    if (typeof plugin.configureServer !== 'function') throw new Error('Missing server hook');
+    plugin.configureServer({
+      config: { logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } },
+      middlewares: {
+        use(handler: Connect.NextHandleFunction) {
+          middleware = handler;
+        },
+      },
+    } as never);
+    const server = createServer((req, res) =>
+      middleware!(req, res, () => {
+        res.statusCode = 599;
+        res.end();
+      })
+    );
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const now = Date.now();
+    const clock = vi.spyOn(Date, 'now');
+    try {
+      const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+      const slug = 'delete-grace-contract';
+      const created = await fetch(`${base}/v1/apps`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug }),
+      });
+      expect(created.status).toBe(201);
+      const original = (await created.json()) as { id: string };
+      expect((await fetch(`${base}/v1/apps/${slug}`, { method: 'DELETE' })).status).toBe(204);
+      expect((await fetch(`${base}/v1/apps/${slug}`)).status).toBe(404);
+      const active = (await fetch(`${base}/v1/apps`).then((r) => r.json())) as Array<{
+        slug: string;
+      }>;
+      expect(active.some((app) => app.slug === slug)).toBe(false);
+      const restored = await fetch(`${base}/v1/apps/${slug}/restore`, { method: 'POST' });
+      expect(restored.status).toBe(200);
+      expect(await restored.json()).toMatchObject({ id: original.id, slug, status: 'active' });
+      expect((await fetch(`${base}/v1/apps/${slug}/restore`, { method: 'POST' })).status).toBe(409);
+      expect((await fetch(`${base}/v1/apps/${slug}`, { method: 'DELETE' })).status).toBe(204);
+      clock.mockReturnValue(now + 8 * 86400e3);
+      const expired = await fetch(`${base}/v1/apps/${slug}/restore`, { method: 'POST' });
+      expect(expired.status).toBe(409);
+      expect(await expired.json()).toMatchObject({ code: 'app_not_restorable' });
+    } finally {
+      clock.mockRestore();
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve()))
+      );
+    }
+  });
   it('requires the one-time token for invitation revocation and never returns it in lists', async () => {
     const plugin = mockApi();
     let middleware: Connect.NextHandleFunction | undefined;

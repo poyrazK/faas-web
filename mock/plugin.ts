@@ -113,6 +113,8 @@ route('POST', '/v1/auth/sessions/revoke_all', () => {
 
 // --- Apps --------------------------------------------------------------------
 
+const deletedApps = new Map<string, { app: db.App; expiresAt: number }>();
+
 function app(slug: string) {
   const found = db.appBySlug(slug);
   if (!found) throw new Problem(404, 'app_not_found', `No app named "${slug}".`);
@@ -133,7 +135,8 @@ route('POST', '/v1/apps', ({ body }) => {
   const slug = String(body.slug ?? '').trim();
   if (!/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(slug))
     throw new Problem(400, 'invalid_slug', 'Slugs are lowercase letters, digits, and dashes.');
-  if (db.appBySlug(slug)) throw new Problem(409, 'app_exists', `"${slug}" already exists.`);
+  if (db.appBySlug(slug) || deletedApps.has(slug))
+    throw new Problem(409, 'app_exists', `"${slug}" already exists.`);
   const created: db.App = {
     ...db.apps[0],
     id: db.id(),
@@ -151,6 +154,8 @@ route('POST', '/v1/apps', ({ body }) => {
 route('GET', '/v1/apps/{slug}', ({ params }) => app(params.slug));
 route('DELETE', '/v1/apps/{slug}', ({ params }) => {
   const a = app(params.slug);
+  // Active reads hide tombstones; the restore API retains the same app identity.
+  deletedApps.set(a.slug, { app: a, expiresAt: Date.now() + 7 * 86400e3 });
   db.apps.splice(db.apps.indexOf(a), 1);
   return NO_CONTENT;
 });
@@ -1415,10 +1420,17 @@ route('POST', '/v1/apps/{slug}/restart', ({ params }) => {
 });
 
 route('POST', '/v1/apps/{slug}/restore', ({ params }) => {
-  const a = app(params.slug);
-  if (a.status !== 'deleted_pending')
-    throw new Problem(409, 'conflict', 'the app is not pending deletion.');
+  const deleted = deletedApps.get(params.slug);
+  if (!deleted) {
+    app(params.slug);
+    throw new Problem(409, 'app_not_restorable', 'the app is not pending deletion.');
+  }
+  if (deleted.expiresAt <= Date.now())
+    throw new Problem(409, 'app_not_restorable', 'the app deletion grace window has expired.');
+  const a = deleted.app;
   a.status = 'active';
+  db.apps.push(a);
+  deletedApps.delete(params.slug);
   return a;
 });
 
