@@ -1,3 +1,27 @@
+export type AppSource = 'git' | 'empty' | 'template' | 'import';
+export interface NewAppSearch {
+  source?: AppSource;
+  template?: string;
+  step?: 'configure' | 'review';
+  slug?: string;
+  branch?: string;
+}
+
+export function validateNewAppSearch(search: Record<string, unknown>): NewAppSearch {
+  return {
+    source:
+      search.source === 'git' ||
+      search.source === 'empty' ||
+      search.source === 'template' ||
+      search.source === 'import'
+        ? search.source
+        : undefined,
+    template: typeof search.template === 'string' ? search.template : undefined,
+    step: search.step === 'configure' || search.step === 'review' ? search.step : undefined,
+    slug: typeof search.slug === 'string' ? search.slug : undefined,
+    branch: typeof search.branch === 'string' ? search.branch : undefined,
+  };
+}
 const GITHUB_REPO = /^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/;
 const FORBIDDEN_REF_CHAR = /[\\`?%[\]{}<>"'*:^~]/;
 

@@ -7,8 +7,6 @@ describe('legacy dashboard bookmarks', () => {
     '/dashboard/workflows?q=api&state=running&runtime=node24',
     '/dashboard/workflows/api?tab=Deployments&deployment=dep-1#lifecycle',
     '/dashboard/workflows/new?template=hello-world',
-    '/dashboard/templates',
-    '/dashboard/import',
     '/dashboard/crons',
     '/dashboard/jobs',
     '/dashboard/triggers',
@@ -57,5 +55,23 @@ describe('legacy dashboard bookmarks', () => {
     const match = router.state.matches.at(-1)!;
     expect(match.status).toBe('success');
     expect(match.pathname.replace(/\/$/, '')).toBe(entry.split(/[?#]/)[0]);
+  });
+
+  it.each([
+    ['/dashboard/templates', '/dashboard/workflows/new?source=template'],
+    ['/dashboard/import', '/dashboard/workflows/new?source=import'],
+  ])('resolves %s through its New App compatibility redirect', async (entry, destination) => {
+    window.localStorage.setItem(
+      'gregale.session',
+      JSON.stringify({ email: 'operator@example.com' })
+    );
+    window.localStorage.setItem('gregale.onboarded', 'true');
+    const router = createRouter({
+      routeTree,
+      history: createMemoryHistory({ initialEntries: [entry] }),
+    });
+    await router.load();
+    expect(router.state.location.href).toBe(destination);
+    expect(router.state.matches.at(-1)?.status).toBe('success');
   });
 });
