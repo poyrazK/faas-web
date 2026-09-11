@@ -14,6 +14,8 @@ import { Magnetic } from '@/components/amicro/magnetic';
 import { PointerGlow } from '@/components/amicro/pointer-glow';
 import { WordReveal } from '@/components/amicro/word-reveal';
 import { LiveDot } from '@/components/ui/live-dot';
+import { AnalyticsSection } from '@/components/dashboard/analytics-section';
+import { useSelectedApp } from '@/components/dashboard/app-select';
 import { WindFlow } from '@/components/dashboard/wind-flow';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Odometer } from '@/components/ui/odometer';
@@ -301,6 +303,7 @@ function OverviewPage() {
   // among observers) and leaves with the page. Real reads on a cadence —
   // the spec has no general event stream to subscribe to instead.
   const instances = useInstances({ refetchInterval: 10_000 });
+  const analyticsApp = useSelectedApp();
   useDeployments(50, { refetchInterval: 10_000 });
   useApps({ refetchInterval: 15_000 });
 
@@ -619,6 +622,18 @@ function OverviewPage() {
             <ArrowRight className="h-3 w-3" />
           </Link>
         </div>
+
+        {/* Scoped to one app because the series is: the platform has no
+            account-level rollup of `/analytics/timeseries`, and summing apps
+            with different retention would thin out at the earlier end while
+            looking like a total. */}
+        {analyticsApp.slug && (
+          <AnalyticsSection
+            apps={analyticsApp.apps}
+            slug={analyticsApp.slug}
+            onSelectApp={analyticsApp.select}
+          />
+        )}
       </section>
     </div>
   );
