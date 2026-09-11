@@ -8,7 +8,11 @@ const toast = vi.fn();
 vi.mock('@tanstack/react-router', () => ({ createFileRoute: () => (options: unknown) => options }));
 vi.mock('@/lib/api/queries', () => ({
   useApiKeys: () => ({ data: [], isPending: false, error: null, refetch: vi.fn() }),
-  useCreateApiKey: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useCreateApiKey: () => ({
+    mutateAsync: vi.fn().mockResolvedValue({}),
+    isPending: false,
+    reset: vi.fn(),
+  }),
   useDeleteApiKey: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useRotateApiKey: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useGraceWindow: () => ({ data: { days: 7, plan_default: 7 }, isPending: false, error: null }),
@@ -33,9 +37,17 @@ beforeEach(() => {
 });
 
 describe('API-key grace-window validation', () => {
+  it('accepts zero as an explicit override', async () => {
+    setGraceWindow.mockReset().mockResolvedValue({ days: 0, plan_default: 7 });
+    render(<KeysPage />);
+    await userEvent.click(screen.getByRole('button', { name: 'Create key' }));
+    await userEvent.type(screen.getByRole('spinbutton', { name: 'Days' }), '0{Enter}');
+    await waitFor(() => expect(setGraceWindow).toHaveBeenCalledWith(0));
+  });
   it('restores the plan default with the API null sentinel', async () => {
     setGraceWindow.mockReset().mockResolvedValue({ days: null, plan_default: 7 });
     render(<KeysPage />);
+    await userEvent.click(screen.getByRole('button', { name: 'Create key' }));
     await userEvent.click(screen.getByRole('button', { name: 'Use plan default' }));
 
     await waitFor(() => expect(setGraceWindow).toHaveBeenCalledWith(null));
@@ -46,6 +58,7 @@ describe('API-key grace-window validation', () => {
 
   it('rejects range errors, then keeps the value available for API retry and success', async () => {
     render(<KeysPage />);
+    await userEvent.click(screen.getByRole('button', { name: 'Create key' }));
     const days = screen.getByRole('spinbutton', { name: 'Days' });
     await userEvent.clear(days);
     await userEvent.type(days, '-1');

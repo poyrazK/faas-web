@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { SendMail, Trash } from 'iconoir-react';
-import { CopyMorph, useCopy } from '@/components/ui/copy-button';
+import { ActionDisclosure } from '@/components/ui/action-disclosure';
+import { OneTimeSecret, useOneTimeSecret } from '@/components/ui/one-time-secret';
 import { OrgKeysPanel, OrgPanel } from '@/components/dashboard/org-panels';
 import { FIELD, FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
 import { Button } from '@/components/ui/button';
@@ -74,49 +75,53 @@ function when(value: string | undefined): string {
   return Number.isNaN(ms) ? '—' : formatRelative(ms);
 }
 
-/** The invitation token, shown once. */
-function TokenPanel({
-  email,
-  token,
-  onDismiss,
-}: {
-  email: string;
-  token: string;
-  onDismiss: () => void;
-}) {
-  const { copied, copy } = useCopy();
-  return (
-    <Panel
-      lit
-      title="Invitation created"
-      description={`Send this token to ${email}. It is shown once — the server keeps only a hash.`}
-    >
-      <div className="flex flex-wrap items-center gap-3">
-        <code className="min-w-0 flex-1 select-all break-all rounded-md border border-border bg-background px-3 py-2 font-mono text-sm">
-          {token}
-        </code>
-        <Button size="sm" variant="outline" className="gap-1.5" onClick={() => void copy(token)}>
-          <CopyMorph copied={copied} />
-          <span aria-live="polite">{copied ? 'Copied' : 'Copy'}</span>
-        </Button>
-        <Button size="sm" onClick={onDismiss}>
-          I have sent it
-        </Button>
-      </div>
-    </Panel>
-  );
-}
-
 function TeamPage() {
-  const { toast } = useToast();
-  const confirm = useConfirm();
-  const { user } = useAuth();
   const orgs = useOrgs();
   const [slug, setSlug] = useState('');
   // Both reads below are gated on an org, so a failed org list leaves them
   // permanently pending — which is why the state passed to the tables has to
   // count the org query itself, not just the ones hanging off it.
   const active = slug || orgs.data?.orgs?.[0]?.slug || '';
+  return (
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Team"
+        description="Organisation members and their roles. Roles decide who can write what across the console."
+        actions={
+          <label className="flex items-center gap-2">
+            <span className="label-mono text-muted-foreground">Org</span>
+            <select
+              value={active}
+              onChange={(e) => setSlug(e.target.value)}
+              aria-label="Select an organisation"
+              className="h-9 rounded-md border border-border bg-card px-2.5 text-sm outline-none focus:border-brand/50"
+            >
+              {(orgs.data?.orgs ?? []).length === 0 && <option value="">No organisations</option>}
+              {(orgs.data?.orgs ?? []).map((o) => (
+                <option key={o.slug} value={o.slug}>
+                  {o.slug}
+                </option>
+              ))}
+            </select>
+          </label>
+        }
+      />
+      <TeamMembersBody key={active} active={active} orgs={orgs} />
+    </div>
+  );
+}
+
+/** Keying by organisation also discards form drafts and late token responses. */
+export function TeamMembersBody({
+  active,
+  orgs,
+}: {
+  active: string;
+  orgs: ReturnType<typeof useOrgs>;
+}) {
+  const { toast } = useToast();
+  const confirm = useConfirm();
+  const { user } = useAuth();
   const members = useOrgMembers(active);
   const invitations = useOrgInvitations(active);
   const invite = useInviteMember(active);
@@ -126,7 +131,8 @@ function TeamPage() {
 
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<(typeof ROLES)[number]>('developer');
-  const [token, setToken] = useState<{ email: string; token: string } | null>(null);
+  const [inviting, setInviting] = useState(false);
+  const evidence = useOneTimeSecret<{ email: string; token: string }>();
   const validation = useFormValidation<'email'>();
   const emailError = !isValidEmail(email)
     ? 'Enter a valid email address.'
@@ -328,33 +334,28 @@ function TeamPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Team"
-        description="Organisation members and their roles. Roles decide who can write what across the console."
-        actions={
-          <label className="flex items-center gap-2">
-            <span className="label-mono text-muted-foreground">Org</span>
-            <select
-              value={active}
-              onChange={(e) => setSlug(e.target.value)}
-              aria-label="Select an organisation"
-              className="h-9 rounded-md border border-border bg-card px-2.5 text-sm outline-none focus:border-brand/50"
-            >
-              {(orgs.data?.orgs ?? []).length === 0 && <option value="">No organisations</option>}
-              {(orgs.data?.orgs ?? []).map((o) => (
-                <option key={o.slug} value={o.slug}>
-                  {o.slug}
-                </option>
-              ))}
-            </select>
-          </label>
-        }
-      />
-
-      {token ? (
-        <TokenPanel email={token.email} token={token.token} onDismiss={() => setToken(null)} />
-      ) : (
-        <Panel lit title="Invite a member">
+      <ActionDisclosure
+        action="Invite member"
+        title="Invite a member"
+        open={inviting}
+        disabled={!active}
+        onOpenChange={(open) => {
+          evidence.clear();
+          setEmail('');
+          setRole('developer');
+          validation.resetValidation();
+          setInviting(open);
+        }}
+      >
+        {evidence.secret ? (
+          <OneTimeSecret
+            key={evidence.version}
+            value={evidence.secret.token}
+            title="Invitation created"
+            description={`Send this token to ${evidence.secret.email}. The server keeps only a hash.`}
+            onDismiss={evidence.clear}
+          />
+        ) : (
           <form
             noValidate
             className="flex flex-wrap items-end gap-3"
@@ -366,10 +367,12 @@ function TeamPage() {
                 invite.isPending
               )
                 return;
+              const receive = evidence.capture();
               void invite
                 .mutateAsync({ email: email.trim(), role })
                 .then((result) => {
-                  setToken({ email: result.email, token: result.token });
+                  receive({ email: result.email, token: result.token });
+                  invite.reset();
                   setEmail('');
                   validation.resetValidation();
                 })
@@ -385,6 +388,7 @@ function TeamPage() {
             <label className="flex min-w-64 flex-1 flex-col gap-1.5">
               <span className="label-mono text-muted-foreground">Email</span>
               <input
+                autoFocus
                 name="email"
                 type="email"
                 maxLength={320}
@@ -424,8 +428,8 @@ function TeamPage() {
             </Button>
             <p className="basis-full text-xs text-muted-foreground">{ROLE_HINT[role]}</p>
           </form>
-        </Panel>
-      )}
+        )}
+      </ActionDisclosure>
 
       <Panel title="Members">
         <ResourceTable

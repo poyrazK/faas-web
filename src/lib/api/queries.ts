@@ -203,6 +203,8 @@ export function useOrgKeys(slug: string) {
 export function useCreateOrgKey(slug: string) {
   const qc = useQueryClient();
   return useMutation({
+    // One-time credentials must leave the mutation cache on reset/unmount.
+    gcTime: 0,
     mutationFn: (body: components['schemas']['CreateOrgAPIKeyRequest']) =>
       unwrap(api.POST('/v1/orgs/{slug}/keys', { params: { path: { slug } }, body })),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['orgs', slug, 'keys'] }),
@@ -221,6 +223,7 @@ export function useDeleteOrgKey(slug: string) {
 export function useRotateOrgKey(slug: string) {
   const qc = useQueryClient();
   return useMutation({
+    gcTime: 0,
     mutationFn: (id: string) =>
       unwrap(
         api.POST('/v1/orgs/{slug}/keys/{id}/rotate', {
@@ -1815,6 +1818,7 @@ export function useRunCron() {
 export function useCreateApiKey() {
   const qc = useQueryClient();
   return useMutation({
+    gcTime: 0,
     mutationFn: (body: components['schemas']['CreateKeyRequest']) =>
       unwrap(api.POST('/v1/keys', { body })),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.keys }),
@@ -1839,6 +1843,7 @@ type ApiKeysList = NonNullable<ReturnType<typeof useApiKeys>['data']>;
 export function useRotateApiKey() {
   const qc = useQueryClient();
   return useMutation({
+    gcTime: 0,
     mutationFn: (id: string) =>
       unwrap(api.POST('/v1/keys/{id}/rotate', { params: { path: { id } } })),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.keys }),
@@ -2702,6 +2707,7 @@ const orgKey = (slug: string, what: 'members' | 'invitations') => ['orgs', slug,
 export function useInviteMember(org: string) {
   const qc = useQueryClient();
   return useMutation({
+    gcTime: 0,
     mutationFn: (body: components['schemas']['InviteMemberRequest']) =>
       unwrap(api.POST('/v1/orgs/{slug}/members', { params: { path: { slug: org } }, body })),
     onSuccess: () => qc.invalidateQueries({ queryKey: orgKey(org, 'invitations') }),

@@ -1,9 +1,18 @@
 import { useState } from 'react';
 import { Refresh, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
-import { FIELD, Select } from '@/components/ui/field';
+import {
+  FIELD,
+  Select,
+  FieldError,
+  fieldErrorProps,
+  useFormValidation,
+} from '@/components/ui/field';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
+import { ActionDisclosure } from '@/components/ui/action-disclosure';
+import { OneTimeSecret, useOneTimeSecret } from '@/components/ui/one-time-secret';
+import { KeyRotationContext, useKeyRotationPolicy } from './key-rotation-policy';
 import { InlinePhase, Panel, queryPhase } from './primitives';
 import {
   useCreateOrgKey,
@@ -143,15 +152,28 @@ export function OrgPanel({ slug }: { slug: string }) {
  * rotate.
  */
 export function OrgKeysPanel({ slug }: { slug: string }) {
+  return <OrgKeysBody key={slug} slug={slug} />;
+}
+
+function OrgKeysBody({ slug }: { slug: string }) {
   const { toast } = useToast();
   const confirm = useConfirm();
   const keys = useOrgKeys(slug);
   const create = useCreateOrgKey(slug);
   const remove = useDeleteOrgKey(slug);
   const rotate = useRotateOrgKey(slug);
+  const policy = useKeyRotationPolicy('organisation');
 
   const [label, setLabel] = useState('');
-  const [plaintext, setPlaintext] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const evidence = useOneTimeSecret<string>();
+  const validation = useFormValidation<'label'>();
+  const labelError = !label.trim()
+    ? 'Enter a label.'
+    : label.length > 100
+      ? 'Use 100 characters or fewer.'
+      : undefined;
+  const shownLabelError = validation.submitAttempted ? labelError : undefined;
 
   const rows = keys.data?.keys ?? [];
   const phase = queryPhase({
@@ -165,57 +187,90 @@ export function OrgKeysPanel({ slug }: { slug: string }) {
       title="Organisation keys"
       description="Minted against the org, not a person — CI keeps deploying when someone leaves."
     >
-      {plaintext && (
-        <div
-          role="alert"
-          className="mb-4 flex flex-col gap-2 rounded-lg border p-4"
-          style={{ borderColor: 'color-mix(in oklab, var(--status-warning) 45%, transparent)' }}
-        >
-          <p className="text-sm font-medium">Copy this key now — it will not be shown again</p>
-          <code className="select-all rounded-md border border-border bg-background px-3 py-2 font-mono text-xs break-all">
-            {plaintext}
-          </code>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="self-start"
-            onClick={() => setPlaintext(null)}
-          >
-            I have saved it
-          </Button>
-        </div>
+      {!creating && evidence.secret && (
+        <OneTimeSecret
+          key={evidence.version}
+          value={evidence.secret}
+          title="Organisation key rotated"
+          description="This key will not be shown again."
+          onDismiss={evidence.clear}
+        />
       )}
 
-      <form
-        className="flex flex-wrap items-end gap-3"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (!label.trim() || create.isPending) return;
-          void create
-            .mutateAsync({ label: label.trim(), scopes: ['deploy:write', 'apps:read'] })
-            .then((key) => {
-              setLabel('');
-              setPlaintext(key.plaintext ?? null);
-              toast({ kind: 'success', title: 'Key created' });
-            })
-            .catch((err: unknown) =>
-              toast({ kind: 'error', title: 'Could not create', description: errorMessage(err) })
-            );
+      <ActionDisclosure
+        action="Create key"
+        title="Create a key"
+        open={creating}
+        onOpenChange={(open) => {
+          evidence.clear();
+          setLabel('');
+          validation.resetValidation();
+          setCreating(open);
         }}
       >
-        <label className="flex min-w-44 flex-col gap-1.5">
-          <span className="label-mono text-muted-foreground">Label</span>
-          <input
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-            placeholder="ci-deploy"
-            className={`${FIELD} font-mono`}
-          />
-        </label>
-        <Button type="submit" size="sm" disabled={!label.trim()} busy={create.isPending}>
-          Create key
-        </Button>
-      </form>
+        <div className="flex flex-col gap-4">
+          <KeyRotationContext context={policy.context} />
+          {evidence.secret ? (
+            <OneTimeSecret
+              key={evidence.version}
+              value={evidence.secret}
+              title="New organisation key"
+              description="This key will not be shown again."
+              onDismiss={evidence.clear}
+            />
+          ) : (
+            <form
+              noValidate
+              className="flex flex-wrap items-end gap-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (
+                  !validation.validate({ label: labelError }, e.currentTarget) ||
+                  create.isPending
+                )
+                  return;
+                const receive = evidence.capture();
+                void create
+                  .mutateAsync({ label: label.trim(), scopes: ['deploy:write', 'apps:read'] })
+                  .then((key) => {
+                    setLabel('');
+                    validation.resetValidation();
+                    receive(key.plaintext ?? null);
+                    create.reset();
+                    toast({ kind: 'success', title: 'Key created' });
+                  })
+                  .catch((err: unknown) =>
+                    toast({
+                      kind: 'error',
+                      title: 'Could not create',
+                      description: errorMessage(err),
+                    })
+                  );
+              }}
+            >
+              <label className="flex min-w-44 flex-col gap-1.5">
+                <span className="label-mono text-muted-foreground">Label</span>
+                <input
+                  autoFocus
+                  name="label"
+                  maxLength={100}
+                  value={label}
+                  {...fieldErrorProps(shownLabelError, 'org-key-label-error')}
+                  onChange={(e) => setLabel(e.target.value)}
+                  placeholder="ci-deploy"
+                  className={`${FIELD} font-mono`}
+                />
+                {shownLabelError && (
+                  <FieldError id="org-key-label-error">{shownLabelError}</FieldError>
+                )}
+              </label>
+              <Button type="submit" size="sm" busy={create.isPending}>
+                Create key
+              </Button>
+            </form>
+          )}
+        </div>
+      </ActionDisclosure>
 
       <div className="mt-4 border-t border-border pt-1">
         {phase !== 'ready' ? (
@@ -242,20 +297,23 @@ export function OrgKeysPanel({ slug }: { slug: string }) {
                   <button
                     type="button"
                     aria-label={`Rotate key ${k.label ?? k.prefix}`}
+                    disabled={policy.days === undefined || rotate.isPending}
                     onClick={async () => {
+                      if (policy.days === undefined) return;
                       if (
                         !(await confirm({
                           title: `Rotate ${k.label ?? k.prefix}?`,
-                          description:
-                            'A new key is minted; the old one keeps working for the grace window.',
+                          description: `A new key is minted and shown once. ${policy.context}`,
                           confirmLabel: 'Rotate key',
                         }))
                       )
                         return;
+                      const receive = evidence.capture();
                       void rotate
                         .mutateAsync(k.id)
                         .then((r) => {
-                          setPlaintext(r.key_plaintext ?? null);
+                          receive(r.key_plaintext ?? null);
+                          rotate.reset();
                           toast({ kind: 'success', title: 'Key rotated' });
                         })
                         .catch((err: unknown) =>
