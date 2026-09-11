@@ -33,6 +33,7 @@ const instance: Instance = {
 let rows: Instance[];
 let apps: { id: string; slug: string }[];
 let instanceState: 'ready' | 'pending' | 'error';
+let appState: 'ready' | 'pending' | 'error';
 let wakeState: 'ready' | 'pending' | 'error' | 'empty';
 let reads: string[];
 
@@ -71,6 +72,7 @@ beforeEach(() => {
   apps = [{ id: 'app-1', slug: 'alpha' }];
   reads = [];
   instanceState = 'ready';
+  appState = 'ready';
   wakeState = 'ready';
   vi.spyOn(api, 'GET').mockImplementation(async (path, options) => {
     const params = (options as { params?: { path?: Record<string, string> } })?.params?.path;
@@ -80,8 +82,11 @@ beforeEach(() => {
       if (instanceState === 'pending') return new Promise(() => {});
       if (instanceState === 'error') throw new Error('Instance read failed');
       data = { instances: rows };
-    } else if (path === '/v1/apps') data = apps;
-    else if (path === '/v1/apps/{slug}/wakes/{wake_id}/timeline') {
+    } else if (path === '/v1/apps') {
+      if (appState === 'pending') return new Promise(() => {});
+      if (appState === 'error') throw new Error('App lookup failed');
+      data = apps;
+    } else if (path === '/v1/apps/{slug}/wakes/{wake_id}/timeline') {
       if (params?.slug !== 'alpha' || params?.wake_id !== 'wake-1')
         throw new Error('Invalid wake target');
       if (wakeState === 'pending') return new Promise(() => {});
@@ -171,6 +176,63 @@ describe('Instance details', () => {
       cleanup();
       await mount(copied);
       expect(await screen.findByRole('region', { name: 'Instance details' })).toBeInTheDocument();
+    }
+  );
+
+  it.each(['pointer', 'keyboard'])(
+    'reveals the already selected row again with %s and retains Close/Back focus',
+    async (input) => {
+      const reveal = vi.spyOn(Element.prototype, 'scrollIntoView');
+      const router = await mount('/dashboard/workers?keep=yes#anchor');
+      const row = await screen.findByRole('button', { name: /vm-1$/ });
+      const activate = async () => {
+        row.focus();
+        if (input === 'pointer') await userEvent.click(row);
+        else await userEvent.keyboard('{Enter}');
+      };
+      for (const close of ['button', 'back']) {
+        await activate();
+        const detail = await screen.findByRole('region', { name: 'Instance details' });
+        const selectedHref = router.state.location.href;
+        reveal.mockClear();
+        await activate();
+        expect(detail).toHaveFocus();
+        expect(reveal.mock.contexts).toContain(detail);
+        expect(router.state.location.href).toBe(selectedHref);
+        if (close === 'button')
+          await userEvent.click(within(detail).getByRole('button', { name: 'Close' }));
+        else await act(async () => router.history.back());
+        await waitFor(() => expect(row).toHaveFocus());
+        expect(screen.queryByRole('region', { name: 'Instance details' })).not.toBeInTheDocument();
+      }
+    }
+  );
+
+  it.each(['pending', 'error'] as const)(
+    'shows independent app lookup recovery when it is %s and there is no wake ID',
+    async (state) => {
+      appState = state;
+      rows = [{ ...instance, wake_id: undefined }];
+      await mount('/dashboard/workers?instance=vm-1');
+      const view = within(await screen.findByRole('region', { name: 'Instance details' }));
+      expect(await view.findByText(/no wake ID was returned/i)).toBeInTheDocument();
+      if (state === 'pending') expect(view.getByText(/resolving the app/i)).toBeInTheDocument();
+      else {
+        expect(await view.findByText('App lookup failed')).toBeInTheDocument();
+        expect(view.queryByRole('link', { name: 'Open app' })).not.toBeInTheDocument();
+        appState = 'ready';
+        await userEvent.click(view.getByRole('button', { name: 'Retry app lookup' }));
+        expect(await view.findByRole('link', { name: 'Open app' })).toHaveAttribute(
+          'href',
+          '/dashboard/workflows/alpha'
+        );
+        expect(view.getByRole('link', { name: 'App logs' })).toHaveAttribute(
+          'href',
+          '/dashboard/logs?app=alpha'
+        );
+        expect(view.queryByText('App lookup failed')).not.toBeInTheDocument();
+      }
+      expect(reads.filter((read) => read.includes('/wakes/'))).toEqual([]);
     }
   );
 

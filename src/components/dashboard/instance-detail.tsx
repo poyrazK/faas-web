@@ -22,6 +22,7 @@ function elapsed(start?: string | null, end?: string | null) {
 
 export function InstanceDetail({
   id,
+  revealRequest,
   instance,
   slug,
   loading,
@@ -33,6 +34,7 @@ export function InstanceDetail({
   onClose,
 }: {
   id: string;
+  revealRequest: number;
   instance?: Instance;
   slug?: string;
   loading: boolean;
@@ -43,7 +45,7 @@ export function InstanceDetail({
   onRetryApps: () => void;
   onClose: () => void;
 }) {
-  const panelRef = useDetailFocus(id);
+  const panelRef = useDetailFocus(id, revealRequest);
   const phase = queryPhase({ error, loading, isEmpty: !instance });
   return (
     <section
@@ -133,19 +135,13 @@ export function InstanceDetail({
                 </Link>
               )}
             </nav>
-            <div className="flex flex-col gap-3">
-              <h3 className="text-sm font-medium">Wake timeline</h3>
-              {!instance.wake_id ? (
-                <p className="text-sm text-muted-foreground">
-                  No wake ID was returned for this instance. Use app logs or the debugger for other
-                  evidence.
-                </p>
-              ) : appsLoading || appsError ? (
+            <div className="flex flex-col items-start gap-3">
+              {appsLoading || appsError ? (
                 <>
                   <InlinePhase
                     phase={queryPhase({ error: appsError, loading: appsLoading })}
                     error={appsError}
-                    loadingMessage="Resolving the app for wake evidence…"
+                    loadingMessage="Resolving the app…"
                   />
                   {Boolean(appsError) && (
                     <Button size="xs" variant="outline" onClick={onRetryApps}>
@@ -155,16 +151,26 @@ export function InstanceDetail({
                 </>
               ) : !slug ? (
                 <p className="text-sm text-muted-foreground">
-                  The app could not be resolved. Refresh the app list to load wake evidence.
+                  The app could not be resolved. Refresh the app list to load app links and wake
+                  evidence.
                 </p>
-              ) : (
-                <WakeTimeline slug={slug} wakeId={instance.wake_id} />
-              )}
+              ) : null}
               {!slug && !appsLoading && !appsError && (
                 <Button size="xs" variant="outline" onClick={onRetryApps}>
                   Refresh app list
                 </Button>
               )}
+            </div>
+            <div className="flex flex-col gap-3">
+              <h3 className="text-sm font-medium">Wake timeline</h3>
+              {!instance.wake_id ? (
+                <p className="text-sm text-muted-foreground">
+                  No wake ID was returned for this instance. Use app logs or the debugger for other
+                  evidence.
+                </p>
+              ) : slug && !appsLoading && !appsError ? (
+                <WakeTimeline slug={slug} wakeId={instance.wake_id} />
+              ) : null}
             </div>
           </div>
         )}

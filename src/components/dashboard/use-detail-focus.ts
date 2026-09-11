@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef } from 'react';
 
 /** Reveal URL-selected evidence; return to its row on Close or browser Back. */
-export function useDetailFocus(selection: string) {
+export function useDetailFocus(selection: string, revealRequest = 0) {
   const panelRef = useRef<HTMLElement>(null);
   useLayoutEffect(() => {
     const panel = panelRef.current;
@@ -16,6 +16,6 @@ export function useDetailFocus(selection: string) {
       )
         origin.focus();
     };
-  }, [selection]);
+  }, [selection, revealRequest]);
   return panelRef;
 }

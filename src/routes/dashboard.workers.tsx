@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { PageHeader } from '@/components/dashboard/primitives';
 import { InstanceDetail } from '@/components/dashboard/instance-detail';
@@ -55,6 +55,7 @@ function WorkersPage() {
   const appQuery = useApps();
   const apps = appQuery.data;
   const { instance: selectedId } = Route.useSearch();
+  const [revealRequest, setRevealRequest] = useState(0);
   const navigate = Route.useNavigate();
   const select = (instance?: string) =>
     void navigate({
@@ -136,7 +137,10 @@ function WorkersPage() {
         loading={isPending}
         error={error}
         onRetry={() => void refetch()}
-        onRowClick={(instance) => select(instance.id)}
+        onRowClick={(instance) => {
+          if (instance.id === selectedId) setRevealRequest((request) => request + 1);
+          else select(instance.id);
+        }}
       />
       {!isPending && !error && rows.length === 0 && (
         <Link to="/dashboard/workflows" className="text-sm underline underline-offset-4">
@@ -146,6 +150,7 @@ function WorkersPage() {
       {selectedId && (
         <InstanceDetail
           id={selectedId}
+          revealRequest={revealRequest}
           instance={selected}
           slug={selectedSlug}
           loading={isPending}
