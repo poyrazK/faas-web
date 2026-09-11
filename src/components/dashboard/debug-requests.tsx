@@ -186,6 +186,7 @@ export function DebugRequests({ slug, search, onSelect }: { slug: string } & Deb
               ? `No requests match these filters in the loaded sample (up to ${DEBUG_REQUEST_SAMPLE_LIMIT} recent rows).`
               : 'No request rows were returned in this bounded sample.'
           }
+          filteredEmptyMessage={`No requests match these filters in the loaded sample (up to ${DEBUG_REQUEST_SAMPLE_LIMIT} recent rows).`}
           minWidth="min-w-[760px]"
           loading={isPending || (filter === 'regressions' && regressions.isPending)}
           error={error ?? regressionError}

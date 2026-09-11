@@ -250,6 +250,16 @@ describe('row activation', () => {
 });
 
 describe('usable resource states and compact tables', () => {
+  it('preserves caller-specific filtered evidence wording alongside the clear action', async () => {
+    setup({
+      searchKeys: ['name'],
+      filteredEmptyMessage: 'No returned observations match this filter.',
+    });
+    await userEvent.type(screen.getByRole('searchbox'), 'unknown');
+    expect(screen.getByText('No returned observations match this filter.')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Show all results' }));
+    expect(names()).toEqual(['checkout', 'alpha-resize', 'webhook']);
+  });
   it('offers a real empty-state action and withholds it while loading or failed', async () => {
     const create = vi.fn();
     const props = {
@@ -310,13 +320,31 @@ describe('usable resource states and compact tables', () => {
       'md:table-cell'
     );
     expect(screen.getByRole('table')).toHaveClass('min-w-0');
-    const details = screen.getByText('More details for checkout').closest('details')!;
+    const details = screen.getByText(/More details for checkout/).closest('details')!;
     expect(details).toHaveClass('md:hidden');
-    await userEvent.click(within(details).getByText('More details for checkout'));
+    await userEvent.click(within(details).getByText(/More details for checkout/));
     expect(details).toHaveAttribute('open');
     expect(within(details).getByText('Calls')).toBeInTheDocument();
     expect(within(details).getByText('30')).toBeInTheDocument();
     expect(onRowClick).not.toHaveBeenCalled();
+  });
+
+  it('names compact disclosures by identity even when primary status values repeat', () => {
+    render(
+      <ResourceTable
+        rows={[
+          { id: 'release-1', status: 'failed', image: 'a'.repeat(80) },
+          { id: 'release-2', status: 'failed', image: 'b'.repeat(80) },
+        ]}
+        columns={[
+          { key: 'status', label: 'Status' },
+          { key: 'image', label: 'Image', priority: 'secondary' },
+        ]}
+      />
+    );
+    expect(screen.getByText('More details for failed (release-1)')).toBeInTheDocument();
+    expect(screen.getByText('More details for failed (release-2)')).toBeInTheDocument();
+    expect(screen.getByText('a'.repeat(80)).closest('td')).toHaveClass('[overflow-wrap:anywhere]');
   });
 
   it('supports two columns reading the same field without duplicate keys or unnamed sort controls', async () => {

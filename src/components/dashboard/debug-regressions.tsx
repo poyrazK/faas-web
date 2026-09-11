@@ -147,6 +147,7 @@ export function DebugRegressions({ slug, search, onSelect }: { slug: string } & 
               ? 'No returned regressions match this text filter.'
               : 'No regression observations were returned for this window.'
           }
+          filteredEmptyMessage="No returned regressions match this text filter."
           minWidth="min-w-[820px]"
           loading={isPending}
           error={error}

@@ -372,6 +372,7 @@ function AppDeploymentCompare({
                     ? 'No comparison traffic was returned for the selected route in this window.'
                     : 'No comparison traffic was returned for these deployments in this window.'
               }
+              filteredEmptyMessage="No returned comparison routes match this text filter."
               minWidth="min-w-[860px]"
             />
           ) : (

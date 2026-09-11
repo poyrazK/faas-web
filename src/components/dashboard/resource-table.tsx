@@ -27,7 +27,7 @@ const PAGE_SIZE = 50;
  */
 
 export interface Column<T> {
-  /** Property used for sorting; also the React key. */
+  /** Property used for sorting and rendering. Multiple columns may read the same field. */
   key: keyof T & string;
   label: string;
   /** Right-aligns and sorts descending on first click. */
@@ -51,6 +51,8 @@ export interface ResourceTableProps<T> {
   /** Extra controls rendered in the filter row. */
   filters?: ReactNode;
   emptyMessage?: string;
+  /** Distinguish filtered-out observations from an empty source collection. */
+  filteredEmptyMessage?: string;
   emptyAction?: ReactNode;
   minWidth?: string;
   /** True while the first fetch is in flight. Replaces the table, not the header. */
@@ -80,6 +82,7 @@ export function ResourceTable<T extends { id: string }>({
   searchPlaceholder = 'Filter…',
   filters,
   emptyMessage = 'Nothing here yet.',
+  filteredEmptyMessage = 'No matching results.',
   emptyAction,
   minWidth = 'min-w-[820px]',
   loading = false,
@@ -234,7 +237,7 @@ export function ResourceTable<T extends { id: string }>({
         ) : phase === 'empty' ? (
           <EmptyState
             className={STATE_MIN_H}
-            message={query.trim() && rows.length ? 'No matching results.' : emptyMessage}
+            message={query.trim() && rows.length ? filteredEmptyMessage : emptyMessage}
             action={
               query.trim() && rows.length ? (
                 <button
@@ -375,7 +378,7 @@ export function ResourceTable<T extends { id: string }>({
                             key={`${col.key}:${index}`}
                             className={cn(
                               'px-3 py-3 md:px-4',
-                              secondary.length > 0 && 'break-words',
+                              secondary.length > 0 && '[overflow-wrap:anywhere]',
                               col.priority === 'secondary' && 'hidden md:table-cell',
                               col.numeric && 'text-right [font-variant-numeric:tabular-nums]'
                             )}
@@ -402,6 +405,7 @@ export function ResourceTable<T extends { id: string }>({
                                 >
                                   <span className="sr-only">
                                     More details for {String(row[col.key] ?? row.id)}
+                                    {row[col.key] !== row.id && ` (${row.id})`}
                                   </span>
                                   <span aria-hidden>Details</span>
                                 </summary>
