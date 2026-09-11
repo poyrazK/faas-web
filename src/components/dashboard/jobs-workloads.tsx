@@ -1,12 +1,13 @@
 import { useMemo } from 'react';
 import { Link } from '@tanstack/react-router';
-import { PageHeader, Panel } from '@/components/dashboard/primitives';
+import { InlinePhase, PageHeader, Panel, queryPhase } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { PlanGated } from '@/components/dashboard/plan-gated';
 import { JobRuns } from '@/components/dashboard/job-runs';
 import { JobTasks } from '@/components/dashboard/job-tasks';
 import { JobDefinition, JobRunDetail } from '@/components/dashboard/job-detail';
-import { useJobs } from '@/lib/api/queries';
+import { Button } from '@/components/ui/button';
+import { useInfiniteJobs, useJobs } from '@/lib/api/queries';
 import type { JobsSelectionProps } from './jobs-search';
 
 /**
@@ -39,13 +40,30 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export function WorkloadsBody({ search, onSelection }: JobsSelectionProps) {
-  const { data, isPending, error, refetch } = useJobs(search.job);
-  const job = data?.jobs.find((j) => j.id === search.job)?.name ?? null;
+  // Browsing uses the paged query so a large account is not silently capped
+  // at the first response. A selected URL keeps the older lookup query, which
+  // walks pages until it finds the requested job before rendering its detail.
+  const jobs = useInfiniteJobs(50, !search.job);
+  const selectedJobs = useJobs(search.job, Boolean(search.job));
+  const data = useMemo(
+    () =>
+      search.job
+        ? (selectedJobs.data?.jobs ?? [])
+        : (jobs.data?.pages.flatMap((page) => page.jobs) ?? []),
+    [jobs.data, search.job, selectedJobs.data]
+  );
+  const error = search.job ? selectedJobs.error : jobs.error;
+  const isPending = search.job ? selectedJobs.isPending : jobs.isPending;
+  // Keep already loaded jobs usable if a later page fails; only an initial
+  // failure should replace the table with its full-page error state.
+  const listError = data.length === 0 ? error : undefined;
+  const listLoading = isPending && !error && data.length === 0;
+  const job = data.find((j) => j.id === search.job)?.name ?? null;
   const runId = search.run ?? null;
 
   const rows = useMemo<JobRow[]>(
     () =>
-      (data?.jobs ?? []).map((j) => ({
+      data.map((j) => ({
         id: j.id,
         name: j.name,
         kind: j.kind,
@@ -158,10 +176,40 @@ export function WorkloadsBody({ search, onSelection }: JobsSelectionProps) {
             </Link>
           }
           minWidth="min-w-[900px]"
-          loading={isPending}
-          error={error}
-          onRetry={() => void refetch()}
+          loading={listLoading}
+          error={listError}
+          onRetry={() => void (search.job ? selectedJobs.refetch() : jobs.refetch())}
         />
+
+        {!search.job && data.length > 0 && Boolean(jobs.error) && (
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <InlinePhase phase={queryPhase({ error: jobs.error })} error={jobs.error} />
+            <Button
+              size="xs"
+              variant="ghost"
+              onClick={() =>
+                void (jobs.isFetchNextPageError ? jobs.fetchNextPage() : jobs.refetch()).catch(
+                  () => undefined
+                )
+              }
+            >
+              Retry
+            </Button>
+          </div>
+        )}
+
+        {!search.job && jobs.hasNextPage && (
+          <div className="flex justify-center">
+            <Button
+              size="sm"
+              variant="outline"
+              busy={jobs.isFetchingNextPage}
+              onClick={() => void jobs.fetchNextPage().catch(() => undefined)}
+            >
+              Load older jobs
+            </Button>
+          </div>
+        )}
 
         {job && (
           <Panel
