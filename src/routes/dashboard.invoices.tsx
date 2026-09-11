@@ -2,10 +2,10 @@ import { useMemo } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { OpenNewWindow } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
-import { PageHeader } from '@/components/dashboard/primitives';
+import { InlinePhase, PageHeader, queryPhase } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { useToast } from '@/components/ui/toast';
-import { useBillingPortal, useInvoices } from '@/lib/api/queries';
+import { useBillingPortal, useInfiniteInvoices } from '@/lib/api/queries';
 import { errorMessage } from '@/lib/api/errors';
 import { consoleHead } from '@/lib/seo';
 
@@ -54,12 +54,20 @@ function formatDay(value: string): string {
 
 function InvoicesPage() {
   const { toast } = useToast();
-  const { data, isPending, error, refetch } = useInvoices();
+  const invoices = useInfiniteInvoices();
   const portal = useBillingPortal();
+  const data = useMemo(
+    () => invoices.data?.pages.flatMap((page) => page.items) ?? [],
+    [invoices.data]
+  );
+  // Keep already loaded invoices usable if an older page fails; only an
+  // initial failure should replace the table with its full-page error state.
+  const listError = data.length === 0 ? invoices.error : undefined;
+  const listLoading = invoices.isPending && !invoices.error && data.length === 0;
 
   const rows = useMemo<InvoiceRow[]>(
     () =>
-      (data?.items ?? []).map((i) => ({
+      data.map((i) => ({
         id: i.id,
         number: i.number ?? i.provider_invoice_id,
         status: i.status,
@@ -144,10 +152,38 @@ function InvoicesPage() {
         searchPlaceholder="Filter by invoice number…"
         emptyMessage="No invoices yet."
         minWidth="min-w-[760px]"
-        loading={isPending}
-        error={error}
-        onRetry={() => void refetch()}
+        loading={listLoading}
+        error={listError}
+        onRetry={() => void invoices.refetch()}
       />
+      {data.length > 0 && Boolean(invoices.error) && (
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <InlinePhase phase={queryPhase({ error: invoices.error })} error={invoices.error} />
+          <Button
+            size="xs"
+            variant="ghost"
+            onClick={() =>
+              void (
+                invoices.isFetchNextPageError ? invoices.fetchNextPage() : invoices.refetch()
+              ).catch(() => undefined)
+            }
+          >
+            Retry
+          </Button>
+        </div>
+      )}
+      {invoices.hasNextPage && (
+        <div className="flex justify-center">
+          <Button
+            size="sm"
+            variant="outline"
+            busy={invoices.isFetchingNextPage}
+            onClick={() => void invoices.fetchNextPage().catch(() => undefined)}
+          >
+            Load older invoices
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
