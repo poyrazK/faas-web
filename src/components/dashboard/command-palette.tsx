@@ -335,7 +335,7 @@ export function CommandPalette({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0, transition: { duration: reduce ? 0 : 0.12 } }}
             transition={{ duration: reduce ? 0 : 0.15 }}
-            className="absolute inset-0 bg-mint-12/50 backdrop-blur-sm"
+            className="absolute inset-0 bg-overlay/50 backdrop-blur-sm"
           />
 
           <motion.div

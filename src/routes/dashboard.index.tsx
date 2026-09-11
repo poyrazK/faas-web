@@ -383,11 +383,9 @@ function OverviewPage() {
 
   return (
     <div className="flex flex-col gap-10">
-      {/* The gregale fills the whole background: a fixed viewport layer
-          behind the content (the chromed sidebar and top bar carry higher
-          z and opaque grounds, so it stays the page's air, not theirs). */}
+      {/* Keep the wind a faint accent so the charcoal canvas stays neutral. */}
       <div aria-hidden className="fixed inset-0">
-        <WindFlow intensity={0.3} />
+        <WindFlow intensity={0.06} />
       </div>
 
       {/* The ground under the wind: the flow-dot field rises from the
