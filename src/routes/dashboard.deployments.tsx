@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { InlinePhase, PageHeader, queryPhase } from '@/components/dashboard/primitives';
-import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
+import { ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { formatRelative } from '@/lib/mock-data';
 import {
   useApps,
@@ -18,7 +18,7 @@ import {
   type ReleasesSearch,
 } from '@/components/dashboard/releases-search';
 import { consoleHead } from '@/lib/seo';
-import { releaseStatusColor } from '@/components/dashboard/release-status';
+import { ReleaseStatusLabel } from '@/components/dashboard/release-status-label';
 
 export const Route = createFileRoute('/dashboard/deployments')({
   component: DeploymentsPage,
@@ -134,62 +134,56 @@ export function DeploymentsPage() {
   };
   const columns: Column<ReleaseRow>[] = [
     {
-      key: 'status',
-      label: view === 'builds' ? 'Build status' : 'Deployment state',
-      render: (r) => <Pill label={r.status} color={releaseStatusColor(r.status)} />,
-    },
-    {
-      key: 'id',
+      key: view === 'builds' ? 'id' : 'app',
       label: view === 'builds' ? 'Build' : 'Release',
+      width: 'w-[52%] md:w-[32%]',
       render: (r) => (
-        <span className="flex min-w-0 flex-col">
-          <span className="font-mono text-xs">{r.id}</span>
-          {r.image && (
-            <span className="truncate text-xs text-muted-foreground">image {r.image}</span>
+        <span className="flex min-w-0 flex-col gap-1 py-1">
+          {view === 'releases' && (
+            <span className="truncate font-medium" title={r.app}>
+              {r.app}
+            </span>
+          )}
+          <span className="truncate font-mono text-xs text-muted-foreground" title={r.id}>
+            {r.id.length > 16 ? `${r.id.slice(0, 8)}…${r.id.slice(-4)}` : r.id}
+          </span>
+          {r.failure && (
+            <span className="truncate text-xs text-status-critical" title={r.failure}>
+              {r.failure}
+            </span>
           )}
         </span>
       ),
     },
-    ...(view === 'releases'
-      ? [
-          { key: 'app' as const, label: 'App' },
-          {
-            key: 'buildStatus' as const,
-            label: 'Build status',
-            priority: 'secondary' as const,
-            render: (r: ReleaseRow) => (
-              <Pill label={r.buildStatus} color={releaseStatusColor(r.buildStatus)} />
-            ),
-          },
-        ]
-      : []),
-    { key: 'source', label: 'Source', priority: 'secondary' },
     {
-      key: 'failure',
-      label: 'Failure',
-      priority: 'secondary',
-      render: (r) =>
-        r.failure ? (
-          <Pill
-            label={r.failure}
-            color={r.failure === 'user_error' ? 'var(--status-warning)' : 'var(--status-critical)'}
-          />
-        ) : (
-          '—'
-        ),
+      key: 'status',
+      label: view === 'builds' ? 'Build status' : 'Deployment state',
+      width: 'w-[48%] md:w-[21%]',
+      render: (r) => <ReleaseStatusLabel status={r.status} />,
     },
     {
-      key: 'sourceBytes',
-      label: 'Source size',
+      key: view === 'builds' ? 'source' : 'buildStatus',
+      label: view === 'builds' ? 'Source' : 'Build / source',
       priority: 'secondary',
-      numeric: true,
-      render: (r) => (r.sourceBytes == null ? '—' : sourceSize(r.sourceBytes)),
+      width: 'md:w-[21%]',
+      render: (r) => (
+        <span className="flex min-w-0 flex-col gap-1">
+          {view === 'releases' && <ReleaseStatusLabel status={r.buildStatus} compact />}
+          <span className="truncate text-xs text-muted-foreground" title={r.source}>
+            {r.source}
+          </span>
+          {view === 'builds' && r.sourceBytes != null && (
+            <span className="text-xs text-muted-foreground">{sourceSize(r.sourceBytes)}</span>
+          )}
+        </span>
+      ),
     },
     {
       key: 'duration',
       label: 'Duration',
       priority: 'secondary',
       numeric: true,
+      width: 'md:w-[12%]',
       render: (r) => (r.duration == null ? '—' : `${r.duration}s`),
     },
     {
@@ -197,6 +191,7 @@ export function DeploymentsPage() {
       label: 'When',
       priority: 'secondary',
       numeric: true,
+      width: 'md:w-[14%]',
       render: (r) => formatRelative(Date.parse(r.createdAt)),
     },
   ];
@@ -204,7 +199,7 @@ export function DeploymentsPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader title="Releases" description="Deployment history and the builds behind it." />
-      <nav aria-label="Releases views" className="flex flex-wrap gap-2 border-b border-border pb-3">
+      <nav aria-label="Releases views" className="flex gap-6 border-b border-border">
         {(['releases', 'builds'] as const).map((value) => (
           <Link
             key={value}
@@ -220,8 +215,8 @@ export function DeploymentsPage() {
             aria-current={view === value ? 'page' : undefined}
             className={
               view === value
-                ? 'rounded-md bg-muted px-3 py-2 text-sm font-medium'
-                : 'rounded-md px-3 py-2 text-sm text-muted-foreground'
+                ? '-mb-px border-b-2 border-brand px-1 pb-3 text-sm font-medium'
+                : '-mb-px border-b-2 border-transparent px-1 pb-3 text-sm text-muted-foreground hover:text-foreground'
             }
           >
             {value === 'releases' ? 'Releases' : 'Builds'}
@@ -236,6 +231,7 @@ export function DeploymentsPage() {
       <ResourceTable
         rows={rows}
         columns={columns}
+        tableLayout="fixed"
         initialSort={{ key: 'createdAt', dir: 'desc' }}
         query={search.q ?? ''}
         onQueryChange={(q) => select({ q: q || undefined }, true)}
@@ -271,22 +267,36 @@ export function DeploymentsPage() {
         onRetry={retry}
         filters={
           <>
-            <label className="text-xs text-muted-foreground">
-              Status{' '}
-              <input
+            <label>
+              <select
                 aria-label="Status filter"
                 value={search.status ?? ''}
                 onChange={(event) => select({ status: event.target.value || undefined }, true)}
-                className="rounded-md border border-border bg-background p-2"
-              />
+                className="h-9 max-w-full rounded-md border border-border bg-card px-3 text-xs"
+              >
+                <option value="">
+                  {view === 'builds' ? 'All build states' : 'All deployment states'}
+                </option>
+                {[
+                  ...new Set([
+                    ...loadedItems.map((item) => item.status),
+                    ...(search.status ? [search.status] : []),
+                  ]),
+                ]
+                  .sort()
+                  .map((status) => (
+                    <option key={status} value={status}>
+                      {status.charAt(0).toUpperCase() + status.slice(1)}
+                    </option>
+                  ))}
+              </select>
             </label>
-            <label className="text-xs text-muted-foreground">
-              Source{' '}
+            <label>
               <select
                 aria-label="Source filter"
                 value={search.kind ?? ''}
                 onChange={(event) => select({ kind: event.target.value || undefined }, true)}
-                className="rounded-md border border-border bg-background p-2"
+                className="h-9 rounded-md border border-border bg-card px-3 text-xs"
               >
                 <option value="">All sources</option>
                 {['github', 'tarball', 'railpack', 'dockerfile'].map((kind) => (

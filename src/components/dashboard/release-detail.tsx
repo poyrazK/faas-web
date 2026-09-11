@@ -9,7 +9,7 @@ import {
   UnreachableState,
   queryPhase,
 } from './primitives';
-import { Pill } from './resource-table';
+import { ReleaseStatusLabel } from './release-status-label';
 import { useLogStream } from '@/lib/api/logs';
 import { useApp, useApps, useBuild, useDeployment } from '@/lib/api/queries';
 import { isDeploymentTerminal } from '@/lib/deployment-status';
@@ -23,7 +23,6 @@ import { ReleaseProvenance, ReleaseScans } from './release-evidence';
 import { RELEASE_SECTIONS, sourceSize, type ReleaseSection } from './releases-search';
 import { RolloutRecovery } from './rollout-recovery';
 import { LogView } from './log-view';
-import { releaseStatusColor } from './release-status';
 import { useDetailFocus } from './use-detail-focus';
 
 function relativeTime(value?: string): string {
@@ -178,10 +177,7 @@ export function ReleaseDetailPanel({
                 ) : deployment ? (
                   <>
                     <div className="flex flex-wrap items-center gap-2">
-                      <Pill
-                        label={deployment.status}
-                        color={releaseStatusColor(deployment.status)}
-                      />
+                      <ReleaseStatusLabel status={deployment.status} />
                       {!isDeploymentTerminal(deployment.status) && (
                         <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
                           <RefreshDouble className="h-3 w-3 animate-spin" />
@@ -231,10 +227,7 @@ export function ReleaseDetailPanel({
                 {build ? (
                   <EvidenceFields
                     values={[
-                      [
-                        'Build status',
-                        <Pill label={build.status} color={releaseStatusColor(build.status)} />,
-                      ],
+                      ['Build status', <ReleaseStatusLabel status={build.status} />],
                       ['Source', build.kind],
                       ['Failure class', build.failure_class ?? '—'],
                       ['Source size', sourceSize(build.source_bytes)],
@@ -341,7 +334,7 @@ function EvidenceFields({ values }: { values: [string, ReactNode][] }) {
         <div key={label} className="min-w-0">
           <dt className="label-mono text-muted-foreground">{label}</dt>
           <dd
-            className="truncate font-mono text-xs"
+            className="mt-1 font-mono text-xs leading-relaxed [overflow-wrap:anywhere]"
             title={typeof value === 'string' ? value : undefined}
           >
             {value}
