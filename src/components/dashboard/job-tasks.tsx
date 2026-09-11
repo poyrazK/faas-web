@@ -38,7 +38,7 @@ export function JobTasks({
 }) {
   const [localOpen, setLocalOpen] = useState<number | null>(null);
   const requested = selectedTask === undefined ? localOpen : selectedTask;
-  const { data, isPending, error } = useJobTasks(name, runId, requested);
+  const { data, isPending, error, refetch } = useJobTasks(name, runId, requested);
   const open = data?.tasks.some((task) => task.task_index === requested) ? requested : null;
   const setOpen = onSelect ?? setLocalOpen;
   const logQuery = useJobTaskLog(name, runId, open);
@@ -51,7 +51,8 @@ export function JobTasks({
       <InlinePhase
         phase={phase}
         error={error}
-        loadingMessage="Reading tasks…"
+        loadingMessage="Loading tasks…"
+        onRetry={() => void refetch()}
         emptyMessage="No tasks for this run."
       />
     );
@@ -79,10 +80,13 @@ export function JobTasks({
 
             {open === t.task_index && (
               <div className="mt-1">
-                {logQuery.isPending ? (
-                  <p className="text-xs text-muted-foreground">Reading the log…</p>
-                ) : logQuery.error ? (
-                  <p className="text-xs text-muted-foreground">No log for this task.</p>
+                {logQuery.isPending || logQuery.error ? (
+                  <InlinePhase
+                    phase={queryPhase({ loading: logQuery.isPending, error: logQuery.error })}
+                    error={logQuery.error}
+                    loadingMessage="Loading log…"
+                    onRetry={() => void logQuery.refetch()}
+                  />
                 ) : (
                   <>
                     {logQuery.data?.truncated && (

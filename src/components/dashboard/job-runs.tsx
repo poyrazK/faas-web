@@ -51,7 +51,7 @@ export function JobRuns({
 }) {
   const { toast } = useToast();
   const confirm = useConfirm();
-  const { data, isPending, error } = useJobRuns(name, selectedRunId);
+  const { data, isPending, error, refetch } = useJobRuns(name, selectedRunId);
   const cancel = useCancelJobRun();
 
   const runs = data?.runs ?? [];
@@ -89,7 +89,8 @@ export function JobRuns({
       <InlinePhase
         phase={phase}
         error={error}
-        loadingMessage="Reading runs…"
+        loadingMessage="Loading runs…"
+        onRetry={() => void refetch()}
         emptyMessage="This job has not run yet."
       />
     );

@@ -39,6 +39,26 @@ beforeEach(() => {
 });
 
 describe('JobTasks', () => {
+  it('shows the log read error and a retry instead of claiming no log exists', async () => {
+    const refetch = vi.fn();
+    useJobTaskLog.mockReturnValue({ ...log(), error: new Error('Log service offline'), refetch });
+    render(<JobTasks name="nightly-export" runId="run1" />);
+    await userEvent.click(screen.getByRole('button', { name: 'task 0' }));
+    expect(screen.getByRole('alert')).toHaveTextContent('Log service offline');
+    expect(screen.queryByText('No log for this task.')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(refetch).toHaveBeenCalledOnce();
+  });
+
+  it('offers retry after task-list failure', async () => {
+    const refetch = vi.fn();
+    useJobTasks.mockReturnValue({ ...ok([]), error: new Error('Tasks offline'), refetch });
+    render(<JobTasks name="nightly-export" runId="run1" />);
+    expect(screen.getByRole('alert')).toHaveTextContent('Tasks offline');
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(refetch).toHaveBeenCalledOnce();
+  });
+
   it('lists tasks by index with their status', () => {
     render(<JobTasks name="nightly-export" runId="run1" />);
     expect(screen.getByText('oom')).toBeInTheDocument();
