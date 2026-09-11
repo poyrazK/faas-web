@@ -3,11 +3,9 @@ import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'motion/react';
 import {
   IconoirProvider,
-  NavArrowDown,
   CloudXmark,
   LogOut,
   Menu,
-  Plus,
   SidebarCollapse,
   SidebarExpand,
   Settings,
@@ -27,7 +25,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipProvider } from '@/components/ui/tooltip';
-import { Button } from '@/components/ui/button';
+import { NewAppButton } from './new-app-button';
 import { CommandPalette } from './command-palette';
 import { EASE } from './motion';
 import { findNavHub, matchesNavPath, NAV_GROUPS, SECTION_LABELS } from './nav-config';
@@ -123,7 +121,7 @@ function SidebarBody({
             )}
 
             <nav aria-label={group.title ?? 'Main'} className="flex flex-col gap-0.5">
-              {group.items.map(({ to, label, icon: Icon, exact }) => {
+              {group.items.map(({ to, label, icon: Icon, exact, sidebarIconClassName }) => {
                 const isActive = currentHub?.to === to;
                 const currentPath = matchesNavPath(pathname, { to, exact: true });
                 const link = (
@@ -140,9 +138,11 @@ function SidebarBody({
                     aria-label={collapsed ? label : undefined}
                     aria-current={isActive ? 'page' : undefined}
                     className={cn(
-                      'pressable relative isolate flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
-                      isActive && '!text-foreground',
-                      isActive && reduce && 'bg-muted'
+                      'pressable relative isolate flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
+                      isActive
+                        ? 'text-brand'
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                      isActive && reduce && 'bg-brand/10 ring-1 ring-inset ring-brand/15'
                     )}
                   >
                     <>
@@ -150,7 +150,7 @@ function SidebarBody({
                         <motion.span
                           aria-hidden="true"
                           layoutId="sidebar-active"
-                          className="absolute inset-0 -z-10 rounded-md bg-muted"
+                          className="absolute inset-0 -z-10 rounded-md bg-brand/10 ring-1 ring-inset ring-brand/15"
                           transition={{
                             type: 'spring',
                             stiffness: 500,
@@ -158,7 +158,13 @@ function SidebarBody({
                           }}
                         />
                       )}
-                      <Icon className="h-4 w-4 shrink-0" />
+                      <Icon
+                        aria-hidden="true"
+                        className={cn(
+                          'h-4 w-4 shrink-0 transition-colors duration-150',
+                          isActive ? 'text-brand' : sidebarIconClassName
+                        )}
+                      />
                       <span aria-hidden={collapsed} className={labelCls}>
                         {label}
                       </span>
@@ -280,28 +286,32 @@ function AccountMenu({ onSignOut }: { onSignOut: () => void }) {
     <DropdownMenu>
       <DropdownMenuTrigger
         aria-label="Account"
-        className="pressable group flex items-center gap-1.5 rounded-lg py-1 pl-1 pr-1.5 hover:bg-muted data-[state=open]:bg-muted"
+        className="account-shine inline-flex size-11 shrink-0 items-center justify-center rounded-full bg-card text-[11px] font-medium text-foreground outline-none transition-colors duration-150 hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring data-[state=open]:bg-muted sm:size-9"
       >
-        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-[11px] font-medium">
-          {user?.initials ?? 'GG'}
-        </span>
-        {/* The chevron answers the menu: down when closed, up while open. */}
-        <NavArrowDown className="h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 ease-console group-data-[state=open]:rotate-180 motion-reduce:transition-none" />
+        <span aria-hidden="true">{user?.initials ?? 'GG'}</span>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel>
-          <p className="truncate text-sm font-medium">{user?.name}</p>
-          <p className="truncate text-xs text-muted-foreground">{user?.email}</p>
+      <DropdownMenuContent
+        align="end"
+        sideOffset={10}
+        collisionPadding={12}
+        className="account-shine w-64 max-w-[calc(100vw-1.5rem)] rounded-xl border-transparent p-1.5"
+      >
+        <DropdownMenuLabel className="px-2.5 py-2.5">
+          <p className="truncate text-sm font-medium text-foreground">{user?.name}</p>
+          <p className="mt-0.5 truncate text-xs font-normal text-muted-foreground">{user?.email}</p>
         </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
+        <DropdownMenuSeparator className="mx-2.5 my-1" />
+        <DropdownMenuItem asChild className="min-h-11 rounded-lg sm:min-h-10">
           <Link to="/dashboard/settings">
-            <Settings className="h-3.5 w-3.5" />
+            <Settings aria-hidden="true" className="size-4" />
             Workspace settings
           </Link>
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={onSignOut}>
-          <LogOut className="h-3.5 w-3.5" />
+        <DropdownMenuItem
+          onSelect={onSignOut}
+          className="min-h-11 rounded-lg data-[highlighted]:bg-destructive/10 data-[highlighted]:text-destructive sm:min-h-10"
+        >
+          <LogOut aria-hidden="true" className="size-4" />
           Sign out
         </DropdownMenuItem>
       </DropdownMenuContent>
@@ -656,12 +666,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                 <Breadcrumbs />
 
                 <div className="ml-auto flex items-center gap-1.5">
-                  <Button asChild size="sm" className="gap-1.5">
-                    <Link to="/dashboard/workflows/new" aria-label="New app">
-                      <Plus className="h-3.5 w-3.5" />
-                      <span className="hidden sm:inline">New app</span>
-                    </Link>
-                  </Button>
+                  <NewAppButton />
                   {/* Search lives on the overview as the page's own field;
                       ⌘K still opens the palette from anywhere. */}
                   <AccountMenu onSignOut={handleSignOut} />
