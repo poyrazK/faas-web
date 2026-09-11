@@ -304,7 +304,10 @@ function OverviewPage() {
 
   // Resident RAM right now: non-parked instances only — a parked instance's
   // cgroup is gone, so it holds nothing.
-  const residentKnown = !instances.isPending && !instances.error;
+  // `/v1/instances` is cursor-paginated. Never present a partial page as an
+  // exact fleet total; the Workers view can load the remaining pages.
+  const residentKnown = !instances.isPending && !instances.error && !instances.data?.next_before;
+  const residentPartial = Boolean(instances.data?.next_before);
   const { residentMb, residentCount } = useMemo(() => {
     const resident = (instances.data?.instances ?? []).filter(
       (row) => row.state.toLowerCase() !== 'parked'
@@ -540,7 +543,9 @@ function OverviewPage() {
             sub={
               residentKnown
                 ? `${residentCount} resident ${residentCount === 1 ? 'instance' : 'instances'}`
-                : 'instance read failed'
+                : residentPartial
+                  ? 'more instances available · open Instances'
+                  : 'instance read failed'
             }
           >
             {residentKnown ? (

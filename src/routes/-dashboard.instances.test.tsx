@@ -11,6 +11,7 @@ import {
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '@/lib/api/client';
+import { ApiError } from '@/lib/api/errors';
 import type { components } from '@/lib/api/schema';
 import { Route as Instances } from './dashboard.workers';
 
@@ -31,10 +32,12 @@ const instance: Instance = {
   lifecycle_failure_reason: 'oom',
 };
 let rows: Instance[];
+let olderRows: Instance[];
 let apps: { id: string; slug: string }[];
 let instanceState: 'ready' | 'pending' | 'error';
 let appState: 'ready' | 'pending' | 'error';
 let wakeState: 'ready' | 'pending' | 'error' | 'empty';
+let paginationState: boolean;
 let reads: string[];
 
 async function mount(entry = '/dashboard/workers', previousEntry?: string) {
@@ -71,19 +74,38 @@ async function mount(entry = '/dashboard/workers', previousEntry?: string) {
 
 beforeEach(() => {
   rows = [{ ...instance }];
+  olderRows = [];
   apps = [{ id: 'app-1', slug: 'alpha' }];
   reads = [];
   instanceState = 'ready';
   appState = 'ready';
   wakeState = 'ready';
+  paginationState = false;
   vi.spyOn(api, 'GET').mockImplementation(async (path, options) => {
-    const params = (options as { params?: { path?: Record<string, string> } })?.params?.path;
-    reads.push(`${path}:${JSON.stringify(params ?? {})}`);
+    const request = options as {
+      params?: {
+        path?: Record<string, string>;
+        query?: Record<string, string | number>;
+      };
+    };
+    const params = request?.params?.path;
+    const query = request?.params?.query;
+    reads.push(`${path}:${JSON.stringify(params ?? {})}:${JSON.stringify(query ?? {})}`);
     let data: unknown;
     if (path === '/v1/instances') {
       if (instanceState === 'pending') return new Promise(() => {});
-      if (instanceState === 'error') throw new Error('Instance read failed');
-      data = { instances: rows };
+      if (instanceState === 'error')
+        throw new ApiError({
+          status: 400,
+          code: 'instance_read_failed',
+          title: 'Instance read failed',
+          detail: 'Instance read failed',
+        });
+      const older = query?.before === 'instances-cursor-1';
+      data = {
+        instances: older ? olderRows : rows,
+        ...(paginationState && !older ? { next_before: 'instances-cursor-1' } : {}),
+      };
     } else if (path === '/v1/apps') {
       if (appState === 'pending') return new Promise(() => {});
       if (appState === 'error') throw new Error('App lookup failed');
@@ -422,5 +444,15 @@ describe('Instance details', () => {
       'href',
       '/dashboard/workflows'
     );
+  });
+
+  it('loads older live instances with the server cursor', async () => {
+    paginationState = true;
+    olderRows = [{ ...instance, id: 'vm-2', started_at: '2026-09-11T09:00:00Z' }];
+    await mount();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Load older instances' }));
+    expect(await screen.findByRole('button', { name: /vm-2$/ })).toBeInTheDocument();
+    expect(reads).toContain('/v1/instances:{}:{"limit":50,"before":"instances-cursor-1"}');
   });
 });
