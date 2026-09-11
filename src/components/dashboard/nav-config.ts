@@ -126,6 +126,12 @@ export const NAV_HUBS: NavHub[] = [
     ],
   },
   {
+    to: '/dashboard/analytics',
+    label: 'Analytics',
+    icon: GraphUp,
+    sidebarIconClassName: 'text-brand/80',
+  },
+  {
     to: '/dashboard/debug',
     label: 'Observe',
     icon: Search,
@@ -181,7 +187,7 @@ export const NAV_HUBS: NavHub[] = [
 const SIDEBAR_GROUPS: { title?: string; hubs: string[] }[] = [
   { hubs: ['Overview'] },
   { title: 'Build', hubs: ['Apps', 'Jobs', 'Releases', 'Instances'] },
-  { title: 'Operate', hubs: ['Domains', 'Data', 'Observe'] },
+  { title: 'Operate', hubs: ['Domains', 'Data', 'Analytics', 'Observe'] },
   { title: 'Account', hubs: ['Billing', 'Settings'] },
 ];
 

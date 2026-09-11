@@ -29,6 +29,7 @@ import {
 import { Tooltip, TooltipProvider } from '@/components/ui/tooltip';
 import { NewAppButton } from './new-app-button';
 import { CommandPalette } from './command-palette';
+import { ConsolePageTransition } from './page-transition';
 import { DISCLOSURE_CLOSE, DISCLOSURE_OPEN, EASE } from './motion';
 import {
   findNavHub,
@@ -47,6 +48,19 @@ import { useFocusTrap } from '@/lib/use-focus-trap';
 
 const COLLAPSE_KEY = 'gregale.sidebar.collapsed';
 const OPEN_GROUPS_KEY = 'gregale.sidebar.closedGroups';
+
+// Text leaves before the rail narrows; on entry it waits for room to read.
+function sidebarLabelClass(hidden: boolean) {
+  return cn(
+    'truncate whitespace-nowrap transition-opacity ease-console motion-reduce:transition-none motion-reduce:delay-0',
+    hidden ? 'opacity-0 duration-75 delay-0' : 'opacity-100 duration-150 delay-75'
+  );
+}
+
+// Shared by the rail and the content offset so pinning never opens a gap.
+function sidebarSizeClass(collapsed: boolean) {
+  return cn('ease-in motion-reduce:transition-none', collapsed ? 'duration-180' : 'duration-240');
+}
 
 /**
  * Which disclosures the reader has shut.
@@ -197,7 +211,7 @@ function NavDisclosure({
   // row's box, and a permanently clipped panel would shave it off.
   //
   // Seeded from `open` rather than from `true`: the rail mounts with
-  // `AnimatePresence initial={false}`, so a group that is already open never
+  // `initial={false}`, so a group that is already open never
   // animates and never fires the handlers below. Starting clipped would leave
   // it clipped until its first toggle.
   const [clip, setClip] = useState(() => !open);
@@ -211,11 +225,13 @@ function NavDisclosure({
           onClick={onToggle}
           aria-expanded={open}
           aria-controls={panelId}
+          data-sidebar-disclosure
           aria-label={collapsed ? hub.label : undefined}
           className={cn(
             'pressable flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
             'text-muted-foreground hover:bg-muted hover:text-foreground',
-            onBranch && 'text-foreground'
+            onBranch && 'text-foreground',
+            onBranch && collapsed && 'bg-brand/10 ring-1 ring-inset ring-brand/15'
           )}
         >
           <Icon
@@ -242,29 +258,28 @@ function NavDisclosure({
           </motion.span>
         </button>
       </Tooltip>
-      <AnimatePresence initial={false}>
-        {open && (
-          // The guide line is one rule down the whole group, not a tick per
-          // row: it is what makes five indented labels read as one branch
-          // instead of five loose entries.
-          <motion.ul
-            id={panelId}
-            key="panel"
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={open ? openT : closeT}
-            onAnimationStart={() => setClip(true)}
-            onAnimationComplete={() => setClip(!open)}
-            className={cn(
-              'relative ml-[18px] flex flex-col gap-0.5 border-l border-border',
-              clip && 'overflow-hidden'
-            )}
-          >
-            {children}
-          </motion.ul>
+      {/* Keep the group mounted through rail changes, so icons slide into
+          place and keyboard focus never loses its disclosure trigger. */}
+      <motion.ul
+        id={panelId}
+        data-sidebar-panel
+        inert={!open}
+        aria-hidden={!open}
+        initial={false}
+        animate={{ height: open ? 'auto' : 0, opacity: open ? 1 : 0 }}
+        transition={{
+          height: open ? openT : closeT,
+          opacity: { duration: reduce ? 0 : open ? 0.14 : 0.07, delay: reduce || !open ? 0 : 0.04 },
+        }}
+        onAnimationStart={() => setClip(true)}
+        onAnimationComplete={() => setClip(!open)}
+        className={cn(
+          'relative ml-[18px] flex flex-col gap-0.5 border-l border-border',
+          clip && 'overflow-hidden'
         )}
-      </AnimatePresence>
+      >
+        {children}
+      </motion.ul>
     </>
   );
 }
@@ -300,14 +315,8 @@ function SidebarBody({
       return next;
     });
   }, []);
-  // Everything below shares one rule: geometry is constant between the two
-  // widths. Icons never change alignment, headings never unmount, rows never
-  // re-pad — only the rail's width moves, and text fades in place. That is
-  // what makes the hover expansion read as one motion instead of a pop.
-  const labelCls = cn(
-    'truncate whitespace-nowrap transition-opacity ease-console',
-    collapsed ? 'opacity-0 duration-100' : 'opacity-100 delay-75 duration-200'
-  );
+  // Horizontal geometry stays fixed; nested groups fold on the vertical axis.
+  const labelCls = sidebarLabelClass(collapsed);
   return (
     <LayoutGroup id={id}>
       <Link
@@ -323,10 +332,7 @@ function SidebarBody({
         <img
           src="/mark-on-dark.png"
           alt=""
-          className={cn(
-            'absolute h-7 w-7 transition-opacity ease-console',
-            collapsed ? 'opacity-100 delay-75 duration-200' : 'opacity-0 duration-100'
-          )}
+          className={cn('absolute h-7 w-7', sidebarLabelClass(!collapsed))}
         />
         <img
           src="/logo-on-dark.png"
@@ -381,8 +387,8 @@ function SidebarBody({
                 <div
                   aria-hidden
                   className={cn(
-                    'absolute inset-x-1 top-2.5 h-px bg-border transition-opacity ease-console',
-                    collapsed ? 'opacity-100 delay-75 duration-200' : 'opacity-0 duration-100'
+                    'absolute inset-x-1 top-2.5 h-px bg-border',
+                    sidebarLabelClass(!collapsed)
                   )}
                 />
               </div>
@@ -392,7 +398,7 @@ function SidebarBody({
               {group.items.map((hub) => {
                 // Collapsed, the rail is 40px of icons — there is no room for a
                 // second level, and the hub tooltip is the whole affordance.
-                const disclosure = !collapsed && isDisclosureHub(hub);
+                const disclosure = isDisclosureHub(hub);
                 const onBranch = currentHub?.to === hub.to;
                 if (!disclosure) {
                   return (
@@ -413,7 +419,7 @@ function SidebarBody({
                 const sections = sidebarSectionsFor(hub);
                 // Open unless shut: a hub nobody has closed is a hub whose
                 // contents should be readable without being asked for.
-                const open = !closedGroups.includes(hub.to);
+                const open = !collapsed && !closedGroups.includes(hub.to);
                 return (
                   <li key={hub.to}>
                     <NavDisclosure
@@ -435,7 +441,7 @@ function SidebarBody({
                             onNavigate={onNavigate}
                             pathname={pathname}
                             hash={hash}
-                            current={matchesNavPath(pathname, section)}
+                            current={!collapsed && matchesNavPath(pathname, section)}
                           />
                         </li>
                       ))}
@@ -640,22 +646,38 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   // else should not flap it open and shut.
   const [railHovered, setRailHovered] = useState(false);
   const railCollapsed = collapsed && !railHovered;
+  const railRef = useRef<HTMLElement>(null);
+  const railPointerInside = useRef(false);
   const railTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const clearRailTimer = () => clearTimeout(railTimer.current);
+  const clearRailTimer = useCallback(() => clearTimeout(railTimer.current), []);
   const enterRail = () => {
+    railPointerInside.current = true;
     clearRailTimer();
-    railTimer.current = setTimeout(() => setRailHovered(true), 70);
+    if (collapsed) railTimer.current = setTimeout(() => setRailHovered(true), 100);
   };
   const leaveRail = () => {
+    railPointerInside.current = false;
     clearRailTimer();
-    railTimer.current = setTimeout(() => setRailHovered(false), 240);
+    railTimer.current = setTimeout(() => {
+      if (!railRef.current?.contains(document.activeElement)) setRailHovered(false);
+    }, 140);
   };
-  useEffect(() => clearRailTimer, []);
+  useEffect(() => clearRailTimer, [clearRailTimer]);
   const drawerRef = useRef<HTMLElement>(null);
   useFocusTrap(drawerRef, mobileOpen);
   const reduce = useReducedMotion();
 
-  const toggleCollapsed = () => setCollapsed((v) => !v);
+  const toggleCollapsed = useCallback(() => {
+    // A keyboard collapse must not strand focus inside an inert nested group.
+    const focused = document.activeElement;
+    if (!collapsed && focused instanceof HTMLElement && railRef.current?.contains(focused)) {
+      const panel = focused.closest('[data-sidebar-panel]');
+      panel?.parentElement?.querySelector<HTMLElement>('[data-sidebar-disclosure]')?.focus();
+    }
+    clearRailTimer();
+    setRailHovered(false);
+    setCollapsed((v) => !v);
+  }, [collapsed, clearRailTimer]);
   useEffect(() => {
     window.localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0');
   }, [collapsed]);
@@ -726,7 +748,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       }
       if (mod && e.key.toLowerCase() === 'b') {
         e.preventDefault();
-        setCollapsed((v) => !v);
+        toggleCollapsed();
       }
       if (e.key === 'Escape') setMobileOpen(false);
     };
@@ -744,13 +766,18 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('gregale:open-palette', onOpenPalette);
     };
-  }, [navigate]);
+  }, [navigate, toggleCollapsed]);
 
   // Every dashboard navigation lands in the overview's Recents column.
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   useEffect(() => {
     recordVisit(pathname);
   }, [pathname]);
+  // Wait for the destination to commit, not merely a link click. Query and
+  // hash changes belong to the current page and must not replay its entrance.
+  const pageKey = useRouterState({
+    select: (s) => (s.resolvedLocation?.pathname ?? s.location.pathname).replace(/\/$/, ''),
+  });
 
   // Toasts render at the root, outside this tree, so the dark palette has to
   // reach them too: mirror `console` onto <html> while the shell is mounted.
@@ -810,15 +837,18 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             </a>
             {/* Desktop sidebar */}
             <aside
+              ref={railRef}
               onMouseEnter={enterRail}
               onMouseLeave={leaveRail}
               onFocus={() => {
                 clearRailTimer();
-                setRailHovered(true);
+                if (collapsed) setRailHovered(true);
               }}
               onBlur={(e) => {
-                if (!e.currentTarget.contains(e.relatedTarget as Node | null))
-                  setRailHovered(false);
+                if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                  clearRailTimer();
+                  if (!railPointerInside.current) setRailHovered(false);
+                }
               }}
               className={cn(
                 // The stored width is applied before first paint (readCollapsed
@@ -826,7 +856,8 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                 // on a real hover or toggle, never on load. Horizontal padding
                 // is constant across both widths — geometry that never moves
                 // is what keeps the expansion smooth.
-                'fixed inset-y-0 left-0 z-30 hidden flex-col overflow-hidden border-r border-border bg-card px-3 py-5 transition-[width] duration-300 ease-console lg:flex',
+                'fixed inset-y-0 left-0 z-30 hidden flex-col overflow-hidden border-r border-border bg-card px-3 py-5 transition-[width] lg:flex',
+                sidebarSizeClass(railCollapsed),
                 railCollapsed ? 'w-16' : 'w-60',
                 // Hover-expanded over pinned-collapsed content: a floating
                 // peek, so it carries elevation the pinned states do not.
@@ -858,14 +889,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                     ) : (
                       <SidebarCollapse className="h-4 w-4 shrink-0" />
                     )}
-                    <span
-                      className={cn(
-                        'truncate whitespace-nowrap transition-opacity ease-console',
-                        railCollapsed
-                          ? 'opacity-0 duration-100'
-                          : 'opacity-100 delay-75 duration-200'
-                      )}
-                    >
+                    <span className={sidebarLabelClass(railCollapsed)}>
                       {collapsed ? 'Pin open' : 'Collapse'}
                     </span>
                   </button>
@@ -922,7 +946,8 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
             <div
               className={cn(
-                'console-atmosphere min-h-screen transition-[padding] duration-300 ease-console',
+                'console-atmosphere min-h-screen transition-[padding]',
+                sidebarSizeClass(collapsed),
                 collapsed ? 'lg:pl-16' : 'lg:pl-60'
               )}
             >
@@ -950,16 +975,12 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                 {/* A measure, not the full viewport: past ~1100px a form row or a
                 label/value pair stops scanning as a pair. Tables set their own
                 min-width and scroll inside it. */}
-                {/* Pages settle in via the CSS `animate-item-enter` entrance
-                  on PageHeader, Panel, StatTile, and the table — a mount
-                  animation, so it replays for every route's fresh DOM and for
-                  content that arrives late (code-split chunks, post-fetch
-                  panels). A pathname-keyed Stagger was tried here and left
-                  exactly that late content stranded at opacity 0. */}
                 <div className="mx-auto flex max-w-[1100px] flex-col gap-6">
                   <UnreachableBanner />
-                  <DashboardSecondaryNavigation />
-                  {children}
+                  <ConsolePageTransition pageKey={pageKey}>
+                    <DashboardSecondaryNavigation />
+                    {children}
+                  </ConsolePageTransition>
                 </div>
               </main>
             </div>
