@@ -5,7 +5,7 @@ import { PlanGated } from '@/components/dashboard/plan-gated';
 import { Select } from '@/components/ui/field';
 import { errorMessage } from '@/lib/api/errors';
 import { useAppAnalyticsTimeseries } from '@/lib/api/queries';
-import { AnalyticsGrid, buildCards, type AnalyticsPoint } from './analytics-grid';
+import { AnalyticsGrid, type AnalyticsPoint } from './analytics-grid';
 
 /**
  * Analytics on the overview, scoped to one app.
@@ -83,11 +83,7 @@ export function AnalyticsSection({
             No requests in this window.
           </p>
         ) : (
-          <AnalyticsGrid
-            cards={buildCards(points, window.half)}
-            points={points}
-            loading={series.isPending}
-          />
+          <AnalyticsGrid points={points} halfLabel={window.half} loading={series.isPending} />
         )}
       </PlanGated>
 

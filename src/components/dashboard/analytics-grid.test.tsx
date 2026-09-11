@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { applyOrder, buildCards, type AnalyticsPoint } from './analytics-grid';
+import {
+  availableMetrics,
+  buildCard,
+  CATALOG,
+  chosenCards,
+  DEFAULT_IDS,
+  type AnalyticsPoint,
+  type MetricDef,
+} from './analytics-grid';
 
 function points(counts: number[]): AnalyticsPoint[] {
   return counts.map((requests, i) => ({
@@ -14,56 +22,81 @@ function points(counts: number[]): AnalyticsPoint[] {
   }));
 }
 
-describe('applyOrder', () => {
-  const cards = buildCards(points([1, 2, 3, 4]), 'the hours before');
+const def = (id: string): MetricDef => CATALOG.find((d) => d.id === id)!;
 
-  it('puts a stored order first and keeps membership out of it', () => {
-    const ordered = applyOrder(cards, ['p95', 'requests']);
-    expect(ordered.slice(0, 2).map((c) => c.id)).toEqual(['p95', 'requests']);
-    // Every card still renders — a stored order decides sequence, never which
-    // cards exist, so shipping a new card reaches people who have reordered.
-    expect(ordered).toHaveLength(cards.length);
+describe('the catalog', () => {
+  it('ships every default', () => {
+    for (const id of DEFAULT_IDS) expect(CATALOG.map((d) => d.id)).toContain(id);
   });
 
-  it('drops a stored id that no longer exists', () => {
-    const ordered = applyOrder(cards, ['retired-card', 'p50']);
-    expect(ordered.map((c) => c.id)).not.toContain('retired-card');
-    expect(ordered[0].id).toBe('p50');
+  it('offers more than it shows, so the picker is never empty on a fresh grid', () => {
+    expect(availableMetrics(DEFAULT_IDS).length).toBeGreaterThan(0);
   });
 
-  it('is the identity when nothing is stored', () => {
-    expect(applyOrder(cards, []).map((c) => c.id)).toEqual(cards.map((c) => c.id));
+  it('uses each id once — two cards of one metric would reorder against itself', () => {
+    expect(new Set(CATALOG.map((d) => d.id)).size).toBe(CATALOG.length);
   });
 });
 
-describe('buildCards', () => {
+describe('availableMetrics', () => {
+  it('offers only what is not already on the grid', () => {
+    const available = availableMetrics(['requests', 'p95']).map((d) => d.id);
+    expect(available).not.toContain('requests');
+    expect(available).not.toContain('p95');
+    expect(available).toContain('p99');
+  });
+
+  it('offers nothing once every metric is on the grid', () => {
+    expect(availableMetrics(CATALOG.map((d) => d.id))).toEqual([]);
+  });
+});
+
+describe('chosenCards', () => {
+  it('keeps the reader’s order', () => {
+    const ids = chosenCards(['p95', 'requests'], points([1, 2, 3, 4]), 'x').map((c) => c.id);
+    expect(ids).toEqual(['p95', 'requests']);
+  });
+
+  it('skips an id we no longer ship rather than rendering a hole', () => {
+    const ids = chosenCards(['retired', 'p50'], points([1, 2, 3, 4]), 'x').map((c) => c.id);
+    expect(ids).toEqual(['p50']);
+  });
+
+  it('renders an empty grid for a reader who cleared theirs', () => {
+    expect(chosenCards([], points([1, 2, 3, 4]), 'x')).toEqual([]);
+  });
+});
+
+describe('buildCard', () => {
   it('reads its figures off the series, not off a scalar', () => {
-    const cards = buildCards(points([10, 10, 30, 30]), 'the hours before');
-    const requests = cards.find((c) => c.id === 'requests')!;
-    expect(requests.value).toBe('80');
+    const card = buildCard(def('requests'), points([10, 10, 30, 30]), 'x');
+    expect(card.value).toBe('80');
     // 20 in the first half, 60 in the second.
-    expect(requests.delta).toBeCloseTo(200);
+    expect(card.delta).toBeCloseTo(200);
   });
 
   it('withholds a delta when the window is too short to halve', () => {
-    expect(buildCards(points([5, 5]), 'x').find((c) => c.id === 'requests')!.delta).toBeNull();
+    expect(buildCard(def('requests'), points([5, 5]), 'x').delta).toBeNull();
   });
 
   it('withholds a delta rather than dividing by an empty first half', () => {
-    const quiet = buildCards(points([0, 0, 0, 0]), 'x').find((c) => c.id === 'requests')!;
+    const quiet = buildCard(def('requests'), points([0, 0, 0, 0]), 'x');
     expect(quiet.delta).toBeNull();
     expect(quiet.value).toBe('0');
   });
 
-  it('says what the delta is measured against, in every caption that has one', () => {
-    for (const card of buildCards(points([1, 2, 3, 4]), 'the 12 hours before')) {
+  it('says what every delta is measured against', () => {
+    for (const metric of CATALOG) {
+      const card = buildCard(metric, points([1, 2, 3, 4]), 'the 12 hours before');
       if (card.delta !== null) expect(card.caption).toContain('the 12 hours before');
     }
   });
 
   it('reports an error rate of zero rather than NaN when nothing was served', () => {
-    expect(buildCards(points([0, 0, 0, 0]), 'x').find((c) => c.id === 'error_rate')!.value).toBe(
-      '0.00%'
-    );
+    expect(buildCard(def('error_rate'), points([0, 0, 0, 0]), 'x').value).toBe('0.00%');
+  });
+
+  it('shows a dash for a latency with no bucket to read', () => {
+    expect(buildCard(def('p99'), [], 'x').value).toBe('—');
   });
 });
