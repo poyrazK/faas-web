@@ -149,6 +149,8 @@ vi.mock('@/lib/api/queries', async (original) => {
     useDeploymentSummary: () =>
       ok({ deployment: fixtures.deployment, previous: null, changes: [] }),
     useAppMetrics: () => ok(undefined),
+    useCompareDeployments: () => ({ ...mutation(), reset: vi.fn() }),
+    useDebugRequestEvidence: () => ({ ...ok(undefined), isPending: true }),
     useRetryDeployment: () => mutation(fixtures.retry),
     useUpdateDeploymentMinInstances: () => mutation(fixtures.min),
     useUpdateDeploymentTraffic: () => mutation(fixtures.traffic),
@@ -478,6 +480,54 @@ describe('Releases hub', () => {
     await mount(copied);
     expect(await screen.findByText('CVE-2026-1234')).toBeInTheDocument();
     expect(copied).toContain('#release');
+  });
+
+  it('preserves Debugger investigation and unrelated state when selecting and closing app releases', async () => {
+    const router = await mount(
+      '/dashboard/workflows/alpha?tab=Deployments&debugView=compare&debugFilter=failed&debugWindow=6h&request=request-7&debugRoute=%2Fcheckout&campaign=handoff#evidence'
+    );
+    const investigation = {
+      debugView: 'compare',
+      debugFilter: 'failed',
+      debugWindow: '6h',
+      request: 'request-7',
+      debugRoute: '/checkout',
+      campaign: 'handoff',
+    };
+    await userEvent.click(screen.getByRole('button', { name: /image aaaa/ }));
+    expect(router.state.location.search).toMatchObject({ ...investigation, deployment: 'dep-1' });
+    await userEvent.click(await screen.findByRole('button', { name: 'Security scans' }));
+    await userEvent.click(
+      within(screen.getByRole('region', { name: 'Release details' })).getByRole('button', {
+        name: 'Close',
+      })
+    );
+    expect(router.state.location.search).toMatchObject(investigation);
+    expect(router.state.location.search.deployment).toBeUndefined();
+    expect(router.state.location.search.releaseSection).toBeUndefined();
+    await userEvent.click(screen.getByRole('tab', { name: 'Debugger' }));
+    expect(await screen.findByRole('dialog', { name: 'Request evidence' })).toBeInTheDocument();
+    expect(router.state.location.search).toMatchObject(investigation);
+    await act(async () => router.history.back());
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: 'Deployments' })).toHaveAttribute(
+        'aria-selected',
+        'true'
+      )
+    );
+    await act(async () => router.history.back());
+    expect(await screen.findByText('CVE-2026-1234')).toBeInTheDocument();
+    expect(router.state.location.search).toMatchObject({
+      ...investigation,
+      deployment: 'dep-1',
+      releaseSection: 'scans',
+    });
+    expect(router.state.location.hash).toBe('evidence');
+    const copied = router.state.location.href;
+    cleanup();
+    const restored = await mount(copied);
+    expect(restored.state.location.search).toMatchObject(investigation);
+    expect(await screen.findByText('CVE-2026-1234')).toBeInTheDocument();
   });
 
   it('clears an invalid app release section without losing the existing app tab and deployment', async () => {

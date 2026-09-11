@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { createHash, randomBytes } from 'node:crypto';
 import type { Plugin } from 'vite';
 import * as db from './data';
 
@@ -3254,6 +3255,7 @@ route('GET', '/v1/orgs/{slug}/members', ({ params }) => ({ members: mockOrgMembe
 route('GET', '/v1/orgs/{slug}/invitations', ({ params }) => ({
   invitations: db.invitations.filter((invitation) => invitation.org_slug === params.slug),
 }));
+const invitationTokenHashes = new Map<string, string>();
 route('POST', '/v1/orgs/{slug}/members', ({ params, body }) => {
   const org = requireOrgRole(params.slug, ['owner', 'admin'], true);
   const email = String(body.email ?? '')
@@ -3275,7 +3277,9 @@ route('POST', '/v1/orgs/{slug}/members', ({ params, body }) => {
   };
   db.invitations.unshift(inv);
   // The plaintext token is returned exactly once, like a minted API key.
-  return status(201, { ...inv, token: `inv_${db.id()}` });
+  const plaintext = randomBytes(32);
+  invitationTokenHashes.set(inv.id, createHash('sha256').update(plaintext).digest('hex'));
+  return status(201, { ...inv, token: plaintext.toString('base64url') });
 });
 route('PATCH', '/v1/orgs/{slug}/members/{user_id}', ({ params, body }) => {
   requireOrgRole(params.slug, ['owner']);
@@ -3298,8 +3302,12 @@ route('DELETE', '/v1/orgs/{slug}/members/{user_id}', ({ params }) => {
 });
 route('DELETE', '/v1/orgs/{slug}/invitations/{token}', ({ params }) => {
   requireOrgRole(params.slug, ['owner', 'admin']);
-  const inv = db.invitations.find((x) => x.id === params.token && x.org_slug === params.slug);
-  if (!inv) throw new Problem(404, 'invitation_not_found');
+  const hash = createHash('sha256').update(Buffer.from(params.token, 'base64url')).digest('hex');
+  const inv = db.invitations.find(
+    (x) => invitationTokenHashes.get(x.id) === hash && x.org_slug === params.slug
+  );
+  if (!inv || inv.status !== 'pending' || Date.parse(inv.expires_at) <= Date.now())
+    throw new Problem(410, 'org_invitation_invalid');
   inv.status = 'revoked';
   return NO_CONTENT;
 });

@@ -1818,7 +1818,7 @@ export function useDeleteCron() {
   return useMutation({
     mutationFn: (id: string) => unwrap(api.DELETE('/v1/crons/{id}', { params: { path: { id } } })),
     onMutate: (id) =>
-      applyOptimistic<CronsList>(qc, { queryKey: keys.crons }, (old) =>
+      applyOptimistic<CronsList>(qc, { queryKey: keys.crons, exact: true }, (old) =>
         old.filter((c) => c.id !== id)
       ),
     onError: (_err, _id, rollback) => rollback?.(),

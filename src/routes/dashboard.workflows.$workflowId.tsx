@@ -598,7 +598,12 @@ function FunctionDetailPage() {
                   buildTimings={buildTimings}
                   onSelect={(id) =>
                     void navigate({
-                      search: { tab: 'Deployments', deployment: id },
+                      search: (current) => ({
+                        ...current,
+                        tab: 'Deployments',
+                        deployment: id,
+                        releaseSection: undefined,
+                      }),
                       hash: true,
                       resetScroll: false,
                     })
@@ -613,7 +618,13 @@ function FunctionDetailPage() {
                     slug={fn.id}
                     onDeployed={(id) =>
                       void navigate({
-                        search: { tab: 'Deployments', deployment: id },
+                        search: (current) => ({
+                          ...current,
+                          tab: 'Deployments',
+                          deployment: id,
+                          releaseSection: undefined,
+                        }),
+                        hash: true,
                         replace: true,
                       })
                     }
@@ -640,7 +651,12 @@ function FunctionDetailPage() {
                     }
                     onClose={() =>
                       void navigate({
-                        search: { tab: 'Deployments' },
+                        search: (current) => ({
+                          ...current,
+                          tab: 'Deployments',
+                          deployment: undefined,
+                          releaseSection: undefined,
+                        }),
                         hash: true,
                         resetScroll: false,
                       })
@@ -726,7 +742,13 @@ function FunctionDetailPage() {
                     });
                     setDeployOpen(false);
                     void navigate({
-                      search: { tab: 'Deployments', deployment: deployment.id },
+                      search: (current) => ({
+                        ...current,
+                        tab: 'Deployments',
+                        deployment: deployment.id,
+                        releaseSection: undefined,
+                      }),
+                      hash: true,
                       replace: true,
                     });
                     toast({
