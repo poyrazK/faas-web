@@ -1256,10 +1256,26 @@ export function useTriggers() {
  * The spec's prose also mentions a 404 for the same gate; the handler returns
  * 402, so that is what the UI branches on.
  */
-export function useJobs() {
+export function useJobs(selectedId?: string) {
   return useQuery({
-    queryKey: keys.jobs,
-    queryFn: () => unwrap(api.GET('/v1/jobs', {})),
+    queryKey: selectedId ? [...keys.jobs, { selectedId }] : keys.jobs,
+    queryFn: async ({ signal }) => {
+      let offset = 0;
+      const read = (next: number) =>
+        unwrap(api.GET('/v1/jobs', { params: { query: { offset: next } }, signal }));
+      let page = await read(offset);
+      const jobs = [...page.jobs];
+      while (
+        selectedId &&
+        !jobs.some((job) => job.id === selectedId) &&
+        page.next_offset > offset
+      ) {
+        offset = page.next_offset;
+        page = await read(offset);
+        jobs.push(...page.jobs);
+      }
+      return { ...page, jobs };
+    },
   });
 }
 
@@ -1292,24 +1308,68 @@ export function useJobRun(name: string | null, runId: string | null) {
   });
 }
 
-export function useJobRuns(name: string | null) {
+export function useJobRuns(name: string | null, selectedId?: string | null) {
   return useQuery({
-    queryKey: ['jobs', name, 'runs'],
+    queryKey: selectedId ? ['jobs', name, 'runs', { selectedId }] : ['jobs', name, 'runs'],
     enabled: name !== null,
-    queryFn: () => unwrap(api.GET('/v1/jobs/{name}/runs', { params: { path: { name: name! } } })),
+    queryFn: async ({ signal }) => {
+      let offset = 0;
+      const read = (next: number) =>
+        unwrap(
+          api.GET('/v1/jobs/{name}/runs', {
+            params: { path: { name: name! }, query: { offset: next } },
+            signal,
+          })
+        );
+      let page = await read(offset);
+      const runs = [...page.runs];
+      while (
+        selectedId &&
+        !runs.some((run) => run.id === selectedId) &&
+        page.next_offset > offset
+      ) {
+        offset = page.next_offset;
+        page = await read(offset);
+        runs.push(...page.runs);
+      }
+      return { ...page, runs };
+    },
   });
 }
 
-export function useJobTasks(name: string | null, runId: string | null) {
+export function useJobTasks(
+  name: string | null,
+  runId: string | null,
+  selectedIndex?: number | null
+) {
   return useQuery({
-    queryKey: ['jobs', name, 'runs', runId, 'tasks'],
+    queryKey:
+      selectedIndex != null
+        ? ['jobs', name, 'runs', runId, 'tasks', { selectedIndex }]
+        : ['jobs', name, 'runs', runId, 'tasks'],
     enabled: name !== null && runId !== null,
-    queryFn: () =>
-      unwrap(
-        api.GET('/v1/jobs/{name}/runs/{id}/tasks', {
-          params: { path: { name: name!, id: runId! } },
-        })
-      ),
+    queryFn: async ({ signal }) => {
+      let offset = 0;
+      const read = (next: number) =>
+        unwrap(
+          api.GET('/v1/jobs/{name}/runs/{id}/tasks', {
+            params: { path: { name: name!, id: runId! }, query: { offset: next } },
+            signal,
+          })
+        );
+      let page = await read(offset);
+      const tasks = [...page.tasks];
+      while (
+        selectedIndex != null &&
+        !tasks.some((task) => task.task_index === selectedIndex) &&
+        page.next_offset > offset
+      ) {
+        offset = page.next_offset;
+        page = await read(offset);
+        tasks.push(...page.tasks);
+      }
+      return { ...page, tasks };
+    },
   });
 }
 
@@ -1684,10 +1744,26 @@ export function useInvokeAppAsync() {
   });
 }
 
-export function useCronRuns(id: string) {
+export function useCronRuns(id: string, selectedId?: string) {
   return useQuery({
-    queryKey: ['crons', id, 'runs'],
-    queryFn: () => unwrap(api.GET('/v1/crons/{id}/runs', { params: { path: { id } } })),
+    queryKey: selectedId ? ['crons', id, 'runs', { selectedId }] : ['crons', id, 'runs'],
+    queryFn: async ({ signal }) => {
+      const read = (before?: string) =>
+        unwrap(
+          api.GET('/v1/crons/{id}/runs', { params: { path: { id }, query: { before } }, signal })
+        );
+      let page = await read();
+      const runs = [...page.runs];
+      const seen = new Set<string>();
+      while (selectedId && !runs.some((run) => run.id === selectedId)) {
+        const before = page.runs.at(-1)?.id;
+        if (!before || seen.has(before)) break;
+        seen.add(before);
+        page = await read(before);
+        runs.push(...page.runs);
+      }
+      return { ...page, runs };
+    },
     enabled: Boolean(id),
   });
 }

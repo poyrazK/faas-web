@@ -24,8 +24,8 @@ vi.mock('@/components/dashboard/resource-table', () => ({
 }));
 vi.mock('@/components/ui/modal', () => ({ Modal: () => null }));
 
-const { Route } = await import('./dashboard.crons');
-const CronsPage = (Route as unknown as { component: React.ComponentType }).component;
+const { ScheduledRequestsBody } = await import('@/components/dashboard/jobs-scheduled');
+const CronsPage = () => <ScheduledRequestsBody search={{}} onSelection={() => {}} />;
 
 beforeEach(() => {
   createCron

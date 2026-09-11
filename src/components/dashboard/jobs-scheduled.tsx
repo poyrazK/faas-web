@@ -1,0 +1,526 @@
+import { useMemo, useState, useEffect, useRef } from 'react';
+import { Clock, Play, Plus, Trash } from 'iconoir-react';
+import { Button } from '@/components/ui/button';
+import { FIELD, FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
+import { Switch } from '@/components/ui/switch';
+import { Modal } from '@/components/ui/modal';
+import { InlinePhase, PageHeader, Panel, queryPhase } from '@/components/dashboard/primitives';
+import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
+import { useToast } from '@/components/ui/toast';
+import { useConfirm } from '@/components/ui/confirm';
+import {
+  useApps,
+  useCreateCron,
+  useCronRuns,
+  useCrons,
+  useDeleteCron,
+  useRunCron,
+  useUpdateCron,
+  useFireNowRequest,
+} from '@/lib/api/queries';
+import { slugIndex } from '@/lib/api/adapters';
+import { errorMessage } from '@/lib/api/errors';
+import { formatRelative } from '@/lib/mock-data';
+import type { JobsSelectionProps } from './jobs-search';
+
+/**
+ * Scheduled requests into an app.
+ *
+ * This page could delete a cron and fire one by hand, and that was all: no
+ * way to create one, no way to pause one (the State column showed a pill
+ * nothing could change), and no way to see whether the last run worked —
+ * `useCronRuns` had been written and imported nowhere.
+ */
+
+/**
+ * "Run now" used to fire and forget — the 202's request id was dropped and
+ * the outcome never reported. This watches one fire-now request and toasts
+ * its terminal state, then clears itself.
+ */
+function FireNowWatcher({ requestId, onDone }: { requestId: string; onDone: () => void }) {
+  const { toast } = useToast();
+  const q = useFireNowRequest(requestId);
+  const status = q.data?.status;
+  const reported = useRef(false);
+  useEffect(() => {
+    if (reported.current || !status || status === 'pending' || status === 'running') return;
+    reported.current = true;
+    if (q.data?.error) {
+      toast({ kind: 'error', title: 'Cron run failed', description: q.data.error });
+    } else {
+      toast({
+        kind: 'success',
+        title: 'Cron run finished',
+        description: q.data?.invocation_id
+          ? `Invocation ${q.data.invocation_id.slice(0, 12)}.`
+          : undefined,
+      });
+    }
+    onDone();
+  }, [status, q.data, toast, onDone]);
+  return null;
+}
+
+interface CronRow {
+  id: string;
+  app: string;
+  schedule: string;
+  path: string;
+  enabled: boolean;
+  lastFiredAt: string | null;
+}
+
+function formatWhen(value: string | null | undefined): string {
+  if (!value) return 'Never';
+  const ms = Date.parse(value);
+  return Number.isNaN(ms) ? 'Never' : formatRelative(ms);
+}
+
+const OUTCOME_COLOR: Record<string, string | undefined> = {
+  success: 'var(--status-good)',
+  failed: 'var(--status-critical)',
+  timeout: 'var(--status-serious)',
+  dead_letter: 'var(--status-critical)',
+  running: 'var(--status-warning)',
+};
+
+const MONTH_NAMES: Readonly<Record<string, number>> = {
+  jan: 1,
+  feb: 2,
+  mar: 3,
+  apr: 4,
+  may: 5,
+  jun: 6,
+  jul: 7,
+  aug: 8,
+  sep: 9,
+  oct: 10,
+  nov: 11,
+  dec: 12,
+};
+const WEEKDAY_NAMES: Readonly<Record<string, number>> = {
+  sun: 0,
+  mon: 1,
+  tue: 2,
+  wed: 3,
+  thu: 4,
+  fri: 5,
+  sat: 6,
+};
+interface CronField {
+  minimum: number;
+  maximum: number;
+  names?: Readonly<Record<string, number>>;
+}
+const CRON_FIELDS: readonly CronField[] = [
+  { minimum: 0, maximum: 59 },
+  { minimum: 0, maximum: 23 },
+  { minimum: 1, maximum: 31 },
+  { minimum: 1, maximum: 12, names: MONTH_NAMES },
+  { minimum: 0, maximum: 6, names: WEEKDAY_NAMES },
+];
+
+function cronValue(value: string, names?: Readonly<Record<string, number>>): number | undefined {
+  const named = names?.[value.toLowerCase()];
+  if (named !== undefined) return named;
+  if (!/^\+?\d+$/.test(value)) return undefined;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : undefined;
+}
+
+function isCronSegment(segment: string, field: CronField): boolean {
+  const rangeAndStep = segment.split('/');
+  if (rangeAndStep.length > 2) return false;
+
+  const [base, rawStep] = rangeAndStep;
+  const step = rawStep === undefined ? 1 : cronValue(rawStep);
+  if (step === undefined || step === 0) return false;
+
+  const bounds = base.split('-');
+  if (bounds.length > 2) return false;
+  const [rawStart, rawEnd] = bounds;
+  const wildcard = rawStart === '*' || rawStart === '?';
+  if (wildcard && rawEnd !== undefined) return false;
+
+  const start = wildcard ? field.minimum : cronValue(rawStart, field.names);
+  const end = wildcard
+    ? field.maximum
+    : rawEnd !== undefined
+      ? cronValue(rawEnd, field.names)
+      : rawStep !== undefined
+        ? field.maximum
+        : start;
+  return (
+    start !== undefined &&
+    end !== undefined &&
+    start >= field.minimum &&
+    end <= field.maximum &&
+    start <= end
+  );
+}
+
+function isCronSchedule(value: string): boolean {
+  const fields = value.trim().split(/\s+/);
+  return (
+    fields.length === CRON_FIELDS.length &&
+    fields.every((field, index) => {
+      const cronField = CRON_FIELDS[index];
+      return field.split(',').every((segment) => isCronSegment(segment, cronField));
+    })
+  );
+}
+
+/** The last runs of one cron — outcome, duration, and the error if any. */
+function RunHistory({
+  cron,
+  onClose,
+  search,
+  onSelection,
+}: { cron: CronRow; onClose: () => void } & JobsSelectionProps) {
+  const runs = useCronRuns(cron.id, search.execution);
+  const execution = runs.data?.runs.find((run) => run.id === search.execution);
+  const runsPhase = queryPhase({
+    error: runs.error,
+    loading: runs.isPending,
+    isEmpty: (runs.data?.runs ?? []).length === 0,
+  });
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`${cron.schedule} → ${cron.path}`}
+      description="Recent runs, newest first."
+      width="max-w-2xl"
+    >
+      {search.execution && runs.data && !execution && <p role="status">Execution not found</p>}
+      {execution && (
+        <Panel title={`Execution ${execution.id}`}>
+          <dl className="text-sm">
+            <dt>Outcome</dt>
+            <dd>{execution.outcome}</dd>
+            <dt>Started</dt>
+            <dd>{execution.started_at}</dd>
+            <dt>Duration</dt>
+            <dd>{execution.duration_ms != null ? `${execution.duration_ms} ms` : '—'}</dd>
+            <dt>Attempts</dt>
+            <dd>{execution.attempts}</dd>
+            {execution.error && (
+              <>
+                <dt>Error</dt>
+                <dd>{execution.error}</dd>
+              </>
+            )}
+          </dl>
+        </Panel>
+      )}
+      {runsPhase !== 'ready' ? (
+        <InlinePhase
+          phase={runsPhase}
+          error={runs.error}
+          loadingMessage="Loading runs…"
+          emptyMessage="This cron has not run yet."
+        />
+      ) : (
+        <ul className="flex flex-col divide-y divide-border">
+          {(runs.data?.runs ?? []).map((r) => (
+            <li key={r.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2.5 text-sm">
+              <button
+                type="button"
+                aria-pressed={search.execution === r.id}
+                onClick={() =>
+                  onSelection({ execution: search.execution === r.id ? undefined : r.id })
+                }
+                className="font-mono text-xs hover:underline"
+              >
+                Execution {r.id}
+              </button>
+              <Pill label={r.outcome} color={OUTCOME_COLOR[r.outcome]} />
+              <span className="text-xs text-muted-foreground">{formatWhen(r.started_at)}</span>
+              <span className="font-mono text-xs [font-variant-numeric:tabular-nums]">
+                {r.duration_ms != null ? `${(r.duration_ms / 1000).toFixed(1)}s` : '—'}
+              </span>
+              {r.attempts > 1 && (
+                <span className="text-xs text-muted-foreground">{r.attempts} attempts</span>
+              )}
+              {r.error && (
+                <span className="font-mono text-xs text-muted-foreground">{r.error}</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Modal>
+  );
+}
+
+export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProps) {
+  const { toast } = useToast();
+  const confirm = useConfirm();
+  const { data, isPending, error, refetch } = useCrons();
+  const { data: apps } = useApps();
+  const runCron = useRunCron();
+  const deleteCron = useDeleteCron();
+  const updateCron = useUpdateCron();
+  const createCron = useCreateCron();
+
+  const [appId, setAppId] = useState('');
+  const [schedule, setSchedule] = useState('');
+  const [path, setPath] = useState('/');
+  const [fireRequest, setFireRequest] = useState<string | null>(null);
+  const validation = useFormValidation<'schedule'>();
+
+  const targetApp = appId || apps?.[0]?.id || '';
+  const scheduleOk = isCronSchedule(schedule);
+  const scheduleError = scheduleOk ? undefined : 'Enter a five-field cron schedule.';
+  const shownScheduleError = validation.submitAttempted ? scheduleError : undefined;
+
+  const rows = useMemo<CronRow[]>(() => {
+    const bySlug = slugIndex(apps ?? []);
+    return (data ?? []).map((c) => ({
+      id: c.id,
+      app: bySlug.get(c.app_id) ?? c.app_id,
+      schedule: c.schedule,
+      path: c.path,
+      enabled: c.enabled,
+      lastFiredAt: c.last_fired_at ?? null,
+    }));
+  }, [data, apps]);
+  const history = rows.find((cron) => cron.id === search.schedule) ?? null;
+
+  const setEnabled = (c: CronRow, enabled: boolean) =>
+    void updateCron
+      .mutateAsync({ id: c.id, enabled })
+      .then(() => toast({ kind: 'success', title: enabled ? 'Cron resumed' : 'Cron paused' }))
+      .catch((err: unknown) =>
+        toast({ kind: 'error', title: 'Could not update', description: errorMessage(err) })
+      );
+
+  const columns: Column<CronRow>[] = [
+    {
+      key: 'schedule',
+      label: 'Schedule',
+      render: (c) => <span className="font-mono text-xs">{c.schedule}</span>,
+    },
+    {
+      key: 'app',
+      label: 'App',
+      render: (c) => <span className="font-mono text-xs text-muted-foreground">{c.app}</span>,
+    },
+    {
+      key: 'path',
+      label: 'Path',
+      render: (c) => <span className="font-mono text-xs text-muted-foreground">{c.path}</span>,
+    },
+    {
+      key: 'enabled',
+      label: 'Enabled',
+      width: 'w-24',
+      render: (c) => (
+        <Switch
+          size="sm"
+          checked={c.enabled}
+          onCheckedChange={(on) => setEnabled(c, on)}
+          aria-label={`${c.enabled ? 'Pause' : 'Resume'} ${c.schedule}`}
+          className="data-[state=checked]:bg-brand"
+        />
+      ),
+    },
+    {
+      key: 'lastFiredAt',
+      label: 'Last fired',
+      numeric: true,
+      render: (c) => (
+        <span className="text-xs text-muted-foreground">{formatWhen(c.lastFiredAt)}</span>
+      ),
+    },
+    {
+      key: 'id',
+      label: '',
+      width: 'w-28',
+      render: (c) => (
+        <span className="flex items-center gap-3">
+          <button
+            type="button"
+            aria-label={`Run history for ${c.schedule}`}
+            onClick={() => onSelection({ schedule: c.id, execution: undefined })}
+            className="text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <Clock className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            aria-label={`Run ${c.schedule} now`}
+            onClick={() => {
+              void runCron
+                .mutateAsync(c.id)
+                .then((fired) => {
+                  toast({ kind: 'success', title: 'Cron fired', description: 'Watching the run…' });
+                  // The 202 carries a request id; the watcher polls it and
+                  // reports the terminal state instead of dropping it.
+                  setFireRequest(fired.request_id);
+                })
+                .catch((err: unknown) =>
+                  toast({ kind: 'error', title: 'Could not fire', description: errorMessage(err) })
+                );
+            }}
+            className="text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <Play className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            aria-label={`Delete cron ${c.id}`}
+            onClick={async () => {
+              if (
+                !(await confirm({
+                  title: 'Delete this cron?',
+                  description: `${c.schedule} → ${c.path} stops firing. This cannot be undone.`,
+                  confirmLabel: 'Delete cron',
+                  destructive: true,
+                }))
+              )
+                return;
+              void deleteCron
+                .mutateAsync(c.id)
+                .then(() => toast({ kind: 'success', title: 'Cron deleted' }))
+                .catch((err: unknown) =>
+                  toast({
+                    kind: 'error',
+                    title: 'Could not delete',
+                    description: errorMessage(err),
+                  })
+                );
+            }}
+            className="text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <Trash className="h-3.5 w-3.5" />
+          </button>
+        </span>
+      ),
+    },
+  ];
+
+  return (
+    <div className="flex flex-col gap-6">
+      {fireRequest && (
+        <FireNowWatcher requestId={fireRequest} onDone={() => setFireRequest(null)} />
+      )}
+      <PageHeader
+        title="Scheduled requests"
+        description="HTTP requests on a Cron schedule. Firing one by hand does not change its schedule."
+      />
+      {search.schedule && data && !history && <p role="status">Scheduled request not found</p>}
+
+      <Panel lit title="Add a cron">
+        <form
+          noValidate
+          className="flex flex-wrap items-end gap-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (
+              !validation.validate({ schedule: scheduleError }, e.currentTarget) ||
+              !targetApp ||
+              createCron.isPending
+            )
+              return;
+            void createCron
+              .mutateAsync({
+                app_id: targetApp,
+                schedule: schedule.trim(),
+                path: path.trim() || '/',
+              })
+              .then((c) => {
+                setSchedule('');
+                setPath('/');
+                validation.resetValidation();
+                toast({
+                  kind: 'success',
+                  title: 'Cron added',
+                  description: `${c.schedule} → ${c.path}`,
+                });
+              })
+              .catch((err: unknown) =>
+                toast({ kind: 'error', title: 'Could not add', description: errorMessage(err) })
+              );
+          }}
+        >
+          <label className="flex flex-col gap-1.5">
+            <span className="label-mono text-muted-foreground">App</span>
+            <select
+              value={targetApp}
+              onChange={(e) => setAppId(e.target.value)}
+              className={`${FIELD} min-w-44`}
+            >
+              {(apps ?? []).map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.slug}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex min-w-48 flex-1 flex-col gap-1.5">
+            <span className="label-mono text-muted-foreground">Schedule</span>
+            <input
+              name="schedule"
+              value={schedule}
+              onChange={(e) => setSchedule(e.target.value)}
+              {...fieldErrorProps(shownScheduleError, 'cron-schedule-error')}
+              placeholder="*/15 * * * *"
+              spellCheck={false}
+              className={`${FIELD} font-mono`}
+            />
+            {shownScheduleError && (
+              <FieldError id="cron-schedule-error">{shownScheduleError}</FieldError>
+            )}
+          </label>
+          <label className="flex min-w-40 flex-col gap-1.5">
+            <span className="label-mono text-muted-foreground">Path</span>
+            <input
+              value={path}
+              onChange={(e) => setPath(e.target.value)}
+              placeholder="/run"
+              spellCheck={false}
+              className={`${FIELD} font-mono`}
+            />
+          </label>
+          <Button
+            type="submit"
+            size="sm"
+            className="gap-1.5"
+            disabled={!targetApp}
+            busy={createCron.isPending}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add cron
+          </Button>
+          <p className="basis-full text-xs text-muted-foreground">
+            Five fields, UTC: minute, hour, day of month, month, day of week. The request is a GET
+            to the path on a fresh or warm instance.
+          </p>
+        </form>
+      </Panel>
+
+      <ResourceTable
+        rows={rows}
+        columns={columns}
+        initialSort={{ key: 'schedule', dir: 'asc' }}
+        searchKeys={['schedule', 'path', 'app']}
+        searchPlaceholder="Filter by schedule or path…"
+        emptyMessage="No scheduled requests yet."
+        minWidth="min-w-[820px]"
+        loading={isPending}
+        error={error}
+        onRetry={() => void refetch()}
+      />
+
+      {history && (
+        <RunHistory
+          cron={history}
+          search={search}
+          onSelection={onSelection}
+          onClose={() => onSelection({ schedule: undefined, execution: undefined })}
+        />
+      )}
+    </div>
+  );
+}

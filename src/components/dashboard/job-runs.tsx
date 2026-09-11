@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { InlinePhase, queryPhase } from '@/components/dashboard/primitives';
 import { Pill } from '@/components/dashboard/resource-table';
@@ -41,14 +42,16 @@ export function JobRuns({
   name,
   onSelect,
   selectedRunId,
+  renderSelected,
 }: {
   name: string;
   onSelect: (runId: string) => void;
   selectedRunId: string | null;
+  renderSelected?: (runId: string) => ReactNode;
 }) {
   const { toast } = useToast();
   const confirm = useConfirm();
-  const { data, isPending, error } = useJobRuns(name);
+  const { data, isPending, error } = useJobRuns(name, selectedRunId);
   const cancel = useCancelJobRun();
 
   const runs = data?.runs ?? [];
@@ -93,47 +96,55 @@ export function JobRuns({
   }
 
   return (
-    <ul className="flex flex-col divide-y divide-border">
-      {runs.map((r) => (
-        <li
-          key={r.id}
-          className={
-            'flex flex-wrap items-center gap-2 py-3 first:pt-0 last:pb-0' +
-            (selectedRunId === r.id ? ' text-foreground' : '')
-          }
-        >
-          <Pill label={r.aggregate_status} color={RUN_COLOR[r.aggregate_status]} />
-          <button
-            type="button"
-            onClick={() => onSelect(r.id)}
-            className="font-mono text-xs underline-offset-2 hover:underline"
+    <>
+      {selectedRunId && !runs.some((run) => run.id === selectedRunId) && (
+        <p role="status">Run not found</p>
+      )}
+      <ul className="flex flex-col divide-y divide-border">
+        {runs.map((r) => (
+          <li
+            key={r.id}
+            className={
+              'flex flex-wrap items-center gap-2 py-3 first:pt-0 last:pb-0' +
+              (selectedRunId === r.id ? ' text-foreground' : '')
+            }
           >
-            {r.id}
-          </button>
-          <span className="label-mono text-muted-foreground">{r.trigger_kind}</span>
-          <span className="[font-variant-numeric:tabular-nums] text-xs">
-            {r.tasks_succeeded} / {r.tasks} tasks
-          </span>
-          {r.tasks_failed > 0 && (
-            <span className="text-xs text-[color:var(--status-critical)]">
-              {r.tasks_failed} failed
+            <Pill label={r.aggregate_status} color={RUN_COLOR[r.aggregate_status]} />
+            <button
+              type="button"
+              onClick={() => onSelect(r.id)}
+              className="font-mono text-xs underline-offset-2 hover:underline"
+            >
+              {r.id}
+            </button>
+            <span className="label-mono text-muted-foreground">{r.trigger_kind}</span>
+            <span className="[font-variant-numeric:tabular-nums] text-xs">
+              {r.tasks_succeeded} / {r.tasks} tasks
             </span>
-          )}
-          <span className="text-xs text-muted-foreground">{when(r.created_at)}</span>
-          {CANCELLABLE.has(r.aggregate_status) && (
-            <span className="ml-auto">
-              <Button
-                size="xs"
-                variant="outline"
-                busy={cancel.isPending}
-                onClick={() => void onCancel(r.id)}
-              >
-                Cancel
-              </Button>
-            </span>
-          )}
-        </li>
-      ))}
-    </ul>
+            {r.tasks_failed > 0 && (
+              <span className="text-xs text-[color:var(--status-critical)]">
+                {r.tasks_failed} failed
+              </span>
+            )}
+            <span className="text-xs text-muted-foreground">{when(r.created_at)}</span>
+            {CANCELLABLE.has(r.aggregate_status) && (
+              <span className="ml-auto">
+                <Button
+                  size="xs"
+                  variant="outline"
+                  busy={cancel.isPending}
+                  onClick={() => void onCancel(r.id)}
+                >
+                  Cancel
+                </Button>
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+      {selectedRunId &&
+        runs.some((run) => run.id === selectedRunId) &&
+        renderSelected?.(selectedRunId)}
+    </>
   );
 }

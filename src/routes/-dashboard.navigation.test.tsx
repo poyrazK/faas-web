@@ -7,9 +7,7 @@ describe('legacy dashboard bookmarks', () => {
     '/dashboard/workflows?q=api&state=running&runtime=node24',
     '/dashboard/workflows/api?tab=Deployments&deployment=dep-1#lifecycle',
     '/dashboard/workflows/new?template=hello-world',
-    '/dashboard/crons',
     '/dashboard/jobs',
-    '/dashboard/triggers',
     '/dashboard/workers',
     '/dashboard/deployments',
     '/dashboard/builds',
@@ -60,7 +58,9 @@ describe('legacy dashboard bookmarks', () => {
   it.each([
     ['/dashboard/templates', '/dashboard/workflows/new?source=template'],
     ['/dashboard/import', '/dashboard/workflows/new?source=import'],
-  ])('resolves %s through its New App compatibility redirect', async (entry, destination) => {
+    ['/dashboard/crons', '/dashboard/jobs?section=scheduled'],
+    ['/dashboard/triggers', '/dashboard/jobs?section=triggers'],
+  ])('resolves %s through its compatibility redirect', async (entry, destination) => {
     window.localStorage.setItem(
       'gregale.session',
       JSON.stringify({ email: 'operator@example.com' })
