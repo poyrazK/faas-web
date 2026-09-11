@@ -246,6 +246,21 @@ describe('canonical Settings', () => {
     expect(screen.queryByRole('button', { name: 'Create key' })).not.toBeInTheDocument();
   });
 
+  it('explains the Free plan zero seat cap as personal organizations only', async () => {
+    orgs = [{ ...org('bravo'), plan: 'free' }];
+    const get = api.GET.getMockImplementation()!;
+    api.GET.mockImplementation((path, options) =>
+      path.endsWith('/seat_usage') ? ok({ used: 1, limit: 0, plan: 'free' }) : get(path, options)
+    );
+    await mount('/dashboard/settings?section=organization&org=bravo');
+    expect(
+      await screen.findByText(
+        'Personal organizations only on the free plan. Shared member seats are not included.'
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/1 of 0 seats used/)).not.toBeInTheDocument();
+  });
+
   it('distributes GitHub, password/MFA/security inventory, platform limits and privacy without duplication', async () => {
     await mount('/dashboard/settings?section=integrations');
     expect(screen.getByRole('link', { name: /Manage on GitHub/ })).toBeInTheDocument();

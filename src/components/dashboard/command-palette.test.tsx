@@ -5,6 +5,7 @@ import { CommandPalette } from './command-palette';
 
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => vi.fn(),
+  useRouterState: () => ({ pathname: '/dashboard', search: {}, hash: '' }),
 }));
 
 vi.mock('@/lib/store', () => ({

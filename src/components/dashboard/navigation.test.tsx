@@ -13,6 +13,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { DashboardShell } from './shell';
 import type { Workflow } from '@/lib/mock-data';
 import { OverviewSearch } from './overview-search';
+import { validateSettingsSearch } from './settings-search';
 import type { ReactNode } from 'react';
 
 const app: Workflow = {
@@ -67,8 +68,14 @@ async function renderShell(initialEntry = '/dashboard', content?: ReactNode) {
   });
   const index = createRoute({ getParentRoute: () => dashboard, path: '/', component: Page });
   const page = createRoute({ getParentRoute: () => dashboard, path: '$', component: Page });
+  const settings = createRoute({
+    getParentRoute: () => dashboard,
+    path: 'settings',
+    component: Page,
+    validateSearch: validateSettingsSearch,
+  });
   const router = createRouter({
-    routeTree: root.addChildren([dashboard.addChildren([index, page])]),
+    routeTree: root.addChildren([dashboard.addChildren([index, settings, page])]),
     history: createMemoryHistory({ initialEntries: [initialEntry] }),
   });
   render(<RouterProvider router={router as never} />);
@@ -334,6 +341,59 @@ describe('dashboard navigation foundation', () => {
     ).toEqual(['Members', 'API keys']);
     await userEvent.click(screen.getAllByRole('option')[0]);
     await waitFor(() => expect(router.state.location.search).toEqual({ section: 'members' }));
+  });
+
+  it('retains the selected organization, key scope, extra search and hash between Settings palette commands', async () => {
+    const router = await renderShell(
+      '/dashboard/settings?section=organization&org=bravo&scope=organization&campaign=handoff#details'
+    );
+    for (const [label, section] of [
+      ['Members', 'members'],
+      ['API keys', 'api-keys'],
+    ]) {
+      await userEvent.keyboard('{Control>}k{/Control}');
+      await userEvent.type(await screen.findByRole('combobox', { name: 'Search commands' }), label);
+      await userEvent.click(
+        screen.getAllByRole('option').find((option) => option.textContent === `${label}Go to`)!
+      );
+      await waitFor(() =>
+        expect(router.state.location.search).toEqual({
+          section,
+          org: 'bravo',
+          scope: 'organization',
+          campaign: 'handoff',
+        })
+      );
+      expect(router.state.location.pathname).toBe('/dashboard/settings');
+      expect(router.state.location.hash).toBe('details');
+      await waitFor(() =>
+        expect(screen.queryByRole('combobox', { name: 'Search commands' })).not.toBeInTheDocument()
+      );
+    }
+    await act(async () => router.history.back());
+    await waitFor(() => expect(router.state.location.search.section).toBe('members'));
+    expect(router.state.location.search.org).toBe('bravo');
+    expect(router.state.location.hash).toBe('details');
+    await act(async () => router.history.forward());
+    await waitFor(() => expect(router.state.location.search.section).toBe('api-keys'));
+    expect(router.state.location.search.scope).toBe('organization');
+  });
+
+  it('does not copy another route search or hash into a Settings palette destination', async () => {
+    const router = await renderShell(
+      '/dashboard/jobs?org=foreign&scope=organization&campaign=jobs&q=retry#tasks'
+    );
+    await userEvent.keyboard('{Control>}k{/Control}');
+    await userEvent.type(
+      await screen.findByRole('combobox', { name: 'Search commands' }),
+      'Members'
+    );
+    await userEvent.click(
+      screen.getAllByRole('option').find((option) => option.textContent === 'MembersGo to')!
+    );
+    await waitFor(() => expect(router.state.location.pathname).toBe('/dashboard/settings'));
+    expect(router.state.location.search).toEqual({ section: 'members' });
+    expect(router.state.location.hash).toBe('');
   });
 
   it('keeps overview search results unique while changing between hub and page searches', async () => {

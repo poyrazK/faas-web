@@ -62,7 +62,9 @@ export function OrgPanel({ slug }: { slug: string }) {
       title="Organisation"
       description={
         seats.data
-          ? `${seats.data.used} of ${seats.data.limit} seats used on the ${seats.data.plan} plan.`
+          ? seats.data.limit === 0
+            ? `Personal organizations only on the ${seats.data.plan} plan. Shared member seats are not included.`
+            : `${seats.data.used} of ${seats.data.limit} seats used on the ${seats.data.plan} plan.`
           : 'Identity and ownership.'
       }
     >

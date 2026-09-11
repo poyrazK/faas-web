@@ -3347,11 +3347,12 @@ route('DELETE', '/v1/orgs/{slug}', ({ params }) => {
   org.updated_at = db.iso(0);
   return NO_CONTENT;
 });
-route('GET', '/v1/orgs/{slug}/seat_usage', ({ params }) => ({
-  used: mockOrgMembers(params.slug).length,
-  limit: 5,
-  plan: mockOrg(params.slug).plan,
-}));
+route('GET', '/v1/orgs/{slug}/seat_usage', ({ params }) => {
+  const { plan } = mockOrg(params.slug);
+  // Plan.OrgMembersMax (ADR-061): Free is personal-only; paid tiers use the member ladder.
+  const limits = { free: 0, hobby: 10, pro: 50, scale: 200 };
+  return { used: mockOrgMembers(params.slug).length, limit: limits[plan] ?? 0, plan };
+});
 route('POST', '/v1/orgs/{slug}/transfer_ownership', ({ params, body }) => {
   const org = requireOrgRole(params.slug, ['owner']);
   const members = mockOrgMembers(params.slug);

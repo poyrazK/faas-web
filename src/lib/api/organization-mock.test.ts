@@ -4,7 +4,7 @@ import type { Connect } from 'vite';
 import { expect, it, vi } from 'vitest';
 import { mockApi } from '../../../mock/plugin';
 
-it('persists organization creation, rename, scoped ownership transfer and pending deletion in the mock API', async () => {
+it('persists organization lifecycle changes with plan-based seat limits in the mock API', async () => {
   const plugin = mockApi();
   let middleware: Connect.NextHandleFunction | undefined;
   if (typeof plugin.configureServer !== 'function') throw new Error('No mock server hook');
@@ -61,6 +61,25 @@ it('persists organization creation, rename, scoped ownership transfer and pendin
     const ownMembers = await (await request('/v1/orgs/settings-lifecycle/members')).json();
     expect(ownMembers.members).toHaveLength(1);
     expect(ownMembers.members[0].role).toBe('owner');
+    expect(await (await request('/v1/orgs/settings-lifecycle/seat_usage')).json()).toEqual({
+      used: 1,
+      limit: 0,
+      plan: 'free',
+    });
+    // The documented Plan.OrgMembersMax ladder, not a constant fixture cap.
+    for (const [plan, limit] of [
+      ['hobby', 10],
+      ['pro', 50],
+      ['scale', 200],
+      ['free', 0],
+    ]) {
+      expect((await request('/v1/orgs/settings-lifecycle', 'PATCH', { plan })).status).toBe(200);
+      expect(await (await request('/v1/orgs/settings-lifecycle/seat_usage')).json()).toEqual({
+        used: 1,
+        limit,
+        plan,
+      });
+    }
     const existing = await (await request('/v1/orgs/acme-corp/members')).json();
     const next = existing.members.find((member: { role: string }) => member.role !== 'owner');
     expect(

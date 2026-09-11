@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { useNavigate } from '@tanstack/react-router';
+import { useNavigate, useRouterState } from '@tanstack/react-router';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { UTurnArrowLeft, GitBranch, LogOut, Plus, Search, SidebarCollapse } from 'iconoir-react';
 import { NAV_ITEMS, SECTION_LABELS, type NavIcon } from './nav-config';
+import { validateSettingsSearch } from './settings-search';
 import { EASE } from './motion';
 import { Kbd } from '@/components/ui/kbd';
 import { useData } from '@/lib/store';
@@ -84,6 +85,7 @@ export function CommandPalette({
   onToggleSidebar?: () => void;
 }) {
   const navigate = useNavigate();
+  const location = useRouterState({ select: (state) => state.location });
   const { workflows } = useData();
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
@@ -100,7 +102,20 @@ export function CommandPalette({
   const commands = useMemo<Command[]>(() => {
     const go = (to: string, search?: Record<string, string>) => () => {
       close();
-      navigate(search ? { to, search } : { to });
+      // Section commands retain the current Settings context, never another route's filters.
+      if (
+        search &&
+        to === '/dashboard/settings' &&
+        location.pathname.replace(/\/+$/, '') === '/dashboard/settings'
+      ) {
+        navigate({
+          to,
+          search: { ...validateSettingsSearch(location.search), ...search },
+          hash: location.hash,
+        });
+      } else {
+        navigate(search ? { to, search } : { to });
+      }
     };
 
     return [
@@ -204,7 +219,7 @@ export function CommandPalette({
         }))
       ),
     ];
-  }, [workflows, navigate, close, onSignOut, onToggleSidebar]);
+  }, [workflows, navigate, location, close, onSignOut, onToggleSidebar]);
 
   // Ranked results, or — when the palette opens empty-handed — the recent
   // commands lifted into their own leading group.
