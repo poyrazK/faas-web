@@ -2017,6 +2017,26 @@ export function useAuditLog() {
   });
 }
 
+/**
+ * Account audit history, paged newest-first by the server's opaque compound
+ * cursor. The audit page keeps already loaded entries visible if an older
+ * page fails, so a transient history read never hides evidence already shown.
+ */
+export function useInfiniteAuditLog(limit = 50) {
+  return useInfiniteQuery({
+    queryKey: [...keys.auditLog, 'history', limit],
+    queryFn: ({ pageParam }) =>
+      unwrap(
+        api.GET('/v1/audit-log', {
+          params: { query: { limit, ...(pageParam ? { before: pageParam } : {}) } },
+        })
+      ),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.next_before ?? undefined,
+    retry: retryPolicy,
+  });
+}
+
 /* ------------------------------------------------------------------ *
  * Alerts and webhooks — both per-app, both signed-payload dispatchers
  * ------------------------------------------------------------------ */
