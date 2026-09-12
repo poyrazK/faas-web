@@ -1,30 +1,25 @@
-import { Check, Circle, RefreshDouble, WarningTriangle } from 'iconoir-react';
+import { Link } from '@tanstack/react-router';
+import { Check, OpenNewWindow, RefreshDouble, WarningTriangle } from 'iconoir-react';
+import { Button } from '@/components/ui/button';
+import { CopyIconButton } from '@/components/ui/copy-button';
 import { useDeployment } from '@/lib/api/queries';
-import {
-  deploymentPhase,
-  isDeploymentTerminal,
-  type DeploymentPhase,
-} from '@/lib/deployment-status';
+import { deploymentPhase, isDeploymentTerminal } from '@/lib/deployment-status';
 import { useLogStream } from '@/lib/api/logs';
-import { cn } from '@/lib/utils';
 import { LogView } from './log-view';
-import { ProgressEdge } from './progress-edge';
 
-type StepState = 'pending' | 'active' | 'done' | 'failed';
-
-const STEPS = ['App created', 'Build', 'Live'] as const;
-
-function stepState(index: number, appCreated: boolean, phase: DeploymentPhase): StepState {
-  if (index === 0) return appCreated ? 'done' : 'active';
-  if (index === 1) {
-    if (phase === 'failed') return 'failed';
-    if (phase === 'live' || phase === 'superseded') return 'done';
-    return appCreated ? 'active' : 'pending';
-  }
-  // A superseded deployment did reach live before a newer one replaced it, so
-  // the step is complete either way.
-  return phase === 'live' || phase === 'superseded' ? 'done' : 'pending';
-}
+// These are server states, not a simulated percentage or a timed sequence.
+const ACTIVE_STATES: Record<string, [string, string]> = {
+  pending: ['Queued for build', 'Your deployment was accepted and is waiting for a builder.'],
+  queued: ['Queued for build', 'Your deployment was accepted and is waiting for a builder.'],
+  building: [
+    'Building your app',
+    'The builder is processing your source. Build output is available below.',
+  ],
+  imaging: ['Preparing the image', 'The platform is preparing the image for your app.'],
+  snapshotting: ['Preparing the runtime', 'The platform is preparing your app’s runtime snapshot.'],
+  deploying: ['Deploying your app', 'Your deployment is being prepared to serve traffic.'],
+  dispatching: ['Dispatching your app', 'Your deployment is being dispatched to a worker.'],
+};
 
 export function DeploymentProgress({
   appCreated,
@@ -33,6 +28,7 @@ export function DeploymentProgress({
   repo,
   sourceRef,
   submissionError,
+  endpoint,
 }: {
   appCreated: boolean;
   appName: string;
@@ -40,6 +36,7 @@ export function DeploymentProgress({
   repo: string;
   sourceRef: string;
   submissionError?: string | null;
+  endpoint?: string | null;
 }) {
   const statusQuery = useDeployment(deploymentId ?? '', {
     refetchInterval: (query) => {
@@ -51,155 +48,182 @@ export function DeploymentProgress({
     { kind: 'build', deploymentId: deploymentId ?? '', limit: 200 },
     Boolean(deploymentId)
   );
-  const deployment = statusQuery.data;
-  const phase = deploymentPhase(deployment?.status);
-  const hasBuild = Boolean(deploymentId);
-  const live = phase === 'live';
-  // Replaced while this panel was watching: finished, but no longer serving.
+  const deployment = deploymentId ? statusQuery.data : undefined;
+  const status = deployment?.status?.toLowerCase();
+  const phase = deploymentPhase(status);
+  const unavailable = Boolean(deploymentId && statusQuery.isError);
+  const live = phase === 'live' && !unavailable && !submissionError;
   const superseded = phase === 'superseded';
-  const settled = live || superseded;
-  const failed = phase === 'failed' || Boolean(submissionError);
-  const progress = !appCreated ? 8 : settled ? 100 : failed ? 66 : hasBuild ? 50 : 33;
+  const failed = Boolean(submissionError) || (phase === 'failed' && !unavailable);
+  const cancelled = status === 'cancelled';
 
-  const title = !appCreated
-    ? 'Creating app'
+  const [title, description] = !appCreated
+    ? ['Creating app', `Saving the configuration for ${appName}.`]
     : submissionError
-      ? 'Build submission failed'
-      : !hasBuild
-        ? 'Submitting build'
-        : live
-          ? 'Deployment live'
-          : superseded
-            ? 'Replaced by a newer deployment'
-            : failed
-              ? 'Deployment failed'
-              : 'Build in progress';
+      ? [
+          'Build submission failed',
+          'Your app was created. Retry below without creating another app.',
+        ]
+      : unavailable
+        ? [
+            'Status temporarily unavailable',
+            'We can’t confirm the latest deployment state. This does not mean the deployment failed.',
+          ]
+        : !deploymentId
+          ? [
+              'Submitting your deployment',
+              'Your app is created. We’re sending its source to the builder.',
+            ]
+          : live
+            ? ['Your app is live', `${appName} is ready to receive requests.`]
+            : superseded
+              ? [
+                  'Replaced by a newer deployment',
+                  'This deployment is no longer serving. View your app to check the current release.',
+                ]
+              : cancelled
+                ? [
+                    'Deployment cancelled',
+                    'This deployment was stopped. Your app still exists; you can start another deployment from its page.',
+                  ]
+                : failed
+                  ? [
+                      'Deployment failed',
+                      'Your app is saved. Review the cause below, then open the deployment to inspect it and retry.',
+                    ]
+                  : status
+                    ? (ACTIVE_STATES[status] ?? [
+                        'Deployment in progress',
+                        `The platform reports “${deployment?.status}”. Waiting for a confirmed live state.`,
+                      ])
+                    : [
+                        'Reading deployment status',
+                        'Your deployment was accepted. Waiting for its current status.',
+                      ];
 
-  const description = !appCreated
-    ? `Creating ${appName} with the configuration you reviewed.`
-    : submissionError
-      ? 'The app was created, but the first deployment could not be submitted.'
-      : !hasBuild
-        ? 'The app exists. The first deployment is being submitted to the builder.'
-        : live
-          ? `${appName} is live. This status came from the deployment API.`
-          : superseded
-            ? `This deployment shipped, then a newer one replaced it. ${appName} is served by that newer deployment.`
-            : failed
-              ? 'The deployment API reported a failure. Review the error below and try again from the app page.'
-              : 'The deployment is queued or building. This page refreshes its real status automatically.';
-
-  const statusText = !appCreated
-    ? 'Creating app…'
-    : submissionError
-      ? 'Build submission failed'
-      : !hasBuild
-        ? 'Submitting first build…'
-        : statusQuery.isError
-          ? 'Unable to refresh deployment status'
-          : deployment?.status
-            ? `Deployment status: ${deployment.status}`
-            : 'Waiting for the builder…';
+  const reason = submissionError || deployment?.error_why || deployment?.error;
+  const nextAction = deployment?.error_fix || deployment?.error_hint;
 
   return (
-    <section className="overflow-hidden rounded-xl border border-border bg-card">
-      <ProgressEdge progress={progress} state={settled ? 'done' : failed ? 'failed' : 'running'} />
-
-      <div className="p-5">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-sm font-medium">{title}</h2>
-            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{description}</p>
+    <section
+      aria-label="First deployment"
+      className="overflow-hidden rounded-xl border border-border bg-card"
+    >
+      <div className="p-5 sm:p-6">
+        <div className="flex items-start gap-3">
+          <span aria-hidden className="mt-1 shrink-0">
+            {live ? (
+              <Check className="h-5 w-5 text-brand" />
+            ) : failed || unavailable || superseded ? (
+              <WarningTriangle
+                className="h-5 w-5"
+                style={{ color: failed ? 'var(--status-critical)' : 'var(--status-warning)' }}
+              />
+            ) : (
+              <RefreshDouble className="h-5 w-5 animate-spin text-brand motion-reduce:animate-none" />
+            )}
+          </span>
+          <div className="min-w-0">
+            <h2 className="text-lg font-medium tracking-tight">{title}</h2>
+            <p className="mt-2 max-w-lg text-sm leading-relaxed text-muted-foreground">
+              {description}
+            </p>
           </div>
-          {hasBuild && !settled && !failed && (
-            <RefreshDouble className="h-4 w-4 shrink-0 animate-spin text-brand" aria-hidden />
-          )}
-          {settled && <Check className="h-4 w-4 shrink-0 text-brand" aria-hidden />}
-          {failed && (
-            <WarningTriangle
-              className="h-4 w-4 shrink-0"
-              style={{ color: 'var(--status-critical)' }}
-              aria-hidden
-            />
-          )}
         </div>
-
         <p aria-live="polite" aria-atomic="true" className="sr-only">
-          {statusText}
+          {title}
         </p>
 
-        <ol className="mt-5 flex flex-col gap-1">
-          {STEPS.map((label, index) => {
-            const state = stepState(index, appCreated, failed ? 'failed' : phase);
-            return (
-              <li
-                key={label}
-                className={cn(
-                  'flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm',
-                  state === 'pending' && 'text-muted-foreground/50',
-                  state === 'active' && 'bg-muted text-foreground',
-                  state === 'done' && 'text-muted-foreground',
-                  state === 'failed' && 'text-[color:var(--status-critical)]'
-                )}
-              >
-                <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-                  {state === 'done' && <Check className="h-3.5 w-3.5 text-brand" />}
-                  {state === 'active' && (
-                    <RefreshDouble className="h-3.5 w-3.5 animate-spin text-brand" />
-                  )}
-                  {state === 'failed' && <WarningTriangle className="h-3.5 w-3.5" />}
-                  {state === 'pending' && <Circle className="h-2.5 w-2.5" />}
-                </span>
-                {label}
-              </li>
-            );
-          })}
-        </ol>
+        {failed && (
+          <div
+            role="alert"
+            className="mt-5 rounded-lg border border-[color:var(--status-critical)]/30 p-4"
+          >
+            <p className="whitespace-pre-wrap break-words text-sm">
+              {reason ||
+                (cancelled
+                  ? 'The deployment was cancelled.'
+                  : 'No failure explanation was returned. Open the deployment to inspect its logs.')}
+            </p>
+            {!submissionError && nextAction && (
+              <div className="mt-3 border-t border-border pt-3">
+                <p className="text-xs font-medium text-muted-foreground">Next step</p>
+                <p className="mt-1 whitespace-pre-wrap break-words text-sm">{nextAction}</p>
+              </div>
+            )}
+          </div>
+        )}
+        {unavailable && (
+          <Button
+            className="mt-4"
+            variant="outline"
+            size="sm"
+            busy={statusQuery.isFetching}
+            onClick={() => void statusQuery.refetch()}
+          >
+            Refresh status
+          </Button>
+        )}
 
-        <div className="mt-4 border-t border-border pt-3 text-xs text-muted-foreground">
-          <p>
+        {endpoint && (
+          <div className="mt-6 flex flex-wrap items-center justify-between gap-4 border-t border-border pt-5">
+            <div className="min-w-0 flex-1 basis-56">
+              <p className="text-xs text-muted-foreground">
+                App endpoint{!live && ' · available when live'}
+              </p>
+              <div className="mt-1 flex items-center gap-2">
+                <span className="min-w-0 break-all font-mono text-sm">{endpoint}</span>
+                {live && <CopyIconButton text={endpoint} label="Copy app endpoint" />}
+              </div>
+            </div>
+            {live && (
+              <Button asChild variant="cta">
+                <a href={endpoint} target="_blank" rel="noopener noreferrer">
+                  Open app
+                  <OpenNewWindow aria-hidden />
+                </a>
+              </Button>
+            )}
+          </div>
+        )}
+
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
+          <p className="min-w-0 break-all text-xs text-muted-foreground">
             Source{' '}
             <span className="font-mono text-foreground">
-              {repo}@{sourceRef || 'main'}
+              {repo}@{sourceRef.trim() || 'main'}
             </span>
           </p>
           {deploymentId && (
-            <p className="mt-1">
-              Deployment <span className="font-mono text-foreground">{deploymentId}</span>
-            </p>
-          )}
-          {statusQuery.isError && (
-            <p className="mt-2" style={{ color: 'var(--status-warning)' }}>
-              {statusText}. We’ll keep trying to read the server state.
-            </p>
-          )}
-          {deployment?.error && (
-            <p className="mt-2" style={{ color: 'var(--status-critical)' }}>
-              {deployment.error}
-            </p>
-          )}
-          {submissionError && (
-            <p className="mt-2" style={{ color: 'var(--status-critical)' }}>
-              {submissionError}
-            </p>
+            <Link
+              to="/dashboard/deployments"
+              search={{ deployment: deploymentId, releaseSection: 'overview' }}
+              className="text-xs text-brand underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-brand"
+            >
+              Review deployment
+            </Link>
           )}
         </div>
 
-        {hasBuild && (
-          <div className="mt-5 border-t border-border pt-4">
-            <p className="label-mono mb-2 text-muted-foreground">Build output</p>
-            {buildLog.lines.length > 0 ? (
-              <LogView lines={buildLog.lines} className="max-h-64" />
-            ) : buildLog.status === 'connecting' ? (
-              <p className="text-sm text-muted-foreground">Reading the build log…</p>
-            ) : buildLog.status === 'error' ? (
-              <p className="text-sm text-muted-foreground">
-                The build log disconnected{buildLog.reason ? `: ${buildLog.reason}` : '.'}
-              </p>
-            ) : (
-              <p className="text-sm text-muted-foreground">No build output has arrived yet.</p>
-            )}
-          </div>
+        {deploymentId && (
+          <details open={failed || undefined} className="mt-4 border-t border-border pt-4">
+            <summary className="cursor-pointer text-sm text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-brand">
+              Build output
+            </summary>
+            <div className="mt-3">
+              {buildLog.lines.length > 0 ? (
+                <LogView lines={buildLog.lines} className="max-h-64" />
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  {buildLog.status === 'connecting'
+                    ? 'Connecting to the build log…'
+                    : buildLog.status === 'error'
+                      ? 'The build log disconnected. Review the deployment for more details.'
+                      : 'No build output has arrived yet.'}
+                </p>
+              )}
+            </div>
+          </details>
         )}
       </div>
     </section>

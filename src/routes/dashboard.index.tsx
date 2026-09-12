@@ -411,7 +411,7 @@ function OverviewPage() {
       <div className="flex flex-col gap-6">
         <PageHeader
           title={firstName ? `Welcome, ${firstName}` : 'Overview'}
-          description="Nothing deployed yet. Three commands and you are live."
+          description="Your first app starts here. Choose a source and we’ll guide you through deployment."
         />
         <FirstRun />
       </div>

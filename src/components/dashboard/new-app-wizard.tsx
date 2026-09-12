@@ -46,19 +46,19 @@ const SOURCES = [
   {
     id: 'git',
     name: 'Git repository',
-    desc: 'Build the ref right after the app is created.',
+    desc: 'Build and deploy a branch, tag, or commit directly from the console.',
     icon: Github,
   },
   {
     id: 'empty',
     name: 'Empty app',
-    desc: 'Set up the app now and deploy it from the CLI or CI later.',
+    desc: 'Create the app without a deployment. Add code from the CLI or CI later.',
     icon: Package,
   },
   {
     id: 'template',
     name: 'Template',
-    desc: 'Choose a starter, create the app, then deploy its scaffold with the CLI.',
+    desc: 'Start with sample code. Create the app here, then deploy it with the CLI.',
     icon: Page,
   },
   {
@@ -352,7 +352,14 @@ export function NewAppWizard({
             repo={repo}
             sourceRef={ref}
             submissionError={submissionError}
+            endpoint={createdUrl}
           />
+        ) : !createdId ? (
+          <Panel title="Creating app">
+            <p role="status" className="text-sm text-muted-foreground">
+              Saving your configuration. No deployment has started yet.
+            </p>
+          </Panel>
         ) : !template && catalogTemplate ? (
           <Panel
             title={`${catalogTemplate.name} scaffold`}
@@ -429,19 +436,21 @@ export function NewAppWizard({
             transition={{ duration: reduce ? 0 : 0.3, ease: EASE }}
             className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-4"
           >
-            <div className="min-w-0">
+            {source !== 'git' && (
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground">
+                  App endpoint · available after deployment
+                </p>
+                <p className="break-all font-mono text-xs text-muted-foreground">
+                  {createdUrl ?? 'Waiting for the endpoint…'}
+                </p>
+              </div>
+            )}
+            {source === 'git' && (
               <p className="text-xs text-muted-foreground">
-                {source === 'git' && deploymentId ? 'Endpoint' : 'App endpoint'}
+                Manage settings and future deployments from the app page.
               </p>
-              <a
-                href={createdUrl ?? undefined}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-mono text-xs text-muted-foreground transition-colors hover:text-foreground"
-              >
-                {createdUrl ?? 'Waiting for the endpoint…'}
-              </a>
-            </div>
+            )}
             <div className="flex gap-2">
               <Button
                 variant="outline"
@@ -451,7 +460,7 @@ export function NewAppWizard({
                 All apps
               </Button>
               <Button
-                variant="cta"
+                variant={source === 'git' ? 'outline' : 'cta'}
                 size="sm"
                 className="gap-1.5 rounded-md"
                 onClick={() =>
@@ -618,8 +627,8 @@ export function NewAppWizard({
                   )}
                 </label>
                 <p className="text-xs text-muted-foreground sm:col-span-2">
-                  The repository has to be reachable by the GitHub installation from{' '}
-                  <span className="font-mono">gregale connect</span>.
+                  Choose a repository your connected GitHub account has granted Gregale access to.
+                  The ref can be a branch, tag, or commit SHA.
                 </p>
               </div>
             ) : null}

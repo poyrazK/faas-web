@@ -1,23 +1,15 @@
 import { Link } from '@tanstack/react-router';
-import { NavArrowRight } from 'iconoir-react';
+import { Github } from 'iconoir-react';
 import { INSTALL_COMMAND } from '@/components/landing/install-command';
 import { CopyIconButton } from '@/components/ui/copy-button';
+import { Button } from '@/components/ui/button';
 import { Panel } from './primitives';
 
 /**
  * What the console says to an account with nothing in it.
  *
- * The alternative — four zeroes and a dash — is technically accurate and
- * tells a new user nothing about what to do next. The landing already sells
- * the product as three commands in a terminal; this continues that same
- * script on the other side of the sign-up, in the same vocabulary.
- *
- * **Every command here is one the CLI documents** (`content/docs/cli.md`,
- * `deploy-from-source.md`). Nothing is invented for the sake of a tidy
- * three-step story.
- *
- * The numbering is information rather than decoration: the steps genuinely
- * have to happen in this order.
+ * Browser setup is the primary path; the documented CLI remains available
+ * without making a first-time console user install anything to get started.
  */
 
 const STEPS: { command: string; caption: string }[] = [
@@ -37,44 +29,79 @@ const STEPS: { command: string; caption: string }[] = [
 
 export function FirstRun() {
   return (
-    <Panel lit padded={false} title="Deploy your first app">
-      <ol className="flex flex-col">
-        {STEPS.map((step, i) => (
-          <li
-            key={step.command}
-            className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border px-5 py-4 last:border-0"
-          >
-            <span
-              aria-hidden
-              className="label-mono flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border text-muted-foreground"
-            >
-              {i + 1}
-            </span>
-
-            <div className="flex min-w-0 flex-1 flex-col gap-1">
-              <div className="flex items-center gap-2">
-                <span aria-hidden className="font-mono text-sm text-brand">
-                  $
-                </span>
-                <code className="truncate font-mono text-sm text-foreground">{step.command}</code>
-                <CopyIconButton text={step.command} label={step.command} />
+    <Panel padded={false} title="Deploy your first app">
+      <div className="px-5 py-6 sm:px-6">
+        <p className="max-w-lg text-sm leading-relaxed text-muted-foreground">
+          Connect a GitHub repository and take it from source to a live endpoint, right here in the
+          console.
+        </p>
+        <div className="mt-5 flex flex-wrap gap-3">
+          <Button asChild variant="cta">
+            <Link to="/dashboard/workflows/new" search={{ source: 'git' }}>
+              <Github aria-hidden />
+              Deploy from GitHub
+            </Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link to="/dashboard/workflows/new" search={{ source: 'template' }}>
+              Explore templates
+            </Link>
+          </Button>
+        </div>
+        <p className="mt-3 text-xs text-muted-foreground">
+          Templates provide starter code to deploy with the CLI.
+        </p>
+        <ol className="mt-7 grid gap-5 border-t border-border pt-5 sm:grid-cols-3">
+          {[
+            ['Choose a source', 'Select your repository and branch.'],
+            ['Configure your app', 'Choose a runtime and review your settings.'],
+            ['Deploy and open', 'Follow the build, then open your live app.'],
+          ].map(([title, description], index) => (
+            <li key={title} className="flex gap-3">
+              <span aria-hidden className="text-sm text-brand">
+                {index + 1}
+              </span>
+              <div>
+                <p className="text-sm font-medium">{title}</p>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{description}</p>
               </div>
-              <p className="text-xs text-muted-foreground">{step.caption}</p>
-            </div>
-          </li>
-        ))}
-      </ol>
-
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border px-5 py-3.5">
-        <p className="text-xs text-muted-foreground">Prefer to stay in the browser?</p>
-        <Link
-          to="/dashboard/workflows/new"
-          className="group inline-flex items-center gap-1 text-xs text-brand transition-colors hover:text-brand-hover"
-        >
-          Create an app from a repository
-          <NavArrowRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" />
-        </Link>
+            </li>
+          ))}
+        </ol>
       </div>
+      <details className="border-t border-border">
+        <summary className="cursor-pointer px-5 py-4 text-sm text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-brand">
+          Prefer the CLI?
+        </summary>
+        <ol className="flex flex-col">
+          {STEPS.map((step, i) => (
+            <li
+              key={step.command}
+              className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border px-5 py-4 last:border-0"
+            >
+              <span
+                aria-hidden
+                className="label-mono flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border text-muted-foreground"
+              >
+                {i + 1}
+              </span>
+
+              <div className="flex min-w-0 flex-1 flex-col gap-1">
+                <div className="flex items-center gap-2">
+                  <span aria-hidden className="font-mono text-sm text-brand">
+                    $
+                  </span>
+                  <code className="min-w-0 break-all font-mono text-xs text-foreground">
+                    {step.command}
+                  </code>
+                  <CopyIconButton text={step.command} label={step.command} />
+                </div>
+                <p className="text-xs text-muted-foreground">{step.caption}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+      </details>
     </Panel>
   );
 }
