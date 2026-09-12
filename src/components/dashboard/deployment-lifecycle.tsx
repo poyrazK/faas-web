@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { Link } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
@@ -48,6 +49,9 @@ export function DeploymentLifecycle({
   const retry = useRetryDeployment();
   const { data: apps } = useApps();
   const [stage, setStage] = useState<RetryStage>('source_download');
+  const [retryResultId, setRetryResultId] = useState<string | null>(null);
+  const [retryError, setRetryError] = useState<string | null>(null);
+  const retryLock = useRef(false);
 
   const inFlight = IN_FLIGHT.has(deployment.status);
   const failed = deployment.status === 'failed';
@@ -88,18 +92,27 @@ export function DeploymentLifecycle({
   };
 
   const onRetry = () => {
+    if (retryLock.current || retry.isPending) return;
+    retryLock.current = true;
+    setRetryError(null);
+    setRetryResultId(null);
     void retry
       .mutateAsync({ id: deployment.id, from_stage: stage })
-      .then(() =>
+      .then((result) => {
+        setRetryResultId(result.id ?? null);
         toast({
           kind: 'success',
           title: 'Retry started',
           description: 'It appears as a new deployment; this one stays as it is.',
-        })
-      )
-      .catch((err: unknown) =>
-        toast({ kind: 'error', title: 'Could not retry', description: errorMessage(err) })
-      );
+        });
+      })
+      .catch((err: unknown) => {
+        setRetryError(errorMessage(err));
+        toast({ kind: 'error', title: 'Could not retry', description: errorMessage(err) });
+      })
+      .finally(() => {
+        retryLock.current = false;
+      });
   };
 
   return (
@@ -132,6 +145,7 @@ export function DeploymentLifecycle({
             <select
               aria-label="Resume from"
               value={stage}
+              disabled={retry.isPending}
               onChange={(e) => setStage(e.target.value as RetryStage)}
               className="mt-1 h-8 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-brand/50"
             >
@@ -147,6 +161,26 @@ export function DeploymentLifecycle({
               Retry deployment
             </Button>
           </div>
+          {retryError && (
+            <p
+              role="alert"
+              className="whitespace-pre-wrap text-sm text-status-critical [overflow-wrap:anywhere]"
+            >
+              {retryError}
+            </p>
+          )}
+          {retryResultId && (
+            <div role="status" className="mt-2 rounded-md border border-brand/25 p-3 text-sm">
+              <p>The retry was accepted as a new deployment. This failed record is unchanged.</p>
+              <Link
+                to="/dashboard/deployments"
+                search={{ deployment: retryResultId, releaseSection: 'overview' }}
+                className="mt-2 inline-block text-brand underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-brand"
+              >
+                View new deployment
+              </Link>
+            </div>
+          )}
         </div>
       )}
     </div>

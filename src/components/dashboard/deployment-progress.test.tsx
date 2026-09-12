@@ -11,6 +11,7 @@ const api = vi.hoisted(() => ({
   fix: '',
   readFailed: false,
   refetch: vi.fn(),
+  navigate: vi.fn(),
 }));
 vi.mock('@/lib/api/queries', () => ({
   useDeployment: () => ({
@@ -24,6 +25,7 @@ vi.mock('@/lib/api/queries', () => ({
       error: api.error,
       error_why: api.why,
       error_fix: api.fix,
+      error_relevant_logs: [{ message: 'server-selected excerpt' }],
     },
     isError: api.readFailed,
     refetch: api.refetch,
@@ -33,6 +35,7 @@ vi.mock('@/lib/api/logs', () => ({
   useLogStream: () => ({ lines: [], status: 'streaming', reason: null }),
 }));
 vi.mock('@tanstack/react-router', () => ({
+  useNavigate: () => api.navigate,
   Link: ({ children, to }: { children: ReactNode; to: string }) => <a href={to}>{children}</a>,
 }));
 
@@ -91,7 +94,9 @@ describe('first deployment progress', () => {
     api.status = 'failed';
     api.error = 'The start command exited with code 1.';
     render(<DeploymentProgress {...props} />);
-    expect(screen.getByRole('alert')).toHaveTextContent(api.error);
+    expect(screen.getByRole('region', { name: 'Failure explanation' })).toHaveTextContent(
+      api.error
+    );
     expect(screen.getByRole('link', { name: 'Review deployment' })).toBeVisible();
   });
 
@@ -109,8 +114,8 @@ describe('first deployment progress', () => {
     api.why = 'The configured start command could not be found.';
     api.fix = 'Set the start command to an executable in your image.';
     render(<DeploymentProgress {...props} />);
-    expect(screen.getByRole('alert')).toHaveTextContent(api.why);
-    expect(screen.getByRole('alert')).toHaveTextContent(api.fix);
+    expect(screen.getByRole('region', { name: 'Failure explanation' })).toHaveTextContent(api.why);
+    expect(screen.getByRole('region', { name: 'Failure explanation' })).toHaveTextContent(api.fix);
     expect(screen.getByText('Build output').closest('details')).toHaveAttribute('open');
   });
 
@@ -119,6 +124,19 @@ describe('first deployment progress', () => {
     render(<DeploymentProgress {...props} />);
     await userEvent.click(screen.getByRole('button', { name: 'Refresh status' }));
     expect(api.refetch).toHaveBeenCalledOnce();
+  });
+
+  it('shows relevant evidence and routes to retry options for the exact failed deployment', async () => {
+    api.status = 'failed';
+    render(<DeploymentProgress {...props} />);
+    expect(screen.getByText('server-selected excerpt')).toBeVisible();
+    await userEvent.click(screen.getByRole('button', { name: 'View build output' }));
+    expect(screen.getByText('Build output')).toHaveFocus();
+    await userEvent.click(screen.getByRole('button', { name: 'Retry options' }));
+    expect(api.navigate).toHaveBeenCalledWith({
+      to: '/dashboard/deployments',
+      search: { deployment: 'deploy-1', releaseSection: 'lifecycle' },
+    });
   });
 
   it('keeps submission failure distinct from a running deployment', () => {

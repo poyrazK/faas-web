@@ -1,4 +1,5 @@
-import { Link } from '@tanstack/react-router';
+import { useRef } from 'react';
+import { Link, useNavigate } from '@tanstack/react-router';
 import { Check, OpenNewWindow, RefreshDouble, WarningTriangle } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { CopyIconButton } from '@/components/ui/copy-button';
@@ -6,6 +7,8 @@ import { useDeployment } from '@/lib/api/queries';
 import { deploymentPhase, isDeploymentTerminal } from '@/lib/deployment-status';
 import { useLogStream } from '@/lib/api/logs';
 import { LogView } from './log-view';
+import { FailurePanel } from './failure-panel';
+import { failureSummary } from './failure-summary';
 
 // These are server states, not a simulated percentage or a timed sequence.
 const ACTIVE_STATES: Record<string, [string, string]> = {
@@ -38,6 +41,8 @@ export function DeploymentProgress({
   submissionError?: string | null;
   endpoint?: string | null;
 }) {
+  const navigate = useNavigate();
+  const outputRef = useRef<HTMLDetailsElement>(null);
   const statusQuery = useDeployment(deploymentId ?? '', {
     refetchInterval: (query) => {
       if (!deploymentId || isDeploymentTerminal(query.state.data?.status)) return false;
@@ -101,9 +106,6 @@ export function DeploymentProgress({
                         'Your deployment was accepted. Waiting for its current status.',
                       ];
 
-  const reason = submissionError || deployment?.error_why || deployment?.error;
-  const nextAction = deployment?.error_fix || deployment?.error_hint;
-
   return (
     <section
       aria-label="First deployment"
@@ -134,24 +136,43 @@ export function DeploymentProgress({
           {title}
         </p>
 
-        {failed && (
-          <div
-            role="alert"
-            className="mt-5 rounded-lg border border-[color:var(--status-critical)]/30 p-4"
-          >
-            <p className="whitespace-pre-wrap break-words text-sm">
-              {reason ||
-                (cancelled
-                  ? 'The deployment was cancelled.'
-                  : 'No failure explanation was returned. Open the deployment to inspect its logs.')}
-            </p>
-            {!submissionError && nextAction && (
-              <div className="mt-3 border-t border-border pt-3">
-                <p className="text-xs font-medium text-muted-foreground">Next step</p>
-                <p className="mt-1 whitespace-pre-wrap break-words text-sm">{nextAction}</p>
-              </div>
-            )}
+        {failed && !submissionError && !cancelled && deployment ? (
+          <div className="mt-5">
+            <FailurePanel
+              summary={failureSummary({ deployment })}
+              onViewOutput={() => {
+                if (!outputRef.current) return;
+                outputRef.current.open = true;
+                outputRef.current.querySelector('summary')?.focus();
+                outputRef.current.scrollIntoView({ block: 'nearest' });
+              }}
+              onRetryOptions={
+                deployment.status === 'failed'
+                  ? () => {
+                      void navigate({
+                        to: '/dashboard/deployments',
+                        search: { deployment: deployment.id, releaseSection: 'lifecycle' },
+                      });
+                    }
+                  : undefined
+              }
+            />
           </div>
+        ) : (
+          failed && (
+            <div
+              role="alert"
+              className="mt-5 rounded-lg border border-[color:var(--status-critical)]/30 p-4"
+            >
+              <p className="whitespace-pre-wrap break-words text-sm">
+                {submissionError ||
+                  deployment?.error ||
+                  (cancelled
+                    ? 'The deployment was cancelled.'
+                    : 'No failure explanation was returned. Open the deployment to inspect its logs.')}
+              </p>
+            </div>
+          )
         )}
         {unavailable && (
           <Button
@@ -206,7 +227,12 @@ export function DeploymentProgress({
         </div>
 
         {deploymentId && (
-          <details open={failed || undefined} className="mt-4 border-t border-border pt-4">
+          <details
+            ref={outputRef}
+            key={deploymentId}
+            open={failed || undefined}
+            className="mt-4 border-t border-border pt-4"
+          >
             <summary className="cursor-pointer text-sm text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-brand">
               Build output
             </summary>
