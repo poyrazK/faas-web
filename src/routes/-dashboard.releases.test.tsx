@@ -458,7 +458,10 @@ describe('Releases hub', () => {
   ])('uses shared release evidence and operational actions at %s', async (entry) => {
     const router = await mount(entry);
     expect(await screen.findByRole('heading', { name: 'Release details' })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Build output' }));
+    expect(screen.getByRole('region', { name: 'Failure explanation' })).toHaveTextContent(
+      'The build ran out of memory.'
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'View build output' }));
     const stream = Stream.instances.at(-1)!;
     expect(stream.url).toContain('/v1/deployments/dep-1/logs');
     act(() => stream.emit('log', 'compiler output'));
@@ -468,12 +471,17 @@ describe('Releases hub', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Security scans' }));
     expect(await screen.findByText('CVE-2026-1234')).toBeInTheDocument();
     expect(screen.getByText('/app/config:4')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Lifecycle' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Overview' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Retry options' }));
     fireEvent.change(screen.getByRole('combobox', { name: 'Resume from' }), {
       target: { value: 'image_build' },
     });
     await userEvent.click(screen.getByRole('button', { name: 'Retry deployment' }));
     expect(fixtures.retry).toHaveBeenCalledWith({ id: 'dep-1', from_stage: 'image_build' });
+    expect(await screen.findByRole('link', { name: 'View new deployment' })).toHaveAttribute(
+      'href',
+      '/dashboard/deployments?deployment=retry-1&releaseSection=overview'
+    );
     await userEvent.click(screen.getByRole('button', { name: 'Runtime controls' }));
     fireEvent.change(screen.getByRole('spinbutton', { name: /Minimum instances/ }), {
       target: { value: '2' },

@@ -12,7 +12,7 @@ import {
 import { ReleaseStatusLabel } from './release-status-label';
 import { useLogStream } from '@/lib/api/logs';
 import { useApp, useApps, useBuild, useDeployment } from '@/lib/api/queries';
-import { isDeploymentTerminal } from '@/lib/deployment-status';
+import { deploymentPhase, isDeploymentTerminal } from '@/lib/deployment-status';
 import { formatRelative } from '@/lib/mock-data';
 import { AdvanceCanaryButton, ReorderDeploymentControl } from './deployment-actions';
 import { DeploymentAudit, DeploymentPreviewUrl, DeploymentStages } from './deployment-insights';
@@ -24,6 +24,8 @@ import { RELEASE_SECTIONS, sourceSize, type ReleaseSection } from './releases-se
 import { RolloutRecovery } from './rollout-recovery';
 import { LogView } from './log-view';
 import { useDetailFocus } from './use-detail-focus';
+import { failureSummary } from './failure-summary';
+import { FailurePanel } from './failure-panel';
 
 function relativeTime(value?: string): string {
   if (!value) return '—';
@@ -100,6 +102,12 @@ export function ReleaseDetailPanel({
   const deploymentUnavailable = Boolean(
     resolvedDeploymentId && (detail.error || detail.isPending || !deployment)
   );
+  const confirmedDeployment = !deploymentUnavailable && ownsDeployment ? deployment : undefined;
+  const failedDeployment =
+    confirmedDeployment &&
+    deploymentPhase(confirmedDeployment.status) === 'failed' &&
+    confirmedDeployment.status.toLowerCase() !== 'cancelled';
+  const failedBuild = ownsDeployment && !buildQuery.error && build?.status === 'failed';
   const deploymentState = (
     <div className="flex flex-col items-start gap-3" role="region" aria-label="Deployment evidence">
       <InlinePhase
@@ -172,6 +180,20 @@ export function ReleaseDetailPanel({
             </nav>
             {activeSection === 'overview' && (
               <>
+                {(failedDeployment || failedBuild) && (
+                  <FailurePanel
+                    summary={failureSummary({
+                      deployment: failedDeployment ? confirmedDeployment : undefined,
+                      build: failedBuild ? build : undefined,
+                    })}
+                    onViewOutput={() => (onSectionChange ?? setLocalSection)('output')}
+                    onRetryOptions={
+                      confirmedDeployment?.status === 'failed'
+                        ? () => (onSectionChange ?? setLocalSection)('lifecycle')
+                        : undefined
+                    }
+                  />
+                )}
                 {deploymentUnavailable ? (
                   deploymentState
                 ) : deployment ? (
@@ -210,7 +232,7 @@ export function ReleaseDetailPanel({
                         ],
                       ]}
                     />
-                    {deployment.error && (
+                    {deployment.error && !failedDeployment && (
                       <p
                         role="alert"
                         className="rounded-md border border-border px-3 py-2 text-sm text-[color:var(--status-critical)]"

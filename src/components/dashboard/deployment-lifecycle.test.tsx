@@ -2,6 +2,19 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/lib/api/errors';
+import type { ReactNode } from 'react';
+
+vi.mock('@tanstack/react-router', () => ({
+  Link: ({
+    to,
+    search,
+    children,
+  }: {
+    to: string;
+    search: Record<string, string>;
+    children: ReactNode;
+  }) => <a href={`${to}?${new URLSearchParams(search)}`}>{children}</a>,
+}));
 
 const cancel = vi.fn();
 const retry = vi.fn();
@@ -30,6 +43,32 @@ beforeEach(() => {
 });
 
 describe('DeploymentLifecycle', () => {
+  it('links to the returned deployment after retry, not the failed record', async () => {
+    retry.mockResolvedValue({ id: 'new-deployment' });
+    render(<DeploymentLifecycle deployment={deployment('failed')} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Retry deployment' }));
+    expect(await screen.findByRole('link', { name: 'View new deployment' })).toHaveAttribute(
+      'href',
+      '/dashboard/deployments?deployment=new-deployment&releaseSection=overview'
+    );
+  });
+  it('preserves retry stage and displays a rejected mutation inline', async () => {
+    retry.mockRejectedValue(
+      new ApiError({ status: 403, code: 'forbidden', title: 'Deploy permission required' })
+    );
+    render(<DeploymentLifecycle deployment={deployment('failed')} />);
+    await userEvent.selectOptions(screen.getByLabelText(/resume from/i), 'image_build');
+    await userEvent.click(screen.getByRole('button', { name: 'Retry deployment' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Deploy permission required');
+    expect(screen.getByLabelText(/resume from/i)).toHaveValue('image_build');
+    expect(screen.queryByRole('link', { name: 'View new deployment' })).not.toBeInTheDocument();
+  });
+  it('does not submit twice while a retry is unresolved', async () => {
+    retry.mockReturnValue(new Promise(() => {}));
+    render(<DeploymentLifecycle deployment={deployment('failed')} />);
+    await userEvent.dblClick(screen.getByRole('button', { name: 'Retry deployment' }));
+    expect(retry).toHaveBeenCalledOnce();
+  });
   it('offers cancel while a deployment is in flight', () => {
     render(<DeploymentLifecycle deployment={deployment('building')} />);
     expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument();
