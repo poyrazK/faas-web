@@ -53,6 +53,7 @@ import { AppConfiguration } from '@/components/dashboard/app-configuration';
 import { InvokePanel, SloPanel } from '@/components/dashboard/app-core-panels';
 import { AppUsagePanel, WakeTimelinePanel } from '@/components/dashboard/app-insights';
 import { AppAnalyticsPanel } from '@/components/dashboard/app-analytics';
+import { AppOverview } from '@/components/dashboard/app-overview';
 import { RestartAppButton } from '@/components/dashboard/app-lifecycle';
 import { TarballDeploy } from '@/components/dashboard/tarball-deploy';
 import { TearDownPreviewButton } from '@/components/dashboard/preview-actions';
@@ -84,6 +85,7 @@ const METRIC_RANGES: MetricsRange[] = ['5m', '15m', '1h', '6h', '24h', '7d', '15
  * app and the right tab.
  */
 const TABS = [
+  'Overview',
   'Metrics',
   'Invoke',
   'Deployments',
@@ -149,7 +151,7 @@ export const Route = createFileRoute('/dashboard/workflows/$workflowId')({
 function FunctionDetailPage() {
   const { workflowId } = useParams({ from: '/dashboard/workflows/$workflowId' });
   const search = Route.useSearch();
-  const { tab = 'Metrics', deployment: selectedDeploymentId, releaseSection } = search;
+  const { tab = 'Overview', deployment: selectedDeploymentId, releaseSection } = search;
   const navigate = Route.useNavigate();
   // Preserve nested investigations when the operator leaves and returns to a tab.
   const setTab = (next: Tab) =>
@@ -198,7 +200,9 @@ function FunctionDetailPage() {
   // Real per-app aggregates for the Metrics tab. Called with the slug, which is
   // what `workflowId` is.
   const paidAccess = account !== null && isPaidPlan(account.plan);
-  const metrics = useAppMetrics(workflowId, range, { enabled: paidAccess });
+  const metrics = useAppMetrics(workflowId, tab === 'Overview' ? '24h' : range, {
+    enabled: paidAccess && (tab === 'Overview' || tab === 'Metrics'),
+  });
   const metricsDegraded = Boolean(metrics.data && metrics.data.source !== 'prometheus');
   const metricsTileState = metrics.isPending
     ? ('loading' as const)
@@ -222,7 +226,7 @@ function FunctionDetailPage() {
     ],
     [deploymentItems]
   );
-  const buildRecords = useBuildRecords(buildIds);
+  const buildRecords = useBuildRecords(tab === 'Deployments' ? buildIds : []);
   const buildTimings = useMemo(() => {
     const byDeployment = new Map<
       string,
@@ -315,10 +319,14 @@ function FunctionDetailPage() {
 
       <PageHeader
         title={fn.name}
-        description={[fn.runtime, `${fn.memoryMb} MB`, fn.url].filter(Boolean).join(' · ')}
+        description={
+          tab === 'Overview'
+            ? undefined
+            : [fn.runtime, `${fn.memoryMb} MB`, fn.url].filter(Boolean).join(' · ')
+        }
         actions={
           <>
-            <StateBadge state={fn.state} />
+            {tab !== 'Overview' && <StateBadge state={fn.state} />}
             {/* Park and wake were two of the unused hooks: the API has had
                 both for as long as the console has existed. */}
             {fn.state === 'running' ? (
@@ -432,13 +440,15 @@ function FunctionDetailPage() {
         }
       />
 
-      <a
-        href={fn.url}
-        className="inline-flex w-fit items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 font-mono text-xs text-muted-foreground transition-colors hover:border-brand/40 hover:text-foreground"
-      >
-        {fn.url}
-        <OpenNewWindow className="h-3 w-3" />
-      </a>
+      {tab !== 'Overview' && fn.url && (
+        <a
+          href={fn.url}
+          className="inline-flex w-fit items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 font-mono text-xs text-muted-foreground transition-colors hover:border-brand/40 hover:text-foreground"
+        >
+          {fn.url}
+          <OpenNewWindow className="h-3 w-3" />
+        </a>
+      )}
 
       {activeDeployment && (
         <DeploymentProgress
@@ -500,6 +510,41 @@ function FunctionDetailPage() {
             hard-swapping — the tab strip above stays put either way. */}
         <Swap id={tab}>
           <div className="flex flex-col gap-6">
+            {tab === 'Overview' && (
+              <AppOverview
+                app={fn}
+                releases={{
+                  data: deploymentItems,
+                  isPending: appDeploymentQuery.isPending,
+                  error: appDeploymentQuery.error,
+                }}
+                metrics={metrics}
+                metricsAccess={
+                  authLoading || account === null
+                    ? 'checking'
+                    : paidAccess
+                      ? 'available'
+                      : 'restricted'
+                }
+                onNavigate={(next, id) =>
+                  void navigate({
+                    search: (current) => ({
+                      ...current,
+                      tab: next,
+                      ...(id ? { deployment: id, releaseSection: 'overview' as const } : {}),
+                    }),
+                    hash: true,
+                    resetScroll: false,
+                  })
+                }
+                onDeploy={() => {
+                  setDeploySubmissionError(null);
+                  setDeployOpen(true);
+                }}
+                onRetryReleases={() => void appDeploymentQuery.refetch()}
+                onRetryMetrics={() => void metrics.refetch()}
+              />
+            )}
             {tab === 'Metrics' &&
               (authLoading || account === null ? (
                 <LoadingState message="Checking plan access…" />
