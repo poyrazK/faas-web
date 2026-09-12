@@ -12,8 +12,8 @@ const Tick = () => <Check className="size-3 shrink-0 text-brand" />;
 
 export const REASONS: readonly Reason[] = [
   {
-    title: 'Hardware-isolated',
-    body: 'Every app runs in its own Firecracker microVM on bare metal, with its own kernel. Noisy neighbours and shared runtimes are somebody else’s problem.',
+    title: 'A microVM of its own',
+    body: 'Your code runs in a Firecracker microVM with its own kernel. Gregale manages the instance lifecycle, so you can work on your app rather than the host.',
     mosaic: [
       [4, 0, 0],
       [3, 1, 2],
@@ -24,7 +24,7 @@ export const REASONS: readonly Reason[] = [
     ],
     panel: (
       <Panel
-        title="hello · microVM"
+        title="example app · microVM"
         rows={[
           <>
             <Tick /> Firecracker · own kernel
@@ -44,8 +44,8 @@ export const REASONS: readonly Reason[] = [
     ),
   },
   {
-    title: 'Back in under 350 ms',
-    body: 'Idle apps snapshot to disk and park at zero. The next request restores the same snapshot in under 350 ms — scale-to-zero that costs a blink, not a cold start.',
+    title: 'Resume from a snapshot',
+    body: 'Gregale can restore a parked app from a snapshot rather than booting it from scratch. Wake time varies with the app, snapshot, and available capacity.',
     mosaic: [
       [5, 0, 0],
       [4, 1, 2],
@@ -61,7 +61,7 @@ export const REASONS: readonly Reason[] = [
           <span>
             wake <span className="text-muted-foreground">wk_2f8a</span>
           </span>
-          <span className="text-muted-foreground">340 ms · cold</span>
+          <span className="text-muted-foreground">340 ms · example</span>
         </div>
         <div className="mt-2.5 flex h-2.5 w-full gap-px overflow-hidden rounded-sm">
           {[
@@ -87,8 +87,8 @@ export const REASONS: readonly Reason[] = [
     ),
   },
   {
-    title: 'One CLI, one API',
-    body: 'Deploys, schedules, domains, secrets and logs behind one CLI and one API — the same surface for you and for the agents you run.',
+    title: 'Fits your workflow',
+    body: 'Deploy from the CLI, inspect an app in the console, or use the API from your own tools. Bring the same workflow into CI when you’re ready.',
     mosaic: [
       [1, 0, 2],
       [2, 1, 0],
@@ -123,8 +123,8 @@ export const REASONS: readonly Reason[] = [
     ),
   },
   {
-    title: 'Bring your own state',
-    body: 'Stateless by design. Plug in the Postgres, object store or KV you already use — the URL is a sealed secret, the env var is what your code reads.',
+    title: 'Keep your database',
+    body: 'Connect your existing database, cache, or object store through environment secrets. Keep durable data there: local files inside a microVM are temporary.',
     mosaic: [
       [5, 0, 0],
       [3, 1, 1],
@@ -173,13 +173,12 @@ export function Why() {
           <div>
             <p className="mb-4 text-sm font-semibold text-brand">Why Gregale</p>
             <h2 className="max-w-[30rem] text-balance text-[40px] font-medium leading-[1.05] tracking-[-0.02em] text-foreground sm:text-[52px]">
-              Real microVMs, not containers in disguise
+              For APIs that aren’t busy all day.
             </h2>
           </div>
           <p className="max-w-[26rem] text-[15px] leading-[1.35] text-muted-foreground sm:text-base">
-            Most serverless runs your code in a shared container and hopes. Gregale gives every
-            function its own Firecracker VM — isolated, snapshotted when idle, and back in under 350
-            ms.
+            Client demos, webhooks, and side projects still need somewhere to run. Gregale gives
+            them on-demand compute and a familiar way to deploy and inspect them.
           </p>
         </div>
         <Cards items={REASONS} defaultOpen={1} className="mt-10 lg:mt-12" />

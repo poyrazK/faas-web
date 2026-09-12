@@ -99,13 +99,13 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
     title: 'Account',
     links: [
       { label: 'Console', href: '/dashboard', route: '/dashboard' },
-      { label: 'Start free', href: '/signup', route: '/signup' },
+      { label: 'Join the beta', href: '/signup', route: '/signup' },
       { label: 'Sign in', href: '/login', route: '/login' },
     ],
   },
 ];
 
-const TRUST_POINTS = ['No credit card', '1M invocations free', 'Under 350ms cold starts'];
+const TRUST_POINTS = ['GitHub deploys', 'Scale to zero', 'CLI, API & console'];
 
 const LINK_CLASS =
   'group inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground';
@@ -211,7 +211,7 @@ export function Footer() {
           />
 
           <Reveal y={12}>
-            <p className="label-mono relative text-brand">Get started</p>
+            <p className="label-mono relative text-brand">Gregale Beta</p>
           </Reveal>
 
           {/* The heading animates per word, so it sits outside the block
@@ -221,8 +221,8 @@ export function Footer() {
             className="relative mt-5 text-4xl leading-[1.08] sm:text-5xl"
             delay={0.1}
             segments={[
-              { text: 'Ship your first function in' },
-              { text: 'minutes.', className: 'text-brand' },
+              { text: 'Put your next API' },
+              { text: 'on Gregale.', className: 'text-brand' },
             ]}
           />
 
@@ -230,8 +230,8 @@ export function Footer() {
               have landed. */}
           <Reveal delay={0.45}>
             <p className="relative mx-auto mt-4 max-w-md text-balance text-muted-foreground">
-              One command from repository to running microVM. Scale-to-zero means idle costs
-              nothing.
+              Start with a side project, demo, or non-critical workload. Deploy it, try the console,
+              and help us learn what needs to work better during beta.
             </p>
 
             <div className="relative mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
@@ -242,7 +242,7 @@ export function Footer() {
                 className="group h-11 gap-2 rounded-full px-7"
               >
                 <SweepLink to="/signup">
-                  Start deploying
+                  Join the beta
                   <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
                 </SweepLink>
               </Button>

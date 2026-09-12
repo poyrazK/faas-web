@@ -21,20 +21,18 @@ function renderHero() {
  * message; the light behind them must stay decorative to assistive tech.
  */
 describe('Hero', () => {
-  it('keeps the landing headline, with the wake time as the accent', async () => {
+  it('introduces backend hosting in the main heading', async () => {
     renderHero();
     const h1 = await screen.findByRole('heading', { level: 1 });
-    expect(h1).toHaveTextContent(
-      'Serverless on real microVMs. Scale to zero. Wake in under 350 ms.'
-    );
+    expect(h1).toHaveTextContent('Build the API. We’ll run it.');
   });
 
   it('keeps the primary action and the install command as real controls', async () => {
     renderHero();
-    const cta = await screen.findByRole('link', { name: /start deploying/i });
+    const cta = await screen.findByRole('link', { name: /join the beta/i });
     expect(cta).toHaveAttribute('href', '/signup');
     expect(
-      screen.getByRole('button', { name: 'Copy install command: brew install gregale' })
+      screen.getByRole('button', { name: 'Copy install command: npm install -g gregale' })
     ).toBeInTheDocument();
   });
 

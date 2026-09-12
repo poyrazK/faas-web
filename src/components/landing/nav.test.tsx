@@ -25,7 +25,7 @@ describe('Nav', () => {
     expect(nav).toHaveTextContent('Pricing');
     expect(nav).toHaveTextContent('Docs');
     expect(screen.getByRole('link', { name: /sign in/i })).toHaveAttribute('href', '/login');
-    expect(screen.getByRole('link', { name: /get started/i })).toHaveAttribute('href', '/signup');
+    expect(screen.getByRole('link', { name: /join the beta/i })).toHaveAttribute('href', '/signup');
   });
 
   it('keeps the home link on the mark', async () => {
