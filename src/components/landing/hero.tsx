@@ -1,9 +1,8 @@
 import { motion, useReducedMotion } from 'motion/react';
-import { ArrowRight, Check, Copy } from 'iconoir-react';
-import { useEffect, useRef, useState } from 'react';
+import { ArrowRight } from 'iconoir-react';
 import { SweepLink } from '@/components/sweep-link';
 import { DeployTerminal } from './deploy-terminal';
-import { INSTALL_COMMAND } from './install-command';
+import { InstallCommand } from './install-command';
 import { EASE } from './reveal';
 import { LIQUID_PRESETS, LiquidField } from './liquid-field';
 
@@ -15,41 +14,6 @@ import { LIQUID_PRESETS, LiquidField } from './liquid-field';
  * with the frosted-glass mark behind the headline. The command pill holds the
  * install command on the left, copyable, and the primary action on the right.
  */
-
-function CopyCommand() {
-  const [copied, setCopied] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => void (timer.current && clearTimeout(timer.current)), []);
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(INSTALL_COMMAND);
-      setCopied(true);
-      if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(() => setCopied(false), 1800);
-    } catch {
-      // Clipboard blocked — the command stays visible to select by hand.
-    }
-  };
-  return (
-    <button
-      type="button"
-      onClick={copy}
-      aria-label={`Copy install command: ${INSTALL_COMMAND}`}
-      className="group flex h-12 min-w-0 flex-1 items-center gap-3 rounded-full pl-5 pr-3 text-left font-mono text-[14px] text-foreground/80 outline-none transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
-    >
-      <span aria-hidden className="text-brand">
-        $
-      </span>
-      <span className="truncate tracking-tight">{INSTALL_COMMAND}</span>
-      <span className="ml-auto flex size-7 shrink-0 items-center justify-center rounded-full bg-background/70 text-muted-foreground transition-colors group-hover:text-foreground">
-        {copied ? <Check className="size-3.5 text-brand" /> : <Copy className="size-3.5" />}
-      </span>
-      <span aria-live="polite" className="sr-only">
-        {copied ? 'Copied to clipboard' : ''}
-      </span>
-    </button>
-  );
-}
 
 /**
  * The emblem behind the headline: the frosted-glass Gregale mark, overlaid
@@ -118,7 +82,7 @@ export function Hero() {
             className="animate-hero-enter relative mt-8 flex w-full max-w-[29rem] items-center rounded-full bg-[color-mix(in_srgb,var(--secondary)_78%,transparent)] p-1 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.7),0_1px_2px_rgba(13,21,18,0.05)] backdrop-blur-md"
             style={{ animationDelay: '0.18s' }}
           >
-            <CopyCommand />
+            <InstallCommand variant="inline" />
             <SweepLink
               to="/signup"
               className="group inline-flex h-12 shrink-0 items-center gap-2 rounded-full bg-[#1c2622] px-6 text-[15px] font-semibold text-white shadow-[inset_0_1px_0_0_rgba(255,255,255,0.12),0_8px_24px_-10px_rgba(13,21,18,0.6)] outline-none transition-[background-color,transform] duration-200 hover:bg-[#0d1512] focus-visible:ring-[3px] focus-visible:ring-ring/50 active:scale-[0.98] motion-reduce:transform-none"
