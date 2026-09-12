@@ -1,6 +1,7 @@
 import { Check, Lock } from 'iconoir-react';
 import { cn } from '@/lib/utils';
-import { Cards, Panel, PANEL_CLASS, PANEL_MONO as MONO, type CardItem } from './cards';
+import { Cards, Panel, PANEL_MONO as MONO, type CardItem } from './cards';
+import { TracePreview } from './product-previews';
 
 /**
  * Why Gregale — four reasons in the landing page's card row (see cards.tsx).
@@ -55,36 +56,7 @@ export const REASONS: readonly Reason[] = [
       [5, 4, 2],
       [6, 2, 2],
     ],
-    panel: (
-      <div className={PANEL_CLASS}>
-        <div className={cn(MONO, 'flex items-center justify-between text-foreground')}>
-          <span>
-            wake <span className="text-muted-foreground">wk_2f8a</span>
-          </span>
-          <span className="text-muted-foreground">340 ms · example</span>
-        </div>
-        <div className="mt-2.5 flex h-2.5 w-full gap-px overflow-hidden rounded-sm">
-          {[
-            ['bg-border-secondary', 12],
-            ['bg-brand-fill', 214],
-            ['bg-mint-5', 58],
-            ['bg-foreground/70', 46],
-            ['bg-border-secondary', 10],
-          ].map(([tone, ms], i) => (
-            <span
-              key={i}
-              className={cn('h-full', tone as string)}
-              style={{ width: `${((ms as number) / 340) * 100}%` }}
-            />
-          ))}
-        </div>
-        <div className={cn(MONO, 'mt-2 flex justify-between text-muted-foreground')}>
-          <span>0</span>
-          <span className="text-brand">restore 214 ms</span>
-          <span>340 ms</span>
-        </div>
-      </div>
-    ),
+    panel: <TracePreview />,
   },
   {
     title: 'Fits your workflow',

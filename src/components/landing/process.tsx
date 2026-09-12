@@ -1,7 +1,7 @@
-import { Check, GitBranch, Package, Rocket } from 'iconoir-react';
+import { Check } from 'iconoir-react';
 import { useId } from 'react';
-import { cn } from '@/lib/utils';
-import { Cards, Panel, PANEL_CLASS, PANEL_MONO as MONO, type CardItem } from './cards';
+import { Cards, Panel, type CardItem } from './cards';
+import { DeploymentPreview, TracePreview, WakeSourcesPreview } from './product-previews';
 
 /**
  * The platform as one deploy, told in four stops — in the landing page's
@@ -32,28 +32,7 @@ export const STEPS: readonly Step[] = [
       { label: 'Previews & domains', doc: 'preview-environments' },
       { label: 'Egress policy', doc: 'egress-denylist' },
     ],
-    panel: (
-      <Panel
-        title="example deployment · main"
-        rows={[
-          <>
-            <GitBranch className="size-3 shrink-0 text-muted-foreground" /> 3f9c2e1
-            <span className="ml-auto text-muted-foreground">source commit</span>
-          </>,
-          <>
-            <Package className="size-3 shrink-0 text-muted-foreground" /> bld_9k2f
-            <span className="ml-auto text-muted-foreground">build complete</span>
-          </>,
-          <>
-            <Rocket className="size-3 shrink-0 text-brand" /> dep_4q7x
-            <span className="ml-auto text-status-good">● running</span>
-          </>,
-          <>
-            <Tick /> pr-42.hello.apps.gregale.dev
-          </>,
-        ]}
-      />
-    ),
+    panel: <DeploymentPreview />,
   },
   {
     title: 'Wake',
@@ -68,27 +47,7 @@ export const STEPS: readonly Step[] = [
       [6, 2, 2],
     ],
     links: [{ label: 'How wakes work', doc: 'scale-to-zero' }],
-    panel: (
-      <Panel
-        title="example wake sources"
-        rows={[
-          <>
-            <Tick /> GET /<span className="ml-auto text-muted-foreground">restore 214 ms</span>
-          </>,
-          <>
-            <Tick /> 0 */6 * * *<span className="ml-auto text-muted-foreground">nightly-etl</span>
-          </>,
-          <>
-            <Tick /> queue · resize
-            <span className="ml-auto text-muted-foreground">3 rows · dlq 0</span>
-          </>,
-          <>
-            <span className="size-3 shrink-0 rounded-full border border-border-secondary" />
-            <span className="text-muted-foreground">idle → parked · no running instance</span>
-          </>,
-        ]}
-      />
-    ),
+    panel: <WakeSourcesPreview />,
   },
   {
     title: 'Run',
@@ -149,39 +108,7 @@ export const STEPS: readonly Step[] = [
       [6, 4, 2],
     ],
     links: [{ label: 'Tracing', doc: 'tracing' }],
-    panel: (
-      <div className={PANEL_CLASS}>
-        <div className={cn(MONO, 'flex items-center justify-between text-foreground')}>
-          <span>
-            wake <span className="text-muted-foreground">wk_2f8a</span>
-          </span>
-          <span className="text-muted-foreground">340 ms · example</span>
-        </div>
-        <div className="mt-2.5 flex h-2.5 w-full gap-px overflow-hidden rounded-sm">
-          {[
-            ['bg-border-secondary', 12],
-            ['bg-brand-fill', 214],
-            ['bg-mint-5', 58],
-            ['bg-foreground/70', 46],
-            ['bg-border-secondary', 10],
-          ].map(([tone, ms], i) => (
-            <span
-              key={i}
-              className={cn('h-full', tone as string)}
-              style={{ width: `${((ms as number) / 340) * 100}%` }}
-            />
-          ))}
-        </div>
-        <pre
-          className={cn(
-            MONO,
-            'mt-2.5 whitespace-pre text-[10px] leading-[1.7] text-muted-foreground'
-          )}
-        >
-          {'hello         GET /         200  340 ms\nimage-resize  POST /resize  200  212 ms'}
-        </pre>
-      </div>
-    ),
+    panel: <TracePreview requests />,
   },
 ];
 
