@@ -134,7 +134,7 @@ export function Cards({
             layout
             transition={reduce ? { duration: 0 } : { duration: 0.28, ease: EASE }}
             className={cn(
-              'relative flex flex-col overflow-hidden outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
+              'product-preview-card relative flex flex-col overflow-hidden outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
               // phones: every card open and stacked; lg: one open, widths differ
               'rounded-[20px] bg-card',
               'lg:min-h-[26rem] lg:rounded-xl lg:bg-[#eef3f0]',
