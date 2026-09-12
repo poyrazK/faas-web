@@ -13,13 +13,15 @@
 //   npm i -D playwright && npx playwright install chromium
 //
 // Env: BASE_URL (default http://localhost:3000), SHOTS (directory, optional),
-// SETTLE (ms to wait per page, default 2200 — raise it for a slow API).
+// SETTLE (ms to wait per page, default 2200 — raise it for a slow API), and
+// TOUR_SCOPE=overview for the focused Overview interaction regression.
 
 import { mkdirSync } from 'node:fs';
 
 const BASE = process.env.BASE_URL ?? 'http://localhost:3000';
 const SETTLE = Number(process.env.SETTLE ?? 2200);
 const SHOTS = process.env.SHOTS;
+const OVERVIEW_ONLY = process.env.TOUR_SCOPE === 'overview';
 
 let chromium;
 try {
@@ -121,7 +123,84 @@ async function visit(url, name) {
   return bad.length === 0;
 }
 
-for (const p of PAGES) await visit(`${BASE}/dashboard/${p}`, p || 'index');
+/**
+ * Exercise the controls whose behavior depends on real browser hit testing.
+ *
+ * DOM tests can invoke these handlers directly even when a decorative fixed
+ * layer is sitting above them. The tour checks both pointer and keyboard paths
+ * in the layout the customer actually receives.
+ */
+async function exerciseOverviewControls() {
+  const section = page.getByRole('region', { name: 'Request analytics' });
+  await section.scrollIntoViewIfNeeded();
+
+  const range = section.getByRole('button', { name: /Time range: Last 24 hours/i });
+  await range.click();
+  await page.getByRole('button', { name: 'Last 1 hour', exact: true }).waitFor();
+  await page.keyboard.press('Escape');
+
+  const addButtons = section.getByRole('button', { name: 'Add a metric', exact: true });
+  if ((await addButtons.count()) !== 2) throw new Error('expected header and grid add controls');
+
+  for (const index of [0, 1]) {
+    await addButtons.nth(index).click();
+    const cancel = section.getByRole('button', { name: 'Cancel adding a metric' });
+    await cancel.waitFor();
+    await cancel.click();
+  }
+
+  const refresh = section.getByRole('button', { name: 'Refresh analytics', exact: true });
+  await Promise.all([
+    page.waitForRequest(
+      (request) =>
+        request.method() === 'GET' &&
+        new URL(request.url()).pathname.endsWith('/analytics/timeseries')
+    ),
+    refresh.click(),
+  ]);
+
+  await range.focus();
+  await page.keyboard.press('Enter');
+  await page.getByRole('button', { name: 'Last 1 hour', exact: true }).waitFor();
+  await page.keyboard.press('Escape');
+
+  for (const [index, key] of [
+    [0, 'Enter'],
+    [1, 'Space'],
+  ]) {
+    await addButtons.nth(index).focus();
+    await page.keyboard.press(key);
+    const cancel = section.getByRole('button', { name: 'Cancel adding a metric' });
+    await cancel.waitFor();
+    await cancel.focus();
+    await page.keyboard.press('Enter');
+  }
+
+  await refresh.focus();
+  await Promise.all([
+    page.waitForRequest(
+      (request) =>
+        request.method() === 'GET' &&
+        new URL(request.url()).pathname.endsWith('/analytics/timeseries')
+    ),
+    page.keyboard.press('Enter'),
+  ]);
+}
+
+const tourPages = OVERVIEW_ONLY ? [''] : PAGES;
+for (const p of tourPages) {
+  const ready = await visit(`${BASE}/dashboard/${p}`, p || 'index');
+  const hasRequestAnalytics =
+    p === '' &&
+    (await page.getByRole('region', { name: 'Request analytics' }).count()) > 0;
+  if (p === '' && ready && (OVERVIEW_ONLY || hasRequestAnalytics)) {
+    try {
+      await exerciseOverviewControls();
+    } catch (error) {
+      failures.push(`index: overview controls: ${String(error).split('\n')[0]}`);
+    }
+  }
+}
 
 // The app detail page carries every per-app resource; each tab is its own render.
 const slug = await page.evaluate(async (base) => {
@@ -130,10 +209,10 @@ const slug = await page.evaluate(async (base) => {
   return Array.isArray(apps) && apps.length ? apps[0].slug : '';
 }, BASE);
 
-if (slug) {
+if (slug && !OVERVIEW_ONLY) {
   for (const tab of APP_TABS)
     await visit(`${BASE}/dashboard/workflows/${slug}?tab=${tab}`, `app.${tab}`);
-} else {
+} else if (!OVERVIEW_ONLY) {
   console.log(
     'tour: no apps in this workspace — skipped the app tabs (expected under MOCK_EMPTY=1)'
   );
@@ -153,5 +232,5 @@ if (problems.length) {
   process.exit(1);
 }
 console.log(
-  `tour: ok — ${PAGES.length} pages${slug ? ` + ${APP_TABS.length} app tabs` : ''}, no errors`
+  `tour: ok — ${tourPages.length} pages${slug && !OVERVIEW_ONLY ? ` + ${APP_TABS.length} app tabs` : ''}, no errors`
 );
