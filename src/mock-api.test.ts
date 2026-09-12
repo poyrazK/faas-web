@@ -45,6 +45,33 @@ async function get(path: string) {
   return { response, body: await response.json() };
 }
 
+describe('app release history mock contract', () => {
+  it('pages newest-first within the selected app without repeating the cursor row', async () => {
+    const first = await get('/v1/apps/api-gateway/deployments?limit=1');
+    expect(first.response.status).toBe(200);
+    expect(first.body.items).toHaveLength(1);
+    expect(first.body.next_before).toEqual(expect.any(String));
+    const second = await get(
+      `/v1/apps/api-gateway/deployments?limit=1&before=${encodeURIComponent(first.body.next_before)}`
+    );
+    expect(second.response.status).toBe(200);
+    expect(second.body.items).toHaveLength(1);
+    expect(second.body.items[0].app_id).toBe(first.body.items[0].app_id);
+    expect(second.body.items[0].id).not.toBe(first.body.items[0].id);
+    expect(Date.parse(second.body.items[0].created_at)).toBeLessThanOrEqual(
+      Date.parse(first.body.items[0].created_at)
+    );
+    const other = await get('/v1/apps/image-resize/deployments?limit=1');
+    expect(other.body.items[0].app_id).not.toBe(first.body.items[0].app_id);
+  });
+
+  it('does not present an unknown app as an empty release history', async () => {
+    const result = await get('/v1/apps/unknown-overview-app/deployments');
+    expect(result.response.status).toBe(404);
+    expect(result.body.code).toBe('app_not_found');
+  });
+});
+
 describe('analytics mock contracts', () => {
   it.each([
     ['analytics', 'toString'],

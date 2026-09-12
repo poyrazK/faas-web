@@ -448,9 +448,9 @@ describe('Debugger investigation navigation', () => {
     expect(screen.queryByText('No requests recorded in this window.')).not.toBeInTheDocument();
   });
 
-  it('falls back to Metrics for an invalid app tab while preserving debugger and unrelated parameters', async () => {
+  it('falls back to Overview for an invalid app tab while preserving debugger and unrelated parameters', async () => {
     await mount('/dashboard/workflows/alpha?tab=invalid&debugFilter=slow&keep=yes');
-    expect(screen.getByRole('tab', { name: 'Metrics' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('restores comparison result text filtering through Back, Forward, and copied URL reload after explicitly rerunning', async () => {

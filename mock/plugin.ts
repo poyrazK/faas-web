@@ -2428,6 +2428,32 @@ route('GET', '/v1/apps/{slug}/logs', ({ params, query, req, res }) => {
 
 // --- Account-wide lists --------------------------------------------------------
 
+route('GET', '/v1/apps/{slug}/deployments', ({ params, query }) => {
+  const selected = app(params.slug);
+  const limit = Number(query.get('limit') ?? 50);
+  const before = query.get('before');
+  if (
+    !Number.isInteger(limit) ||
+    limit < 1 ||
+    limit > 200 ||
+    (before && !Number.isFinite(Date.parse(before)))
+  )
+    throw new Problem(
+      400,
+      'validation_failed',
+      'Use a limit from 1 to 200 and a valid before timestamp.'
+    );
+  const ordered = db.deployments
+    .filter(
+      (deployment) =>
+        deployment.app_id === selected.id &&
+        (!before || Date.parse(deployment.created_at) < Date.parse(before))
+    )
+    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+  const items = ordered.slice(0, limit);
+  return { items, next_before: ordered.length > limit ? items.at(-1)!.created_at : null };
+});
+
 route('GET', '/v1/deployments', ({ query }) => ({
   items: db.deployments.slice(0, Number(query.get('limit') ?? 50)),
   next_before: null,

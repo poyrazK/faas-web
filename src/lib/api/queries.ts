@@ -832,6 +832,13 @@ export function useAppDeployments(slug: string, limit = 50) {
     getNextPageParam: (lastPage) => lastPage.next_before ?? undefined,
     enabled: Boolean(slug),
     retry: retryPolicy,
+    // Keep the landing view's latest release current during a deployment.
+    // Old pages must not keep polling after the newest attempt is terminal.
+    refetchInterval: (query) => {
+      if (query.state.error) return false;
+      const latest = query.state.data?.pages[0]?.items[0];
+      return latest && !isDeploymentTerminal(latest.status) ? 2_500 : false;
+    },
   });
 }
 
