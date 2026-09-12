@@ -436,7 +436,7 @@ function OverviewPage() {
   return (
     <div className="flex flex-col gap-10">
       {/* Keep the wind a faint accent so the charcoal canvas stays neutral. */}
-      <div aria-hidden className="fixed inset-0">
+      <div aria-hidden className="pointer-events-none fixed inset-0">
         <WindFlow intensity={0.06} />
       </div>
 
@@ -445,7 +445,7 @@ function OverviewPage() {
           not furniture. */}
       <div
         aria-hidden
-        className="fixed inset-x-0 bottom-0 h-[36vh] [mask-image:linear-gradient(to_top,black_25%,transparent)]"
+        className="pointer-events-none fixed inset-x-0 bottom-0 h-[36vh] [mask-image:linear-gradient(to_top,black_25%,transparent)]"
       >
         <FlowDotsField />
       </div>
