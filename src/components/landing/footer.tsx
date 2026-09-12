@@ -32,6 +32,8 @@ interface FooterLink {
   external?: boolean;
   /** An app route rather than an anchor, so the router handles it. */
   route?: '/login' | '/signup' | '/dashboard';
+  /** A public app route without the marketing-to-product sweep. */
+  publicRoute?: '/status';
   /** A docs page. `true` is the docs index; a string is that page's slug. */
   doc?: true | string;
 }
@@ -85,6 +87,7 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
   {
     title: 'Trust & safety',
     links: [
+      { label: 'Status', href: '/status', publicRoute: '/status' },
       { label: 'Compliance', href: '/docs/compliance', doc: 'compliance' },
       { label: 'Data Processing Agreement', href: '/docs/dpa', doc: 'dpa' },
       { label: 'Sub-processors', href: '/docs/subprocessors', doc: 'subprocessors' },
@@ -136,6 +139,14 @@ function FooterAnchor({ link }: { link: FooterLink }) {
   if (typeof link.doc === 'string') {
     return (
       <Link to="/docs/$slug" params={{ slug: link.doc }} className={LINK_CLASS}>
+        {link.label}
+      </Link>
+    );
+  }
+
+  if (link.publicRoute) {
+    return (
+      <Link to={link.publicRoute} className={LINK_CLASS}>
         {link.label}
       </Link>
     );

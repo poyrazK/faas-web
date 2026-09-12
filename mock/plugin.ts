@@ -66,6 +66,34 @@ const status = (code: number, body: unknown) => ({ __status: code, body });
 
 const latency = () => Number(process.env.MOCK_LATENCY ?? 180) + Math.random() * 160;
 
+// --- Public status -----------------------------------------------------------
+
+route('GET', '/v1/status', ({ res }) => {
+  res.setHeader('Cache-Control', 'public, max-age=15, stale-while-revalidate=45');
+  return db.publicStatus;
+});
+route('GET', '/status/slo.json', ({ res }) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  return {
+    api_availability_pct: db.publicStatus.indicators[0].value,
+    wake_p95_ms: db.publicStatus.indicators[1].value,
+    build_success_pct: db.publicStatus.indicators[2].value,
+    degraded: db.publicStatus.overall_status !== 'operational',
+    as_of: db.publicStatus.updated_at,
+    source: 'prometheus',
+  };
+});
+route('GET', '/v1/status/incidents/{public_id}', ({ params }) => {
+  const events = [
+    ...db.publicStatus.active_events,
+    ...db.publicStatus.upcoming_maintenance,
+    ...db.publicStatus.resolved_incidents,
+  ];
+  const event = events.find((candidate) => candidate.id === params.public_id);
+  if (!event) throw new Problem(404, 'NotFound', 'Status event not found.');
+  return event;
+});
+
 // --- Auth --------------------------------------------------------------------
 
 const SESSION_COOKIE = 'faas_sid=mock-session; Path=/; HttpOnly; SameSite=Lax';
@@ -4142,7 +4170,13 @@ function problem(res: ServerResponse, p: Problem) {
   );
 }
 
-const MOCKED_PREFIXES = ['/v1/', '/login', '/signup', '/dashboard/account/set-password'];
+const MOCKED_PREFIXES = [
+  '/v1/',
+  '/status/slo.json',
+  '/login',
+  '/signup',
+  '/dashboard/account/set-password',
+];
 
 export function mockApi(): Plugin {
   return {
@@ -4158,6 +4192,7 @@ export function mockApi(): Plugin {
         // GET /login and /signup are this app's own pages; only the POSTs are the API's.
         const isApi =
           url.pathname.startsWith('/v1/') ||
+          url.pathname === '/status/slo.json' ||
           (method !== 'GET' &&
             MOCKED_PREFIXES.some((p) => url.pathname === p || url.pathname.startsWith(p + '/')));
         if (!isApi) return next();

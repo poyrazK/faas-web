@@ -15,6 +15,7 @@ import { Route as DocsRouteImport } from './routes/docs'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as SignupRouteImport } from './routes/signup'
+import { Route as StatusRouteImport } from './routes/status'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard.index'
 import { Route as DashboardAccountRouteImport } from './routes/dashboard.account'
 import { Route as DashboardAlertsRouteImport } from './routes/dashboard.alerts'
@@ -55,9 +56,11 @@ import { Route as DashboardWorkersRouteImport } from './routes/dashboard.workers
 import { Route as DocsIndexRouteImport } from './routes/docs.index'
 import { Route as DocsSlugRouteImport } from './routes/docs.$slug'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
+import { Route as StatusIndexRouteImport } from './routes/status.index'
 import { Route as DashboardWorkflowsIndexRouteImport } from './routes/dashboard.workflows.index'
 import { Route as DashboardWorkflowsWorkflowIdRouteImport } from './routes/dashboard.workflows.$workflowId'
 import { Route as DashboardWorkflowsNewRouteImport } from './routes/dashboard.workflows.new'
+import { Route as StatusIncidentsIdRouteImport } from './routes/status.incidents.$id'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -87,6 +90,11 @@ const OnboardingRoute = OnboardingRouteImport.update({
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
   path: '/signup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StatusRoute = StatusRouteImport.update({
+  id: '/status',
+  path: '/status',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DashboardIndexRoute = DashboardIndexRouteImport.update({
@@ -289,6 +297,11 @@ const InviteTokenRoute = InviteTokenRouteImport.update({
   path: '/invite/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
+const StatusIndexRoute = StatusIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => StatusRoute,
+} as any)
 const DashboardWorkflowsIndexRoute = DashboardWorkflowsIndexRouteImport.update({
   id: '/workflows/',
   path: '/workflows/',
@@ -305,6 +318,11 @@ const DashboardWorkflowsNewRoute = DashboardWorkflowsNewRouteImport.update({
   path: '/workflows/new',
   getParentRoute: () => DashboardRoute,
 } as any)
+const StatusIncidentsIdRoute = StatusIncidentsIdRouteImport.update({
+  id: '/incidents/$id',
+  path: '/incidents/$id',
+  getParentRoute: () => StatusRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -313,6 +331,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/signup': typeof SignupRoute
+  '/status': typeof StatusRouteWithChildren
   '/dashboard/account': typeof DashboardAccountRoute
   '/dashboard/alerts': typeof DashboardAlertsRoute
   '/dashboard/analytics': typeof DashboardAnalyticsRoute
@@ -353,8 +372,10 @@ export interface FileRoutesByFullPath {
   '/invite/$token': typeof InviteTokenRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/docs/': typeof DocsIndexRoute
+  '/status/': typeof StatusIndexRoute
   '/dashboard/workflows/$workflowId': typeof DashboardWorkflowsWorkflowIdRoute
   '/dashboard/workflows/new': typeof DashboardWorkflowsNewRoute
+  '/status/incidents/$id': typeof StatusIncidentsIdRoute
   '/dashboard/workflows/': typeof DashboardWorkflowsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -402,8 +423,10 @@ export interface FileRoutesByTo {
   '/invite/$token': typeof InviteTokenRoute
   '/dashboard': typeof DashboardIndexRoute
   '/docs': typeof DocsIndexRoute
+  '/status': typeof StatusIndexRoute
   '/dashboard/workflows/$workflowId': typeof DashboardWorkflowsWorkflowIdRoute
   '/dashboard/workflows/new': typeof DashboardWorkflowsNewRoute
+  '/status/incidents/$id': typeof StatusIncidentsIdRoute
   '/dashboard/workflows': typeof DashboardWorkflowsIndexRoute
 }
 export interface FileRoutesById {
@@ -414,6 +437,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/signup': typeof SignupRoute
+  '/status': typeof StatusRouteWithChildren
   '/dashboard/account': typeof DashboardAccountRoute
   '/dashboard/alerts': typeof DashboardAlertsRoute
   '/dashboard/analytics': typeof DashboardAnalyticsRoute
@@ -454,8 +478,10 @@ export interface FileRoutesById {
   '/invite/$token': typeof InviteTokenRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/docs/': typeof DocsIndexRoute
+  '/status/': typeof StatusIndexRoute
   '/dashboard/workflows/$workflowId': typeof DashboardWorkflowsWorkflowIdRoute
   '/dashboard/workflows/new': typeof DashboardWorkflowsNewRoute
+  '/status/incidents/$id': typeof StatusIncidentsIdRoute
   '/dashboard/workflows/': typeof DashboardWorkflowsIndexRoute
 }
 export interface FileRouteTypes {
@@ -467,6 +493,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/onboarding'
     | '/signup'
+    | '/status'
     | '/dashboard/account'
     | '/dashboard/alerts'
     | '/dashboard/analytics'
@@ -507,8 +534,10 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/dashboard/'
     | '/docs/'
+    | '/status/'
     | '/dashboard/workflows/$workflowId'
     | '/dashboard/workflows/new'
+    | '/status/incidents/$id'
     | '/dashboard/workflows/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -556,8 +585,10 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/dashboard'
     | '/docs'
+    | '/status'
     | '/dashboard/workflows/$workflowId'
     | '/dashboard/workflows/new'
+    | '/status/incidents/$id'
     | '/dashboard/workflows'
   id:
     | '__root__'
@@ -567,6 +598,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/onboarding'
     | '/signup'
+    | '/status'
     | '/dashboard/account'
     | '/dashboard/alerts'
     | '/dashboard/analytics'
@@ -607,8 +639,10 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/dashboard/'
     | '/docs/'
+    | '/status/'
     | '/dashboard/workflows/$workflowId'
     | '/dashboard/workflows/new'
+    | '/status/incidents/$id'
     | '/dashboard/workflows/'
   fileRoutesById: FileRoutesById
 }
@@ -619,6 +653,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   OnboardingRoute: typeof OnboardingRoute
   SignupRoute: typeof SignupRoute
+  StatusRoute: typeof StatusRouteWithChildren
   InviteTokenRoute: typeof InviteTokenRoute
 }
 
@@ -664,6 +699,13 @@ declare module '@tanstack/react-router' {
       path: '/signup'
       fullPath: '/signup'
       preLoaderRoute: typeof SignupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/status': {
+      id: '/status'
+      path: '/status'
+      fullPath: '/status'
+      preLoaderRoute: typeof StatusRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/dashboard/': {
@@ -946,6 +988,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InviteTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/status/': {
+      id: '/status/'
+      path: '/'
+      fullPath: '/status/'
+      preLoaderRoute: typeof StatusIndexRouteImport
+      parentRoute: typeof StatusRoute
+    }
     '/dashboard/workflows/': {
       id: '/dashboard/workflows/'
       path: '/workflows'
@@ -966,6 +1015,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/dashboard/workflows/new'
       preLoaderRoute: typeof DashboardWorkflowsNewRouteImport
       parentRoute: typeof DashboardRoute
+    }
+    '/status/incidents/$id': {
+      id: '/status/incidents/$id'
+      path: '/incidents/$id'
+      fullPath: '/status/incidents/$id'
+      preLoaderRoute: typeof StatusIncidentsIdRouteImport
+      parentRoute: typeof StatusRoute
     }
   }
 }
@@ -1072,6 +1128,19 @@ const DocsRouteChildren: DocsRouteChildren = {
 
 const DocsRouteWithChildren = DocsRoute._addFileChildren(DocsRouteChildren)
 
+interface StatusRouteChildren {
+  StatusIndexRoute: typeof StatusIndexRoute
+  StatusIncidentsIdRoute: typeof StatusIncidentsIdRoute
+}
+
+const StatusRouteChildren: StatusRouteChildren = {
+  StatusIndexRoute: StatusIndexRoute,
+  StatusIncidentsIdRoute: StatusIncidentsIdRoute,
+}
+
+const StatusRouteWithChildren =
+  StatusRoute._addFileChildren(StatusRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DashboardRoute: DashboardRouteWithChildren,
@@ -1079,6 +1148,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   OnboardingRoute: OnboardingRoute,
   SignupRoute: SignupRoute,
+  StatusRoute: StatusRouteWithChildren,
   InviteTokenRoute: InviteTokenRoute,
 }
 export const routeTree = rootRouteImport

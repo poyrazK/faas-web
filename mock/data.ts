@@ -42,6 +42,135 @@ const H = 3_600_000;
 const D = 24 * H;
 export const iso = (msAgo: number) => new Date(NOW - msAgo).toISOString();
 
+// --- Public status -----------------------------------------------------------
+
+const statusDays = (componentIndex: number): S['PublicStatusDaily'][] =>
+  Array.from({ length: 30 }, (_, index) => {
+    const at = new Date(NOW - (29 - index) * D);
+    const unknown = index < 3;
+    const degraded = componentIndex === 1 && index === 25;
+    return {
+      date: at.toISOString().slice(0, 10),
+      status: unknown ? 'unknown' : degraded ? 'degraded' : 'operational',
+      uptime_pct: unknown ? null : degraded ? 98.72 : 100,
+      coverage_pct: unknown ? 0 : 100,
+    };
+  });
+
+export const publicStatus: S['PublicStatusOverview'] = {
+  overall_status: 'degraded',
+  data_status: 'fresh',
+  updated_at: new Date(NOW).toISOString(),
+  region_scope: 'single-region',
+  components: [
+    ['api_console', 'API & Console'],
+    ['deployments', 'Deployments'],
+    ['app_execution', 'App execution'],
+    ['networking', 'Networking'],
+    ['observability', 'Observability'],
+  ].map(([componentID, name], index) => ({
+    id: componentID as S['PublicStatusComponent']['id'],
+    name,
+    status: index === 1 ? 'degraded' : 'operational',
+    uptime_30d_pct: 99.951,
+    coverage_30d_pct: 90,
+    daily: statusDays(index),
+  })),
+  indicators: [
+    {
+      id: 'api_availability',
+      label: 'API availability',
+      value: 99.97,
+      unit: '%',
+      target: 99.9,
+      comparison: 'gte',
+    },
+    { id: 'wake_p95', label: 'Wake p95', value: 284, unit: 'ms', target: 350, comparison: 'lte' },
+    {
+      id: 'build_success',
+      label: 'Build success',
+      value: 98.8,
+      unit: '%',
+      target: 99,
+      comparison: 'gte',
+    },
+  ],
+  active_events: [
+    {
+      id: '7c54051b-6d8d-45a8-80a4-6bc8e6587f24',
+      kind: 'incident',
+      title: 'Some builds are completing slowly',
+      impact: 'degraded',
+      components: ['deployments'],
+      state: 'monitoring',
+      starts_at: iso(2 * H),
+      updated_at: iso(18 * 60_000),
+      updates: [
+        {
+          id: '3979611d-3140-431e-ae81-ce966b56c30f',
+          state: 'investigating',
+          message: 'We are investigating elevated build times.',
+          posted_at: iso(2 * H),
+        },
+        {
+          id: '98f402db-ad43-41fd-821f-c261d1d9d62f',
+          state: 'monitoring',
+          message: 'Capacity has recovered and we are monitoring the queue.',
+          posted_at: iso(18 * 60_000),
+        },
+      ],
+    },
+  ],
+  upcoming_maintenance: [
+    {
+      id: '68167230-820a-4378-af9d-18d5c5c68789',
+      kind: 'maintenance',
+      title: 'Network edge maintenance',
+      impact: 'maintenance',
+      components: ['networking'],
+      state: 'scheduled',
+      scheduled_start_at: new Date(NOW + 3 * D).toISOString(),
+      scheduled_end_at: new Date(NOW + 3 * D + H).toISOString(),
+      updated_at: iso(H),
+      updates: [
+        {
+          id: 'ba02f0f5-0a07-4337-a4c4-1ff40c72d72c',
+          state: 'scheduled',
+          message: 'A short edge-network maintenance window is scheduled.',
+          posted_at: iso(H),
+        },
+      ],
+    },
+  ],
+  resolved_incidents: [
+    {
+      id: '4a5d1787-860f-44d5-a226-c3103447ab5b',
+      kind: 'incident',
+      title: 'Elevated API latency',
+      impact: 'degraded',
+      components: ['api_console'],
+      state: 'resolved',
+      starts_at: iso(12 * D),
+      updated_at: iso(12 * D - H),
+      resolved_at: iso(12 * D - H),
+      updates: [
+        {
+          id: 'c793f1b7-b668-4698-a623-d2bfb02f5193',
+          state: 'investigating',
+          message: 'We investigated elevated request latency.',
+          posted_at: iso(12 * D),
+        },
+        {
+          id: '00dcc331-e121-47d6-9284-d97552975248',
+          state: 'resolved',
+          message: 'Latency returned to normal after capacity was restored.',
+          posted_at: iso(12 * D - H),
+        },
+      ],
+    },
+  ],
+};
+
 // --- Account -----------------------------------------------------------------
 
 export const ACCOUNT_ID = id();
