@@ -1,4 +1,5 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import {
   createMemoryHistory,
   createRootRoute,
@@ -10,8 +11,9 @@ import {
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Route as Jobs } from './dashboard.jobs';
+import { ApiError } from '@/lib/api/errors';
 
-const api = vi.hoisted(() => ({ GET: vi.fn() }));
+const api = vi.hoisted(() => ({ GET: vi.fn(), POST: vi.fn() }));
 vi.mock('@/lib/api/client', async (original) => ({ ...(await original<object>()), api }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn() }));
@@ -39,6 +41,10 @@ const run = {
   dead_letter_count: 0,
 };
 beforeEach(() => {
+  api.POST.mockReset().mockResolvedValue({
+    data: { ...job, id: 'job-new', name: 'daily-backup' },
+    response: new Response(),
+  });
   api.GET.mockReset().mockImplementation(
     async (path: string, options: { params?: { query?: { before?: string } } }) => {
       const data: Record<string, unknown> = {
@@ -73,6 +79,178 @@ beforeEach(() => {
       return { data: data[path], response: new Response() };
     }
   );
+});
+
+describe('Workload creation', () => {
+  it('keeps creation behind the API plan gate', async () => {
+    api.GET.mockRejectedValue(
+      new ApiError({
+        status: 402,
+        code: 'jobs_not_allowed',
+        title: 'Jobs require Hobby or above',
+        detail: 'Jobs require Hobby or above',
+      })
+    );
+    await mount('section=workloads');
+    expect(await screen.findByText('Jobs require Hobby or above')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'New workload' })).not.toBeInTheDocument();
+  });
+  async function openForm() {
+    await mount('section=workloads');
+    await userEvent.click(await screen.findByRole('button', { name: 'New workload' }));
+    return screen.getByRole('dialog', { name: 'New workload' });
+  }
+
+  async function fillForm(dialog: HTMLElement) {
+    await userEvent.type(within(dialog).getByRole('textbox', { name: 'Name' }), 'daily-backup');
+    await userEvent.type(
+      within(dialog).getByRole('textbox', { name: 'Container image' }),
+      'ghcr.io/acme/backup:v1'
+    );
+    await userEvent.type(within(dialog).getByRole('textbox', { name: 'Executable' }), 'python');
+  }
+
+  it('creates a workload with exact command arguments and opens the returned definition', async () => {
+    const dialog = await openForm();
+    await fillForm(dialog);
+    await userEvent.clear(within(dialog).getByRole('textbox', { name: 'Executable' }));
+    await userEvent.type(within(dialog).getByRole('textbox', { name: 'Executable' }), '/bin/sh');
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Arguments' }), {
+      target: { value: '-c\necho "backup complete"' },
+    });
+    // The next list response includes the newly created job.
+    const previous = api.GET.getMockImplementation()!;
+    api.GET.mockImplementation((path, options) =>
+      path === '/v1/jobs'
+        ? Promise.resolve({
+            data: { jobs: [job, { ...job, id: 'job-new', name: 'daily-backup' }], next_offset: -1 },
+            response: new Response(),
+          })
+        : previous(path, options)
+    );
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Create workload' }));
+    await waitFor(() =>
+      expect(api.POST).toHaveBeenCalledWith('/v1/jobs', {
+        body: {
+          name: 'daily-backup',
+          kind: 'batch',
+          image_ref: 'ghcr.io/acme/backup:v1',
+          command: ['/bin/sh', '-c', 'echo "backup complete"'],
+        },
+      })
+    );
+    expect(
+      await screen.findByRole('heading', { name: 'Definition — daily-backup' })
+    ).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('validates the name before sending anything', async () => {
+    const dialog = await openForm();
+    await userEvent.type(within(dialog).getByRole('textbox', { name: 'Name' }), 'INVALID');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Create workload' }));
+    expect(within(dialog).getByRole('textbox', { name: 'Name' })).toHaveAttribute(
+      'aria-invalid',
+      'true'
+    );
+    expect(within(dialog).getByRole('textbox', { name: 'Name' })).toHaveFocus();
+    expect(api.POST).not.toHaveBeenCalled();
+  });
+
+  it('keeps the draft and reports API failures, then allows retry using plan defaults', async () => {
+    api.POST.mockRejectedValueOnce(new Error('This workload name is already in use.'));
+    const dialog = await openForm();
+    await fillForm(dialog);
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Create workload' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      'This workload name is already in use.'
+    );
+    expect(within(dialog).getByRole('textbox', { name: 'Name' })).toHaveValue('daily-backup');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Create workload' }));
+    await waitFor(() => expect(api.POST).toHaveBeenCalledTimes(2));
+    expect(api.POST).toHaveBeenLastCalledWith('/v1/jobs', {
+      body: {
+        name: 'daily-backup',
+        kind: 'batch',
+        image_ref: 'ghcr.io/acme/backup:v1',
+        command: ['python'],
+      },
+    });
+  });
+
+  it('prevents duplicate submissions while creation is pending', async () => {
+    api.POST.mockImplementation(() => new Promise(() => {}));
+    const dialog = await openForm();
+    await fillForm(dialog);
+    const submit = within(dialog).getByRole('button', { name: 'Create workload' });
+    await userEvent.click(submit);
+    expect(submit).toBeDisabled();
+    expect(api.POST).toHaveBeenCalledTimes(1);
+  });
+
+  it('submits recurring workloads with custom resource limits', async () => {
+    const dialog = await openForm();
+    await fillForm(dialog);
+    await userEvent.selectOptions(
+      within(dialog).getByRole('combobox', { name: 'Kind' }),
+      'recurring'
+    );
+    await userEvent.click(within(dialog).getByText('Resource limits', { exact: false }));
+    for (const [label, value] of [
+      ['Memory (MB)', '256'],
+      ['Task timeout (seconds)', '60'],
+      ['Parallel tasks', '2'],
+      ['Maximum retries', '1'],
+    ]) {
+      await userEvent.type(within(dialog).getByRole('spinbutton', { name: label }), value);
+    }
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Create workload' }));
+    await waitFor(() =>
+      expect(api.POST).toHaveBeenCalledWith('/v1/jobs', {
+        body: {
+          name: 'daily-backup',
+          kind: 'recurring',
+          image_ref: 'ghcr.io/acme/backup:v1',
+          command: ['python'],
+          ram_mb: 256,
+          task_timeout_sec: 60,
+          max_parallelism: 2,
+          retry_max: 1,
+        },
+      })
+    );
+  });
+
+  it('rejects arguments without an executable and invalid resource values', async () => {
+    const dialog = await openForm();
+    await fillForm(dialog);
+    await userEvent.clear(within(dialog).getByRole('textbox', { name: 'Executable' }));
+    await userEvent.type(within(dialog).getByRole('textbox', { name: 'Arguments' }), '-m');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Create workload' }));
+    expect(within(dialog).getByRole('textbox', { name: 'Executable' })).toHaveFocus();
+    await userEvent.clear(within(dialog).getByRole('textbox', { name: 'Arguments' }));
+    await userEvent.type(within(dialog).getByRole('textbox', { name: 'Executable' }), 'python');
+    await userEvent.click(within(dialog).getByText('Resource limits', { exact: false }));
+    await userEvent.type(within(dialog).getByRole('spinbutton', { name: 'Parallel tasks' }), '-1');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Create workload' }));
+    expect(within(dialog).getByRole('spinbutton', { name: 'Parallel tasks' })).toHaveAttribute(
+      'aria-invalid',
+      'true'
+    );
+    expect(api.POST).not.toHaveBeenCalled();
+  });
+
+  it('requires an executable because the job runtime cannot boot an empty command', async () => {
+    const dialog = await openForm();
+    await fillForm(dialog);
+    await userEvent.clear(within(dialog).getByRole('textbox', { name: 'Executable' }));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Create workload' }));
+    expect(within(dialog).getByRole('textbox', { name: 'Executable' })).toHaveAttribute(
+      'aria-invalid',
+      'true'
+    );
+    expect(api.POST).not.toHaveBeenCalled();
+  });
 });
 
 async function mount(search: string) {
