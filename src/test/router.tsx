@@ -19,7 +19,18 @@ export function withRouter(ui: ReactNode) {
   const leaf = (path: string) =>
     createRoute({ getParentRoute: () => root, path, component: () => null });
   const router = createRouter({
-    routeTree: root.addChildren([index, leaf('/signup'), leaf('/docs'), leaf('/docs/$slug')]),
+    routeTree: root.addChildren([
+      index,
+      leaf('/signup'),
+      leaf('/docs'),
+      leaf('/docs/$slug'),
+      leaf('/dashboard/triggers'),
+      leaf('/dashboard/triggers/new'),
+      leaf('/dashboard/triggers/$triggerId'),
+      leaf('/dashboard/plans'),
+      leaf('/dashboard/crons'),
+      leaf('/dashboard/workflows/new'),
+    ]),
     history: createMemoryHistory({ initialEntries: ['/'] }),
   });
   // The app registers its own route tree's types; this router is untyped.

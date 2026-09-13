@@ -14,6 +14,7 @@ import { Route as Crons } from './dashboard.crons';
 import { Route as Triggers } from './dashboard.triggers';
 const lists = vi.hoisted(() => ({
   empty: false,
+  triggersAllowed: true,
   appsRead: 'ready',
   historyError: false,
   jobsError: false,
@@ -26,6 +27,7 @@ const lists = vi.hoisted(() => ({
 }));
 beforeEach(() => {
   lists.empty = false;
+  lists.triggersAllowed = true;
   lists.appsRead = 'ready';
   lists.historyError = false;
   lists.jobsError = false;
@@ -39,6 +41,16 @@ beforeEach(() => {
 
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn() }));
+vi.mock('@/lib/auth', () => ({
+  useAuth: () => ({
+    account: {
+      plan: lists.triggersAllowed ? 'pro' : 'free',
+      limits: { triggers_allowed: lists.triggersAllowed },
+    },
+    loading: false,
+    apiReachable: true,
+  }),
+}));
 vi.mock('@/lib/api/queries', () => {
   const ok = (data: unknown) => ({ data, isPending: false, error: null, refetch: vi.fn() });
   const mutation = () => ({ mutateAsync: vi.fn(), isPending: false });
@@ -186,6 +198,33 @@ async function mount(entry = '/dashboard/jobs') {
 }
 
 describe('Jobs hub', () => {
+  it('offers trigger creation from the canonical Triggers section', async () => {
+    await mount('/dashboard/jobs?section=triggers');
+    expect(await screen.findByRole('link', { name: /create trigger/i })).toHaveAttribute(
+      'href',
+      '/dashboard/triggers/new'
+    );
+  });
+
+  it('sends accounts without trigger capability to plan comparison', async () => {
+    lists.triggersAllowed = false;
+    await mount('/dashboard/jobs?section=triggers');
+    expect(await screen.findByRole('link', { name: /compare plans/i })).toHaveAttribute(
+      'href',
+      '/dashboard/plans'
+    );
+    expect(screen.queryByRole('link', { name: /create trigger/i })).not.toBeInTheDocument();
+  });
+
+  it('keeps full trigger management reachable from the inline Jobs detail', async () => {
+    await mount('/dashboard/jobs?section=triggers');
+    await userEvent.click(await screen.findByRole('button', { name: 'orders' }));
+    expect(await screen.findByRole('link', { name: /manage trigger/i })).toHaveAttribute(
+      'href',
+      '/dashboard/triggers/trigger-1'
+    );
+  });
+
   it.each(['pending', 'error'])(
     'does not mistake an %s app lookup for an empty app list',
     async (state) => {

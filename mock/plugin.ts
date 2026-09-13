@@ -3,6 +3,12 @@ import { createHash, randomBytes } from 'node:crypto';
 import type { Plugin } from 'vite';
 import type { components } from '../src/lib/api/schema';
 import * as db from './data';
+import {
+  FREE_TRIGGER_ERROR_CODE,
+  KAFKA_SASL_MECHANISMS,
+  TRIGGER_CAPABILITIES_BY_PLAN,
+  triggerDefaultsFor,
+} from './trigger-contract';
 
 /**
  * Dev-only mock of `apid`, as a Vite middleware.
@@ -174,7 +180,7 @@ route('PATCH', '/v1/account/plan', ({ body }) => {
   const plan = String(body.plan ?? '') as typeof db.account.plan;
   if (!['free', 'hobby', 'pro', 'scale'].includes(plan)) throw new Problem(400, 'invalid_plan');
   db.account.plan = plan;
-  db.account.limits.plan = plan;
+  Object.assign(db.account.limits, TRIGGER_CAPABILITIES_BY_PLAN[plan], { plan });
   return db.account;
 });
 
@@ -2996,7 +3002,9 @@ const triggerSeed = [
   { kind: 'queue', slug: 'delayed-tasks', enabled: true, config: { mode: 'delayed_task' } },
 ];
 
-const triggers = triggerSeed.map((t, i) => ({
+// Typed as the API's read shape so a created trigger can join the seeded ones
+// without a cast fighting the literal types inferred from the seed.
+const triggers: Record<string, unknown>[] = triggerSeed.map((t, i) => ({
   id: db.id(),
   account_id: 'acct-1',
   app_id: db.apps[i % db.apps.length].id,
@@ -3004,10 +3012,11 @@ const triggers = triggerSeed.map((t, i) => ({
   slug: t.slug,
   enabled: t.enabled,
   config: t.config,
-  batch_size_max: t.kind === 'cron' ? 1 : 500,
-  batch_window_ms: t.kind === 'cron' ? 0 : 30000,
-  max_attempts: 10,
-  max_payload_bytes: 6 * 1024 * 1024,
+  batch_size_max: t.kind === 'cron' ? 1 : 64,
+  batch_window_ms: t.kind === 'cron' ? 0 : 1000,
+  max_attempts: t.kind === 'cron' ? 1 : 5,
+  payload_max_bytes: t.kind === 'cron' ? 1024 : 6 * 1024 * 1024,
+  broker_poison_strategy: 'commit',
   created_at: db.iso(0),
   updated_at: db.iso(0),
 }));
@@ -3024,6 +3033,235 @@ route('GET', '/v1/triggers/{id}', ({ params }) => {
   const t = triggers.find((x) => x.id === params.id);
   if (!t) throw new Problem(404, 'trigger_not_found');
   return t;
+});
+
+// Create and delete mirror the server's per-kind validation: `kind=cron` is
+// refused outright (POST /v1/crons owns those), every broker kind needs a slug
+// and a config, and the config is checked field by field the way
+// pkg/gregalemanifest does it.
+const TRIGGER_KINDS = ['kafka', 'nats', 'redis_streams', 'sqs_compat', 'queue'];
+
+const object = (value: unknown): Record<string, unknown> =>
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+
+function redactTriggerConfig(
+  kind: string,
+  input: Record<string, unknown>,
+  previous: Record<string, unknown> = {}
+) {
+  if (kind !== 'kafka') return structuredClone(input);
+  const config = structuredClone(input);
+  const oldSasl = object(previous.sasl);
+  const sasl = object(config.sasl);
+  if (Object.keys(sasl).length > 0) {
+    const passwordSet = typeof sasl.password === 'string' || oldSasl.password_set === true;
+    delete sasl.password;
+    delete sasl.password_sealed;
+    delete sasl.password_set;
+    if (passwordSet) sasl.password_set = true;
+    config.sasl = sasl;
+  }
+  const oldTLS = object(previous.tls);
+  const tls = object(config.tls);
+  if (Object.keys(tls).length > 0) {
+    const clientKeySet = typeof tls.client_key === 'string' || oldTLS.client_key_set === true;
+    delete tls.client_key;
+    delete tls.client_key_sealed;
+    delete tls.client_key_set;
+    if (clientKeySet) tls.client_key_set = true;
+    config.tls = tls;
+  }
+  return config;
+}
+
+function enforceTriggerCaps(body: Record<string, unknown>, kind: string, appId: string) {
+  const caps = db.account.limits;
+  if (!caps.triggers_allowed) {
+    throw new Problem(402, FREE_TRIGGER_ERROR_CODE, 'triggers need the Hobby plan or higher.');
+  }
+  if (!caps.trigger_kinds.includes(kind as never)) {
+    throw new Problem(403, 'trigger_kind_not_allowed', `${kind} is not included on this plan.`);
+  }
+  const accountCount = triggers.filter((trigger) => trigger.kind !== 'cron').length;
+  const appCount = triggers.filter(
+    (trigger) => trigger.kind !== 'cron' && trigger.app_id === appId
+  ).length;
+  if (accountCount >= caps.trigger_limit_per_account || appCount >= caps.trigger_limit_per_app) {
+    throw new Problem(403, 'plan_trigger_quota', 'the trigger count reached the plan limit.');
+  }
+  const checks: Array<[string, number]> = [
+    ['batch_size_max', caps.trigger_batch_size_max],
+    ['batch_window_ms', caps.trigger_batch_window_max_ms],
+    ['max_attempts', caps.trigger_max_attempts_max],
+    ['payload_max_bytes', caps.trigger_payload_max_bytes],
+  ];
+  for (const [field, maximum] of checks) {
+    if (body[field] !== undefined && Number(body[field]) > maximum) {
+      throw new Problem(
+        403,
+        field === 'batch_window_ms' ? 'trigger_batch_window_too_large' : 'plan_trigger_quota',
+        `${field} exceeds the plan maximum of ${maximum}.`
+      );
+    }
+  }
+  const tls = object(object(body.config).tls);
+  if (tls.skip_verify === true && !caps.trigger_tls_skip_verify_allowed) {
+    throw new Problem(
+      403,
+      'trigger_tls_skip_verify_not_allowed',
+      'TLS verification cannot be skipped on this plan.'
+    );
+  }
+}
+
+function validateTriggerConfig(kind: string, c: Record<string, unknown>) {
+  const str = (k: string) => (typeof c[k] === 'string' ? (c[k] as string) : '');
+  const fail = (detail: string) => {
+    throw new Problem(422, 'trigger_invalid_config', detail);
+  };
+  if (kind === 'kafka') {
+    if (!Array.isArray(c.brokers) || c.brokers.length === 0)
+      fail('kafka config requires non-empty brokers');
+    if (!str('topic')) fail('kafka config requires non-empty topic');
+    if (!str('group')) fail('kafka config requires non-empty group');
+    const sasl = object(c.sasl);
+    if (
+      Object.keys(sasl).length > 0 &&
+      !KAFKA_SASL_MECHANISMS.includes(String(sasl.mechanism) as never)
+    ) {
+      fail('kafka sasl mechanism is not supported');
+    }
+    const tls = object(c.tls);
+    const hasCert = typeof tls.client_cert === 'string' && tls.client_cert.length > 0;
+    const hasKey =
+      (typeof tls.client_key === 'string' && tls.client_key.length > 0) ||
+      tls.client_key_set === true;
+    if (hasCert !== hasKey) fail('kafka mTLS requires both client_cert and client_key');
+  }
+  if (kind === 'nats') {
+    if (!/^(nats|tls):\/\/[^/\s]+/.test(str('url')))
+      fail(`nats url must be nats:// or tls:// with a host (got "${str('url')}")`);
+    if (!str('stream')) fail('nats config requires non-empty stream');
+    if (!str('subject')) fail('nats config requires non-empty subject');
+    if (!str('durable')) fail('nats config requires non-empty durable');
+  }
+  if (kind === 'redis_streams') {
+    if (!str('addr')) fail('redis_streams config requires non-empty addr');
+    if (!str('stream')) fail('redis_streams config requires non-empty stream');
+    if (!str('group')) fail('redis_streams config requires non-empty group');
+  }
+  if (kind === 'sqs_compat') {
+    if (!/^https?:\/\/[^/\s]+/.test(str('queue_url')))
+      fail(
+        `sqs_compat queue_url must be http:// or https:// with a host (got "${str('queue_url')}")`
+      );
+    const poll = c.long_poll_secs;
+    if (typeof poll === 'number' && (poll < 1 || poll > 20))
+      fail(`sqs_compat long_poll_secs=${poll} out of range [1, 20]`);
+  }
+  if (kind === 'queue' && !['queue', 'delayed_task'].includes(str('mode')))
+    fail(`queue config mode "${str('mode')}" not in {queue, delayed_task}`);
+}
+
+route('POST', '/v1/triggers', ({ body }) => {
+  const kind = String(body.kind ?? '');
+  if (kind === 'cron')
+    throw new Problem(
+      400,
+      'trigger_immutable',
+      'kind=cron not supported on POST /v1/triggers — use POST /v1/crons'
+    );
+  if (!TRIGGER_KINDS.includes(kind))
+    throw new Problem(
+      400,
+      'validation_failed',
+      'unknown kind: must be one of cron|kafka|nats|redis_streams|sqs_compat|queue'
+    );
+  const slug = String(body.slug ?? '').trim();
+  if (!slug) throw new Problem(400, 'validation_failed', 'slug is required for non-cron triggers');
+  const config = (body.config ?? {}) as Record<string, unknown>;
+  if (Object.keys(config).length === 0)
+    throw new Problem(400, 'validation_failed', 'config is required for non-cron triggers');
+  const appId = String(body.app_id ?? '');
+  if (!db.apps.some((a) => a.id === appId)) throw new Problem(404, 'app_not_found', 'no such app');
+  if (triggers.some((x) => x.slug === slug && x.app_id === appId))
+    throw new Problem(409, 'conflict', `a trigger named "${slug}" exists on this app`);
+  enforceTriggerCaps(body, kind, appId);
+  validateTriggerConfig(kind, config);
+  const defaults = triggerDefaultsFor(db.account.plan);
+  const trigger = {
+    id: db.id(),
+    account_id: db.ACCOUNT_ID,
+    app_id: appId,
+    kind,
+    slug,
+    enabled: body.enabled !== false,
+    config: redactTriggerConfig(kind, config),
+    batch_size_max: Number(body.batch_size_max ?? defaults.batch_size_max),
+    batch_window_ms: Number(body.batch_window_ms ?? defaults.batch_window_ms),
+    max_attempts: Number(body.max_attempts ?? defaults.max_attempts),
+    payload_max_bytes: Number(body.payload_max_bytes ?? defaults.payload_max_bytes),
+    broker_poison_strategy: String(body.broker_poison_strategy ?? 'commit'),
+    created_at: db.iso(0),
+    updated_at: db.iso(0),
+  };
+  triggers.unshift(trigger);
+  return status(201, trigger);
+});
+
+route('PATCH', '/v1/triggers/{id}', ({ params, body }) => {
+  const trigger = triggers.find((item) => item.id === params.id);
+  if (!trigger) throw new Problem(404, 'trigger_not_found', 'no such trigger');
+  const kind = String(trigger.kind);
+  const appId = String(trigger.app_id);
+  // The existing row does not count as a new quota entry during update.
+  const capsBody = { ...body, config: body.config ?? trigger.config };
+  const limits = db.account.limits;
+  for (const [field, maximum] of [
+    ['batch_size_max', limits.trigger_batch_size_max],
+    ['batch_window_ms', limits.trigger_batch_window_max_ms],
+    ['max_attempts', limits.trigger_max_attempts_max],
+    ['payload_max_bytes', limits.trigger_payload_max_bytes],
+  ] as const) {
+    if (body[field] !== undefined && Number(body[field]) > maximum) {
+      throw new Problem(
+        403,
+        field === 'batch_window_ms' ? 'trigger_batch_window_too_large' : 'plan_trigger_quota'
+      );
+    }
+  }
+  const config = object(capsBody.config);
+  const tls = object(config.tls);
+  if (tls.skip_verify === true && !limits.trigger_tls_skip_verify_allowed) {
+    throw new Problem(403, 'trigger_tls_skip_verify_not_allowed');
+  }
+  validateTriggerConfig(kind, config);
+  if (body.config !== undefined) {
+    trigger.config = redactTriggerConfig(kind, object(body.config), object(trigger.config));
+  }
+  for (const field of [
+    'enabled',
+    'batch_size_max',
+    'batch_window_ms',
+    'max_attempts',
+    'payload_max_bytes',
+    'broker_poison_strategy',
+    'filter_criteria',
+  ]) {
+    if (body[field] !== undefined) trigger[field] = body[field];
+  }
+  trigger.updated_at = db.iso(0);
+  void appId;
+  return trigger;
+});
+
+route('DELETE', '/v1/triggers/{id}', ({ params }) => {
+  const i = triggers.findIndex((x) => x.id === params.id);
+  if (i < 0) throw new Problem(404, 'trigger_not_found', 'no such trigger');
+  triggers.splice(i, 1);
+  return NO_CONTENT;
 });
 
 route('POST', '/v1/triggers/{id}/pause', ({ params }) => {

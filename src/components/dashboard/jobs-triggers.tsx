@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { Link } from '@tanstack/react-router';
+import { Plus } from 'iconoir-react';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import {
@@ -16,6 +17,7 @@ import { useToast } from '@/components/ui/toast';
 import { errorMessage } from '@/lib/api/errors';
 import { useApps, useSetTriggerEnabled, useTriggerMetrics, useTriggers } from '@/lib/api/queries';
 import { slugIndex } from '@/lib/api/adapters';
+import { useAuth } from '@/lib/auth';
 import type { JobsSelectionProps } from './jobs-search';
 import { TriggerConfiguration } from '@/components/dashboard/trigger-detail';
 
@@ -89,6 +91,11 @@ function TriggerDetail({
             {t === 'records' ? 'Records' : 'Dead letter'}
           </Button>
         ))}
+        <Button asChild size="xs" variant="secondary" className="ml-auto">
+          <Link to="/dashboard/triggers/$triggerId" params={{ triggerId }}>
+            Manage trigger
+          </Link>
+        </Button>
       </div>
 
       {tab === 'records' ? (
@@ -105,6 +112,7 @@ function TriggerDetail({
 
 export function TriggersBody({ search, onSelection }: JobsSelectionProps) {
   const { toast } = useToast();
+  const auth = useAuth();
   const { data, isPending, error, refetch } = useTriggers();
   const { data: apps } = useApps();
   const setEnabled = useSetTriggerEnabled();
@@ -195,11 +203,24 @@ export function TriggersBody({ search, onSelection }: JobsSelectionProps) {
     },
   ];
 
+  const action = !auth.account ? undefined : auth.account.limits.triggers_allowed ? (
+    <Button asChild size="sm">
+      <Link to="/dashboard/triggers/new">
+        <Plus /> Create trigger
+      </Link>
+    </Button>
+  ) : (
+    <Button asChild size="sm" variant="secondary">
+      <Link to="/dashboard/plans">Compare plans</Link>
+    </Button>
+  );
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Triggers"
         description="Event sources that invoke an app — cron, Kafka, NATS, Redis Streams, an SQS-compatible queue, or the in-platform queue. Defined in gregale.yaml and the CLI; paused, inspected and recovered here."
+        actions={action}
       />
 
       {search.trigger && data && !selected && <p role="status">Trigger not found</p>}

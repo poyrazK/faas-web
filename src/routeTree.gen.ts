@@ -57,6 +57,8 @@ import { Route as DocsIndexRouteImport } from './routes/docs.index'
 import { Route as DocsSlugRouteImport } from './routes/docs.$slug'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as StatusIndexRouteImport } from './routes/status.index'
+import { Route as DashboardTriggersTriggerIdRouteImport } from './routes/dashboard.triggers.$triggerId'
+import { Route as DashboardTriggersNewRouteImport } from './routes/dashboard.triggers.new'
 import { Route as DashboardWorkflowsIndexRouteImport } from './routes/dashboard.workflows.index'
 import { Route as DashboardWorkflowsWorkflowIdRouteImport } from './routes/dashboard.workflows.$workflowId'
 import { Route as DashboardWorkflowsNewRouteImport } from './routes/dashboard.workflows.new'
@@ -302,6 +304,17 @@ const StatusIndexRoute = StatusIndexRouteImport.update({
   path: '/',
   getParentRoute: () => StatusRoute,
 } as any)
+const DashboardTriggersTriggerIdRoute =
+  DashboardTriggersTriggerIdRouteImport.update({
+    id: '/$triggerId',
+    path: '/$triggerId',
+    getParentRoute: () => DashboardTriggersRoute,
+  } as any)
+const DashboardTriggersNewRoute = DashboardTriggersNewRouteImport.update({
+  id: '/new',
+  path: '/new',
+  getParentRoute: () => DashboardTriggersRoute,
+} as any)
 const DashboardWorkflowsIndexRoute = DashboardWorkflowsIndexRouteImport.update({
   id: '/workflows/',
   path: '/workflows/',
@@ -364,7 +377,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/templates': typeof DashboardTemplatesRoute
   '/dashboard/tenant-surfaces': typeof DashboardTenantSurfacesRoute
   '/dashboard/traces': typeof DashboardTracesRoute
-  '/dashboard/triggers': typeof DashboardTriggersRoute
+  '/dashboard/triggers': typeof DashboardTriggersRouteWithChildren
   '/dashboard/usage': typeof DashboardUsageRoute
   '/dashboard/webhooks': typeof DashboardWebhooksRoute
   '/dashboard/workers': typeof DashboardWorkersRoute
@@ -373,6 +386,8 @@ export interface FileRoutesByFullPath {
   '/dashboard/': typeof DashboardIndexRoute
   '/docs/': typeof DocsIndexRoute
   '/status/': typeof StatusIndexRoute
+  '/dashboard/triggers/$triggerId': typeof DashboardTriggersTriggerIdRoute
+  '/dashboard/triggers/new': typeof DashboardTriggersNewRoute
   '/dashboard/workflows/$workflowId': typeof DashboardWorkflowsWorkflowIdRoute
   '/dashboard/workflows/new': typeof DashboardWorkflowsNewRoute
   '/status/incidents/$id': typeof StatusIncidentsIdRoute
@@ -415,7 +430,7 @@ export interface FileRoutesByTo {
   '/dashboard/templates': typeof DashboardTemplatesRoute
   '/dashboard/tenant-surfaces': typeof DashboardTenantSurfacesRoute
   '/dashboard/traces': typeof DashboardTracesRoute
-  '/dashboard/triggers': typeof DashboardTriggersRoute
+  '/dashboard/triggers': typeof DashboardTriggersRouteWithChildren
   '/dashboard/usage': typeof DashboardUsageRoute
   '/dashboard/webhooks': typeof DashboardWebhooksRoute
   '/dashboard/workers': typeof DashboardWorkersRoute
@@ -424,6 +439,8 @@ export interface FileRoutesByTo {
   '/dashboard': typeof DashboardIndexRoute
   '/docs': typeof DocsIndexRoute
   '/status': typeof StatusIndexRoute
+  '/dashboard/triggers/$triggerId': typeof DashboardTriggersTriggerIdRoute
+  '/dashboard/triggers/new': typeof DashboardTriggersNewRoute
   '/dashboard/workflows/$workflowId': typeof DashboardWorkflowsWorkflowIdRoute
   '/dashboard/workflows/new': typeof DashboardWorkflowsNewRoute
   '/status/incidents/$id': typeof StatusIncidentsIdRoute
@@ -470,7 +487,7 @@ export interface FileRoutesById {
   '/dashboard/templates': typeof DashboardTemplatesRoute
   '/dashboard/tenant-surfaces': typeof DashboardTenantSurfacesRoute
   '/dashboard/traces': typeof DashboardTracesRoute
-  '/dashboard/triggers': typeof DashboardTriggersRoute
+  '/dashboard/triggers': typeof DashboardTriggersRouteWithChildren
   '/dashboard/usage': typeof DashboardUsageRoute
   '/dashboard/webhooks': typeof DashboardWebhooksRoute
   '/dashboard/workers': typeof DashboardWorkersRoute
@@ -479,6 +496,8 @@ export interface FileRoutesById {
   '/dashboard/': typeof DashboardIndexRoute
   '/docs/': typeof DocsIndexRoute
   '/status/': typeof StatusIndexRoute
+  '/dashboard/triggers/$triggerId': typeof DashboardTriggersTriggerIdRoute
+  '/dashboard/triggers/new': typeof DashboardTriggersNewRoute
   '/dashboard/workflows/$workflowId': typeof DashboardWorkflowsWorkflowIdRoute
   '/dashboard/workflows/new': typeof DashboardWorkflowsNewRoute
   '/status/incidents/$id': typeof StatusIncidentsIdRoute
@@ -535,6 +554,8 @@ export interface FileRouteTypes {
     | '/dashboard/'
     | '/docs/'
     | '/status/'
+    | '/dashboard/triggers/$triggerId'
+    | '/dashboard/triggers/new'
     | '/dashboard/workflows/$workflowId'
     | '/dashboard/workflows/new'
     | '/status/incidents/$id'
@@ -586,6 +607,8 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/docs'
     | '/status'
+    | '/dashboard/triggers/$triggerId'
+    | '/dashboard/triggers/new'
     | '/dashboard/workflows/$workflowId'
     | '/dashboard/workflows/new'
     | '/status/incidents/$id'
@@ -640,6 +663,8 @@ export interface FileRouteTypes {
     | '/dashboard/'
     | '/docs/'
     | '/status/'
+    | '/dashboard/triggers/$triggerId'
+    | '/dashboard/triggers/new'
     | '/dashboard/workflows/$workflowId'
     | '/dashboard/workflows/new'
     | '/status/incidents/$id'
@@ -995,6 +1020,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StatusIndexRouteImport
       parentRoute: typeof StatusRoute
     }
+    '/dashboard/triggers/$triggerId': {
+      id: '/dashboard/triggers/$triggerId'
+      path: '/$triggerId'
+      fullPath: '/dashboard/triggers/$triggerId'
+      preLoaderRoute: typeof DashboardTriggersTriggerIdRouteImport
+      parentRoute: typeof DashboardTriggersRoute
+    }
+    '/dashboard/triggers/new': {
+      id: '/dashboard/triggers/new'
+      path: '/new'
+      fullPath: '/dashboard/triggers/new'
+      preLoaderRoute: typeof DashboardTriggersNewRouteImport
+      parentRoute: typeof DashboardTriggersRoute
+    }
     '/dashboard/workflows/': {
       id: '/dashboard/workflows/'
       path: '/workflows'
@@ -1025,6 +1064,19 @@ declare module '@tanstack/react-router' {
     }
   }
 }
+
+interface DashboardTriggersRouteChildren {
+  DashboardTriggersTriggerIdRoute: typeof DashboardTriggersTriggerIdRoute
+  DashboardTriggersNewRoute: typeof DashboardTriggersNewRoute
+}
+
+const DashboardTriggersRouteChildren: DashboardTriggersRouteChildren = {
+  DashboardTriggersTriggerIdRoute: DashboardTriggersTriggerIdRoute,
+  DashboardTriggersNewRoute: DashboardTriggersNewRoute,
+}
+
+const DashboardTriggersRouteWithChildren =
+  DashboardTriggersRoute._addFileChildren(DashboardTriggersRouteChildren)
 
 interface DashboardRouteChildren {
   DashboardAccountRoute: typeof DashboardAccountRoute
@@ -1059,7 +1111,7 @@ interface DashboardRouteChildren {
   DashboardTemplatesRoute: typeof DashboardTemplatesRoute
   DashboardTenantSurfacesRoute: typeof DashboardTenantSurfacesRoute
   DashboardTracesRoute: typeof DashboardTracesRoute
-  DashboardTriggersRoute: typeof DashboardTriggersRoute
+  DashboardTriggersRoute: typeof DashboardTriggersRouteWithChildren
   DashboardUsageRoute: typeof DashboardUsageRoute
   DashboardWebhooksRoute: typeof DashboardWebhooksRoute
   DashboardWorkersRoute: typeof DashboardWorkersRoute
@@ -1102,7 +1154,7 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardTemplatesRoute: DashboardTemplatesRoute,
   DashboardTenantSurfacesRoute: DashboardTenantSurfacesRoute,
   DashboardTracesRoute: DashboardTracesRoute,
-  DashboardTriggersRoute: DashboardTriggersRoute,
+  DashboardTriggersRoute: DashboardTriggersRouteWithChildren,
   DashboardUsageRoute: DashboardUsageRoute,
   DashboardWebhooksRoute: DashboardWebhooksRoute,
   DashboardWorkersRoute: DashboardWorkersRoute,
