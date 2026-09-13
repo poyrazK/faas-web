@@ -1,8 +1,8 @@
 import { Link } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
+import { Modal } from '@/components/ui/modal';
 import type { components } from '@/lib/api/schema';
-import { InlinePhase, Panel, queryPhase } from './primitives';
-import { useDetailFocus } from './use-detail-focus';
+import { InlinePhase, queryPhase } from './primitives';
 import { WakeTimeline } from './wake-timeline';
 
 type Instance = components['schemas']['InstanceResponse'];
@@ -22,7 +22,6 @@ function elapsed(start?: string | null, end?: string | null) {
 
 export function InstanceDetail({
   id,
-  revealRequest,
   instance,
   slug,
   loading,
@@ -34,7 +33,6 @@ export function InstanceDetail({
   onClose,
 }: {
   id: string;
-  revealRequest: number;
   instance?: Instance;
   slug?: string;
   loading: boolean;
@@ -45,22 +43,18 @@ export function InstanceDetail({
   onRetryApps: () => void;
   onClose: () => void;
 }) {
-  const panelRef = useDetailFocus(id, revealRequest);
   const phase = queryPhase({ error, loading, isEmpty: !instance });
   return (
-    <section
-      ref={panelRef}
-      tabIndex={-1}
-      aria-label="Instance details"
-      className="scroll-mt-24 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    <Modal
+      open
+      onClose={onClose}
+      title="Instance details"
+      description="Runtime state, lifecycle evidence, and related app links."
+      width="max-w-4xl"
     >
-      <Panel
-        title="Instance details"
-        actions={
-          <Button size="xs" variant="ghost" onClick={onClose}>
-            Close
-          </Button>
-        }
+      <section
+        aria-label="Instance details"
+        className="max-h-[calc(100dvh-13rem)] overflow-y-auto overscroll-contain p-1"
       >
         {phase !== 'ready' || !instance ? (
           <div className="flex flex-col items-start gap-3">
@@ -68,7 +62,7 @@ export function InstanceDetail({
               phase={phase}
               error={error}
               loadingMessage="Loading instances…"
-              emptyMessage="This instance is not in the current instance list. It may have parked or been removed. Refresh the list or select another instance."
+              emptyMessage={`Instance ${id} is not in the current instance list. It may have parked or been removed. Refresh the list or select another instance.`}
             />
             {(error || phase === 'empty') && (
               <Button size="xs" variant="outline" onClick={onRetry}>
@@ -174,7 +168,7 @@ export function InstanceDetail({
             </div>
           </div>
         )}
-      </Panel>
-    </section>
+      </section>
+    </Modal>
   );
 }

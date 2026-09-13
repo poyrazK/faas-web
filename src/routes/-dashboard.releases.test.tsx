@@ -334,7 +334,7 @@ describe('Releases hub', () => {
     ['/dashboard/deployments?view=builds', 'keyboard', 'build'],
     ['/dashboard/workflows/alpha?tab=Deployments', 'keyboard', 'app release'],
   ])(
-    'reveals and focuses %s detail for %s selection and restores focus on close/Back',
+    'opens %s detail in a modal for %s selection without scrolling and restores focus on close/Back',
     async (entry, input, kind) => {
       fixtures.rowCount = 50;
       const reveal = vi.spyOn(Element.prototype, 'scrollIntoView');
@@ -353,11 +353,12 @@ describe('Releases hub', () => {
         }
       };
       await select();
-      const detail = await screen.findByRole('region', {
+      const detail = await screen.findByRole('dialog', {
         name: kind === 'build' ? 'Build details' : 'Release details',
       });
-      expect(detail).toHaveFocus();
-      expect(reveal.mock.contexts).toContain(detail);
+      await waitFor(() => expect(detail.contains(document.activeElement)).toBe(true));
+      expect(reveal).not.toHaveBeenCalled();
+      expect(detail).toHaveAttribute('aria-modal', 'true');
       await userEvent.click(within(detail).getByRole('button', { name: 'Close' }));
       await waitFor(() => expect(row).toHaveFocus());
       await select();
@@ -365,7 +366,8 @@ describe('Releases hub', () => {
       await waitFor(() => expect(row).toHaveFocus());
       expect(screen.queryByRole('region', { name: /details/ })).not.toBeInTheDocument();
       await act(async () => router.history.forward());
-      expect(await screen.findByRole('region', { name: /details/ })).toHaveFocus();
+      const restored = await screen.findByRole('dialog', { name: /details/ });
+      await waitFor(() => expect(restored.contains(document.activeElement)).toBe(true));
     }
   );
 
@@ -586,7 +588,7 @@ describe('Releases hub', () => {
     expect(router.state.location.search).toMatchObject({ ...investigation, deployment: 'dep-1' });
     await userEvent.click(await screen.findByRole('button', { name: 'Security scans' }));
     await userEvent.click(
-      within(screen.getByRole('region', { name: 'Release details' })).getByRole('button', {
+      within(screen.getByRole('dialog', { name: 'Release details' })).getByRole('button', {
         name: 'Close',
       })
     );

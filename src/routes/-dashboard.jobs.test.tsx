@@ -223,17 +223,16 @@ describe('Jobs hub', () => {
     expect(lists.retryHistory).toHaveBeenCalledOnce();
   });
 
-  it.each(['workloads', 'triggers'])(
-    'offers the CLI guide from the empty %s list',
-    async (section) => {
-      lists.empty = true;
-      await mount(`/dashboard/jobs?section=${section}`);
-      expect(screen.getByRole('link', { name: 'Read the CLI guide' })).toHaveAttribute(
-        'href',
-        '/docs/cli'
-      );
-    }
-  );
+  it('offers creation from empty workloads and the CLI guide from empty triggers', async () => {
+    lists.empty = true;
+    await mount('/dashboard/jobs?section=workloads');
+    expect(screen.getByRole('button', { name: 'Create your first workload' })).toBeEnabled();
+    await userEvent.click(screen.getByRole('link', { name: 'Triggers' }));
+    expect(screen.getByRole('link', { name: 'Read the CLI guide' })).toHaveAttribute(
+      'href',
+      '/docs/cli'
+    );
+  });
 
   it('focuses schedule creation from an empty list', async () => {
     lists.empty = true;
@@ -285,7 +284,7 @@ describe('Jobs hub', () => {
       'aria-current',
       'page'
     );
-    expect(screen.getByText(/CLI-defined container/)).toBeInTheDocument();
+    expect(screen.getByText(/Container jobs for batch and recurring work/)).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'Image' })).toBeInTheDocument();
     await userEvent.click(within(navigation).getByRole('link', { name: 'Scheduled requests' }));
     expect(await screen.findByText(/HTTP requests on a Cron schedule/)).toBeInTheDocument();
