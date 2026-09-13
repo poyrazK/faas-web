@@ -1,0 +1,307 @@
+import { useMemo, useState } from 'react';
+import { LogOut } from 'iconoir-react';
+import { Button } from '@/components/ui/button';
+import { InlinePhase, PageHeader, Panel, queryPhase } from '@/components/dashboard/primitives';
+import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
+import { useToast } from '@/components/ui/toast';
+import { useConfirm } from '@/components/ui/confirm';
+import {
+  useRevokeAllSessions,
+  useRevokeSession,
+  useSessions,
+  useAuthAuditEvents,
+  useAccountSecrets,
+} from '@/lib/api/queries';
+import { useMfa } from '@/components/auth/mfa-provider';
+import { errorMessage } from '@/lib/api/errors';
+import { formatRelative } from '@/lib/mock-data';
+import { PasswordPanel } from '@/components/dashboard/password-wizard';
+import { AuthEventDetail } from '@/components/dashboard/auth-event-detail';
+
+/**
+ * Active dashboard sessions, from `/v1/auth/sessions`.
+ *
+ * The point of the page is the panic button: someone who thinks their account
+ * is compromised needs to end every other session in one action, without
+ * hunting through rows. Revoking all is therefore the primary control, and the
+ * current session is marked so it is obvious what "all" includes.
+ *
+ * Both writes obtain an action-bound CSRF token from the API. The matching
+ * cookie is HttpOnly, so the browser never needs to read it directly.
+ */
+interface SessionRow {
+  id: string;
+  ip: string;
+  agent: string;
+  issuedAt: string;
+  lastSeenAt: string;
+  current: boolean;
+}
+
+function formatWhen(value: string | undefined): string {
+  if (!value) return '—';
+  const ms = Date.parse(value);
+  return Number.isNaN(ms) ? '—' : formatRelative(ms);
+}
+
+function AuthEventsPanel() {
+  const q = useAuthAuditEvents();
+  const events = q.data?.events ?? [];
+  const phase = queryPhase({ error: q.error, loading: q.isPending, isEmpty: events.length === 0 });
+  const [openId, setOpenId] = useState<string | null>(null);
+  return (
+    <Panel
+      title="Auth events"
+      description="Sign-ins, key mints, and MFA changes — the account's security timeline, distinct from the resource audit log."
+      padded={phase !== 'ready'}
+    >
+      {phase !== 'ready' ? (
+        <InlinePhase
+          phase={phase}
+          error={q.error}
+          loadingMessage="Reading auth events…"
+          emptyMessage="No auth events recorded yet."
+        />
+      ) : (
+        <ul className="flex flex-col divide-y divide-border">
+          {events.slice(0, 12).map((e) => (
+            <li key={e.id}>
+              <button
+                type="button"
+                onClick={() => setOpenId(e.id)}
+                className="flex w-full flex-wrap items-center gap-x-4 gap-y-1 px-5 py-2.5 text-left text-xs transition-colors hover:bg-muted/40 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand"
+              >
+                <span className="font-mono">{e.kind}</span>
+                <span className="text-muted-foreground">{e.actor}</span>
+                {e.severity && e.severity !== 'info' && (
+                  <span style={{ color: 'var(--status-warning)' }}>{e.severity}</span>
+                )}
+                <span className="ml-auto text-muted-foreground">
+                  {new Date(e.at).toLocaleString()}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <AuthEventDetail id={openId} onClose={() => setOpenId(null)} />
+    </Panel>
+  );
+}
+
+/** Every sealed secret across the account — the hygiene inventory, so a
+ * stale credential is findable without opening each app. */
+function SecretsInventoryPanel() {
+  const q = useAccountSecrets();
+  const rows = q.data?.secrets ?? [];
+  const phase = queryPhase({ error: q.error, loading: q.isPending, isEmpty: rows.length === 0 });
+  return (
+    <Panel
+      title="Sealed secrets"
+      description="Across every app. Values are sealed — this lists names and ages only."
+      padded={phase !== 'ready'}
+    >
+      {phase !== 'ready' ? (
+        <InlinePhase
+          phase={phase}
+          error={q.error}
+          loadingMessage="Reading the inventory…"
+          emptyMessage="No sealed secrets on this account."
+        />
+      ) : (
+        <ul className="flex flex-col divide-y divide-border">
+          {rows.map((r) => (
+            <li
+              key={`${r.app_slug}/${r.key}`}
+              className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-2.5 text-xs"
+            >
+              <span className="font-mono">{r.app_slug}</span>
+              <span className="font-mono text-muted-foreground">{r.key}</span>
+              <span className="ml-auto text-muted-foreground">
+                updated {new Date(r.updated_at).toLocaleDateString()}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Panel>
+  );
+}
+
+export function SecuritySettings() {
+  const { toast } = useToast();
+  const confirm = useConfirm();
+  const { openMfa } = useMfa();
+  const { data, isPending, error, refetch } = useSessions();
+  const revoke = useRevokeSession();
+  const revokeAll = useRevokeAllSessions();
+
+  const rows = useMemo<SessionRow[]>(
+    () =>
+      (data?.sessions ?? []).map((s) => ({
+        id: s.id,
+        ip: s.issued_ip ?? '—',
+        agent: s.issued_ua ?? '—',
+        issuedAt: s.issued_at,
+        lastSeenAt: s.last_seen_at ?? '',
+        current: s.current_session,
+      })),
+    [data]
+  );
+
+  const columns: Column<SessionRow>[] = [
+    {
+      key: 'ip',
+      label: 'IP',
+      width: 'w-40',
+      render: (s) => (
+        <span className="flex items-center gap-2">
+          <span className="font-mono text-xs">{s.ip}</span>
+          {s.current && <Pill label="this device" color="var(--brand)" />}
+        </span>
+      ),
+    },
+    {
+      key: 'agent',
+      label: 'Browser',
+      render: (s) => (
+        <span className="line-clamp-1 text-xs text-muted-foreground" title={s.agent}>
+          {s.agent}
+        </span>
+      ),
+    },
+    {
+      key: 'issuedAt',
+      label: 'Signed in',
+      numeric: true,
+      render: (s) => (
+        <span className="text-xs text-muted-foreground">{formatWhen(s.issuedAt)}</span>
+      ),
+    },
+    {
+      key: 'lastSeenAt',
+      label: 'Last seen',
+      numeric: true,
+      render: (s) => (
+        <span className="text-xs text-muted-foreground">{formatWhen(s.lastSeenAt)}</span>
+      ),
+    },
+    {
+      key: 'id',
+      label: '',
+      width: 'w-24',
+      render: (s) =>
+        s.current ? null : (
+          <button
+            type="button"
+            onClick={async () => {
+              if (
+                !(await confirm({
+                  title: 'Revoke this session?',
+                  description: 'That browser is signed out on its next request.',
+                  confirmLabel: 'Revoke session',
+                  destructive: true,
+                }))
+              )
+                return;
+              void revoke
+                .mutateAsync(s.id)
+                .then(() => toast({ kind: 'success', title: 'Session revoked' }))
+                .catch((err: unknown) =>
+                  toast({
+                    kind: 'error',
+                    title: 'Could not revoke',
+                    description: errorMessage(err),
+                  })
+                );
+            }}
+            className="text-xs text-muted-foreground transition-colors hover:text-foreground"
+          >
+            Revoke
+          </button>
+        ),
+    },
+  ];
+
+  return (
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Security"
+        description="Every browser signed in to this account. Revoke anything you do not recognise."
+        actions={
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5"
+            disabled={revokeAll.isPending}
+            onClick={async () => {
+              if (
+                !(await confirm({
+                  title: 'Sign out everywhere?',
+                  description:
+                    'Every other browser and CLI session ends. This one stays signed in.',
+                  confirmLabel: 'Sign out everywhere',
+                  destructive: true,
+                }))
+              )
+                return;
+              void revokeAll
+                .mutateAsync()
+                .then((result) =>
+                  toast({
+                    kind: 'success',
+                    title: 'Sessions revoked',
+                    description: `${result.revoked} session${result.revoked === 1 ? '' : 's'} ended.`,
+                  })
+                )
+                .catch((err: unknown) =>
+                  toast({
+                    kind: 'error',
+                    title: 'Could not revoke',
+                    description: errorMessage(err),
+                  })
+                );
+            }}
+          >
+            <LogOut className="h-3.5 w-3.5" />
+            Sign out everywhere
+          </Button>
+        }
+      />
+
+      <Panel
+        title="Multi-factor authentication"
+        description="Optional extra protection for your dashboard account."
+        actions={
+          <Button size="sm" variant="outline" onClick={() => openMfa('choose')}>
+            Set up or verify
+          </Button>
+        }
+      >
+        <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
+          Manage the authenticator step for this browser session. If MFA is already enabled, you can
+          verify it here; if it is not, Gregale will guide you through optional enrollment and
+          provide one-time recovery codes.
+        </p>
+      </Panel>
+
+      <Panel title="Active sessions">
+        <ResourceTable
+          rows={rows}
+          columns={columns}
+          initialSort={{ key: 'lastSeenAt', dir: 'desc' }}
+          searchKeys={['ip', 'agent']}
+          searchPlaceholder="Filter by IP or browser…"
+          emptyMessage="No other sessions."
+          minWidth="min-w-[900px]"
+          loading={isPending}
+          error={error}
+          onRetry={() => void refetch()}
+        />
+      </Panel>
+      <PasswordPanel />
+      <SecretsInventoryPanel />
+      <AuthEventsPanel />
+    </div>
+  );
+}

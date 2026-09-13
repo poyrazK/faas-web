@@ -201,7 +201,7 @@ export function Nav() {
             className="group ml-0.5 h-9 gap-1.5 rounded-full pl-4 pr-3 text-[13.5px] font-semibold"
           >
             <SweepLink to="/signup">
-              Get started
+              Join the beta
               <ArrowRight className="size-3.5 transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transition-none" />
             </SweepLink>
           </Button>

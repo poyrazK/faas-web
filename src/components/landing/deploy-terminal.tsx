@@ -4,14 +4,14 @@ import { Restart } from 'iconoir-react';
 /**
  * A deploy session, typed out.
  *
- * Every line is something the product actually prints. The deploy command and
+ * The deploy command and
  * its one-line reply are the worked example from `content/docs/deploy-from-
- * source.md`; the `x-faas-wake: cold` header and the ~350 ms wake are from
+ * source.md`; the `x-faas-wake: cold` header is from
  * `content/docs/scale-to-zero.md`; `*.apps.gregale.dev` is the zone from
  * `preview-environments.md`. Change those docs, change this script.
  *
- * What it is not: a live call. The timings are illustrative of the documented
- * p50, not measured in the visitor's browser — the caption says so.
+ * The idle comment explains the lifecycle; it is not CLI output. Timings
+ * are illustrative, not a live call or a performance guarantee.
  */
 type Line =
   | { kind: 'cmd'; text: string }
@@ -42,7 +42,7 @@ const SCRIPT: Line[] = [
   { kind: 'gap' },
   {
     kind: 'out',
-    text: '# idle → parked back at zero. Nothing resident, nothing billed, until the next request.',
+    text: '# idle → instance parked. The next request wakes it again.',
     tone: 'dim',
   },
 ];

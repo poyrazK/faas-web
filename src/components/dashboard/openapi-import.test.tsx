@@ -6,8 +6,7 @@ import { ApiError } from '@/lib/api/errors';
 
 const useAppOpenAPI = vi.fn();
 const useDeploymentOpenAPIDoc = vi.fn();
-const useDeployments = vi.fn();
-const useApp = vi.fn();
+const useAppDeployments = vi.fn();
 const useAppEdgeRules = vi.fn();
 const dryRun = vi.fn();
 const importDoc = vi.fn();
@@ -20,8 +19,7 @@ vi.mock('@/lib/api/queries', () => ({
   useAppOpenAPI: (slug: string, source: string) => useAppOpenAPI(slug, source) as unknown,
   useDeploymentOpenAPIDoc: (slug: string, id: string) =>
     useDeploymentOpenAPIDoc(slug, id) as unknown,
-  useDeployments: (limit: number) => useDeployments(limit) as unknown,
-  useApp: (slug: string) => useApp(slug) as unknown,
+  useAppDeployments: (slug: string) => useAppDeployments(slug) as unknown,
   useAppEdgeRules: (slug: string) => useAppEdgeRules(slug) as unknown,
   useDryRunAppOpenAPI: () => ({ mutateAsync: dryRun, isPending: false }),
   useImportAppOpenAPI: () => ({ mutateAsync: importDoc, isPending: false }),
@@ -59,8 +57,9 @@ beforeEach(() => {
       source === 'manual_import' ? ready(DOC) : ready({ ...DOC, paths: { ...DOC.paths, '/x': {} } })
     );
   useDeploymentOpenAPIDoc.mockReset().mockReturnValue(ready(DOC));
-  useDeployments.mockReset().mockReturnValue(ready({ items: [dep('aaaaaaaa1111')] }));
-  useApp.mockReset().mockReturnValue(ready({ id: 'app1', slug: 'api' }));
+  useAppDeployments
+    .mockReset()
+    .mockReturnValue(ready({ pages: [{ items: [dep('aaaaaaaa1111')] }] }));
   useAppEdgeRules.mockReset().mockReturnValue(ready([{ id: 'r1', priority: 30 }]));
   dryRun.mockReset().mockResolvedValue({
     openapi_version: '3.1.0',

@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   deployFromRef: vi.fn(),
   updateApp: vi.fn(),
   toast: vi.fn(),
+  deploymentStatus: 'building',
   account: {
     plan: 'hobby' as 'free' | 'hobby' | 'pro' | 'scale',
     app_count: 0,
@@ -23,8 +24,8 @@ vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => vi.fn(),
 }));
 vi.mock('@/lib/use-unsaved-guard', () => ({ useUnsavedGuard: vi.fn() }));
-vi.mock('@/components/dashboard/deployment-progress', () => ({
-  DeploymentProgress: () => <div>deployment progress</div>,
+vi.mock('@/lib/api/logs', () => ({
+  useLogStream: () => ({ lines: [], status: 'streaming', reason: null }),
 }));
 vi.mock('@/components/dashboard/repo-picker', () => ({
   RepoPicker: ({ value, onChange }: { value: string; onChange: (value: string) => void }) => (
@@ -45,6 +46,17 @@ vi.mock('@/lib/auth', () => ({
   useAuth: () => ({ loading: false, account: mocks.account }),
 }));
 vi.mock('@/lib/api/queries', () => ({
+  useDeployment: () => ({
+    data: {
+      id: 'deployment-1',
+      app_id: 'app-1',
+      image_digest: '',
+      kind: 'tarball',
+      created_at: '2026-09-12T00:00:00Z',
+      status: mocks.deploymentStatus,
+    },
+    isError: false,
+  }),
   useBindRepoFor: () => ({ mutateAsync: mocks.bindRepo }),
   useDeployFromRefFor: () => ({ mutateAsync: mocks.deployFromRef }),
   useUpdateAppFor: () => ({ mutateAsync: mocks.updateApp }),
@@ -54,18 +66,19 @@ vi.mock('@/lib/api/queries', () => ({
 
 async function submitGitApp(onDeploymentAccepted = vi.fn()) {
   const user = userEvent.setup();
-  render(<NewAppWizard onboarding onDeploymentAccepted={onDeploymentAccepted} />);
+  const view = render(<NewAppWizard onboarding onDeploymentAccepted={onDeploymentAccepted} />);
   await user.type(screen.getByLabelText(/repository/i), 'gregale/demo');
   await user.click(screen.getByRole('button', { name: /continue/i }));
-  await user.type(await screen.findByLabelText(/function name/i), 'demo-app');
+  await user.type(await screen.findByLabelText(/app name/i), 'demo-app');
   await user.click(screen.getByRole('button', { name: /review/i }));
-  await user.click(await screen.findByRole('button', { name: /deploy function/i }));
-  return { onDeploymentAccepted };
+  await user.click(await screen.findByRole('button', { name: /deploy app/i }));
+  return { onDeploymentAccepted, ...view };
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.account.plan = 'hobby';
+  mocks.deploymentStatus = 'building';
   mocks.addWorkflow.mockResolvedValue({ id: 'demo-app', url: 'https://demo-app.example' });
   mocks.bindRepo.mockResolvedValue({ binding_id: 'bind-1' });
   mocks.deployFromRef.mockResolvedValue({ id: 'deployment-1' });
@@ -73,6 +86,21 @@ beforeEach(() => {
 });
 
 describe('NewAppWizard Git submission', () => {
+  it('keeps the endpoint non-interactive until the first deployment is live', async () => {
+    const { rerender, onDeploymentAccepted } = await submitGitApp();
+    await screen.findByRole('heading', { name: 'Building your app' });
+    expect(
+      screen.queryByRole('link', { name: 'https://demo-app.example' })
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Open app' })).not.toBeInTheDocument();
+    mocks.deploymentStatus = 'live';
+    rerender(<NewAppWizard onboarding onDeploymentAccepted={onDeploymentAccepted} />);
+    expect(screen.getByRole('link', { name: 'Open app' })).toHaveAttribute(
+      'href',
+      'https://demo-app.example'
+    );
+  });
+
   it('prevents Free accounts from requesting a resident instance', async () => {
     mocks.account.plan = 'free';
     const user = userEvent.setup();
@@ -135,5 +163,6 @@ describe('NewAppWizard Git submission', () => {
     await waitFor(() => expect(onDeploymentAccepted).toHaveBeenCalledTimes(1));
     expect(mocks.bindRepo).toHaveBeenCalledTimes(2);
     expect(mocks.deployFromRef).toHaveBeenCalledTimes(2);
+    expect(mocks.addWorkflow).toHaveBeenCalledTimes(1);
   });
 });

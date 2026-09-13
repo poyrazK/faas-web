@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
-import { Plus } from 'iconoir-react';
+import { Select as SelectPrimitive } from 'radix-ui';
+import { Check, NavArrowDown, Plus } from 'iconoir-react';
 import { useApps } from '@/lib/api/queries';
 import { Button } from '@/components/ui/button';
 import { EmptyState, ErrorState, LoadingState, UnreachableState, queryPhase } from './primitives';
@@ -110,6 +111,18 @@ export function AppScope({
   return <>{children}</>;
 }
 
+/**
+ * Which app the page is about.
+ *
+ * A real listbox rather than a native `<select>`. The native popup is themed by
+ * the UA, not by us — on the console's near-black it renders as a light OS menu
+ * with a system-blue highlight, which is the one control on the page that does
+ * not look like the page. Radix keeps the semantics that mattered about the
+ * native element (listbox roles, typeahead, arrow keys, Escape) and lets the
+ * menu take the surface it sits on.
+ *
+ * Same props as before, so all fifteen call sites are untouched.
+ */
 export function AppSelect({
   slug,
   onSelect,
@@ -126,20 +139,41 @@ export function AppSelect({
   if (apps.length === 0) return null;
 
   return (
-    <label className="flex items-center gap-2">
-      <span className="label-mono text-muted-foreground">{label}</span>
-      <select
-        value={slug}
-        onChange={(e) => onSelect(e.target.value)}
-        aria-label="Select an app"
-        className="h-9 rounded-md border border-border bg-card px-2.5 text-sm outline-none focus:border-brand/50"
+    <SelectPrimitive.Root value={slug} onValueChange={onSelect}>
+      <SelectPrimitive.Trigger
+        // The accessible name the console has always used for this control,
+        // kept through the change of primitive: the value is announced from the
+        // trigger's own content, so the name says what the control is for.
+        aria-label={label === 'App' ? 'Select an app' : `Select ${label.toLowerCase()}`}
+        className="pressable flex h-9 items-center gap-2 rounded-md border border-border bg-card px-3 text-sm text-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
       >
-        {apps.map((a) => (
-          <option key={a.slug} value={a.slug}>
-            {a.slug}
-          </option>
-        ))}
-      </select>
-    </label>
+        <SelectPrimitive.Value />
+        <SelectPrimitive.Icon>
+          <NavArrowDown aria-hidden="true" className="h-4 w-4 text-muted-foreground" />
+        </SelectPrimitive.Icon>
+      </SelectPrimitive.Trigger>
+      <SelectPrimitive.Portal>
+        <SelectPrimitive.Content
+          position="popper"
+          sideOffset={6}
+          className="z-50 max-h-72 min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-lg border border-border bg-popover shadow-[var(--elevation-3)]"
+        >
+          <SelectPrimitive.Viewport className="p-1">
+            {apps.map((a) => (
+              <SelectPrimitive.Item
+                key={a.slug}
+                value={a.slug}
+                className="pressable flex cursor-pointer items-center justify-between gap-3 rounded-md px-2.5 py-1.5 text-sm text-muted-foreground outline-none select-none data-[highlighted]:bg-muted data-[highlighted]:text-foreground data-[state=checked]:text-foreground"
+              >
+                <SelectPrimitive.ItemText>{a.slug}</SelectPrimitive.ItemText>
+                <SelectPrimitive.ItemIndicator>
+                  <Check aria-hidden="true" className="h-4 w-4 text-brand" />
+                </SelectPrimitive.ItemIndicator>
+              </SelectPrimitive.Item>
+            ))}
+          </SelectPrimitive.Viewport>
+        </SelectPrimitive.Content>
+      </SelectPrimitive.Portal>
+    </SelectPrimitive.Root>
   );
 }

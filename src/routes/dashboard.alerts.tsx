@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { ListSelect, Plus, Refresh, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
-import { FIELD } from '@/components/ui/field';
+import { FIELD, FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
 import { Switch } from '@/components/ui/switch';
 import { PageHeader, Panel } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
@@ -51,6 +51,17 @@ type Metric = (typeof METRICS)[number][0];
 type Comparison = 'gt' | 'gte' | 'lt' | 'lte';
 const WINDOWS = ['5m', '15m', '1h', '6h', '24h', '7d', '15d'] as const;
 type Window = (typeof WINDOWS)[number];
+type FailureSource = 'any' | 'cron' | 'queue' | 'delayed_task' | 'async_invoke';
+const FAILURE_SOURCES: FailureSource[] = ['any', 'cron', 'queue', 'delayed_task', 'async_invoke'];
+
+function isHttpsUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && Boolean(url.hostname);
+  } catch {
+    return false;
+  }
+}
 
 /**
  * The alerts body, without the page chrome around it.
@@ -81,12 +92,30 @@ export function AlertsBody({ slug }: { slug: string }) {
   const [webhookUrl, setWebhookUrl] = useState('');
   const [secret, setSecret] = useState('');
   const [cooldown, setCooldown] = useState('30');
-
-  const valid =
-    name.trim().length > 0 &&
-    Number.isFinite(Number(threshold)) &&
-    /^https:\/\//.test(webhookUrl.trim()) &&
-    secret.length >= 16;
+  const [failureSource, setFailureSource] = useState<FailureSource>('any');
+  const validation = useFormValidation<
+    'name' | 'threshold' | 'webhookUrl' | 'secret' | 'cooldown'
+  >();
+  const parsedThreshold = Number(threshold);
+  const parsedCooldown = Number(cooldown);
+  const errors = {
+    name: name.trim() ? undefined : 'Enter a name for this rule.',
+    threshold:
+      threshold !== '' && Number.isFinite(parsedThreshold)
+        ? undefined
+        : 'Enter a numeric threshold.',
+    webhookUrl: isHttpsUrl(webhookUrl.trim()) ? undefined : 'Enter a complete HTTPS webhook URL.',
+    secret:
+      secret.length >= 1 && secret.length <= 256
+        ? undefined
+        : 'Enter a webhook secret of no more than 256 characters.',
+    cooldown:
+      Number.isInteger(parsedCooldown) && parsedCooldown >= 5 && parsedCooldown <= 1440
+        ? undefined
+        : 'Enter whole minutes from 5 to 1440.',
+  };
+  const shown = <Name extends keyof typeof errors>(field: Name) =>
+    validation.submitAttempted ? errors[field] : undefined;
 
   const rows = useMemo<AlertRow[]>(
     () =>
@@ -245,26 +274,29 @@ export function AlertsBody({ slug }: { slug: string }) {
         description="When the metric crosses the threshold for the window, a signed payload is POSTed to the webhook. The secret is sealed on save and never shown again."
       >
         <form
+          noValidate
           className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
           onSubmit={(e) => {
             e.preventDefault();
-            if (!valid || createAlert.isPending) return;
+            if (!validation.validate(errors, e.currentTarget) || createAlert.isPending) return;
             void createAlert
               .mutateAsync({
                 name: name.trim(),
                 metric,
                 comparison,
-                threshold: Number(threshold),
+                threshold: parsedThreshold,
                 window_spec: window,
+                ...(metric === 'failed_invocations' ? { failure_source: failureSource } : {}),
                 webhook_url: webhookUrl.trim(),
                 webhook_secret: secret,
-                cooldown_minutes: Number(cooldown) || 30,
+                cooldown_minutes: parsedCooldown,
                 action: 'webhook',
               })
               .then((rule) => {
                 setName('');
                 setWebhookUrl('');
                 setSecret('');
+                validation.resetValidation();
                 toast({ kind: 'success', title: 'Rule added', description: rule.name });
               })
               .catch((err: unknown) =>
@@ -275,11 +307,14 @@ export function AlertsBody({ slug }: { slug: string }) {
           <label className="flex flex-col gap-1.5 sm:col-span-2">
             <span className="label-mono text-muted-foreground">Name</span>
             <input
+              name="name"
               value={name}
               onChange={(e) => setName(e.target.value)}
+              {...fieldErrorProps(shown('name'), 'alert-name-error')}
               placeholder="Error rate over 5%"
               className={FIELD}
             />
+            {shown('name') && <FieldError id="alert-name-error">{shown('name')}</FieldError>}
           </label>
           <label className="flex flex-col gap-1.5">
             <span className="label-mono text-muted-foreground">Metric</span>
@@ -313,34 +348,63 @@ export function AlertsBody({ slug }: { slug: string }) {
             <label className="flex flex-1 flex-col gap-1.5">
               <span className="label-mono text-muted-foreground">Threshold</span>
               <input
+                name="threshold"
                 type="number"
                 step="any"
                 value={threshold}
                 onChange={(e) => setThreshold(e.target.value)}
+                {...fieldErrorProps(shown('threshold'), 'alert-threshold-error')}
                 className={`${FIELD} font-mono [font-variant-numeric:tabular-nums]`}
               />
+              {shown('threshold') && (
+                <FieldError id="alert-threshold-error">{shown('threshold')}</FieldError>
+              )}
             </label>
           </div>
+          {metric === 'failed_invocations' && (
+            <label className="flex flex-col gap-1.5">
+              <span className="label-mono text-muted-foreground">Failure source</span>
+              <select
+                value={failureSource}
+                onChange={(e) => setFailureSource(e.target.value as FailureSource)}
+                className={FIELD}
+              >
+                {FAILURE_SOURCES.map((source) => (
+                  <option key={source} value={source}>
+                    {source.replace('_', ' ')}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label className="flex flex-col gap-1.5 sm:col-span-2">
             <span className="label-mono text-muted-foreground">Webhook URL</span>
             <input
+              name="webhookUrl"
               value={webhookUrl}
               onChange={(e) => setWebhookUrl(e.target.value)}
+              {...fieldErrorProps(shown('webhookUrl'), 'alert-webhook-url-error')}
               placeholder="https://hooks.example.com/gregale"
               spellCheck={false}
               className={`${FIELD} font-mono`}
             />
+            {shown('webhookUrl') && (
+              <FieldError id="alert-webhook-url-error">{shown('webhookUrl')}</FieldError>
+            )}
           </label>
           <label className="flex flex-col gap-1.5">
             <span className="label-mono text-muted-foreground">Webhook secret</span>
             <input
+              name="secret"
               type="password"
               value={secret}
               onChange={(e) => setSecret(e.target.value)}
-              placeholder="16+ characters"
+              {...fieldErrorProps(shown('secret'), 'alert-secret-error')}
+              placeholder="1–256 characters"
               autoComplete="new-password"
               className={`${FIELD} font-mono`}
             />
+            {shown('secret') && <FieldError id="alert-secret-error">{shown('secret')}</FieldError>}
           </label>
           <div className="flex gap-2">
             <label className="flex flex-1 flex-col gap-1.5">
@@ -360,23 +424,24 @@ export function AlertsBody({ slug }: { slug: string }) {
             <label className="flex w-24 flex-col gap-1.5">
               <span className="label-mono text-muted-foreground">Cooldown</span>
               <input
+                name="cooldown"
                 type="number"
-                min={1}
+                min={5}
+                max={1440}
+                step={1}
                 value={cooldown}
                 onChange={(e) => setCooldown(e.target.value)}
+                {...fieldErrorProps(shown('cooldown'), 'alert-cooldown-error')}
                 title="Minutes between firings"
                 className={`${FIELD} font-mono [font-variant-numeric:tabular-nums]`}
               />
+              {shown('cooldown') && (
+                <FieldError id="alert-cooldown-error">{shown('cooldown')}</FieldError>
+              )}
             </label>
           </div>
           <div className="flex items-end sm:col-span-2 lg:col-span-4">
-            <Button
-              type="submit"
-              size="sm"
-              className="gap-1.5"
-              disabled={!valid}
-              busy={createAlert.isPending}
-            >
+            <Button type="submit" size="sm" className="gap-1.5" busy={createAlert.isPending}>
               <Plus className="h-3.5 w-3.5" />
               Add rule
             </Button>

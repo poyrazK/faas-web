@@ -11,9 +11,9 @@ import { SECTION_LABELS } from '@/components/dashboard/nav-config';
  */
 
 export const SITE_NAME = 'Gregale';
-export const SITE_TAGLINE = 'Serverless on real microVMs';
+export const SITE_TAGLINE = 'Backend hosting, now in beta';
 export const SITE_DESCRIPTION =
-  'Open-source serverless on Firecracker microVMs. Functions scale to zero when idle and wake from a snapshot in under 350 ms.';
+  'Deploy APIs and functions from your repository. Gregale runs them in isolated microVMs and scales idle apps to zero. Join the beta.';
 
 /** Brand last, so the distinguishing half survives a truncated tab. */
 function withSiteName(title?: string): string {

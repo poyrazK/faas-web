@@ -15,9 +15,11 @@ import { Route as DocsRouteImport } from './routes/docs'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as SignupRouteImport } from './routes/signup'
+import { Route as StatusRouteImport } from './routes/status'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard.index'
 import { Route as DashboardAccountRouteImport } from './routes/dashboard.account'
 import { Route as DashboardAlertsRouteImport } from './routes/dashboard.alerts'
+import { Route as DashboardAnalyticsRouteImport } from './routes/dashboard.analytics'
 import { Route as DashboardApisRouteImport } from './routes/dashboard.apis'
 import { Route as DashboardAuditRouteImport } from './routes/dashboard.audit'
 import { Route as DashboardBuildsRouteImport } from './routes/dashboard.builds'
@@ -47,18 +49,20 @@ import { Route as DashboardTeamRouteImport } from './routes/dashboard.team'
 import { Route as DashboardTemplatesRouteImport } from './routes/dashboard.templates'
 import { Route as DashboardTenantSurfacesRouteImport } from './routes/dashboard.tenant-surfaces'
 import { Route as DashboardTracesRouteImport } from './routes/dashboard.traces'
+import { Route as DashboardTriggersRouteImport } from './routes/dashboard.triggers'
 import { Route as DashboardUsageRouteImport } from './routes/dashboard.usage'
 import { Route as DashboardWebhooksRouteImport } from './routes/dashboard.webhooks'
 import { Route as DashboardWorkersRouteImport } from './routes/dashboard.workers'
 import { Route as DocsIndexRouteImport } from './routes/docs.index'
 import { Route as DocsSlugRouteImport } from './routes/docs.$slug'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
-import { Route as DashboardTriggersIndexRouteImport } from './routes/dashboard.triggers.index'
+import { Route as StatusIndexRouteImport } from './routes/status.index'
 import { Route as DashboardTriggersTriggerIdRouteImport } from './routes/dashboard.triggers.$triggerId'
 import { Route as DashboardTriggersNewRouteImport } from './routes/dashboard.triggers.new'
 import { Route as DashboardWorkflowsIndexRouteImport } from './routes/dashboard.workflows.index'
 import { Route as DashboardWorkflowsWorkflowIdRouteImport } from './routes/dashboard.workflows.$workflowId'
 import { Route as DashboardWorkflowsNewRouteImport } from './routes/dashboard.workflows.new'
+import { Route as StatusIncidentsIdRouteImport } from './routes/status.incidents.$id'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -90,6 +94,11 @@ const SignupRoute = SignupRouteImport.update({
   path: '/signup',
   getParentRoute: () => rootRouteImport,
 } as any)
+const StatusRoute = StatusRouteImport.update({
+  id: '/status',
+  path: '/status',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DashboardIndexRoute = DashboardIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -103,6 +112,11 @@ const DashboardAccountRoute = DashboardAccountRouteImport.update({
 const DashboardAlertsRoute = DashboardAlertsRouteImport.update({
   id: '/alerts',
   path: '/alerts',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardAnalyticsRoute = DashboardAnalyticsRouteImport.update({
+  id: '/analytics',
+  path: '/analytics',
   getParentRoute: () => DashboardRoute,
 } as any)
 const DashboardApisRoute = DashboardApisRouteImport.update({
@@ -250,6 +264,11 @@ const DashboardTracesRoute = DashboardTracesRouteImport.update({
   path: '/traces',
   getParentRoute: () => DashboardRoute,
 } as any)
+const DashboardTriggersRoute = DashboardTriggersRouteImport.update({
+  id: '/triggers',
+  path: '/triggers',
+  getParentRoute: () => DashboardRoute,
+} as any)
 const DashboardUsageRoute = DashboardUsageRouteImport.update({
   id: '/usage',
   path: '/usage',
@@ -280,21 +299,21 @@ const InviteTokenRoute = InviteTokenRouteImport.update({
   path: '/invite/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DashboardTriggersIndexRoute = DashboardTriggersIndexRouteImport.update({
-  id: '/triggers/',
-  path: '/triggers/',
-  getParentRoute: () => DashboardRoute,
+const StatusIndexRoute = StatusIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => StatusRoute,
 } as any)
 const DashboardTriggersTriggerIdRoute =
   DashboardTriggersTriggerIdRouteImport.update({
-    id: '/triggers/$triggerId',
-    path: '/triggers/$triggerId',
-    getParentRoute: () => DashboardRoute,
+    id: '/$triggerId',
+    path: '/$triggerId',
+    getParentRoute: () => DashboardTriggersRoute,
   } as any)
 const DashboardTriggersNewRoute = DashboardTriggersNewRouteImport.update({
-  id: '/triggers/new',
-  path: '/triggers/new',
-  getParentRoute: () => DashboardRoute,
+  id: '/new',
+  path: '/new',
+  getParentRoute: () => DashboardTriggersRoute,
 } as any)
 const DashboardWorkflowsIndexRoute = DashboardWorkflowsIndexRouteImport.update({
   id: '/workflows/',
@@ -312,6 +331,11 @@ const DashboardWorkflowsNewRoute = DashboardWorkflowsNewRouteImport.update({
   path: '/workflows/new',
   getParentRoute: () => DashboardRoute,
 } as any)
+const StatusIncidentsIdRoute = StatusIncidentsIdRouteImport.update({
+  id: '/incidents/$id',
+  path: '/incidents/$id',
+  getParentRoute: () => StatusRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -320,8 +344,10 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/signup': typeof SignupRoute
+  '/status': typeof StatusRouteWithChildren
   '/dashboard/account': typeof DashboardAccountRoute
   '/dashboard/alerts': typeof DashboardAlertsRoute
+  '/dashboard/analytics': typeof DashboardAnalyticsRoute
   '/dashboard/apis': typeof DashboardApisRoute
   '/dashboard/audit': typeof DashboardAuditRoute
   '/dashboard/builds': typeof DashboardBuildsRoute
@@ -351,6 +377,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/templates': typeof DashboardTemplatesRoute
   '/dashboard/tenant-surfaces': typeof DashboardTenantSurfacesRoute
   '/dashboard/traces': typeof DashboardTracesRoute
+  '/dashboard/triggers': typeof DashboardTriggersRouteWithChildren
   '/dashboard/usage': typeof DashboardUsageRoute
   '/dashboard/webhooks': typeof DashboardWebhooksRoute
   '/dashboard/workers': typeof DashboardWorkersRoute
@@ -358,11 +385,12 @@ export interface FileRoutesByFullPath {
   '/invite/$token': typeof InviteTokenRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/docs/': typeof DocsIndexRoute
+  '/status/': typeof StatusIndexRoute
   '/dashboard/triggers/$triggerId': typeof DashboardTriggersTriggerIdRoute
   '/dashboard/triggers/new': typeof DashboardTriggersNewRoute
   '/dashboard/workflows/$workflowId': typeof DashboardWorkflowsWorkflowIdRoute
   '/dashboard/workflows/new': typeof DashboardWorkflowsNewRoute
-  '/dashboard/triggers/': typeof DashboardTriggersIndexRoute
+  '/status/incidents/$id': typeof StatusIncidentsIdRoute
   '/dashboard/workflows/': typeof DashboardWorkflowsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -372,6 +400,7 @@ export interface FileRoutesByTo {
   '/signup': typeof SignupRoute
   '/dashboard/account': typeof DashboardAccountRoute
   '/dashboard/alerts': typeof DashboardAlertsRoute
+  '/dashboard/analytics': typeof DashboardAnalyticsRoute
   '/dashboard/apis': typeof DashboardApisRoute
   '/dashboard/audit': typeof DashboardAuditRoute
   '/dashboard/builds': typeof DashboardBuildsRoute
@@ -401,6 +430,7 @@ export interface FileRoutesByTo {
   '/dashboard/templates': typeof DashboardTemplatesRoute
   '/dashboard/tenant-surfaces': typeof DashboardTenantSurfacesRoute
   '/dashboard/traces': typeof DashboardTracesRoute
+  '/dashboard/triggers': typeof DashboardTriggersRouteWithChildren
   '/dashboard/usage': typeof DashboardUsageRoute
   '/dashboard/webhooks': typeof DashboardWebhooksRoute
   '/dashboard/workers': typeof DashboardWorkersRoute
@@ -408,11 +438,12 @@ export interface FileRoutesByTo {
   '/invite/$token': typeof InviteTokenRoute
   '/dashboard': typeof DashboardIndexRoute
   '/docs': typeof DocsIndexRoute
+  '/status': typeof StatusIndexRoute
   '/dashboard/triggers/$triggerId': typeof DashboardTriggersTriggerIdRoute
   '/dashboard/triggers/new': typeof DashboardTriggersNewRoute
   '/dashboard/workflows/$workflowId': typeof DashboardWorkflowsWorkflowIdRoute
   '/dashboard/workflows/new': typeof DashboardWorkflowsNewRoute
-  '/dashboard/triggers': typeof DashboardTriggersIndexRoute
+  '/status/incidents/$id': typeof StatusIncidentsIdRoute
   '/dashboard/workflows': typeof DashboardWorkflowsIndexRoute
 }
 export interface FileRoutesById {
@@ -423,8 +454,10 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/signup': typeof SignupRoute
+  '/status': typeof StatusRouteWithChildren
   '/dashboard/account': typeof DashboardAccountRoute
   '/dashboard/alerts': typeof DashboardAlertsRoute
+  '/dashboard/analytics': typeof DashboardAnalyticsRoute
   '/dashboard/apis': typeof DashboardApisRoute
   '/dashboard/audit': typeof DashboardAuditRoute
   '/dashboard/builds': typeof DashboardBuildsRoute
@@ -454,6 +487,7 @@ export interface FileRoutesById {
   '/dashboard/templates': typeof DashboardTemplatesRoute
   '/dashboard/tenant-surfaces': typeof DashboardTenantSurfacesRoute
   '/dashboard/traces': typeof DashboardTracesRoute
+  '/dashboard/triggers': typeof DashboardTriggersRouteWithChildren
   '/dashboard/usage': typeof DashboardUsageRoute
   '/dashboard/webhooks': typeof DashboardWebhooksRoute
   '/dashboard/workers': typeof DashboardWorkersRoute
@@ -461,11 +495,12 @@ export interface FileRoutesById {
   '/invite/$token': typeof InviteTokenRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/docs/': typeof DocsIndexRoute
+  '/status/': typeof StatusIndexRoute
   '/dashboard/triggers/$triggerId': typeof DashboardTriggersTriggerIdRoute
   '/dashboard/triggers/new': typeof DashboardTriggersNewRoute
   '/dashboard/workflows/$workflowId': typeof DashboardWorkflowsWorkflowIdRoute
   '/dashboard/workflows/new': typeof DashboardWorkflowsNewRoute
-  '/dashboard/triggers/': typeof DashboardTriggersIndexRoute
+  '/status/incidents/$id': typeof StatusIncidentsIdRoute
   '/dashboard/workflows/': typeof DashboardWorkflowsIndexRoute
 }
 export interface FileRouteTypes {
@@ -477,8 +512,10 @@ export interface FileRouteTypes {
     | '/login'
     | '/onboarding'
     | '/signup'
+    | '/status'
     | '/dashboard/account'
     | '/dashboard/alerts'
+    | '/dashboard/analytics'
     | '/dashboard/apis'
     | '/dashboard/audit'
     | '/dashboard/builds'
@@ -508,6 +545,7 @@ export interface FileRouteTypes {
     | '/dashboard/templates'
     | '/dashboard/tenant-surfaces'
     | '/dashboard/traces'
+    | '/dashboard/triggers'
     | '/dashboard/usage'
     | '/dashboard/webhooks'
     | '/dashboard/workers'
@@ -515,11 +553,12 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/dashboard/'
     | '/docs/'
+    | '/status/'
     | '/dashboard/triggers/$triggerId'
     | '/dashboard/triggers/new'
     | '/dashboard/workflows/$workflowId'
     | '/dashboard/workflows/new'
-    | '/dashboard/triggers/'
+    | '/status/incidents/$id'
     | '/dashboard/workflows/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -529,6 +568,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/dashboard/account'
     | '/dashboard/alerts'
+    | '/dashboard/analytics'
     | '/dashboard/apis'
     | '/dashboard/audit'
     | '/dashboard/builds'
@@ -558,6 +598,7 @@ export interface FileRouteTypes {
     | '/dashboard/templates'
     | '/dashboard/tenant-surfaces'
     | '/dashboard/traces'
+    | '/dashboard/triggers'
     | '/dashboard/usage'
     | '/dashboard/webhooks'
     | '/dashboard/workers'
@@ -565,11 +606,12 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/dashboard'
     | '/docs'
+    | '/status'
     | '/dashboard/triggers/$triggerId'
     | '/dashboard/triggers/new'
     | '/dashboard/workflows/$workflowId'
     | '/dashboard/workflows/new'
-    | '/dashboard/triggers'
+    | '/status/incidents/$id'
     | '/dashboard/workflows'
   id:
     | '__root__'
@@ -579,8 +621,10 @@ export interface FileRouteTypes {
     | '/login'
     | '/onboarding'
     | '/signup'
+    | '/status'
     | '/dashboard/account'
     | '/dashboard/alerts'
+    | '/dashboard/analytics'
     | '/dashboard/apis'
     | '/dashboard/audit'
     | '/dashboard/builds'
@@ -610,6 +654,7 @@ export interface FileRouteTypes {
     | '/dashboard/templates'
     | '/dashboard/tenant-surfaces'
     | '/dashboard/traces'
+    | '/dashboard/triggers'
     | '/dashboard/usage'
     | '/dashboard/webhooks'
     | '/dashboard/workers'
@@ -617,11 +662,12 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/dashboard/'
     | '/docs/'
+    | '/status/'
     | '/dashboard/triggers/$triggerId'
     | '/dashboard/triggers/new'
     | '/dashboard/workflows/$workflowId'
     | '/dashboard/workflows/new'
-    | '/dashboard/triggers/'
+    | '/status/incidents/$id'
     | '/dashboard/workflows/'
   fileRoutesById: FileRoutesById
 }
@@ -632,6 +678,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   OnboardingRoute: typeof OnboardingRoute
   SignupRoute: typeof SignupRoute
+  StatusRoute: typeof StatusRouteWithChildren
   InviteTokenRoute: typeof InviteTokenRoute
 }
 
@@ -679,6 +726,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SignupRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/status': {
+      id: '/status'
+      path: '/status'
+      fullPath: '/status'
+      preLoaderRoute: typeof StatusRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/dashboard/': {
       id: '/dashboard/'
       path: '/'
@@ -698,6 +752,13 @@ declare module '@tanstack/react-router' {
       path: '/alerts'
       fullPath: '/dashboard/alerts'
       preLoaderRoute: typeof DashboardAlertsRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/analytics': {
+      id: '/dashboard/analytics'
+      path: '/analytics'
+      fullPath: '/dashboard/analytics'
+      preLoaderRoute: typeof DashboardAnalyticsRouteImport
       parentRoute: typeof DashboardRoute
     }
     '/dashboard/apis': {
@@ -903,6 +964,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardTracesRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/dashboard/triggers': {
+      id: '/dashboard/triggers'
+      path: '/triggers'
+      fullPath: '/dashboard/triggers'
+      preLoaderRoute: typeof DashboardTriggersRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/dashboard/usage': {
       id: '/dashboard/usage'
       path: '/usage'
@@ -945,26 +1013,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InviteTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/dashboard/triggers/': {
-      id: '/dashboard/triggers/'
-      path: '/triggers'
-      fullPath: '/dashboard/triggers/'
-      preLoaderRoute: typeof DashboardTriggersIndexRouteImport
-      parentRoute: typeof DashboardRoute
+    '/status/': {
+      id: '/status/'
+      path: '/'
+      fullPath: '/status/'
+      preLoaderRoute: typeof StatusIndexRouteImport
+      parentRoute: typeof StatusRoute
     }
     '/dashboard/triggers/$triggerId': {
       id: '/dashboard/triggers/$triggerId'
-      path: '/triggers/$triggerId'
+      path: '/$triggerId'
       fullPath: '/dashboard/triggers/$triggerId'
       preLoaderRoute: typeof DashboardTriggersTriggerIdRouteImport
-      parentRoute: typeof DashboardRoute
+      parentRoute: typeof DashboardTriggersRoute
     }
     '/dashboard/triggers/new': {
       id: '/dashboard/triggers/new'
-      path: '/triggers/new'
+      path: '/new'
       fullPath: '/dashboard/triggers/new'
       preLoaderRoute: typeof DashboardTriggersNewRouteImport
-      parentRoute: typeof DashboardRoute
+      parentRoute: typeof DashboardTriggersRoute
     }
     '/dashboard/workflows/': {
       id: '/dashboard/workflows/'
@@ -987,12 +1055,33 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardWorkflowsNewRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/status/incidents/$id': {
+      id: '/status/incidents/$id'
+      path: '/incidents/$id'
+      fullPath: '/status/incidents/$id'
+      preLoaderRoute: typeof StatusIncidentsIdRouteImport
+      parentRoute: typeof StatusRoute
+    }
   }
 }
+
+interface DashboardTriggersRouteChildren {
+  DashboardTriggersTriggerIdRoute: typeof DashboardTriggersTriggerIdRoute
+  DashboardTriggersNewRoute: typeof DashboardTriggersNewRoute
+}
+
+const DashboardTriggersRouteChildren: DashboardTriggersRouteChildren = {
+  DashboardTriggersTriggerIdRoute: DashboardTriggersTriggerIdRoute,
+  DashboardTriggersNewRoute: DashboardTriggersNewRoute,
+}
+
+const DashboardTriggersRouteWithChildren =
+  DashboardTriggersRoute._addFileChildren(DashboardTriggersRouteChildren)
 
 interface DashboardRouteChildren {
   DashboardAccountRoute: typeof DashboardAccountRoute
   DashboardAlertsRoute: typeof DashboardAlertsRoute
+  DashboardAnalyticsRoute: typeof DashboardAnalyticsRoute
   DashboardApisRoute: typeof DashboardApisRoute
   DashboardAuditRoute: typeof DashboardAuditRoute
   DashboardBuildsRoute: typeof DashboardBuildsRoute
@@ -1022,21 +1111,20 @@ interface DashboardRouteChildren {
   DashboardTemplatesRoute: typeof DashboardTemplatesRoute
   DashboardTenantSurfacesRoute: typeof DashboardTenantSurfacesRoute
   DashboardTracesRoute: typeof DashboardTracesRoute
+  DashboardTriggersRoute: typeof DashboardTriggersRouteWithChildren
   DashboardUsageRoute: typeof DashboardUsageRoute
   DashboardWebhooksRoute: typeof DashboardWebhooksRoute
   DashboardWorkersRoute: typeof DashboardWorkersRoute
   DashboardIndexRoute: typeof DashboardIndexRoute
-  DashboardTriggersTriggerIdRoute: typeof DashboardTriggersTriggerIdRoute
-  DashboardTriggersNewRoute: typeof DashboardTriggersNewRoute
   DashboardWorkflowsWorkflowIdRoute: typeof DashboardWorkflowsWorkflowIdRoute
   DashboardWorkflowsNewRoute: typeof DashboardWorkflowsNewRoute
-  DashboardTriggersIndexRoute: typeof DashboardTriggersIndexRoute
   DashboardWorkflowsIndexRoute: typeof DashboardWorkflowsIndexRoute
 }
 
 const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardAccountRoute: DashboardAccountRoute,
   DashboardAlertsRoute: DashboardAlertsRoute,
+  DashboardAnalyticsRoute: DashboardAnalyticsRoute,
   DashboardApisRoute: DashboardApisRoute,
   DashboardAuditRoute: DashboardAuditRoute,
   DashboardBuildsRoute: DashboardBuildsRoute,
@@ -1066,15 +1154,13 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardTemplatesRoute: DashboardTemplatesRoute,
   DashboardTenantSurfacesRoute: DashboardTenantSurfacesRoute,
   DashboardTracesRoute: DashboardTracesRoute,
+  DashboardTriggersRoute: DashboardTriggersRouteWithChildren,
   DashboardUsageRoute: DashboardUsageRoute,
   DashboardWebhooksRoute: DashboardWebhooksRoute,
   DashboardWorkersRoute: DashboardWorkersRoute,
   DashboardIndexRoute: DashboardIndexRoute,
-  DashboardTriggersTriggerIdRoute: DashboardTriggersTriggerIdRoute,
-  DashboardTriggersNewRoute: DashboardTriggersNewRoute,
   DashboardWorkflowsWorkflowIdRoute: DashboardWorkflowsWorkflowIdRoute,
   DashboardWorkflowsNewRoute: DashboardWorkflowsNewRoute,
-  DashboardTriggersIndexRoute: DashboardTriggersIndexRoute,
   DashboardWorkflowsIndexRoute: DashboardWorkflowsIndexRoute,
 }
 
@@ -1094,6 +1180,19 @@ const DocsRouteChildren: DocsRouteChildren = {
 
 const DocsRouteWithChildren = DocsRoute._addFileChildren(DocsRouteChildren)
 
+interface StatusRouteChildren {
+  StatusIndexRoute: typeof StatusIndexRoute
+  StatusIncidentsIdRoute: typeof StatusIncidentsIdRoute
+}
+
+const StatusRouteChildren: StatusRouteChildren = {
+  StatusIndexRoute: StatusIndexRoute,
+  StatusIncidentsIdRoute: StatusIncidentsIdRoute,
+}
+
+const StatusRouteWithChildren =
+  StatusRoute._addFileChildren(StatusRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DashboardRoute: DashboardRouteWithChildren,
@@ -1101,6 +1200,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   OnboardingRoute: OnboardingRoute,
   SignupRoute: SignupRoute,
+  StatusRoute: StatusRouteWithChildren,
   InviteTokenRoute: InviteTokenRoute,
 }
 export const routeTree = rootRouteImport

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { withRouter } from '@/test/router';
@@ -48,5 +48,31 @@ describe('Process', () => {
     ]) {
       expect(hrefs).toContain(`/docs/${slug}`);
     }
+  });
+});
+
+describe('product previews', () => {
+  it.each([0, 1, 3])(
+    'identifies preview %i as illustrative rather than live account data',
+    (index) => {
+      render(STEPS[index].panel);
+      expect(screen.getByRole('figure', { name: /example/i })).toBeInTheDocument();
+    }
+  );
+
+  it('makes the request status and duration understandable without column alignment', () => {
+    render(STEPS[3].panel);
+    const requests = screen.getByRole('table', { name: /requests/i });
+    expect(within(requests).getByRole('columnheader', { name: /status/i })).toBeInTheDocument();
+    expect(within(requests).getByRole('columnheader', { name: /duration/i })).toBeInTheDocument();
+    const request = within(requests).getByRole('row', { name: /hello.*GET.*200.*340 ms/i });
+    expect(within(request).getAllByRole('cell')).toHaveLength(3);
+  });
+
+  it('explains the timing graphic without relying on mint shades', () => {
+    render(STEPS[3].panel);
+    expect(
+      screen.getByRole('img', { name: /restore.*214 ms.*other.*126 ms.*total.*340 ms/i })
+    ).toBeInTheDocument();
   });
 });

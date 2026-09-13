@@ -3,9 +3,15 @@ import { createFileRoute } from '@tanstack/react-router';
 import { Refresh } from 'iconoir-react';
 import { InlinePhase, PageHeader, queryPhase } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
+import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import { useConfirm } from '@/components/ui/confirm';
-import { useApps, useInvocation, useInvocations, useReplayInvocation } from '@/lib/api/queries';
+import {
+  useApps,
+  useInfiniteInvocations,
+  useInvocation,
+  useReplayInvocation,
+} from '@/lib/api/queries';
 import { Modal } from '@/components/ui/modal';
 import { slugIndex } from '@/lib/api/adapters';
 import { errorMessage } from '@/lib/api/errors';
@@ -133,14 +139,21 @@ function InvocationDrawer({ id, onClose }: { id: string | null; onClose: () => v
 function InvocationsPage() {
   const { toast } = useToast();
   const confirm = useConfirm();
-  const { data, isPending, error, refetch } = useInvocations();
+  const invocations = useInfiniteInvocations();
   const { data: apps } = useApps();
   const replay = useReplayInvocation();
   const [selected, setSelected] = useState<string | null>(null);
+  const data = useMemo(
+    () => invocations.data?.pages.flatMap((page) => page.invocations) ?? [],
+    [invocations.data]
+  );
+  // Keep already loaded rows usable if a later page fails; only an initial
+  // failure should replace the table with its full-page error state.
+  const listError = data.length === 0 ? invocations.error : undefined;
 
   const rows = useMemo<InvocationRow[]>(() => {
     const bySlug = slugIndex(apps ?? []);
-    return (data?.invocations ?? []).map((i) => ({
+    return data.map((i) => ({
       id: i.id,
       app: bySlug.get(i.app_id) ?? i.app_id,
       state: i.state,
@@ -243,11 +256,33 @@ function InvocationsPage() {
         searchPlaceholder="Filter by app, state, or source…"
         emptyMessage="No invocations recorded yet."
         minWidth="min-w-[900px]"
-        loading={isPending}
-        error={error}
-        onRetry={() => void refetch()}
+        loading={invocations.isPending && data.length === 0}
+        error={listError}
+        onRetry={() => void invocations.refetch()}
         onRowClick={(i) => setSelected(i.id)}
       />
+
+      {data.length > 0 && Boolean(invocations.error) && (
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <InlinePhase phase={queryPhase({ error: invocations.error })} error={invocations.error} />
+          <Button size="xs" variant="ghost" onClick={() => void invocations.refetch()}>
+            Retry
+          </Button>
+        </div>
+      )}
+
+      {invocations.hasNextPage && (
+        <div className="flex justify-center">
+          <Button
+            size="sm"
+            variant="outline"
+            busy={invocations.isFetchingNextPage}
+            onClick={() => void invocations.fetchNextPage().catch(() => undefined)}
+          >
+            Load older invocations
+          </Button>
+        </div>
+      )}
 
       <InvocationDrawer id={selected} onClose={() => setSelected(null)} />
     </div>

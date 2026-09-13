@@ -79,6 +79,7 @@ export function toWorkflow(app: App, metrics?: AppsMetrics, latest?: ApiDeployme
     runtime: app.runtime ?? app.type,
     memoryMb: app.ram_mb,
     state,
+    reportedStatus: app.status,
     url: app.url,
     // Metrics come from the Prometheus rollup and are absent when it is
     // degraded — zero is the honest reading of "no requests in the window".

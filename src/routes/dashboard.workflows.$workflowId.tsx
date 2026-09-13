@@ -1,4 +1,4 @@
-import { useId, useMemo, useRef, useState } from 'react';
+import { useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createFileRoute, Link, useParams } from '@tanstack/react-router';
 import { motion, useReducedMotion } from 'motion/react';
 import { ArrowLeft, OpenNewWindow, Pause, Play, Refresh, Rocket } from 'iconoir-react';
@@ -15,16 +15,18 @@ import {
   UnreachableState,
   queryPhase,
 } from '@/components/dashboard/primitives';
-import { formatCompact, formatMs, formatRelative } from '@/lib/mock-data';
+import { formatCompact, formatMs } from '@/lib/mock-data';
 import {
+  useAppDeployments,
   useAppMetrics,
   useBindRepo,
-  useBuilds,
+  useBuildRecords,
   useDeployFromRef,
   useParkApp,
   useWakeApp,
   type MetricsRange,
 } from '@/lib/api/queries';
+import { toDeployment } from '@/lib/api/adapters';
 import { useData } from '@/lib/store';
 import { useToast } from '@/components/ui/toast';
 import { useConfirm } from '@/components/ui/confirm';
@@ -39,7 +41,8 @@ import { EnvBody } from './dashboard.env';
 import { QueuesBody } from './dashboard.queues';
 import { UpstreamsBody } from './dashboard.databases';
 import { AlertsBody } from './dashboard.alerts';
-import { DebugBody } from './dashboard.debug';
+import { DebugBody } from '@/components/dashboard/debug-body';
+import { validateDebugSearch, type DebugSearch } from '@/components/dashboard/debug-search';
 import { MirrorsBody } from './dashboard.mirrors';
 import { TenantSurfacesBody } from './dashboard.tenant-surfaces';
 import { OpenAPIBody } from './dashboard.openapi';
@@ -50,15 +53,20 @@ import { AppConfiguration } from '@/components/dashboard/app-configuration';
 import { InvokePanel, SloPanel } from '@/components/dashboard/app-core-panels';
 import { AppUsagePanel, WakeTimelinePanel } from '@/components/dashboard/app-insights';
 import { AppAnalyticsPanel } from '@/components/dashboard/app-analytics';
+import { AppOverview } from '@/components/dashboard/app-overview';
 import { RestartAppButton } from '@/components/dashboard/app-lifecycle';
 import { TarballDeploy } from '@/components/dashboard/tarball-deploy';
 import { TearDownPreviewButton } from '@/components/dashboard/preview-actions';
 import { Swap } from '@/components/dashboard/motion';
 import { RepoPicker } from '@/components/dashboard/repo-picker';
 import { DeploymentProgress } from '@/components/dashboard/deployment-progress';
-import { DeploymentDetailPanel } from '@/components/dashboard/deployment-detail';
+import { ReleaseDetailPanel } from '@/components/dashboard/release-detail';
+import {
+  validateReleasesSearch,
+  type ReleaseSection,
+} from '@/components/dashboard/releases-search';
+import { DeploymentHistoryPanel } from '@/components/dashboard/deployment-history';
 import { ClearObsoleteDeploymentsButton } from '@/components/dashboard/deployment-actions';
-import { Pill } from '@/components/dashboard/resource-table';
 import { Modal } from '@/components/ui/modal';
 import { pageHead, useDocumentTitle } from '@/lib/seo';
 import { PlanGate } from '@/components/dashboard/plan-gate';
@@ -77,6 +85,7 @@ const METRIC_RANGES: MetricsRange[] = ['5m', '15m', '1h', '6h', '24h', '7d', '15
  * app and the right tab.
  */
 const TABS = [
+  'Overview',
   'Metrics',
   'Invoke',
   'Deployments',
@@ -98,26 +107,55 @@ const TABS = [
 ] as const;
 type Tab = (typeof TABS)[number];
 
+function DeploymentCapability({
+  slug,
+  resource,
+  phase,
+  error,
+  hasRunnable,
+  onRetry,
+  children,
+}: {
+  slug: string;
+  resource: 'Invoke' | 'Logs';
+  phase: ReturnType<typeof queryPhase>;
+  error: unknown;
+  hasRunnable: boolean;
+  onRetry: () => void;
+  children: ReactNode;
+}) {
+  if (phase === 'unreachable') return <UnreachableState onRetry={onRetry} />;
+  if (phase === 'error') return <ErrorState error={error} onRetry={onRetry} />;
+  if (phase === 'loading') return <LoadingState message="Loading deployment history…" />;
+  if (!hasRunnable) return <DeploymentGate slug={slug} resource={resource} />;
+  return <>{children}</>;
+}
+
 export const Route = createFileRoute('/dashboard/workflows/$workflowId')({
-  head: () => pageHead({ title: 'Workflow' }),
+  head: () => pageHead({ title: 'App' }),
   // Tab lives in the URL, so a refresh or a shared link lands on the same one.
   // Optional, so links elsewhere need not pass it and the default tab leaves
   // no query string behind.
-  validateSearch: (search: Record<string, unknown>): { tab?: Tab; deployment?: string } => ({
-    ...(TABS.includes(search.tab as Tab) ? { tab: search.tab as Tab } : {}),
-    ...(typeof search.deployment === 'string' && search.deployment
-      ? { deployment: search.deployment }
-      : {}),
+  validateSearch: (
+    search: Record<string, unknown>
+  ): DebugSearch & { tab?: Tab; deployment?: string; releaseSection?: ReleaseSection } => ({
+    ...validateDebugSearch(search),
+    tab: TABS.includes(search.tab as Tab) ? (search.tab as Tab) : undefined,
+    deployment:
+      typeof search.deployment === 'string' && search.deployment ? search.deployment : undefined,
+    releaseSection: validateReleasesSearch({ ...search, build: undefined }).releaseSection,
   }),
   component: FunctionDetailPage,
 });
 
 function FunctionDetailPage() {
   const { workflowId } = useParams({ from: '/dashboard/workflows/$workflowId' });
-  const { tab = 'Metrics', deployment: selectedDeploymentId } = Route.useSearch();
+  const search = Route.useSearch();
+  const { tab = 'Overview', deployment: selectedDeploymentId, releaseSection } = search;
   const navigate = Route.useNavigate();
-  // Replace rather than push, so tab switching does not fill the back stack.
-  const setTab = (next: Tab) => navigate({ search: { tab: next }, replace: true });
+  // Preserve nested investigations when the operator leaves and returns to a tab.
+  const setTab = (next: Tab) =>
+    navigate({ search: (current) => ({ ...current, tab: next }), hash: true });
   const tabsId = useId();
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const reduce = useReducedMotion();
@@ -135,13 +173,14 @@ function FunctionDetailPage() {
     setTab(TABS[next]);
   };
   const [range, setRange] = useState<MetricsRange>('24h');
-  const { getWorkflow, deploymentsFor, redeploy, loading, error, refresh } = useData();
+  const { getWorkflow, redeploy, loading, error, refresh } = useData();
   const { account, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const park = useParkApp();
   const wake = useWakeApp();
   const deployFromRef = useDeployFromRef(workflowId);
   const bindRepo = useBindRepo(workflowId);
+  const appDeploymentQuery = useAppDeployments(workflowId);
   const [deployOpen, setDeployOpen] = useState(false);
   const [deployRepo, setDeployRepo] = useState('');
   const [deployRef, setDeployRef] = useState('main');
@@ -156,12 +195,14 @@ function FunctionDetailPage() {
   const fn = getWorkflow(workflowId);
   // The route's `head` can only name the id, so the real name is applied here
   // once the store resolves it. Above the early return — it is a hook.
-  useDocumentTitle(fn?.name ?? 'Function not found');
+  useDocumentTitle(fn?.name ?? 'App not found');
 
   // Real per-app aggregates for the Metrics tab. Called with the slug, which is
   // what `workflowId` is.
   const paidAccess = account !== null && isPaidPlan(account.plan);
-  const metrics = useAppMetrics(workflowId, range, { enabled: paidAccess });
+  const metrics = useAppMetrics(workflowId, tab === 'Overview' ? '24h' : range, {
+    enabled: paidAccess && (tab === 'Overview' || tab === 'Metrics'),
+  });
   const metricsDegraded = Boolean(metrics.data && metrics.data.source !== 'prometheus');
   const metricsTileState = metrics.isPending
     ? ('loading' as const)
@@ -169,16 +210,23 @@ function FunctionDetailPage() {
       ? ('unavailable' as const)
       : ('ready' as const);
   const metricsPhase = queryPhase({ error: metrics.error, loading: metrics.isPending });
-  const builds = useBuilds({
-    // Build duration is not part of DeploymentResponse. Poll the companion
-    // records alongside deployments while any visible build is unfinished.
-    refetchInterval: (query) => {
-      const items = query.state.data?.items ?? [];
-      return items.some((build) => build.status === 'queued' || build.status === 'running')
-        ? 2_500
-        : false;
-    },
-  });
+  // The deployment history is app-scoped and paged, so resolve build records
+  // for the rows that are actually visible instead of joining against the
+  // account-wide first build page. This keeps older app releases from losing
+  // their timing and avoids fetching another app's build evidence.
+  const deploymentItems = useMemo(
+    () => appDeploymentQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    [appDeploymentQuery.data]
+  );
+  const buildIds = useMemo(
+    () => [
+      ...new Set(
+        deploymentItems.flatMap((deployment) => (deployment.build_id ? [deployment.build_id] : []))
+      ),
+    ],
+    [deploymentItems]
+  );
+  const buildRecords = useBuildRecords(tab === 'Deployments' ? buildIds : []);
   const buildTimings = useMemo(() => {
     const byDeployment = new Map<
       string,
@@ -189,7 +237,9 @@ function FunctionDetailPage() {
         finishedAt?: string;
       }
     >();
-    for (const build of builds.data?.items ?? []) {
+    for (const result of buildRecords) {
+      const build = result.data;
+      if (!build) continue;
       byDeployment.set(build.deployment_id, {
         durationSeconds: build.duration_seconds,
         enqueuedAt: build.enqueued_at,
@@ -198,7 +248,29 @@ function FunctionDetailPage() {
       });
     }
     return byDeployment;
-  }, [builds.data]);
+  }, [buildRecords]);
+  const buildIdsByDeployment = useMemo(() => {
+    const byDeployment = new Map<string, string>();
+    for (const result of buildRecords) {
+      const build = result.data;
+      if (build) byDeployment.set(build.deployment_id, build.id);
+    }
+    return byDeployment;
+  }, [buildRecords]);
+
+  const deployments = useMemo(() => {
+    const appId = deploymentItems[0]?.app_id;
+    const slugById = appId ? new Map([[appId, workflowId]]) : new Map<string, string>();
+    return deploymentItems.map((deployment) => toDeployment(deployment, slugById));
+  }, [deploymentItems, workflowId]);
+  // Keep a stale loaded page usable while a later page is being fetched, but
+  // never turn an initial deployment read failure into an undeployed gate.
+  const deploymentError = deployments.length === 0 ? appDeploymentQuery.error : undefined;
+  const deploymentPhase = queryPhase({
+    error: deploymentError,
+    loading: appDeploymentQuery.isPending,
+    isEmpty: deployments.length === 0,
+  });
 
   // Order matters: the app list arrives over the network now, so "not in the
   // list" means "not loaded yet" until the request settles. Claiming 404 first
@@ -224,16 +296,12 @@ function FunctionDetailPage() {
   if (!fn) {
     return (
       <div className="flex flex-col gap-6">
-        <PageHeader title="Function not found" />
-        <EmptyState message="This function does not exist or has been deleted." />
+        <PageHeader title="App not found" />
+        <EmptyState message="This app does not exist or has been deleted." />
       </div>
     );
   }
 
-  const deployments = deploymentsFor(fn.id);
-  const selectedDeployment = selectedDeploymentId
-    ? deployments.find((dep) => dep.id === selectedDeploymentId)
-    : undefined;
   const hasRunnable = hasRunnableDeployment(deployments);
   const canRollback = hasRollbackTarget(deployments);
   const isDeploying =
@@ -251,10 +319,14 @@ function FunctionDetailPage() {
 
       <PageHeader
         title={fn.name}
-        description={[fn.runtime, `${fn.memoryMb} MB`, fn.url].filter(Boolean).join(' · ')}
+        description={
+          tab === 'Overview'
+            ? undefined
+            : [fn.runtime, `${fn.memoryMb} MB`, fn.url].filter(Boolean).join(' · ')
+        }
         actions={
           <>
-            <StateBadge state={fn.state} />
+            {tab !== 'Overview' && <StateBadge state={fn.state} />}
             {/* Park and wake were two of the unused hooks: the API has had
                 both for as long as the console has existed. */}
             {fn.state === 'running' ? (
@@ -368,13 +440,15 @@ function FunctionDetailPage() {
         }
       />
 
-      <a
-        href={fn.url}
-        className="inline-flex w-fit items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 font-mono text-xs text-muted-foreground transition-colors hover:border-brand/40 hover:text-foreground"
-      >
-        {fn.url}
-        <OpenNewWindow className="h-3 w-3" />
-      </a>
+      {tab !== 'Overview' && fn.url && (
+        <a
+          href={fn.url}
+          className="inline-flex w-fit items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 font-mono text-xs text-muted-foreground transition-colors hover:border-brand/40 hover:text-foreground"
+        >
+          {fn.url}
+          <OpenNewWindow className="h-3 w-3" />
+        </a>
+      )}
 
       {activeDeployment && (
         <DeploymentProgress
@@ -436,6 +510,41 @@ function FunctionDetailPage() {
             hard-swapping — the tab strip above stays put either way. */}
         <Swap id={tab}>
           <div className="flex flex-col gap-6">
+            {tab === 'Overview' && (
+              <AppOverview
+                app={fn}
+                releases={{
+                  data: deploymentItems,
+                  isPending: appDeploymentQuery.isPending,
+                  error: appDeploymentQuery.error,
+                }}
+                metrics={metrics}
+                metricsAccess={
+                  authLoading || account === null
+                    ? 'checking'
+                    : paidAccess
+                      ? 'available'
+                      : 'restricted'
+                }
+                onNavigate={(next, id) =>
+                  void navigate({
+                    search: (current) => ({
+                      ...current,
+                      tab: next,
+                      ...(id ? { deployment: id, releaseSection: 'overview' as const } : {}),
+                    }),
+                    hash: true,
+                    resetScroll: false,
+                  })
+                }
+                onDeploy={() => {
+                  setDeploySubmissionError(null);
+                  setDeployOpen(true);
+                }}
+                onRetryReleases={() => void appDeploymentQuery.refetch()}
+                onRetryMetrics={() => void metrics.refetch()}
+              />
+            )}
             {tab === 'Metrics' &&
               (authLoading || account === null ? (
                 <LoadingState message="Checking plan access…" />
@@ -529,65 +638,39 @@ function FunctionDetailPage() {
                 </div>
               ))}
 
-            {tab === 'Invoke' &&
-              (!hasRunnable ? (
-                <DeploymentGate slug={fn.id} resource="Invoke" />
-              ) : (
+            {tab === 'Invoke' && (
+              <DeploymentCapability
+                slug={fn.id}
+                resource="Invoke"
+                phase={deploymentPhase}
+                error={deploymentError}
+                hasRunnable={hasRunnable}
+                onRetry={() => void appDeploymentQuery.refetch()}
+              >
                 <InvokePanel slug={fn.id} />
-              ))}
+              </DeploymentCapability>
+            )}
 
             {tab === 'Deployments' && (
               <>
-                <Panel
-                  title="Deployment history"
-                  description={`${deployments.length} deployments`}
+                <DeploymentHistoryPanel
+                  slug={fn.id}
+                  selectedDeploymentId={selectedDeploymentId}
+                  buildTimings={buildTimings}
+                  onSelect={(id) =>
+                    void navigate({
+                      search: (current) => ({
+                        ...current,
+                        tab: 'Deployments',
+                        deployment: id,
+                        releaseSection: undefined,
+                      }),
+                      hash: true,
+                      resetScroll: false,
+                    })
+                  }
                   actions={<ClearObsoleteDeploymentsButton slug={fn.id} />}
-                >
-                  {deployments.length === 0 ? (
-                    <EmptyState message="No deployments yet. Deploy a Git ref or use the CLI." />
-                  ) : (
-                    <ul className="flex flex-col divide-y divide-border">
-                      {deployments.map((dep) => (
-                        <li key={dep.id}>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              void navigate({
-                                search: { tab: 'Deployments', deployment: dep.id },
-                                replace: true,
-                              })
-                            }
-                            className="flex w-full flex-wrap items-center gap-3 py-3 text-left transition-colors first:pt-0 last:pb-0 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-                          >
-                            <Pill
-                              label={dep.status ?? dep.state}
-                              color={
-                                dep.state === 'succeeded'
-                                  ? 'var(--status-good)'
-                                  : dep.state === 'failed'
-                                    ? 'var(--status-critical)'
-                                    : 'var(--status-warning)'
-                              }
-                            />
-                            <span className="font-mono text-xs text-muted-foreground">
-                              image {dep.version || '—'}
-                            </span>
-                            <span className="min-w-0 flex-1 truncate text-sm">{dep.message}</span>
-                            <span className="w-20 text-right text-xs text-muted-foreground [font-variant-numeric:tabular-nums]">
-                              {(() => {
-                                const seconds = buildTimings.get(dep.id)?.durationSeconds;
-                                return seconds == null ? '—' : `${seconds.toFixed(1)}s`;
-                              })()}
-                            </span>
-                            <span className="w-16 text-right text-xs text-muted-foreground [font-variant-numeric:tabular-nums]">
-                              {formatRelative(dep.createdAt)}
-                            </span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </Panel>
+                />
                 <Panel
                   title="Deploy an archive"
                   description="For source that is not in a connected repository — the console's half of `gregale deploy --tarball`."
@@ -596,29 +679,62 @@ function FunctionDetailPage() {
                     slug={fn.id}
                     onDeployed={(id) =>
                       void navigate({
-                        search: { tab: 'Deployments', deployment: id },
+                        search: (current) => ({
+                          ...current,
+                          tab: 'Deployments',
+                          deployment: id,
+                          releaseSection: undefined,
+                        }),
+                        hash: true,
                         replace: true,
                       })
                     }
                   />
                 </Panel>
-                {selectedDeployment && (
-                  <DeploymentDetailPanel
-                    deploymentId={selectedDeployment.id}
+                {selectedDeploymentId && (
+                  <ReleaseDetailPanel
+                    key={selectedDeploymentId}
+                    deploymentId={selectedDeploymentId}
                     appSlug={fn.id}
-                    timing={buildTimings.get(selectedDeployment.id)}
-                    onClose={() => void navigate({ search: { tab: 'Deployments' }, replace: true })}
+                    timing={buildTimings.get(selectedDeploymentId)}
+                    fallbackBuildId={buildIdsByDeployment.get(selectedDeploymentId)}
+                    section={releaseSection ?? 'overview'}
+                    onSectionChange={(next) =>
+                      void navigate({
+                        search: (current) => ({ ...current, releaseSection: next }),
+                        hash: true,
+                        resetScroll: false,
+                      })
+                    }
+                    onClose={() =>
+                      void navigate({
+                        search: (current) => ({
+                          ...current,
+                          tab: 'Deployments',
+                          deployment: undefined,
+                          releaseSection: undefined,
+                        }),
+                        hash: true,
+                        resetScroll: false,
+                      })
+                    }
                   />
                 )}
               </>
             )}
 
-            {tab === 'Logs' &&
-              (!hasRunnable ? (
-                <DeploymentGate slug={fn.id} resource="Logs" />
-              ) : (
+            {tab === 'Logs' && (
+              <DeploymentCapability
+                slug={fn.id}
+                resource="Logs"
+                phase={deploymentPhase}
+                error={deploymentError}
+                hasRunnable={hasRunnable}
+                onRetry={() => void appDeploymentQuery.refetch()}
+              >
                 <LogsBody slug={fn.id} />
-              ))}
+              </DeploymentCapability>
+            )}
             {tab === 'Errors' && <ErrorsBody slug={fn.id} />}
             {tab === 'Routes' && <RoutesBody slug={fn.id} />}
             {tab === 'Secrets' && <SecretsBody slug={fn.id} />}
@@ -628,7 +744,19 @@ function FunctionDetailPage() {
             {tab === 'Alerts' && <AlertsBody slug={fn.id} />}
             {tab === 'Webhooks' && <WebhooksBody slug={fn.id} />}
             {tab === 'Edge rules' && <EdgeRulesBody slug={fn.id} />}
-            {tab === 'Debugger' && <DebugBody slug={fn.id} />}
+            {tab === 'Debugger' && (
+              <DebugBody
+                slug={fn.id}
+                search={search}
+                onSelect={(patch) =>
+                  void navigate({
+                    search: (current) => ({ ...current, ...patch }),
+                    hash: true,
+                    resetScroll: false,
+                  })
+                }
+              />
+            )}
             {tab === 'Mirrors' && <MirrorsBody slug={fn.id} />}
             {tab === 'Tenant surfaces' && <TenantSurfacesBody slug={fn.id} />}
             {tab === 'OpenAPI' && <OpenAPIBody slug={fn.id} />}
@@ -671,7 +799,13 @@ function FunctionDetailPage() {
                     });
                     setDeployOpen(false);
                     void navigate({
-                      search: { tab: 'Deployments', deployment: deployment.id },
+                      search: (current) => ({
+                        ...current,
+                        tab: 'Deployments',
+                        deployment: deployment.id,
+                        releaseSection: undefined,
+                      }),
+                      hash: true,
                       replace: true,
                     });
                     toast({

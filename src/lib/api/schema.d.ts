@@ -4,6 +4,112 @@
  */
 
 export interface paths {
+    "/v1/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the current public platform status.
+         * @description Unauthenticated single-region snapshot. Includes five public
+         *     capabilities, exactly 30 UTC daily observations per capability,
+         *     current error-budget indicators, active events, maintenance in the
+         *     next 30 days, and up to 20 resolved incidents from the last 90 days.
+         *     Data older than 90 seconds is marked stale; missing telemetry is never
+         *     represented as operational.
+         */
+        get: operations["getPublicStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/status/incidents/{public_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read one public incident or maintenance timeline. */
+        get: operations["getPublicStatusIncident"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/status/slo.json": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the backwards-compatible status indicator projection.
+         * @description Always returns valid JSON, including when the evaluator source is degraded.
+         */
+        get: operations["getLegacyStatusSLO"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/status/incidents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List public status events (admin-only).
+         * @description Requires admin scope, operator allowlist membership, and MFA.
+         */
+        get: operations["listAdminStatusEvents"];
+        put?: never;
+        /**
+         * Publish a public incident or maintenance event (admin-only).
+         * @description Requires admin scope, operator allowlist membership, MFA, recent step-up authentication, and an Idempotency-Key.
+         */
+        post: operations["createAdminStatusEvent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/status/incidents/{public_id}/updates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Append a public timeline update and lifecycle transition (admin-only).
+         * @description Updates are append-only. Terminal incidents and maintenance cannot reopen.
+         */
+        post: operations["updateAdminStatusEvent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/postgres/databases": {
         parameters: {
             query?: never;
@@ -2029,7 +2135,10 @@ export interface paths {
          * Per-app request telemetry (ADR-127 / PR-A).
          * @description Recent request telemetry rows for an app — status, latency_ms, route,
          *     method, deployment_id, cold_boot, trace_id, received_at, and the
-         *     number of original requests represented by each collapsed row.
+         *     number of original requests represented by each collapsed row. Rows
+         *     are split by bounded latency bucket so aggregate percentiles retain
+         *     distribution signal; `latency_ms` is that bucket's inclusive upper
+         *     bound (and can therefore be slightly conservative).
          *     PR-A ships the read endpoint only; the write-side (publisher
          *     → gRPC IncrementRequestTelemetry → apid receiver → sqlc
          *     INSERT) lands in PR-B. The endpoint is plan-gated by
@@ -2237,7 +2346,15 @@ export interface paths {
             };
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List deployments for an app.
+         * @description Paged backwards (newest first) for the app identified by `slug`.
+         *     `next_before` is an opaque RFC3339Nano cursor from the last row in
+         *     the page; pass it as `before` to fetch older deployments. Unknown or
+         *     cross-account app slugs return the same IDOR-safe 404 surface as the
+         *     other app-scoped endpoints.
+         */
+        get: operations["listAppDeployments"];
         put?: never;
         /**
          * Create a deployment.
@@ -2274,6 +2391,35 @@ export interface paths {
          *     same IDOR-safe 404 surface.
          */
         get: operations["getLatestAppDeployment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/deployments/{id}/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Fetch a deployment release summary and diff.
+         * @description Returns the selected deployment, its immediately preceding release,
+         *     a stable field-level diff of non-secret release metadata, and the
+         *     deployment id the app rollback operation would currently target.
+         *     Unknown, cross-account, or slug/deployment-mismatch requests return
+         *     the same IDOR-safe 404 surface as the other app-scoped reads.
+         */
+        get: operations["getAppDeploymentSummary"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3683,6 +3829,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/deployments/latest-by-app": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the latest deployment for each app on the account.
+         * @description Returns at most one deployment for every non-deleted app owned by the
+         *     authenticated account. Items are ordered newest first by `created_at`,
+         *     with deployment ID as the stable tie-breaker.
+         */
+        get: operations["listLatestDeploymentsByApp"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/deployments/{id}": {
         parameters: {
             query?: never;
@@ -3793,7 +3961,8 @@ export interface paths {
          * Bulk soft-delete terminal-but-not-current deployments.
          * @description ADR-124 deployment queue controls — bulk soft-delete rows
          *     in {superseded, failed, cancelled} older than the cutoff
-         *     (default 168h). Plan-gated (Free returns 402). Retention
+         *     (default 168h). Plan-gated (Free returns 402
+         *     `plan_reorder_disabled`). Retention
          *     cap enforced inside the store so INV 3 stays satisfied.
          */
         post: operations["clearObsoleteDeployments"];
@@ -4563,6 +4732,138 @@ export interface paths {
          *     unaffected.
          */
         post: operations["fireCron"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/workflows/{name}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Workflow name from the app's current live deployment. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a durable workflow run.
+         * @description Snapshots the named workflow definition from the app's current live
+         *     deployment and creates a pending run. The optional request body is
+         *     retained as the workflow input and may be any valid JSON value.
+         */
+        post: operations["createWorkflowRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/workflows/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /** List durable workflow runs for an app. */
+        get: operations["listWorkflowRuns"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workflows/runs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Workflow-run identifier to retrieve. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** Get a durable workflow run. */
+        get: operations["getWorkflowRun"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workflows/runs/{id}/steps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Workflow-run identifier whose step attempts are returned. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** List the step attempts for a workflow run. */
+        get: operations["listWorkflowSteps"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workflows/runs/{id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Workflow-run identifier that receives the event. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Deliver an external event to a waiting workflow run. */
+        post: operations["injectWorkflowEvent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workflows/runs/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Workflow-run identifier to cancel. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a durable workflow run.
+         * @description Marks a non-terminal run failed with an operator-cancelled error and
+         *     skips its pending, running, and waiting steps. Repeating the request on
+         *     a terminal run returns the existing run.
+         */
+        post: operations["cancelWorkflowRun"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5923,6 +6224,58 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/log-drains": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /** List runtime log destinations for this app. */
+        get: operations["listAppLogDrains"];
+        put?: never;
+        /**
+         * Export runtime logs to an external HTTP or OTLP endpoint.
+         * @description The platform tails the existing per-instance runtime log ring and
+         *     forwards each line through a bounded queue. `http_json` sends a
+         *     provider-neutral JSON record; `otlp` sends an OTLP/HTTP JSON logs
+         *     envelope suitable for a collector or vendor OTLP endpoint. The URL
+         *     is SSRF-checked, and auth_header is sealed at rest and never echoed.
+         */
+        post: operations["createAppLogDrain"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/log-drains/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        /** Fetch one runtime log destination. */
+        get: operations["getAppLogDrain"];
+        put?: never;
+        post?: never;
+        /** Delete a runtime log destination. */
+        delete: operations["deleteAppLogDrain"];
+        options?: never;
+        head?: never;
+        /** Update a runtime log destination. */
+        patch: operations["updateAppLogDrain"];
         trace?: never;
     };
     "/v1/apps/{slug}/invoke": {
@@ -7902,6 +8255,121 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description One UTC day's status, uptime, and telemetry coverage observation. */
+        PublicStatusDaily: {
+            /** Format: date */
+            date: string;
+            /** @enum {string} */
+            status: "operational" | "maintenance" | "degraded" | "partial_outage" | "major_outage" | "unknown";
+            uptime_pct: number | null;
+            coverage_pct: number;
+        };
+        /** @description Current and 30-day status summary for one public capability. */
+        PublicStatusComponent: {
+            /** @enum {string} */
+            id: "api_console" | "deployments" | "app_execution" | "networking" | "observability";
+            name: string;
+            /** @enum {string} */
+            status: "operational" | "maintenance" | "degraded" | "partial_outage" | "major_outage" | "unknown";
+            uptime_30d_pct: number | null;
+            coverage_30d_pct: number;
+            daily: components["schemas"]["PublicStatusDaily"][];
+        };
+        /** @description Current error-budget indicator with its unit, target, and comparison direction. */
+        PublicStatusIndicator: {
+            /** @enum {string} */
+            id: "api_availability" | "wake_p95" | "build_success";
+            label: string;
+            value: number | null;
+            unit: string;
+            target: number;
+            /** @enum {string} */
+            comparison: "gte" | "lte";
+        };
+        /** @description One append-only, plain-text event timeline entry. */
+        PublicStatusUpdate: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            state: "investigating" | "identified" | "monitoring" | "resolved" | "scheduled" | "in_progress" | "completed" | "cancelled";
+            message: string;
+            /** Format: date-time */
+            posted_at: string;
+        };
+        /** @description Public incident or maintenance metadata and chronological timeline. */
+        PublicStatusEvent: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            kind: "incident" | "maintenance";
+            title: string;
+            /** @enum {string} */
+            impact: "maintenance" | "degraded" | "partial_outage" | "major_outage";
+            components: ("api_console" | "deployments" | "app_execution" | "networking" | "observability")[];
+            /** @enum {string} */
+            state: "investigating" | "identified" | "monitoring" | "resolved" | "scheduled" | "in_progress" | "completed" | "cancelled";
+            /** Format: date-time */
+            starts_at?: string;
+            /** Format: date-time */
+            scheduled_start_at?: string;
+            /** Format: date-time */
+            scheduled_end_at?: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: date-time */
+            resolved_at?: string;
+            updates: components["schemas"]["PublicStatusUpdate"][];
+        };
+        /** @description Complete public status snapshot for the single Gregale region. */
+        PublicStatusOverview: {
+            /** @enum {string} */
+            overall_status: "operational" | "maintenance" | "degraded" | "partial_outage" | "major_outage" | "unknown";
+            /** @enum {string} */
+            data_status: "fresh" | "stale" | "unavailable";
+            /** Format: date-time */
+            updated_at: string;
+            /** @enum {string} */
+            region_scope: "single-region";
+            components: components["schemas"]["PublicStatusComponent"][];
+            indicators: components["schemas"]["PublicStatusIndicator"][];
+            active_events: components["schemas"]["PublicStatusEvent"][];
+            upcoming_maintenance: components["schemas"]["PublicStatusEvent"][];
+            resolved_incidents: components["schemas"]["PublicStatusEvent"][];
+        };
+        /** @description Operator request to publish an incident or schedule maintenance. */
+        AdminStatusEventCreateRequest: {
+            /** @enum {string} */
+            kind: "incident" | "maintenance";
+            title: string;
+            /** @enum {string} */
+            impact?: "maintenance" | "degraded" | "partial_outage" | "major_outage";
+            components: ("api_console" | "deployments" | "app_execution" | "networking" | "observability")[];
+            /** @enum {string} */
+            state?: "investigating" | "identified" | "monitoring" | "resolved" | "scheduled" | "in_progress" | "completed" | "cancelled";
+            /** Format: date-time */
+            starts_at?: string;
+            /** Format: date-time */
+            scheduled_start_at?: string;
+            /** Format: date-time */
+            scheduled_end_at?: string;
+            message: string;
+        };
+        /** @description Operator request to append a plain-text lifecycle update. */
+        AdminStatusEventUpdateRequest: {
+            /** @enum {string} */
+            state: "investigating" | "identified" | "monitoring" | "resolved" | "scheduled" | "in_progress" | "completed" | "cancelled";
+            message: string;
+        };
+        /** @description Backwards-compatible three-indicator status response. */
+        StatusPage: {
+            api_availability_pct: number;
+            wake_p95_ms: number;
+            build_success_pct: number;
+            degraded: boolean;
+            /** Format: date-time */
+            as_of: string;
+            source: string;
+        };
         /** @description Managed PostgreSQL metadata. Provider IDs and credentials are never returned. */
         ManagedPostgresDatabase: {
             id: string;
@@ -10157,6 +10625,29 @@ export interface components {
             items: components["schemas"]["DeploymentResponse"][];
             /** Format: date-time */
             next_before?: string | null;
+        };
+        /** @description At most one newest deployment for each non-deleted app owned by the authenticated account. */
+        LatestDeploymentsByAppResponse: {
+            items: components["schemas"]["DeploymentResponse"][];
+        };
+        /** @description App-scoped release cockpit: selected deployment, immediate predecessor, non-secret field-level diff, and eligible rollback target. */
+        DeploymentSummaryResponse: {
+            deployment: components["schemas"]["DeploymentResponse"];
+            /** @description The immediately older deployment by created_at, or null for an initial release. */
+            previous?: components["schemas"]["DeploymentResponse"] | null;
+            changes: components["schemas"]["DeploymentChange"][];
+            /**
+             * Format: uuid
+             * @description The latest superseded deployment eligible for POST /v1/apps/{slug}/rollback; omitted when none exists.
+             */
+            rollback_target_id?: string | null;
+        };
+        /** @description One non-secret release field that changed from the previous deployment. */
+        DeploymentChange: {
+            /** @enum {string} */
+            field: "status" | "kind" | "build_id" | "image_digest" | "source_url" | "commit_sha" | "source_root" | "scope" | "build_plan" | "min_instances" | "traffic_percent" | "has_overrides" | "canary_preset" | "rollback_on_5xx" | "rollout_state";
+            before: string | number | boolean | Record<string, never> | null;
+            after: string | number | boolean | Record<string, never> | null;
         };
         /**
          * @description One persisted billing-provider invoice (issue #259). Money is
@@ -13856,6 +14347,8 @@ export interface components {
              * @example 50
              */
             limit: number;
+            /** @description Opaque cursor for the next older page; omitted when this page reaches the end. */
+            next_before?: string;
         };
         /**
          * @description One frame of the wake timeline (issue #517 / PR-C /
@@ -13864,8 +14357,13 @@ export interface components {
          *     canonical `wake.*` vocabulary is documented in
          *     `docs/adr/064-wake-timeline-canonical-vocabulary.md`
          *     (including `wake.restore_breakdown`, which exposes the
-         *     vmmd snapshot-restore phases in integer milliseconds, plus
-         *     the aggregate `total_ms`; and build/deploy/boot failure kinds).
+         *     vmmd snapshot-restore phases in integer milliseconds;
+         *     `wake.cold_boot_breakdown`, which attributes pre-guest artifact
+         *     resolution and Firecracker startup phases, including artifact source,
+         *     duration, and byte size;
+         *     `wake.cold_boot_cpu`, which records the temporary startup CPU
+         *     allowance and configured quota restored before routing; and
+         *     build/deploy/boot failure kinds).
          */
         WakeTimelineEvent: {
             /**
@@ -16690,6 +17188,45 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
+        /** @description Runtime log destination with sealed credentials represented by a mask. */
+        AppLogDrainResponse: {
+            id: string;
+            app_id: string;
+            /** Format: uuid */
+            account_id: string;
+            /** @enum {string} */
+            kind: "http_json" | "otlp";
+            /** Format: uri */
+            target_url: string;
+            /** @enum {string} */
+            auth_header_masked: "" | "***";
+            enabled: boolean;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /** @description Create a provider-neutral runtime log destination. */
+        CreateAppLogDrainRequest: {
+            /** @enum {string} */
+            kind: "http_json" | "otlp";
+            /** Format: uri */
+            target_url: string;
+            /** @description One Name: value pair; sealed at rest and never returned. */
+            auth_header?: string;
+            /** @default true */
+            enabled: boolean;
+        };
+        /** @description Partially update a runtime log destination; omitted fields remain unchanged. */
+        UpdateAppLogDrainRequest: {
+            /** @enum {string} */
+            kind?: "http_json" | "otlp";
+            /** Format: uri */
+            target_url?: string;
+            /** @description One Name: value pair; an empty value clears credentials. */
+            auth_header?: string;
+            enabled?: boolean;
+        };
         /**
          * @description Subscribe a target URL to events emitted by the app. The
          *     webhook_secret is HMAC-SHA256 sealed at rest with the host
@@ -16828,7 +17365,7 @@ export interface components {
             since: string;
             requests: components["schemas"]["DebugTelemetryRequestItem"][];
         };
-        /** @description One row per gateway-served request, persisted by the recorder (PR-A). */
+        /** @description One bounded latency-bucket row representing gateway-served requests, persisted by the recorder/publisher. */
         DebugTelemetryRequestItem: {
             /** Format: uuid */
             id: string;
@@ -16839,6 +17376,7 @@ export interface components {
             /** @enum {string} */
             method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
             status: number;
+            /** @description Inclusive upper bound of the bounded latency bucket represented by this row. */
             latency_ms: number;
             /** @description Number of original requests represented by this collapsed telemetry row. */
             count: number;
@@ -16954,6 +17492,24 @@ export interface components {
         };
     };
     responses: {
+        /** @description code: tenant_surfaces_not_allowed — this plan or cluster does not enable tenant surfaces. */
+        TenantSurfacesNotAllowed: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description code: workflow_run_not_found — the run is absent or belongs to another account. */
+        WorkflowRunNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
         /** @description code: unauthorized */
         Unauthorized: {
             headers: {
@@ -17540,8 +18096,37 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
+        /** @description code: app_log_drain_invalid — malformed log-drain kind, URL, or auth header. */
+        AppLogDrainInvalid: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description code: plan_log_drains_not_allowed — the plan does not include customer runtime log destinations. */
+        PlanLogDrainsNotAllowed: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description code: plan_log_drain_quota — per-app or per-account runtime log destination limit reached. */
+        PlanLogDrainQuota: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
     };
     parameters: {
+        /** @description Stable public UUID used by status permalinks. */
+        PublicStatusEventID: string;
         /**
          * @description Dashboard session cookie. Sealed; opaque to the client
          *     (`HttpOnly; Secure; SameSite=Lax`). 7-day fixed lifetime.
@@ -17597,6 +18182,171 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getPublicStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current status snapshot, including degraded-source responses. */
+            200: {
+                headers: {
+                    /** @description Uses public max-age 15 and stale-while-revalidate 45 caching. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicStatusOverview"];
+                };
+            };
+        };
+    };
+    getPublicStatusIncident: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Stable public UUID used by status permalinks. */
+                public_id: components["parameters"]["PublicStatusEventID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Public event and chronological update timeline. */
+            200: {
+                headers: {
+                    /** @description public, max-age=15, stale-while-revalidate=45 */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicStatusEvent"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getLegacyStatusSLO: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Legacy status projection. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusPage"];
+                };
+            };
+        };
+    };
+    listAdminStatusEvents: {
+        parameters: {
+            query?: {
+                /** @description Restrict results to incidents or maintenance. */
+                kind?: "incident" | "maintenance";
+                /** @description Return only events that have not reached a terminal lifecycle state. */
+                active?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Status events, newest update first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicStatusEvent"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    createAdminStatusEvent: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Stable caller-generated key used to replay this create safely. */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminStatusEventCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Published event. Replays return the same public UUID. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicStatusEvent"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    updateAdminStatusEvent: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Stable caller-generated key used to replay this timeline update safely. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                /** @description Stable public UUID used by status permalinks. */
+                public_id: components["parameters"]["PublicStatusEventID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminStatusEventUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated event with its complete chronological timeline. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicStatusEvent"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
     listManagedPostgresDatabases: {
         parameters: {
             query?: never;
@@ -21316,6 +22066,37 @@ export interface operations {
             429: components["responses"]["TooManyRequests"];
         };
     };
+    listAppDeployments: {
+        parameters: {
+            query?: {
+                /** @description Page size for this app (1–200; default 50). */
+                limit?: number;
+                /** @description RFC3339Nano cursor from a previous response's next_before. */
+                before?: string;
+            };
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A paginated list of deployments for an app. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
     createDeployment: {
         parameters: {
             query?: never;
@@ -21392,6 +22173,34 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeploymentResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getAppDeploymentSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The release summary. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentSummaryResponse"];
                 };
             };
             401: components["responses"]["Unauthorized"];
@@ -23304,7 +24113,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
-            402: components["responses"]["PaymentRequired"];
+            402: components["responses"]["TenantSurfacesNotAllowed"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -23341,10 +24150,26 @@ export interface operations {
             };
             400: components["responses"]["ValidationFailed"];
             401: components["responses"]["Unauthorized"];
-            402: components["responses"]["PaymentRequired"];
-            403: components["responses"]["Forbidden"];
+            402: components["responses"]["TenantSurfacesNotAllowed"];
+            /** @description code: tenant_surface_quota | tenant_hostname_quota | forbidden — the account or seed-hostname cap is exhausted, or the caller lacks scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
+            /** @description code: tenant_hostname_already_claimed | conflict — a seed hostname or surface name is already claimed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     getTenantSurface: {
@@ -23371,7 +24196,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
-            402: components["responses"]["PaymentRequired"];
+            402: components["responses"]["TenantSurfacesNotAllowed"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -23397,7 +24222,7 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthorized"];
-            402: components["responses"]["PaymentRequired"];
+            402: components["responses"]["TenantSurfacesNotAllowed"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -23436,10 +24261,26 @@ export interface operations {
             };
             400: components["responses"]["ValidationFailed"];
             401: components["responses"]["Unauthorized"];
-            402: components["responses"]["PaymentRequired"];
-            403: components["responses"]["Forbidden"];
+            402: components["responses"]["TenantSurfacesNotAllowed"];
+            /** @description code: tenant_hostname_quota | forbidden — the surface hostname cap is exhausted or the caller lacks scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
+            /** @description code: tenant_hostname_already_claimed | conflict — the hostname belongs to another tenant surface. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     removeTenantHostname: {
@@ -23466,7 +24307,7 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthorized"];
-            402: components["responses"]["PaymentRequired"];
+            402: components["responses"]["TenantSurfacesNotAllowed"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -23865,6 +24706,33 @@ export interface operations {
             429: components["responses"]["TooManyRequests"];
         };
     };
+    listLatestDeploymentsByApp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The latest deployment for each deployed app. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "items": []
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LatestDeploymentsByAppResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
     getDeployment: {
         parameters: {
             query?: never;
@@ -24098,6 +24966,17 @@ export interface operations {
                     "application/json": components["schemas"]["ClearObsoleteReport"];
                 };
             };
+            /** @description code: plan_reorder_disabled — this plan does not include deployment queue controls. */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
         };
     };
     updateDeploymentTraffic: {
@@ -25124,6 +26003,222 @@ export interface operations {
                 };
             };
             429: components["responses"]["TooManyRequests"];
+        };
+    };
+    createWorkflowRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Workflow name from the app's current live deployment. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": unknown;
+            };
+        };
+        responses: {
+            /** @description The new pending workflow run. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowRunResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            /** @description code: plan_workflows_not_allowed — this plan does not include durable workflows. */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description code: plan_workflows_quota | forbidden — the concurrent-run cap is exhausted or the caller lacks scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description code: workflow_definition_not_found | app_not_found — the app or named live workflow definition does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServerError"];
+        };
+    };
+    listWorkflowRuns: {
+        parameters: {
+            query?: {
+                /** @description Optional exact status filter. */
+                status?: "pending" | "running" | "awaiting_event" | "succeeded" | "failed" | "dead";
+                /** @description Maximum runs to return in this page. */
+                limit?: number;
+                /** @description Number of runs to skip before returning results. */
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of workflow runs. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListWorkflowRunsResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServerError"];
+        };
+    };
+    getWorkflowRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Workflow-run identifier to retrieve. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The workflow run. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowRunResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["WorkflowRunNotFound"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServerError"];
+        };
+    };
+    listWorkflowSteps: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Workflow-run identifier whose step attempts are returned. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Ordered workflow step attempts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListWorkflowStepsResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["WorkflowRunNotFound"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServerError"];
+        };
+    };
+    injectWorkflowEvent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Workflow-run identifier that receives the event. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InjectWorkflowEventRequest"];
+            };
+        };
+        responses: {
+            /** @description The event was recorded. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InjectWorkflowEventResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["WorkflowRunNotFound"];
+            /** @description code: workflow_not_running — only running or awaiting_event runs accept events. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServerError"];
+        };
+    };
+    cancelWorkflowRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Workflow-run identifier to cancel. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The terminal workflow run. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowRunResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["WorkflowRunNotFound"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServerError"];
         };
     };
     listJobs: {
@@ -27591,6 +28686,171 @@ export interface operations {
             429: components["responses"]["TooManyRequests"];
         };
     };
+    listAppLogDrains: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The configured log destinations. Authentication headers are always masked. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppLogDrainResponse"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanLogDrainsNotAllowed"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    createAppLogDrain: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "kind": "otlp",
+                 *       "target_url": "https://otel-collector.example.com/v1/logs",
+                 *       "auth_header": "Authorization: Bearer <token>",
+                 *       "enabled": true
+                 *     }
+                 */
+                "application/json": components["schemas"]["CreateAppLogDrainRequest"];
+            };
+        };
+        responses: {
+            /** @description Log drain created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppLogDrainResponse"];
+                };
+            };
+            400: components["responses"]["AppLogDrainInvalid"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanLogDrainsNotAllowed"];
+            403: components["responses"]["PlanLogDrainQuota"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["AppLogDrainInvalid"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getAppLogDrain: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The log destination. Authentication headers are masked. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppLogDrainResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanLogDrainsNotAllowed"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    deleteAppLogDrain: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No body. The log drain was removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanLogDrainsNotAllowed"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    updateAppLogDrain: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "enabled": false
+                 *     }
+                 */
+                "application/json": components["schemas"]["UpdateAppLogDrainRequest"];
+            };
+        };
+        responses: {
+            /** @description The updated log destination. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppLogDrainResponse"];
+                };
+            };
+            400: components["responses"]["AppLogDrainInvalid"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanLogDrainsNotAllowed"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["AppLogDrainInvalid"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
     invokeApp: {
         parameters: {
             query?: never;
@@ -28922,6 +30182,8 @@ export interface operations {
             query?: {
                 /** @description Audit-log rows with `received_at >= since` (RFC 3339) are returned. Omit to read from the newest row. */
                 since?: string;
+                /** @description Opaque cursor returned as `next_before`; fetches the next older page. Pass verbatim without decoding or re-encoding. */
+                before?: string;
                 /** @description Only return rows whose `kind` starts with this prefix (e.g. `account.` returns `account.deleted`). */
                 kind_prefix?: string;
                 /** @description Audit-log page size. Silently capped at 100. */
@@ -28982,6 +30244,8 @@ export interface operations {
                 account_id?: string;
                 /** @description Operator-side audit-log rows with `received_at >= since` (RFC 3339) are returned. Omit to read from the newest row. */
                 since?: string;
+                /** @description Opaque cursor returned as `next_before`; fetches the next older page. Pass verbatim without decoding or re-encoding. */
+                before?: string;
                 /** @description Only return rows whose `kind` starts with this prefix. */
                 kind_prefix?: string;
                 /** @description Operator-side audit-log page size. Silently capped at 100. */

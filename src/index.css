@@ -1,5 +1,6 @@
 /* Familjen Grotesk type system — see index.html for the font loads. */
 @import 'tailwindcss';
+@import './components/status/status-page.css';
 
 /* The console's dark surface is `.console`, not `.dark` — bind Tailwind's
    `dark:` variant to it so a shadcn-scaffolded component's dark styles are
@@ -15,7 +16,7 @@
    Measured contrast (sRGB):
      step 8  #00ce91  9.7:1 on ink      -> mint fill, dark text. Reads mint.
      step 11 #006f40  6.1:1 on paper    -> mint text/links on white. AA body.
-     step 7  #51deaa  11.7:1 on #090909 -> mint on the console surface.
+     step 7  #51deaa  10.0:1 on #1c1c1c -> mint on the console surface.
    ------------------------------------------------------------------------- */
 :root {
   --mint-1: oklch(0.989 0.012 165);
@@ -45,8 +46,8 @@
 }
 
 /* --- Elevation -------------------------------------------------------------
-   Three steps, tinted per polarity (ink-tinted on paper, pure black on the
-   console — a grey shadow on #090909 reads as a smudge). Every lifted
+   Three steps, tinted per polarity (ink-tinted on paper, neutral black on
+   the console's charcoal surfaces). Every lifted
    surface picks a step; ad-hoc box-shadows fail review the same way literal
    hex does. 1 = resting card, 2 = raised (hover, sticky bars),
    3 = floating chrome (menus, dialogs, toasts). */
@@ -56,15 +57,29 @@
   --elevation-3: 0 16px 40px -12px rgb(13 21 18 / 0.25);
 }
 .console {
-  --elevation-1: 0 1px 2px rgb(0 0 0 / 0.4);
-  --elevation-2: 0 4px 12px -2px rgb(0 0 0 / 0.5);
-  --elevation-3: 0 24px 48px -12px rgb(0 0 0 / 0.7);
+  --elevation-1: 0 1px 2px rgb(0 0 0 / 0.24);
+  --elevation-2: 0 4px 12px -2px rgb(0 0 0 / 0.34);
+  --elevation-3: 0 24px 48px -12px rgb(0 0 0 / 0.5);
+
+  /* The console's reading size.
+     `text-xs` is the console's real body size — 458 uses against 283 of
+     `text-sm` — not the caption size Tailwind's 12px/1.33 default assumes. At
+     that size a resource table is a wall, and the fix is the token rather than
+     458 call sites: the utilities compile to `font-size: var(--text-xs)`, so
+     one definition here moves the whole console and leaves the marketing site
+     (which never carries `.console`) exactly as it was.
+     13px is deliberately a small step. It buys legibility without closing the
+     gap to `text-sm` entirely, and it cannot reflow a fixed-height control the
+     way changing `--text-sm` would. Most of the leverage is in the leading:
+     1.33 is what made dense rows read as a block. */
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: 1.5;
 }
 
 /* --- Light surface (marketing, auth, 404) ---------------------------------
    White dominant, mint as signal. Paper is a hair off pure white and cards are
-   pure white, so a card lifts off the page the same way #0d0d0d lifts off
-   #090909 in the console — the polarity flips, the relationship does not.
+   pure white, so a card lifts off the page the same way #242424 lifts off
+   #1c1c1c in the console — the polarity flips, the relationship does not.
    ------------------------------------------------------------------------- */
 :root {
   /* Declares the polarity to the UA, not just to our own components: it is
@@ -95,6 +110,7 @@
   --border: #e4eae7;
   --border-secondary: #ccd6d1;
   --input: #e4eae7;
+  --overlay: #00482a;
   --ring: #00a465;
   --radius: 0.5rem;
 
@@ -152,30 +168,35 @@
      console resolves here, the mono voice is untouched. */
   --font-sans: 'Satoshi', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 
-  --background: #090909;
-  --foreground: #ffffff;
-  --card: #0d0d0d;
-  --card-foreground: #ffffff;
-  --popover: #0d0d0d;
-  --popover-foreground: #ffffff;
-  --primary: #ffffff;
-  --primary-foreground: #000000;
-  --secondary: #1c1c1c;
-  --secondary-foreground: #ffffff;
-  --muted: #1c1c1c;
-  --muted-foreground: #bababa;
-  --accent: #1c1c1c;
-  --accent-foreground: #ffffff;
-  --destructive: #ef4444;
-  --destructive-foreground: #ffffff;
-  --border: #2b2b2b;
-  --border-secondary: #3b3b3b;
-  --input: #2b2b2b;
+  /* Neutral charcoal keeps black as the foundation without the original
+     near-black crush. Surfaces, borders, and text have no colour cast;
+     mint is reserved for actions, links, and focus. */
+  --background: #1c1c1c;
+  --foreground: #ededed;
+  --card: #242424;
+  --card-foreground: #ededed;
+  --popover: #2c2c2c;
+  --popover-foreground: #ededed;
+  --primary: #51deaa;
+  --primary-foreground: #123529;
+  --secondary: #2e2e2e;
+  --secondary-foreground: #ededed;
+  --muted: #2e2e2e;
+  --muted-foreground: #b8b8b8;
+  --accent: #363636;
+  --accent-foreground: #ededed;
+  --destructive: #ff9393;
+  --destructive-foreground: #431a1a;
+  --border: #3b3b3b;
+  --border-secondary: #525252;
+  --input: #737373;
+  --overlay: #000000;
 
-  /* Mint needs a light step to survive on #090909; step 7 lands at 11.7:1. */
+  /* Mint carries primary actions as well as brand marks: 7.9:1 with the
+     deep-green primary label, and 10.0:1 against the console canvas. */
   --brand: #51deaa;
   --brand-hover: #80e9be;
-  --brand-muted: #51deaa4d;
+  --brand-muted: #51deaa26;
   --brand-fill: #00ce91;
   --ring: #51deaa;
 
@@ -186,10 +207,40 @@
   --cat-security: #a78bfa;
   --cat-storage: #7ea7ff;
 
-  --status-good: #0ca30c;
-  --status-warning: #fab219;
-  --status-serious: #ec835a;
-  --status-critical: #d03b3b;
+  /* Neutral status labels also consume chart-muted, even on routes without
+     charts. Keep their ink and structural lines in the console's palette. */
+  --chart-grid: #3b3b3b;
+  --chart-axis: #525252;
+  --chart-muted: #b8b8b8;
+
+  --status-good: #75cf92;
+  --status-warning: #fabf47;
+  --status-serious: #f3a17e;
+  --status-critical: #ff9393;
+}
+
+/* Foil is a silver material in either polarity. Its colour vocabulary stays
+   here; pointer coordinates belong to the individual New App control. */
+:root,
+.console {
+  --foil-ink: #14202e;
+  --foil-body: linear-gradient(135deg, #eee 0%, #dcdcdc 40%, #c9c9c9 72%, #e8e8e8 100%);
+  --foil-white: 255 255 255;
+  --foil-shadow: 30 38 56;
+  --foil-bevel: 60 70 90;
+  --foil-cyan: 0 220 255;
+  --foil-mint: 80 255 190;
+  --foil-lime: 190 255 80;
+  --foil-yellow: 255 230 70;
+  --foil-pink: 255 70 180;
+  --foil-violet: 150 90 255;
+  --foil-blue: 60 120 255;
+  --foil-pearl: 230 238 245;
+  --foil-pearl-shade: 205 217 226;
+  --foil-shine: 226 235 242;
+  --foil-shine-blue: 0 124 255;
+  --foil-shine-pink: 255 0 147;
+  --foil-glare-shade: 205 218 228;
 }
 
 @theme inline {
@@ -212,6 +263,7 @@
   --color-border: var(--border);
   --color-border-secondary: var(--border-secondary);
   --color-input: var(--input);
+  --color-overlay: var(--overlay);
   --color-ring: var(--ring);
 
   --color-brand: var(--brand);
@@ -484,6 +536,241 @@
   syntax: '<angle>';
   initial-value: 0deg;
   inherits: false;
+}
+
+@property --account-shine-angle {
+  syntax: '<angle>';
+  initial-value: 135deg;
+  inherits: false;
+}
+
+@layer utilities {
+  /* The page boundary owns route entrances. Do not stack a separate delayed
+     entrance on every card, heading and table inside the same page. */
+  .console-page .animate-item-enter {
+    animation: none;
+  }
+}
+
+@layer components {
+  .account-shine {
+    position: relative;
+  }
+
+  /* A one-pixel reflective rim: the interior stays flat charcoal. */
+  .account-shine::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    padding: 1px;
+    border-radius: inherit;
+    pointer-events: none;
+    background: conic-gradient(
+      from var(--account-shine-angle),
+      var(--border) 0deg,
+      var(--border-secondary) 65deg,
+      color-mix(in oklab, var(--foreground) 70%, transparent) 95deg,
+      color-mix(in oklab, var(--brand) 65%, transparent) 120deg,
+      var(--border) 165deg,
+      var(--border) 360deg
+    );
+    mask:
+      linear-gradient(var(--foreground) 0 0) content-box,
+      linear-gradient(var(--foreground) 0 0);
+    mask-composite: exclude;
+  }
+
+  /* Light travels once on interaction, then rests as a quiet edge. */
+  .account-shine:hover::before,
+  .account-shine:focus-visible::before,
+  .account-shine[data-state='open']::before {
+    animation: account-border-shine 1.2s ease-out both;
+  }
+
+  @keyframes account-border-shine {
+    from {
+      --account-shine-angle: 135deg;
+    }
+    to {
+      --account-shine-angle: 495deg;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .account-shine::before {
+      animation: none !important;
+    }
+  }
+
+  .depth-btn {
+    position: relative;
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    height: 36px;
+    padding: 0 16px;
+    border: none;
+    border-radius: 999px;
+    font-family: var(--font-sans);
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+    cursor: pointer;
+    isolation: isolate;
+    overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+    transition:
+      filter 0.2s ease,
+      box-shadow 0.2s ease;
+  }
+
+  .depth-btn:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 3px;
+  }
+
+  .depth-label {
+    position: relative;
+    /* Keep the dark label above the glare as well as the colour layers. */
+    z-index: 6;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .depth-foil {
+    --pointer-x: 50%;
+    --glare-x: 50%;
+    --glare-y: 50%;
+    --shine-angle: 135deg;
+    color: var(--foil-ink);
+    text-shadow: 0 1px 0 rgb(var(--foil-white) / 0.5);
+    background: var(--foil-body);
+    box-shadow:
+      inset 0 0 0 1px rgb(var(--foil-white) / 0.5),
+      inset 0 1px 1px rgb(var(--foil-white) / 0.7),
+      inset 0 -2px 4px rgb(var(--foil-bevel) / 0.3),
+      0 3px 10px rgb(var(--foil-shadow) / 0.3);
+  }
+
+  .depth-foil:active {
+    filter: brightness(0.96);
+  }
+
+  .depth-foil-l {
+    position: absolute;
+    inset: -48%;
+    z-index: 1;
+    background-repeat: no-repeat;
+    pointer-events: none;
+  }
+
+  .depth-foil-base {
+    background-image: linear-gradient(
+      112deg,
+      transparent 22%,
+      rgb(var(--foil-cyan) / 0.4) 30%,
+      rgb(var(--foil-mint) / 0.34) 36%,
+      rgb(var(--foil-lime) / 0.26) 41%,
+      rgb(var(--foil-yellow) / 0.24) 47%,
+      rgb(var(--foil-pink) / 0.36) 55%,
+      rgb(var(--foil-violet) / 0.36) 63%,
+      rgb(var(--foil-blue) / 0.3) 70%,
+      transparent 80%
+    );
+    background-size: 240% 100%;
+    filter: saturate(1.3) contrast(1.25);
+    animation: depth-foil-drift 7s ease-in-out infinite alternate;
+  }
+
+  .depth-foil-film {
+    background-image:
+      radial-gradient(ellipse at 20% 30%, rgb(var(--foil-pink) / 0.34) 0%, transparent 48%),
+      radial-gradient(ellipse at 70% 20%, rgb(var(--foil-cyan) / 0.34) 0%, transparent 52%),
+      radial-gradient(ellipse at 78% 74%, rgb(var(--foil-mint) / 0.34) 0%, transparent 56%);
+    background-size:
+      150% 150%,
+      160% 160%,
+      145% 145%;
+    filter: blur(0.4px) saturate(1.4);
+    mix-blend-mode: screen;
+    opacity: 0.7;
+    animation: depth-foil-drift 9s ease-in-out infinite alternate-reverse;
+  }
+
+  .depth-foil-pearl {
+    z-index: 2;
+    inset: 0;
+    background: radial-gradient(
+      120% 120% at var(--glare-x) var(--glare-y),
+      rgb(var(--foil-pearl) / 0.6) 0%,
+      rgb(var(--foil-pearl-shade) / 0.2) 26%,
+      transparent 58%
+    );
+    mix-blend-mode: soft-light;
+    opacity: 0.95;
+  }
+
+  .depth-foil-shine {
+    z-index: 4;
+    inset: 0;
+    background-image: linear-gradient(
+      var(--shine-angle),
+      transparent 30%,
+      rgb(var(--foil-shine) / 0.5) 48%,
+      rgb(var(--foil-shine-blue) / 0.1) 58%,
+      rgb(var(--foil-shine-pink) / 0.1) 66%,
+      transparent 82%
+    );
+    background-size: 200% 100%;
+    background-position: var(--pointer-x) center;
+    filter: blur(0.25px);
+    mix-blend-mode: screen;
+    opacity: 0.6;
+  }
+
+  .depth-foil-glare {
+    z-index: 5;
+    inset: 0;
+    background: radial-gradient(
+      circle at var(--glare-x) var(--glare-y),
+      rgb(var(--foil-pearl) / 0.55) 0%,
+      rgb(var(--foil-glare-shade) / 0.16) 10%,
+      transparent 38%
+    );
+    mix-blend-mode: screen;
+    opacity: 0.5;
+  }
+
+  @keyframes depth-foil-drift {
+    from {
+      background-position: 0% center;
+    }
+    to {
+      background-position: 100% center;
+    }
+  }
+
+  @media (width < 640px) {
+    .depth-btn {
+      width: 44px;
+      height: 44px;
+      padding: 0;
+      border-radius: 14px;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .depth-btn,
+    .depth-foil-l {
+      transition: none;
+      animation: none;
+    }
+  }
 }
 
 @layer base {
@@ -820,16 +1107,6 @@
     border-color: color-mix(in oklab, var(--brand) 70%, var(--border-secondary));
   }
 
-  /* A faint phosphor glow behind a readout figure — the instrument-panel
-     accent that DOES survive the odometer: gradient-text (background-clip)
-     cannot paint through the transformed digit strips, which is why the
-     digits went invisible under the earlier sheen. A text-shadow renders
-     with the glyphs wherever they are. */
-  .metric-glow {
-    color: var(--foreground);
-    text-shadow: 0 0 16px color-mix(in oklab, var(--brand-fill) 35%, transparent);
-  }
-
   /* A scroll container with no visible scrollbar — for rails too narrow to
      give one a gutter (wheel, drag, and keyboard scrolling all still work). */
   .scrollbar-none {
@@ -895,50 +1172,6 @@
     -webkit-backdrop-filter: blur(14px);
   }
 
-  /* The premium card material, layered over .glass on a SpotlightCard.
-     The edge is light, not a line: a 1px gradient ring (bright at the top
-     where the light hits, a breath of mint pooling at the bottom) drawn by
-     the mask-composite trick, replacing the flat border. The card sits on
-     real elevation and lifts toward the cursor. */
-  .card-lux {
-    border-color: transparent;
-    box-shadow: var(--elevation-1);
-    transition:
-      transform var(--motion-base) var(--motion-ease),
-      box-shadow var(--motion-base) var(--motion-ease);
-  }
-  .card-lux::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    padding: 1px;
-    background: linear-gradient(
-      to bottom,
-      color-mix(in oklab, var(--foreground) 18%, transparent),
-      color-mix(in oklab, var(--foreground) 5%, transparent) 45%,
-      color-mix(in oklab, var(--brand-fill) 12%, transparent)
-    );
-    mask:
-      linear-gradient(#000 0 0) content-box,
-      linear-gradient(#000 0 0);
-    mask-composite: exclude;
-    pointer-events: none;
-  }
-  .card-lux:hover {
-    transform: translateY(-2px);
-    box-shadow:
-      var(--elevation-3),
-      0 14px 44px -20px color-mix(in oklab, var(--brand-fill) 30%, transparent);
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .card-lux,
-    .card-lux:hover {
-      transform: none;
-      transition: none;
-    }
-  }
-
   /* Progress-ring sweep: the arc enters from empty on insertion and glides
      between values thereafter. `@starting-style` keeps this stateless —
      unsupported browsers simply show the value at once, as do reduced-motion
@@ -966,7 +1199,7 @@
   .console-atmosphere {
     background: radial-gradient(
       90% 48rem at 100% 0%,
-      color-mix(in oklab, var(--brand-fill) 4%, transparent),
+      color-mix(in oklab, var(--foreground) 2%, transparent),
       transparent 60%
     );
   }

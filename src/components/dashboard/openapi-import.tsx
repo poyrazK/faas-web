@@ -9,13 +9,12 @@ import { PlanGated } from '@/components/dashboard/plan-gated';
 import { Pill } from '@/components/dashboard/resource-table';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import {
-  useApp,
   useAppEdgeRules,
+  useAppDeployments,
   useAppOpenAPI,
   useCreateEdgeRule,
   useDeleteAppOpenAPI,
   useDeploymentOpenAPIDoc,
-  useDeployments,
   useDryRunAppOpenAPI,
   useImportAppOpenAPI,
   type EdgeRuleSuggestion,
@@ -400,18 +399,18 @@ function ImportFlow({ slug }: { slug: string }) {
 }
 
 function DeploymentDocument({ slug }: { slug: string }) {
-  const app = useApp(slug);
-  const deployments = useDeployments(100);
-  const own = (deployments.data?.items ?? []).filter((d) => d.app_id === app.data?.id);
+  const deployments = useAppDeployments(slug);
+  const own = deployments.data?.pages.flatMap((page) => page.items) ?? [];
   const [chosen, setChosen] = useState('');
   // Derived, not synchronised: a selection that is not in the current list
   // must never reach the path parameter, or one app is asked for another's
   // deployment and the 404 reads as "nothing was captured".
   const deploymentId = own.some((d) => d.id === chosen) ? chosen : (own[0]?.id ?? '');
   const doc = useDeploymentOpenAPIDoc(slug, deploymentId);
+  const listError = own.length === 0 ? deployments.error : undefined;
   const listPhase = queryPhase({
-    error: deployments.error ?? app.error,
-    loading: deployments.isPending || app.isPending,
+    error: listError,
+    loading: deployments.isPending,
     isEmpty: own.length === 0,
   });
 
@@ -420,49 +419,71 @@ function DeploymentDocument({ slug }: { slug: string }) {
       title="Captured from the app"
       description="What the cold-boot probe read from the app's own /openapi.json for one deployment."
       actions={
-        own.length > 0 ? (
-          <Select
-            value={deploymentId}
-            onChange={(e) => setChosen(e.target.value)}
-            aria-label="Deployment"
-            className="h-8 text-xs"
-          >
-            {own.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.id.slice(0, 8)} · {d.status}
-              </option>
-            ))}
-          </Select>
+        own.length > 0 || deployments.hasNextPage ? (
+          <div className="flex items-center gap-2">
+            {own.length > 0 && (
+              <Select
+                value={deploymentId}
+                onChange={(e) => setChosen(e.target.value)}
+                aria-label="Deployment"
+                className="h-8 text-xs"
+              >
+                {own.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.id.slice(0, 8)} · {d.status}
+                  </option>
+                ))}
+              </Select>
+            )}
+            {deployments.hasNextPage && (
+              <Button
+                size="xs"
+                variant="outline"
+                busy={deployments.isFetchingNextPage}
+                onClick={() => void deployments.fetchNextPage().catch(() => undefined)}
+              >
+                Load older deployments
+              </Button>
+            )}
+          </div>
         ) : undefined
       }
     >
       {listPhase !== 'ready' ? (
         <InlinePhase
           phase={listPhase}
-          error={deployments.error ?? app.error}
+          error={listError}
           loadingMessage="Looking for deployments…"
           emptyMessage="No deployments to read from yet."
         />
       ) : (
-        <PlanGated error={doc.error} feature="Endpoint discovery">
-          {doc.isPending ? (
-            <p className="text-sm text-muted-foreground">Reading the captured document…</p>
-          ) : doc.error && isNotFound(doc.error) ? (
-            <p className="text-sm text-muted-foreground">
-              No document was captured for this deployment. The probe reads /openapi.json during
-              cold boot; an app that does not serve one leaves nothing here.
-            </p>
-          ) : doc.error ? (
-            <p className="text-sm text-muted-foreground">{errorMessage(doc.error)}</p>
-          ) : (
-            <div className="flex flex-col gap-3">
-              <p className="text-sm text-muted-foreground">
-                {countPaths(doc.data)} paths captured.
-              </p>
-              <DocumentView doc={doc.data} />
-            </div>
+        <div className="flex flex-col gap-3">
+          {Boolean(deployments.error) && (
+            <InlinePhase
+              phase={queryPhase({ error: deployments.error })}
+              error={deployments.error}
+            />
           )}
-        </PlanGated>
+          <PlanGated error={doc.error} feature="Endpoint discovery">
+            {doc.isPending ? (
+              <p className="text-sm text-muted-foreground">Reading the captured document…</p>
+            ) : doc.error && isNotFound(doc.error) ? (
+              <p className="text-sm text-muted-foreground">
+                No document was captured for this deployment. The probe reads /openapi.json during
+                cold boot; an app that does not serve one leaves nothing here.
+              </p>
+            ) : doc.error ? (
+              <p className="text-sm text-muted-foreground">{errorMessage(doc.error)}</p>
+            ) : (
+              <div className="flex flex-col gap-3">
+                <p className="text-sm text-muted-foreground">
+                  {countPaths(doc.data)} paths captured.
+                </p>
+                <DocumentView doc={doc.data} />
+              </div>
+            )}
+          </PlanGated>
+        </div>
       )}
     </Panel>
   );

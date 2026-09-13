@@ -5,6 +5,7 @@ import {
   ErrorState,
   LoadingState,
   PageHeader,
+  RangeSelector,
   UnreachableState,
   queryPhase,
 } from '@/components/dashboard/primitives';
@@ -12,10 +13,10 @@ import { FirstRun } from '@/components/dashboard/first-run';
 import { OverviewSearch } from '@/components/dashboard/overview-search';
 import { Magnetic } from '@/components/amicro/magnetic';
 import { PointerGlow } from '@/components/amicro/pointer-glow';
-import { Tilt } from '@/components/amicro/tilt';
 import { WordReveal } from '@/components/amicro/word-reveal';
-import { SpotlightCard } from '@/components/ui/spotlight-card';
 import { LiveDot } from '@/components/ui/live-dot';
+import { AnalyticsSection } from '@/components/dashboard/analytics-section';
+import { useSelectedApp } from '@/components/dashboard/app-select';
 import { WindFlow } from '@/components/dashboard/wind-flow';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Odometer } from '@/components/ui/odometer';
@@ -27,6 +28,7 @@ import {
   useDeployments,
   useInstances,
   useUsageSummary,
+  type MetricsRange,
 } from '@/lib/api/queries';
 import { formatCompact, formatRelative, type Workflow } from '@/lib/mock-data';
 import type { Deployment } from '@/lib/mock-data';
@@ -38,6 +40,11 @@ import { cn } from '@/lib/utils';
 export const Route = createFileRoute('/dashboard/')({
   component: OverviewPage,
   head: () => consoleHead('overview'),
+  validateSearch: (search: Record<string, unknown>): { range?: MetricsRange } => ({
+    ...(OVERVIEW_RANGES.some(({ key }) => key === search.range)
+      ? { range: search.range as MetricsRange }
+      : {}),
+  }),
 });
 
 /**
@@ -64,6 +71,26 @@ function formatMoney(cents: number | undefined): string {
 }
 
 const UNKNOWN = <span className="text-muted-foreground">—</span>;
+
+const OVERVIEW_RANGES: { key: MetricsRange; label: string }[] = [
+  { key: '5m', label: '5m' },
+  { key: '15m', label: '15m' },
+  { key: '1h', label: '1h' },
+  { key: '6h', label: '6h' },
+  { key: '24h', label: '24h' },
+  { key: '7d', label: '7d' },
+  { key: '15d', label: '15d' },
+];
+
+const RANGE_DESCRIPTION: Record<MetricsRange, string> = {
+  '5m': 'last 5 minutes',
+  '15m': 'last 15 minutes',
+  '1h': 'last hour',
+  '6h': 'last 6 hours',
+  '24h': 'last 24 hours',
+  '7d': 'last 7 days',
+  '15d': 'last 15 days',
+};
 
 /* ------------------------------------------------------------------ *
  * Verdict pill
@@ -256,27 +283,35 @@ function StatCard({
   children: React.ReactNode;
 }) {
   return (
-    // A whisper of tilt — the glass leans toward the cursor. Data cards tip,
-    // never flip.
-    <Tilt maxTilt={3} className={className}>
-      <SpotlightCard className="glass card-lux h-full">
-        <div
-          className={cn('flex h-full flex-col p-5', large ? 'min-h-36 gap-3 p-6' : 'gap-2.5')}
-          title={hint}
-        >
-          <p className="label-mono text-muted-foreground">{label}</p>
-          <p
-            className={cn(
-              'metric-glow leading-none font-semibold tracking-tight [font-variant-numeric:tabular-nums]',
-              large ? 'text-5xl' : 'text-2xl'
-            )}
-          >
-            {children}
-          </p>
-          {sub != null && <p className="mt-auto pt-1 text-xs text-muted-foreground">{sub}</p>}
-        </div>
-      </SpotlightCard>
-    </Tilt>
+    // Five decorative layers used to sit between the reader and the figure:
+    // a cursor tilt, a cursor spotlight, a glass blur, a gradient border and a
+    // glow on the numerals themselves. Each was defensible alone; together they
+    // made a card that performs expense rather than having it, and a number you
+    // read *through* a glow is a number that is harder to read. What is left is
+    // the surface every other panel in the console already uses — one hairline,
+    // one fill — so the figure is the only thing on it competing for attention.
+    <div
+      className={cn(
+        'animate-item-enter flex h-full flex-col rounded-xl border border-border bg-card p-5',
+        large && 'min-h-36',
+        className
+      )}
+      title={hint}
+    >
+      <p className="text-xs text-muted-foreground">{label}</p>
+      {/* 34/26 rather than the old 48/24. A figure at twice its neighbour's
+          size stops being a hierarchy and becomes two unrelated rows; this
+          keeps the six readable as one set while the hero pair still leads. */}
+      <p
+        className={cn(
+          'mt-3 leading-none font-semibold tracking-tight [font-variant-numeric:tabular-nums]',
+          large ? 'text-[34px]' : 'text-[26px]'
+        )}
+      >
+        {children}
+      </p>
+      {sub != null && <p className="mt-auto pt-3 text-xs text-muted-foreground">{sub}</p>}
+    </div>
   );
 }
 
@@ -287,24 +322,32 @@ function StatCard({
 function OverviewPage() {
   const { workflows, deployments, loading, error, refresh } = useData();
   const { account, user } = useAuth();
+  const { range = '24h' } = Route.useSearch();
+  const navigate = Route.useNavigate();
   const usage = useUsageSummary();
-  // Same key the store already reads — a cache hit, here for `source`.
-  const metrics = useAppsMetrics('24h');
+  // The default remains a cache hit with the store. Other windows are queried
+  // directly so the overview changes the underlying rollup, not just its label.
+  const metrics = useAppsMetrics(range);
   // The overview breathes on a gentle poll while it is on screen: this
   // observer's interval joins the store's own (TanStack runs the smallest
   // among observers) and leaves with the page. Real reads on a cadence —
   // the spec has no general event stream to subscribe to instead.
   const instances = useInstances({ refetchInterval: 10_000 });
+  const analyticsApp = useSelectedApp();
   useDeployments(50, { refetchInterval: 10_000 });
   useApps({ refetchInterval: 15_000 });
 
   const phase = queryPhase({ error, loading });
   const metricsDegraded = Boolean(metrics.data && metrics.data.source !== 'prometheus');
+  const metricsUnavailable = metrics.isPending || Boolean(metrics.error) || metricsDegraded;
   const failing = useMemo(() => workflows.filter((w) => w.state === 'error'), [workflows]);
 
   // Resident RAM right now: non-parked instances only — a parked instance's
   // cgroup is gone, so it holds nothing.
-  const residentKnown = !instances.isPending && !instances.error;
+  // `/v1/instances` is cursor-paginated. Never present a partial page as an
+  // exact fleet total; the Workers view can load the remaining pages.
+  const residentKnown = !instances.isPending && !instances.error && !instances.data?.next_before;
+  const residentPartial = Boolean(instances.data?.next_before);
   const { residentMb, residentCount } = useMemo(() => {
     const resident = (instances.data?.instances ?? []).filter(
       (row) => row.state.toLowerCase() !== 'parked'
@@ -316,18 +359,27 @@ function OverviewPage() {
   }, [instances.data]);
 
   const { requests, errorPct, wakeP95 } = useMemo(() => {
-    const total = workflows.reduce((sum, w) => sum + w.invocations24h, 0);
+    const rows = Object.values(metrics.data?.apps ?? {});
+    const total = rows.reduce((sum, row) => sum + row.request_count, 0);
     // Weighted by traffic, not a mean of percentages: one idle app at 100%
     // must not outweigh a busy one at 0.01%.
-    const errored = workflows.reduce(
-      (sum, w) => sum + w.invocations24h * (w.errorRatePct / 100),
+    const errored = rows.reduce(
+      (sum, row) => sum + row.request_count * (row.error_rate_pct / 100),
       0
     );
     // The wake histogram is unlabelled upstream — every row carries the same
     // fleet figure, so the first non-zero one is the figure.
-    const wake = workflows.find((w) => w.coldStartP50Ms > 0)?.coldStartP50Ms ?? 0;
+    const wake = rows.find((row) => row.wake_p95_ms > 0)?.wake_p95_ms ?? 0;
     return { requests: total, errorPct: total > 0 ? (errored / total) * 100 : 0, wakeP95: wake };
-  }, [workflows]);
+  }, [metrics.data]);
+
+  const setRange = (next: MetricsRange) =>
+    void navigate({
+      search: next === '24h' ? {} : { range: next },
+      replace: true,
+      resetScroll: false,
+    });
+  const rangeDescription = RANGE_DESCRIPTION[range];
 
   const usageData = usage.data;
   const included = usageData?.included_gb_hours ?? 0;
@@ -359,7 +411,7 @@ function OverviewPage() {
       <div className="flex flex-col gap-6">
         <PageHeader
           title={firstName ? `Welcome, ${firstName}` : 'Overview'}
-          description="Nothing deployed yet. Three commands and you are live."
+          description="Your first app starts here. Choose a source and we’ll guide you through deployment."
         />
         <FirstRun />
       </div>
@@ -383,11 +435,9 @@ function OverviewPage() {
 
   return (
     <div className="flex flex-col gap-10">
-      {/* The gregale fills the whole background: a fixed viewport layer
-          behind the content (the chromed sidebar and top bar carry higher
-          z and opaque grounds, so it stays the page's air, not theirs). */}
-      <div aria-hidden className="fixed inset-0">
-        <WindFlow intensity={0.3} />
+      {/* Keep the wind a faint accent so the charcoal canvas stays neutral. */}
+      <div aria-hidden className="pointer-events-none fixed inset-0">
+        <WindFlow intensity={0.06} />
       </div>
 
       {/* The ground under the wind: the flow-dot field rises from the
@@ -395,7 +445,7 @@ function OverviewPage() {
           not furniture. */}
       <div
         aria-hidden
-        className="fixed inset-x-0 bottom-0 h-[36vh] [mask-image:linear-gradient(to_top,black_25%,transparent)]"
+        className="pointer-events-none fixed inset-x-0 bottom-0 h-[36vh] [mask-image:linear-gradient(to_top,black_25%,transparent)]"
       >
         <FlowDotsField />
       </div>
@@ -471,9 +521,7 @@ function OverviewPage() {
                 metrics degraded — unknowns read as —
               </span>
             )}
-            <span className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">
-              Last 24 hours
-            </span>
+            <RangeSelector value={range} options={OVERVIEW_RANGES} onChange={setRange} />
             <button
               type="button"
               onClick={refreshAll}
@@ -491,14 +539,16 @@ function OverviewPage() {
             label="Total requests"
             large
             className="col-span-2"
-            hint="Requests served across the fleet, last 24 hours."
+            hint={`Requests served across the fleet over the ${rangeDescription}.`}
             sub={
-              metricsDegraded
-                ? 'metrics degraded'
-                : `across ${workflows.length} ${workflows.length === 1 ? 'app' : 'apps'} · last 24 hours`
+              metricsUnavailable
+                ? metricsDegraded
+                  ? 'metrics degraded'
+                  : 'metrics unavailable'
+                : `Across ${workflows.length} ${workflows.length === 1 ? 'app' : 'apps'}, ${rangeDescription}`
             }
           >
-            {metricsDegraded ? UNKNOWN : <Odometer value={requests} format={formatCompact} />}
+            {metricsUnavailable ? UNKNOWN : <Odometer value={requests} format={formatCompact} />}
           </StatCard>
           <StatCard
             label="Error rate"
@@ -506,12 +556,14 @@ function OverviewPage() {
             className="col-span-2"
             hint="Errored share of served requests, weighted by traffic."
             sub={
-              metricsDegraded
-                ? 'metrics degraded'
-                : `≈ ${formatCompact(Math.round((requests * errorPct) / 100))} errored · weighted by traffic`
+              metricsUnavailable
+                ? metricsDegraded
+                  ? 'metrics degraded'
+                  : 'metrics unavailable'
+                : `${formatCompact(Math.round((requests * errorPct) / 100))} errored, weighted by traffic`
             }
           >
-            {metricsDegraded ? (
+            {metricsUnavailable ? (
               UNKNOWN
             ) : (
               <span style={errorPct > 1 ? { color: 'var(--status-critical)' } : undefined}>
@@ -523,9 +575,9 @@ function OverviewPage() {
           <StatCard
             label="Wake p95"
             hint="95th-percentile cold-start time across the fleet."
-            sub="cold start · fleet"
+            sub="Cold start, fleet-wide"
           >
-            {metricsDegraded || !wakeP95 ? (
+            {metricsUnavailable || !wakeP95 ? (
               UNKNOWN
             ) : (
               <>
@@ -540,7 +592,9 @@ function OverviewPage() {
             sub={
               residentKnown
                 ? `${residentCount} resident ${residentCount === 1 ? 'instance' : 'instances'}`
-                : 'instance read failed'
+                : residentPartial
+                  ? 'more instances available · open Instances'
+                  : 'instance read failed'
             }
           >
             {residentKnown ? (
@@ -559,8 +613,8 @@ function OverviewPage() {
               usage.isPending || usageFailed
                 ? 'reading usage'
                 : overGbh > 0
-                  ? `${formatMoney(usageData?.overage_cents)} overage · ${usageData?.month}`
-                  : `of ${formatGbHours(included)} · ${usageData?.month}`
+                  ? `${formatMoney(usageData?.overage_cents)} overage this period`
+                  : `of ${formatGbHours(included)} this period`
             }
           >
             {usage.isPending ? (
@@ -578,7 +632,7 @@ function OverviewPage() {
           <StatCard
             label="CPU"
             hint="CPU-hours consumed this billing period. Measured, not billed."
-            sub="this period · measured, not billed"
+            sub="Measured this period, not billed"
           >
             {usage.isPending ? (
               <Skeleton className="h-6 w-16" />
@@ -611,6 +665,18 @@ function OverviewPage() {
           </Link>
         </div>
       </section>
+
+      {/* Its own band, not a section inside the one above. Scoped to one app
+          because the series is: the platform has no account-level rollup of
+          `/analytics/timeseries`, and summing apps with different retention
+          would thin out at the earlier end while looking like a total. */}
+      {analyticsApp.slug && (
+        <AnalyticsSection
+          apps={analyticsApp.apps}
+          slug={analyticsApp.slug}
+          onSelectApp={analyticsApp.select}
+        />
+      )}
     </div>
   );
 }

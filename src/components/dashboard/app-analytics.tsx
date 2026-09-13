@@ -1,28 +1,15 @@
-import { useState } from 'react';
+import { useState, type KeyboardEvent } from 'react';
 import { Area, AreaChart, Grid, Tooltip, XAxis, YAxis } from '@/components/dither-kit';
 import { Select } from '@/components/ui/field';
-import { Panel, StatTile } from '@/components/dashboard/primitives';
-import { PlanGated } from '@/components/dashboard/plan-gated';
+import { InlinePhase, Panel, StatTile, queryPhase } from '@/components/dashboard/primitives';
+import { isPlanGate, PlanGated } from '@/components/dashboard/plan-gated';
 import { Pill } from '@/components/dashboard/resource-table';
-import { errorMessage } from '@/lib/api/errors';
 import {
   useAppAnalytics,
   useAppAnalyticsTimeseries,
   type AnalyticsGroupBy,
+  type AppAnalyticsTimeseriesOptions,
 } from '@/lib/api/queries';
-
-/**
- * Request analytics (`/analytics`, `/analytics/timeseries`): who called the
- * app, from where, and how it answered.
- *
- * The timeseries endpoint returns zero-filled hourly buckets — a real series —
- * so it is drawn as one. Everything else the API returns is a scalar or a
- * bounded top-N table, and stays a tile or a row: the grouping dimension is
- * the API's own enum (route, country, referrer host, UA family, status), and
- * `groups_truncated` is stated rather than hidden.
- *
- * `402` on Free is the same per-app-metrics gate the wake timeline uses.
- */
 
 const WINDOWS = ['24h', '3d', '7d'] as const;
 const GROUPS: { value: AnalyticsGroupBy; label: string }[] = [
@@ -32,10 +19,24 @@ const GROUPS: { value: AnalyticsGroupBy; label: string }[] = [
   { value: 'ua_family', label: 'Client' },
   { value: 'status', label: 'Status' },
 ];
-
 const CHART_CONFIG = {
   requests: { label: 'Requests', color: 'green' as const },
   error_requests: { label: 'Errors', color: 'red' as const },
+};
+
+type AnalyticsMethod = NonNullable<AppAnalyticsTimeseriesOptions['method']>;
+
+export type AppAnalyticsBodyProps = {
+  slug: string;
+  since: string;
+  groupBy: AnalyticsGroupBy;
+  route?: string;
+  method?: AnalyticsMethod;
+  /** Account analytics owns the shared window in its page header. */
+  showWindowSelector?: boolean;
+  onSinceChange: (since: string) => void;
+  onGroupByChange: (groupBy: AnalyticsGroupBy) => void;
+  onRouteChange: (route: string | undefined, method: AnalyticsMethod | undefined) => void;
 };
 
 function hourLabel(iso: string): string {
@@ -45,70 +46,130 @@ function hourLabel(iso: string): string {
     : new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-export function AppAnalyticsPanel({ slug }: { slug: string }) {
-  const [since, setSince] = useState<string>('24h');
-  const [groupBy, setGroupBy] = useState<AnalyticsGroupBy>('route');
+export function AppAnalyticsBody({
+  slug,
+  since,
+  groupBy,
+  route,
+  method,
+  showWindowSelector = true,
+  onSinceChange,
+  onGroupByChange,
+  onRouteChange,
+}: AppAnalyticsBodyProps) {
   const analytics = useAppAnalytics(slug, since, groupBy);
-  const series = useAppAnalyticsTimeseries(slug, since);
+  const hasRouteFilter = groupBy === 'route' && Boolean(route && method);
+  const series = useAppAnalyticsTimeseries(slug, since, {
+    route: hasRouteFilter ? route : undefined,
+    method: hasRouteFilter ? method : undefined,
+    groupBy,
+  });
   const data = analytics.data;
-  const state = analytics.isPending ? 'loading' : analytics.error ? 'unavailable' : 'ready';
-  const points = (series.data?.points ?? []).map((p) => ({
-    at: hourLabel(p.start),
-    requests: p.requests,
-    error_requests: p.error_requests,
+  const enabled = Boolean(slug);
+  const planGateError = [analytics.error, series.error].find(isPlanGate);
+  const points = (series.data?.points ?? []).map((point) => ({
+    at: hourLabel(point.start),
+    requests: point.requests,
+    error_requests: point.error_requests,
   }));
+  const analyticsPhase = queryPhase({
+    error: analytics.error,
+    loading: enabled && analytics.isPending,
+    isEmpty: !data,
+  });
+  const seriesPhase = queryPhase({
+    error: series.error,
+    loading: enabled && series.isPending,
+    isEmpty: points.length < 2,
+  });
+  const groupsPhase = queryPhase({
+    error: analytics.error,
+    loading: enabled && analytics.isPending,
+    isEmpty: (data?.groups.length ?? 0) === 0,
+  });
+  const tileState =
+    analyticsPhase === 'loading' ? 'loading' : analyticsPhase === 'ready' ? 'ready' : 'unavailable';
+
+  const changeGroup = (next: AnalyticsGroupBy) => {
+    onGroupByChange(next);
+    if (next !== 'route') onRouteChange(undefined, undefined);
+  };
+  const selectRoute = (nextRoute: string, nextMethod: AnalyticsMethod) => {
+    onRouteChange(nextRoute, nextMethod);
+  };
+  const selectRouteWithKeyboard = (
+    event: KeyboardEvent<HTMLTableRowElement>,
+    nextRoute: string,
+    nextMethod: AnalyticsMethod
+  ) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    selectRoute(nextRoute, nextMethod);
+  };
 
   return (
-    <PlanGated error={analytics.error} feature="Request analytics">
+    <PlanGated error={planGateError} feature="Request analytics">
       <Panel
         title="Request analytics"
         description="Aggregated at the edge from route templates, hostname-only referrers and country codes — never full URLs."
         actions={
           <div className="flex items-center gap-2">
-            <Select
-              value={since}
-              onChange={(e) => setSince(e.target.value)}
-              aria-label="Analytics window"
-              className="h-8 text-xs"
-            >
-              {WINDOWS.map((w) => (
-                <option key={w} value={w}>
-                  {w}
-                </option>
-              ))}
-            </Select>
+            {showWindowSelector && (
+              <Select
+                value={since}
+                onChange={(event) => onSinceChange(event.target.value)}
+                aria-label="Analytics window"
+                className="h-8 text-xs"
+              >
+                {WINDOWS.map((window) => (
+                  <option key={window} value={window}>
+                    {window}
+                  </option>
+                ))}
+              </Select>
+            )}
             <Select
               value={groupBy}
-              onChange={(e) => setGroupBy(e.target.value as AnalyticsGroupBy)}
+              onChange={(event) => changeGroup(event.target.value as AnalyticsGroupBy)}
               aria-label="Group by"
               className="h-8 text-xs"
             >
-              {GROUPS.map((g) => (
-                <option key={g.value} value={g.value}>
-                  {g.label}
+              {GROUPS.map((group) => (
+                <option key={group.value} value={group.value}>
+                  {group.label}
                 </option>
               ))}
             </Select>
           </div>
         }
       >
-        {analytics.error ? (
-          <p className="text-sm text-muted-foreground">{errorMessage(analytics.error)}</p>
+        {analyticsPhase === 'error' || analyticsPhase === 'unreachable' ? (
+          <InlinePhase phase={analyticsPhase} error={analytics.error} />
+        ) : analyticsPhase === 'empty' ? (
+          <InlinePhase
+            phase={analyticsPhase}
+            emptyMessage="No request analytics are available yet."
+          />
         ) : (
           <div className="flex flex-col gap-5">
             <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
-              <StatTile label="Requests" value={data?.requests} state={state} />
-              <StatTile label="Errors" value={data?.error_requests} state={state} tone="red" />
+              <StatTile label="Requests" value={data?.requests} state={tileState} />
+              <StatTile label="Errors" value={data?.error_requests} state={tileState} tone="red" />
               <StatTile
                 label="Error rate"
                 value={data ? data.error_rate_pct.toFixed(2) : undefined}
                 unit="%"
-                state={state}
+                state={tileState}
                 tone="orange"
               />
-              <StatTile label="p50" value={data?.p50_ms} unit="ms" state={state} tone="grey" />
-              <StatTile label="p95" value={data?.p95_ms} unit="ms" state={state} tone="grey" />
-              <StatTile label="Cold boots" value={data?.cold_boots} state={state} tone="orange" />
+              <StatTile label="p50" value={data?.p50_ms} unit="ms" state={tileState} tone="grey" />
+              <StatTile label="p95" value={data?.p95_ms} unit="ms" state={tileState} tone="grey" />
+              <StatTile
+                label="Cold boots"
+                value={data?.cold_boots}
+                state={tileState}
+                tone="orange"
+              />
             </div>
 
             {data?.window_clamped && (
@@ -117,7 +178,23 @@ export function AppAnalyticsPanel({ slug }: { slug: string }) {
               </p>
             )}
 
-            {points.length > 1 && (
+            {hasRouteFilter && route && method && (
+              <div className="flex items-center gap-2 text-xs" aria-label="Active route filter">
+                <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-1 font-mono">
+                  <Pill label={method} /> {route}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onRouteChange(undefined, undefined)}
+                  className="text-muted-foreground transition-colors hover:text-foreground"
+                  aria-label="Clear route filter"
+                >
+                  Clear
+                </button>
+              </div>
+            )}
+
+            {seriesPhase === 'ready' ? (
               <div>
                 <p className="label-mono mb-2 text-muted-foreground">Hourly</p>
                 <AreaChart data={points} config={CHART_CONFIG} className="h-48 w-full">
@@ -129,12 +206,19 @@ export function AppAnalyticsPanel({ slug }: { slug: string }) {
                   <Area dataKey="error_requests" />
                 </AreaChart>
               </div>
+            ) : (
+              <InlinePhase
+                phase={seriesPhase}
+                error={series.error}
+                emptyMessage="Not enough hourly points to draw a chart yet."
+              />
             )}
 
-            {data && data.groups.length > 0 && (
+            {groupsPhase === 'ready' && data && (
               <div className="overflow-x-auto">
                 <p className="label-mono mb-2 text-muted-foreground">
-                  Top by {GROUPS.find((g) => g.value === data.group_by)?.label.toLowerCase()}
+                  Top by{' '}
+                  {GROUPS.find((group) => group.value === data.group_by)?.label.toLowerCase()}
                 </p>
                 <table className="w-full text-xs">
                   <thead>
@@ -147,24 +231,56 @@ export function AppAnalyticsPanel({ slug }: { slug: string }) {
                     </tr>
                   </thead>
                   <tbody className="[font-variant-numeric:tabular-nums]">
-                    {data.groups.map((g) => (
-                      <tr key={`${g.value}-${g.method ?? ''}`} className="border-t border-border">
-                        <td className="py-1.5 pr-4 font-mono">
-                          {g.method && <Pill label={g.method} />} {g.value}
-                        </td>
-                        <td className="py-1.5 pr-4 text-right">{g.requests}</td>
-                        <td className="py-1.5 pr-4 text-right">
-                          {g.error_requests}
-                          {g.error_requests > 0 && (
-                            <span className="ml-1 text-muted-foreground">
-                              ({g.error_rate_pct.toFixed(1)}%)
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-1.5 pr-4 text-right">{g.p95_ms} ms</td>
-                        <td className="py-1.5 text-right">{g.cold_boots}</td>
-                      </tr>
-                    ))}
+                    {data.groups.map((group) => {
+                      const selectable = groupBy === 'route' && Boolean(group.method);
+                      return (
+                        <tr
+                          key={group.value + '-' + (group.method ?? '')}
+                          className={
+                            selectable
+                              ? 'cursor-pointer border-t border-border outline-none transition-colors hover:bg-muted/50 focus-visible:bg-muted/50'
+                              : 'border-t border-border'
+                          }
+                          tabIndex={selectable ? 0 : undefined}
+                          role={selectable ? 'button' : undefined}
+                          aria-label={
+                            selectable
+                              ? 'Filter chart to ' + group.method + ' ' + group.value
+                              : undefined
+                          }
+                          onClick={
+                            selectable
+                              ? () => selectRoute(group.value, group.method as AnalyticsMethod)
+                              : undefined
+                          }
+                          onKeyDown={
+                            selectable
+                              ? (event) =>
+                                  selectRouteWithKeyboard(
+                                    event,
+                                    group.value,
+                                    group.method as AnalyticsMethod
+                                  )
+                              : undefined
+                          }
+                        >
+                          <td className="py-1.5 pr-4 font-mono">
+                            {group.method && <Pill label={group.method} />} {group.value}
+                          </td>
+                          <td className="py-1.5 pr-4 text-right">{group.requests}</td>
+                          <td className="py-1.5 pr-4 text-right">
+                            {group.error_requests}
+                            {group.error_requests > 0 && (
+                              <span className="ml-1 text-muted-foreground">
+                                ({group.error_rate_pct.toFixed(1)}%)
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-1.5 pr-4 text-right">{group.p95_ms} ms</td>
+                          <td className="py-1.5 text-right">{group.cold_boots}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
                 {data.groups_truncated && (
@@ -174,9 +290,35 @@ export function AppAnalyticsPanel({ slug }: { slug: string }) {
                 )}
               </div>
             )}
+            {groupsPhase === 'empty' && (
+              <InlinePhase phase={groupsPhase} emptyMessage="No grouped requests in this window." />
+            )}
           </div>
         )}
       </Panel>
     </PlanGated>
+  );
+}
+
+export function AppAnalyticsPanel({ slug }: { slug: string }) {
+  const [since, setSince] = useState<string>('24h');
+  const [groupBy, setGroupBy] = useState<AnalyticsGroupBy>('route');
+  const [route, setRoute] = useState<string>();
+  const [method, setMethod] = useState<AnalyticsMethod>();
+
+  return (
+    <AppAnalyticsBody
+      slug={slug}
+      since={since}
+      groupBy={groupBy}
+      route={route}
+      method={method}
+      onSinceChange={setSince}
+      onGroupByChange={setGroupBy}
+      onRouteChange={(nextRoute, nextMethod) => {
+        setRoute(nextRoute);
+        setMethod(nextMethod);
+      }}
+    />
   );
 }

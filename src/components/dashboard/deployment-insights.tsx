@@ -2,11 +2,13 @@ import { OpenNewWindow } from 'iconoir-react';
 import { Pill } from '@/components/dashboard/resource-table';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import {
+  useDeployment,
   useDeploymentAudit,
   useDeploymentPreviewUrl,
   useDeploymentStages,
   type DeploymentStages as Stages,
 } from '@/lib/api/queries';
+import { deploymentPhase } from '@/lib/deployment-status';
 import { formatRelative } from '@/lib/mock-data';
 
 /**
@@ -58,12 +60,33 @@ function isNotFound(error: unknown): boolean {
   return error instanceof ApiError && error.code === 'not_found';
 }
 
+/**
+ * The colour a closed stage earns.
+ *
+ * `status` is an open string in the schema, so "not failed" is not the same
+ * claim as "succeeded" — the colour used to be that binary, which painted every
+ * unrecognised value green. Only `completed` is good; only `failed` is bad;
+ * everything else is stated without being endorsed. Same reasoning the
+ * deployment adapter already applies to its own open vocabulary.
+ */
+function stageTone(status: string | undefined): string {
+  if (status === 'completed') return 'var(--status-good)';
+  if (status === 'failed') return 'var(--status-critical)';
+  return 'var(--muted-foreground)';
+}
+
 type StageRow = NonNullable<Stages['history']>[number];
 
 export function DeploymentStages({ deploymentId }: { deploymentId: string }) {
   const stages = useDeploymentStages(deploymentId);
+  // The stage record says which stage is open; only the deployment says whether
+  // the deploy is still alive. A failed deploy stops writing stages where it
+  // broke, so `current` sits open forever — reading it alone reports a
+  // deployment that died hours ago as still working.
+  const deployment = useDeployment(deploymentId);
   const history: StageRow[] = stages.data?.history ?? [];
   const current = stages.data?.current;
+  const failed = deploymentPhase(deployment.data?.status) === 'failed';
 
   let body: React.ReactNode;
   if (stages.isPending) {
@@ -86,10 +109,7 @@ export function DeploymentStages({ deploymentId }: { deploymentId: string }) {
             key={`${row.name ?? 'stage'}-${index}`}
             className="flex flex-wrap items-center gap-3 py-2 first:pt-0 last:pb-0"
           >
-            <Pill
-              label={row.status ?? 'unknown'}
-              color={row.status === 'failed' ? 'var(--status-critical)' : 'var(--status-good)'}
-            />
+            <Pill label={row.status ?? 'unknown'} color={stageTone(row.status)} />
             <span className="min-w-0 flex-1 text-sm">{stageLabel(row.name)}</span>
             {row.reason && (
               <span className="min-w-0 truncate text-xs text-muted-foreground" title={row.reason}>
@@ -103,11 +123,26 @@ export function DeploymentStages({ deploymentId }: { deploymentId: string }) {
         ))}
         {current && (
           <li className="flex flex-wrap items-center gap-3 py-2 first:pt-0 last:pb-0">
-            <Pill label="in progress" color="var(--status-warning)" />
+            <Pill
+              label={failed ? 'failed' : 'in progress'}
+              color={failed ? 'var(--status-critical)' : 'var(--status-warning)'}
+            />
             <span className="min-w-0 flex-1 text-sm">{stageLabel(current)}</span>
-            <span className="text-xs text-muted-foreground">
-              since {relativeTime(stages.data?.current_started_at)}
-            </span>
+            {/* The open stage is where the deploy stopped, so the deployment's
+                own error is that stage's reason — the stage row never gets one
+                of its own, because nothing closed it. */}
+            {failed && deployment.data?.error ? (
+              <span
+                className="min-w-0 truncate text-xs text-muted-foreground"
+                title={deployment.data.error}
+              >
+                {deployment.data.error}
+              </span>
+            ) : (
+              <span className="text-xs text-muted-foreground">
+                since {relativeTime(stages.data?.current_started_at)}
+              </span>
+            )}
           </li>
         )}
       </ol>

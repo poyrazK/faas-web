@@ -5,8 +5,7 @@ import { ApiError } from '@/lib/api/errors';
 
 const useMirrorRules = vi.fn();
 const useMirrorSummary = vi.fn();
-const useDeployments = vi.fn();
-const useApp = vi.fn();
+const useAppDeployments = vi.fn();
 const create = vi.fn();
 const update = vi.fn();
 const remove = vi.fn();
@@ -17,8 +16,7 @@ vi.mock('@/lib/api/queries', () => ({
   useMirrorRules: (slug: string) => useMirrorRules(slug) as unknown,
   useMirrorSummary: (slug: string, id: string, window: string) =>
     useMirrorSummary(slug, id, window) as unknown,
-  useDeployments: (limit: number) => useDeployments(limit) as unknown,
-  useApp: (slug: string) => useApp(slug) as unknown,
+  useAppDeployments: (slug: string) => useAppDeployments(slug) as unknown,
   useCreateMirrorRule: () => ({ mutateAsync: create, isPending: false }),
   useUpdateMirrorRule: () => ({ mutateAsync: update, isPending: false }),
   useDeleteMirrorRule: () => ({ mutateAsync: remove, isPending: false }),
@@ -67,12 +65,15 @@ const summary = {
 beforeEach(() => {
   useMirrorRules.mockReset().mockReturnValue(ready({ rules: [rule], count: 1 }));
   useMirrorSummary.mockReset().mockReturnValue(ready(summary));
-  useDeployments.mockReset().mockReturnValue(
+  useAppDeployments.mockReset().mockReturnValue(
     ready({
-      items: [dep('aaaaaaaa1111'), dep('bbbbbbbb2222'), dep('cccccccc3333', 'superseded')],
+      pages: [
+        {
+          items: [dep('aaaaaaaa1111'), dep('bbbbbbbb2222'), dep('cccccccc3333', 'superseded')],
+        },
+      ],
     })
   );
-  useApp.mockReset().mockReturnValue(ready({ id: 'app1', slug: 'api' }));
   create.mockReset().mockResolvedValue(rule);
   update.mockReset().mockResolvedValue(rule);
   remove.mockReset().mockResolvedValue(undefined);
@@ -154,7 +155,7 @@ describe('MirrorRules', () => {
   });
 
   it('says why a rule cannot be created when fewer than two deployments are live', () => {
-    useDeployments.mockReturnValue(ready({ items: [dep('aaaaaaaa1111')] }));
+    useAppDeployments.mockReturnValue(ready({ pages: [{ items: [dep('aaaaaaaa1111')] }] }));
     render(<MirrorRules slug="api" />);
     expect(screen.getByText(/there is one right now/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /add mirror/i })).not.toBeInTheDocument();

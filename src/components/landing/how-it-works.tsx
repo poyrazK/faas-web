@@ -18,17 +18,18 @@ export function HowItWorks() {
           <div className="grid gap-8 p-6 sm:p-10 lg:grid-cols-2 lg:gap-4 lg:p-0">
             <div className="flex flex-col justify-center lg:p-12">
               <Reveal y={12}>
-                <p className="label-mono mb-5 text-brand">How a request is served</p>
+                <p className="label-mono mb-5 text-brand">Scale to zero</p>
               </Reveal>
               <Reveal y={12} delay={0.08}>
                 <h2 className="text-balance text-4xl font-semibold leading-[1.08] tracking-[-0.02em] text-foreground sm:text-5xl">
-                  Nothing runs until something asks
+                  Scale down when traffic does.
                 </h2>
               </Reveal>
               <Reveal y={12} delay={0.16}>
                 <p className="mt-5 max-w-sm text-base leading-relaxed text-muted-foreground">
-                  Every app is a snapshot until its first request, and a microVM from then until it
-                  is idle again.
+                  With scale-to-zero enabled, Gregale parks idle instances and wakes them when
+                  traffic returns. The first request waits for the wake; later requests use the
+                  running instance.
                 </p>
               </Reveal>
             </div>

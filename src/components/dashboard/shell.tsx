@@ -1,12 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'motion/react';
 import {
   IconoirProvider,
-  NavArrowDown,
   CloudXmark,
   LogOut,
   Menu,
+  NavArrowDown,
+  Search,
   SidebarCollapse,
   SidebarExpand,
   Settings,
@@ -26,27 +27,271 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipProvider } from '@/components/ui/tooltip';
+import { NewAppButton } from './new-app-button';
 import { CommandPalette } from './command-palette';
-import { EASE } from './motion';
-import { NAV_GROUPS, SECTION_LABELS } from './nav-config';
+import { ConsolePageTransition } from './page-transition';
+import { DISCLOSURE_CLOSE, DISCLOSURE_OPEN, EASE } from './motion';
+import {
+  findNavHub,
+  isDisclosureHub,
+  matchesNavPath,
+  NAV_GROUPS,
+  type NavHub,
+  type NavItem,
+  SECTION_LABELS,
+  sidebarSectionsFor,
+} from './nav-config';
+import { DashboardSecondaryNavigation } from './secondary-navigation';
 import { recordVisit } from '@/lib/recents';
 import { cn } from '@/lib/utils';
 import { useFocusTrap } from '@/lib/use-focus-trap';
 
 const COLLAPSE_KEY = 'gregale.sidebar.collapsed';
+const OPEN_GROUPS_KEY = 'gregale.sidebar.closedGroups';
+
+// Text leaves before the rail narrows; on entry it waits for room to read.
+function sidebarLabelClass(hidden: boolean) {
+  return cn(
+    'truncate whitespace-nowrap transition-opacity ease-console motion-reduce:transition-none motion-reduce:delay-0',
+    hidden ? 'opacity-0 duration-75 delay-0' : 'opacity-100 duration-150 delay-75'
+  );
+}
+
+// Shared by the rail and the content offset so pinning never opens a gap.
+function sidebarSizeClass(collapsed: boolean) {
+  return cn('ease-in motion-reduce:transition-none', collapsed ? 'duration-180' : 'duration-240');
+}
+
+/**
+ * Which disclosures the reader has shut.
+ *
+ * Stored as the closed set, not the open one, so open stays the default even
+ * after a hub is added — an unknown hub is open because nobody has closed it.
+ */
+function readClosedGroups(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(OPEN_GROUPS_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : [];
+  } catch {
+    return [];
+  }
+}
 
 function readCollapsed(): boolean {
-  // Collapsed is the default: the rail expands on hover, and pinning it
-  // open (⌘B) is the stored exception.
-  if (typeof window === 'undefined') return true;
-  return window.localStorage.getItem(COLLAPSE_KEY) !== '0';
+  // Expanded is the default, and collapsing (⌘B) is the stored exception.
+  //
+  // It was the other way round, which worked when the rail was a flat list of
+  // twenty-six icons: dense enough to aim at, and the labels were a hover away.
+  // Against hubs-plus-sections it stops working — the second level cannot fit
+  // in 40px, so the default state became ten unlabelled glyphs and a long
+  // emptiness under them, and every destination cost a hover before it could
+  // even be read. A console this wide is scanned far more often than it is
+  // aimed at; the rail should answer "what is here" without being asked.
+  if (typeof window === 'undefined') return false;
+  return window.localStorage.getItem(COLLAPSE_KEY) === '1';
+}
+
+/**
+ * One navigable row of the rail, at either level.
+ *
+ * Hub and section share an implementation so they can never drift in padding,
+ * focus ring or active treatment — only indent, weight and colour separate
+ * them, which is exactly the difference a reader should see.
+ */
+function NavRow({
+  item,
+  nested = false,
+  collapsed = false,
+  labelCls,
+  reduce,
+  onNavigate,
+  pathname,
+  hash,
+  current,
+}: {
+  item: NavItem;
+  nested?: boolean;
+  collapsed?: boolean;
+  labelCls: string;
+  reduce: boolean | null;
+  onNavigate?: () => void;
+  pathname: string;
+  hash: string;
+  current: boolean;
+}) {
+  const { to, label, icon: Icon, exact } = item;
+  const onThisPath = matchesNavPath(pathname, { to, exact: true });
+  const link = (
+    <Link
+      to={to}
+      search={onThisPath ? true : undefined}
+      hash={onThisPath ? hash : undefined}
+      activeOptions={{ exact: exact ?? false, includeSearch: false }}
+      onClick={onNavigate}
+      // Collapsed, the label span is opacity-0 — the accessible name must
+      // survive on the link itself, and the visual label moves into a tooltip
+      // (title="" is mouse-only).
+      aria-label={collapsed ? label : undefined}
+      aria-current={current ? 'page' : undefined}
+      className={cn(
+        'pressable relative isolate flex items-center rounded-md py-1.5 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
+        // The nested row trades its icon for indent: a second column of glyphs
+        // reads as ten more destinations rather than as detail under one.
+        nested ? 'gap-2.5 py-1 pl-7 pr-2.5' : 'gap-2.5 px-2.5',
+        current ? 'text-brand' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+        current && reduce && 'bg-brand/10 ring-1 ring-inset ring-brand/15'
+      )}
+    >
+      <>
+        {current && !reduce && (
+          <motion.span
+            aria-hidden="true"
+            layoutId="sidebar-active"
+            className="absolute inset-0 -z-10 rounded-md bg-brand/10 ring-1 ring-inset ring-brand/15"
+            transition={{ type: 'spring', stiffness: 500, damping: 40 }}
+          />
+        )}
+        {!nested && (
+          <Icon
+            aria-hidden="true"
+            className={cn(
+              'h-4 w-4 shrink-0 transition-colors duration-150',
+              current ? 'text-brand' : item.sidebarIconClassName
+            )}
+          />
+        )}
+        <span aria-hidden={collapsed} className={labelCls}>
+          {label}
+        </span>
+      </>
+    </Link>
+  );
+  // Keep the same link mounted while focus expands the rail.
+  return nested ? (
+    link
+  ) : (
+    <Tooltip content={label} side="right">
+      {link}
+    </Tooltip>
+  );
+}
+
+/**
+ * A hub that owns sections is a disclosure, not a destination.
+ *
+ * Its landing page rides along as the group's first child ("Overview"), which
+ * is what lets the parent be a button: two links to one URL would be two
+ * `aria-current="page"` rows, because the router spreads that attribute onto
+ * every active link last and unconditionally.
+ */
+function NavDisclosure({
+  hub,
+  open,
+  onToggle,
+  onBranch,
+  collapsed,
+  labelCls,
+  children,
+}: {
+  hub: NavHub;
+  open: boolean;
+  onToggle: () => void;
+  onBranch: boolean;
+  collapsed: boolean;
+  labelCls: string;
+  children: ReactNode;
+}) {
+  const reduce = useReducedMotion();
+  const Icon = hub.icon;
+  const panelId = `nav-${hub.to.replace(/\W+/g, '-')}`;
+  // The panel clips itself while its height is in motion, and stops once it
+  // has settled — a focus ring on the first or last row is drawn outside the
+  // row's box, and a permanently clipped panel would shave it off.
+  //
+  // Seeded from `open` rather than from `true`: the rail mounts with
+  // `initial={false}`, so a group that is already open never
+  // animates and never fires the handlers below. Starting clipped would leave
+  // it clipped until its first toggle.
+  const [clip, setClip] = useState(() => !open);
+  const openT = reduce ? { duration: 0 } : DISCLOSURE_OPEN;
+  const closeT = reduce ? { duration: 0 } : DISCLOSURE_CLOSE;
+  return (
+    <>
+      <Tooltip content={hub.label} side="right">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={open}
+          aria-controls={panelId}
+          data-sidebar-disclosure
+          aria-label={collapsed ? hub.label : undefined}
+          className={cn(
+            'pressable flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
+            'text-muted-foreground hover:bg-muted hover:text-foreground',
+            onBranch && 'text-foreground',
+            onBranch && collapsed && 'bg-brand/10 ring-1 ring-inset ring-brand/15'
+          )}
+        >
+          <Icon
+            aria-hidden="true"
+            className={cn(
+              'h-4 w-4 shrink-0 transition-colors duration-150',
+              onBranch ? 'text-brand' : hub.sidebarIconClassName
+            )}
+          />
+          <span aria-hidden={collapsed} className={labelCls}>
+            {hub.label}
+          </span>
+          {/* The chevron rides the panel's own curve and direction rather than
+              a CSS transition of its own, so the two read as one gesture
+              instead of two things that happen to start together. */}
+          <motion.span
+            aria-hidden="true"
+            className={cn('ml-auto flex shrink-0', labelCls)}
+            initial={false}
+            animate={{ rotate: open ? 0 : -90 }}
+            transition={open ? openT : closeT}
+          >
+            <NavArrowDown className="h-3.5 w-3.5" />
+          </motion.span>
+        </button>
+      </Tooltip>
+      {/* Keep the group mounted through rail changes, so icons slide into
+          place and keyboard focus never loses its disclosure trigger. */}
+      <motion.ul
+        id={panelId}
+        data-sidebar-panel
+        inert={!open}
+        aria-hidden={!open}
+        initial={false}
+        animate={{ height: open ? 'auto' : 0, opacity: open ? 1 : 0 }}
+        transition={{
+          height: open ? openT : closeT,
+          opacity: { duration: reduce ? 0 : open ? 0.14 : 0.07, delay: reduce || !open ? 0 : 0.04 },
+        }}
+        onAnimationStart={() => setClip(true)}
+        onAnimationComplete={() => setClip(!open)}
+        className={cn(
+          'relative ml-[18px] flex flex-col gap-0.5 border-l border-border',
+          clip && 'overflow-hidden'
+        )}
+      >
+        {children}
+      </motion.ul>
+    </>
+  );
 }
 
 function SidebarBody({
   id,
   onNavigate,
+  onOpenSearch,
   collapsed = false,
 }: {
+  /** Opens the command palette; the rail's search field is its front door. */
+  onOpenSearch?: () => void;
   /** Namespaces the shared active pill — the desktop rail and the mobile
    * drawer each get their own, so one never tries to fly to the other. */
   id: string;
@@ -54,14 +299,24 @@ function SidebarBody({
   collapsed?: boolean;
 }) {
   const reduce = useReducedMotion();
-  // Everything below shares one rule: geometry is constant between the two
-  // widths. Icons never change alignment, headings never unmount, rows never
-  // re-pad — only the rail's width moves, and text fades in place. That is
-  // what makes the hover expansion read as one motion instead of a pop.
-  const labelCls = cn(
-    'truncate whitespace-nowrap transition-opacity ease-console',
-    collapsed ? 'opacity-0 duration-100' : 'opacity-100 delay-75 duration-200'
-  );
+  const { pathname, hash } = useRouterState({ select: (s) => s.location });
+  const currentHub = findNavHub(pathname);
+  const [closedGroups, setClosedGroups] = useState<string[]>(readClosedGroups);
+  const toggleGroup = useCallback((key: string) => {
+    setClosedGroups((previous) => {
+      const next = previous.includes(key)
+        ? previous.filter((entry) => entry !== key)
+        : [...previous, key];
+      try {
+        window.localStorage.setItem(OPEN_GROUPS_KEY, JSON.stringify(next));
+      } catch {
+        // Storage unavailable — the rail still opens and shuts for this visit.
+      }
+      return next;
+    });
+  }, []);
+  // Horizontal geometry stays fixed; nested groups fold on the vertical axis.
+  const labelCls = sidebarLabelClass(collapsed);
   return (
     <LayoutGroup id={id}>
       <Link
@@ -77,10 +332,7 @@ function SidebarBody({
         <img
           src="/mark-on-dark.png"
           alt=""
-          className={cn(
-            'absolute h-7 w-7 transition-opacity ease-console',
-            collapsed ? 'opacity-100 delay-75 duration-200' : 'opacity-0 duration-100'
-          )}
+          className={cn('absolute h-7 w-7', sidebarLabelClass(!collapsed))}
         />
         <img
           src="/logo-on-dark.png"
@@ -89,9 +341,34 @@ function SidebarBody({
         />
       </Link>
 
+      {/* The rail's own way in. The palette is the real search, so this is a
+          button wearing a field's clothes rather than a second input to
+          maintain — and it puts the shortcut where someone looking for search
+          will actually look. */}
+      <button
+        type="button"
+        onClick={onOpenSearch}
+        aria-label="Quick search"
+        className="pressable mt-4 flex h-8 w-full items-center gap-2.5 overflow-hidden rounded-md border border-border px-2.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+      >
+        <Search aria-hidden="true" className="h-4 w-4 shrink-0" />
+        <span aria-hidden={collapsed} className={labelCls}>
+          Quick search
+        </span>
+        <kbd
+          aria-hidden="true"
+          className={cn('ml-auto font-mono text-[11px] text-muted-foreground/70', labelCls)}
+        >
+          ⌘K
+        </kbd>
+      </button>
+
       {/* scrollbar-none: at 40px-wide rows a native scrollbar eats the rail
           and shoves the icons off-center (it did). */}
-      <div className="scrollbar-none mt-6 flex flex-col gap-4 overflow-x-hidden overflow-y-auto">
+      <nav
+        aria-label="Main"
+        className="scrollbar-none mt-4 flex flex-col gap-4 overflow-x-hidden overflow-y-auto"
+      >
         {NAV_GROUPS.map((group, gi) => (
           <div key={group.title ?? `group-${gi}`}>
             {/* One fixed-height slot per group header, whichever face it
@@ -110,67 +387,72 @@ function SidebarBody({
                 <div
                   aria-hidden
                   className={cn(
-                    'absolute inset-x-1 top-2.5 h-px bg-border transition-opacity ease-console',
-                    collapsed ? 'opacity-100 delay-75 duration-200' : 'opacity-0 duration-100'
+                    'absolute inset-x-1 top-2.5 h-px bg-border',
+                    sidebarLabelClass(!collapsed)
                   )}
                 />
               </div>
             )}
 
-            <nav aria-label={group.title ?? 'Main'} className="flex flex-col gap-0.5">
-              {group.items.map(({ to, label, icon: Icon, exact }) => {
-                const link = (
-                  <Link
-                    key={to}
-                    to={to}
-                    activeOptions={{ exact: exact ?? false }}
-                    onClick={onNavigate}
-                    // Collapsed, the label span is opacity-0 — the accessible
-                    // name must survive on the link itself, and the visual
-                    // label moves into a tooltip (title="" is mouse-only).
-                    aria-label={collapsed ? label : undefined}
-                    className="pressable relative isolate flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-                    activeProps={{
-                      // Reduced motion keeps the plain static fill; otherwise
-                      // the shared pill below carries the background.
-                      className: cn('!text-foreground', reduce && 'bg-muted'),
-                      'aria-current': 'page',
-                    }}
-                  >
-                    {({ isActive }) => (
-                      <>
-                        {isActive && !reduce && (
-                          <motion.span
-                            aria-hidden="true"
-                            layoutId="sidebar-active"
-                            className="absolute inset-0 -z-10 rounded-md bg-muted"
-                            transition={{
-                              type: 'spring',
-                              stiffness: 500,
-                              damping: 40,
-                            }}
+            <ul className="flex flex-col gap-0.5">
+              {group.items.map((hub) => {
+                // Collapsed, the rail is 40px of icons — there is no room for a
+                // second level, and the hub tooltip is the whole affordance.
+                const disclosure = isDisclosureHub(hub);
+                const onBranch = currentHub?.to === hub.to;
+                if (!disclosure) {
+                  return (
+                    <li key={hub.to}>
+                      <NavRow
+                        item={hub}
+                        collapsed={collapsed}
+                        labelCls={labelCls}
+                        reduce={reduce}
+                        onNavigate={onNavigate}
+                        pathname={pathname}
+                        hash={hash}
+                        current={onBranch}
+                      />
+                    </li>
+                  );
+                }
+                const sections = sidebarSectionsFor(hub);
+                // Open unless shut: a hub nobody has closed is a hub whose
+                // contents should be readable without being asked for.
+                const open = !collapsed && !closedGroups.includes(hub.to);
+                return (
+                  <li key={hub.to}>
+                    <NavDisclosure
+                      hub={hub}
+                      open={open}
+                      onToggle={() => toggleGroup(hub.to)}
+                      onBranch={onBranch}
+                      collapsed={collapsed}
+                      labelCls={labelCls}
+                    >
+                      {sections.map((section) => (
+                        <li key={`${section.to}-${section.label}`}>
+                          <NavRow
+                            item={section}
+                            nested
+                            collapsed={collapsed}
+                            labelCls={labelCls}
+                            reduce={reduce}
+                            onNavigate={onNavigate}
+                            pathname={pathname}
+                            hash={hash}
+                            current={!collapsed && matchesNavPath(pathname, section)}
                           />
-                        )}
-                        <Icon className="h-4 w-4 shrink-0" />
-                        <span aria-hidden={collapsed} className={labelCls}>
-                          {label}
-                        </span>
-                      </>
-                    )}
-                  </Link>
-                );
-                return collapsed ? (
-                  <Tooltip key={to} content={label} side="right">
-                    {link}
-                  </Tooltip>
-                ) : (
-                  link
+                        </li>
+                      ))}
+                    </NavDisclosure>
+                  </li>
                 );
               })}
-            </nav>
+            </ul>
           </div>
         ))}
-      </div>
+      </nav>
     </LayoutGroup>
   );
 }
@@ -179,12 +461,7 @@ function SidebarBody({
 // drift out of sync with the breadcrumb.
 
 /**
- * Page identity as a shell path, not a breadcrumb trail.
- *
- * Gregale is CLI-first — the location reads the way the product talks:
- * `workspace/section/detail` in the mono voice, separators as slashes.
- * The workspace is the one link (home); the current segment carries
- * `aria-current`.
+ * Keep the workspace/path voice while linking back to the owning hub.
  */
 function Breadcrumbs() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -196,45 +473,71 @@ function Breadcrumbs() {
     .split('/')
     .filter(Boolean);
   const [section, detail] = segments;
-
-  const trail: string[] = [section ? (SECTION_LABELS[section] ?? section) : 'Overview'];
-  if (section === 'workflows' && detail) {
-    trail.push(
-      detail === 'new' ? 'new' : (workflows.find((w) => w.id === detail)?.name ?? 'workflow')
-    );
+  const hub = findNavHub(pathname);
+  const pageLabel = section ? (SECTION_LABELS[section] ?? section) : 'Overview';
+  const trail: { label: string; to?: string }[] = [];
+  if (hub && (hub.label !== pageLabel || detail)) {
+    trail.push({ label: hub.label, to: hub.to });
   }
+  if (!(section === 'workflows' && detail)) trail.push({ label: pageLabel });
+  if (section === 'workflows' && detail) {
+    trail.push({
+      label: detail === 'new' ? 'New app' : (workflows.find((w) => w.id === detail)?.name ?? 'App'),
+    });
+  }
+
+  const workspaceIdentity = (
+    <>
+      <span className="flex h-5 w-5 items-center justify-center rounded bg-brand/20 text-[9px] font-semibold uppercase text-brand">
+        {workspace.charAt(0)}
+      </span>
+      <span className="hidden text-muted-foreground sm:inline">{workspace}</span>
+    </>
+  );
 
   return (
     <nav
       aria-label="Breadcrumb"
       className="flex min-w-0 items-center gap-1.5 font-mono text-xs [font-variant-numeric:tabular-nums]"
     >
-      <Link
-        to="/dashboard"
-        className="pressable flex shrink-0 items-center gap-2 rounded-md px-1.5 py-1 hover:bg-muted"
-      >
-        <span className="flex h-5 w-5 items-center justify-center rounded bg-brand/20 text-[9px] font-semibold uppercase text-brand">
-          {workspace.charAt(0)}
-        </span>
-        <span className="hidden text-muted-foreground sm:inline">{workspace}</span>
-      </Link>
+      {section ? (
+        <Link
+          to="/dashboard"
+          activeOptions={{ exact: true }}
+          className="pressable flex shrink-0 items-center gap-2 rounded-md px-1.5 py-1 hover:bg-muted"
+        >
+          {workspaceIdentity}
+        </Link>
+      ) : (
+        <span className="flex shrink-0 items-center gap-2 px-1.5 py-1">{workspaceIdentity}</span>
+      )}
 
-      {trail.map((label, i) => {
+      {trail.map(({ label, to }, i) => {
         const last = i === trail.length - 1;
         return (
-          <span key={label} className="flex min-w-0 items-center gap-1.5">
+          <span key={i} className="flex min-w-0 items-center gap-1.5">
             <span aria-hidden className="shrink-0 text-muted-foreground/40">
               /
             </span>
-            <span
-              aria-current={last ? 'page' : undefined}
-              className={cn(
-                'truncate lowercase',
-                last ? 'text-foreground' : 'text-muted-foreground'
-              )}
-            >
-              {label}
-            </span>
+            {to && !last && !matchesNavPath(pathname, { to, exact: true }) ? (
+              <Link
+                to={to}
+                activeOptions={{ exact: true }}
+                className="pressable truncate rounded-md px-1 py-1 lowercase text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                {label}
+              </Link>
+            ) : (
+              <span
+                aria-current={last ? 'page' : undefined}
+                className={cn(
+                  'truncate lowercase',
+                  last ? 'text-foreground' : 'text-muted-foreground'
+                )}
+              >
+                {label}
+              </span>
+            )}
           </span>
         );
       })}
@@ -254,28 +557,32 @@ function AccountMenu({ onSignOut }: { onSignOut: () => void }) {
     <DropdownMenu>
       <DropdownMenuTrigger
         aria-label="Account"
-        className="pressable group flex items-center gap-1.5 rounded-lg py-1 pl-1 pr-1.5 hover:bg-muted data-[state=open]:bg-muted"
+        className="account-shine inline-flex size-11 shrink-0 items-center justify-center rounded-full bg-card text-[11px] font-medium text-foreground outline-none transition-colors duration-150 hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring data-[state=open]:bg-muted sm:size-9"
       >
-        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-[11px] font-medium">
-          {user?.initials ?? 'GG'}
-        </span>
-        {/* The chevron answers the menu: down when closed, up while open. */}
-        <NavArrowDown className="h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 ease-console group-data-[state=open]:rotate-180 motion-reduce:transition-none" />
+        <span aria-hidden="true">{user?.initials ?? 'GG'}</span>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel>
-          <p className="truncate text-sm font-medium">{user?.name}</p>
-          <p className="truncate text-xs text-muted-foreground">{user?.email}</p>
+      <DropdownMenuContent
+        align="end"
+        sideOffset={10}
+        collisionPadding={12}
+        className="account-shine w-64 max-w-[calc(100vw-1.5rem)] rounded-xl border-transparent p-1.5"
+      >
+        <DropdownMenuLabel className="px-2.5 py-2.5">
+          <p className="truncate text-sm font-medium text-foreground">{user?.name}</p>
+          <p className="mt-0.5 truncate text-xs font-normal text-muted-foreground">{user?.email}</p>
         </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
+        <DropdownMenuSeparator className="mx-2.5 my-1" />
+        <DropdownMenuItem asChild className="min-h-11 rounded-lg sm:min-h-10">
           <Link to="/dashboard/settings">
-            <Settings className="h-3.5 w-3.5" />
+            <Settings aria-hidden="true" className="size-4" />
             Workspace settings
           </Link>
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={onSignOut}>
-          <LogOut className="h-3.5 w-3.5" />
+        <DropdownMenuItem
+          onSelect={onSignOut}
+          className="min-h-11 rounded-lg data-[highlighted]:bg-destructive/10 data-[highlighted]:text-destructive sm:min-h-10"
+        >
+          <LogOut aria-hidden="true" className="size-4" />
           Sign out
         </DropdownMenuItem>
       </DropdownMenuContent>
@@ -339,22 +646,38 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   // else should not flap it open and shut.
   const [railHovered, setRailHovered] = useState(false);
   const railCollapsed = collapsed && !railHovered;
+  const railRef = useRef<HTMLElement>(null);
+  const railPointerInside = useRef(false);
   const railTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const clearRailTimer = () => clearTimeout(railTimer.current);
+  const clearRailTimer = useCallback(() => clearTimeout(railTimer.current), []);
   const enterRail = () => {
+    railPointerInside.current = true;
     clearRailTimer();
-    railTimer.current = setTimeout(() => setRailHovered(true), 70);
+    if (collapsed) railTimer.current = setTimeout(() => setRailHovered(true), 100);
   };
   const leaveRail = () => {
+    railPointerInside.current = false;
     clearRailTimer();
-    railTimer.current = setTimeout(() => setRailHovered(false), 240);
+    railTimer.current = setTimeout(() => {
+      if (!railRef.current?.contains(document.activeElement)) setRailHovered(false);
+    }, 140);
   };
-  useEffect(() => clearRailTimer, []);
+  useEffect(() => clearRailTimer, [clearRailTimer]);
   const drawerRef = useRef<HTMLElement>(null);
   useFocusTrap(drawerRef, mobileOpen);
   const reduce = useReducedMotion();
 
-  const toggleCollapsed = () => setCollapsed((v) => !v);
+  const toggleCollapsed = useCallback(() => {
+    // A keyboard collapse must not strand focus inside an inert nested group.
+    const focused = document.activeElement;
+    if (!collapsed && focused instanceof HTMLElement && railRef.current?.contains(focused)) {
+      const panel = focused.closest('[data-sidebar-panel]');
+      panel?.parentElement?.querySelector<HTMLElement>('[data-sidebar-disclosure]')?.focus();
+    }
+    clearRailTimer();
+    setRailHovered(false);
+    setCollapsed((v) => !v);
+  }, [collapsed, clearRailTimer]);
   useEffect(() => {
     window.localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0');
   }, [collapsed]);
@@ -425,7 +748,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       }
       if (mod && e.key.toLowerCase() === 'b') {
         e.preventDefault();
-        setCollapsed((v) => !v);
+        toggleCollapsed();
       }
       if (e.key === 'Escape') setMobileOpen(false);
     };
@@ -443,24 +766,33 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('gregale:open-palette', onOpenPalette);
     };
-  }, [navigate]);
+  }, [navigate, toggleCollapsed]);
 
   // Every dashboard navigation lands in the overview's Recents column.
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   useEffect(() => {
     recordVisit(pathname);
   }, [pathname]);
+  // Wait for the destination to commit, not merely a link click. Query and
+  // hash changes belong to the current page and must not replay its entrance.
+  const pageKey = useRouterState({
+    select: (s) => (s.resolvedLocation?.pathname ?? s.location.pathname).replace(/\/$/, ''),
+  });
 
   // Toasts render at the root, outside this tree, so the dark palette has to
   // reach them too: mirror `console` onto <html> while the shell is mounted.
   // The same pass retunes `theme-color`, or mobile browser chrome stays the
-  // marketing site's paper white above a near-black page.
+  // marketing site's paper white above the console's charcoal canvas.
   useEffect(() => {
     document.documentElement.classList.add('console');
 
     const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
     const previous = meta?.content;
-    if (meta) meta.content = '#090909';
+    if (meta) {
+      meta.content = getComputedStyle(document.documentElement)
+        .getPropertyValue('--background')
+        .trim();
+    }
 
     return () => {
       document.documentElement.classList.remove('console');
@@ -505,15 +837,18 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             </a>
             {/* Desktop sidebar */}
             <aside
+              ref={railRef}
               onMouseEnter={enterRail}
               onMouseLeave={leaveRail}
               onFocus={() => {
                 clearRailTimer();
-                setRailHovered(true);
+                if (collapsed) setRailHovered(true);
               }}
               onBlur={(e) => {
-                if (!e.currentTarget.contains(e.relatedTarget as Node | null))
-                  setRailHovered(false);
+                if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                  clearRailTimer();
+                  if (!railPointerInside.current) setRailHovered(false);
+                }
               }}
               className={cn(
                 // The stored width is applied before first paint (readCollapsed
@@ -521,14 +856,19 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                 // on a real hover or toggle, never on load. Horizontal padding
                 // is constant across both widths — geometry that never moves
                 // is what keeps the expansion smooth.
-                'fixed inset-y-0 left-0 z-30 hidden flex-col overflow-hidden border-r border-border bg-card px-3 py-5 transition-[width] duration-300 ease-console lg:flex',
+                'fixed inset-y-0 left-0 z-30 hidden flex-col overflow-hidden border-r border-border bg-card px-3 py-5 transition-[width] lg:flex',
+                sidebarSizeClass(railCollapsed),
                 railCollapsed ? 'w-16' : 'w-60',
                 // Hover-expanded over pinned-collapsed content: a floating
                 // peek, so it carries elevation the pinned states do not.
                 collapsed && !railCollapsed && 'shadow-elevation-3'
               )}
             >
-              <SidebarBody id="desktop" collapsed={railCollapsed} />
+              <SidebarBody
+                id="desktop"
+                collapsed={railCollapsed}
+                onOpenSearch={() => setPaletteOpen(true)}
+              />
 
               {/* Identity and sign-out live in the top bar's account menu, so the
             sidebar footer holds only the collapse toggle. */}
@@ -549,14 +889,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                     ) : (
                       <SidebarCollapse className="h-4 w-4 shrink-0" />
                     )}
-                    <span
-                      className={cn(
-                        'truncate whitespace-nowrap transition-opacity ease-console',
-                        railCollapsed
-                          ? 'opacity-0 duration-100'
-                          : 'opacity-100 delay-75 duration-200'
-                      )}
-                    >
+                    <span className={sidebarLabelClass(railCollapsed)}>
                       {collapsed ? 'Pin open' : 'Collapse'}
                     </span>
                   </button>
@@ -578,7 +911,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.15 }}
-                  className="fixed inset-0 z-50 bg-mint-12/50 backdrop-blur-sm lg:hidden"
+                  className="fixed inset-0 z-50 bg-overlay/50 backdrop-blur-sm lg:hidden"
                   onClick={() => setMobileOpen(false)}
                 />
               )}
@@ -602,14 +935,19 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                   >
                     <Xmark className="h-4 w-4" />
                   </button>
-                  <SidebarBody id="mobile" onNavigate={() => setMobileOpen(false)} />
+                  <SidebarBody
+                    id="mobile"
+                    onNavigate={() => setMobileOpen(false)}
+                    onOpenSearch={() => setPaletteOpen(true)}
+                  />
                 </motion.aside>
               )}
             </AnimatePresence>
 
             <div
               className={cn(
-                'console-atmosphere min-h-screen transition-[padding] duration-300 ease-console',
+                'console-atmosphere min-h-screen transition-[padding]',
+                sidebarSizeClass(collapsed),
                 collapsed ? 'lg:pl-16' : 'lg:pl-60'
               )}
             >
@@ -626,6 +964,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                 <Breadcrumbs />
 
                 <div className="ml-auto flex items-center gap-1.5">
+                  <NewAppButton />
                   {/* Search lives on the overview as the page's own field;
                       ⌘K still opens the palette from anywhere. */}
                   <AccountMenu onSignOut={handleSignOut} />
@@ -636,15 +975,12 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                 {/* A measure, not the full viewport: past ~1100px a form row or a
                 label/value pair stops scanning as a pair. Tables set their own
                 min-width and scroll inside it. */}
-                {/* Pages settle in via the CSS `animate-item-enter` entrance
-                  on PageHeader, Panel, StatTile, and the table — a mount
-                  animation, so it replays for every route's fresh DOM and for
-                  content that arrives late (code-split chunks, post-fetch
-                  panels). A pathname-keyed Stagger was tried here and left
-                  exactly that late content stranded at opacity 0. */}
                 <div className="mx-auto flex max-w-[1100px] flex-col gap-6">
                   <UnreachableBanner />
-                  {children}
+                  <ConsolePageTransition pageKey={pageKey}>
+                    <DashboardSecondaryNavigation />
+                    {children}
+                  </ConsolePageTransition>
                 </div>
               </main>
             </div>

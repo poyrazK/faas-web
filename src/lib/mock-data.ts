@@ -52,6 +52,8 @@ export interface Workflow {
   runtime: string;
   memoryMb: number;
   state: RunState;
+  /** Preserve the open API vocabulary for views that must distinguish unknown states. */
+  reportedStatus?: string;
   /** Optional: this is a one-box platform, so the API reports no region. */
   region?: string;
   url: string;

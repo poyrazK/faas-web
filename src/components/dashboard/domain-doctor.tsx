@@ -1,6 +1,7 @@
 import { Pill } from '@/components/dashboard/resource-table';
 import { ApiError } from '@/lib/api/errors';
 import { useDomainDoctor } from '@/lib/api/queries';
+import { InlinePhase, queryPhase } from './primitives';
 
 /**
  * The five-check domain doctor (ADR-120), rendered under the domains table.
@@ -41,7 +42,7 @@ function formatWhen(value: string | undefined): string {
 }
 
 export function DomainDoctor({ domain }: { domain: string }) {
-  const { data, isPending, error } = useDomainDoctor(domain);
+  const { data, isPending, error, refetch } = useDomainDoctor(domain);
 
   if (isPending) {
     return <p className="text-sm text-muted-foreground">Probing {domain}…</p>;
@@ -63,9 +64,11 @@ export function DomainDoctor({ domain }: { domain: string }) {
 
   if (error || !data) {
     return (
-      <p className="text-sm text-muted-foreground">
-        Could not run the domain doctor. Try again in a moment.
-      </p>
+      <InlinePhase
+        phase={queryPhase({ error: error ?? new Error('No domain diagnosis was returned.') })}
+        error={error ?? new Error('No domain diagnosis was returned.')}
+        onRetry={() => void refetch()}
+      />
     );
   }
 

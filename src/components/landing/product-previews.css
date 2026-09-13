@@ -1,0 +1,98 @@
+/* The existing card owns the gesture: no extra tab stops or fake controls.
+   Removing an animation name on leave resets it for the next entry. */
+@media (prefers-reduced-motion: no-preference) {
+  .product-preview-card:is(:focus-visible, :has(:focus-visible)) {
+    --preview-node-motion: preview-node;
+    --preview-line-motion: preview-connection;
+    --preview-row-motion: preview-row;
+    --preview-bar-motion: preview-bar;
+  }
+
+  @media (hover: hover) {
+    .product-preview-card:hover {
+      --preview-node-motion: preview-node;
+      --preview-line-motion: preview-connection;
+      --preview-row-motion: preview-row;
+      --preview-bar-motion: preview-bar;
+    }
+  }
+}
+
+.preview-node {
+  animation: var(--preview-node-motion, none) 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.preview-connection::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  left: 16.6667%;
+  right: 16.6667%;
+  top: 0.875rem;
+  height: 1px;
+  background: var(--brand-fill);
+  opacity: 0;
+  transform-origin: left;
+  animation: var(--preview-line-motion, none) 0.75s cubic-bezier(0.22, 1, 0.36, 1) 0.2s both;
+}
+
+.preview-wake-row {
+  animation: var(--preview-row-motion, none) 0.65s ease-in-out both;
+}
+
+.preview-trace-bar {
+  transform-origin: left;
+  animation: var(--preview-bar-motion, none) 0.75s cubic-bezier(0.22, 1, 0.36, 1) 0.15s both;
+}
+
+@keyframes preview-node {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  30% {
+    transform: translateY(-2px) scale(1.12);
+  }
+  65% {
+    transform: translateY(0) scale(0.98);
+  }
+}
+
+@keyframes preview-connection {
+  0% {
+    transform: scaleX(0);
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  75% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scaleX(1);
+    opacity: 0;
+  }
+}
+
+@keyframes preview-row {
+  0%,
+  100% {
+    background-color: transparent;
+  }
+  40% {
+    background-color: var(--mint-3);
+  }
+}
+
+@keyframes preview-bar {
+  from {
+    transform: scaleX(0.08);
+    opacity: 0.45;
+  }
+  to {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}

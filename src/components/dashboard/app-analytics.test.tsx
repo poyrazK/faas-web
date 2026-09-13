@@ -10,8 +10,8 @@ const useAppAnalyticsTimeseries = vi.fn();
 vi.mock('@/lib/api/queries', () => ({
   useAppAnalytics: (slug: string, since: string, groupBy: string) =>
     useAppAnalytics(slug, since, groupBy) as unknown,
-  useAppAnalyticsTimeseries: (slug: string, since: string) =>
-    useAppAnalyticsTimeseries(slug, since) as unknown,
+  useAppAnalyticsTimeseries: (slug: string, since: string, options?: unknown) =>
+    useAppAnalyticsTimeseries(slug, since, options) as unknown,
 }));
 vi.mock('@/components/dither-kit', () => ({
   Area: () => null,
@@ -24,7 +24,7 @@ vi.mock('@/components/dither-kit', () => ({
   YAxis: () => null,
 }));
 
-const { AppAnalyticsPanel } = await import('./app-analytics');
+const { AppAnalyticsBody, AppAnalyticsPanel } = await import('./app-analytics');
 
 const ready = (data: unknown) => ({ data, isPending: false, error: null });
 const analytics = (over: Record<string, unknown> = {}) => ({
@@ -139,6 +139,143 @@ describe('AppAnalyticsPanel', () => {
       }),
     });
     render(withRouter(<AppAnalyticsPanel slug="api" />));
+    expect(await screen.findByText(/does not include per-app metrics/i)).toBeInTheDocument();
+  });
+});
+
+describe('AppAnalyticsBody', () => {
+  it('can defer its window control to the account page while keeping grouping', () => {
+    render(
+      <AppAnalyticsBody
+        slug="api"
+        since="7d"
+        groupBy="route"
+        showWindowSelector={false}
+        onSinceChange={vi.fn()}
+        onGroupByChange={vi.fn()}
+        onRouteChange={vi.fn()}
+      />
+    );
+    expect(screen.queryByLabelText('Analytics window')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Group by')).toBeInTheDocument();
+  });
+
+  it('selects a route row and queries its paired route and method', async () => {
+    const onRouteChange = vi.fn();
+    render(
+      <AppAnalyticsBody
+        slug="api"
+        since="24h"
+        groupBy="route"
+        onSinceChange={vi.fn()}
+        onGroupByChange={vi.fn()}
+        onRouteChange={onRouteChange}
+      />
+    );
+
+    const row = screen.getByRole('button', { name: 'Filter chart to GET /orders' });
+    await userEvent.click(row);
+    expect(onRouteChange).toHaveBeenCalledWith('/orders', 'GET');
+
+    row.focus();
+    await userEvent.keyboard('{Enter}');
+    expect(onRouteChange).toHaveBeenLastCalledWith('/orders', 'GET');
+  });
+
+  it('queries and clears the active route filter', async () => {
+    const onRouteChange = vi.fn();
+    render(
+      <AppAnalyticsBody
+        slug="api"
+        since="24h"
+        groupBy="route"
+        route="/orders"
+        method="GET"
+        onSinceChange={vi.fn()}
+        onGroupByChange={vi.fn()}
+        onRouteChange={onRouteChange}
+      />
+    );
+
+    expect(useAppAnalyticsTimeseries).toHaveBeenLastCalledWith('api', '24h', {
+      route: '/orders',
+      method: 'GET',
+      groupBy: 'route',
+    });
+    await userEvent.click(screen.getByRole('button', { name: 'Clear route filter' }));
+    expect(onRouteChange).toHaveBeenCalledWith(undefined, undefined);
+  });
+
+  it('clears the route filter when changing away from route grouping', async () => {
+    const onGroupByChange = vi.fn();
+    const onRouteChange = vi.fn();
+    render(
+      <AppAnalyticsBody
+        slug="api"
+        since="24h"
+        groupBy="route"
+        route="/orders"
+        method="GET"
+        onSinceChange={vi.fn()}
+        onGroupByChange={onGroupByChange}
+        onRouteChange={onRouteChange}
+      />
+    );
+
+    await userEvent.selectOptions(screen.getByLabelText('Group by'), 'country');
+    expect(onGroupByChange).toHaveBeenCalledWith('country');
+    expect(onRouteChange).toHaveBeenCalledWith(undefined, undefined);
+  });
+
+  it('renders disabled empty-slug queries as empty rather than permanently loading', () => {
+    useAppAnalytics.mockReturnValue({ data: undefined, isPending: true, error: null });
+    useAppAnalyticsTimeseries.mockReturnValue({ data: undefined, isPending: true, error: null });
+
+    render(
+      <AppAnalyticsBody
+        slug=""
+        since="24h"
+        groupBy="route"
+        onSinceChange={vi.fn()}
+        onGroupByChange={vi.fn()}
+        onRouteChange={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('No request analytics are available yet.')).toBeInTheDocument();
+    expect(screen.queryByText('Loading…')).not.toBeInTheDocument();
+  });
+
+  it('uses a timeseries plan-gate error when the aggregate query has another error', async () => {
+    useAppAnalytics.mockReturnValue({
+      data: undefined,
+      isPending: false,
+      error: new Error('aggregate unavailable'),
+    });
+    useAppAnalyticsTimeseries.mockReturnValue({
+      data: undefined,
+      isPending: false,
+      error: new ApiError({
+        status: 402,
+        code: 'plan_per_app_metrics_not_allowed',
+        title: 'Not on your plan',
+        detail: 'the free plan does not include per-app metrics.',
+      }),
+    });
+
+    render(
+      withRouter(
+        <AppAnalyticsBody
+          slug="api"
+          since="24h"
+          groupBy="route"
+          onSinceChange={vi.fn()}
+          onGroupByChange={vi.fn()}
+          onRouteChange={vi.fn()}
+        />
+      )
+    );
+
     expect(await screen.findByText(/does not include per-app metrics/i)).toBeInTheDocument();
   });
 });

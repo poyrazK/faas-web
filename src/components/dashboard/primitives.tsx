@@ -215,7 +215,9 @@ export function PageHeader({
         <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
         {description && <p className="mt-1.5 text-sm text-muted-foreground">{description}</p>}
       </div>
-      {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+      {actions && (
+        <div className="flex max-w-full shrink-0 flex-wrap items-center gap-2">{actions}</div>
+      )}
     </div>
   );
 }
@@ -396,17 +398,29 @@ export function InlinePhase({
   error,
   loadingMessage = 'Loading…',
   emptyMessage,
+  onRetry,
 }: {
   phase: QueryPhase;
   error?: unknown;
   loadingMessage?: string;
   emptyMessage?: string;
+  onRetry?: () => void;
 }) {
+  const retry = onRetry && (
+    <button
+      type="button"
+      onClick={onRetry}
+      className="shrink-0 text-xs text-brand underline underline-offset-4"
+    >
+      Try again
+    </button>
+  );
   if (phase === 'unreachable') {
     return (
       <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
         <CloudXmark className="h-3.5 w-3.5 shrink-0" />
         Could not reach the API.
+        {retry}
       </p>
     );
   }
@@ -419,6 +433,7 @@ export function InlinePhase({
       >
         <WarningTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         {errorMessage(error)}
+        {retry}
       </p>
     );
   }

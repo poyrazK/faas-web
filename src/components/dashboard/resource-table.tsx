@@ -4,6 +4,7 @@ import { ArrowDown, ArrowUp, Search, Xmark } from 'iconoir-react';
 import { EmptyState, ErrorState, Skeleton, UnreachableState, queryPhase } from './primitives';
 import { EASE } from './motion';
 import { cn } from '@/lib/utils';
+import { IconButton } from '@/components/ui/icon-button';
 
 /** Rows past this index appear together — a stagger that long reads as lag. */
 const STAGGER_CAP = 15;
@@ -26,7 +27,7 @@ const PAGE_SIZE = 50;
  */
 
 export interface Column<T> {
-  /** Property used for sorting; also the React key. */
+  /** Property used for sorting and rendering. Multiple columns may read the same field. */
   key: keyof T & string;
   label: string;
   /** Right-aligns and sorts descending on first click. */
@@ -35,6 +36,8 @@ export interface Column<T> {
   render?: (row: T) => ReactNode;
   /** Tailwind width utility, e.g. 'w-40'. */
   width?: string;
+  /** Secondary facts move into an accessible disclosure below the medium breakpoint. */
+  priority?: 'primary' | 'secondary';
 }
 
 export interface ResourceTableProps<T> {
@@ -48,7 +51,12 @@ export interface ResourceTableProps<T> {
   /** Extra controls rendered in the filter row. */
   filters?: ReactNode;
   emptyMessage?: string;
+  /** Distinguish filtered-out observations from an empty source collection. */
+  filteredEmptyMessage?: string;
+  emptyAction?: ReactNode;
   minWidth?: string;
+  /** Opt in when columns have explicit widths and long identifiers must not resize them. */
+  tableLayout?: 'auto' | 'fixed';
   /** True while the first fetch is in flight. Replaces the table, not the header. */
   loading?: boolean;
   /** A failed fetch. Rendered instead of an empty state, which means the opposite. */
@@ -76,7 +84,10 @@ export function ResourceTable<T extends { id: string }>({
   searchPlaceholder = 'Filter…',
   filters,
   emptyMessage = 'Nothing here yet.',
+  filteredEmptyMessage = 'No matching results.',
+  emptyAction,
   minWidth = 'min-w-[820px]',
+  tableLayout = 'auto',
   loading = false,
   error,
   onRetry,
@@ -90,6 +101,9 @@ export function ResourceTable<T extends { id: string }>({
   const [sort, setSort] = useState(initialSort);
   const [shownCount, setShownCount] = useState(PAGE_SIZE);
   const reduce = useReducedMotion();
+  const [expandedRows, setExpandedRows] = useState<ReadonlySet<string>>(() => new Set());
+  const secondary = columns.filter((column) => column.priority === 'secondary');
+  const primaryIndex = columns.findIndex((column) => column.priority !== 'secondary');
 
   // Callers pass `searchKeys` as an inline literal, so key the memo on its
   // contents rather than its identity.
@@ -162,6 +176,7 @@ export function ResourceTable<T extends { id: string }>({
               <Search className="pointer-events-none absolute left-3 h-3.5 w-3.5 text-muted-foreground" />
               <input
                 type="search"
+                aria-label="Filter resources"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 // Escape clears without leaving the field, so refining a
@@ -177,14 +192,14 @@ export function ResourceTable<T extends { id: string }>({
                 className="h-9 w-full rounded-lg border border-border bg-card pl-9 pr-9 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-brand/50 [&::-webkit-search-cancel-button]:appearance-none"
               />
               {query && (
-                <button
+                <IconButton
                   type="button"
                   aria-label="Clear filter"
                   onClick={() => setQuery('')}
                   className="pressable absolute right-2 rounded p-1 text-muted-foreground hover:text-foreground"
                 >
                   <Xmark className="h-3.5 w-3.5" />
-                </button>
+                </IconButton>
               )}
             </label>
           ) : null}
@@ -223,25 +238,54 @@ export function ResourceTable<T extends { id: string }>({
         ) : phase === 'error' ? (
           <ErrorState className={STATE_MIN_H} error={error} onRetry={onRetry} />
         ) : phase === 'empty' ? (
-          <EmptyState className={STATE_MIN_H} message={emptyMessage} />
+          <EmptyState
+            className={STATE_MIN_H}
+            message={query.trim() && rows.length ? filteredEmptyMessage : emptyMessage}
+            action={
+              query.trim() && rows.length ? (
+                <button
+                  type="button"
+                  className="text-sm text-brand underline underline-offset-4"
+                  onClick={() => setQuery('')}
+                >
+                  Show all results
+                </button>
+              ) : (
+                emptyAction
+              )
+            }
+          />
         ) : (
           <div className="overflow-hidden rounded-xl border border-border bg-card">
             <div className="overflow-x-auto">
-              <table className={cn('w-full text-sm', minWidth)}>
+              <table
+                className={cn(
+                  'w-full text-sm',
+                  secondary.length ? 'min-w-0' : minWidth,
+                  tableLayout === 'fixed' && 'table-fixed'
+                )}
+              >
                 <thead>
                   <tr className="border-b border-border text-left">
-                    {columns.map((col) => {
+                    {columns.map((col, index) => {
                       const isSorted = sort?.key === col.key;
                       return (
                         <th
-                          key={col.key}
+                          key={`${col.key}:${index}`}
                           scope="col"
                           aria-sort={
                             isSorted ? (sort!.dir === 'asc' ? 'ascending' : 'descending') : 'none'
                           }
-                          className={cn('px-4 py-3', col.numeric && 'text-right', col.width)}
+                          className={cn(
+                            'px-3 py-3 md:px-4',
+                            col.numeric && 'text-right',
+                            col.width,
+                            col.priority === 'secondary' && 'hidden md:table-cell'
+                          )}
                         >
-                          {col.sortable === false ? (
+                          {!col.label ? (
+                            <span className="sr-only">Actions</span>
+                          ) : col.sortable === false ? (
                             <span className="label-mono text-muted-foreground">{col.label}</span>
                           ) : (
                             <button
@@ -265,14 +309,25 @@ export function ResourceTable<T extends { id: string }>({
                         </th>
                       );
                     })}
+                    {rowActions && (
+                      <th scope="col">
+                        <span className="sr-only">Actions</span>
+                      </th>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {phase === 'loading'
                     ? Array.from({ length: SKELETON_ROWS }, (_, i) => (
                         <tr key={`skeleton-${i}`} aria-hidden>
-                          {columns.map((col) => (
-                            <td key={col.key} className="px-4 py-3">
+                          {columns.map((col, index) => (
+                            <td
+                              key={`${col.key}:${index}`}
+                              className={cn(
+                                'px-3 py-3 md:px-4',
+                                col.priority === 'secondary' && 'hidden md:table-cell'
+                              )}
+                            >
                               <Skeleton
                                 className={cn('h-3.5', col.numeric ? 'ml-auto w-10' : 'w-24')}
                               />
@@ -327,15 +382,58 @@ export function ResourceTable<T extends { id: string }>({
                             'cursor-pointer outline-none focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring'
                         )}
                       >
-                        {columns.map((col) => (
+                        {columns.map((col, index) => (
                           <td
-                            key={col.key}
+                            key={`${col.key}:${index}`}
                             className={cn(
-                              'px-4 py-3',
+                              'px-3 py-3 md:px-4',
+                              secondary.length > 0 && '[overflow-wrap:anywhere]',
+                              col.priority === 'secondary' && 'hidden md:table-cell',
                               col.numeric && 'text-right [font-variant-numeric:tabular-nums]'
                             )}
                           >
                             {col.render ? col.render(row) : String(row[col.key] ?? '—')}
+                            {index === primaryIndex && secondary.length > 0 && (
+                              <details
+                                className="mt-2 max-w-64 md:hidden"
+                                open={expandedRows.has(row.id)}
+                                onClick={(event) => event.stopPropagation()}
+                                onKeyDown={(event) => event.stopPropagation()}
+                              >
+                                <summary
+                                  className="cursor-pointer text-xs text-muted-foreground underline underline-offset-4"
+                                  onClick={(event) => {
+                                    event.preventDefault();
+                                    setExpandedRows((previous) => {
+                                      const next = new Set(previous);
+                                      if (next.has(row.id)) next.delete(row.id);
+                                      else next.add(row.id);
+                                      return next;
+                                    });
+                                  }}
+                                >
+                                  <span className="sr-only">
+                                    More details for {String(row[col.key] ?? row.id)}
+                                    {row[col.key] !== row.id && ` (${row.id})`}
+                                  </span>
+                                  <span aria-hidden>Details</span>
+                                </summary>
+                                {expandedRows.has(row.id) && (
+                                  <dl className="mt-3 space-y-2 text-left text-xs">
+                                    {secondary.map((field, fieldIndex) => (
+                                      <div key={`${field.key}:${fieldIndex}`}>
+                                        <dt className="text-muted-foreground">{field.label}</dt>
+                                        <dd className="mt-0.5 break-all">
+                                          {field.render
+                                            ? field.render(row)
+                                            : String(row[field.key] ?? '—')}
+                                        </dd>
+                                      </div>
+                                    ))}
+                                  </dl>
+                                )}
+                              </details>
+                            )}
                           </td>
                         ))}
                         {rowActions && (

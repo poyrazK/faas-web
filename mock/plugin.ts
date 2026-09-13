@@ -1,5 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { createHash, randomBytes } from 'node:crypto';
 import type { Plugin } from 'vite';
+import type { components } from '../src/lib/api/schema';
 import * as db from './data';
 import {
   FREE_TRIGGER_ERROR_CODE,
@@ -70,6 +72,34 @@ const status = (code: number, body: unknown) => ({ __status: code, body });
 
 const latency = () => Number(process.env.MOCK_LATENCY ?? 180) + Math.random() * 160;
 
+// --- Public status -----------------------------------------------------------
+
+route('GET', '/v1/status', ({ res }) => {
+  res.setHeader('Cache-Control', 'public, max-age=15, stale-while-revalidate=45');
+  return db.publicStatus;
+});
+route('GET', '/status/slo.json', ({ res }) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  return {
+    api_availability_pct: db.publicStatus.indicators[0].value,
+    wake_p95_ms: db.publicStatus.indicators[1].value,
+    build_success_pct: db.publicStatus.indicators[2].value,
+    degraded: db.publicStatus.overall_status !== 'operational',
+    as_of: db.publicStatus.updated_at,
+    source: 'prometheus',
+  };
+});
+route('GET', '/v1/status/incidents/{public_id}', ({ params }) => {
+  const events = [
+    ...db.publicStatus.active_events,
+    ...db.publicStatus.upcoming_maintenance,
+    ...db.publicStatus.resolved_incidents,
+  ];
+  const event = events.find((candidate) => candidate.id === params.public_id);
+  if (!event) throw new Problem(404, 'NotFound', 'Status event not found.');
+  return event;
+});
+
 // --- Auth --------------------------------------------------------------------
 
 const SESSION_COOKIE = 'faas_sid=mock-session; Path=/; HttpOnly; SameSite=Lax';
@@ -94,6 +124,58 @@ route('POST', '/v1/auth/logout', ({ res }) => {
 });
 
 route('GET', '/v1/account', () => ({ ...db.account, app_count: db.apps.length }));
+const SLO_WINDOWS = new Set(['1h', '24h', '7d']);
+// Keep analytics screenshots stable without aging unrelated lifecycle fixtures.
+const ANALYTICS_NOW = Date.parse('2026-09-05T13:00:00.123Z');
+const analyticsIso = (msAgo: number) => new Date(ANALYTICS_NOW - msAgo).toISOString();
+
+function sloWindow(query: URLSearchParams) {
+  const window = query.get('window') ?? '24h';
+  if (!SLO_WINDOWS.has(window))
+    throw new Problem(400, 'validation_failed', `unknown SLO window "${window}".`);
+  return window as '1h' | '24h' | '7d';
+}
+
+function accountSlo(
+  window: ReturnType<typeof sloWindow>
+): components['schemas']['AccountSLOResponse'] {
+  return {
+    window,
+    source: 'prometheus',
+    as_of: analyticsIso(0),
+    request_duration: { p50_ms: 22.1, p95_ms: 91, p99_ms: 410 },
+    error_rate_pct: 0.55,
+    cold_boot_rate_pct: 4.2,
+    instance_hours: 12,
+    gb_hours: 3,
+    wake_queue_p95_ms: 14,
+    requests_total: 12000,
+    throttled_total: 23,
+  };
+}
+
+function appSlo(
+  a: db.App,
+  window: ReturnType<typeof sloWindow>
+): components['schemas']['AppSLOResponse'] {
+  return {
+    app_id: a.id,
+    app_slug: a.slug,
+    window,
+    source: 'prometheus',
+    as_of: analyticsIso(0),
+    request_duration: { p50_ms: 14.2, p95_ms: 87, p99_ms: 312.5 },
+    error_rate_pct: 0.41,
+    cold_boot_rate_pct: 3.1,
+    instance_hours: 0,
+    gb_hours: 0,
+    wake_queue_p95_ms: 12,
+    requests_total: 4321,
+    throttled_total: 0,
+  };
+}
+
+route('GET', '/v1/account/slo', ({ query }) => accountSlo(sloWindow(query)));
 route('PATCH', '/v1/account/plan', ({ body }) => {
   const plan = String(body.plan ?? '') as typeof db.account.plan;
   if (!['free', 'hobby', 'pro', 'scale'].includes(plan)) throw new Problem(400, 'invalid_plan');
@@ -118,6 +200,8 @@ route('POST', '/v1/auth/sessions/revoke_all', () => {
 
 // --- Apps --------------------------------------------------------------------
 
+const deletedApps = new Map<string, { app: db.App; expiresAt: number }>();
+
 function app(slug: string) {
   const found = db.appBySlug(slug);
   if (!found) throw new Problem(404, 'app_not_found', `No app named "${slug}".`);
@@ -138,7 +222,8 @@ route('POST', '/v1/apps', ({ body }) => {
   const slug = String(body.slug ?? '').trim();
   if (!/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(slug))
     throw new Problem(400, 'invalid_slug', 'Slugs are lowercase letters, digits, and dashes.');
-  if (db.appBySlug(slug)) throw new Problem(409, 'app_exists', `"${slug}" already exists.`);
+  if (db.appBySlug(slug) || deletedApps.has(slug))
+    throw new Problem(409, 'app_exists', `"${slug}" already exists.`);
   const created: db.App = {
     ...db.apps[0],
     id: db.id(),
@@ -156,6 +241,8 @@ route('POST', '/v1/apps', ({ body }) => {
 route('GET', '/v1/apps/{slug}', ({ params }) => app(params.slug));
 route('DELETE', '/v1/apps/{slug}', ({ params }) => {
   const a = app(params.slug);
+  // Active reads hide tombstones; the restore API retains the same app identity.
+  deletedApps.set(a.slug, { app: a, expiresAt: Date.now() + 7 * 86400e3 });
   db.apps.splice(db.apps.indexOf(a), 1);
   return NO_CONTENT;
 });
@@ -234,6 +321,9 @@ route('POST', '/v1/apps/{slug}/rollback', ({ params }) => {
 });
 route('GET', '/v1/apps/{slug}/metrics', ({ params, query }) =>
   db.metricsFor(app(params.slug), query.get('range') ?? '24h')
+);
+route('GET', '/v1/apps/{slug}/slo', ({ params, query }) =>
+  appSlo(app(params.slug), sloWindow(query))
 );
 route('GET', '/v1/apps/{slug}/routes', ({ params }) => db.routesFor(app(params.slug)));
 
@@ -1197,14 +1287,29 @@ route('POST', '/v1/preview/{slug}/destroy', ({ params }) => {
 
 // Request analytics, request evidence, app lifecycle, upstream history,
 // rollout recovery and the tarball deploy.
+type AnalyticsTimeseries = components['schemas']['RequestAnalyticsTimeseriesResponse'];
+type AnalyticsGroupBy = NonNullable<AnalyticsTimeseries['group_by']>;
+type AnalyticsMethod = NonNullable<AnalyticsTimeseries['method']>;
+
 const ANALYTICS_WINDOW_HOURS: Record<string, number> = { '24h': 24, '3d': 72, '7d': 168 };
-const ANALYTICS_GROUPS: Record<string, string[]> = {
+const ANALYTICS_GROUPS: Record<AnalyticsGroupBy, string[]> = {
   route: ['/orders', '/orders/{id}', '/health', '/search'],
   country: ['DE', 'TR', 'US', 'FR'],
   referrer_host: ['acme.example', 'news.example', '(direct)'],
   ua_family: ['Chrome', 'Safari', 'curl', 'Googlebot'],
   status: ['200', '404', '500'],
 };
+const ANALYTICS_METHODS = new Set<AnalyticsMethod>([
+  'GET',
+  'POST',
+  'PUT',
+  'PATCH',
+  'DELETE',
+  'HEAD',
+  'OPTIONS',
+]);
+const isAnalyticsGroupBy = (value: string): value is AnalyticsGroupBy =>
+  Object.hasOwn(ANALYTICS_GROUPS, value);
 
 function analyticsWindow(query: URLSearchParams) {
   const since = query.get('since') ?? '24h';
@@ -1223,8 +1328,9 @@ route('GET', '/v1/apps/{slug}/analytics', ({ params, query }) => {
     );
   const { since, hours, clamped } = analyticsWindow(query);
   const groupBy = query.get('group_by') ?? 'route';
+  if (!isAnalyticsGroupBy(groupBy))
+    throw new Problem(400, 'validation_failed', `unknown group_by "${groupBy}".`);
   const values = ANALYTICS_GROUPS[groupBy];
-  if (!values) throw new Problem(400, 'validation_failed', `unknown group_by "${groupBy}".`);
   const requests = hours * 351;
   const errors = Math.round(requests * 0.0044);
   const group = (value: string, i: number) => {
@@ -1246,8 +1352,8 @@ route('GET', '/v1/apps/{slug}/analytics', ({ params, query }) => {
   return {
     slug: a.slug,
     since,
-    from: db.iso(hours * 3_600_000),
-    until: db.iso(0),
+    from: analyticsIso(hours * 3_600_000),
+    until: analyticsIso(0),
     window_clamped: clamped,
     requests,
     error_requests: errors,
@@ -1263,11 +1369,11 @@ route('GET', '/v1/apps/{slug}/analytics', ({ params, query }) => {
     routes: ANALYTICS_GROUPS.route.map(group),
     routes_limit: 50,
     routes_truncated: false,
-    as_of: db.iso(0),
+    as_of: analyticsIso(0),
   };
 });
 
-route('GET', '/v1/apps/{slug}/analytics/timeseries', ({ params, query }) => {
+function analyticsTimeseries({ params, query }: Parameters<Handler>[0]): AnalyticsTimeseries {
   const a = app(params.slug);
   if (process.env.MOCK_PLAN === 'free')
     throw new Problem(
@@ -1276,8 +1382,8 @@ route('GET', '/v1/apps/{slug}/analytics/timeseries', ({ params, query }) => {
       'the free plan does not include per-app metrics; upgrade to Hobby or above.'
     );
   const { since, hours, clamped } = analyticsWindow(query);
-  const now = Date.now();
-  const points = Array.from({ length: hours }, (_, i) => {
+  const now = ANALYTICS_NOW;
+  const unfilteredPoints = Array.from({ length: hours }, (_, i) => {
     const hour = hours - 1 - i;
     // A diurnal shape, so the line is a shape rather than a flat run.
     const at = new Date(now - hour * 3_600_000);
@@ -1296,17 +1402,61 @@ route('GET', '/v1/apps/{slug}/analytics/timeseries', ({ params, query }) => {
       p99_ms: Math.round(420 * wave),
     };
   });
+  const requestedRoute = query.get('route');
+  const requestedMethod = query.get('method');
+  let routeMethodFilter: { route: string; method: AnalyticsMethod } | undefined;
+  if (requestedRoute !== null || requestedMethod !== null) {
+    if (requestedRoute === null || requestedMethod === null)
+      throw new Problem(400, 'validation_failed', 'route and method must be provided together.');
+    if (!ANALYTICS_METHODS.has(requestedMethod as AnalyticsMethod))
+      throw new Problem(400, 'validation_failed', `unknown method "${requestedMethod}".`);
+    routeMethodFilter = { route: requestedRoute, method: requestedMethod as AnalyticsMethod };
+  }
+  const scale = (point: (typeof unfilteredPoints)[number], factor: number) => {
+    const requests = Math.round(point.requests * factor);
+    const errorRequests = Math.min(requests, Math.round(point.error_requests * factor));
+    return {
+      ...point,
+      requests,
+      error_requests: errorRequests,
+      error_rate_pct: requests === 0 ? 0 : Math.round((errorRequests / requests) * 10000) / 100,
+      cold_boots: Math.round(point.cold_boots * factor),
+    };
+  };
+  const points = routeMethodFilter
+    ? unfilteredPoints.map((point) => scale(point, 0.44))
+    : unfilteredPoints;
+  const requestedGroupBy = query.get('group_by');
+  if (requestedGroupBy !== null && !isAnalyticsGroupBy(requestedGroupBy))
+    throw new Problem(400, 'validation_failed', `unknown group_by "${requestedGroupBy}".`);
+  const groupBy = requestedGroupBy ?? undefined;
+  if (routeMethodFilter && groupBy !== undefined && groupBy !== 'route')
+    throw new Problem(
+      400,
+      'validation_failed',
+      'route and method filters require group_by=route or no group_by.'
+    );
+  const values = groupBy === undefined ? undefined : ANALYTICS_GROUPS[groupBy];
+  const series = values?.map((value, i) => ({
+    value,
+    ...(groupBy === 'route' ? { method: (['GET', 'POST', 'GET', 'PUT'] as const)[i % 4] } : {}),
+    points: points.map((point) => scale(point, [0.44, 0.3, 0.18, 0.08][i] ?? 0.05)),
+  }));
   return {
     slug: a.slug,
+    ...routeMethodFilter,
     since,
-    from: points[0]?.start ?? db.iso(hours * 3_600_000),
-    until: db.iso(0),
+    from: points[0]?.start ?? analyticsIso(hours * 3_600_000),
+    until: analyticsIso(0),
     window_clamped: clamped,
     bucket: '1h',
     points,
-    as_of: db.iso(0),
+    ...(groupBy !== undefined ? { group_by: groupBy, series } : {}),
+    as_of: analyticsIso(0),
   };
-});
+}
+
+route('GET', '/v1/apps/{slug}/analytics/timeseries', analyticsTimeseries);
 
 route('GET', '/v1/apps/{slug}/debug/requests/{req_id}', ({ params }) => {
   gateDebug();
@@ -1420,10 +1570,17 @@ route('POST', '/v1/apps/{slug}/restart', ({ params }) => {
 });
 
 route('POST', '/v1/apps/{slug}/restore', ({ params }) => {
-  const a = app(params.slug);
-  if (a.status !== 'deleted_pending')
-    throw new Problem(409, 'conflict', 'the app is not pending deletion.');
+  const deleted = deletedApps.get(params.slug);
+  if (!deleted) {
+    app(params.slug);
+    throw new Problem(409, 'app_not_restorable', 'the app is not pending deletion.');
+  }
+  if (deleted.expiresAt <= Date.now())
+    throw new Problem(409, 'app_not_restorable', 'the app deletion grace window has expired.');
+  const a = deleted.app;
   a.status = 'active';
+  db.apps.push(a);
+  deletedApps.delete(params.slug);
   return a;
 });
 
@@ -2277,10 +2434,49 @@ route('GET', '/v1/apps/{slug}/logs', ({ params, query, req, res }) => {
 
 // --- Account-wide lists --------------------------------------------------------
 
+route('GET', '/v1/apps/{slug}/deployments', ({ params, query }) => {
+  const selected = app(params.slug);
+  const limit = Number(query.get('limit') ?? 50);
+  const before = query.get('before');
+  if (
+    !Number.isInteger(limit) ||
+    limit < 1 ||
+    limit > 200 ||
+    (before && !Number.isFinite(Date.parse(before)))
+  )
+    throw new Problem(
+      400,
+      'validation_failed',
+      'Use a limit from 1 to 200 and a valid before timestamp.'
+    );
+  const ordered = db.deployments
+    .filter(
+      (deployment) =>
+        deployment.app_id === selected.id &&
+        (!before || Date.parse(deployment.created_at) < Date.parse(before))
+    )
+    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+  const items = ordered.slice(0, limit);
+  return { items, next_before: ordered.length > limit ? items.at(-1)!.created_at : null };
+});
+
 route('GET', '/v1/deployments', ({ query }) => ({
   items: db.deployments.slice(0, Number(query.get('limit') ?? 50)),
   next_before: null,
 }));
+route('GET', '/v1/deployments/latest-by-app', () => {
+  const appIDs = new Set(db.apps.map((app) => app.id));
+  const seen = new Set<string>();
+  const items = [...db.deployments]
+    .filter((deployment) => appIDs.has(deployment.app_id))
+    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at) || b.id.localeCompare(a.id))
+    .filter((deployment) => {
+      if (seen.has(deployment.app_id)) return false;
+      seen.add(deployment.app_id);
+      return true;
+    });
+  return { items } satisfies components['schemas']['LatestDeploymentsByAppResponse'];
+});
 route('GET', '/v1/deployments/{id}', ({ params }) => {
   const d = db.deployments.find((x) => x.id === params.id);
   if (!d) throw new Problem(404, 'deployment_not_found');
@@ -3423,18 +3619,70 @@ route('GET', '/v1/usage/storage', () => ({ items: db.storage }));
 route('GET', '/v1/invoices', () => ({ items: db.invoices, next_before: null }));
 route('GET', '/v1/billing/portal', () => db.billingPortal);
 
-route('GET', '/v1/orgs', () => ({ orgs: db.orgs }));
-route('GET', '/v1/orgs/{slug}/members', () => ({ members: db.members }));
-route('GET', '/v1/orgs/{slug}/invitations', () => ({ invitations: db.invitations }));
-route('POST', '/v1/orgs/{slug}/members', ({ params, body }) => {
-  const org = db.orgs.find((o) => o.slug === params.slug);
+const orgMembers = new Map(
+  db.orgs.map((org) => [
+    org.slug,
+    db.members
+      .filter((member) => !org.personal || member.role === 'owner')
+      .map((member) => ({ ...member })),
+  ])
+);
+function mockOrg(slug: string) {
+  const org = db.orgs.find((org) => org.slug === slug);
   if (!org) throw new Problem(404, 'org_not_found');
+  return org;
+}
+function mockOrgMembers(slug: string) {
+  mockOrg(slug);
+  return orgMembers.get(slug) ?? [];
+}
+function requireOrgRole(slug: string, roles: string[], mutable = false) {
+  const org = mockOrg(slug);
+  if (mutable && org.personal) throw new Problem(409, 'org_personal_immutable');
+  const role = mockOrgMembers(slug).find((member) => member.email === db.account.email)?.role;
+  if (!role || !roles.includes(role)) throw new Problem(403, 'org_role_forbidden');
+  return org;
+}
+route('GET', '/v1/orgs', () => ({
+  orgs: db.orgs
+    .filter((org) => org.status !== 'deleted_pending')
+    .sort((a, b) => a.slug.localeCompare(b.slug)),
+}));
+route('POST', '/v1/orgs', ({ body }) => {
+  const slug = String(body.slug ?? '');
+  const name = String(body.name ?? '').trim();
+  if (!/^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/.test(slug)) throw new Problem(422, 'org_slug_invalid');
+  if (!name || name.length > 256) throw new Problem(400, 'validation_failed');
+  if (db.orgs.some((org) => org.slug === slug)) throw new Problem(409, 'org_slug_taken');
+  const org: (typeof db.orgs)[number] = {
+    id: db.id(),
+    slug,
+    name,
+    personal: false,
+    plan: 'free',
+    status: 'active',
+    created_at: db.iso(0),
+    updated_at: db.iso(0),
+  };
+  db.orgs.push(org);
+  orgMembers.set(slug, [
+    { ...db.members[0], email: db.account.email, role: 'owner', joined_at: db.iso(0) },
+  ]);
+  return status(201, org);
+});
+route('GET', '/v1/orgs/{slug}/members', ({ params }) => ({ members: mockOrgMembers(params.slug) }));
+route('GET', '/v1/orgs/{slug}/invitations', ({ params }) => ({
+  invitations: db.invitations.filter((invitation) => invitation.org_slug === params.slug),
+}));
+const invitationTokenHashes = new Map<string, string>();
+route('POST', '/v1/orgs/{slug}/members', ({ params, body }) => {
+  const org = requireOrgRole(params.slug, ['owner', 'admin'], true);
   const email = String(body.email ?? '')
     .trim()
     .toLowerCase();
   if (!email.includes('@'))
     throw new Problem(400, 'invalid_email', 'That does not look like an email address.');
-  if (db.members.some((m) => m.email === email))
+  if (mockOrgMembers(params.slug).some((m) => m.email === email))
     throw new Problem(409, 'already_member', `${email} is already a member.`);
   const inv: (typeof db.invitations)[number] = {
     id: db.id(),
@@ -3448,10 +3696,13 @@ route('POST', '/v1/orgs/{slug}/members', ({ params, body }) => {
   };
   db.invitations.unshift(inv);
   // The plaintext token is returned exactly once, like a minted API key.
-  return status(201, { ...inv, token: `inv_${db.id()}` });
+  const plaintext = randomBytes(32);
+  invitationTokenHashes.set(inv.id, createHash('sha256').update(plaintext).digest('hex'));
+  return status(201, { ...inv, token: plaintext.toString('base64url') });
 });
 route('PATCH', '/v1/orgs/{slug}/members/{user_id}', ({ params, body }) => {
-  const m = db.members.find((x) => x.account_id === params.user_id);
+  requireOrgRole(params.slug, ['owner']);
+  const m = mockOrgMembers(params.slug).find((x) => x.account_id === params.user_id);
   if (!m) throw new Problem(404, 'member_not_found');
   if (m.role === 'owner')
     throw new Problem(409, 'cannot_change_owner_role', 'Transfer ownership instead.');
@@ -3459,16 +3710,23 @@ route('PATCH', '/v1/orgs/{slug}/members/{user_id}', ({ params, body }) => {
   return m;
 });
 route('DELETE', '/v1/orgs/{slug}/members/{user_id}', ({ params }) => {
-  const i = db.members.findIndex((x) => x.account_id === params.user_id);
+  requireOrgRole(params.slug, ['owner']);
+  const members = mockOrgMembers(params.slug);
+  const i = members.findIndex((x) => x.account_id === params.user_id);
   if (i < 0) throw new Problem(404, 'member_not_found');
-  if (db.members[i].role === 'owner')
+  if (members[i].role === 'owner')
     throw new Problem(409, 'cannot_remove_owner', 'Transfer ownership first.');
-  db.members.splice(i, 1);
+  members.splice(i, 1);
   return NO_CONTENT;
 });
 route('DELETE', '/v1/orgs/{slug}/invitations/{token}', ({ params }) => {
-  const inv = db.invitations.find((x) => x.id === params.token);
-  if (!inv) throw new Problem(404, 'invitation_not_found');
+  requireOrgRole(params.slug, ['owner', 'admin']);
+  const hash = createHash('sha256').update(Buffer.from(params.token, 'base64url')).digest('hex');
+  const inv = db.invitations.find(
+    (x) => invitationTokenHashes.get(x.id) === hash && x.org_slug === params.slug
+  );
+  if (!inv || inv.status !== 'pending' || Date.parse(inv.expires_at) <= Date.now())
+    throw new Problem(410, 'org_invitation_invalid');
   inv.status = 'revoked';
   return NO_CONTENT;
 });
@@ -3490,38 +3748,50 @@ route('POST', '/v1/apps/{slug}/install/bind', async ({ body }) => ({
 }));
 
 // --- Organisations, org keys, invitations ---
-route('GET', '/v1/orgs/{slug}', ({ params }) => ({
-  id: hex(32),
-  slug: params.slug,
-  name: 'Acme Corp',
-  personal: false,
-  plan: db.account.plan,
-  status: 'active',
-  created_at: db.iso(200 * 24),
-  updated_at: db.iso(2 * 24),
-}));
-route('PATCH', '/v1/orgs/{slug}', async ({ params, body }) => ({
-  id: hex(32),
-  slug: params.slug,
-  name: String(body.name ?? 'Acme Corp'),
-  personal: false,
-  plan: String(body.plan ?? db.account.plan),
-  status: 'active',
-  created_at: db.iso(200 * 24),
-  updated_at: new Date().toISOString(),
-}));
-route('DELETE', '/v1/orgs/{slug}', () => ({}));
-route('GET', '/v1/orgs/{slug}/seat_usage', () => ({ used: 3, limit: 5, plan: db.account.plan }));
-route('POST', '/v1/orgs/{slug}/transfer_ownership', ({ params }) => ({
-  id: hex(32),
-  slug: params.slug,
-  name: 'Acme Corp',
-  personal: false,
-  plan: db.account.plan,
-  status: 'active',
-  created_at: db.iso(200 * 24),
-  updated_at: new Date().toISOString(),
-}));
+route('GET', '/v1/orgs/{slug}', ({ params }) => mockOrg(params.slug));
+route('PATCH', '/v1/orgs/{slug}', ({ params, body }) => {
+  const org = requireOrgRole(
+    params.slug,
+    body.plan == null ? ['owner', 'billing'] : ['owner'],
+    true
+  );
+  if (body.name != null) {
+    const name = String(body.name).trim();
+    if (!name || name.length > 256) throw new Problem(400, 'validation_failed');
+    org.name = name;
+  }
+  if (body.plan != null) {
+    if (!['free', 'hobby', 'pro', 'scale'].includes(String(body.plan)))
+      throw new Problem(400, 'validation_failed');
+    org.plan = body.plan as typeof org.plan;
+  }
+  org.updated_at = db.iso(0);
+  return org;
+});
+route('DELETE', '/v1/orgs/{slug}', ({ params }) => {
+  const org = requireOrgRole(params.slug, ['owner'], true);
+  org.status = 'deleted_pending';
+  org.updated_at = db.iso(0);
+  return NO_CONTENT;
+});
+route('GET', '/v1/orgs/{slug}/seat_usage', ({ params }) => {
+  const { plan } = mockOrg(params.slug);
+  // Plan.OrgMembersMax (ADR-061): Free is personal-only; paid tiers use the member ladder.
+  const limits = { free: 0, hobby: 10, pro: 50, scale: 200 };
+  return { used: mockOrgMembers(params.slug).length, limit: limits[plan] ?? 0, plan };
+});
+route('POST', '/v1/orgs/{slug}/transfer_ownership', ({ params, body }) => {
+  const org = requireOrgRole(params.slug, ['owner']);
+  const members = mockOrgMembers(params.slug);
+  const target = members.find((member) => member.account_id === body.new_owner_account_id);
+  if (!target) throw new Problem(404, 'not_found');
+  if (target.role === 'owner') throw new Problem(409, 'org_last_owner');
+  const owner = members.find((member) => member.role === 'owner')!;
+  owner.role = 'admin';
+  target.role = 'owner';
+  org.updated_at = db.iso(0);
+  return org;
+});
 const orgKeys: Record<string, unknown>[] = [
   {
     id: hex(32),
@@ -3693,11 +3963,23 @@ route('GET', '/v1/account/export', () => ({
   crons: db.crons,
   api_keys: db.keys ?? [],
 }));
-route('POST', '/v1/account/restore', () => ({ ...db.account, app_count: db.apps.length }));
-let graceDays = 7;
+route('DELETE', '/v1/account', () => {
+  db.account.status = 'deleted_pending';
+  const scheduledAt = new Date().toISOString();
+  return {
+    status: 'deleted_pending',
+    scheduled_at: scheduledAt,
+    restore_until: new Date(Date.now() + 30 * 86400e3).toISOString(),
+  };
+});
+route('POST', '/v1/account/restore', () => {
+  db.account.status = 'active';
+  return { ...db.account, app_count: db.apps.length };
+});
+let graceDays: number | null = 7;
 route('GET', '/v1/account/keys/grace_window_days', () => ({ days: graceDays, plan_default: 7 }));
 route('PATCH', '/v1/account/keys/grace_window_days', async ({ body }) => {
-  graceDays = Number(body.days ?? graceDays);
+  if ('days' in body) graceDays = body.days === null ? null : Number(body.days);
   return { days: graceDays, plan_default: 7 };
 });
 let egressExtra = 0;
@@ -4152,7 +4434,13 @@ function problem(res: ServerResponse, p: Problem) {
   );
 }
 
-const MOCKED_PREFIXES = ['/v1/', '/login', '/signup', '/dashboard/account/set-password'];
+const MOCKED_PREFIXES = [
+  '/v1/',
+  '/status/slo.json',
+  '/login',
+  '/signup',
+  '/dashboard/account/set-password',
+];
 
 export function mockApi(): Plugin {
   return {
@@ -4168,6 +4456,7 @@ export function mockApi(): Plugin {
         // GET /login and /signup are this app's own pages; only the POSTs are the API's.
         const isApi =
           url.pathname.startsWith('/v1/') ||
+          url.pathname === '/status/slo.json' ||
           (method !== 'GET' &&
             MOCKED_PREFIXES.some((p) => url.pathname === p || url.pathname.startsWith(p + '/')));
         if (!isApi) return next();

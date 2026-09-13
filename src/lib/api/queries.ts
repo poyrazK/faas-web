@@ -1,6 +1,9 @@
 import {
+  useInfiniteQuery,
   useMutation,
+  useQueries,
   useQuery,
+  queryOptions,
   useQueryClient,
   type QueryClient,
   type QueryFilters,
@@ -8,6 +11,7 @@ import {
 } from '@tanstack/react-query';
 import { api, issueCSRF, unwrap } from './client';
 import { ApiError } from './errors';
+import { isDeploymentTerminal } from '../deployment-status';
 import type { components, paths } from './schema';
 
 /**
@@ -27,6 +31,7 @@ export type AppMetrics = components['schemas']['AppMetricsResponse'];
 export type MetricsRange = AppMetrics['range'];
 export type AppSLOWindow = components['schemas']['AppSLOResponse']['window'];
 export type MFAEnrollment = components['schemas']['MFAEnrollResponse'];
+export type DeploymentSummary = components['schemas']['DeploymentSummaryResponse'];
 
 export const keys = {
   account: ['account'] as const,
@@ -35,8 +40,12 @@ export const keys = {
   appsMetrics: (range: MetricsRange) => ['apps', 'metrics', range] as const,
   appMetrics: (slug: string, range: MetricsRange) => ['apps', slug, 'metrics', range] as const,
   appSlo: (slug: string, window: AppSLOWindow) => ['apps', slug, 'slo', window] as const,
+  accountSlo: (window: AppSLOWindow) => ['account', 'slo', window] as const,
   deployments: ['deployments'] as const,
   appDeployments: (slug: string) => ['apps', slug, 'deployments'] as const,
+  latestDeploymentsByApp: ['deployments', 'latest-by-app'] as const,
+  deploymentSummary: (slug: string, id: string) =>
+    ['apps', slug, 'deployments', id, 'summary'] as const,
   domains: ['domains'] as const,
   triggers: ['triggers'] as const,
   trigger: (id: string) => ['triggers', id] as const,
@@ -137,6 +146,15 @@ export function useBindRepoFor() {
  * Organisations — identity, seats, ownership, org-scoped keys
  * ------------------------------------------------------------------ */
 
+export function useCreateOrg() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: components['schemas']['CreateOrgRequest']) =>
+      unwrap(api.POST('/v1/orgs', { body })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['orgs'] }),
+  });
+}
+
 export function useOrg(slug: string) {
   return useQuery({
     queryKey: ['orgs', slug],
@@ -159,7 +177,13 @@ export function useDeleteOrg() {
   return useMutation({
     mutationFn: (slug: string) =>
       unwrap(api.DELETE('/v1/orgs/{slug}', { params: { path: { slug } } })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['orgs'] }),
+    onSuccess: async (_data, slug) => {
+      qc.setQueryData<components['schemas']['OrgListResponse']>(['orgs'], (data) =>
+        data ? { orgs: data.orgs.filter((org) => org.slug !== slug) } : data
+      );
+      qc.removeQueries({ queryKey: ['orgs', slug] });
+      await qc.invalidateQueries({ queryKey: ['orgs'] });
+    },
   });
 }
 
@@ -196,6 +220,8 @@ export function useOrgKeys(slug: string) {
 export function useCreateOrgKey(slug: string) {
   const qc = useQueryClient();
   return useMutation({
+    // One-time credentials must leave the mutation cache on reset/unmount.
+    gcTime: 0,
     mutationFn: (body: components['schemas']['CreateOrgAPIKeyRequest']) =>
       unwrap(api.POST('/v1/orgs/{slug}/keys', { params: { path: { slug } }, body })),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['orgs', slug, 'keys'] }),
@@ -214,6 +240,7 @@ export function useDeleteOrgKey(slug: string) {
 export function useRotateOrgKey(slug: string) {
   const qc = useQueryClient();
   return useMutation({
+    gcTime: 0,
     mutationFn: (id: string) =>
       unwrap(
         api.POST('/v1/orgs/{slug}/keys/{id}/rotate', {
@@ -251,11 +278,11 @@ export function useAcceptInvitation() {
  * Billing & account controls
  * ------------------------------------------------------------------ */
 
-/** Set (or clear with 0) a hard ceiling on monthly overage spend. */
+/** Set a monthly overage ceiling; zero forbids overage and null clears the cap. */
 export function useSetOverageCap() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (capCents: number) =>
+    mutationFn: (capCents: number | null) =>
       unwrap(api.POST('/v1/account/overage-cap', { body: { overage_cap_cents: capCents } })),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.account }),
   });
@@ -286,6 +313,15 @@ export function useAccountExport() {
   });
 }
 
+/** Stage account deletion; data remains restorable for the API's 30-day grace period. */
+export function useDeleteAccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => unwrap(api.DELETE('/v1/account', {})),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.account }),
+  });
+}
+
 /** Bring a deleted_pending account back inside the 30-day window. */
 export function useRestoreAccount() {
   const qc = useQueryClient();
@@ -306,7 +342,7 @@ export function useGraceWindow() {
 export function useSetGraceWindow() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (days: number) =>
+    mutationFn: (days: number | null) =>
       unwrap(api.PATCH('/v1/account/keys/grace_window_days', { body: { days } })),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['account', 'grace-window'] }),
   });
@@ -552,12 +588,25 @@ export function useAppDiff(slug: string) {
 }
 
 /** One build's record — status, timings, failure class. */
-export function useBuild(id: string) {
-  return useQuery({
+function buildOptions(id: string) {
+  return queryOptions({
     queryKey: ['builds', id],
     queryFn: () => unwrap(api.GET('/v1/builds/{id}', { params: { path: { id } } })),
     enabled: Boolean(id),
+    refetchInterval: (query) =>
+      query.state.data?.status === 'queued' || query.state.data?.status === 'running'
+        ? 2_500
+        : false,
   });
+}
+
+export function useBuild(id: string) {
+  return useQuery(buildOptions(id));
+}
+
+/** Resolve deployment-linked builds outside the independently paged build feed. */
+export function useBuildRecords(ids: string[]) {
+  return useQueries({ queries: [...new Set(ids)].map(buildOptions) });
 }
 
 /** The build's provenance: toolchain versions, digests, source identity. */
@@ -742,12 +791,99 @@ export function useDeployments(
   });
 }
 
+/**
+ * Account-wide deployment history, paged newest-first by the API cursor.
+ * Overview pages keep using the first-page `useDeployments` query; the full
+ * history page opts into this query so it can load older releases on demand.
+ */
+export function useInfiniteDeployments(limit = 50) {
+  return useInfiniteQuery({
+    queryKey: [...keys.deployments, 'history', limit],
+    queryFn: ({ pageParam }) =>
+      unwrap(
+        api.GET('/v1/deployments', {
+          params: { query: { limit, ...(pageParam ? { before: pageParam } : {}) } },
+        })
+      ),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.next_before ?? undefined,
+    retry: retryPolicy,
+  });
+}
+
+/**
+ * App-scoped deployment history, paged newest-first by the API's opaque
+ * timestamp cursor. Keeping this separate from the account-wide feed prevents
+ * a busy account from truncating one app's release history at an arbitrary
+ * global page boundary.
+ */
+export function useAppDeployments(slug: string, limit = 50) {
+  return useInfiniteQuery({
+    queryKey: [...keys.appDeployments(slug), limit],
+    queryFn: ({ pageParam }) =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/deployments', {
+          params: {
+            path: { slug },
+            query: { limit, ...(pageParam ? { before: pageParam } : {}) },
+          },
+        })
+      ),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.next_before ?? undefined,
+    enabled: Boolean(slug),
+    retry: retryPolicy,
+    // Keep the landing view's latest release current during a deployment.
+    // Old pages must not keep polling after the newest attempt is terminal.
+    refetchInterval: (query) => {
+      if (query.state.error) return false;
+      const latest = query.state.data?.pages[0]?.items[0];
+      return latest && !isDeploymentTerminal(latest.status) ? 2_500 : false;
+    },
+  });
+}
+
+/**
+ * Read the newest deployment for every app in one account-scoped request.
+ * The batch is authoritative for workflow version/state metadata because the
+ * paginated global history can omit quieter apps.
+ */
+export function useLatestAppDeployments() {
+  return useQuery<components['schemas']['LatestDeploymentsByAppResponse'], Error>({
+    queryKey: keys.latestDeploymentsByApp,
+    queryFn: () => unwrap(api.GET('/v1/deployments/latest-by-app', {})),
+    retry: retryPolicy,
+    refetchInterval: (query) => {
+      const items = query.state.data?.items ?? [];
+      return items.some((deployment) => !isDeploymentTerminal(deployment.status)) ? 2_500 : false;
+    },
+  });
+}
+
 export function useDeployment(id: string, options?: Options<Deployment>) {
   return useQuery({
     queryKey: ['deployments', id],
     queryFn: () => unwrap(api.GET('/v1/deployments/{id}', { params: { path: { id } } })),
     enabled: Boolean(id),
     ...options,
+  });
+}
+
+/**
+ * The app-scoped release cockpit: selected deployment, its predecessor, the
+ * non-secret field diff, and the exact superseded deployment rollback would
+ * currently promote.
+ */
+export function useDeploymentSummary(slug: string, id: string) {
+  return useQuery({
+    queryKey: keys.deploymentSummary(slug, id),
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/deployments/{id}/summary', {
+          params: { path: { slug, id } },
+        })
+      ),
+    enabled: Boolean(slug && id),
   });
 }
 
@@ -1099,12 +1235,23 @@ export function useDeployFromRef(slug: string) {
   });
 }
 
+export type RollbackInput = string | { slug: string; targetDeploymentId?: string };
+
 export function useRollback() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (slug: string) =>
-      unwrap(api.POST('/v1/apps/{slug}/rollback', { params: { path: { slug } } })),
-    onSuccess: (_data, slug) => {
+    mutationFn: (input: RollbackInput) => {
+      const slug = typeof input === 'string' ? input : input.slug;
+      const targetDeploymentId = typeof input === 'string' ? undefined : input.targetDeploymentId;
+      return unwrap(
+        api.POST('/v1/apps/{slug}/rollback', {
+          params: { path: { slug } },
+          ...(targetDeploymentId ? { body: { target_deployment_id: targetDeploymentId } } : {}),
+        })
+      );
+    },
+    onSuccess: (_data, input) => {
+      const slug = typeof input === 'string' ? input : input.slug;
       void qc.invalidateQueries({ queryKey: keys.apps });
       void qc.invalidateQueries({ queryKey: keys.app(slug) });
       void qc.invalidateQueries({ queryKey: keys.deployments });
@@ -1151,10 +1298,51 @@ export function useTriggers() {
  * The spec's prose also mentions a 404 for the same gate; the handler returns
  * 402, so that is what the UI branches on.
  */
-export function useJobs() {
+export function useJobs(selectedId?: string, enabled = true) {
   return useQuery({
-    queryKey: keys.jobs,
-    queryFn: () => unwrap(api.GET('/v1/jobs', {})),
+    queryKey: selectedId ? [...keys.jobs, { selectedId }] : keys.jobs,
+    queryFn: async ({ signal }) => {
+      let offset = 0;
+      const read = (next: number) =>
+        unwrap(api.GET('/v1/jobs', { params: { query: { offset: next } }, signal }));
+      let page = await read(offset);
+      const jobs = [...page.jobs];
+      while (
+        selectedId &&
+        !jobs.some((job) => job.id === selectedId) &&
+        page.next_offset > offset
+      ) {
+        offset = page.next_offset;
+        page = await read(offset);
+        jobs.push(...page.jobs);
+      }
+      return { ...page, jobs };
+    },
+    enabled,
+  });
+}
+
+/**
+ * Account-wide workload history, paged by the API's offset cursor. The
+ * Workloads section uses this for browsing; selected deep links
+ * stay on `useJobs`, which can walk pages until it finds the requested job.
+ */
+export function useInfiniteJobs(limit = 50, enabled = true) {
+  return useInfiniteQuery({
+    queryKey: [...keys.jobs, 'history', limit],
+    queryFn: ({ pageParam }) =>
+      unwrap(
+        api.GET('/v1/jobs', {
+          params: { query: { limit, offset: pageParam } },
+        })
+      ),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) =>
+      lastPage.next_offset >= 0 && lastPage.next_offset > lastPage.offset
+        ? lastPage.next_offset
+        : undefined,
+    enabled,
+    retry: retryPolicy,
   });
 }
 
@@ -1187,24 +1375,68 @@ export function useJobRun(name: string | null, runId: string | null) {
   });
 }
 
-export function useJobRuns(name: string | null) {
+export function useJobRuns(name: string | null, selectedId?: string | null) {
   return useQuery({
-    queryKey: ['jobs', name, 'runs'],
+    queryKey: selectedId ? ['jobs', name, 'runs', { selectedId }] : ['jobs', name, 'runs'],
     enabled: name !== null,
-    queryFn: () => unwrap(api.GET('/v1/jobs/{name}/runs', { params: { path: { name: name! } } })),
+    queryFn: async ({ signal }) => {
+      let offset = 0;
+      const read = (next: number) =>
+        unwrap(
+          api.GET('/v1/jobs/{name}/runs', {
+            params: { path: { name: name! }, query: { offset: next } },
+            signal,
+          })
+        );
+      let page = await read(offset);
+      const runs = [...page.runs];
+      while (
+        selectedId &&
+        !runs.some((run) => run.id === selectedId) &&
+        page.next_offset > offset
+      ) {
+        offset = page.next_offset;
+        page = await read(offset);
+        runs.push(...page.runs);
+      }
+      return { ...page, runs };
+    },
   });
 }
 
-export function useJobTasks(name: string | null, runId: string | null) {
+export function useJobTasks(
+  name: string | null,
+  runId: string | null,
+  selectedIndex?: number | null
+) {
   return useQuery({
-    queryKey: ['jobs', name, 'runs', runId, 'tasks'],
+    queryKey:
+      selectedIndex != null
+        ? ['jobs', name, 'runs', runId, 'tasks', { selectedIndex }]
+        : ['jobs', name, 'runs', runId, 'tasks'],
     enabled: name !== null && runId !== null,
-    queryFn: () =>
-      unwrap(
-        api.GET('/v1/jobs/{name}/runs/{id}/tasks', {
-          params: { path: { name: name!, id: runId! } },
-        })
-      ),
+    queryFn: async ({ signal }) => {
+      let offset = 0;
+      const read = (next: number) =>
+        unwrap(
+          api.GET('/v1/jobs/{name}/runs/{id}/tasks', {
+            params: { path: { name: name!, id: runId! }, query: { offset: next } },
+            signal,
+          })
+        );
+      let page = await read(offset);
+      const tasks = [...page.tasks];
+      while (
+        selectedIndex != null &&
+        !tasks.some((task) => task.task_index === selectedIndex) &&
+        page.next_offset > offset
+      ) {
+        offset = page.next_offset;
+        page = await read(offset);
+        tasks.push(...page.tasks);
+      }
+      return { ...page, tasks };
+    },
   });
 }
 
@@ -1255,14 +1487,26 @@ export type JobTask = components['schemas']['JobTaskResponse'];
  * 3-day plan silently returns 3, and a console that showed "7 days" over that
  * would be lying about what it drew.
  */
-export function useDebugRequests(slug: string, since: string) {
+export const DEBUG_REQUEST_SAMPLE_LIMIT = 20;
+
+export function useDebugRequests(slug: string, since: string, route?: string) {
   return useQuery({
-    queryKey: ['apps', slug, 'debug', 'requests', since],
+    queryKey: [
+      'apps',
+      slug,
+      'debug',
+      'requests',
+      since,
+      { route: route || null, limit: DEBUG_REQUEST_SAMPLE_LIMIT },
+    ],
     enabled: Boolean(slug),
     queryFn: () =>
       unwrap(
         api.GET('/v1/apps/{slug}/debug/requests', {
-          params: { path: { slug }, query: { since } },
+          params: {
+            path: { slug },
+            query: { since, limit: DEBUG_REQUEST_SAMPLE_LIMIT, ...(route ? { route } : {}) },
+          },
         })
       ),
   });
@@ -1452,6 +1696,26 @@ export function useInvoices() {
   });
 }
 
+/**
+ * Account billing history, paged newest-first by the API's RFC3339Nano cursor.
+ * The invoices page uses this instead of silently dropping older billing
+ * records after the server's default page.
+ */
+export function useInfiniteInvoices(limit = 50) {
+  return useInfiniteQuery({
+    queryKey: [...keys.invoices, 'history', limit],
+    queryFn: ({ pageParam }) =>
+      unwrap(
+        api.GET('/v1/invoices', {
+          params: { query: { limit, ...(pageParam ? { before: pageParam } : {}) } },
+        })
+      ),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.next_before ?? undefined,
+    retry: retryPolicy,
+  });
+}
+
 export function useUsageSummary() {
   return useQuery({
     queryKey: keys.usageSummary,
@@ -1463,8 +1727,31 @@ export function useUsageSummary() {
 export function useInstances(options?: Options<components['schemas']['ListInstancesResponse']>) {
   return useQuery({
     queryKey: keys.instances,
-    queryFn: () => unwrap(api.GET('/v1/instances', {})),
+    // The overview only needs a single fresh snapshot. Ask for the largest
+    // page so the common case is complete; it checks next_before and fails
+    // closed when an unusually large fleet needs the full history view.
+    queryFn: () => unwrap(api.GET('/v1/instances', { params: { query: { limit: 100 } } })),
     ...options,
+  });
+}
+
+/**
+ * Account-wide live instances, paged newest-first by the instance UUIDv7
+ * cursor. The workers page opts into this query so a busy account can inspect
+ * the full fleet without changing the bounded snapshot used by the overview.
+ */
+export function useInfiniteInstances(limit = 50) {
+  return useInfiniteQuery({
+    queryKey: [...keys.instances, 'history', limit],
+    queryFn: ({ pageParam }) =>
+      unwrap(
+        api.GET('/v1/instances', {
+          params: { query: { limit, ...(pageParam ? { before: pageParam } : {}) } },
+        })
+      ),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.next_before ?? undefined,
+    retry: retryPolicy,
   });
 }
 
@@ -1626,10 +1913,26 @@ export function useInvokeAppAsync() {
   });
 }
 
-export function useCronRuns(id: string) {
+export function useCronRuns(id: string, selectedId?: string) {
   return useQuery({
-    queryKey: ['crons', id, 'runs'],
-    queryFn: () => unwrap(api.GET('/v1/crons/{id}/runs', { params: { path: { id } } })),
+    queryKey: selectedId ? ['crons', id, 'runs', { selectedId }] : ['crons', id, 'runs'],
+    queryFn: async ({ signal }) => {
+      const read = (before?: string) =>
+        unwrap(
+          api.GET('/v1/crons/{id}/runs', { params: { path: { id }, query: { before } }, signal })
+        );
+      let page = await read();
+      const runs = [...page.runs];
+      const seen = new Set<string>();
+      while (selectedId && !runs.some((run) => run.id === selectedId)) {
+        const before = page.runs.at(-1)?.id;
+        if (!before || seen.has(before)) break;
+        seen.add(before);
+        page = await read(before);
+        runs.push(...page.runs);
+      }
+      return { ...page, runs };
+    },
     enabled: Boolean(id),
   });
 }
@@ -1639,7 +1942,7 @@ export function useDeleteCron() {
   return useMutation({
     mutationFn: (id: string) => unwrap(api.DELETE('/v1/crons/{id}', { params: { path: { id } } })),
     onMutate: (id) =>
-      applyOptimistic<CronsList>(qc, { queryKey: keys.crons }, (old) =>
+      applyOptimistic<CronsList>(qc, { queryKey: keys.crons, exact: true }, (old) =>
         old.filter((c) => c.id !== id)
       ),
     onError: (_err, _id, rollback) => rollback?.(),
@@ -1666,6 +1969,7 @@ export function useRunCron() {
 export function useCreateApiKey() {
   const qc = useQueryClient();
   return useMutation({
+    gcTime: 0,
     mutationFn: (body: components['schemas']['CreateKeyRequest']) =>
       unwrap(api.POST('/v1/keys', { body })),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.keys }),
@@ -1690,6 +1994,7 @@ type ApiKeysList = NonNullable<ReturnType<typeof useApiKeys>['data']>;
 export function useRotateApiKey() {
   const qc = useQueryClient();
   return useMutation({
+    gcTime: 0,
     mutationFn: (id: string) =>
       unwrap(api.POST('/v1/keys/{id}/rotate', { params: { path: { id } } })),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.keys }),
@@ -1704,6 +2009,27 @@ export function useInvocations(limit = 50) {
   return useQuery({
     queryKey: [...keys.invocations, limit],
     queryFn: () => unwrap(api.GET('/v1/invocations', { params: { query: { limit } } })),
+  });
+}
+
+/**
+ * Account invocation history, paged newest-first by the last invocation id.
+ * The API does not return a separate cursor: when a full page arrives, its
+ * last id is the opaque `before` value for the next request.
+ */
+export function useInfiniteInvocations(limit = 50) {
+  return useInfiniteQuery({
+    queryKey: [...keys.invocations, 'history', limit],
+    queryFn: ({ pageParam }) =>
+      unwrap(
+        api.GET('/v1/invocations', {
+          params: { query: { limit, ...(pageParam ? { before: pageParam } : {}) } },
+        })
+      ),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) =>
+      lastPage.invocations.length === limit ? lastPage.invocations.at(-1)?.id : undefined,
+    retry: retryPolicy,
   });
 }
 
@@ -1744,6 +2070,26 @@ export function useAuditLog() {
   return useQuery({
     queryKey: keys.auditLog,
     queryFn: () => unwrap(api.GET('/v1/audit-log', {})),
+  });
+}
+
+/**
+ * Account audit history, paged newest-first by the server's opaque compound
+ * cursor. The audit page keeps already loaded entries visible if an older
+ * page fails, so a transient history read never hides evidence already shown.
+ */
+export function useInfiniteAuditLog(limit = 50) {
+  return useInfiniteQuery({
+    queryKey: [...keys.auditLog, 'history', limit],
+    queryFn: ({ pageParam }) =>
+      unwrap(
+        api.GET('/v1/audit-log', {
+          params: { query: { limit, ...(pageParam ? { before: pageParam } : {}) } },
+        })
+      ),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.next_before ?? undefined,
+    retry: retryPolicy,
   });
 }
 
@@ -2243,6 +2589,28 @@ export function useBuilds(options?: Options<components['schemas']['BuildListResp
   });
 }
 
+/** Full build history, including builds without an attached deployment. */
+export function useInfiniteBuilds(limit = 50) {
+  return useInfiniteQuery({
+    queryKey: ['builds', 'history', limit],
+    queryFn: ({ pageParam }) =>
+      unwrap(
+        api.GET('/v1/builds', {
+          params: { query: { limit, ...(pageParam ? { before: pageParam } : {}) } },
+        })
+      ),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.next_before || undefined,
+    retry: retryPolicy,
+    refetchInterval: (query) =>
+      query.state.data?.pages.some((page) =>
+        page.items.some((build) => build.status === 'queued' || build.status === 'running')
+      )
+        ? 2_500
+        : false,
+  });
+}
+
 export function useBuildSbom(id: string) {
   return useQuery({
     queryKey: ['builds', id, 'sbom'],
@@ -2305,10 +2673,10 @@ export function useChangePlan() {
   });
 }
 
-export function useAccountSlo() {
+export function useAccountSlo(window: AppSLOWindow = '24h') {
   return useQuery({
-    queryKey: ['account', 'slo'],
-    queryFn: () => unwrap(api.GET('/v1/account/slo', {})),
+    queryKey: keys.accountSlo(window),
+    queryFn: () => unwrap(api.GET('/v1/account/slo', { params: { query: { window } } })),
   });
 }
 
@@ -2531,6 +2899,7 @@ const orgKey = (slug: string, what: 'members' | 'invitations') => ['orgs', slug,
 export function useInviteMember(org: string) {
   const qc = useQueryClient();
   return useMutation({
+    gcTime: 0,
     mutationFn: (body: components['schemas']['InviteMemberRequest']) =>
       unwrap(api.POST('/v1/orgs/{slug}/members', { params: { path: { slug: org } }, body })),
     onSuccess: () => qc.invalidateQueries({ queryKey: orgKey(org, 'invitations') }),
@@ -2782,6 +3151,18 @@ export type RequestAnalytics = components['schemas']['RequestAnalyticsResponse']
 export type RequestAnalyticsTimeseries =
   components['schemas']['RequestAnalyticsTimeseriesResponse'];
 export type AnalyticsGroupBy = RequestAnalytics['group_by'];
+export type AppAnalyticsTimeseriesOptions = {
+  /**
+   * Exclusive upper bound, for an explicit range.
+   *
+   * Sent only when present: a duration `since` means "up to now" and has to
+   * keep meaning that as time passes, which pinning an `until` would stop.
+   */
+  until?: string;
+  route?: string;
+  method?: NonNullable<RequestAnalyticsTimeseries['method']>;
+  groupBy?: AnalyticsGroupBy;
+};
 export type DebugRequestEvidence = components['schemas']['DebugRequestEvidenceResponse'];
 export type UpstreamHistory = components['schemas']['DataUpstreamHistoryResponse'];
 
@@ -2801,13 +3182,29 @@ export function useAppAnalytics(slug: string, since: string, groupBy: AnalyticsG
 }
 
 /** Hourly buckets, zero-filled by the API — a real series, so a line is honest. */
-export function useAppAnalyticsTimeseries(slug: string, since: string) {
+export function useAppAnalyticsTimeseries(
+  slug: string,
+  since: string,
+  options?: AppAnalyticsTimeseriesOptions
+) {
+  const route = options?.route && options.method ? options.route : null;
+  const method = options?.route && options.method ? options.method : null;
+  const groupBy = options?.groupBy ?? null;
+  const until = options?.until ?? null;
   return useQuery({
-    queryKey: ['apps', slug, 'analytics', 'timeseries', since],
+    queryKey: ['apps', slug, 'analytics', 'timeseries', since, until, route, method, groupBy],
     queryFn: () =>
       unwrap(
         api.GET('/v1/apps/{slug}/analytics/timeseries', {
-          params: { path: { slug }, query: { since } },
+          params: {
+            path: { slug },
+            query: {
+              since,
+              ...(until ? { until } : {}),
+              ...(route && method ? { route, method } : {}),
+              ...(groupBy ? { group_by: groupBy } : {}),
+            },
+          },
         })
       ),
     enabled: Boolean(slug),
