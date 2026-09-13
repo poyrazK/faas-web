@@ -1,14 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { RefreshDouble } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
-import {
-  ErrorState,
-  InlinePhase,
-  LoadingState,
-  Panel,
-  UnreachableState,
-  queryPhase,
-} from './primitives';
+import { Modal } from '@/components/ui/modal';
+import { ErrorState, InlinePhase, LoadingState, UnreachableState, queryPhase } from './primitives';
 import { ReleaseStatusLabel } from './release-status-label';
 import { useLogStream } from '@/lib/api/logs';
 import { useApp, useApps, useBuild, useDeployment } from '@/lib/api/queries';
@@ -23,7 +17,6 @@ import { ReleaseProvenance, ReleaseScans } from './release-evidence';
 import { RELEASE_SECTIONS, sourceSize, type ReleaseSection } from './releases-search';
 import { RolloutRecovery } from './rollout-recovery';
 import { LogView } from './log-view';
-import { useDetailFocus } from './use-detail-focus';
 import { failureSummary } from './failure-summary';
 import { FailurePanel } from './failure-panel';
 
@@ -33,7 +26,7 @@ function relativeTime(value?: string): string {
   return Number.isNaN(timestamp) ? value : formatRelative(timestamp);
 }
 
-/** One evidence surface for account and app routes; the caller owns URL state. */
+/** Shared release dialog for account and app routes; the caller owns URL state. */
 export function ReleaseDetailPanel({
   deploymentId,
   buildId,
@@ -43,6 +36,7 @@ export function ReleaseDetailPanel({
   section: controlledSection,
   onSectionChange,
   onClose,
+  footer,
 }: {
   deploymentId?: string;
   buildId?: string;
@@ -57,8 +51,8 @@ export function ReleaseDetailPanel({
   section?: ReleaseSection;
   onSectionChange?: (section: ReleaseSection, replace?: boolean) => void;
   onClose: () => void;
+  footer?: ReactNode;
 }) {
-  const panelRef = useDetailFocus(JSON.stringify([deploymentId, buildId]));
   const [localSection, setLocalSection] = useState<ReleaseSection>('overview');
   const section = controlledSection ?? localSection;
   const selectedBuild = useBuild(!deploymentId ? (buildId ?? '') : '');
@@ -131,24 +125,21 @@ export function ReleaseDetailPanel({
   }, [selectedBuild.data, resolvedDeploymentId, section, activeSection, onSectionChange]);
 
   return (
-    <section
-      ref={panelRef}
-      tabIndex={-1}
-      aria-label={resolvedDeploymentId ? 'Release details' : 'Build details'}
-      className="scroll-mt-24 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    <Modal
+      open
+      onClose={onClose}
+      width="max-w-5xl"
+      footer={footer}
+      title={resolvedDeploymentId ? 'Release details' : 'Build details'}
+      description={
+        deployment && !wrongApp
+          ? `${deployment.kind} · ${deployment.id}`
+          : (deploymentId ?? buildId)
+      }
     >
-      <Panel
-        title={resolvedDeploymentId ? 'Release details' : 'Build details'}
-        description={
-          deployment && !wrongApp
-            ? `${deployment.kind} · ${deployment.id}`
-            : (deploymentId ?? buildId)
-        }
-        actions={
-          <Button size="xs" variant="ghost" onClick={onClose}>
-            Close
-          </Button>
-        }
+      <section
+        aria-label={resolvedDeploymentId ? 'Release details' : 'Build details'}
+        className="max-h-[calc(100dvh-17rem)] overflow-y-auto overscroll-contain p-1"
       >
         {phase === 'unreachable' ? (
           <UnreachableState onRetry={retry} />
@@ -344,8 +335,8 @@ export function ReleaseDetailPanel({
             )}
           </div>
         )}
-      </Panel>
-    </section>
+      </section>
+    </Modal>
   );
 }
 

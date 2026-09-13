@@ -221,7 +221,7 @@ describe('Instance details', () => {
   });
 
   it.each(['pointer', 'keyboard'])(
-    'selects with %s, preserves URL context, reveals detail and restores focus on Close/Back',
+    'selects with %s without scrolling, preserves URL context and restores focus on Close/Back',
     async (input) => {
       rows = Array.from({ length: 50 }, (_, n) => ({ ...instance, id: `vm-${n + 1}` }));
       const reveal = vi.spyOn(Element.prototype, 'scrollIntoView');
@@ -235,9 +235,9 @@ describe('Instance details', () => {
         }
       };
       await select();
-      const detail = await screen.findByRole('region', { name: 'Instance details' });
-      expect(detail).toHaveFocus();
-      expect(reveal.mock.contexts).toContain(detail);
+      const detail = await screen.findByRole('dialog', { name: 'Instance details' });
+      await waitFor(() => expect(detail.contains(document.activeElement)).toBe(true));
+      expect(reveal).not.toHaveBeenCalled();
       expect(router.state.location.search).toMatchObject({ instance: 'vm-1', keep: 'yes' });
       expect(router.state.location.hash).toBe('anchor');
       await userEvent.click(within(detail).getByRole('button', { name: 'Close' }));
@@ -249,7 +249,8 @@ describe('Instance details', () => {
       await waitFor(() => expect(row).toHaveFocus());
       expect(screen.queryByRole('region', { name: 'Instance details' })).not.toBeInTheDocument();
       await act(async () => router.history.forward());
-      expect(await screen.findByRole('region', { name: 'Instance details' })).toHaveFocus();
+      const reopened = await screen.findByRole('dialog', { name: 'Instance details' });
+      await waitFor(() => expect(reopened.contains(document.activeElement)).toBe(true));
       const copied = router.state.location.href;
       cleanup();
       await mount(copied);
@@ -258,7 +259,7 @@ describe('Instance details', () => {
   );
 
   it.each(['pointer', 'keyboard'])(
-    'reveals the already selected row again with %s and retains Close/Back focus',
+    'reopens with %s and retains focus, scroll and URL context after Escape/backdrop dismissal',
     async (input) => {
       const reveal = vi.spyOn(Element.prototype, 'scrollIntoView');
       const router = await mount('/dashboard/workers?keep=yes#anchor');
@@ -268,20 +269,20 @@ describe('Instance details', () => {
         if (input === 'pointer') await userEvent.click(row);
         else await userEvent.keyboard('{Enter}');
       };
-      for (const close of ['button', 'back']) {
+      for (const close of ['escape', 'backdrop']) {
         await activate();
-        const detail = await screen.findByRole('region', { name: 'Instance details' });
-        const selectedHref = router.state.location.href;
-        reveal.mockClear();
-        await activate();
-        expect(detail).toHaveFocus();
-        expect(reveal.mock.contexts).toContain(detail);
-        expect(router.state.location.href).toBe(selectedHref);
-        if (close === 'button')
-          await userEvent.click(within(detail).getByRole('button', { name: 'Close' }));
-        else await act(async () => router.history.back());
+        const detail = await screen.findByRole('dialog', { name: 'Instance details' });
+        await waitFor(() => expect(detail.contains(document.activeElement)).toBe(true));
+        expect(document.body.style.overflow).toBe('hidden');
+        expect(reveal).not.toHaveBeenCalled();
+        if (close === 'escape') await userEvent.keyboard('{Escape}');
+        else await userEvent.click(screen.getByRole('button', { name: 'Close dialog' }));
         await waitFor(() => expect(row).toHaveFocus());
-        expect(screen.queryByRole('region', { name: 'Instance details' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('dialog', { name: 'Instance details' })).not.toBeInTheDocument();
+        expect(document.body.style.overflow).not.toBe('hidden');
+        expect(router.state.location.search).toMatchObject({ keep: 'yes' });
+        expect(router.state.location.search.instance).toBeUndefined();
+        expect(router.state.location.hash).toBe('anchor');
       }
     }
   );
