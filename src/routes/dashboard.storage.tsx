@@ -1,9 +1,7 @@
-import { useMemo, useState } from 'react';
-import { createFileRoute } from '@tanstack/react-router';
-import { PageHeader } from '@/components/dashboard/primitives';
-import { ResourceTable, type Column } from '@/components/dashboard/resource-table';
-import { useApps, useStorageUsage } from '@/lib/api/queries';
-import { slugIndex } from '@/lib/api/adapters';
+import { createFileRoute, Link } from '@tanstack/react-router';
+import { Button } from '@/components/ui/button';
+import { InlinePhase, PageHeader, Panel, queryPhase } from '@/components/dashboard/primitives';
+import { useAppCapacity } from '@/lib/api/queries';
 import { consoleHead } from '@/lib/seo';
 import { ObjectStorage } from '@/components/dashboard/object-storage';
 
@@ -12,117 +10,83 @@ export const Route = createFileRoute('/dashboard/storage')({
   head: () => consoleHead('storage'),
 });
 
-/**
- * Storage consumed per app, from `/v1/usage/storage`.
- *
- * Runtime storage is independent of customer object buckets. Never present
- * this metering endpoint as object-bucket capacity or billing.
- *
- * The endpoint reports a single day, not a range, so the page picks one.
- */
-interface StorageRow {
-  id: string;
-  app: string;
-  snapshotBytes: number;
-  layerBytes: number;
-  totalBytes: number;
-}
-
-function formatBytes(bytes: number): string {
-  if (!bytes) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  let value = bytes;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit++;
-  }
-  return `${value.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
-}
-
-/** Yesterday in UTC: today's row is still being written. */
-function defaultDay(): string {
-  const d = new Date();
-  d.setUTCDate(d.getUTCDate() - 1);
-  return d.toISOString().slice(0, 10);
+function AppCapacity() {
+  const query = useAppCapacity();
+  const account = query.data;
+  if (query.isPending || query.error || !account)
+    return (
+      <Panel title="App capacity">
+        <InlinePhase
+          phase={queryPhase({ loading: query.isPending, error: query.error })}
+          error={query.error}
+          loadingMessage="Loading app capacity…"
+          onRetry={() => void query.refetch()}
+        />
+      </Panel>
+    );
+  const used = account.app_count;
+  const limit = account.limits.deployed_apps;
+  const remaining = Math.max(0, limit - used);
+  const percent = limit > 0 ? Math.min(100, (used / limit) * 100) : 0;
+  const plan = account.plan.charAt(0).toUpperCase() + account.plan.slice(1);
+  return (
+    <section
+      aria-labelledby="app-capacity-title"
+      className="rounded-xl border border-border bg-card p-5 sm:p-6"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 id="app-capacity-title" className="text-sm font-medium">
+            App capacity
+          </h2>
+          <p className="mt-1 text-xs text-muted-foreground">{plan} plan</p>
+        </div>
+        <Button asChild size="sm" variant="outline">
+          <Link to="/dashboard/plans">View plans</Link>
+        </Button>
+      </div>
+      <div className="mt-5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <p className="text-4xl font-medium tracking-tight tabular-nums">
+          {used}
+          <span className="ml-1.5 text-2xl font-normal text-muted-foreground">/ {limit}</span>
+        </p>
+        <p className="text-sm text-muted-foreground">app slots used</p>
+      </div>
+      <div
+        role="meter"
+        aria-label="App capacity"
+        aria-valuemin={0}
+        aria-valuemax={limit}
+        aria-valuenow={Math.min(used, limit)}
+        aria-valuetext={`${used} of ${limit} app slots used`}
+        className="mb-3 mt-4 h-1.5 overflow-hidden rounded-full bg-muted"
+      >
+        <div
+          className={`h-full rounded-full ${remaining ? 'bg-brand' : 'bg-[color:var(--status-warning)]'}`}
+          style={{ width: `${percent}%` }}
+        />
+      </div>
+      <div className="flex flex-wrap justify-between gap-2 text-xs">
+        <p className="font-medium">
+          {remaining
+            ? `${remaining} app ${remaining === 1 ? 'slot' : 'slots'} available`
+            : 'All app slots are in use'}
+        </p>
+        <p className="text-muted-foreground">Redeploying an app does not use another slot.</p>
+      </div>
+      <p className="mt-3 text-xs text-muted-foreground">
+        Live development environments have a separate allowance.
+      </p>
+    </section>
+  );
 }
 
 function StoragePage() {
-  const [day, setDay] = useState(defaultDay);
-  const { data, isPending, error, refetch } = useStorageUsage(day);
-  const { data: apps } = useApps();
-
-  const rows = useMemo<StorageRow[]>(() => {
-    const bySlug = slugIndex(apps ?? []);
-    return (data?.items ?? []).map((s) => ({
-      id: s.app_id,
-      app: bySlug.get(s.app_id) ?? s.app_id,
-      snapshotBytes: s.snapshot_bytes,
-      layerBytes: s.layer_bytes,
-      totalBytes: s.snapshot_bytes + s.layer_bytes,
-    }));
-  }, [data, apps]);
-
-  const columns: Column<StorageRow>[] = [
-    { key: 'app', label: 'App', render: (s) => <span className="font-mono text-xs">{s.app}</span> },
-    {
-      key: 'snapshotBytes',
-      label: 'Snapshots',
-      numeric: true,
-      render: (s) => (
-        <span className="[font-variant-numeric:tabular-nums]">{formatBytes(s.snapshotBytes)}</span>
-      ),
-    },
-    {
-      key: 'layerBytes',
-      label: 'Image layers',
-      numeric: true,
-      render: (s) => (
-        <span className="[font-variant-numeric:tabular-nums]">{formatBytes(s.layerBytes)}</span>
-      ),
-    },
-    {
-      key: 'totalBytes',
-      label: 'Total',
-      numeric: true,
-      render: (s) => (
-        <span className="[font-variant-numeric:tabular-nums]">{formatBytes(s.totalBytes)}</span>
-      ),
-    },
-  ];
-
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Storage" description="Private object buckets and runtime storage usage." />
+      <PageHeader title="Storage" description="Your app capacity and private object buckets." />
+      <AppCapacity />
       <ObjectStorage />
-      <PageHeader
-        title="Runtime storage usage"
-        description="VM snapshots and image layers per app. Snapshots are what make a cold wake fast."
-        actions={
-          <label className="flex items-center gap-2">
-            <span className="label-mono text-muted-foreground">Day</span>
-            <input
-              type="date"
-              value={day}
-              onChange={(e) => setDay(e.target.value)}
-              aria-label="Usage day"
-              className="h-9 rounded-md border border-border bg-card px-2.5 text-sm outline-none focus:border-brand/50"
-            />
-          </label>
-        }
-      />
-      <ResourceTable
-        rows={rows}
-        columns={columns}
-        initialSort={{ key: 'totalBytes', dir: 'desc' }}
-        searchKeys={['app']}
-        searchPlaceholder="Filter by app…"
-        emptyMessage={`No storage recorded for ${day}.`}
-        minWidth="min-w-[760px]"
-        loading={isPending}
-        error={error}
-        onRetry={() => void refetch()}
-      />
     </div>
   );
 }
