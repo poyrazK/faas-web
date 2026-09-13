@@ -2824,10 +2824,8 @@ route('POST', '/v1/apps/{slug}/debug/compare', ({ body }) => {
 // --- Jobs (spec 14.A) -------------------------------------------------------
 // MOCK_PLAN=free reproduces the 402 jobs_not_allowed gate. Run and task states
 // cover the whole enum so every badge and every empty state is reachable.
-const jobsGated = process.env.MOCK_PLAN === 'free';
-
 function gateJobs() {
-  if (jobsGated) {
+  if (process.env.MOCK_PLAN === 'free') {
     throw new Problem(
       402,
       'jobs_not_allowed',
@@ -2891,6 +2889,73 @@ const runsOf = (name: string) => {
 route('GET', '/v1/jobs', () => {
   gateJobs();
   return { jobs, limit: 50, offset: 0, next_offset: -1, total: jobs.length };
+});
+
+route('POST', '/v1/jobs', ({ body }) => {
+  gateJobs();
+  const name = typeof body.name === 'string' ? body.name : '';
+  const image = typeof body.image_ref === 'string' ? body.image_ref.trim() : '';
+  const kind = body.kind ?? 'batch';
+  const command = body.command;
+  if (!/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(name))
+    throw new Problem(
+      400,
+      'validation_failed',
+      'Use a lowercase workload name of 3–40 characters.'
+    );
+  if (!image || !['batch', 'recurring'].includes(String(kind)))
+    throw new Problem(
+      400,
+      'validation_failed',
+      'A container image and valid workload kind are required.'
+    );
+  if (
+    !Array.isArray(command) ||
+    command.length > 64 ||
+    !command.every((arg) => typeof arg === 'string')
+  )
+    throw new Problem(400, 'validation_failed', 'Command must be an array of at most 64 strings.');
+  if (jobs.some((job) => job.name === name))
+    throw new Problem(409, 'validation_failed', `Workload name "${name}" is already in use.`);
+  // Keep the dev fixture aligned with apid's plan defaults and ceilings.
+  const tier = process.env.MOCK_PLAN === 'hobby' ? 0 : process.env.MOCK_PLAN === 'scale' ? 2 : 1;
+  const caps = {
+    ram_mb: [512, 2048, 4096][tier],
+    task_timeout_sec: [300, 1800, 3600][tier],
+    max_parallelism: [10, 25, 50][tier],
+    retry_max: [3, 5, 10][tier],
+  };
+  const resources = { ...caps };
+  for (const key of Object.keys(caps) as (keyof typeof caps)[]) {
+    const value = body[key];
+    if (value === undefined || value === 0) continue;
+    if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1)
+      throw new Problem(400, 'validation_failed', `${key} must be a positive integer.`);
+    if (value > caps[key])
+      throw new Problem(
+        402,
+        'job_quota_exceeded',
+        `${key} exceeds this plan's limit of ${caps[key]}.`
+      );
+    resources[key] = value;
+  }
+  if (jobs.length >= [5, 25, 100][tier])
+    throw new Problem(402, 'job_quota_exceeded', 'Your plan has reached its workload limit.');
+  const job = {
+    id: db.id(),
+    account_id: 'acct-1',
+    name,
+    kind: String(kind),
+    image_ref: image,
+    command: command as string[],
+    ...resources,
+    status: 'active',
+    created_at: db.iso(0),
+    updated_at: db.iso(0),
+  };
+  jobs.unshift(job);
+  runCache.set(name, []);
+  return status(201, job);
 });
 
 route('GET', '/v1/jobs/{name}', ({ params }) => {
@@ -3702,7 +3767,15 @@ route('POST', '/dashboard/account/set-password', ({ body, res }) => {
 });
 
 // --- Billing & account controls ---
-route('POST', '/v1/account/overage-cap', () => ({ ...db.account, app_count: db.apps.length }));
+let overageCapCents: number | null = null;
+route('GET', '/v1/account/overage-cap', () => ({ overage_cap_cents: overageCapCents }));
+route('POST', '/v1/account/overage-cap', ({ body }) => {
+  const cap = body.overage_cap_cents ?? null;
+  if (cap !== null && (typeof cap !== 'number' || !Number.isSafeInteger(cap) || cap < 0))
+    throw new Problem(400, 'validation_failed', 'Cap must be non-negative integer cents or null.');
+  overageCapCents = cap;
+  return { ...db.account, app_count: db.apps.length };
+});
 route('POST', '/v1/billing/cancel', () => ({
   cancel_scheduled: true,
   effective_at: new Date(Date.now() + 19 * 86400e3).toISOString(),

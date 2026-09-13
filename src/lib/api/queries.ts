@@ -277,6 +277,14 @@ export function useAcceptInvitation() {
  * Billing & account controls
  * ------------------------------------------------------------------ */
 
+/** Read the saved monthly overage ceiling without conflating zero and no cap. */
+export function useOverageCap() {
+  return useQuery({
+    queryKey: [...keys.account, 'overage-cap'],
+    queryFn: () => unwrap(api.GET('/v1/account/overage-cap', {})),
+  });
+}
+
 /** Set a monthly overage ceiling; zero forbids overage and null clears the cap. */
 export function useSetOverageCap() {
   const qc = useQueryClient();
@@ -1342,6 +1350,27 @@ export function useInfiniteJobs(limit = 50, enabled = true) {
         : undefined,
     enabled,
     retry: retryPolicy,
+  });
+}
+
+export function useCreateJob() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: components['schemas']['CreateJobRequest']) =>
+      unwrap(api.POST('/v1/jobs', { body })),
+    onSuccess: (job) => {
+      qc.setQueryData([...keys.jobs, job.name], job);
+      return qc.invalidateQueries({ queryKey: keys.jobs });
+    },
+  });
+}
+
+/** Fresh account-wide capacity, not a count of the currently visible app rows. */
+export function useAppCapacity() {
+  return useQuery({
+    queryKey: [...keys.account, 'capacity'],
+    queryFn: () => unwrap(api.GET('/v1/account', {})),
+    refetchInterval: 30_000,
   });
 }
 
