@@ -146,6 +146,12 @@ export const DOC_SECTIONS: DocSection[] = [
     blurb: 'Limits and rules the platform enforces.',
     entries: [
       {
+        slug: 'plans',
+        source: 'docs/plans.md',
+        title: 'Plans and pricing',
+        summary: 'Generated platform prices, included compute, and hard plan limits.',
+      },
+      {
         slug: 'egress-denylist',
         source: 'docs/denylist.md',
         title: 'Egress denylist',
