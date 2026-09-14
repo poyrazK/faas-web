@@ -293,6 +293,7 @@ export function RangeSelector<T extends string>({
   options,
   onChange,
   dither = false,
+  disabled = false,
 }: {
   value: T;
   options: { key: T; label: string }[];
@@ -300,6 +301,7 @@ export function RangeSelector<T extends string>({
   /** Render the segments as Dither Kit buttons — solid mint for the active
    * range, a quiet dotted grey for the rest. */
   dither?: boolean;
+  disabled?: boolean;
 }) {
   if (dither) {
     return (
@@ -309,6 +311,7 @@ export function RangeSelector<T extends string>({
           return (
             <DitherButton
               key={opt.key}
+              disabled={disabled}
               aria-pressed={active}
               onClick={() => onChange(opt.key)}
               color={active ? 'green' : 'grey'}
@@ -336,10 +339,11 @@ export function RangeSelector<T extends string>({
         <button
           key={opt.key}
           type="button"
+          disabled={disabled}
           aria-pressed={value === opt.key}
           onClick={() => onChange(opt.key)}
           className={cn(
-            'pressable rounded px-2.5 py-1 text-xs',
+            'pressable rounded px-2.5 py-1 text-xs disabled:opacity-50',
             value === opt.key
               ? 'bg-muted text-foreground'
               : 'text-muted-foreground hover:text-foreground'
