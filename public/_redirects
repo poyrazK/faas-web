@@ -5,12 +5,49 @@
 /status/slo.json    https://api.gregale.dev/status/slo.json   200
 /status/incidents/*    /status/incidents/index.html   200
 
-# SPA fallback for Netlify and Cloudflare Pages.
-#
-# Routing happens in the browser, so only `/` exists as a real file. Without
-# this, refreshing on /dashboard/logs — or opening a shared link to it — asks
-# the host for a file that was never built and gets a 404 before the router
-# ever runs. Serve index.html for everything and let the router resolve it.
-#
-# 200, not 302: the URL must survive so the router can read it.
-/*    /index.html   200
+# Only registered client routes receive the app shell.
+# The built 404.html handles every unmatched URL on Netlify and Cloudflare Pages.
+/dashboard    /index.html   200
+/dashboard/account    /index.html   200
+/dashboard/alerts    /index.html   200
+/dashboard/analytics    /index.html   200
+/dashboard/apis    /index.html   200
+/dashboard/audit    /index.html   200
+/dashboard/builds    /index.html   200
+/dashboard/crons    /index.html   200
+/dashboard/databases    /index.html   200
+/dashboard/debug    /index.html   200
+/dashboard/deployments    /index.html   200
+/dashboard/domains    /index.html   200
+/dashboard/edge-rules    /index.html   200
+/dashboard/env    /index.html   200
+/dashboard/import    /index.html   200
+/dashboard/invoices    /index.html   200
+/dashboard/jobs    /index.html   200
+/dashboard/keys    /index.html   200
+/dashboard/logs    /index.html   200
+/dashboard/metrics    /index.html   200
+/dashboard/mirrors    /index.html   200
+/dashboard/openapi    /index.html   200
+/dashboard/plans    /index.html   200
+/dashboard/postgres    /index.html   200
+/dashboard/queues    /index.html   200
+/dashboard/secrets    /index.html   200
+/dashboard/security    /index.html   200
+/dashboard/settings    /index.html   200
+/dashboard/storage    /index.html   200
+/dashboard/team    /index.html   200
+/dashboard/templates    /index.html   200
+/dashboard/tenant-surfaces    /index.html   200
+/dashboard/traces    /index.html   200
+/dashboard/triggers    /index.html   200
+/dashboard/triggers/:triggerId    /index.html   200
+/dashboard/triggers/new    /index.html   200
+/dashboard/usage    /index.html   200
+/dashboard/webhooks    /index.html   200
+/dashboard/workers    /index.html   200
+/dashboard/workflows    /index.html   200
+/dashboard/workflows/:workflowId    /index.html   200
+/dashboard/workflows/new    /index.html   200
+/invite/:token    /index.html   200
+/onboarding    /index.html   200

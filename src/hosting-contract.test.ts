@@ -45,3 +45,49 @@ describe('public hosting contract', () => {
     expect(headers['Access-Control-Allow-Origin']).toBe('https://gregale.dev');
   });
 });
+
+/** Model only the post-filesystem fallbacks: published documents and assets
+ * have already resolved; missing routes must never receive the landing shell. */
+function fallbackFor(path: string) {
+  const filesystem = config.routes.findIndex((route) => 'handle' in route);
+  return config.routes
+    .slice(filesystem + 1)
+    .find((route) => route.src && new RegExp(route.src).test(path));
+}
+
+it.each([
+  '/privacy',
+  '/terms',
+  '/not-a-page',
+  '/dashboard/not-a-page',
+  '/assets/missing.js',
+  '/docs/not-a-page',
+])('returns 404 for an unpublished URL %s', (path) => {
+  expect(fallbackFor(path)).toMatchObject({ status: 404, dest: '/404.html' });
+});
+
+it('preserves every registered app route as a deep link', () => {
+  const source = readFileSync('src/routeTree.gen.ts', 'utf8');
+  const paths = [
+    ...source.matchAll(/^ {2}'(\/(?:dashboard|onboarding|invite)[^']*)': typeof/gm),
+  ].map((match) => match[1]);
+  expect(paths.length).toBeGreaterThan(40);
+  for (const path of paths) {
+    const concrete = path.replace(/\$[^/]+/g, 'example-id');
+    expect(fallbackFor(concrete), concrete).toMatchObject({ dest: '/index.html' });
+    expect(fallbackFor(concrete)?.status, concrete).not.toBe(404);
+  }
+});
+
+it('keeps the alternate static-host rules scoped to registered app routes', () => {
+  const redirects = readFileSync('public/_redirects', 'utf8')
+    .split('\n')
+    .filter((line) => line && !line.startsWith('#'))
+    .map((line) => line.trim().split(/\s+/));
+  const appRules = redirects.filter(([, target]) => target === '/index.html');
+  expect(appRules.length).toBeGreaterThan(40);
+  for (const [source] of appRules) {
+    expect(source).not.toContain('*');
+    expect(fallbackFor(source.replace(/:[^/]+/g, 'example-id'))?.dest).toBe('/index.html');
+  }
+});

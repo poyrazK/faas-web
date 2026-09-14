@@ -6,7 +6,7 @@
  */
 
 const base = (process.env.GREGALE_SITE_URL ?? 'https://gregale.dev').replace(/\/$/, '');
-const paths = ['/', '/dashboard', '/dashboard/apps'];
+const paths = ['/', '/dashboard', '/dashboard/workflows'];
 const required = {
   'content-security-policy': ["frame-ancestors 'none'", "object-src 'none'"],
   'x-content-type-options': ['nosniff'],
@@ -34,6 +34,15 @@ for (const path of paths) {
   const cors = response.headers.get('access-control-allow-origin');
   if (cors !== null && cors !== 'https://gregale.dev') {
     failures.push(`${path}: unsafe access-control-allow-origin ${cors}`);
+  }
+}
+
+for (const path of ['/docs/definitely-not-a-page', '/definitely-not-a-page', '/dashboard/definitely-not-a-page', '/assets/definitely-missing.js']) {
+  try {
+    const response = await fetch(base + path);
+    if (response.status !== 404) failures.push(`${path}: expected HTTP 404, got ${response.status}`);
+  } catch (error) {
+    failures.push(`${path}: request failed: ${error}`);
   }
 }
 
