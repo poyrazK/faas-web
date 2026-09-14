@@ -10,17 +10,17 @@ triggered by the GitHub App the customer installed via
 ## URL shape
 
 ```
-https://pr-{N}.{slug}.apps.<zone>
+https://pr-{N}-{slug}.<zone>
 ```
 
 - `{N}` — GitHub PR number, stable across `synchronize` and
   `reopened` events on the same PR.
 - `{slug}` — the parent app's slug (the production app the PR
   targets).
-- `{zone}` — the platform zone; `apps.gregale.dev` on the
+- `{zone}` — the platform zone; `gregale.dev` on the
   hosted product.
 
-The wildcard cert at `*.apps.<zone>` covers previews for free —
+The wildcard cert at `*.<zone>` covers previews for free —
 no per-PR cert provisioning, no DNS work.
 
 ## Lifecycle
@@ -60,8 +60,10 @@ PRs from forks are **refused**. The webhook posts a
 `text: "Preview skipped for fork PR (security policy)"`. No
 app row is provisioned. This is deliberate: we cannot
 guarantee that untrusted code from a fork will not reach the
-build VM without a per-install override, which ADR-012 defers
-behind a future `Pull Requests:write` permission grant.
+build VM without a per-install override. The GitHub App needs
+`Deployments:write` for the deployment timeline and `Issues:write`
+to maintain the single preview status comment on the PR's issue
+thread; it does not need `Pull requests:write`.
 
 ## Dashboard
 
@@ -71,6 +73,49 @@ number, current state (chip), the preview URL, and a Copy
 URL button (writes to clipboard). A preview row on the apps
 list (`/dashboard/apps`) is indented and tagged with a
 `preview` chip.
+
+## Pull request feedback
+
+Gregale maintains one bot comment per preview PR. The comment is
+updated on `opened`, `synchronize`, `reopened`, and `closed` events,
+and includes the preview URL, current lifecycle status, commit SHA,
+and one-click destroy link. A hidden marker makes webhook retries and
+repeated synchronize events idempotent instead of creating duplicate
+comments. The Check Run remains the source of build-stage status.
+
+Each preview deployment also appears in GitHub's Deployments timeline
+with a stable environment URL and deployment/log links. Status updates
+reuse the same provider deployment across retries, so GitHub consumers
+see one `queued` → `in_progress` → `success`/`failure` lifecycle rather
+than a new deployment row for every phase.
+
+The Deployment record also carries the provenance already stored on the
+Gregale deployment row: deployer, pull-request number, tag, and optional
+reason. These values are included in the Deployment description and under
+`payload.gregale_*`, while the Check Run and preview comment render the
+deployer, PR, and reason for reviewers without requiring a second Gregale
+API lookup.
+
+## Mocking API routes
+
+Preview apps can serve a fixed JSON response before the backend route is ready.
+Create a `respond` edge rule for the preview app, then disable or delete it when
+the implementation is deployed:
+
+```bash
+gregale edge-rules create --app pr-42-checkout \
+  --kind respond \
+  --match-host pr-42-checkout.gregale.dev \
+  --match-path /shipping/estimate \
+  --match-method GET \
+  --respond-status 200 \
+  --respond-body '{"days":3,"price":4.99}'
+```
+
+The rule is preview-only, runs after the preview app's authentication gates, and
+returns the configured status and JSON body without waking the backend. Use a
+non-2xx status such as `500` to exercise the frontend failure state. Responses are
+bounded to 64 KiB; status `204` and `304` cannot carry a body.
 
 ## Operational notes
 
@@ -90,6 +135,21 @@ list (`/dashboard/apps`) is indented and tagged with a
   `pr-{N}-{parent-slug}` as stable across events; a
   torn-down PR-{N} that reopens with a fresh head SHA gets
   a fresh `apps` row at the same slug.
+
+## Project GitHub deployment policy
+
+Customers can read and update the project policy through
+`/v1/apps/{slug}/github/deployment-policy` with the `github:manage` scope.
+The policy supports a repository-relative root directory for root workloads,
+ignored change paths (exact paths, one-segment globs, and trailing `/**`
+directory patterns), a preview enable switch, and a preview TTL from 1 hour
+to 30 days. Existing projects default to previews enabled, a 7-day TTL, no
+ignored paths, and the repository root, so adopting the policy is additive.
+
+When all changed files match ignored paths, githubd records the delivery as a
+successful no-op and does not enqueue builds. Compare-API failures still use
+the existing safe full-fan-out fallback, because an unavailable GitHub API
+must not be mistaken for an ignored change set.
 
 ## Related
 

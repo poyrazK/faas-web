@@ -2,7 +2,7 @@
 
 Go 1.24 on both deploy surfaces — apps (long-running, static binary in
 an OCI image layer) and functions (per-request subprocess, §4.9 envelope
-contract). Built by Railpack v0.31.1 with `--plan go`; detected from
+contract). Built by Railpack's Go provider; detected from
 `go.mod` (priority: `docker > node > python > go`).
 
 ## Function contract
@@ -13,6 +13,14 @@ response envelope to **stdout**. There is no HTTP server in the handler
 — the `go124` runner is the HTTP server inside the microVM (listens on
 `:8080`) and execs the compiled handler binary at `/app/handler` per
 request.
+
+For source builds, imaged reads the compiled executable path from the exported
+OCI image configuration and normalizes it to `/app/handler`. Railpack 0.38
+exports `/app/out` with working directory `/app` and a `bash -c ./out` launch
+command. Older exports without process metadata retain the `/app/server`
+fallback. Image assembly only accepts a literal executable inside `/app`;
+it does not execute shell expressions or follow symlinks outside the image.
+This normalization applies to both `go124` and `go124-alpine`.
 
 The runner shim sets `FAAS_RUNTIME=go124` in the handler's environment
 so customers can branch on runtime if they want.
@@ -77,7 +85,9 @@ Railpack's `--plan go` defaults to `CGO_ENABLED=0` — the standard case
 Just Works. Customers who need CGO (SQLite bindings, etc.) must ensure
 the base image ships the libc their bindings link against.
 
-- `runtime: go124` (default) — base is `golang:1.24-bookworm` (glibc).
+- `runtime: go124` (default) — base is Chainguard Bash on Wolfi (glibc),
+  compatible with binaries emitted by the Bookworm builder without carrying
+  the Go compiler or build utilities.
 - `runtime: go124-alpine` (opt-in) — base is `golang:1.24-alpine`
   (musl). See "Alpine variant" below for the libc-match contract.
 
@@ -108,34 +118,37 @@ an image without `Cmd` produces an empty entrypoint that fails
 ## Base image
 
 - Base ref: `ghcr.io/onebox-faas/runner-go124:latest`
-- Source: `images/runner-go124.Dockerfile` (`FROM golang:1.24-bookworm`)
-- Disk: ~350 MB uncompressed, amortized across all `go124` apps via
-  the two-drive scheme (drive0 = shared base, drive1 = per-app layer).
-  Per-app cost is just the static binary (~5–30 MB).
+- Source: `images/runner-go124.Dockerfile`
+  (`FROM cgr.dev/chainguard/bash:latest`, digest-pinned for linux/amd64)
+- The final runtime base keeps the matching glibc libraries but omits the Go
+  compiler/toolchain. The two-drive scheme shares that base across all
+  `go124` apps; per-app cost is just the static binary (~5–30 MB).
 
-### Operator staging
+### Operational configuration
 
-In Tier 1 PR 2, the runtime base is **auto-staged** by `imaged` at
-boot via `pkg/imaged/base_stage.go::EnsureBases`, mirroring the
-builder-base auto-stage path. Set `FAAS_DEPLOY_BASE_REF_GO124=<digest>`
-in `sealed.env` to digest-pin the prod base; the default `:latest`
-is for dev only.
+The runtime base is **auto-staged** by `imaged` through
+`pkg/imaged/base_stage.go::EnsureRuntimeBase`. The deployment pipeline
+must write `FAAS_DEPLOY_BASE_REF_GO124` as an immutable OCI digest in
+`/etc/faas/runtime-bases.env`; the default `:latest` is for unnamed
+development daemons only.
 
-The pre-PR-2 staging recipe remains valid for boxes that haven't
-upgraded imaged yet — see `images/runner-go124.Dockerfile` comments
-for `docker build` + `mkfs.ext4 -O '^has_journal' -d <staging>` argv.
+The deployment pipeline publishes the image, records its config digest,
+renders that digest into the node configuration, and starts `imaged`.
+`imaged` pulls, validates, and stages the ext4 automatically; subsequent
+boots short-circuit on the digest sidecar. Operators must not build, copy,
+or manually place a runtime `.ext4` on a compute node.
 
 ## Alpine variant (opt-in)
 
 For customers running a `go124` app on the alpine runtime id, the base
-rootfs switches from `golang:1.24-bookworm` (glibc, ~350 MB) to
-`golang:1.24-alpine` (musl, ~250 MB target). ~100 MB savings on
-drive0, amortized via the two-drive scheme.
+rootfs switches from Wolfi glibc to `golang:1.24-alpine` (musl). The Alpine
+variant remains smaller because it uses musl, and both final images omit the
+Go compiler/toolchain.
 
 **Customer opt-in:** set `runtime: go124-alpine` on the function or app
 manifest. The platform resolves the base via `pkg/imaged/base.go::baseRefFor`.
-The default `go124` (bookworm) is unchanged; existing customers see no
-behavior change.
+The default `go124` keeps its glibc runtime contract, so existing binaries
+built against the Bookworm toolchain remain compatible.
 
 **CGO constraint:** customers with cgo bindings (e.g.
 `mattn/go-sqlite3`) must ensure their bindings link against musl —
@@ -145,12 +158,10 @@ the alpine variant is a drop-in for the common case. The libc
 mismatch surfaces as `exec format error` on first wake — see the
 failure-mode table below.
 
-**Operator staging:** auto-staged by imaged the same way as the
-bookworm base (above, Tier 1 PR 2); set `FAAS_DEPLOY_BASE_REF_GO124_ALPINE`
-to a digest-pinned prod ref. The pre-PR-2 recipe (`docker build` +
-`mkfs.ext4 -O '^has_journal' -d <staging>` copied to
-`/srv/fc/base/runner-go124-alpine.ext4`) remains valid for boxes
-that haven't upgraded imaged yet.
+**Deployment configuration:** auto-staged by imaged the same way as the
+bookworm base. The deployment pipeline must set
+`FAAS_DEPLOY_BASE_REF_GO124_ALPINE` to a digest-pinned production ref;
+operators do not build, copy, or manually place its `.ext4` on a node.
 
 **Source:** `images/runner-go124-alpine.Dockerfile`
 (`FROM golang:1.24-alpine`).
@@ -176,10 +187,10 @@ app (Railpack python plan) — if the customer really wants Go, drop
 | Symptom | Cause | Fix |
 |---|---|---|
 | `unknown archive shape` | no `go.mod`, `package.json`, `requirements.txt`, or `Dockerfile` | add `go.mod` |
-| `railpack: plan "go" failed` | upstream plan shifted; binary path changed | check `build-image-builder` log; set `dep.Handler` to override |
+| `railpack: plan "go" failed` | compiler or build-plan failure | inspect the build log and correct the reported build error |
 | handler exec fails with `exec format error` | CGO binary mismatched with base libc | rebuild with the matching libc (bookworm/alpine) |
 | `exec format error` on first wake, alpine runtime | cgo binary links glibc, musl base rejects it | rebuild against `FROM golang:1.24-alpine AS build` in customer Dockerfile |
-| `unsupported function runtime "go124-alpine"` | migration `00043` not applied, or base image not staged at `/srv/fc/base/runner-go124-alpine.ext4` | apply the migration; stage the alpine base ext4 per the Operator staging recipe |
+| `unsupported function runtime "go124-alpine"` | migration `00043` not applied, or the deployment pipeline has not supplied a valid digest-pinned base ref | apply the migration and repair the node's rendered base-ref configuration; imaged stages the base automatically |
 | `app.Cmd empty` manifest error | `manifestFromImageConfig` regression | revert the field flip in `pkg/imaged/handler.go` |
 
 ## See also

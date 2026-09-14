@@ -60,6 +60,24 @@ export const DOC_SECTIONS: DocSection[] = [
           'What the platform stores per app: VM snapshots, image layers, and what you pay for.',
       },
       {
+        slug: 'object-storage',
+        source: 'docs/object-storage.md',
+        title: 'Object storage',
+        summary: 'Managed S3-compatible buckets, credentials, limits, and data-plane behavior.',
+      },
+      {
+        slug: 'custom-domains',
+        source: 'docs/domains.md',
+        title: 'Custom domains',
+        summary: 'Attach, verify, and diagnose your own domain on a deployed app.',
+      },
+      {
+        slug: 'executions',
+        source: 'docs/executions.md',
+        title: 'Disposable executions',
+        summary: 'Run bounded Node.js or Python work in a fresh isolated microVM.',
+      },
+      {
         slug: 'preview-environments',
         source: 'docs/preview-environments.md',
         title: 'Preview environments',
@@ -76,6 +94,12 @@ export const DOC_SECTIONS: DocSection[] = [
         source: 'docs/source-ref.md',
         title: 'Deploying from source',
         summary: 'Building from a Git ref rather than pushing a prebuilt image.',
+      },
+      {
+        slug: 'deploy-from-github',
+        source: 'docs/deploys.md',
+        title: 'Deploying from GitHub',
+        summary: 'Connect a repository and deploy from GitHub Actions or a source checkout.',
       },
       {
         slug: 'cli',
@@ -126,6 +150,18 @@ export const DOC_SECTIONS: DocSection[] = [
         title: 'Egress denylist',
         summary: 'Destinations outbound traffic cannot reach, and why.',
       },
+      {
+        slug: 'api-hosting-openapi',
+        source: 'docs/api-hosting-openapi.md',
+        title: 'OpenAPI hosting',
+        summary: 'Preview, compare, and publish an OpenAPI contract for an app.',
+      },
+      {
+        slug: 'faas_openapi_spec',
+        source: 'docs/faas_openapi_spec.md',
+        title: 'Gregale API specification',
+        summary: 'The OpenAPI contract, supported routes, response shapes, and CI guarantees.',
+      },
     ],
   },
   {
@@ -155,6 +191,12 @@ export const DOC_SECTIONS: DocSection[] = [
         source: 'docs/compliance/responsible-disclosure.md',
         title: 'Responsible disclosure',
         summary: 'How to report a vulnerability, and what to expect once you do.',
+      },
+      {
+        slug: 'security',
+        source: 'docs/security.md',
+        title: 'Security',
+        summary: 'Gregale isolation boundaries and the security responsibilities you retain.',
       },
     ],
   },

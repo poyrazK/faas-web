@@ -1,6 +1,7 @@
 # `node24` runtime
 
-Node.js 24 LTS on the function surface (per-request subprocess, §4.9
+Node.js 24 LTS on the function surface (prewarmed persistent adapter with a
+legacy per-request subprocess fallback, §4.9
 envelope contract). Built by Railpack v0.31.1 with `--plan node`; the
 underlying Node version is bound by the OCI base image
 (`node:24-bookworm-slim` from `images/runner-node24.Dockerfile`). No
@@ -16,16 +17,39 @@ default for new function apps. A future PR may flip once fleet-wide
 
 ## Function contract
 
-The customer's source is a Node module exporting `default async
-function handler(req)`, served at `/app/node24.js`. Each request is
-a single subprocess invocation — the runner reads the §4.9 envelope
-from stdin, the handler writes the §4.9 response envelope to stdout.
+The customer's source is a Node module exporting either `default async
+function handler(event, ctx)` or a Fetch API object (`export default {
+fetch(request, env, ctx) { ... } }`), served at `/app/node24.js`.
+Generated adapters are
+prewarmed during runner startup and process newline-framed §4.9 envelopes in
+one long-lived subprocess; legacy protocol handlers retain one subprocess
+per request. The runner reads the envelope from stdin and the handler writes
+the response envelope to stdout.
 This is identical to the `node22` contract; the only differences are
 the **handler filename** (`/app/node24.js` vs `/app/node22.js`) and
 the runtime id (`node24` vs `node22`).
 
+Fetch API handlers receive a standard WHATWG `Request` whose URL uses the
+`http://faas.local` origin and whose path, query string, headers, and raw body
+come from the incoming envelope. They return a standard `Response`; the
+adapter preserves its status, headers, and bytes. The third `ctx` argument
+includes `waitUntil()` for Workers-compatible handler code.
+
 The runner shim sets `FAAS_RUNTIME=node24` in the handler's environment
 so customers can branch on runtime if they want.
+
+### Handler failures and retries
+
+An uncaught handler exception is converted into a bounded HTTP 500 result with
+`error: "handler_error"`, the exception message, and the invocation ID. It is a
+terminal application failure for both synchronous and asynchronous invocation:
+Gregale does not retry it on another instance or replay it after a rollback. The
+persistent worker stays alive and can process the next invocation.
+
+Wake, transport, and ordinary 5xx failures remain retryable under the durable
+invocation policy. A retry resolves the deployment that is live at that later
+attempt, so an infrastructure retry that spans a deploy or rollback can run on
+the newly live revision. Returning a 4xx is terminal.
 
 ### Minimal handler
 
@@ -40,10 +64,23 @@ export default async function handler(req) {
 }
 ```
 
+### Fetch API handler
+
+```js
+// /app/handler.js
+export default {
+  async fetch(request) {
+    return new Response(`hello ${new URL(request.url).pathname}`, {
+      headers: { "content-type": "text/plain" },
+    });
+  },
+};
+```
+
 ### Local smoke test
 
 The §4.9 envelope round-trips with bash and `base64` — the runner
-spawns `node /app/node24.js` and pipes the envelope JSON over stdin:
+starts `node /app/node24.js` and pipes newline-framed envelope JSON over stdin:
 
 ```
 echo '{"method":"GET","path":"/hello","headers":{},"query":"","body_b64":""}' \
@@ -75,29 +112,29 @@ the contract separately.
   the two-drive scheme (drive0 = shared base, drive1 = per-app layer).
   Per-app cost is just the customer's `node_modules` + handler.
 
-### Operator staging
+### Operational configuration
 
-In Tier 1 PR 2, the runtime base is **auto-staged** by `imaged` at
-boot via `pkg/imaged/base_stage.go::EnsureBases`, mirroring the
-builder-base auto-stage path. Set `FAAS_DEPLOY_BASE_REF_NODE24=<digest>`
-in `sealed.env` to digest-pin the prod base; the default `:latest`
-is for dev only.
+The runtime base is **auto-staged** by `imaged` through
+`pkg/imaged/base_stage.go::EnsureRuntimeBase`. The deployment pipeline
+must write `FAAS_DEPLOY_BASE_REF_NODE24` as an immutable OCI digest in
+`/etc/faas/runtime-bases.env`; the default `:latest` is for unnamed
+development daemons only.
 
-The pre-PR-2 staging recipe remains valid for boxes that haven't
-upgraded imaged yet — see `images/runner-node24.Dockerfile` comments
-for `docker build` + `mkfs.ext4 -O '^has_journal' -d <staging>` argv.
-
-After PR 2 the operator workflow collapses to:
+The production workflow is:
 1. Publish the `images/runner-node24.Dockerfile` image to
-   `ghcr.io/onebox-faas/runner-node24:<digest>`.
-2. Set `FAAS_DEPLOY_BASE_REF_NODE24` to that digest in `sealed.env`.
-3. Restart imaged. The first boot pulls + stages the ext4; subsequent
-   boots short-circuit on the digest sidecar (Skipped=true).
+   `ghcr.io/onebox-faas/runner-node24` and record its config digest.
+2. Let the deployment pipeline render that digest into
+   `FAAS_DEPLOY_BASE_REF_NODE24`.
+3. Start or restart `imaged`. It pulls, validates, and stages the ext4
+   automatically; subsequent boots short-circuit on the digest sidecar.
+
+Operators must not build, copy, or manually place a runtime `.ext4` on a
+compute node. A missing or invalid base is a deployment error, not a reason
+to fall back to a hand-staged artifact.
 
 If a non-digest-pinned `FAAS_DEPLOY_BASE_REF_NODE24` is set (e.g.
 `:latest`), imaged aborts startup loud with a one-line error naming
-the offending env var — the same posture as
-`FAAS_DEPLOY_BASE_REF` (deploy-time override).
+the offending env var. The retired global `FAAS_DEPLOY_BASE_REF` is rejected.
 
 ## Detection priority
 
@@ -128,6 +165,5 @@ elsewhere. Version selection is operator-controlled via
 - `images/runner-node24.Dockerfile` — base image
 - `migrations/00075_app_runtime_node24_python313.sql` — runtime enum widening
 
-<!-- CI status: PR 1 (Tier 1) — migration 00075 applied; imaged runtime
-matrix extended in pkg/imaged/base.go + handler.go. Base auto-stage
-follows in PR 2. -->
+<!-- CI status: runtime migration, handler matrix, OCI auto-staging, and
+runtime-image smoke coverage are implemented and enforced by CI. -->
