@@ -61,7 +61,7 @@ function DocPage() {
           </div>
         </header>
 
-        <Markdown source={body} />
+        <Markdown source={body} sourcePath={entry.source} />
 
         <nav aria-label="Pagination" className="mt-10 grid gap-3 sm:grid-cols-2">
           {prev && (
