@@ -2,19 +2,26 @@
 
 Apps on onebox FaaS scale to zero. When nobody is using your app
 its instances are parked — a snapshot on disk, zero resident RAM.
-The next request wakes an instance; the snapshot is restored and
-your app is serving within ~350 ms.
+The next request wakes an instance. On the reference SSD node, Gregale targets
+p95 below 350 ms for the platform interval from capacity admission/boot start
+through the first upstream byte. This includes the scheduler, snapshot restore,
+and Gregale's internal proxy. The full public request also includes Cloudflare,
+Internet transit, client distance, and the rest of your app's response, so its
+latency can be higher.
 
 This is the trick that makes the per-GB-RAM-hour price work. The
 trade-off is that the **first request to a parked app pays the
 wake cost**. Subsequent requests hit the warm instance at normal
 latency.
 
-You can detect a cold wake in two ways:
+You can detect the wake tier on every routed response:
 
-- The response header `x-faas-wake: cold` on the first request.
-  Absent on subsequent requests. Useful for retries / client-side
-  banners.
+- `x-faas-wake: hot` means an already-running instance served the request.
+- `x-faas-wake: restored` means the request admitted an instance from a
+  usable snapshot.
+- `x-faas-wake: cold` means the request admitted a fresh cold boot. The
+  value is retained for CLI compatibility and is useful for retries /
+  client-side banners.
 - The dashboard's per-app state badge: `◌ sleeping` before
   traffic, `⟳ waking` while the instance restores,
   `● running` once it's serving. The page refreshes every 10 s.

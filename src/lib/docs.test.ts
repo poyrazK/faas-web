@@ -22,6 +22,23 @@ describe('docs manifest', () => {
     expect(missing).toEqual([]);
   });
 
+  it('publishes the capability-registry pages with their expected documents', () => {
+    const expected = {
+      'api-hosting-openapi': '# OpenAPI hosting',
+      faas_openapi_spec: '# OpenAPI spec + CI gate',
+      'object-storage': '# Customer object storage preview',
+      'custom-domains': '# Domains',
+      'deploy-from-github': '# Deploys',
+      executions: '# Disposable isolated runs',
+      security: '# Security',
+    };
+
+    for (const [slug, heading] of Object.entries(expected)) {
+      expect(findDoc(slug), slug).toBeDefined();
+      expect(docSource(slug), slug).toContain(heading);
+    }
+  });
+
   it('uses unique slugs', () => {
     const slugs = DOC_ENTRIES.map((e) => e.slug);
     expect(new Set(slugs).size).toBe(slugs.length);
@@ -31,7 +48,9 @@ describe('docs manifest', () => {
     // These become paths and are prerendered to directories, so anything
     // needing escaping would break both.
     for (const entry of DOC_ENTRIES) {
-      expect(entry.slug).toMatch(/^[a-z0-9-]+$/);
+      // Underscores are valid unescaped path characters and preserve the
+      // already-published /docs/faas_openapi_spec compatibility URL.
+      expect(entry.slug).toMatch(/^[a-z0-9_-]+$/);
     }
   });
 

@@ -52,6 +52,15 @@ before the codeload fetch starts, so a `main` ref that moves
 between CI runs still produces an immutable SHA-pinned build
 row.
 
+To queue the deployment without waiting for the build, pass
+`--no-wait`. This returns the deployment id and URL as soon as the
+control plane accepts the request; omit it (the default) when the
+command should stream build progress until the app is live.
+
+```bash
+gregale deploy --repo onebox-faas/hello --ref main --no-wait
+```
+
 ## Failure modes
 
 | Server response | What it means | What to do |
@@ -62,12 +71,18 @@ row.
 | `400 invalid_ref` | `--ref` is not a branch, tag, or 7+/40-char SHA. | Pin to a SHA or a real branch / tag. |
 | `429 plan_limit_*` | Per-plan concurrency / RAM cap reached. | Wait for a slot, or upgrade. |
 
-CI retries of the same `gregale deploy` line mint a fresh
-`Idempotency-Key` on every invocation, so each retry produces
-a distinct build row. If your CI needs a true dedupe (same key
-across retries folds to one row), set `Idempotency-Key` on the
-SDK call directly — `Client.DeployFromSourceRef` accepts the
-underlying HTTP shape.
+The CLI derives a stable retry key from the repo, ref, and deploy intent.
+CI may provide an explicit logical key when several jobs can retry the same
+release:
+
+```bash
+gregale deploy --repo onebox-faas/hello --ref "$GITHUB_SHA" \
+  --idempotency-key "release-$GITHUB_SHA"
+```
+
+The CLI scopes that logical key to the source-ref transport before sending it
+to apid, so a replay folds to the original build row without colliding with a
+different deploy transport.
 
 ## What it is NOT
 
@@ -91,11 +106,12 @@ underlying HTTP shape.
 ## GitHub Actions
 
 For teams that want explicit-CI deploys (workflow run, not push
-listener), the first-party Gregale deploy action wraps this same
-endpoint. The action is a composite that
-vendors the `gregale` CLI per release, so a workflow pin (`@v1`)
-is deterministic and a bundled `cli-version` output surfaces the
-exact version for drift detection.
+listener), the first-party `poyrazK/faas/.github/actions/deploy`
+action wraps this same endpoint. The action is a composite that
+vendors the `gregale` CLI per release. The public-beta `@v0` moving tag
+resolves to that release bundle, and the `cli-version` output surfaces the
+exact version for drift detection. Pin the resolved 40-character commit SHA
+when the workflow must be immutable.
 
 ### Generate a starter workflow
 
@@ -124,6 +140,12 @@ across repos.
   string the customer is expected to edit.
 - `app: my-app` — the slug from `gregale connect`. The snippet
   generator picks the slug from `--name` / cwd.
+- `wait: "false"` — the generated workflow queues the deployment and
+  continues, so a slow build does not hold the GitHub runner. Set it to
+  `"true"` when the job must block until the app is live.
+- `checks: write` — lets the Action publish a **Gregale deployment** Check
+  Run linking to the control-plane record. The deployment still works without
+  this permission; the link remains available through the Action output.
 
 ### Failure modes (Action-specific)
 
@@ -135,14 +157,37 @@ action additionally:
 - Surfaces the RFC 7807 `Code` + `Detail` as a single
   `::error file=action.yml,line=1::code=<code> — <detail>` line.
 - Writes the new `deployment_id`, `status`, `url`, and
-  `cli-version` to `$GITHUB_OUTPUT` so downstream steps can
+  `check-run-id`, and `cli-version` to `$GITHUB_OUTPUT` so downstream steps can
   chain off them.
+- Appends a GitHub Step Summary with the queued/live status and deployment
+  link. The default is asynchronous (`status=queued`); `wait: "true"`
+  changes the terminal status to `live` or a failure state.
+- The asynchronous Check Run is neutral (request accepted, deployment still
+  running) rather than an indefinitely pending check; synchronous runs update
+  it to the final result.
 
-### What's NOT in the first action
+### Authentication
 
-- **OIDC / keyless deployment.** The first action uses the
-  existing bearer-token contract. A follow-up proposal will
-  add `permissions: id-token: write` + a token-exchange step.
+The Action uses GitHub OIDC by default. Grant `permissions: id-token: write`;
+the job JWT is exchanged through `/v1/auth/oidc/exchange` for a five-minute
+deploy bearer. The optional `api-key` input remains available for installations
+that have not configured an OIDC subject binding yet.
+
+### Repository discovery for automation
+
+Customers with a `github:manage` API key can list the repositories visible to
+their connected GitHub App installation without copying an installation id:
+
+```http
+GET /v1/github/repos
+Authorization: Bearer <key-with-github:manage>
+```
+
+The response contains repository id, full name, default branch, and visibility.
+If no GitHub App installation exists, the API returns
+`github_install_not_found`; complete `gregale connect github` once, then retry.
+
+### What's not automated by the Action
 - **PR-preview environments.** Each deploy is a fresh
   deployment id; the action does not create or tear down
   preview URLs.
@@ -156,23 +201,16 @@ non-goals.
 
 ## Webhook secrets (push-to-deploy)
 
-The push-to-deploy loop is wired end-to-end (issue #739
-PR-A + PR-B + PR-D). The webhook verifier at
-`pkg/githubd/webhook.go::VerifyPushSignature` reads the secret
-from `github_webhook_secrets` keyed by `installation_id` (PR-D
-/ ADR-012 §7), falling back to the platform-wide
-`FAAS_GITHUB_WEBHOOK_SECRET` for installs that haven't been
-migrated. Per-tenant rotation:
+The push-to-deploy loop is wired end-to-end. GitHub App webhook
+deliveries are signed with the App's single webhook secret, so both
+`gatewayd-internal` and `githubd` must receive the same
+`FAAS_GITHUB_WEBHOOK_SECRET`. `githubd` verifies the signature before
+persisting the delivery to its durable inbox and acknowledging GitHub;
+the worker then routes `push` and `pull_request` events asynchronously.
 
-```sh
-gregale github-webhook-secret set \
-    --installation-id <id> \
-    --secret <hex>   # or --from-stdin
-```
-
-Admin-scoped API key required. The Prometheus counter
-`githubd_webhook_secret_total{status="set"}` is emitted on every
-rotation so a dashboard alert can flag unexpected cadence.
+The older installation-scoped secret API remains only as a compatibility
+fallback for non-GitHub senders that provide an explicit installation
+header. It is not the normal GitHub App delivery path.
 
 ## See also
 

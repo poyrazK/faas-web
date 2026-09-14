@@ -28,7 +28,16 @@ const { DOC_ENTRIES } = await import('../src/lib/docs-manifest.ts');
 const DOC_ROUTES = ['/docs', ...DOC_ENTRIES.map((entry) => `/docs/${entry.slug}`)];
 
 const INCIDENT_SHELL_ROUTE = '/status/incidents/00000000-0000-4000-8000-000000000000';
-const ROUTES = ['/', '/login', '/signup', '/status', INCIDENT_SHELL_ROUTE, ...DOC_ROUTES];
+const NOT_FOUND_ROUTE = '/404';
+const ROUTES = [
+  '/',
+  '/login',
+  '/signup',
+  '/status',
+  NOT_FOUND_ROUTE,
+  INCIDENT_SHELL_ROUTE,
+  ...DOC_ROUTES,
+];
 
 /** Routes worth indexing. /login and /signup are prerendered so their link
  *  previews are right, but they are not search results. Docs are the opposite:
@@ -110,7 +119,7 @@ for (const route of ROUTES) {
   // Canonical and og:url can only be written here — the router knows the
   // route, but not the host it will be served from.
   const perRoute = [];
-  if (SITE_URL && !incidentShell) {
+  if (SITE_URL && !incidentShell && route !== NOT_FOUND_ROUTE) {
     perRoute.push(`<link rel="canonical" href="${attr(absolute(route))}" />`);
     perRoute.push(`<meta property="og:url" content="${attr(absolute(route))}" />`);
     if (existsSync(join('public', OG_IMAGE))) {
@@ -198,9 +207,11 @@ for (const route of ROUTES) {
   const outFile =
     route === '/'
       ? TEMPLATE
-      : incidentShell
-        ? join(DIST, 'status', 'incidents', 'index.html')
-        : join(DIST, route, 'index.html');
+      : route === NOT_FOUND_ROUTE
+        ? join(DIST, '404.html')
+        : incidentShell
+          ? join(DIST, 'status', 'incidents', 'index.html')
+          : join(DIST, route, 'index.html');
   mkdirSync(dirname(outFile), { recursive: true });
   writeFileSync(outFile, doc);
 

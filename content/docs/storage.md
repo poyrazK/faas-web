@@ -3,6 +3,11 @@
 This platform is stateless. Your code runs in an ephemeral microVM
 that wakes, executes, parks, and forgets. Bring your own state.
 
+An opt-in [customer object-storage preview](object-storage.md) now lets Gregale
+manage private buckets on external S3 services (ADR-147). This does not add
+persistent VM disks or change runtime storage billing. Bring-your-own providers
+remain supported; native customer S3 keys are not part of the preview.
+
 ## Why stateless
 
 Scale-to-zero economics is the load-bearing reason: an instance
@@ -14,6 +19,22 @@ same snapshot, every park destroys local state — and snapshot
 reuse only works because instances are interchangeable. Local
 filesystem state is ephemeral by design; every wake is a fresh
 boot.
+
+## Ephemeral disk boundary
+
+Each app's main `drive1` is a writable ext4 upper layer. Its capacity is
+bounded by the plan's ephemeral disk ceiling, exposed as
+`ephemeral_disk_max_mb` in account and app effective-limit responses. The
+legacy `app_layer_max_mb` field remains for compatibility; both names refer to
+the same physical cap. Image builds enforce the ceiling before a snapshot is
+created, so a deployment cannot boot with a larger writable app layer than the
+plan allows.
+
+`/tmp` is a separate tmpfs and is also lost when the instance parks. Sidecar
+drives are read-only. Gregale does not attach durable customer volumes, and
+the API currently reports the per-plan ceiling rather than live free-space
+samples from a guest. Use object storage or an external database for state that
+must survive a wake/park cycle.
 
 The platform's deny-list (see `pkg/imaged/base.go` and the
 `stateless_only_violation` 422) rejects stateful base images at
@@ -36,6 +57,15 @@ env vars the runtime injects at wake.
 | Document        | MongoDB Atlas, Turso (libSQL)         | provider-specific |
 | Queue / scheduler | Upstash QStash, AWS SQS             | `QSTASH_TOKEN`, etc. |
 
+> **Note on platform-owned edge response cache (ADR-122).** Gregale
+> also ships a *bounded, in-process, per-`gatewayd-internal`* response
+> cache gated on a per-app `kind=cache` edge rule. It is **not** a KV
+> replacement — opt-in only, default-off, no persistence, no cross-node
+> sharing, no bodies at rest, no cross-instance consistency. It exists
+> to avoid *wakes* for hot cacheable GET paths, not to give you
+> multi-region cache. For everything else — durable cache, KV with TTL,
+> pub/sub, sessions — bring your own from the table above.
+
 ## Wiring it up
 
 `faas secrets set` writes the value to sealed secrets at rest; at
@@ -43,6 +73,17 @@ wake time the runner injects every secret as a plain environment
 variable inside the guest. No SDK lock-in, no special API surface,
 no extra headers — `process.env.DATABASE_URL` is what your code
 reads.
+
+For a new app, use `gregale deploy --secrets-file <path>` (or
+`gregale init --deploy --secrets-file <path>` for a template). Gregale
+creates the app, seals the bundle, and starts the first deployment in
+that order; run `faas secrets set` only after the app exists.
+
+For a monorepo project, the same bundle can be applied in one command with
+`gregale deploy --project --secrets-file <path>`. Gregale seals the values
+through the existing per-app secret path for every workload selected by the
+project plan; use `faas secrets set` afterward when one workload needs an
+override.
 
 ```sh
 faas secrets set --app <slug> DATABASE_URL='postgres://user:pass@host/db?sslmode=require'
