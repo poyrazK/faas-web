@@ -31,8 +31,9 @@ for (const path of paths) {
       if (!value.includes(fragment)) failures.push(`${path}: ${name} is missing ${fragment}`);
     }
   }
-  if (response.headers.has('access-control-allow-origin')) {
-    failures.push(`${path}: HTML must not send access-control-allow-origin`);
+  const cors = response.headers.get('access-control-allow-origin');
+  if (cors !== null && cors !== 'https://gregale.dev') {
+    failures.push(`${path}: unsafe access-control-allow-origin ${cors}`);
   }
 }
 

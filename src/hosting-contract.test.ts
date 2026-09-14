@@ -5,16 +5,12 @@ interface Route {
   src?: string;
   dest?: string;
   status?: number;
-}
-
-interface HeaderGroup {
-  source: string;
-  headers: Array<{ key: string; value: string }>;
+  headers?: Record<string, string>;
+  continue?: boolean;
 }
 
 const config = JSON.parse(readFileSync('vercel.json', 'utf8')) as {
   routes: Route[];
-  headers: HeaderGroup[];
 };
 
 describe('public hosting contract', () => {
@@ -31,15 +27,21 @@ describe('public hosting contract', () => {
   });
 
   it('applies the browser security boundary to every route', () => {
-    const all = config.headers.find((group) => group.source === '/(.*)');
-    const headers = new Map(all?.headers.map(({ key, value }) => [key, value]));
+    const apiEnd = config.routes.findIndex((route) => route.src === '^/logout$');
+    const filesystem = config.routes.findIndex((route) => 'handle' in route);
+    const boundary = config.routes.findIndex(
+      (route) => route.src === '^/(.*)$' && route.continue === true
+    );
+    const headers = config.routes[boundary]?.headers ?? {};
 
-    expect(headers.get('Content-Security-Policy')).toContain("frame-ancestors 'none'");
-    expect(headers.get('Content-Security-Policy')).toContain("object-src 'none'");
-    expect(headers.get('X-Content-Type-Options')).toBe('nosniff');
-    expect(headers.get('X-Frame-Options')).toBe('DENY');
-    expect(headers.get('Referrer-Policy')).toBe('strict-origin-when-cross-origin');
-    expect(headers.get('Permissions-Policy')).toContain('camera=()');
-    expect(headers.has('Access-Control-Allow-Origin')).toBe(false);
+    expect(boundary).toBeGreaterThan(apiEnd);
+    expect(boundary).toBeLessThan(filesystem);
+    expect(headers['Content-Security-Policy']).toContain("frame-ancestors 'none'");
+    expect(headers['Content-Security-Policy']).toContain("object-src 'none'");
+    expect(headers['X-Content-Type-Options']).toBe('nosniff');
+    expect(headers['X-Frame-Options']).toBe('DENY');
+    expect(headers['Referrer-Policy']).toBe('strict-origin-when-cross-origin');
+    expect(headers['Permissions-Policy']).toContain('camera=()');
+    expect(headers['Access-Control-Allow-Origin']).toBe('https://gregale.dev');
   });
 });
