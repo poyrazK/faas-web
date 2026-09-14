@@ -1,3 +1,4 @@
+import { RESTORE_TARGET, RESTORE_CONTEXT } from '@/lib/platform-claims';
 import { useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createFileRoute, Link, useParams } from '@tanstack/react-router';
 import { motion, useReducedMotion } from 'motion/react';
@@ -339,8 +340,7 @@ function FunctionDetailPage() {
                   if (
                     !(await confirm({
                       title: `Park ${fn.name}?`,
-                      description:
-                        'Running instances snapshot and release now. The next request wakes it cold — under 350 ms, but not zero.',
+                      description: `Running instances snapshot and release now. The next request pays the wake cost. ${RESTORE_TARGET}. ${RESTORE_CONTEXT}`,
                       confirmLabel: 'Park',
                     }))
                   )
