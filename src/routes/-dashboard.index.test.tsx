@@ -20,7 +20,7 @@ vi.mock('@/lib/store', () => ({
         name: 'api',
         runtime: 'node22',
         memoryMb: 256,
-        state: 'running',
+        state: 'error',
         url: 'https://api.example.com',
         invocations24h: 100,
         avgDurationMs: 24,
@@ -180,6 +180,7 @@ it('gates Free metrics and range controls while preserving usage and instance re
   expect(screen.getByText('GB-h left')).toBeInTheDocument();
   expect(screen.queryByText('metrics unavailable')).not.toBeInTheDocument();
   expect(screen.queryByText('Total requests')).not.toBeInTheDocument();
+  expect(screen.queryByText('1.00%')).not.toBeInTheDocument();
   expect(useAppsMetrics).toHaveBeenLastCalledWith('24h', { enabled: false });
   await userEvent.click(screen.getByRole('button', { name: 'Refresh analytics' }));
   expect(metricsRefetch).not.toHaveBeenCalled();

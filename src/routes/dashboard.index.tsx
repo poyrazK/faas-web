@@ -499,9 +499,11 @@ function OverviewPage() {
                   className="pressable inline-flex items-center gap-1.5 rounded font-mono text-xs hover:text-foreground"
                 >
                   {app.name}
-                  <span style={{ color: 'var(--status-critical)' }}>
-                    {app.errorRatePct.toFixed(2)}%
-                  </span>
+                  {paidAccess && (
+                    <span style={{ color: 'var(--status-critical)' }}>
+                      {app.errorRatePct.toFixed(2)}%
+                    </span>
+                  )}
                 </Link>
               ))}
             </p>
