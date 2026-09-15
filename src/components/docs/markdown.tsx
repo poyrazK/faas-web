@@ -3,6 +3,7 @@ import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Link } from '@tanstack/react-router';
 import { CopyButton } from '@/components/docs/copy-button';
+import { DOC_ENTRIES } from '@/lib/docs-manifest';
 import { slugifyHeading } from '@/lib/docs-content';
 
 /**
@@ -61,6 +62,33 @@ function heading(level: 2 | 3 | 4) {
   };
 }
 
+function DocLink({ href, children }: { href?: string; children?: ReactNode }) {
+  const target = href ?? '';
+  // Docs cross-reference each other by slug; those go through the router so
+  // they preload and do not reload the document.
+  if (target.startsWith('/docs/')) {
+    return (
+      <Link
+        to={target.split('#')[0]}
+        hash={target.split('#')[1]}
+        className="text-brand underline-offset-4 hover:underline"
+      >
+        {children}
+      </Link>
+    );
+  }
+  const external = /^https?:\/\//.test(target);
+  return (
+    <a
+      href={target}
+      className="text-brand underline-offset-4 hover:underline"
+      {...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+    >
+      {children}
+    </a>
+  );
+}
+
 const COMPONENTS: Components = {
   h1: heading(2),
   h2: heading(2),
@@ -69,28 +97,7 @@ const COMPONENTS: Components = {
 
   p: ({ children }) => <p className="mt-4 leading-relaxed text-muted-foreground">{children}</p>,
 
-  a: ({ href, children }) => {
-    const target = href ?? '';
-    // Docs cross-reference each other by slug; those go through the router so
-    // they preload and do not reload the document.
-    if (target.startsWith('/docs/')) {
-      return (
-        <Link to={target} className="text-brand underline-offset-4 hover:underline">
-          {children}
-        </Link>
-      );
-    }
-    const external = /^https?:\/\//.test(target);
-    return (
-      <a
-        href={target}
-        className="text-brand underline-offset-4 hover:underline"
-        {...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
-      >
-        {children}
-      </a>
-    );
-  },
+  a: DocLink,
 
   ul: ({ children }) => (
     <ul className="mt-4 flex list-disc flex-col gap-2 pl-5 text-muted-foreground marker:text-muted-foreground/50">
@@ -183,10 +190,28 @@ const COMPONENTS: Components = {
   strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
 };
 
-export function Markdown({ source }: { source: string }) {
+function resolveDocHref(href: string, sourcePath?: string): string {
+  if (!sourcePath || /^(?:[a-z][a-z0-9+.-]*:|[/#?])/i.test(href)) return href;
+  const resolved = new URL(href, `https://source.invalid/${sourcePath}`);
+  const path = resolved.pathname.slice(1);
+  const published = DOC_ENTRIES.find((entry) => entry.source === path);
+  return published
+    ? `/docs/${published.slug}${resolved.search}${resolved.hash}`
+    : `https://github.com/poyrazK/faas/blob/main/${path}${resolved.search}${resolved.hash}`;
+}
+
+export function Markdown({ source, sourcePath }: { source: string; sourcePath?: string }) {
   return (
     <div className="text-sm">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={COMPONENTS}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          ...COMPONENTS,
+          a: ({ href, children }) => (
+            <DocLink href={resolveDocHref(href ?? '', sourcePath)}>{children}</DocLink>
+          ),
+        }}
+      >
         {source}
       </ReactMarkdown>
     </div>

@@ -1,38 +1,49 @@
-import { render, screen, within } from '@testing-library/react';
 import { GlimmProvider } from 'glimm/react';
+import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { withRouter } from '@/test/router';
+import { PLAN_CATALOG, formatPlanPrice } from '@/lib/plan-catalog';
 import { Pricing } from './pricing';
 
-function renderPricing() {
-  return render(
-    withRouter(
-      <GlimmProvider palette="lagoon">
-        <Pricing />
-      </GlimmProvider>
-    )
-  );
-}
-
 describe('beta pricing', () => {
-  it('offers beta signup instead of purchasable plans at the pricing anchor', async () => {
-    renderPricing();
-    const pricing = await screen.findByRole('region', { name: /pricing coming soon/i });
+  it('publishes the generated catalog with billing explicitly disabled and no checkout controls', async () => {
+    render(
+      withRouter(
+        <GlimmProvider palette="lagoon">
+          <Pricing />
+        </GlimmProvider>
+      )
+    );
+    const pricing = await screen.findByRole('region', { name: 'Plans and pricing' });
     expect(pricing).toHaveAttribute('id', 'pricing');
-    expect(within(pricing).getByRole('link', { name: /join the beta/i })).toHaveAttribute(
+    expect(
+      within(pricing).getByText(/paid billing and checkout are disabled during beta/i)
+    ).toBeInTheDocument();
+    expect(within(pricing).getByRole('link', { name: 'Join the beta' })).toHaveAttribute(
       'href',
       '/signup'
     );
-    expect(within(pricing).getAllByRole('link')).toHaveLength(1);
-    expect(within(pricing).queryByRole('button')).not.toBeInTheDocument();
-  });
-
-  it('makes obscured prices and plan controls inert and hidden from assistive technology', async () => {
-    renderPricing();
-    const plan = await screen.findByText('Select Hobby');
-    const preview = plan.closest('[inert]');
-    expect(preview).not.toBeNull();
-    expect(preview).toHaveAttribute('aria-hidden', 'true');
-    expect(screen.queryByRole('link', { name: 'Select Hobby' })).not.toBeInTheDocument();
+    expect(
+      within(pricing).queryByRole('link', { name: /select|buy|upgrade/i })
+    ).not.toBeInTheDocument();
+    expect(pricing).not.toHaveTextContent(/1M invocations|\$|Enterprise/);
+    for (const plan of PLAN_CATALOG.plans) {
+      const card = within(pricing).getByRole('article', { name: plan.name });
+      expect(card).toHaveTextContent(formatPlanPrice(plan.monthly));
+      for (const [label, value] of Object.entries({
+        'Deployed apps': plan.deployedApps,
+        'Developer apps': plan.developerApps,
+        'Concurrent instances / app': plan.concurrentInstances,
+        'RAM / app': `${plan.ramMb} MB`,
+        'Included GB-RAM-hours': plan.includedGbHours,
+        'App layer': `${plan.appLayerMb} MB`,
+        'Idle timeout': plan.idleTimeout,
+      })) {
+        expect(within(card).getByText(label).nextElementSibling).toHaveTextContent(String(value));
+      }
+    }
+    expect(
+      within(pricing).getByRole('link', { name: 'Plan limits and billing details' })
+    ).toHaveAttribute('href', '/docs/plans');
   });
 });

@@ -87,7 +87,33 @@
       "headers": { "X-Robots-Tag": "noindex, follow" }
     },
     { "handle": "filesystem" },
-    { "src": "^/docs(?:/.*)?$", "status": 404, "dest": "/404.html" },
-    { "src": "^(?:/(.*))?$", "dest": "/index.html" }
+    {
+      "src": "^/docs(?:/.*)?$",
+      "status": 404,
+      "dest": "/404.html",
+      "headers": {
+        "Cache-Control": "no-store"
+      }
+    },
+    {
+      "src": "^/dashboard(?:/(?:account|alerts|analytics|apis|audit|builds|crons|databases|debug|deployments|domains|edge-rules|env|import|invoices|jobs|keys|logs|metrics|mirrors|openapi|plans|postgres|queues|secrets|security|settings|storage|team|templates|tenant-surfaces|traces|triggers(?:/[^/]+)?|usage|webhooks|workers|workflows(?:/[^/]+)?))?/?$",
+      "dest": "/index.html"
+    },
+    {
+      "src": "^/onboarding/?$",
+      "dest": "/index.html"
+    },
+    {
+      "src": "^/invite/[^/]+/?$",
+      "dest": "/index.html"
+    },
+    {
+      "src": "^/(.*)$",
+      "status": 404,
+      "dest": "/404.html",
+      "headers": {
+        "Cache-Control": "no-store"
+      }
+    }
   ]
 }

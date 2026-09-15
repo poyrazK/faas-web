@@ -1,3 +1,4 @@
+import { FREE_ALLOWANCE } from '@/lib/plan-catalog';
 import { useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Link } from '@tanstack/react-router';
@@ -53,7 +54,7 @@ const COPY = {
   },
   signup: {
     title: 'Create your account',
-    subtitle: 'Start with 1M invocations free every month. No credit card.',
+    subtitle: `${FREE_ALLOWANCE}. No credit card.`,
     cta: 'Create account',
     pendingLabel: 'Creating account…',
     switchText: 'Already have an account?',

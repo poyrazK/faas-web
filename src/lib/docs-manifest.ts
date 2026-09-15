@@ -1,3 +1,5 @@
+import { RESTORE_TARGET } from './platform-claims.ts';
+
 /**
  * The documentation table of contents.
  *
@@ -49,8 +51,7 @@ export const DOC_SECTIONS: DocSection[] = [
         slug: 'scale-to-zero',
         source: 'docs/cold-wake.md',
         title: 'How scaling to zero works',
-        summary:
-          'Parked apps hold zero resident RAM. The first request pays the wake cost — around 350ms — and the rest run warm.',
+        summary: `Parked apps hold zero resident RAM. ${RESTORE_TARGET}. Measurement boundaries and cold-boot fallback.`,
       },
       {
         slug: 'storage',
@@ -144,6 +145,12 @@ export const DOC_SECTIONS: DocSection[] = [
     title: 'Reference',
     blurb: 'Limits and rules the platform enforces.',
     entries: [
+      {
+        slug: 'plans',
+        source: 'docs/plans.md',
+        title: 'Plans and pricing',
+        summary: 'Generated platform prices, included compute, and hard plan limits.',
+      },
       {
         slug: 'egress-denylist',
         source: 'docs/denylist.md',

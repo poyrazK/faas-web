@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react';
+import { RestoreTarget } from '@/components/restore-target';
+import { RESTORE_CONTEXT } from '@/lib/platform-claims';
 import { Link } from '@tanstack/react-router';
 import { DotCutCanvas } from '@/components/dotcut/dot-cut-canvas';
 import type { Scene } from '@/components/dotcut/scenes';
@@ -34,7 +36,6 @@ const AUTH_SCENES: Scene[] = [
 ];
 
 const PROOF_POINTS = [
-  ['Cold start p50', 'under 350ms'],
   ['Idle cost', 'zero'],
   ['Isolation', 'hardware microVM'],
 ];
@@ -55,6 +56,9 @@ export function AuthLayout({ children }: { children: ReactNode }) {
         {/* Privacy and Terms linked to `#`. They are pages this product owes
             its customers, but linking them before they exist is worse than
             omitting them — put them back here once they are written. */}
+        <p className="mb-3 max-w-md text-xs leading-relaxed text-muted-foreground">
+          <RestoreTarget />. {RESTORE_CONTEXT}
+        </p>
         <p className="text-xs text-muted-foreground">© {new Date().getFullYear()} Gregale</p>
       </div>
 

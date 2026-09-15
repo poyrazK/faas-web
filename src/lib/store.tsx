@@ -12,6 +12,8 @@ import {
   type MetricsRange,
 } from './api/queries';
 import { slugIndex, toDeployment, toWorkflow } from './api/adapters';
+import { useAuth } from './auth';
+import { isPaidPlan } from './plan';
 import { isDeploymentTerminal } from './deployment-status';
 import { NOW, type Deployment, type Runtime, type Workflow } from './mock-data';
 
@@ -76,7 +78,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
   // Metrics are a separate query on purpose: a degraded Prometheus zeroes this
   // response without taking the app list down with it, and the list is what the
   // console is actually for.
-  const metricsQuery = useAppsMetrics(DEFAULT_RANGE);
+  const { account } = useAuth();
+  const paidAccess = isPaidPlan(account?.plan);
+  const metricsQuery = useAppsMetrics(DEFAULT_RANGE, { enabled: paidAccess });
 
   const createApp = useCreateApp();
   const rollback = useRollback();
@@ -96,8 +100,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [latestAppDeployments.data]);
 
   const workflows = useMemo(
-    () => apps.map((app) => toWorkflow(app, metricsQuery.data, latestByAppId.get(app.id))),
-    [apps, metricsQuery.data, latestByAppId]
+    () =>
+      apps.map((app) =>
+        toWorkflow(app, paidAccess ? metricsQuery.data : undefined, latestByAppId.get(app.id))
+      ),
+    [apps, paidAccess, metricsQuery.data, latestByAppId]
   );
 
   const deployments = useMemo(() => {

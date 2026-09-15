@@ -9,6 +9,8 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const useAppsMetrics = vi.fn();
+let plan = 'hobby';
+const metricsRefetch = vi.fn();
 
 vi.mock('@/lib/store', () => ({
   useData: () => ({
@@ -18,7 +20,7 @@ vi.mock('@/lib/store', () => ({
         name: 'api',
         runtime: 'node22',
         memoryMb: 256,
-        state: 'running',
+        state: 'error',
         url: 'https://api.example.com',
         invocations24h: 100,
         avgDurationMs: 24,
@@ -36,14 +38,14 @@ vi.mock('@/lib/store', () => ({
 }));
 
 vi.mock('@/lib/auth', () => ({
-  useAuth: () => ({ account: { status: 'active' }, user: { name: 'Ada Lovelace' } }),
+  useAuth: () => ({ account: { status: 'active', plan }, user: { name: 'Ada Lovelace' } }),
 }));
 
 vi.mock('@/lib/api/queries', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/api/queries')>();
   return {
     ...actual,
-    useAppsMetrics: (range: string) => useAppsMetrics(range),
+    useAppsMetrics: (range: string, options: unknown) => useAppsMetrics(range, options),
     useUsageSummary: () => ({
       data: {
         included_gb_hours: 100,
@@ -116,11 +118,13 @@ function metrics(range: string, requestCount: number) {
     isPending: false,
     isRefetching: false,
     error: null,
-    refetch: vi.fn(),
+    refetch: metricsRefetch,
   };
 }
 
 beforeEach(() => {
+  plan = 'hobby';
+  metricsRefetch.mockReset();
   useAppsMetrics
     .mockReset()
     .mockImplementation((range: string) => metrics(range, range === '7d' ? 700 : 100));
@@ -147,4 +151,49 @@ describe('overview analytics window', () => {
     expect(await screen.findByText('700')).toBeInTheDocument();
     await waitFor(() => expect(router.state.location.search).toEqual({ range: '7d' }));
   });
+});
+
+function renderOverview() {
+  const root = createRootRoute();
+  const overview = Route.update({
+    id: '/dashboard/',
+    path: '/dashboard',
+    getParentRoute: () => root,
+  } as never);
+  const router = createRouter({
+    routeTree: root.addChildren([overview]),
+    history: createMemoryHistory({ initialEntries: ['/dashboard'] }),
+  });
+  return render(<RouterProvider router={router} />);
+}
+
+it('gates Free metrics and range controls while preserving usage and instance reads', async () => {
+  plan = 'free';
+  renderOverview();
+  expect(await screen.findByText('Metrics is available on Hobby and above')).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Compare plans' })).toHaveAttribute(
+    'href',
+    '/dashboard/plans'
+  );
+  expect(screen.getByRole('button', { name: '7d' })).toBeDisabled();
+  expect(screen.getByText('Memory now')).toBeInTheDocument();
+  expect(screen.getByText('GB-h left')).toBeInTheDocument();
+  expect(screen.queryByText('metrics unavailable')).not.toBeInTheDocument();
+  expect(screen.queryByText('Total requests')).not.toBeInTheDocument();
+  expect(screen.queryByText('1.00%')).not.toBeInTheDocument();
+  expect(useAppsMetrics).toHaveBeenLastCalledWith('24h', { enabled: false });
+  await userEvent.click(screen.getByRole('button', { name: 'Refresh analytics' }));
+  expect(metricsRefetch).not.toHaveBeenCalled();
+});
+
+it('shows unknown paid metrics for a degraded rollup instead of measured zeroes', async () => {
+  useAppsMetrics.mockImplementation((range: string) => {
+    const result = metrics(range, 0);
+    result.data.source = 'degraded';
+    return result;
+  });
+  renderOverview();
+  expect(await screen.findByText('metrics degraded — unknowns read as —')).toBeInTheDocument();
+  expect(screen.queryByText('Metrics is available on Hobby and above')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '7d' })).toBeEnabled();
 });

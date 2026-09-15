@@ -22,6 +22,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Odometer } from '@/components/ui/odometer';
 import { useData } from '@/lib/store';
 import { useAuth } from '@/lib/auth';
+import { isPaidPlan } from '@/lib/plan';
+import { PlanGate } from '@/components/dashboard/plan-gate';
 import {
   useApps,
   useAppsMetrics,
@@ -327,7 +329,8 @@ function OverviewPage() {
   const usage = useUsageSummary();
   // The default remains a cache hit with the store. Other windows are queried
   // directly so the overview changes the underlying rollup, not just its label.
-  const metrics = useAppsMetrics(range);
+  const paidAccess = isPaidPlan(account?.plan);
+  const metrics = useAppsMetrics(range, { enabled: paidAccess });
   // The overview breathes on a gentle poll while it is on screen: this
   // observer's interval joins the store's own (TanStack runs the smallest
   // among observers) and leaves with the page. Real reads on a cadence —
@@ -338,7 +341,9 @@ function OverviewPage() {
   useApps({ refetchInterval: 15_000 });
 
   const phase = queryPhase({ error, loading });
-  const metricsDegraded = Boolean(metrics.data && metrics.data.source !== 'prometheus');
+  const metricsDegraded = Boolean(
+    paidAccess && metrics.data && metrics.data.source !== 'prometheus'
+  );
   const metricsUnavailable = metrics.isPending || Boolean(metrics.error) || metricsDegraded;
   const failing = useMemo(() => workflows.filter((w) => w.state === 'error'), [workflows]);
 
@@ -396,7 +401,7 @@ function OverviewPage() {
   const refreshAll = () => {
     refresh();
     void usage.refetch();
-    void metrics.refetch();
+    if (paidAccess) void metrics.refetch();
     void instances.refetch();
   };
 
@@ -494,9 +499,11 @@ function OverviewPage() {
                   className="pressable inline-flex items-center gap-1.5 rounded font-mono text-xs hover:text-foreground"
                 >
                   {app.name}
-                  <span style={{ color: 'var(--status-critical)' }}>
-                    {app.errorRatePct.toFixed(2)}%
-                  </span>
+                  {paidAccess && (
+                    <span style={{ color: 'var(--status-critical)' }}>
+                      {app.errorRatePct.toFixed(2)}%
+                    </span>
+                  )}
                 </Link>
               ))}
             </p>
@@ -521,7 +528,12 @@ function OverviewPage() {
                 metrics degraded — unknowns read as —
               </span>
             )}
-            <RangeSelector value={range} options={OVERVIEW_RANGES} onChange={setRange} />
+            <RangeSelector
+              value={range}
+              options={OVERVIEW_RANGES}
+              onChange={setRange}
+              disabled={!paidAccess}
+            />
             <button
               type="button"
               onClick={refreshAll}
@@ -534,58 +546,72 @@ function OverviewPage() {
           </div>
         </div>
 
+        {account && !paidAccess && (
+          <PlanGate
+            feature="Metrics"
+            description="Request counts, error rates, and wake metrics require a paid plan. Your compute usage and resident instances remain available below."
+          />
+        )}
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <StatCard
-            label="Total requests"
-            large
-            className="col-span-2"
-            hint={`Requests served across the fleet over the ${rangeDescription}.`}
-            sub={
-              metricsUnavailable
-                ? metricsDegraded
-                  ? 'metrics degraded'
-                  : 'metrics unavailable'
-                : `Across ${workflows.length} ${workflows.length === 1 ? 'app' : 'apps'}, ${rangeDescription}`
-            }
-          >
-            {metricsUnavailable ? UNKNOWN : <Odometer value={requests} format={formatCompact} />}
-          </StatCard>
-          <StatCard
-            label="Error rate"
-            large
-            className="col-span-2"
-            hint="Errored share of served requests, weighted by traffic."
-            sub={
-              metricsUnavailable
-                ? metricsDegraded
-                  ? 'metrics degraded'
-                  : 'metrics unavailable'
-                : `${formatCompact(Math.round((requests * errorPct) / 100))} errored, weighted by traffic`
-            }
-          >
-            {metricsUnavailable ? (
-              UNKNOWN
-            ) : (
-              <span style={errorPct > 1 ? { color: 'var(--status-critical)' } : undefined}>
-                {errorPct.toFixed(2)}%
-              </span>
-            )}
-          </StatCard>
+          {paidAccess && (
+            <>
+              <StatCard
+                label="Total requests"
+                large
+                className="col-span-2"
+                hint={`Requests served across the fleet over the ${rangeDescription}.`}
+                sub={
+                  metricsUnavailable
+                    ? metricsDegraded
+                      ? 'metrics degraded'
+                      : 'metrics unavailable'
+                    : `Across ${workflows.length} ${workflows.length === 1 ? 'app' : 'apps'}, ${rangeDescription}`
+                }
+              >
+                {metricsUnavailable ? (
+                  UNKNOWN
+                ) : (
+                  <Odometer value={requests} format={formatCompact} />
+                )}
+              </StatCard>
+              <StatCard
+                label="Error rate"
+                large
+                className="col-span-2"
+                hint="Errored share of served requests, weighted by traffic."
+                sub={
+                  metricsUnavailable
+                    ? metricsDegraded
+                      ? 'metrics degraded'
+                      : 'metrics unavailable'
+                    : `${formatCompact(Math.round((requests * errorPct) / 100))} errored, weighted by traffic`
+                }
+              >
+                {metricsUnavailable ? (
+                  UNKNOWN
+                ) : (
+                  <span style={errorPct > 1 ? { color: 'var(--status-critical)' } : undefined}>
+                    {errorPct.toFixed(2)}%
+                  </span>
+                )}
+              </StatCard>
 
-          <StatCard
-            label="Wake p95"
-            hint="95th-percentile cold-start time across the fleet."
-            sub="Cold start, fleet-wide"
-          >
-            {metricsUnavailable || !wakeP95 ? (
-              UNKNOWN
-            ) : (
-              <>
-                {Math.round(wakeP95)}
-                <span className="ml-1 text-sm font-normal text-muted-foreground">ms</span>
-              </>
-            )}
-          </StatCard>
+              <StatCard
+                label="Wake p95"
+                hint="95th-percentile cold-start time across the fleet."
+                sub="Cold start, fleet-wide"
+              >
+                {metricsUnavailable || !wakeP95 ? (
+                  UNKNOWN
+                ) : (
+                  <>
+                    {Math.round(wakeP95)}
+                    <span className="ml-1 text-sm font-normal text-muted-foreground">ms</span>
+                  </>
+                )}
+              </StatCard>
+            </>
+          )}
           <StatCard
             label="Memory now"
             hint="RAM held by resident instances at this moment."
@@ -670,7 +696,7 @@ function OverviewPage() {
           because the series is: the platform has no account-level rollup of
           `/analytics/timeseries`, and summing apps with different retention
           would thin out at the earlier end while looking like a total. */}
-      {analyticsApp.slug && (
+      {paidAccess && analyticsApp.slug && (
         <AnalyticsSection
           apps={analyticsApp.apps}
           slug={analyticsApp.slug}

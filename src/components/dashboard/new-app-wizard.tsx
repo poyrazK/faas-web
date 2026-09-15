@@ -1,3 +1,5 @@
+import { RestoreTarget } from '@/components/restore-target';
+import { RESTORE_CONTEXT } from '@/lib/platform-claims';
 import { useEffect, useState } from 'react';
 import { useUnsavedGuard } from '@/lib/use-unsaved-guard';
 import { RepoPicker } from '@/components/dashboard/repo-picker';
@@ -786,7 +788,7 @@ export function NewAppWizard({
                 <div>
                   <p className="text-sm font-medium">Scale to zero</p>
                   <p className="mt-1 max-w-md text-xs leading-relaxed text-muted-foreground">
-                    Snapshot the microVM after 60s idle. Wakes in under 350ms on the next request.
+                    Snapshot the microVM when idle. <RestoreTarget />. {RESTORE_CONTEXT}
                   </p>
                   {account && !canKeepResident && (
                     <p id="scale-to-zero-plan-note" className="mt-1 text-xs text-muted-foreground">

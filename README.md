@@ -225,11 +225,13 @@ CSS via the blanket `[class*='animate-']` rule in `index.css`.
 
 ## Deployment
 
-The build output in `dist/` is fully static, but routing happens in the
-browser — `/` is the only real file. **The host must serve `index.html` for
-every unmatched path**, or refreshing on `/dashboard/logs` (or opening a shared
-link to it) 404s before the router ever runs. `vite preview` does this
-automatically, which is why the problem only ever shows up in production.
+The build output in `dist/` is static. Public routes have prerendered HTML;
+registered dashboard, onboarding, and invitation routes receive `index.html`
+for client routing. Unknown URLs receive `404.html` with HTTP 404. Keep
+`vercel.json` and `public/_redirects` in sync when adding client routes;
+`hosting-contract.test.ts` checks that registered deep links remain reachable.
+Vite preview uses a broader SPA fallback, so production status codes also need
+`npm run smoke:hosting` against the deployed host.
 
 **The API must win over the SPA fallback.** `apid` and this app are served from
 one origin, so whatever fronts the deployment has to send `/v1/*`, `/auth/*`,
@@ -262,17 +264,9 @@ Vercel's native Git integration is connected to `poyrazK/faas-web`. Pull
 requests receive preview deployments automatically, and pushes to `main`
 deploy to `gregale.dev`. The `main` branch is the production branch.
 
-Anywhere else, the equivalent one-liner:
-
-```nginx
-# Nginx
-location / { try_files $uri $uri/ /index.html; }
-```
-
-```apache
-# Apache — .htaccess
-FallbackResource /index.html
-```
+For other hosts, serve existing files first, rewrite only registered client
+routes to the app shell, and use `404.html` for unmatched URLs. A catch-all
+rewrite to `index.html` hides missing pages behind HTTP 200.
 
 ## Page titles
 
