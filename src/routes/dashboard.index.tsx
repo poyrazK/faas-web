@@ -521,7 +521,16 @@ function OverviewPage() {
       {/* --- Analytics --------------------------------------------- */}
       <section className="animate-item-enter relative flex flex-col gap-4 [animation-delay:120ms]">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-sm font-medium">Analytics</h2>
+          <h2 className="text-sm font-medium">
+            <Link
+              to="/dashboard/analytics"
+              search={{ window: range === '7d' ? '7d' : '24h' }}
+              className="pressable inline-flex items-center gap-1.5 rounded hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            >
+              Analytics
+              <ArrowRight aria-hidden="true" className="h-3.5 w-3.5" />
+            </Link>
+          </h2>
           <div className="flex items-center gap-2">
             {metricsDegraded && (
               <span className="text-xs" style={{ color: 'var(--status-warning)' }}>

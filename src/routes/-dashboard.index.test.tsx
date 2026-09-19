@@ -1,6 +1,7 @@
 import {
   createMemoryHistory,
   createRootRoute,
+  createRoute,
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
@@ -131,6 +132,40 @@ beforeEach(() => {
 });
 
 describe('overview analytics window', () => {
+  it.each([
+    ['24h', '24h', 'pointer'],
+    ['7d', '7d', 'keyboard'],
+    ['1h', '24h', 'pointer'],
+  ])(
+    'opens Analytics from the heading with %s mapped to %s using %s',
+    async (range, window, input) => {
+      const root = createRootRoute();
+      const overview = Route.update({
+        id: '/dashboard/',
+        path: '/dashboard',
+        getParentRoute: () => root,
+      } as never);
+      const analytics = createRoute({
+        getParentRoute: () => root,
+        path: '/dashboard/analytics',
+        component: () => <h1>Account analytics</h1>,
+      });
+      const router = createRouter({
+        routeTree: root.addChildren([overview, analytics]),
+        history: createMemoryHistory({ initialEntries: [`/dashboard?range=${range}`] }),
+      });
+      render(<RouterProvider router={router} />);
+      const link = await screen.findByRole('link', { name: 'Analytics' });
+      expect(link).toHaveAttribute('href', `/dashboard/analytics?window=${window}`);
+      if (input === 'keyboard') {
+        link.focus();
+        await userEvent.keyboard('{Enter}');
+      } else await userEvent.click(link);
+      expect(await screen.findByRole('heading', { name: 'Account analytics' })).toBeInTheDocument();
+      expect(router.state.location.search).toEqual({ window });
+    }
+  );
+
   it('uses the selected range for the server rollup and preserves it in the URL', async () => {
     const root = createRootRoute();
     const overview = Route.update({
