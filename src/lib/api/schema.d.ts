@@ -2000,8 +2000,8 @@ export interface paths {
          *
          *       `1h` | `24h` (default) | `7d`
          *
-         *     `wake_queue_p95_ms` is the FLEET p95
-         *     (`gateway_wake_queue_wait_seconds` is unlabeled). On
+         *     `wake_queue_p95_ms` is null and `wake_queue_sample_status` is
+         *     `unavailable` until tenant-scoped telemetry is emitted. On
          *     Prometheus failure the endpoint returns 200 with zeroed
          *     fields and `source: "degraded: <reason>"`, matching the
          *     public status page contract. When Postgres is down but
@@ -11523,9 +11523,9 @@ export interface components {
             /** @description OCI image digest at the time of the scan. Sourced from deployments.image_digest, not re-inspected. Empty on the pre-feature backfill (status = "skipped" with no image to stamp). */
             image_digest?: string | null;
             severity_counts: components["schemas"]["SeverityCounts"];
-            /** @description Full CVE list, ordered by Grype's natural output (most-severe-first). The dashboard's "top 10" view sorts+truncates client-side. The /scan route returns the full list. */
-            vulnerabilities: components["schemas"]["Vulnerability"][];
-            /** @description Grype runner's last error message on a failed scan (status = "failed"). Empty on every other status. The PR-3 sink captures the message after the 1-retry backoff is exhausted. */
+            /** @description Full CVE list, ordered by Grype's natural output (most-severe-first). Null when stored scan evidence is missing or cannot be decoded; an empty array represents a readable scan with no findings. The /scan route returns the full list. */
+            vulnerabilities: components["schemas"]["Vulnerability"][] | null;
+            /** @description Grype runner's last error message on a failed scan, or a stored-result decoding error. A decoding error may accompany status complete because the status column remains authoritative; do not treat it as a clean scan. */
             error?: string | null;
         };
         /**
@@ -15765,8 +15765,10 @@ export interface components {
          *     (1h/24h/7d) summary of the customer-facing SLO signals,
          *     not a 5m slice for the dashboard. The fields overlap only
          *     on latency percentiles, error rate, and cold-boot rate — the
-         *     remaining fields (`wake_queue_p95_ms`, `throttled_total`,
-         *     `instance_hours`, `gb_hours`) are net-new per the issue.
+         *     remaining fields (`throttled_total`, `instance_hours`,
+         *     `gb_hours`) are net-new per the issue. `wake_queue_p95_ms` is
+         *     nullable and paired with `wake_queue_sample_status`; the value is
+         *     unavailable until the underlying histogram has a tenant label.
          *
          *     On Prometheus failure the endpoint returns 200 with
          *     zeroed fields and `source: "degraded: <reason>"`. When
@@ -15799,8 +15801,13 @@ export interface components {
             instance_hours: number;
             /** @description Sum of mb_seconds / 3600 / 1024 over the window (from `usage_minutes`). */
             gb_hours: number;
-            /** @description FLEET wake-queue p95 (`gateway_wake_queue_wait_seconds` is unlabeled). */
-            wake_queue_p95_ms: number;
+            /** @description Tenant-scoped wake-queue p95, or null when the source is unavailable or has no sample. */
+            wake_queue_p95_ms: number | null;
+            /**
+             * @description Availability of wake_queue_p95_ms. unavailable means tenant-scoped telemetry is not emitted.
+             * @enum {string}
+             */
+            wake_queue_sample_status: "available" | "no_sample" | "unavailable";
             /** Format: int64 */
             requests_total: number;
             /**
@@ -15960,7 +15967,13 @@ export interface components {
             instance_hours: number;
             /** @description Sum of mb_seconds / 3600 / 1024 across all apps for the account. */
             gb_hours: number;
-            wake_queue_p95_ms: number;
+            /** @description Account-scoped wake-queue p95, or null when the source is unavailable or has no sample. */
+            wake_queue_p95_ms: number | null;
+            /**
+             * @description Availability of the account wake-queue p95. unavailable means account-scoped telemetry is not emitted.
+             * @enum {string}
+             */
+            wake_queue_sample_status: "available" | "no_sample" | "unavailable";
             /** Format: int64 */
             requests_total: number;
             /** Format: int64 */
@@ -19750,7 +19763,8 @@ export interface operations {
                      *       "cold_boot_rate_pct": 4.2,
                      *       "instance_hours": 12,
                      *       "gb_hours": 3,
-                     *       "wake_queue_p95_ms": 14,
+                     *       "wake_queue_p95_ms": null,
+                     *       "wake_queue_sample_status": "unavailable",
                      *       "requests_total": 12000,
                      *       "throttled_total": 23
                      *     }
@@ -21709,7 +21723,8 @@ export interface operations {
                      *       "cold_boot_rate_pct": 3.1,
                      *       "instance_hours": 0,
                      *       "gb_hours": 0,
-                     *       "wake_queue_p95_ms": 12,
+                     *       "wake_queue_p95_ms": null,
+                     *       "wake_queue_sample_status": "unavailable",
                      *       "requests_total": 4321,
                      *       "throttled_total": 0
                      *     }

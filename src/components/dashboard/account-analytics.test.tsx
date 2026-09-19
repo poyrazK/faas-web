@@ -45,7 +45,8 @@ const account: components['schemas']['AccountSLOResponse'] = {
   cold_boot_rate_pct: 2.75,
   request_duration: { p50_ms: 12, p95_ms: 53, p99_ms: 104 },
   throttled_total: 17,
-  wake_queue_p95_ms: 8,
+  wake_queue_p95_ms: null,
+  wake_queue_sample_status: 'unavailable',
   instance_hours: 2,
   gb_hours: 1,
 };
@@ -261,6 +262,7 @@ describe('AccountAnalytics', () => {
     expect(hooks.useAppSlo).toHaveBeenLastCalledWith('alpha', '24h', { enabled: true });
     expect(hooks.useAppWakeTimeline).toHaveBeenLastCalledWith('alpha');
     expect(screen.getByRole('heading', { name: 'Service level' })).toBeInTheDocument();
+    expect(screen.getByText('Wake-queue telemetry unavailable.')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Wake timeline' })).toBeInTheDocument();
   });
 

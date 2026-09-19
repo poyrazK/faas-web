@@ -276,7 +276,16 @@ export function SloPanel({ slug }: { slug: string }) {
             />
             <StatTile
               label="Wake queue p95"
-              value={`${data.wake_queue_p95_ms.toFixed(1)} ms`}
+              value={
+                data.wake_queue_p95_ms == null ? '—' : `${data.wake_queue_p95_ms.toFixed(1)} ms`
+              }
+              note={
+                data.wake_queue_p95_ms == null
+                  ? data.wake_queue_sample_status === 'no_sample'
+                    ? 'No wake-queue samples in this window.'
+                    : 'Wake-queue telemetry unavailable.'
+                  : undefined
+              }
               state={tileState}
             />
           </div>
