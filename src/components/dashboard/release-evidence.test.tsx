@@ -47,3 +47,39 @@ it('distinguishes critical, high and medium vulnerability severities', () => {
   expect(screen.getByText('high')).toHaveStyle({ color: 'var(--status-serious)' });
   expect(screen.getByText('medium')).toHaveStyle({ color: 'var(--status-warning)' });
 });
+
+it.each([
+  [null, 'scan_result decode failed (server logs carry the detail)'],
+  [null, undefined],
+  [undefined, undefined],
+  [[], 'scan_result decode failed (server logs carry the detail)'],
+])(
+  'shows unavailable evidence for an unreadable completed scan (%j, %s)',
+  (vulnerabilities, error) => {
+    scan.mockReturnValue({
+      data: {
+        status: 'complete',
+        severity_counts: { critical: 0, high: 0, medium: 0, low: 0, unknown: 0 },
+        vulnerabilities,
+        error,
+      },
+      isPending: false,
+      error: null,
+    });
+    render(<ReleaseScans deploymentId="dep-1" />);
+    expect(screen.getByText(/Scan summary unavailable/)).toBeInTheDocument();
+    expect(screen.queryByText(/Nothing known in this image/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Audit row could not be decoded/)).toBeInTheDocument();
+  }
+);
+
+it('reports no known vulnerabilities only for a completed, readable empty scan', () => {
+  scan.mockReturnValue({
+    data: { status: 'complete', vulnerabilities: [], error: null },
+    isPending: false,
+    error: null,
+  });
+  render(<ReleaseScans deploymentId="dep-1" />);
+  expect(screen.getByText('Nothing known in this image.')).toBeInTheDocument();
+  expect(screen.queryByText(/Scan summary unavailable/)).not.toBeInTheDocument();
+});

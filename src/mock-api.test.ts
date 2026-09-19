@@ -99,7 +99,8 @@ describe('analytics mock contracts', () => {
       cold_boot_rate_pct: 4.2,
       instance_hours: 12,
       gb_hours: 3,
-      wake_queue_p95_ms: 14,
+      wake_queue_p95_ms: null,
+      wake_queue_sample_status: 'unavailable',
       requests_total: 12000,
       throttled_total: 23,
     });
@@ -115,7 +116,8 @@ describe('analytics mock contracts', () => {
       cold_boot_rate_pct: 3.1,
       instance_hours: 0,
       gb_hours: 0,
-      wake_queue_p95_ms: 12,
+      wake_queue_p95_ms: null,
+      wake_queue_sample_status: 'unavailable',
       requests_total: 4321,
       throttled_total: 0,
     });
