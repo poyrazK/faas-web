@@ -52,16 +52,24 @@ describe('Process', () => {
 });
 
 describe('product previews', () => {
-  it.each([0, 1, 3])(
-    'identifies preview %i as illustrative rather than live account data',
-    (index) => {
-      render(STEPS[index].panel);
+  // Addressed by title, not index: the four stops are ordered to read as a
+  // chronology, and that order is copy, not contract.
+  const panelFor = (title: string) => {
+    const step = STEPS.find((s) => s.title === title);
+    if (!step) throw new Error(`no step titled ${title}`);
+    return step.panel;
+  };
+
+  it.each(['Deploy', 'Park & wake', 'Observe'])(
+    'identifies the %s preview as illustrative rather than live account data',
+    (title) => {
+      render(panelFor(title));
       expect(screen.getByRole('figure', { name: /example/i })).toBeInTheDocument();
     }
   );
 
   it('makes the request status and duration understandable without column alignment', () => {
-    render(STEPS[3].panel);
+    render(panelFor('Observe'));
     const requests = screen.getByRole('table', { name: /requests/i });
     expect(within(requests).getByRole('columnheader', { name: /status/i })).toBeInTheDocument();
     expect(within(requests).getByRole('columnheader', { name: /duration/i })).toBeInTheDocument();
@@ -70,7 +78,7 @@ describe('product previews', () => {
   });
 
   it('explains the timing graphic without relying on mint shades', () => {
-    render(STEPS[3].panel);
+    render(panelFor('Observe'));
     expect(
       screen.getByRole('img', { name: /restore.*214 ms.*other.*126 ms.*total.*340 ms/i })
     ).toBeInTheDocument();

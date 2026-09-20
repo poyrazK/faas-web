@@ -158,7 +158,7 @@ describeBuilt('prerendered pages', () => {
    * `whileInView` content is supposed to start hidden.
    */
   describe('above-the-fold content paints without JS', () => {
-    const landing = readFileSync('dist/index.html', 'utf8');
+    const landing = built ? readFileSync('dist/index.html', 'utf8') : '';
 
     function openingTag(tag: string): string {
       const m = landing.match(new RegExp(`<${tag}[^>]*>`));
@@ -181,5 +181,32 @@ describeBuilt('prerendered pages', () => {
       expect(emblem).toContain('opacity:1');
       expect(openingTag('h1')).not.toMatch(/opacity:\s*0/);
     });
+  });
+});
+
+/**
+ * The JSON-LD block is the copy a search engine reads, and nothing in the
+ * component tests covers it. Both guards below are for claims that were
+ * wrong here while the visible page was right: a bare wake figure with its
+ * measurement boundary stripped off, and an "open source" description of a
+ * repository whose LICENSE is proprietary.
+ */
+describeBuilt('structured data', () => {
+  const ld = built
+    ? (readFileSync('dist/index.html', 'utf8').match(
+        /<script type="application\/ld\+json">([\s\S]*?)<\/script>/
+      )?.[1] ?? '')
+    : '';
+
+  it('is present on the landing page', () => {
+    expect(JSON.parse(ld)['@graph']).toBeInstanceOf(Array);
+  });
+
+  it('does not state the wake figure without its measurement boundary', () => {
+    expect(ld).not.toMatch(/350\s*ms/);
+  });
+
+  it('does not call a proprietary product open source', () => {
+    expect(ld).not.toMatch(/open[\s-]?source/i);
   });
 });

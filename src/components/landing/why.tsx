@@ -1,6 +1,5 @@
 import { Check, Lock } from 'iconoir-react';
-import { cn } from '@/lib/utils';
-import { Cards, Panel, PANEL_MONO as MONO, type CardItem } from './cards';
+import { Cards, Panel, type CardItem } from './cards';
 import { TracePreview } from './product-previews';
 
 /**
@@ -13,8 +12,54 @@ const Tick = () => <Check className="size-3 shrink-0 text-brand" />;
 
 export const REASONS: readonly Reason[] = [
   {
-    title: 'A microVM of its own',
-    body: 'Your code runs in a Firecracker microVM with its own kernel. Gregale manages the instance lifecycle, so you can work on your app rather than the host.',
+    title: 'Idle costs nothing',
+    body: 'A parked app holds no resident memory, and idle time doesn’t count against your usage. You pay for the traffic you serve, not for a box kept warm.',
+    mosaic: [
+      [1, 0, 2],
+      [2, 1, 0],
+      [1, 2, 1],
+      [3, 2, 2],
+      [4, 1, 1],
+      [5, 0, 0],
+      [4, 3, 0],
+      [5, 4, 1],
+      [2, 4, 2],
+    ],
+    panel: (
+      <Panel
+        title="example app · idle 14m"
+        rows={[
+          <>
+            <Tick /> state: parked
+          </>,
+          <>
+            <Tick /> resident RAM: 0 MB
+          </>,
+          <>
+            <Tick /> usage billed while parked: none
+          </>,
+          <span className="text-muted-foreground">next request restores the snapshot</span>,
+        ]}
+      />
+    ),
+  },
+  {
+    title: 'No cold-start tax',
+    body: 'A parked app is restored from its snapshot, not rebuilt from scratch. Scaling to zero stops being something you pay for in latency.',
+    mosaic: [
+      [5, 0, 0],
+      [4, 1, 2],
+      [3, 2, 0],
+      [2, 3, 1],
+      [4, 3, 1],
+      [5, 4, 2],
+      [6, 2, 2],
+    ],
+    panel: <TracePreview />,
+  },
+  {
+    title: 'Its own kernel',
+    body: 'Every app runs in its own Firecracker microVM on bare metal, with its own kernel — not a container sharing a host runtime with other tenants.',
     mosaic: [
       [4, 0, 0],
       [3, 1, 2],
@@ -45,58 +90,8 @@ export const REASONS: readonly Reason[] = [
     ),
   },
   {
-    title: 'Resume from a snapshot',
-    body: 'Gregale can restore a parked app from a snapshot rather than booting it from scratch. Wake time varies with the app, snapshot, and available capacity.',
-    mosaic: [
-      [5, 0, 0],
-      [4, 1, 2],
-      [3, 2, 0],
-      [2, 3, 1],
-      [4, 3, 1],
-      [5, 4, 2],
-      [6, 2, 2],
-    ],
-    panel: <TracePreview />,
-  },
-  {
-    title: 'Fits your workflow',
-    body: 'Deploy from the CLI, inspect an app in the console, or use the API from your own tools. Bring the same workflow into CI when you’re ready.',
-    mosaic: [
-      [1, 0, 2],
-      [2, 1, 0],
-      [1, 2, 1],
-      [3, 2, 2],
-      [4, 1, 1],
-      [5, 0, 0],
-      [4, 3, 0],
-      [5, 4, 1],
-      [2, 4, 2],
-    ],
-    panel: (
-      <div className="w-[15.5rem] rounded-lg bg-[#0d1512] p-3 shadow-[0_10px_24px_-12px_rgba(13,21,18,0.4)]">
-        <div className={cn(MONO, 'flex items-center gap-1.5 text-[#8fb3a6]')}>
-          <span className="size-1.5 rounded-full bg-[#2a3d37]" />
-          <span className="size-1.5 rounded-full bg-[#2a3d37]" />
-          <span className="size-1.5 rounded-full bg-[#2a3d37]" />
-          <span className="ml-1">hello — zsh</span>
-        </div>
-        <pre
-          className={cn(
-            MONO,
-            'mt-2.5 whitespace-pre-wrap text-[11px] leading-[1.7] text-[#e6f4ee]'
-          )}
-        >
-          <span className="text-brand-fill">$</span> gregale deploy --ref main{'\n'}
-          <span className="text-[#8fb3a6]">Deployed hello · bld_9k2f</span>
-          {'\n'}
-          <span className="text-brand-fill">$</span> gregale cron add &quot;0 */6 * * *&quot;
-        </pre>
-      </div>
-    ),
-  },
-  {
-    title: 'Keep your database',
-    body: 'Connect your existing database, cache, or object store through environment secrets. Keep durable data there: local files inside a microVM are temporary.',
+    title: 'Bring your own state',
+    body: 'Stateless by design. Plug in the Postgres, bucket or KV you already use: the URL goes in as a sealed secret, and the env var is what your code reads.',
     mosaic: [
       [5, 0, 0],
       [3, 1, 1],
@@ -149,8 +144,8 @@ export function Why() {
             </h2>
           </div>
           <p className="max-w-[26rem] text-[15px] leading-[1.35] text-muted-foreground sm:text-base">
-            Client demos, webhooks, and side projects still need somewhere to run. Gregale gives
-            them on-demand compute and a familiar way to deploy and inspect them.
+            Internal tools, webhooks, scheduled jobs and bursty APIs spend most of their life idle.
+            Gregale parks them at zero and brings them back on the next request.
           </p>
         </div>
         <Cards items={REASONS} defaultOpen={1} className="mt-10 lg:mt-12" />
