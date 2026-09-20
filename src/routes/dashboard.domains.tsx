@@ -3,6 +3,7 @@ import { createFileRoute, Link } from '@tanstack/react-router';
 import { Activity, Plus, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
+import { Modal } from '@/components/ui/modal';
 import { InlinePhase, PageHeader, Panel, queryPhase } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { useToast } from '@/components/ui/toast';
@@ -74,9 +75,7 @@ function DomainsPage() {
   const deleteDomain = useDeleteDomain();
   const verifyDomain = useVerifyDomain();
 
-  // Which domain the doctor panel is reporting on. Null closes it; the panel
-  // sits under the table rather than in a dialog so the TXT record above stays
-  // readable while the remediation is being applied.
+  // Keep diagnostics shareable and restorable with browser Back/Forward.
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
   const doctorFor = search.doctor;
@@ -393,17 +392,17 @@ function DomainsPage() {
       />
 
       {doctorFor && (
-        <Panel
+        <Modal
+          open
+          onClose={() => setDoctorFor()}
+          width="max-w-2xl"
           title={`Doctor — ${doctorFor}`}
           description="What the platform observes for this hostname right now."
-          actions={
-            <Button size="sm" variant="secondary" onClick={() => setDoctorFor()}>
-              Close
-            </Button>
-          }
         >
-          <DomainDoctor domain={doctorFor} />
-        </Panel>
+          <div className="max-h-[calc(100dvh-12rem)] overflow-y-auto p-1">
+            <DomainDoctor domain={doctorFor} />
+          </div>
+        </Modal>
       )}
     </div>
   );

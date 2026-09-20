@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { InlinePhase, PageHeader, queryPhase } from '@/components/dashboard/primitives';
 import { InstanceDetail } from '@/components/dashboard/instance-detail';
@@ -57,7 +57,6 @@ function WorkersPage() {
   const appQuery = useApps();
   const apps = appQuery.data;
   const { instance: selectedId, q = '' } = Route.useSearch();
-  const [revealRequest, setRevealRequest] = useState(0);
   const navigate = Route.useNavigate();
   const data = useMemo(
     () => instances.data?.pages.flatMap((page) => page.instances) ?? [],
@@ -164,10 +163,7 @@ function WorkersPage() {
         loading={listLoading}
         error={listError}
         onRetry={() => void instances.refetch()}
-        onRowClick={(instance) => {
-          if (instance.id === selectedId) setRevealRequest((request) => request + 1);
-          else select(instance.id);
-        }}
+        onRowClick={(instance) => select(instance.id)}
       />
       {data.length > 0 && Boolean(instances.error) && (
         <div className="flex flex-wrap items-center justify-center gap-3">
@@ -200,7 +196,6 @@ function WorkersPage() {
       {selectedId && (
         <InstanceDetail
           id={selectedId}
-          revealRequest={revealRequest}
           instance={selected}
           slug={selectedSlug}
           loading={listLoading}

@@ -45,6 +45,54 @@ async function get(path: string) {
   return { response, body: await response.json() };
 }
 
+it('reads back the saved spend cap, preserving zero and null', async () => {
+  for (const cap of [1250, 0, null]) {
+    const saved = await fetch(`${origin}/v1/account/overage-cap`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ overage_cap_cents: cap }),
+    });
+    expect(saved.status).toBe(200);
+    const { response, body } = await get('/v1/account/overage-cap');
+    expect(response.status).toBe(200);
+    expect(body).toEqual({ overage_cap_cents: cap });
+  }
+});
+
+describe('workload creation mock contract', () => {
+  const definition = {
+    name: 'console-backup',
+    kind: 'batch',
+    image_ref: 'ghcr.io/acme/backup:v1',
+    command: ['/bin/sh', '-c', 'echo "backup done"'],
+  };
+  const create = (name = definition.name) =>
+    fetch(`${origin}/v1/jobs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...definition, name }),
+    });
+  it('creates a readable definition with no fabricated past runs', async () => {
+    const response = await create();
+    expect(response.status).toBe(201);
+    const job = await response.json();
+    expect(job).toMatchObject({ ...definition, id: expect.any(String), status: 'active' });
+    expect((await get(`/v1/jobs/${definition.name}`)).body).toEqual(job);
+    expect((await get(`/v1/jobs/${definition.name}/runs`)).body.runs).toEqual([]);
+    expect((await get('/v1/jobs')).body.jobs).toContainEqual(job);
+  });
+  it('rejects duplicate names', async () => {
+    expect((await create('duplicate-backup')).status).toBe(201);
+    expect((await create('duplicate-backup')).status).toBe(409);
+  });
+  it('preserves the free-plan gate for creation', async () => {
+    process.env.MOCK_PLAN = 'free';
+    const response = await create();
+    expect(response.status).toBe(402);
+    expect(await response.json()).toMatchObject({ code: 'jobs_not_allowed' });
+  });
+});
+
 describe('app release history mock contract', () => {
   it('pages newest-first within the selected app without repeating the cursor row', async () => {
     const first = await get('/v1/apps/api-gateway/deployments?limit=1');
