@@ -4,6 +4,38 @@
  */
 
 export interface paths {
+    "/v1/preflight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Check whether a public GitHub repository would run on Gregale.
+         * @description Unauthenticated static analysis of a public repository. Nothing is
+         *     built, deployed, or executed: the source is inspected for a detectable
+         *     framework and for hard disqualifiers from the container compatibility
+         *     contract.
+         *
+         *     The verdict is deliberately conservative. `green` means the source
+         *     already satisfies the contract, `amber` means it runs once a declared
+         *     change is supplied, and `red` means a disqualifier applies and the app
+         *     cannot run as written.
+         *
+         *     Only public github.com repositories are accepted. A private or missing
+         *     repository returns the same `preflight_repo_not_found` response so the
+         *     endpoint cannot be used to probe for private repositories.
+         */
+        get: operations["getMigrationPreflight"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/status": {
         parameters: {
             query?: never;
@@ -8255,6 +8287,78 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * @description `green` satisfies the container contract as written, `amber` needs a
+         *     declared change, `red` cannot run.
+         * @enum {string}
+         */
+        PreflightLevel: "green" | "amber" | "red";
+        PreflightSource: {
+            owner: string;
+            repo: string;
+            /** @description Branch or tag parsed from the input; empty means the default branch. */
+            ref?: string;
+        };
+        PreflightFinding: {
+            /** @description Stable machine-readable finding code. */
+            code: string;
+            level: components["schemas"]["PreflightLevel"];
+            title: string;
+            /** @description What was observed in the source. */
+            detail: string;
+            /** @description What to change. Empty for informational findings. */
+            remedy?: string;
+            /** @description Repository-relative paths the finding came from. Never file contents. */
+            sources?: string[];
+        };
+        /** @description The run contract inferred from the source tree. */
+        PreflightProfile: {
+            version?: string;
+            framework?: string;
+            framework_version?: string;
+            package_manager?: string;
+            dockerfile_path?: string;
+            start_command?: string;
+            port?: number;
+            health_path?: string;
+            config_file?: string;
+            inferred?: boolean;
+        };
+        PreflightVerdict: {
+            level: components["schemas"]["PreflightLevel"];
+            findings?: components["schemas"]["PreflightFinding"][];
+            profile: components["schemas"]["PreflightProfile"];
+        };
+        /**
+         * @description What one plan includes, expressed as running time. Preflight does not
+         *     estimate an app's memory use, so it reports each tier's allowance
+         *     rather than recommending one.
+         */
+        PreflightPlanBudget: {
+            plan: string;
+            ram_mb: number;
+            /** @description Plan RAM plus the fixed per-VM overhead. */
+            billed_ram_mb: number;
+            /** @description The included allowance as wall-clock running time at this plan's billed RAM. */
+            included_running_minutes: number;
+            included_gb_hours: number;
+            /**
+             * Format: int64
+             * @description Monthly subscription price in millicents.
+             */
+            price_millicents: number;
+            /** Format: int64 */
+            overage_millicents_per_gb_hour?: number;
+        };
+        PreflightReport: {
+            source: components["schemas"]["PreflightSource"];
+            /** @description The commit the verdict was computed from. */
+            commit_sha: string;
+            verdict: components["schemas"]["PreflightVerdict"];
+            plan_budgets: components["schemas"]["PreflightPlanBudget"][];
+            /** Format: date-time */
+            checked_at: string;
+        };
         /** @description One UTC day's status, uptime, and telemetry coverage observation. */
         PublicStatusDaily: {
             /** Format: date */
@@ -18195,6 +18299,70 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getMigrationPreflight: {
+        parameters: {
+            query: {
+                /** @description A github.com repository URL, or an `owner/repo` pair. */
+                source: string;
+                /**
+                 * @description Branch, tag, or commit SHA. A full commit SHA pins the verdict and
+                 *     makes the result permanently reproducible.
+                 */
+                ref?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The preflight verdict for the resolved commit. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreflightReport"];
+                };
+            };
+            /** @description Repository not found, or private. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not a public github.com repository, or the source is too large. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too many checks from this client. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The upstream repository host is rate limiting Gregale. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     getPublicStatus: {
         parameters: {
             query?: never;
