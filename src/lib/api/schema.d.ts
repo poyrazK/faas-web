@@ -8293,12 +8293,20 @@ export interface components {
          * @enum {string}
          */
         PreflightLevel: "green" | "amber" | "red";
+        /**
+         * @description A validated public GitHub repository reference. Every field has passed
+         *     the character and length rules, so it is safe to interpolate upstream.
+         */
         PreflightSource: {
             owner: string;
             repo: string;
             /** @description Branch or tag parsed from the input; empty means the default branch. */
             ref?: string;
         };
+        /**
+         * @description One actionable observation about the source. `detail` says what was
+         *     observed; `remedy` says what to change about it.
+         */
         PreflightFinding: {
             /** @description Stable machine-readable finding code. */
             code: string;
@@ -8324,6 +8332,10 @@ export interface components {
             config_file?: string;
             inferred?: boolean;
         };
+        /**
+         * @description The assessed result for one source tree: a headline level, the findings
+         *     behind it, and the run contract that was inferred.
+         */
         PreflightVerdict: {
             level: components["schemas"]["PreflightLevel"];
             findings?: components["schemas"]["PreflightFinding"][];
@@ -8350,6 +8362,10 @@ export interface components {
             /** Format: int64 */
             overage_millicents_per_gb_hour?: number;
         };
+        /**
+         * @description One complete preflight answer, pinned to the commit it was computed
+         *     from so a permalink always re-renders the same verdict.
+         */
         PreflightReport: {
             source: components["schemas"]["PreflightSource"];
             /** @description The commit the verdict was computed from. */
