@@ -11,9 +11,17 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '@/lib/api/client';
 import type { components } from '@/lib/api/schema';
-import { Route as WillItRun } from './will-it-run';
+import { MIN_TRANSITION_MS, Route as WillItRun } from './will-it-run';
 
 type Report = components['schemas']['PreflightReport'];
+
+/**
+ * The page holds the result behind the transition on purpose, so assertions on
+ * a verdict have to outlast that hold. Derived from the constant rather than
+ * hard-coded: a longer transition must not silently push the suite past
+ * waitFor's 1000ms default and start flaking on a loaded runner.
+ */
+const settleTimeout = { timeout: MIN_TRANSITION_MS + 2000 };
 
 const budgets: Report['plan_budgets'] = [
   {
@@ -119,7 +127,7 @@ describe('will-it-run', () => {
 
     await waitFor(() => {
       expect(screen.getByText("This won't run here.")).toBeInTheDocument();
-    });
+    }, settleTimeout);
     expect(screen.getByText('Expects durable local disk')).toBeInTheDocument();
     expect(screen.getByText('Move persistent state to object storage.')).toBeInTheDocument();
     expect(screen.getByText('Dockerfile')).toBeInTheDocument();
@@ -139,10 +147,27 @@ describe('will-it-run', () => {
 
     await waitFor(() => {
       expect(screen.getByText('This should run as it is.')).toBeInTheDocument();
-    });
+    }, settleTimeout);
     expect(screen.getByText('npm run start')).toBeInTheDocument();
     // 11,636 included minutes is 194 hours of running time.
     expect(screen.getByText('194 h')).toBeInTheDocument();
+  });
+
+  // The verdict is held behind the transition on purpose. A cached answer
+  // returns near-instantly, and without the floor the decode would flash and
+  // vanish — which reads as a glitch rather than as a transition.
+  it('holds the verdict behind the transition while checking', async () => {
+    mockReport(reportWith({ level: 'green', profile: { framework: 'express' } }));
+
+    await renderPage('?source=gregale/api');
+
+    expect(screen.getByText(/Reading gregale\/api/)).toBeInTheDocument();
+    expect(screen.queryByText('This should run as it is.')).not.toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.getByText('This should run as it is.')).toBeInTheDocument();
+    }, settleTimeout);
+    expect(screen.queryByText(/Reading gregale\/api/)).not.toBeInTheDocument();
   });
 
   // Errors are branched on the stable code, never the prose or the status.
@@ -153,6 +178,6 @@ describe('will-it-run', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/may be private/i)).toBeInTheDocument();
-    });
+    }, settleTimeout);
   });
 });

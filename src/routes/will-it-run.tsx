@@ -1,10 +1,11 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { api, unwrap } from '@/lib/api/client';
 import { ApiError } from '@/lib/api/errors';
 import type { components } from '@/lib/api/schema';
 import { pageHead } from '@/lib/seo';
+import { DatamoshBand } from '@/components/datamosh/datamosh-band';
 
 type Report = components['schemas']['PreflightReport'];
 type Finding = components['schemas']['PreflightFinding'];
@@ -34,6 +35,15 @@ export const Route = createFileRoute('/will-it-run')({
         'Paste a public GitHub repository and find out whether it would run on Gregale — before signing up for anything. Nothing is built or deployed.',
     }),
 });
+
+/**
+ * The check answers in about a second against GitHub, and near-instantly from
+ * cache or the dev mock. Without a floor the transition would flash and
+ * vanish, which reads as a glitch rather than a decode — so it holds for a
+ * beat. Long enough for the bulge to cross the frame once, short enough that
+ * it never feels like padding.
+ */
+export const MIN_TRANSITION_MS = 900;
 
 const LEVEL_COPY: Record<Level, { headline: string; tone: string; dot: string }> = {
   green: {
@@ -70,6 +80,24 @@ function WillItRun() {
       ) as Promise<Report>,
   });
 
+  // Keyed off the source rather than the query's own pending flag: the flag
+  // clears the moment the cache answers, which would tear the timer down
+  // before it ever fired.
+  //
+  // The state is only ever written from the timer, never synchronously inside
+  // the effect — a check that has not yet reached its deadline is expressed as
+  // "the settled key is not the current one", which needs no render-time
+  // write to become true.
+  const checkKey = source ? `${source}|${ref ?? ''}` : null;
+  const [settledKey, setSettledKey] = useState<string | null>(null);
+  useEffect(() => {
+    if (!checkKey) return;
+    const timer = setTimeout(() => setSettledKey(checkKey), MIN_TRANSITION_MS);
+    return () => clearTimeout(timer);
+  }, [checkKey]);
+
+  const transitioning = Boolean(source) && (query.isFetching || settledKey !== checkKey);
+
   function onSubmit(event: FormEvent) {
     event.preventDefault();
     const trimmed = draft.trim();
@@ -105,18 +133,18 @@ function WillItRun() {
         />
         <button
           type="submit"
-          disabled={!draft.trim() || query.isFetching}
+          disabled={!draft.trim() || transitioning}
           className="rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-opacity disabled:opacity-50"
         >
-          {query.isFetching ? 'Checking…' : 'Check it'}
+          {transitioning ? 'Checking…' : 'Check it'}
         </button>
       </form>
 
-      {query.isFetching && <Pending />}
-      {query.isError && <Failure error={query.error} />}
-      {query.data && !query.isFetching && <Result report={query.data} />}
+      {transitioning && <Scanning label={source ?? ''} />}
+      {!transitioning && query.isError && <Failure error={query.error} />}
+      {!transitioning && query.data && <Result key={query.data.commit_sha} report={query.data} />}
 
-      {!source && !query.isFetching && (
+      {!source && (
         <p className="mt-10 max-w-prose text-sm text-muted-foreground">
           The check is deliberately cautious. It looks for a start command, a port, and the things
           that make an app impossible to run here — durable local disk, host networking, privileged
@@ -127,11 +155,26 @@ function WillItRun() {
   );
 }
 
-function Pending() {
+/**
+ * The waiting state.
+ *
+ * A decode rather than a skeleton: there is no layout to stand in for, because
+ * what arrives next depends entirely on the answer — a green verdict is two
+ * lines, a red one is three findings and a table.
+ *
+ * It shows no stages and no percentage on purpose. The endpoint returns one
+ * answer rather than streaming progress, so a step list here would be
+ * animating a process the page cannot observe. The repository name is the
+ * honest thing to show: it is what was asked for, and it confirms the paste
+ * parsed the way the reader intended.
+ */
+function Scanning({ label }: { label: string }) {
   return (
-    <section className="mt-10 animate-pulse" aria-live="polite">
-      <div className="h-6 w-2/3 rounded bg-muted" />
-      <div className="mt-3 h-4 w-1/3 rounded bg-muted" />
+    <section className="mt-10" aria-live="polite" aria-busy="true">
+      <DatamoshBand />
+      <p className="mt-4 font-mono text-xs text-muted-foreground">
+        Reading {label || 'the repository'}…
+      </p>
     </section>
   );
 }
@@ -160,6 +203,20 @@ function Failure({ error }: { error: unknown }) {
   );
 }
 
+/**
+ * Staggers one section into place. The delay is inline because it belongs to
+ * the position rather than the component — `FindingList` should not know where
+ * on the page it sits. The reduced-motion rule in `index.css` strips the delay
+ * along with the duration, so this lands instantly rather than flickering.
+ */
+function Arrive({ delay, children }: { delay: number; children: ReactNode }) {
+  return (
+    <div className="animate-verdict-arrive" style={{ animationDelay: `${delay}ms` }}>
+      {children}
+    </div>
+  );
+}
+
 function Result({ report }: { report: Report }) {
   const level = report.verdict.level;
   const copy = LEVEL_COPY[level];
@@ -168,25 +225,49 @@ function Result({ report }: { report: Report }) {
   const changes = findings.filter((finding) => finding.level === 'amber');
   const notes = findings.filter((finding) => finding.level === 'green');
 
+  // The verdict leads and everything else follows it in, one step apart. The
+  // order is the order you read in, so the stagger reinforces the hierarchy
+  // rather than decorating it.
+  let step = 0;
+  const next = () => step++ * 60;
+
   return (
     <section className="mt-10">
-      <div className="flex items-start gap-3">
-        <span className={`mt-2 size-2.5 shrink-0 rounded-full ${copy.dot}`} aria-hidden />
-        <div>
-          <h2 className={`text-xl font-semibold ${copy.tone}`}>{copy.headline}</h2>
-          <p className="mt-1 font-mono text-xs text-muted-foreground">
-            {report.source.owner}/{report.source.repo} at {report.commit_sha.slice(0, 7)}
-          </p>
+      <Arrive delay={next()}>
+        <div className="flex items-start gap-3">
+          <span className={`mt-2 size-2.5 shrink-0 rounded-full ${copy.dot}`} aria-hidden />
+          <div>
+            <h2 className={`text-xl font-semibold ${copy.tone}`}>{copy.headline}</h2>
+            <p className="mt-1 font-mono text-xs text-muted-foreground">
+              {report.source.owner}/{report.source.repo} at {report.commit_sha.slice(0, 7)}
+            </p>
+          </div>
         </div>
-      </div>
+      </Arrive>
 
-      <Profile report={report} />
+      <Arrive delay={next()}>
+        <Profile report={report} />
+      </Arrive>
 
-      {blockers.length > 0 && <FindingList title="What stops it" findings={blockers} />}
-      {changes.length > 0 && <FindingList title="What to change" findings={changes} />}
-      {notes.length > 0 && <FindingList title="Worth knowing" findings={notes} />}
+      {blockers.length > 0 && (
+        <Arrive delay={next()}>
+          <FindingList title="What stops it" findings={blockers} />
+        </Arrive>
+      )}
+      {changes.length > 0 && (
+        <Arrive delay={next()}>
+          <FindingList title="What to change" findings={changes} />
+        </Arrive>
+      )}
+      {notes.length > 0 && (
+        <Arrive delay={next()}>
+          <FindingList title="Worth knowing" findings={notes} />
+        </Arrive>
+      )}
 
-      <PlanTable budgets={report.plan_budgets} />
+      <Arrive delay={next()}>
+        <PlanTable budgets={report.plan_budgets} />
+      </Arrive>
 
       <p className="mt-8 max-w-prose text-xs text-muted-foreground">
         This reads your source, not a running app. It cannot see how much memory you use, what your

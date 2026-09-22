@@ -436,6 +436,20 @@
     }
   }
 
+  /* The verdict landing. A short rise with a fractional scale so the answer
+     arrives with some weight instead of snapping in — this is the one moment
+     on the page worth animating, so the motion is spent here and nowhere
+     else. Sections stagger via per-element animation-delay, which the
+     reduced-motion rule strips along with the duration. */
+  --animate-verdict-arrive: verdict-arrive 0.42s var(--motion-ease) both;
+
+  @keyframes verdict-arrive {
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.985);
+    }
+  }
+
   --animate-color-cycle: color-cycle 6s ease-in-out infinite;
   --animate-glow-breathe: glow-breathe 7s ease-in-out infinite;
   --animate-dither-drift-a: dither-drift-a 10s linear infinite;
