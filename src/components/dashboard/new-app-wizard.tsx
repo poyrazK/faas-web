@@ -900,14 +900,6 @@ export function NewAppWizard({
                   )}
                 </div>
               )}
-
-              <p className="mt-5 text-xs text-muted-foreground">
-                Estimated cost at 100k invocations/month:{' '}
-                <span className="text-foreground">
-                  ${((selectedMemoryMb / 1024) * 0.05 * 100).toFixed(2)}
-                </span>{' '}
-                — billed only for time spent running.
-              </p>
             </Panel>
 
             <div className="flex items-center justify-between">

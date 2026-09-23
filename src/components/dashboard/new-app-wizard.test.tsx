@@ -86,6 +86,18 @@ beforeEach(() => {
 });
 
 describe('NewAppWizard Git submission', () => {
+  it('does not present a made-up per-invocation cost on review', async () => {
+    const user = userEvent.setup();
+    render(<NewAppWizard onboarding />);
+    await user.type(screen.getByLabelText(/repository/i), 'gregale/demo');
+    await user.click(screen.getByRole('button', { name: /continue/i }));
+    await user.type(await screen.findByLabelText('App name'), 'demo-app');
+    await user.click(screen.getByRole('button', { name: 'Review', exact: true }));
+    await screen.findByRole('button', { name: 'Deploy app', exact: true });
+    expect(screen.queryByText(/Estimated cost at 100k invocations/)).not.toBeInTheDocument();
+    expect(screen.getByText(/10 apps available/)).toBeInTheDocument();
+  });
+
   it('lets a user reach Configure without an immediate name error', async () => {
     const user = userEvent.setup();
     render(<NewAppWizard onboarding />);
