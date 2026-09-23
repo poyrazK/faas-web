@@ -8,6 +8,8 @@ import { Link, useNavigate } from '@tanstack/react-router';
 import { ArrowLeft, ArrowRight, Check, Github, Package, Page, Upload } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
+import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/field';
 import { useToast } from '@/components/ui/toast';
 import { DeploymentProgress } from '@/components/dashboard/deployment-progress';
 import { PageHeader, Panel } from '@/components/dashboard/primitives';
@@ -87,6 +89,13 @@ const APP_TYPES: { id: 'function' | 'app'; label: string; desc: string }[] = [
 ];
 
 const MEMORY = [128, 256, 512, 1024, 2048];
+
+// Scoped pilot sizing, with light-onboarding fallbacks.
+const CONTROL =
+  'h-[var(--console-control-height,2.25rem)] rounded-[var(--console-control-radius,0.375rem)]';
+const LABEL =
+  'text-[length:var(--console-label-size,0.875rem)] leading-[var(--console-label-leading,1.4286)] font-medium';
+const SURFACE = 'rounded-[var(--console-surface-radius,0.625rem)]';
 
 interface NewAppWizardProps {
   search?: NewAppSearch;
@@ -485,7 +494,7 @@ export function NewAppWizard({
   const form = (
     <div
       className={cn(
-        'mx-auto flex w-full flex-col gap-6',
+        'mx-auto flex w-full flex-col gap-6 text-[length:var(--console-body-size,0.875rem)] leading-[var(--console-body-leading,1.5714)]',
         source === 'template' || source === 'import' ? 'max-w-5xl' : 'max-w-2xl'
       )}
     >
@@ -599,28 +608,28 @@ export function NewAppWizard({
                 </form>
               </div>
             ) : source === 'git' ? (
-              <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+              <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
                 <label className="flex flex-col gap-1.5">
-                  <span className="label-mono text-muted-foreground">Repository</span>
+                  <span className={LABEL}>Repository</span>
                   <RepoPicker
                     value={repo}
                     onChange={(nextRepo, defaultBranch) => {
                       setRepo(nextRepo);
                       if (defaultBranch) setRef(defaultBranch);
                     }}
-                    className="h-10 rounded-lg bg-card"
+                    className={CONTROL}
                   />
                 </label>
                 <label className="flex flex-col gap-1.5 sm:w-40">
-                  <span className="label-mono text-muted-foreground">Ref</span>
-                  <input
+                  <span className={LABEL}>Ref</span>
+                  <Input
                     value={ref}
                     onChange={(e) => setRef(e.target.value)}
                     placeholder="main"
                     maxLength={200}
                     spellCheck={false}
                     aria-invalid={!refValid || undefined}
-                    className="h-10 rounded-lg border border-border bg-card px-3 font-mono text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/25"
+                    className={cn(CONTROL, 'font-mono')}
                   />
                   {!refValid && (
                     <span className="text-xs" style={{ color: 'var(--status-critical)' }}>
@@ -628,7 +637,7 @@ export function NewAppWizard({
                     </span>
                   )}
                 </label>
-                <p className="text-xs text-muted-foreground sm:col-span-2">
+                <p className="text-[13px] leading-5 text-muted-foreground sm:col-span-2">
                   Choose a repository your connected GitHub account has granted Gregale access to.
                   The ref can be a branch, tag, or commit SHA.
                 </p>
@@ -683,29 +692,24 @@ export function NewAppWizard({
             transition={{ duration: reduce ? 0 : 0.25, ease: EASE }}
             className="flex flex-col gap-5"
           >
-            <Panel>
-              <div className="grid gap-5 sm:grid-cols-2">
+            <Panel className={SURFACE}>
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div className="flex flex-col gap-1.5">
-                  <label htmlFor="new-app-name" className="label-mono text-muted-foreground">
+                  <label htmlFor="new-app-name" className={LABEL}>
                     App name
                   </label>
-                  <input
+                  <Input
                     id="new-app-name"
                     value={name}
                     onChange={(e) => setName(e.target.value.toLowerCase())}
                     aria-invalid={!nameValid || undefined}
                     aria-describedby={!nameValid ? 'new-app-name-error' : undefined}
-                    className={cn(
-                      'h-10 rounded-lg border bg-background px-3 font-mono text-sm outline-none focus:ring-2 focus:ring-brand/25',
-                      nameValid
-                        ? 'border-border focus:border-brand'
-                        : 'border-[color:var(--status-critical)]'
-                    )}
+                    className={cn(CONTROL, 'font-mono')}
                   />
                   {!nameValid && (
                     <span
                       id="new-app-name-error"
-                      className="text-xs"
+                      className="text-[13px] leading-5"
                       style={{ color: 'var(--status-critical)' }}
                     >
                       Lowercase letters, numbers, and dashes.
@@ -714,36 +718,36 @@ export function NewAppWizard({
                 </div>
 
                 <label className="flex flex-col gap-1.5">
-                  <span className="label-mono text-muted-foreground">Type</span>
-                  <select
+                  <span className={LABEL}>Type</span>
+                  <Select
                     value={appType}
                     onChange={(e) => setAppType(e.target.value as 'function' | 'app')}
-                    className="h-10 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-brand"
+                    className={CONTROL}
                   >
                     {APP_TYPES.map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.label}
                       </option>
                     ))}
-                  </select>
-                  <span className="text-xs text-muted-foreground">
+                  </Select>
+                  <span className="text-[13px] leading-5 text-muted-foreground">
                     {APP_TYPES.find((t) => t.id === appType)?.desc}
                   </span>
                 </label>
 
                 <label className="flex flex-col gap-1.5">
-                  <span className="label-mono text-muted-foreground">Runtime</span>
-                  <select
+                  <span className={LABEL}>Runtime</span>
+                  <Select
                     value={runtime}
                     onChange={(e) => setRuntime(e.target.value as Runtime)}
-                    className="h-10 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-brand"
+                    className={CONTROL}
                   >
                     {RUNTIMES.map((r) => (
                       <option key={r.id} value={r.id}>
                         {r.label}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </label>
 
                 {/* No region picker: this is a one-box platform and the API
@@ -751,7 +755,7 @@ export function NewAppWizard({
               </div>
 
               <div className="mt-6">
-                <span className="label-mono text-muted-foreground">Memory</span>
+                <span className={LABEL}>Memory</span>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {MEMORY.map((m) => (
                     <button
@@ -774,7 +778,7 @@ export function NewAppWizard({
                   ))}
                 </div>
                 {account ? (
-                  <p className="mt-2 text-xs text-muted-foreground">
+                  <p className="mt-2 text-[13px] leading-5 text-muted-foreground">
                     {account.plan} plan · up to {account.limits.ram_mb} MB per app
                   </p>
                 ) : limitsLoading ? (
@@ -787,7 +791,7 @@ export function NewAppWizard({
               <div className="mt-6 flex items-start justify-between gap-6 border-t border-border pt-5">
                 <div>
                   <p className="text-sm font-medium">Scale to zero</p>
-                  <p className="mt-1 max-w-md text-xs leading-relaxed text-muted-foreground">
+                  <p className="mt-1 max-w-md text-[13px] leading-5 text-muted-foreground">
                     Snapshot the microVM when idle. <RestoreTarget />. {RESTORE_CONTEXT}
                   </p>
                   {account && !canKeepResident && (
@@ -834,7 +838,7 @@ export function NewAppWizard({
             transition={{ duration: reduce ? 0 : 0.25, ease: EASE }}
             className="flex flex-col gap-5"
           >
-            <Panel title="Review">
+            <Panel title="Review" className={SURFACE}>
               <dl className="grid gap-x-8 gap-y-4 sm:grid-cols-2">
                 {[
                   ['Name', name],
@@ -856,8 +860,8 @@ export function NewAppWizard({
                   ['Endpoint', createdUrl ?? 'Assigned on create'],
                 ].map(([label, value]) => (
                   <div key={label} className="flex flex-col gap-1 border-b border-border pb-3">
-                    <dt className="label-mono text-muted-foreground">{label}</dt>
-                    <dd className="font-mono text-sm">{value}</dd>
+                    <dt className={cn(LABEL, 'text-muted-foreground')}>{label}</dt>
+                    <dd className="break-words font-mono text-sm">{value}</dd>
                   </div>
                 ))}
               </dl>
