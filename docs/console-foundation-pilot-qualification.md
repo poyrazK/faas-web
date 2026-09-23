@@ -53,3 +53,16 @@ No push, PR, merge, new telemetry, backend change, or subsequent redesign slice 
 1. Installed skill scripts had CRLF line endings; temporary LF-normalized copies were used. Risk: bookkeeping only, not product behavior.
 2. Engineering implementation and local qualification are separate from external developer/real-account acceptance. Risk: usability or production issues may remain; human qualification precedes release.
 3. Plan examples used an unsupported Testing Library `exact: true` role-query option. Removed it: string accessible names already match exactly. Risk: query precision, covered by interaction tests.
+
+## Independent review
+
+Fresh read-only review of `048385d..39bfa54` found no Critical, Important, or Minor findings. The reviewer independently ran 44 focused tests and the range whitespace check. Verdict: ready to merge as a scoped engineering pilot, not a waiver of release qualification.
+
+The review explicitly left these decisions with the executor:
+
+- External developer task success, native browser zoom and screen-reader announcements remain human acceptance gates; DOM/browser automation is insufficient. Risk: undiscovered usability or assistive-technology problems.
+- Real-account deployment and cross-refresh/ambiguous-outcome recovery remain outside this unchanged orchestration pilot; require qualification and the later orchestration slice. Risk: production/reload retry issues remain unproven.
+- Existing account-unavailable fallback and toast-only create/configuration failures remain unchanged; do not expand this form change into orchestration/error recovery. Risk: confusing existing recovery experiences remain.
+- Broader navigation, two-step onboarding and activation work stays deferred to separately approved slices. Risk: this pilot alone cannot solve overall console complexity or prove conversion gains.
+
+Deferred minor findings: none.
