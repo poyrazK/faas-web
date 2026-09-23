@@ -86,6 +86,40 @@ beforeEach(() => {
 });
 
 describe('NewAppWizard Git submission', () => {
+  it('lets a user reach Configure without an immediate name error', async () => {
+    const user = userEvent.setup();
+    render(<NewAppWizard onboarding />);
+    await user.type(screen.getByLabelText(/repository/i), 'gregale/demo');
+    await user.click(screen.getByRole('button', { name: /continue/i }));
+    const name = await screen.findByLabelText('App name');
+    expect(name).not.toHaveAttribute('aria-invalid');
+    await user.click(screen.getByRole('button', { name: 'Review', exact: true }));
+    expect(name).toHaveFocus();
+    expect(name).toHaveAttribute('aria-invalid', 'true');
+    expect(name).toHaveAccessibleDescription('Enter an app name.');
+    expect(mocks.addWorkflow).not.toHaveBeenCalled();
+    await user.type(name, 'demo-app');
+    expect(name).not.toHaveAttribute('aria-invalid');
+  });
+
+  it('validates on blur and submits Configure with Enter without creating an app', async () => {
+    const user = userEvent.setup();
+    render(<NewAppWizard onboarding />);
+    await user.type(screen.getByLabelText(/repository/i), 'gregale/demo');
+    await user.click(screen.getByRole('button', { name: /continue/i }));
+    const name = await screen.findByLabelText('App name');
+    await user.type(name, '-ab');
+    expect(name).not.toHaveAttribute('aria-invalid');
+    await user.tab();
+    expect(name).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByRole('alert')).toHaveTextContent('Use 3–40 lowercase letters');
+    await user.clear(name);
+    await user.type(name, 'Demo-App{Enter}');
+    expect(await screen.findByRole('button', { name: 'Deploy app', exact: true })).toBeEnabled();
+    expect(screen.getByText('demo-app')).toBeInTheDocument();
+    expect(mocks.addWorkflow).not.toHaveBeenCalled();
+  });
+
   it('keeps the endpoint non-interactive until the first deployment is live', async () => {
     const { rerender, onDeploymentAccepted } = await submitGitApp();
     await screen.findByRole('heading', { name: 'Building your app' });

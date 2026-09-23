@@ -1,6 +1,6 @@
 import { RestoreTarget } from '@/components/restore-target';
 import { RESTORE_CONTEXT } from '@/lib/platform-claims';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useUnsavedGuard } from '@/lib/use-unsaved-guard';
 import { RepoPicker } from '@/components/dashboard/repo-picker';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
@@ -10,6 +10,8 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/field';
+import { FormField } from '@/components/ui/form-field';
+import { appNameError } from './new-app-validation';
 import { useToast } from '@/components/ui/toast';
 import { DeploymentProgress } from '@/components/dashboard/deployment-progress';
 import { PageHeader, Panel } from '@/components/dashboard/primitives';
@@ -169,6 +171,9 @@ export function NewAppWizard({
   const [repo, setRepo] = useState('');
   const [ref, setRef] = useState('main');
   const [nameDraft, setName] = useState<string | null>(null);
+  const [nameTouched, setNameTouched] = useState(false);
+  const [configureSubmitted, setConfigureSubmitted] = useState(false);
+  const nameInputRef = useRef<HTMLInputElement>(null);
   const name = nameDraft ?? initialName;
   const bindRepo = useBindRepoFor();
   const deployFromRef = useDeployFromRefFor();
@@ -199,7 +204,8 @@ export function NewAppWizard({
     '/dashboard/workflows/new'
   );
 
-  const nameValid = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(name);
+  const nameError = appNameError(name);
+  const nameValid = !nameError;
   const normalizedRef = ref.trim() || 'main';
   const repoValid = isValidGitHubRepo(repo);
   const refValid = isValidGitRef(normalizedRef);
@@ -684,8 +690,17 @@ export function NewAppWizard({
         )}
 
         {step === 1 && (
-          <motion.div
+          <motion.form
             key="configure"
+            onSubmit={(event) => {
+              event.preventDefault();
+              setConfigureSubmitted(true);
+              if (nameError) {
+                nameInputRef.current?.focus();
+                return;
+              }
+              setStep(2);
+            }}
             initial={reduce ? false : { opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={reduce ? { opacity: 1 } : { opacity: 0, y: -10 }}
@@ -694,28 +709,23 @@ export function NewAppWizard({
           >
             <Panel className={SURFACE}>
               <div className="grid gap-4 sm:grid-cols-2">
-                <div className="flex flex-col gap-1.5">
-                  <label htmlFor="new-app-name" className={LABEL}>
-                    App name
-                  </label>
-                  <Input
-                    id="new-app-name"
-                    value={name}
-                    onChange={(e) => setName(e.target.value.toLowerCase())}
-                    aria-invalid={!nameValid || undefined}
-                    aria-describedby={!nameValid ? 'new-app-name-error' : undefined}
-                    className={cn(CONTROL, 'font-mono')}
-                  />
-                  {!nameValid && (
-                    <span
-                      id="new-app-name-error"
-                      className="text-[13px] leading-5"
-                      style={{ color: 'var(--status-critical)' }}
-                    >
-                      Lowercase letters, numbers, and dashes.
-                    </span>
+                <FormField
+                  id="new-app-name"
+                  label="App name"
+                  error={nameError}
+                  showError={nameTouched || configureSubmitted}
+                >
+                  {(props) => (
+                    <Input
+                      {...props}
+                      ref={nameInputRef}
+                      value={name}
+                      onChange={(e) => setName(e.target.value.toLowerCase())}
+                      onBlur={() => setNameTouched(true)}
+                      className={cn(CONTROL, 'font-mono')}
+                    />
                   )}
-                </div>
+                </FormField>
 
                 <label className="flex flex-col gap-1.5">
                   <span className={LABEL}>Type</span>
@@ -812,21 +822,16 @@ export function NewAppWizard({
             </Panel>
 
             <div className="flex items-center justify-between">
-              <Button variant="ghost" onClick={() => setStep(0)} className="gap-2">
+              <Button type="button" variant="ghost" onClick={() => setStep(0)} className="gap-2">
                 <ArrowLeft className="h-4 w-4" />
                 Back
               </Button>
-              <Button
-                variant="cta"
-                disabled={!nameValid}
-                onClick={() => setStep(2)}
-                className="h-10 gap-2 rounded-lg"
-              >
+              <Button variant="cta" type="submit" className="h-10 gap-2 rounded-lg">
                 Review
                 <ArrowRight className="h-4 w-4" />
               </Button>
             </div>
-          </motion.div>
+          </motion.form>
         )}
 
         {step === 2 && (
