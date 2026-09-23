@@ -110,22 +110,19 @@ describe('NewAppWizard Git submission', () => {
     await user.click(screen.getByRole('button', { name: /continue/i }));
     await user.type(await screen.findByLabelText('App name'), 'demo-app');
     await user.click(screen.getByText('Resource settings'));
-    await user.click(screen.getByRole('button', { name: '256 MB', exact: true }));
+    await user.click(screen.getByRole('button', { name: '256 MB' }));
     await user.click(screen.getByRole('switch', { name: /scale to zero/i }));
     expect(screen.getByText('256 MB · One instance kept resident')).toBeVisible();
-    await user.click(screen.getByRole('button', { name: 'Review', exact: true }));
-    await screen.findByRole('button', { name: 'Deploy app', exact: true });
+    await user.click(screen.getByRole('button', { name: 'Review' }));
+    await screen.findByRole('button', { name: 'Deploy app' });
     expect(screen.getByText('256 MB')).toBeInTheDocument();
     expect(screen.getByText('One instance kept resident')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Back', exact: true }));
+    await user.click(screen.getByRole('button', { name: 'Back' }));
     await waitFor(() =>
       expect(screen.getByText('256 MB · One instance kept resident')).toBeVisible()
     );
     await user.click(screen.getByText('Resource settings'));
-    expect(screen.getByRole('button', { name: '256 MB', exact: true })).toHaveAttribute(
-      'aria-pressed',
-      'true'
-    );
+    expect(screen.getByRole('button', { name: '256 MB' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('switch', { name: /scale to zero/i })).not.toBeChecked();
     expect(mocks.addWorkflow).not.toHaveBeenCalled();
   });
@@ -137,8 +134,8 @@ describe('NewAppWizard Git submission', () => {
     await user.type(screen.getByLabelText(/repository/i), 'gregale/demo');
     await user.click(screen.getByRole('button', { name: /continue/i }));
     await user.type(await screen.findByLabelText('App name'), 'demo-app');
-    await user.click(screen.getByRole('button', { name: 'Review', exact: true }));
-    expect(await screen.findByRole('button', { name: 'Deploy app', exact: true })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Review' }));
+    expect(await screen.findByRole('button', { name: 'Deploy app' })).toBeDisabled();
     expect(screen.getByRole('alert')).toHaveTextContent('plan limit of 10 apps');
     expect(mocks.addWorkflow).not.toHaveBeenCalled();
   });
@@ -149,8 +146,8 @@ describe('NewAppWizard Git submission', () => {
     await user.type(screen.getByLabelText(/repository/i), 'gregale/demo');
     await user.click(screen.getByRole('button', { name: /continue/i }));
     await user.type(await screen.findByLabelText('App name'), 'demo-app');
-    await user.click(screen.getByRole('button', { name: 'Review', exact: true }));
-    await screen.findByRole('button', { name: 'Deploy app', exact: true });
+    await user.click(screen.getByRole('button', { name: 'Review' }));
+    await screen.findByRole('button', { name: 'Deploy app' });
     expect(screen.queryByText(/Estimated cost at 100k invocations/)).not.toBeInTheDocument();
     expect(screen.getByText(/10 apps available/)).toBeInTheDocument();
   });
@@ -162,7 +159,7 @@ describe('NewAppWizard Git submission', () => {
     await user.click(screen.getByRole('button', { name: /continue/i }));
     const name = await screen.findByLabelText('App name');
     expect(name).not.toHaveAttribute('aria-invalid');
-    await user.click(screen.getByRole('button', { name: 'Review', exact: true }));
+    await user.click(screen.getByRole('button', { name: 'Review' }));
     expect(name).toHaveFocus();
     expect(name).toHaveAttribute('aria-invalid', 'true');
     expect(name).toHaveAccessibleDescription('Enter an app name.');
@@ -184,7 +181,7 @@ describe('NewAppWizard Git submission', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Use 3–40 lowercase letters');
     await user.clear(name);
     await user.type(name, 'Demo-App{Enter}');
-    expect(await screen.findByRole('button', { name: 'Deploy app', exact: true })).toBeEnabled();
+    expect(await screen.findByRole('button', { name: 'Deploy app' })).toBeEnabled();
     expect(screen.getByText('demo-app')).toBeInTheDocument();
     expect(mocks.addWorkflow).not.toHaveBeenCalled();
   });
@@ -214,9 +211,9 @@ describe('NewAppWizard Git submission', () => {
 
     await user.click(await screen.findByText('Resource settings'));
     expect(screen.getByRole('switch', { name: /scale to zero/i })).toBeDisabled();
-    expect(screen.getByRole('button', { name: '128 MB', exact: true })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '128 MB' })).toBeEnabled();
     for (const memory of [256, 512, 1024, 2048]) {
-      expect(screen.getByRole('button', { name: `${memory} MB`, exact: true })).toBeDisabled();
+      expect(screen.getByRole('button', { name: `${memory} MB` })).toBeDisabled();
     }
     expect(screen.getByText(/requires a paid plan/i)).toBeInTheDocument();
   });
