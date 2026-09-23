@@ -764,61 +764,73 @@ export function NewAppWizard({
                     exposes no region to choose. */}
               </div>
 
-              <div className="mt-6">
-                <span className={LABEL}>Memory</span>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {MEMORY.map((m) => (
-                    <button
-                      key={m}
-                      type="button"
-                      disabled={m > maxMemoryMb}
-                      onClick={() => setMemoryMb(m)}
-                      aria-pressed={selectedMemoryMb === m}
-                      aria-disabled={m > maxMemoryMb}
-                      title={m > maxMemoryMb ? `Requires a plan with ${m} MB per app` : undefined}
-                      className={cn(
-                        'rounded-md border px-3 py-1.5 font-mono text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-40',
-                        selectedMemoryMb === m
-                          ? 'border-brand bg-brand/10 text-foreground'
-                          : 'border-border text-muted-foreground hover:text-foreground'
-                      )}
-                    >
-                      {m} MB
-                    </button>
-                  ))}
-                </div>
-                {account ? (
-                  <p className="mt-2 text-[13px] leading-5 text-muted-foreground">
-                    {account.plan} plan · up to {account.limits.ram_mb} MB per app
-                  </p>
-                ) : limitsLoading ? (
-                  <p className="mt-2 text-xs text-muted-foreground" role="status">
-                    Checking plan limits…
-                  </p>
-                ) : null}
-              </div>
-
-              <div className="mt-6 flex items-start justify-between gap-6 border-t border-border pt-5">
-                <div>
-                  <p className="text-sm font-medium">Scale to zero</p>
-                  <p className="mt-1 max-w-md text-[13px] leading-5 text-muted-foreground">
-                    Snapshot the microVM when idle. <RestoreTarget />. {RESTORE_CONTEXT}
-                  </p>
-                  {account && !canKeepResident && (
-                    <p id="scale-to-zero-plan-note" className="mt-1 text-xs text-muted-foreground">
-                      Keeping an instance resident requires a paid plan.
+              <p className="mt-6 text-[13px] leading-5 text-muted-foreground">
+                {selectedMemoryMb} MB ·{' '}
+                {effectiveScaleToZero ? 'Parks when idle' : 'One instance kept resident'}
+              </p>
+              <details className="mt-4 border-t border-border pt-2">
+                <summary className="min-h-11 cursor-pointer content-center rounded text-sm font-medium focus-visible:outline-2 focus-visible:outline-brand">
+                  Resource settings
+                </summary>
+                <div className="mt-4">
+                  <span className={LABEL}>Memory</span>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {MEMORY.map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        disabled={m > maxMemoryMb}
+                        onClick={() => setMemoryMb(m)}
+                        aria-pressed={selectedMemoryMb === m}
+                        aria-disabled={m > maxMemoryMb}
+                        title={m > maxMemoryMb ? `Requires a plan with ${m} MB per app` : undefined}
+                        className={cn(
+                          'rounded-md border px-3 py-1.5 font-mono text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-40',
+                          selectedMemoryMb === m
+                            ? 'border-brand bg-brand/10 text-foreground'
+                            : 'border-border text-muted-foreground hover:text-foreground'
+                        )}
+                      >
+                        {m} MB
+                      </button>
+                    ))}
+                  </div>
+                  {account ? (
+                    <p className="mt-2 text-[13px] leading-5 text-muted-foreground">
+                      {account.plan} plan · up to {account.limits.ram_mb} MB per app
                     </p>
-                  )}
+                  ) : limitsLoading ? (
+                    <p className="mt-2 text-xs text-muted-foreground" role="status">
+                      Checking plan limits…
+                    </p>
+                  ) : null}
                 </div>
-                <Switch
-                  checked={effectiveScaleToZero}
-                  disabled={!canKeepResident}
-                  onCheckedChange={setScaleToZero}
-                  aria-label="Scale to zero"
-                  aria-describedby={!canKeepResident ? 'scale-to-zero-plan-note' : undefined}
-                  className="mt-1 data-[state=checked]:bg-brand"
-                />
-              </div>
+
+                <div className="mt-6 flex items-start justify-between gap-6 border-t border-border pt-5">
+                  <div>
+                    <p className="text-sm font-medium">Scale to zero</p>
+                    <p className="mt-1 max-w-md text-[13px] leading-5 text-muted-foreground">
+                      Snapshot the microVM when idle. <RestoreTarget />. {RESTORE_CONTEXT}
+                    </p>
+                    {account && !canKeepResident && (
+                      <p
+                        id="scale-to-zero-plan-note"
+                        className="mt-1 text-xs text-muted-foreground"
+                      >
+                        Keeping an instance resident requires a paid plan.
+                      </p>
+                    )}
+                  </div>
+                  <Switch
+                    checked={effectiveScaleToZero}
+                    disabled={!canKeepResident}
+                    onCheckedChange={setScaleToZero}
+                    aria-label="Scale to zero"
+                    aria-describedby={!canKeepResident ? 'scale-to-zero-plan-note' : undefined}
+                    className="mt-1 data-[state=checked]:bg-brand"
+                  />
+                </div>
+              </details>
             </Panel>
 
             <div className="flex items-center justify-between">
