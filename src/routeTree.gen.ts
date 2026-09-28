@@ -16,6 +16,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as StatusRouteImport } from './routes/status'
+import { Route as WillItRunRouteImport } from './routes/will-it-run'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard.index'
 import { Route as DashboardAccountRouteImport } from './routes/dashboard.account'
 import { Route as DashboardAlertsRouteImport } from './routes/dashboard.alerts'
@@ -97,6 +98,11 @@ const SignupRoute = SignupRouteImport.update({
 const StatusRoute = StatusRouteImport.update({
   id: '/status',
   path: '/status',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const WillItRunRoute = WillItRunRouteImport.update({
+  id: '/will-it-run',
+  path: '/will-it-run',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DashboardIndexRoute = DashboardIndexRouteImport.update({
@@ -345,6 +351,7 @@ export interface FileRoutesByFullPath {
   '/onboarding': typeof OnboardingRoute
   '/signup': typeof SignupRoute
   '/status': typeof StatusRouteWithChildren
+  '/will-it-run': typeof WillItRunRoute
   '/dashboard/account': typeof DashboardAccountRoute
   '/dashboard/alerts': typeof DashboardAlertsRoute
   '/dashboard/analytics': typeof DashboardAnalyticsRoute
@@ -398,6 +405,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/signup': typeof SignupRoute
+  '/will-it-run': typeof WillItRunRoute
   '/dashboard/account': typeof DashboardAccountRoute
   '/dashboard/alerts': typeof DashboardAlertsRoute
   '/dashboard/analytics': typeof DashboardAnalyticsRoute
@@ -455,6 +463,7 @@ export interface FileRoutesById {
   '/onboarding': typeof OnboardingRoute
   '/signup': typeof SignupRoute
   '/status': typeof StatusRouteWithChildren
+  '/will-it-run': typeof WillItRunRoute
   '/dashboard/account': typeof DashboardAccountRoute
   '/dashboard/alerts': typeof DashboardAlertsRoute
   '/dashboard/analytics': typeof DashboardAnalyticsRoute
@@ -513,6 +522,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/signup'
     | '/status'
+    | '/will-it-run'
     | '/dashboard/account'
     | '/dashboard/alerts'
     | '/dashboard/analytics'
@@ -566,6 +576,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/onboarding'
     | '/signup'
+    | '/will-it-run'
     | '/dashboard/account'
     | '/dashboard/alerts'
     | '/dashboard/analytics'
@@ -622,6 +633,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/signup'
     | '/status'
+    | '/will-it-run'
     | '/dashboard/account'
     | '/dashboard/alerts'
     | '/dashboard/analytics'
@@ -679,6 +691,7 @@ export interface RootRouteChildren {
   OnboardingRoute: typeof OnboardingRoute
   SignupRoute: typeof SignupRoute
   StatusRoute: typeof StatusRouteWithChildren
+  WillItRunRoute: typeof WillItRunRoute
   InviteTokenRoute: typeof InviteTokenRoute
 }
 
@@ -731,6 +744,13 @@ declare module '@tanstack/react-router' {
       path: '/status'
       fullPath: '/status'
       preLoaderRoute: typeof StatusRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/will-it-run': {
+      id: '/will-it-run'
+      path: '/will-it-run'
+      fullPath: '/will-it-run'
+      preLoaderRoute: typeof WillItRunRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/dashboard/': {
@@ -1201,6 +1221,7 @@ const rootRouteChildren: RootRouteChildren = {
   OnboardingRoute: OnboardingRoute,
   SignupRoute: SignupRoute,
   StatusRoute: StatusRouteWithChildren,
+  WillItRunRoute: WillItRunRoute,
   InviteTokenRoute: InviteTokenRoute,
 }
 export const routeTree = rootRouteImport

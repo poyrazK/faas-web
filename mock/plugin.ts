@@ -100,6 +100,221 @@ route('GET', '/v1/status/incidents/{public_id}', ({ params }) => {
   return event;
 });
 
+// --- Migration preflight -----------------------------------------------------
+
+/**
+ * `GET /v1/preflight` — the public "will it run here" check.
+ *
+ * The real endpoint reads a repository; there is nothing to read without a
+ * backend, so the verdict is keyed off the pasted text. That keeps every state
+ * of the page reachable on demand — the point of the mock — without pretending
+ * to have analysed anything:
+ *
+ *   gregale/api          green, runs as written
+ *   owner/express-api    amber, needs a change
+ *   owner/legacy-volume  red, a hard disqualifier
+ *   owner/private-thing  404, private or missing
+ *   owner/enormous       422, too large
+ *   owner/ratelimited    429, too many checks
+ *
+ * Plan budgets mirror pkg/api/limits.go: billed RAM is the plan tier plus the
+ * 8 MB per-VM overhead, and the included minutes are that allowance converted
+ * to running time.
+ */
+const PREFLIGHT_PLAN_BUDGETS = [
+  {
+    plan: 'free',
+    ram_mb: 128,
+    billed_ram_mb: 136,
+    included_running_minutes: 2258,
+    included_gb_hours: 5,
+    price_millicents: 0,
+    overage_millicents_per_gb_hour: 1000,
+  },
+  {
+    plan: 'hobby',
+    ram_mb: 256,
+    billed_ram_mb: 264,
+    included_running_minutes: 11636,
+    included_gb_hours: 50,
+    price_millicents: 900000,
+    overage_millicents_per_gb_hour: 1000,
+  },
+  {
+    plan: 'pro',
+    ram_mb: 512,
+    billed_ram_mb: 520,
+    included_running_minutes: 29538,
+    included_gb_hours: 250,
+    price_millicents: 2900000,
+    overage_millicents_per_gb_hour: 1000,
+  },
+  {
+    plan: 'scale',
+    ram_mb: 1024,
+    billed_ram_mb: 1032,
+    included_running_minutes: 89302,
+    included_gb_hours: 1500,
+    price_millicents: 9900000,
+    overage_millicents_per_gb_hour: 1000,
+  },
+];
+
+const PREFLIGHT_VERDICTS: Record<string, unknown> = {
+  green: {
+    level: 'green',
+    profile: {
+      version: 'v1',
+      framework: 'hono',
+      framework_version: '4.6.3',
+      package_manager: 'pnpm',
+      start_command: 'pnpm run start',
+      port: 3000,
+      health_path: '/healthz',
+      inferred: true,
+    },
+  },
+  amber: {
+    level: 'amber',
+    profile: {
+      version: 'v1',
+      framework: 'express',
+      package_manager: 'npm',
+      start_command: 'npm run start',
+      port: 3000,
+      health_path: '/healthz',
+      inferred: true,
+    },
+    findings: [
+      {
+        code: 'loopback_bind_possible',
+        level: 'amber',
+        title: 'Source may bind to localhost',
+        detail:
+          'The source references localhost or 127.0.0.1; bind to 0.0.0.0 for public API traffic.',
+        remedy: 'Bind to 0.0.0.0 and read the port from $PORT, or traffic cannot reach the app.',
+        sources: ['src/server.js', 'src/dev.js', 'test/helpers.js'],
+      },
+      {
+        code: 'development_start_command',
+        level: 'amber',
+        title: 'Start command looks development-only',
+        detail:
+          'The inferred start script appears development-only; use a production server for predictable zero-config deploys.',
+        remedy: 'Point `start` at a production server rather than a watch/dev process.',
+        sources: ['package.json'],
+      },
+    ],
+  },
+  red: {
+    level: 'red',
+    profile: {
+      version: 'v1',
+      framework: 'oci',
+      package_manager: 'container',
+      port: 8080,
+      health_path: '/healthz',
+    },
+    findings: [
+      {
+        code: 'container_command_deferred',
+        level: 'green',
+        title: 'Entrypoint comes from the image',
+        detail:
+          'The container entrypoint and health contract will be read from the image; source inference is intentionally conservative.',
+        sources: ['Dockerfile'],
+      },
+      {
+        code: 'durable_local_disk',
+        level: 'red',
+        title: 'Expects durable local disk',
+        detail:
+          'The Dockerfile declares a VOLUME. The Gregale root filesystem is ephemeral and host mounts are not supported, so anything written there is lost when the instance is parked or replaced.',
+        remedy:
+          'Move persistent state to object storage or a managed database, then remove the VOLUME.',
+        sources: ['Dockerfile'],
+      },
+      {
+        code: 'host_networking',
+        level: 'red',
+        title: 'Requires host networking',
+        detail:
+          'A compose service requests host networking. Each guest gets its own network namespace, which is what lets one snapshot restore as many instances.',
+        remedy: 'Bind to 0.0.0.0 on $PORT and let the platform route to it.',
+        sources: ['docker-compose.yml'],
+      },
+    ],
+  },
+};
+
+route('GET', '/v1/preflight', ({ query }) => {
+  const source = (query.get('source') ?? '').trim();
+  if (!source)
+    throw new Problem(
+      422,
+      'preflight_invalid_source',
+      'Paste a public github.com repository URL, or owner/repo.'
+    );
+
+  const parsed = source
+    .replace(/^https?:\/\//, '')
+    .replace(/^(www\.)?github\.com\//, '')
+    .replace(/\.git$/, '')
+    .split('/')
+    .filter(Boolean);
+  if (parsed.length < 2 || !/^[A-Za-z0-9][A-Za-z0-9-]*$/.test(parsed[0])) {
+    throw new Problem(
+      422,
+      'preflight_invalid_source',
+      'Paste a public github.com repository URL, or owner/repo.'
+    );
+  }
+  const [owner, repo] = parsed;
+  const key = `${owner}/${repo}`.toLowerCase();
+
+  if (key.includes('private'))
+    throw new Problem(
+      404,
+      'preflight_repo_not_found',
+      'The repository does not exist, or it is private. Preflight only reads public repositories.'
+    );
+  if (key.includes('enormous') || key.includes('huge'))
+    throw new Problem(
+      422,
+      'preflight_source_too_large',
+      'The source exceeds the size preflight will inspect.'
+    );
+  if (key.includes('ratelimit'))
+    throw new Problem(
+      429,
+      'preflight_rate_limited',
+      'Wait a few minutes before checking another repository.'
+    );
+  if (key.includes('upstream'))
+    throw new Problem(503, 'preflight_upstream_unavailable', 'Try again shortly.');
+
+  let verdict = PREFLIGHT_VERDICTS.green;
+  if (/volume|docker|compose|legacy|red/.test(key)) verdict = PREFLIGHT_VERDICTS.red;
+  else if (/express|amber|localhost|dev/.test(key)) verdict = PREFLIGHT_VERDICTS.amber;
+
+  // A commit is a stable function of the repository here, so a permalink
+  // re-renders the same verdict the way the real endpoint does.
+  const sha = Array.from(key)
+    .reduce((acc, ch) => (acc * 31 + ch.charCodeAt(0)) >>> 0, 7)
+    .toString(16)
+    .padStart(8, '0')
+    .repeat(5)
+    .slice(0, 40);
+
+  return {
+    source: { owner, repo, ...(query.get('ref') ? { ref: query.get('ref') } : {}) },
+    commit_sha: sha,
+    verdict,
+    plan_budgets: PREFLIGHT_PLAN_BUDGETS,
+    checked_at: new Date().toISOString(),
+  };
+});
+
 // --- Auth --------------------------------------------------------------------
 
 const SESSION_COOKIE = 'faas_sid=mock-session; Path=/; HttpOnly; SameSite=Lax';
