@@ -57,6 +57,13 @@
   --elevation-3: 0 16px 40px -12px rgb(13 21 18 / 0.25);
 }
 .console {
+  --console-body-size: 0.875rem;
+  --console-body-leading: 1.5714;
+  --console-label-size: 0.875rem;
+  --console-label-leading: 1.4286;
+  --console-control-height: 2.25rem;
+  --console-control-radius: 0.375rem;
+  --console-surface-radius: 0.625rem;
   --elevation-1: 0 1px 2px rgb(0 0 0 / 0.24);
   --elevation-2: 0 4px 12px -2px rgb(0 0 0 / 0.34);
   --elevation-3: 0 24px 48px -12px rgb(0 0 0 / 0.5);
