@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   createMemoryHistory,
@@ -136,6 +136,32 @@ describe('shared log investigations', () => {
       history.forward();
     });
     await waitFor(() => expect(screen.getByLabelText('Archive date')).toHaveValue(date));
+  });
+  it('records explicit archive date edits and saves all applied coordinates', async () => {
+    const { router, history } = await mount(
+      `/dashboard/logs?app=beta&mode=archive&level=warn&q=failed&instance=${historical}&date=2026-09-28`
+    );
+    fireEvent.change(screen.getByLabelText('Archive date'), { target: { value: '2026-09-27' } });
+    await waitFor(() => expect(router.state.location.search.date).toBe('2026-09-27'));
+    await userEvent.click(screen.getByRole('button', { name: 'Views' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Save current view…' }));
+    await userEvent.type(screen.getByLabelText('View name'), 'Archive incident');
+    await userEvent.click(screen.getByRole('button', { name: 'Save view' }));
+    expect(JSON.parse(localStorage.getItem('gregale.logs.views') ?? '[]')).toEqual([
+      {
+        name: 'Archive incident',
+        app: 'beta',
+        mode: 'archive',
+        level: 'warn',
+        q: 'failed',
+        instance: historical,
+        date: '2026-09-27',
+      },
+    ]);
+    await act(async () => {
+      history.back();
+    });
+    await waitFor(() => expect(screen.getByLabelText('Archive date')).toHaveValue('2026-09-28'));
   });
   it('never substitutes the remembered app for an unavailable target', async () => {
     localStorage.setItem('gregale.selectedApp', 'alpha');

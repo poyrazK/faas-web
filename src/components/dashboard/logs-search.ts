@@ -57,3 +57,14 @@ export function logsSearch(filters: LogFilters, app?: string): LogsSearch {
       : {}),
   });
 }
+
+/** Explicit undefined fields clear old filters while preserving other tab context. */
+export function logsSearchPatch(search: LogsSearch) {
+  return {
+    level: search.level,
+    q: search.q,
+    mode: search.mode,
+    instance: search.instance,
+    date: search.date,
+  };
+}
