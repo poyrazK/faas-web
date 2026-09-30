@@ -30,7 +30,11 @@ export interface LogLine {
   raw: string;
 }
 
-export type StreamStatus = 'idle' | 'connecting' | 'streaming' | 'paused' | 'ended' | 'error';
+export type StreamStatus =
+  'idle' | 'connecting' | 'reconnecting' | 'streaming' | 'paused' | 'ended' | 'error';
+
+/** Five attempts per outage; a healthy connection resets the budget. */
+const RETRY_DELAYS = [1_000, 2_000, 4_000, 8_000, 16_000] as const;
 
 /**
  * Where the lines come from.
@@ -235,6 +239,7 @@ async function fetchArchive(url: string, signal: AbortSignal) {
 export function useLogStream(source: StreamSource, connected = true) {
   const [state, setState] = useState<StreamState>(EMPTY);
   const counter = useRef(0);
+  const [restart, setRestart] = useState(0);
 
   const enabled = ready(source);
   const isArchive = source.kind === 'archive';
@@ -266,78 +271,108 @@ export function useLogStream(source: StreamSource, connected = true) {
       return () => controller.abort();
     }
 
-    const source = new EventSource(url, { withCredentials: true });
+    let disposed = false;
+    let current: EventSource | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let attempts = 0;
 
-    // A frame for a different subscription than the one on screen replaces the
-    // buffer; a frame for the same one appends to it.
-    const update = (fn: (prev: StreamState) => StreamState) =>
-      setState((prev) =>
-        fn(prev.key === key ? prev : { key, lines: [], status: 'connecting', truncated: false })
-      );
-
-    source.addEventListener('log', (event) => {
-      const data = (event as MessageEvent<string>).data ?? '';
-      update((prev) => {
-        const line = parseFrame(data, `l${counter.current++}`, Date.now());
-        const next = [...prev.lines, line];
-        const over = next.length > MAX_LINES;
-        return {
-          key,
-          status: 'streaming',
-          reason: undefined,
-          truncated: prev.truncated || over,
-          lines: over ? next.slice(next.length - MAX_LINES) : next,
-        };
-      });
-    });
-
-    source.addEventListener('end', (event) => {
-      const reason = (event as MessageEvent<string>).data?.trim() || undefined;
-      update((prev) => ({ ...prev, key, status: 'ended', reason }));
-      source.close();
-    });
-
-    // The server reports a bad parameter — an unknown `level`, say — as an
-    // error frame with a code, which is worth more than "disconnected".
-    source.addEventListener('error', (event) => {
-      const data = (event as MessageEvent<string>).data;
-      if (!data) return;
-      update((prev) => ({ ...prev, key, status: 'error', reason: data.trim() }));
-      source.close();
-    });
-
-    source.onerror = () => {
-      update((prev) => ({
-        ...prev,
-        key,
-        status: prev.status === 'ended' ? 'ended' : 'error',
-      }));
-      source.close();
+    const update = (fn: (prev: StreamState) => StreamState) => {
+      if (disposed) return;
+      setState((prev) => fn(prev.key === key ? prev : { ...EMPTY, key, status: 'connecting' }));
     };
 
-    return () => source.close();
-  }, [key, url, connected, isArchive]);
+    const connect = () => {
+      if (disposed) return;
+      const connection = new EventSource(url, { withCredentials: true });
+      current = connection;
+      // A retired connection can still deliver queued callbacks. Only the
+      // current connection may update this subscription or schedule a retry.
+      const active = () => !disposed && current === connection;
+      const retire = () => {
+        current = undefined;
+        connection.close();
+      };
+
+      connection.onopen = () => {
+        if (!active()) return;
+        attempts = 0;
+        update((prev) => ({ ...prev, status: 'streaming', reason: undefined, error: undefined }));
+      };
+      connection.addEventListener('log', (event) => {
+        if (!active()) return;
+        const data = (event as MessageEvent<string>).data ?? '';
+        update((prev) => {
+          const line = parseFrame(data, `l${counter.current++}`, Date.now());
+          const next = [...prev.lines, line];
+          const over = next.length > MAX_LINES;
+          return {
+            key,
+            status: 'streaming',
+            truncated: prev.truncated || over,
+            lines: over ? next.slice(next.length - MAX_LINES) : next,
+          };
+        });
+      });
+      connection.addEventListener('end', (event) => {
+        if (!active()) return;
+        const reason = (event as MessageEvent<string>).data?.trim() || undefined;
+        retire();
+        update((prev) => ({ ...prev, status: 'ended', reason }));
+      });
+      connection.onerror = (event) => {
+        if (!active()) return;
+        retire();
+        // Named SSE error frames carry a server refusal. Transport errors
+        // have no data; retrying a bad parameter would repeat it forever.
+        const reason = (event as MessageEvent<string>).data?.trim();
+        if (reason) {
+          update((prev) => ({ ...prev, status: 'error', reason }));
+          return;
+        }
+        const delay = RETRY_DELAYS[attempts++];
+        if (delay === undefined) {
+          update((prev) => ({ ...prev, status: 'error', reason: undefined }));
+          return;
+        }
+        update((prev) => ({ ...prev, status: 'reconnecting', reason: undefined }));
+        timer = setTimeout(connect, delay);
+      };
+    };
+
+    connect();
+    return () => {
+      disposed = true;
+      current?.close();
+      if (timer !== undefined) clearTimeout(timer);
+    };
+  }, [key, url, connected, isArchive, restart]);
 
   const clear = useCallback(() => {
     setState((prev) => ({ ...prev, lines: [], truncated: false }));
   }, []);
 
-  if (!enabled) return { lines: [], status: 'idle' as StreamStatus, truncated: false, clear };
-  if (state.key !== key)
-    return {
-      lines: [],
-      status: (connected ? 'connecting' : 'idle') as StreamStatus,
-      truncated: false,
-      clear,
-    };
+  const retry = useCallback(() => {
+    if (!enabled || !connected || isArchive) return;
+    setState((prev) => ({
+      ...(prev.key === key ? prev : EMPTY),
+      key,
+      status: 'connecting',
+      reason: undefined,
+      error: undefined,
+    }));
+    setRestart((value) => value + 1);
+  }, [enabled, connected, isArchive, key]);
+
+  const visible = !enabled
+    ? EMPTY
+    : state.key !== key
+      ? { ...EMPTY, status: (connected ? 'connecting' : 'idle') as StreamStatus }
+      : { ...state, status: connected ? state.status : ('paused' as StreamStatus) };
 
   return {
-    lines: state.lines,
-    // Paused is a state of the viewer, not of the last connection.
-    status: connected ? state.status : ('paused' as StreamStatus),
-    reason: state.reason,
-    error: state.error,
-    truncated: state.truncated,
+    ...visible,
+    canRetry: !isArchive && connected && visible.status === 'error' && !visible.reason,
     clear,
+    retry,
   };
 }
