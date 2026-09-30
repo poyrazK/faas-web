@@ -128,6 +128,13 @@ that budget. Pause, server-reported errors, completed streams, and archive
 reads do not automatically retry. Recovery preserves the displayed buffer;
 the API does not guarantee replay of lines missed during a disconnect.
 
+The command palette searches account-scoped deployment, domain, API-key,
+and invocation metadata while a query is entered. Search results are grouped
+by resource type and open detail URLs. Historical results cover loaded pages;
+use **Search older deployments/invocations** to extend coverage, or paste a
+full ID for a direct lookup. Resource caches exclude key values, invocation
+payloads/results, and domain challenge tokens, and are partitioned by account.
+
 Customer pages do not surface the `/v1/admin/*` routes or operator controls.
 The dedicated operations console is deployed separately at
 `https://operations.gregale.dev`; the CLI device-code flow, OAuth callbacks,

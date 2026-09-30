@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
@@ -78,7 +79,12 @@ async function renderShell(initialEntry = '/dashboard', content?: ReactNode) {
     routeTree: root.addChildren([dashboard.addChildren([index, settings, page])]),
     history: createMemoryHistory({ initialEntries: [initialEntry] }),
   });
-  render(<RouterProvider router={router as never} />);
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={client}>
+      <RouterProvider router={router as never} />
+    </QueryClientProvider>
+  );
   await screen.findByTestId('page');
   return router;
 }
@@ -464,7 +470,7 @@ describe('dashboard navigation foundation', () => {
       await userEvent.keyboard('{Control>}k{/Control}');
       await userEvent.type(await screen.findByRole('combobox', { name: 'Search commands' }), label);
       await userEvent.click(
-        screen.getAllByRole('option').find((option) => option.textContent === `${label}Go to`)!
+        screen.getAllByRole('option').find((option) => option.textContent === label)!
       );
       await waitFor(() =>
         expect(router.state.location.search).toEqual({
@@ -499,7 +505,7 @@ describe('dashboard navigation foundation', () => {
       'Members'
     );
     await userEvent.click(
-      screen.getAllByRole('option').find((option) => option.textContent === 'MembersGo to')!
+      screen.getAllByRole('option').find((option) => option.textContent === 'Members')!
     );
     await waitFor(() => expect(router.state.location.pathname).toBe('/dashboard/settings'));
     expect(router.state.location.search).toEqual({ section: 'members' });
@@ -555,12 +561,15 @@ describe('dashboard navigation foundation', () => {
     const user = userEvent.setup();
     await user.keyboard('{Control>}k{/Control}');
     const input = await screen.findByRole('combobox', { name: 'Search commands' });
-    expect(input).toHaveAttribute('placeholder', 'Search apps, jump to a page, run an action…');
+    expect(input).toHaveAttribute(
+      'placeholder',
+      'Search apps, deployments, domains, keys, or invocation IDs…'
+    );
     expect(screen.queryByText('Workflows', { exact: true })).not.toBeInTheDocument();
     await user.type(input, 'Tail logs');
     const command = screen
       .getAllByRole('option')
-      .find((option) => option.textContent === 'Tail logs — Public APIApp actions');
+      .find((option) => option.textContent === 'Tail logs — Public API');
     expect(command).toBeDefined();
     await user.click(command!);
     await waitFor(() => expect(router.state.location.pathname).toBe('/dashboard/workflows/api'));
@@ -582,7 +591,7 @@ describe('dashboard navigation foundation', () => {
     await user.type(input, label);
     const options = screen
       .queryAllByRole('option')
-      .filter((option) => option.textContent === `${label}Go to`);
+      .filter((option) => option.textContent === label);
     expect(options).toHaveLength(1);
     await user.click(options[0]);
     await waitFor(() => expect(router.state.location.pathname).toBe(path));
