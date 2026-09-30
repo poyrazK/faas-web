@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen, within } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   createMemoryHistory,
@@ -26,6 +26,7 @@ const fixtures = vi.hoisted(() => ({
   metricsError: null as Error | null,
   retry: vi.fn(),
   buildIds: [] as string[],
+  stream: vi.fn(),
 }));
 
 const deployment = (over: Partial<Deployment> = {}): Deployment => ({
@@ -60,6 +61,20 @@ const metrics = (over: Partial<AppMetrics> = {}): AppMetrics => ({
 vi.mock('@/lib/auth', () => ({
   useAuth: () => ({ account: { plan: fixtures.plan }, loading: false }),
 }));
+vi.mock('@/lib/api/logs', async (original) => ({
+  ...(await original<object>()),
+  useLogStream: (source: unknown, connected: boolean) => {
+    fixtures.stream(source, connected);
+    return {
+      lines: [],
+      status: 'streaming',
+      truncated: false,
+      canRetry: false,
+      clear: vi.fn(),
+      retry: vi.fn(),
+    };
+  },
+}));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn() }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock('@/lib/store', () => ({
@@ -86,6 +101,7 @@ vi.mock('@/lib/store', () => ({
 }));
 vi.mock('@/lib/api/queries', async (original) => ({
   ...(await original<object>()),
+  useAppInstances: () => ({ data: [{ id: 'c'.repeat(32), state: 'running' }] }),
   useAppDeployments: () => ({
     data: fixtures.deploymentLoading ? undefined : { pages: [{ items: fixtures.deployments }] },
     isPending: fixtures.deploymentLoading,
@@ -142,6 +158,7 @@ beforeEach(() => {
   fixtures.metricsLoading = false;
   fixtures.retry.mockReset();
   fixtures.buildIds = [];
+  fixtures.stream.mockClear();
 });
 afterEach(cleanup);
 
@@ -291,5 +308,65 @@ describe('App Overview', () => {
     await userEvent.keyboard('{Home}');
     expect(screen.getByRole('tab', { name: 'Overview' })).toHaveFocus();
     expect(await screen.findByRole('region', { name: 'Latest release' })).toBeInTheDocument();
+  });
+});
+
+describe('App log investigation links', () => {
+  it('restores archive coordinates from a direct app link and preserves other tab context', async () => {
+    fixtures.plan = 'pro';
+    const instance = 'd'.repeat(32);
+    const router = await mount(
+      `/dashboard/workflows/alpha?tab=Logs&mode=archive&instance=${instance}&date=2026-09-28&level=error&q=timeout&request=req-1&keep=yes#context`
+    );
+    expect(screen.getByLabelText('Instance to read')).toHaveValue(instance);
+    expect(fixtures.stream).toHaveBeenLastCalledWith(
+      {
+        kind: 'archive',
+        slug: 'alpha',
+        instance,
+        date: '2026-09-28',
+        level: 'error',
+        grep: 'timeout',
+      },
+      true
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'live' }));
+    await waitFor(() => expect(router.state.location.search.mode).toBeUndefined());
+    expect(router.state.location.search.instance).toBeUndefined();
+    expect(router.state.location.search.date).toBeUndefined();
+    expect(router.state.location.search).toMatchObject({
+      request: 'req-1',
+      keep: 'yes',
+      q: 'timeout',
+    });
+    expect(router.state.location.hash).toBe('context');
+    await act(async () => {
+      router.history.back();
+    });
+    await waitFor(() => expect(screen.getByLabelText('Instance to read')).toHaveValue(instance));
+    await userEvent.click(screen.getByRole('tab', { name: 'Overview' }));
+    await userEvent.click(screen.getByRole('tab', { name: 'Logs' }));
+    expect(screen.getByLabelText('Archive date')).toHaveValue('2026-09-28');
+  });
+  it('rejects invalid log parameters even when another tab validator preserves unknown context', async () => {
+    const router = await mount(
+      '/dashboard/workflows/alpha?tab=Logs&mode=bad&level=debug&instance=bad%2Fid&date=2026-02-30&q=hello&keep=yes'
+    );
+    expect(router.state.location.search).toMatchObject({ keep: 'yes', q: 'hello' });
+    for (const key of ['mode', 'level', 'instance', 'date'])
+      expect(router.state.location.search[key]).toBeUndefined();
+    expect(fixtures.stream).toHaveBeenLastCalledWith(
+      { kind: 'live', slug: 'alpha', level: '', grep: 'hello' },
+      true
+    );
+  });
+  it('pins archive date and instance without losing a linked deployment', async () => {
+    fixtures.plan = 'pro';
+    const router = await mount(
+      '/dashboard/workflows/alpha?tab=Logs&mode=archive&deployment=release-new'
+    );
+    await waitFor(() => expect(router.state.location.search.instance).toBe('c'.repeat(32)));
+    expect(router.state.location.search.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(router.state.location.search.deployment).toBe('release-new');
   });
 });
