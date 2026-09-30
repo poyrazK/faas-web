@@ -335,10 +335,11 @@ markup, `robots.txt`) works without it.
 
 ### og:image
 
-Wired but inactive: drop a 1200×630 `og.png` into `public/` and it is picked
-up automatically on the next build with `SITE_URL` set. Until then previews
-render as a text-only card. This wants a designed asset rather than a
-generated placeholder.
+The 1200×630 social card is `public/og.png`. Run `npm run og` to rebuild it
+from the current logo, editable headline, and frozen glass artwork in
+`scripts/assets/og-glass.png`; its generation prompt is saved alongside it.
+The next build with `SITE_URL` set includes the image in Open Graph and X
+metadata. Commit the rebuilt PNG when changing the card.
 
 ## Tests
 
