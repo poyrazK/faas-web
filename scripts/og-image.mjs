@@ -1,6 +1,6 @@
 // Rebuild the 1200×630 social card with `npm run og`.
-// The frozen glass artwork is generated once; text and the current logo are
-// composed here so changes remain crisp, editable, and reproducible.
+// A cropped wind silhouette, typography, and the current logo are composed here so
+// the whole card remains crisp, editable, and reproducible.
 
 import { mkdir, readFile, writeFile, access } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -11,10 +11,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const cache = join(root, 'node_modules', '.cache', 'og-fonts');
 const out = join(root, 'public', 'og.png');
 
-const FONTS = [
-  ['Familjen Grotesk', 500],
-  ['Familjen Grotesk', 400],
-];
+const FONTS = [['Familjen Grotesk', 400]];
 
 async function fontFiles() {
   await mkdir(cache, { recursive: true });
@@ -46,53 +43,33 @@ async function pngDataUrl(path) {
 
 const W = 1200;
 const H = 630;
-// Marketing ink and muted text from src/index.css. White matches the glass art.
+// Paper, marketing ink, and mint step 7 from src/index.css.
 const PAPER = '#ffffff';
 const INK = '#0d1512';
-const MUTED = '#55625c';
-const MINT = '#00ce91';
+const MINT = '#51deaa';
 
-// A quiet wind crest echoes the existing wave mark inside the glass horizon.
-const WIND_PATHS = [
-  'M431 583 C503 599 569 601 625 579 C660 565 671 544 694 542 C710 540 724 547 732 561 C708 551 696 560 696 574 C696 591 710 601 732 600 C761 599 790 587 813 569',
-  'M421 603 C504 620 581 618 642 592 C660 584 676 572 687 561',
-  'M459 622 C543 631 609 615 665 596 C699 584 724 581 751 584',
-];
-
-const [glass, logo, files] = await Promise.all([
-  pngDataUrl('scripts/assets/og-glass.png'),
-  pngDataUrl('public/logo.png'),
-  fontFiles(),
-]);
+const [logo, files] = await Promise.all([pngDataUrl('public/logo.png'), fontFiles()]);
 
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
   <rect width="${W}" height="${H}" fill="${PAPER}"/>
-  <!-- Lower the glass horizon to preserve the reference's generous white space. -->
-  <image href="${glass}" x="0" y="54" width="${W}" height="${H}" preserveAspectRatio="xMidYMid slice"/>
   <defs>
-    <linearGradient id="wind" gradientUnits="userSpaceOnUse" x1="421" y1="0" x2="813" y2="0">
-      <stop offset="0" stop-color="${MINT}" stop-opacity="0"/>
-      <stop offset="0.45" stop-color="${MINT}" stop-opacity="0.3"/>
-      <stop offset="0.72" stop-color="${MINT}" stop-opacity="0.6"/>
-      <stop offset="1" stop-color="${MINT}" stop-opacity="0"/>
-    </linearGradient>
+    <filter id="mint-logo" color-interpolation-filters="sRGB">
+      <feFlood flood-color="${MINT}"/>
+      <feComposite in2="SourceAlpha" operator="in"/>
+    </filter>
   </defs>
-  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
-    <g stroke="white" stroke-width="4" opacity="0.65">
-      ${WIND_PATHS.map((d) => `<path d="${d}"/>`).join('')}
-    </g>
-    <g stroke="url(#wind)" stroke-width="1.8">
-      ${WIND_PATHS.map((d) => `<path d="${d}"/>`).join('')}
-    </g>
+  <!-- Two solid contours form one oversized crest, separated by clean white space. -->
+  <g fill="${MINT}">
+    <path d="M48 630 C154 470 365 350 550 351 C658 351 754 386 838 430 C760 417 690 426 627 459 C561 493 503 559 477 630 Z"/>
+    <path d="M559 624 C579 526 673 451 786 450 C919 447 992 472 1151 430 C1097 535 1012 590 906 606 C781 627 696 548 559 624 Z"/>
   </g>
-  <image href="${logo}" x="528" y="44" width="144" height="55" preserveAspectRatio="xMidYMid meet"/>
+  <image href="${logo}" x="496" y="39" width="208" height="78" preserveAspectRatio="xMidYMid meet" filter="url(#mint-logo)"/>
 
   <g text-anchor="middle" font-family="Familjen Grotesk">
-    <text font-weight="500" font-size="62" letter-spacing="-2.4" fill="${INK}">
-      <tspan x="600" y="268">Build the API.</tspan>
-      <tspan x="600" y="340">We’ll run it.</tspan>
+    <text font-weight="400" font-size="70" letter-spacing="-2.1" fill="${INK}">
+      <tspan x="600" y="223">Build the API.</tspan>
+      <tspan x="600" y="290">We’ll run it.</tspan>
     </text>
-    <text x="600" y="392" font-weight="400" font-size="17" letter-spacing="0.1" fill="${MUTED}">Backend hosting · Public beta</text>
   </g>
 </svg>`;
 

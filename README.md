@@ -336,8 +336,8 @@ markup, `robots.txt`) works without it.
 ### og:image
 
 The 1200×630 social card is `public/og.png`. Run `npm run og` to rebuild it
-from the current logo, editable headline, and frozen glass artwork in
-`scripts/assets/og-glass.png`; its generation prompt is saved alongside it.
+from the current logo, editable headline, and cropped mint wind silhouette in
+`scripts/og-image.mjs`.
 The next build with `SITE_URL` set includes the image in Open Graph and X
 metadata. Commit the rebuilt PNG when changing the card.
 
