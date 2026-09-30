@@ -4,7 +4,7 @@ import { useDomainDoctor } from '@/lib/api/queries';
 import { InlinePhase, queryPhase } from './primitives';
 
 /**
- * The five-check domain doctor (ADR-120), rendered under the domains table.
+ * The five-check domain doctor (ADR-120), displayed in the diagnostics dialog.
  *
  * The page already prints the TXT record and tells the customer to publish it;
  * this is the other half — what the platform actually observes once they have.
@@ -56,8 +56,8 @@ export function DomainDoctor({ domain }: { domain: string }) {
   ) {
     return (
       <p className="text-sm text-muted-foreground">
-        The domain doctor is not enabled on this deployment. DNS status is still shown in the table
-        above.
+        The domain doctor is not enabled on this deployment. DNS status is still available in the
+        domains table.
       </p>
     );
   }
@@ -83,7 +83,7 @@ export function DomainDoctor({ domain }: { domain: string }) {
       <ul className="flex flex-col divide-y divide-border">
         {data.checks.map((check) => (
           <li key={check.name} className="flex flex-col gap-1 py-3 first:pt-0 last:pb-0">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <Pill label={check.status} color={STATUS_COLOR[check.status]} />
               <span className="font-mono text-xs">{check.name}</span>
               <span className="text-sm">{CHECK_LABEL[check.name] ?? check.name}</span>

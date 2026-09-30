@@ -8,17 +8,15 @@ import {
   UnreachableState,
   queryPhase,
 } from '@/components/dashboard/primitives';
-import { useUsageSummary, useApps, usePerAppUsage, useSetOverageCap } from '@/lib/api/queries';
+import { useUsageSummary, useApps, usePerAppUsage } from '@/lib/api/queries';
 import { useAuth } from '@/lib/auth';
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { FIELD, FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
 import { InlinePhase } from '@/components/dashboard/primitives';
-import { useToast } from '@/components/ui/toast';
-import { errorMessage } from '@/lib/api/errors';
 import { slugIndex } from '@/lib/api/adapters';
 import { consoleHead } from '@/lib/seo';
 import { formatUsageBytes, formatUsageNumber } from '@/lib/usage-format';
+import { SpendCap } from '@/components/dashboard/spend-cap';
 import { ObjectStorageUsagePanel } from '@/components/dashboard/object-storage-usage';
 
 export const Route = createFileRoute('/dashboard/usage')({
@@ -40,91 +38,6 @@ function formatMoney(cents: number | undefined): string {
   if (cents == null) return '—';
   return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'EUR' }).format(
     cents / 100
-  );
-}
-
-/** A hard ceiling on monthly overage spend (issue #561). Null clears it; 0 forbids overage. */
-function SpendCapPanel() {
-  const { toast } = useToast();
-  const setCap = useSetOverageCap();
-  const [euros, setEuros] = useState('');
-  const validation = useFormValidation<'euros'>();
-  const amountOk = /^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(euros);
-  const amountError = amountOk
-    ? undefined
-    : 'Enter zero or a positive amount with no more than two decimal places.';
-  const shownAmountError = validation.submitAttempted ? amountError : undefined;
-  return (
-    <Panel
-      title="Spend cap"
-      description="A hard ceiling on this month's overage. Once reached, requests beyond the included allowance are refused rather than billed. Zero allows no overage; clearing removes the ceiling."
-    >
-      <form
-        noValidate
-        className="flex flex-wrap items-end gap-3"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (!validation.validate({ euros: amountError }, event.currentTarget) || setCap.isPending)
-            return;
-          const cents = Math.round(Number(euros) * 100);
-          void setCap
-            .mutateAsync(cents)
-            .then(() => {
-              validation.resetValidation();
-              toast({
-                kind: 'success',
-                title: `Spend cap set to €${Number(euros).toFixed(2)}`,
-              });
-            })
-            .catch((err: unknown) =>
-              toast({ kind: 'error', title: 'Could not set cap', description: errorMessage(err) })
-            );
-        }}
-      >
-        <label className="flex flex-col gap-1.5">
-          <span className="label-mono text-muted-foreground">Cap (EUR)</span>
-          <input
-            name="euros"
-            type="number"
-            min={0}
-            step="0.01"
-            value={euros}
-            onChange={(e) => setEuros(e.target.value)}
-            {...fieldErrorProps(shownAmountError, 'spend-cap-error')}
-            placeholder="10.00"
-            className={`${FIELD} w-36 [font-variant-numeric:tabular-nums]`}
-          />
-          {shownAmountError && <FieldError id="spend-cap-error">{shownAmountError}</FieldError>}
-        </label>
-        <Button type="submit" size="sm" busy={setCap.isPending}>
-          Set cap
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          busy={setCap.isPending}
-          onClick={() =>
-            void setCap
-              .mutateAsync(null)
-              .then(() => {
-                setEuros('');
-                validation.resetValidation();
-                toast({ kind: 'success', title: 'Spend cap cleared' });
-              })
-              .catch((err: unknown) =>
-                toast({
-                  kind: 'error',
-                  title: 'Could not clear cap',
-                  description: errorMessage(err),
-                })
-              )
-          }
-        >
-          Clear cap
-        </Button>
-      </form>
-    </Panel>
   );
 }
 
@@ -195,8 +108,8 @@ function ForecastPanel({
           {overBy > 0 ? (
             <span style={{ color: 'var(--status-warning)' }}>
               {' '}
-              — ≈{formatUsageNumber(overBy)} past the allowance. The spend cap below decides what
-              happens then.
+              — ≈{formatUsageNumber(overBy)} past the allowance. Your spend cap determines whether
+              further overage is allowed.
             </span>
           ) : (
             ' — inside the allowance.'
@@ -209,6 +122,8 @@ function ForecastPanel({
 
 /** The month, app by app — the detail the roll-up hides. */
 function PerAppUsagePanel() {
+  const [expanded, setExpanded] = useState(false);
+  const tableId = useId();
   const q = usePerAppUsage();
   const { data: apps } = useApps();
   const rows = useMemo(() => {
@@ -227,7 +142,29 @@ function PerAppUsagePanel() {
   const phase = queryPhase({ error: q.error, loading: q.isPending, isEmpty: rows.length === 0 });
 
   return (
-    <Panel title="By app" description="This billing period, per app." padded={phase !== 'ready'}>
+    <Panel
+      title="By app"
+      description={
+        rows.length > 5 && phase === 'ready'
+          ? `${expanded ? 'All' : 'Top 5 of'} ${rows.length} apps this billing period, highest usage first.`
+          : 'This billing period, per app.'
+      }
+      padded={phase !== 'ready'}
+      actions={
+        phase === 'ready' &&
+        rows.length > 5 && (
+          <Button
+            size="xs"
+            variant="ghost"
+            aria-expanded={expanded}
+            aria-controls={tableId}
+            onClick={() => setExpanded(!expanded)}
+          >
+            {expanded ? 'Show fewer' : `Show all ${rows.length} apps`}
+          </Button>
+        )
+      }
+    >
       {phase !== 'ready' ? (
         <InlinePhase
           phase={phase}
@@ -237,7 +174,7 @@ function PerAppUsagePanel() {
         />
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[560px] text-sm">
+          <table id={tableId} className="w-full min-w-[560px] text-sm">
             <thead>
               <tr className="border-b border-border text-left">
                 <th scope="col" className="label-mono px-5 py-2.5 text-muted-foreground">
@@ -261,7 +198,7 @@ function PerAppUsagePanel() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {rows.map((r) => (
+              {(expanded ? rows : rows.slice(0, 5)).map((r) => (
                 <tr key={r.slug}>
                   <td className="px-5 py-2.5 font-mono text-xs">{r.slug}</td>
                   <td className="px-5 py-2.5 text-right [font-variant-numeric:tabular-nums]">
@@ -363,6 +300,7 @@ function UsagePage() {
                 {formatUsageNumber(used)} of {formatUsageNumber(included)} GB-hours
                 {over ? ' — you are into overage for this period.' : '.'}
               </p>
+              <SpendCap compact />
             </div>
           </Panel>
 
@@ -381,7 +319,6 @@ function UsagePage() {
 
           <ForecastPanel used={used} included={included} month={data?.month} />
           <PerAppUsagePanel />
-          <SpendCapPanel />
 
           {account?.limits && (
             <p className="text-xs text-muted-foreground">

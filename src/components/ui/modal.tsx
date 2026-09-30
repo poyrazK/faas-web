@@ -5,6 +5,9 @@ import { Xmark } from 'iconoir-react';
 import { useFocusTrap } from '@/lib/use-focus-trap';
 import { EASE } from '@/components/dashboard/motion';
 
+let scrollLocks = 0;
+let unlockedOverflow = '';
+
 /**
  * Dialog primitive. Locks page scroll, closes on Escape or backdrop click,
  * traps focus while open and restores it on close.
@@ -40,14 +43,22 @@ export function Modal({
   useEffect(() => {
     if (!open) return;
 
-    const previousOverflow = document.body.style.overflow;
+    if (scrollLocks++ === 0) unlockedOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
+    return () => {
+      if (--scrollLocks === 0) document.body.style.overflow = unlockedOverflow;
+    };
+  }, [open]);
 
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      const dialogs = document.querySelectorAll('[role="dialog"][aria-modal="true"]');
+      if (e.key === 'Escape' && dialogs[dialogs.length - 1] === panelRef.current) onClose();
+    };
     document.addEventListener('keydown', onKey);
 
     return () => {
-      document.body.style.overflow = previousOverflow;
       document.removeEventListener('keydown', onKey);
     };
   }, [open, onClose]);

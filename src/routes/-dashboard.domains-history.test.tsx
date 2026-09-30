@@ -86,6 +86,20 @@ async function mount(
 }
 
 describe('Domains operational state', () => {
+  it('opens diagnostics in a modal and restores focus and filters on Escape', async () => {
+    const router = await mount('/dashboard/domains?q=alpha&campaign=handoff#dns');
+    const trigger = await screen.findByRole('button', { name: 'Diagnose alpha.example.com' });
+    await userEvent.click(trigger);
+    expect(
+      await screen.findByRole('dialog', { name: 'Doctor — alpha.example.com' })
+    ).toHaveAttribute('aria-modal', 'true');
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(router.state.location.search).toMatchObject({ q: 'alpha', campaign: 'handoff' });
+    expect(router.state.location.search.doctor).toBeUndefined();
+    expect(router.state.location.hash).toBe('dns');
+    expect(trigger).toHaveFocus();
+  });
   it('does not turn a failed app refresh with cached emptiness into a create-app suggestion', async () => {
     empty = noApps = appFails = true;
     await mount('/dashboard/domains', true);
