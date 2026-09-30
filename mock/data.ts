@@ -523,7 +523,7 @@ export const env = new Map<string, S['AppEnvResponse'][]>(
     a.slug,
     ['NODE_ENV', 'LOG_LEVEL', 'REGION', 'FEATURE_FLAGS'].map((key) => ({
       key,
-      scope: 'app',
+      scope: 'default',
       ...stamp(),
     })),
   ])
