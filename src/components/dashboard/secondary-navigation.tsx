@@ -59,9 +59,8 @@ export function DashboardSecondaryNavigation() {
   const hub = findNavHub(pathname);
   if (!hub?.sections || hub.pageOwnsNavigation) return null;
   const appSection = APP_SECTIONS.some((item) => matchesNavPath(pathname, item));
-  // App detail already has scoped URL tabs, and New app owns its own flow.
-  const showAppSections =
-    hub.label === 'Apps' && !pathname.replace(/\/$/, '').startsWith('/dashboard/workflows/');
+  // Keep this navigation scoped to standalone app pages, not the All apps list.
+  const showAppSections = hub.label === 'Apps' && appSection;
   // A hub whose sections are nested rows in the rail must not restate them as
   // a tab strip: two controls for one choice, one of which silently scrolls
   // away. Settings keeps its strip — its eight `?section=` panels are the
