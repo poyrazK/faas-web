@@ -1434,8 +1434,11 @@ export interface paths {
          * @description Returns a short-lived CSRF token bound to the authenticated
          *     account and the requested browser mutation. The matching
          *     `faas_csrf` cookie is HttpOnly; clients send the returned
-         *     `csrf_token` in the mutation's JSON body. This route remains
-         *     reachable while the session is `mfa_pending` so the dashboard
+         *     `csrf_token` in the mutation's JSON body. For `connect_github`,
+         *     the cookie is `faas_csrf_github_connect` and clients send the
+         *     token as a form field in a native browser POST to
+         *     `/dashboard/install/connect`, which redirects to GitHub.
+         *     This route remains reachable while the session is `mfa_pending` so the dashboard
          *     can complete MFA enrollment or recovery.
          */
         get: operations["issueBrowserCSRFToken"];
@@ -20820,7 +20823,7 @@ export interface operations {
         parameters: {
             query: {
                 /** @description Exact mutation action the token will authorize. */
-                action: "auth.logout" | "auth.session.revoke" | "auth.sessions.revoke_all" | "mfa_confirm" | "mfa_recover" | "mfa_disable" | "set_password";
+                action: "auth.logout" | "auth.session.revoke" | "auth.sessions.revoke_all" | "mfa_confirm" | "mfa_recover" | "mfa_disable" | "set_password" | "connect_github";
             };
             header?: never;
             path?: never;

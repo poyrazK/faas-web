@@ -45,6 +45,39 @@ async function get(path: string) {
   return { response, body: await response.json() };
 }
 
+describe('GitHub connection mock contract', () => {
+  it('issues the named cookie and accepts its matching form proof', async () => {
+    const { response, body } = await get('/v1/auth/csrf?action=connect_github');
+    expect(response.status).toBe(200);
+    expect(response.headers.get('set-cookie')).toContain('faas_csrf_github_connect=');
+    expect(response.headers.get('set-cookie')).toContain('HttpOnly');
+    const connected = await fetch(`${origin}/dashboard/install/connect`, {
+      method: 'POST',
+      redirect: 'manual',
+      headers: { Cookie: response.headers.get('set-cookie')!.split(';')[0] },
+      body: new URLSearchParams({ csrf_token: body.csrf_token }),
+    });
+    expect(connected.status).toBe(303);
+    expect(connected.headers.get('location')).toBe('/dashboard/account?github=connected');
+  });
+
+  it.each([
+    ['', ''],
+    ['mock-connect-csrf', ''],
+    ['', 'faas_csrf_github_connect=mock-connect-csrf'],
+    ['wrong-token', 'faas_csrf_github_connect=mock-connect-csrf'],
+  ])('rejects invalid form proof (%s, %s)', async (token, cookie) => {
+    const rejected = await fetch(`${origin}/dashboard/install/connect`, {
+      method: 'POST',
+      redirect: 'manual',
+      headers: { Cookie: cookie },
+      body: new URLSearchParams({ csrf_token: token }),
+    });
+    expect(rejected.status).toBe(303);
+    expect(rejected.headers.get('location')).toBe('/dashboard/account?github=connect-forbidden');
+  });
+});
+
 describe('app release history mock contract', () => {
   it('pages newest-first within the selected app without repeating the cursor row', async () => {
     const first = await get('/v1/apps/api-gateway/deployments?limit=1');

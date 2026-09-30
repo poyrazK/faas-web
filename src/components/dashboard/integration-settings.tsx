@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Panel } from '@/components/dashboard/primitives';
 import { consumeOnboardingGitHubReturn, useAuth } from '@/lib/auth';
 import type { SettingsSearch } from './settings-search';
+import { GitHubConnect } from './github-connect';
 
 /**
  * Account-level GitHub connection.
@@ -31,6 +32,14 @@ export function IntegrationSettings({ search }: { search: SettingsSearch }) {
 
   return (
     <div className="flex flex-col gap-6">
+      {github === 'connect-forbidden' && (
+        <p
+          role="alert"
+          className="rounded-lg border border-destructive/30 p-4 text-sm text-destructive"
+        >
+          GitHub connection was rejected. Try Connect GitHub again to start a fresh connection.
+        </p>
+      )}
       {justConnected && (
         <div
           role="status"
@@ -100,18 +109,7 @@ export function IntegrationSettings({ search }: { search: SettingsSearch }) {
                 the installation.
               </p>
             </div>
-            <form method="post" action="/dashboard/install/connect">
-              <Button
-                type="submit"
-                size="sm"
-                variant="cta"
-                className="gap-1.5"
-                disabled={!apiReachable}
-              >
-                <Github className="h-3.5 w-3.5" />
-                Connect GitHub
-              </Button>
-            </form>
+            <GitHubConnect disabled={!apiReachable} />
             {!apiReachable && (
               <p className="text-xs text-muted-foreground">
                 The API is currently unreachable. Check the connection and try again.

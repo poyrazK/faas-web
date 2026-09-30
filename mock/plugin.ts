@@ -4082,6 +4082,7 @@ const MOCK_CSRF_ACTIONS = new Set([
   'mfa_recover',
   'mfa_disable',
   'set_password',
+  'connect_github',
 ]);
 route('GET', '/v1/auth/csrf', ({ query, res }) => {
   const action = query.get('action') ?? '';
@@ -4091,8 +4092,26 @@ route('GET', '/v1/auth/csrf', ({ query, res }) => {
       'validation_failed',
       'the requested action is not available to browser clients'
     );
-  res.setHeader('Set-Cookie', CSRF_COOKIE);
-  return { csrf_token: 'mock-csrf' };
+  res.setHeader(
+    'Set-Cookie',
+    action === 'connect_github'
+      ? 'faas_csrf_github_connect=mock-connect-csrf; Path=/; HttpOnly; SameSite=Lax'
+      : CSRF_COOKIE
+  );
+  return { csrf_token: action === 'connect_github' ? 'mock-connect-csrf' : 'mock-csrf' };
+});
+route('POST', '/dashboard/install/connect', ({ body, req, res }) => {
+  const hasCookie = (req.headers.cookie ?? '')
+    .split(';')
+    .some((cookie) => cookie.trim() === 'faas_csrf_github_connect=mock-connect-csrf');
+  if (body.csrf_token !== 'mock-connect-csrf' || !hasCookie) {
+    res.setHeader('Location', '/dashboard/account?github=connect-forbidden');
+    return status(303, '');
+  }
+  // Simulate provider consent locally; never send a mock session to GitHub.
+  db.account.github_install_id = '48213377';
+  res.setHeader('Location', '/dashboard/account?github=connected');
+  return status(303, '');
 });
 // ADR-140 cohorts. The real server decides the proof from the account; the
 // mock keeps just enough state to show each branch on demand.
@@ -4657,6 +4676,7 @@ const MOCKED_PREFIXES = [
   '/login',
   '/signup',
   '/dashboard/account/set-password',
+  '/dashboard/install/connect',
 ];
 
 export function mockApi(): Plugin {

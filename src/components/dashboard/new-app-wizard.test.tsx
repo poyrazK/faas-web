@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NewAppWizard } from './new-app-wizard';
@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   deployFromRef: vi.fn(),
   updateApp: vi.fn(),
   toast: vi.fn(),
+  issueCSRF: vi.fn(),
   deploymentStatus: 'building',
   account: {
     plan: 'hobby' as 'free' | 'hobby' | 'pro' | 'scale',
@@ -24,6 +25,7 @@ vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => vi.fn(),
 }));
 vi.mock('@/lib/use-unsaved-guard', () => ({ useUnsavedGuard: vi.fn() }));
+vi.mock('@/lib/api/client', () => ({ issueCSRF: mocks.issueCSRF }));
 vi.mock('@/lib/api/logs', () => ({
   useLogStream: () => ({ lines: [], status: 'streaming', reason: null }),
 }));
@@ -87,8 +89,24 @@ beforeEach(() => {
   mocks.deployFromRef.mockResolvedValue({ id: 'deployment-1' });
   mocks.updateApp.mockResolvedValue({});
 });
+afterEach(() => vi.restoreAllMocks());
 
 describe('NewAppWizard Git submission', () => {
+  it('uses a CSRF-protected connect form before marking the onboarding return', async () => {
+    mocks.account.github_install_id = '';
+    mocks.issueCSRF.mockResolvedValue('wizard-proof');
+    const onConnect = vi.fn();
+    const submit = vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(function (
+      this: HTMLFormElement
+    ) {
+      expect(new FormData(this).get('csrf_token')).toBe('wizard-proof');
+      expect(onConnect).toHaveBeenCalledOnce();
+    });
+    render(<NewAppWizard onboarding onConnectGitHub={onConnect} />);
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Connect GitHub' }));
+    await waitFor(() => expect(submit).toHaveBeenCalledOnce());
+    expect(mocks.issueCSRF).toHaveBeenCalledExactlyOnceWith('connect_github');
+  });
   it('keeps resource defaults available behind a named disclosure', async () => {
     const user = userEvent.setup();
     render(<NewAppWizard onboarding />);
@@ -97,7 +115,7 @@ describe('NewAppWizard Git submission', () => {
     const summary = await screen.findByText('Resource settings');
     const details = summary.closest('details');
     expect(details).not.toHaveAttribute('open');
-    expect(screen.getByText('128 MB · Parks when idle')).toBeVisible();
+    await waitFor(() => expect(screen.getByText('128 MB · Parks when idle')).toBeVisible());
     await user.click(summary);
     expect(details).toHaveAttribute('open');
     expect(screen.getByRole('switch', { name: /scale to zero/i })).toBeVisible();

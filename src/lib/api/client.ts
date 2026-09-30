@@ -82,7 +82,8 @@ export type CSRFAction =
   | 'mfa_confirm'
   | 'mfa_recover'
   | 'mfa_disable'
-  | 'set_password';
+  | 'set_password'
+  | 'connect_github';
 
 /**
  * Narrows an `openapi-fetch` result to its data, throwing `ApiError` otherwise.

@@ -20,7 +20,7 @@ const SPEC = readFileSync(resolve('api/openapi.yaml'), 'utf8');
 const MOCK = readFileSync(resolve('mock/plugin.ts'), 'utf8');
 
 /** Cookie-session flows apid serves same-origin but outside the spec's `paths`. */
-const OUTSIDE_SPEC = new Set(['/login', '/signup', '/login/forgot']);
+const OUTSIDE_SPEC = new Set(['/login', '/signup', '/login/forgot', '/dashboard/install/connect']);
 
 it('every mocked route exists in the OpenAPI spec', () => {
   const specPaths = new Set([...SPEC.matchAll(/^ {2}(\/[^\s:]+):/gm)].map((m) => m[1]));

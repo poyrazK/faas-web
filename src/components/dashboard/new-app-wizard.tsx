@@ -3,6 +3,7 @@ import { RESTORE_CONTEXT } from '@/lib/platform-claims';
 import { useEffect, useRef, useState } from 'react';
 import { useUnsavedGuard } from '@/lib/use-unsaved-guard';
 import { RepoPicker } from '@/components/dashboard/repo-picker';
+import { GitHubConnect } from '@/components/dashboard/github-connect';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { ArrowLeft, ArrowRight, Check, Github, Package, Page, Upload } from 'iconoir-react';
@@ -606,12 +607,7 @@ export function NewAppWizard({
                     exact ref you deploy.
                   </p>
                 </div>
-                <form method="post" action="/dashboard/install/connect" onSubmit={onConnectGitHub}>
-                  <Button type="submit" size="sm" variant="cta" className="gap-1.5">
-                    <Github className="h-3.5 w-3.5" />
-                    Connect GitHub
-                  </Button>
-                </form>
+                <GitHubConnect onConnect={onConnectGitHub} />
               </div>
             ) : source === 'git' ? (
               <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
