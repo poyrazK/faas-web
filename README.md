@@ -137,6 +137,17 @@ use `/dashboard/traces?invocation=<id>`, including IDs outside loaded history;
 refresh and browser navigation retain that selection. Invalid filters are ignored,
 and unavailable or denied records remain explicit error states.
 
+Environment transfer is available on Env vars and the app Env tab. File/paste
+imports show additions, overwrites, and redacted invalid/duplicate diagnostics
+before one confirmation. The current API applies keys individually and reports
+partial success; only failed entries remain for a reviewed retry. Quotas count
+all scopes; unmentioned keys are preserved. The selected scope is explicit.
+Downloads warn about sensitive plaintext and use a dedicated authorized POST
+endpoint. They include mutable plaintext env only, excluding sealed secrets,
+manifest/image defaults. Imported/exported values never enter query/mutation
+caches or persistent browser storage. The export requires backend PR
+[poyrazK/faas#3936](https://github.com/poyrazK/faas/pull/3936).
+
 The command palette searches account-scoped deployment, domain, API-key,
 and invocation metadata while a query is entered. Search results are grouped
 by resource type and open detail URLs. Historical results cover loaded pages;
