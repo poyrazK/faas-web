@@ -122,7 +122,11 @@ more; `lib/mock-data.ts` survives only for formatters (`formatRelative`,
 Logs are the one exception to the client above: `/v1/apps/{slug}/logs` is an SSE
 stream, so it uses `EventSource` in `lib/api/logs.ts` rather than
 `openapi-fetch`. There is no single response to cache, so no TanStack Query
-either.
+either. Live and build streams retry transport failures after 1, 2, 4, 8, and
+16 seconds, then offer **Retry log stream**. A successful connection resets
+that budget. Pause, server-reported errors, completed streams, and archive
+reads do not automatically retry. Recovery preserves the displayed buffer;
+the API does not guarantee replay of lines missed during a disconnect.
 
 Customer pages do not surface the `/v1/admin/*` routes or operator controls.
 The dedicated operations console is deployed separately at

@@ -254,9 +254,11 @@ export function useLogStream(source: StreamSource, connected = true) {
       // the state's key differs from the subscription's, and setting it
       // synchronously in an effect only costs a render.
       void fetchArchive(url, controller.signal)
-        .then(({ lines, reason }) =>
-          setState({ key, lines, status: 'ended', reason, truncated: false })
-        )
+        .then(({ lines, reason }) => {
+          if (!controller.signal.aborted) {
+            setState({ key, lines, status: 'ended', reason, truncated: false });
+          }
+        })
         .catch((err: unknown) => {
           if (controller.signal.aborted) return;
           setState({
