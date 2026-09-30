@@ -3660,6 +3660,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/apps/{slug}/env-export": {
+        parameters: {
+            query?: {
+                /**
+                 * @description Env-var scope (ADR-090). A domain-valid slug (3..40 chars,
+                 *     lowercase alnum + dash, no leading/trailing dash) — e.g.
+                 *     `default`, `staging`, `prod-eu`. Or the reserved sentinel
+                 *     `__all__` on GET only, which returns the nested
+                 *     `env_by_scope` response shape (every scope on the app).
+                 *     Omitted = `scope=default` (pre-PR-B behavior).
+                 */
+                scope?: components["parameters"]["EnvScope"];
+            };
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Explicitly export plaintext environment values from one app scope.
+         * @description Requires admin or env:write and the session MFA gate. The body must
+         *     acknowledge that downloaded values may be sensitive. Returns only
+         *     mutable plaintext app_envs in one scope; never reads sealed secrets,
+         *     deployment manifests, or image defaults. Omitted scope means default;
+         *     __all__ is rejected. Metadata GET responses continue to omit values.
+         *     Responses use Cache-Control no-store. This endpoint never persists
+         *     an idempotency response containing plaintext. Audit records contain
+         *     app ID, scope and count only, never values.
+         */
+        post: operations["exportAppEnv"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/apps/{slug}/env/{key}": {
         parameters: {
             query?: {
@@ -14694,6 +14734,21 @@ export interface components {
              */
             value: string;
         };
+        ExportAppEnvRequest: {
+            /**
+             * @description Explicit acknowledgement that plaintext downloaded values may be sensitive.
+             * @enum {boolean}
+             */
+            acknowledge_sensitive_values: true;
+        };
+        AppEnvExportResponse: {
+            app_slug: string;
+            scope: string;
+            /** @description Mutable plaintext env values only. Never includes sealed secrets. */
+            values: {
+                [key: string]: string;
+            };
+        };
         /** @description An env var envelope: key name + scope + timestamps. The plaintext value never appears here. */
         AppEnvResponse: {
             /** @example LOG_LEVEL */
@@ -24609,6 +24664,67 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
             429: components["responses"]["TooManyRequests"];
+        };
+    };
+    exportAppEnv: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Env-var scope (ADR-090). A domain-valid slug (3..40 chars,
+                 *     lowercase alnum + dash, no leading/trailing dash) — e.g.
+                 *     `default`, `staging`, `prod-eu`. Or the reserved sentinel
+                 *     `__all__` on GET only, which returns the nested
+                 *     `env_by_scope` response shape (every scope on the app).
+                 *     Omitted = `scope=default` (pre-PR-B behavior).
+                 */
+                scope?: components["parameters"]["EnvScope"];
+            };
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExportAppEnvRequest"];
+            };
+        };
+        responses: {
+            /** @description Plaintext values from the explicitly selected app and scope. */
+            200: {
+                headers: {
+                    /** @description Plaintext responses must not be stored by caches. */
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppEnvExportResponse"];
+                };
+            };
+            /** @description Missing acknowledgement, malformed body, or invalid/reserved scope. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Env write permission or session MFA is required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     setEnv: {
