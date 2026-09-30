@@ -14734,6 +14734,7 @@ export interface components {
              */
             value: string;
         };
+        /** @description Explicit acknowledgement required before downloading potentially sensitive plaintext env values. */
         ExportAppEnvRequest: {
             /**
              * @description Explicit acknowledgement that plaintext downloaded values may be sensitive.
@@ -14741,6 +14742,7 @@ export interface components {
              */
             acknowledge_sensitive_values: true;
         };
+        /** @description Mutable plaintext environment values from one authorized app scope, excluding sealed secrets. */
         AppEnvExportResponse: {
             app_slug: string;
             scope: string;
