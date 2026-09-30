@@ -130,9 +130,12 @@ export function usePaletteResources(accountId: string | undefined, open: boolean
     enabled && !error ? (data ?? fallback) : fallback;
   const collections = [apps, deployments, domains, keys, invocations];
   const lookups = exactEnabled ? [exactDeployment, exactInvocation] : [];
-  const failures = [...collections, ...lookups].filter(
-    (item) => item.error && !(item.error instanceof ApiError && item.error.isNotFound)
-  );
+  const failures = [
+    ...collections.filter((item) => item.error),
+    ...lookups.filter(
+      (item) => item.error && !(item.error instanceof ApiError && item.error.isNotFound)
+    ),
+  ];
   const names = new Map(accessible(apps.data, apps.error, []).map((app) => [app.id, app.slug]));
 
   return {

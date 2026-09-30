@@ -6,6 +6,10 @@ import { NAV_ITEMS, SECTION_LABELS, type NavIcon } from './nav-config';
 import { validateSettingsSearch } from './settings-search';
 import { EASE } from './motion';
 import { Kbd } from '@/components/ui/kbd';
+import { useAuth } from '@/lib/auth';
+import { usePaletteResources } from '@/lib/api/palette';
+import { errorMessage } from '@/lib/api/errors';
+import { Button } from '@/components/ui/button';
 import { useData } from '@/lib/store';
 import { formatCompact } from '@/lib/mock-data';
 import { cn } from '@/lib/utils';
@@ -88,6 +92,8 @@ export function CommandPalette({
   const location = useRouterState({ select: (state) => state.location });
   const { workflows } = useData();
   const [query, setQuery] = useState('');
+  const { account } = useAuth();
+  const resources = usePaletteResources(account?.id, open, query);
   const [active, setActive] = useState(0);
   const reduce = useReducedMotion();
 
@@ -117,6 +123,23 @@ export function CommandPalette({
         navigate(search ? { to, search } : { to });
       }
     };
+
+    const resourceCommand = (
+      kind: string,
+      id: string,
+      label: string,
+      group: string,
+      hint: string,
+      to: string,
+      search: Record<string, string>
+    ): Command => ({
+      id: `resource-${account?.id}-${kind}-${id}`,
+      label,
+      group,
+      hint,
+      icon: Search,
+      run: go(to, search),
+    });
 
     return [
       // Driven by the nav config, so a new page becomes reachable by ⌘K the
@@ -218,8 +241,52 @@ export function CommandPalette({
           },
         }))
       ),
+      ...resources.deployments.map((row) =>
+        resourceCommand(
+          'deployment',
+          row.id,
+          `Deployment ${row.id}`,
+          'Deployments',
+          `${resources.appName(row.appId)} · ${row.status} · ${row.digest ?? ''}`,
+          '/dashboard/deployments',
+          { deployment: row.id, releaseSection: 'overview' }
+        )
+      ),
+      ...resources.domains.map((row) =>
+        resourceCommand(
+          'domain',
+          row.hostname,
+          row.hostname,
+          'Domains',
+          `${resources.appName(row.appId)} · ${row.verified ? 'verified' : 'pending'}`,
+          '/dashboard/domains',
+          { doctor: row.hostname }
+        )
+      ),
+      ...resources.keys.map((row) =>
+        resourceCommand(
+          'key',
+          row.id,
+          row.label,
+          'API keys',
+          `${row.id} · ${row.scopes.join(', ')}`,
+          '/dashboard/settings',
+          { section: 'api-keys', scope: 'personal', key: row.id }
+        )
+      ),
+      ...resources.invocations.map((row) =>
+        resourceCommand(
+          'invocation',
+          row.id,
+          `Invocation ${row.id}`,
+          'Invocations',
+          `${resources.appName(row.appId)} · ${row.status}`,
+          '/dashboard/traces',
+          { invocation: row.id }
+        )
+      ),
     ];
-  }, [workflows, navigate, location, close, onSignOut, onToggleSidebar]);
+  }, [workflows, navigate, location, close, onSignOut, onToggleSidebar, resources, account?.id]);
 
   // Ranked results, or — when the palette opens empty-handed — the recent
   // commands lifted into their own leading group.
@@ -262,12 +329,23 @@ export function CommandPalette({
         .filter((r): r is Result & { score: number } => r !== null)
         // Stable within a score, so equally-good matches keep the source
         // order that groups them ("Go to", then "Actions", then workflows).
-        .sort((a, b) => b.score - a.score)
+        .sort((a, b) => {
+          const order = [
+            'Go to',
+            'Actions',
+            'Apps',
+            'App actions',
+            'Deployments',
+            'Domains',
+            'API keys',
+            'Invocations',
+          ];
+          return (
+            order.indexOf(a.command.group) - order.indexOf(b.command.group) || b.score - a.score
+          );
+        })
     );
   }, [commands, withRecent, query]);
-
-  // Keep the highlight in range as the result set shrinks.
-  useEffect(() => setActive(0), [query]);
 
   useEffect(() => {
     if (!open) return;
@@ -321,7 +399,7 @@ export function CommandPalette({
     }
     if (e.key === 'Enter') {
       e.preventDefault();
-      const cmd = results[active]?.command;
+      const cmd = results[Math.min(active, Math.max(0, results.length - 1))]?.command;
       if (cmd) {
         recordRecent(cmd.id);
         cmd.run();
@@ -338,11 +416,7 @@ export function CommandPalette({
     }
   };
 
-  // Group headers only make sense in source order. Once a query ranks results
-  // by score they interleave, so searching drops the headers entirely rather
-  // than repeating "Apps" every third row.
-  const grouped = query.trim() === '';
-  let lastGroup = '';
+  const activeIndex = Math.min(active, Math.max(0, results.length - 1));
 
   // The dialog mounts the instant `open` flips (so the focus trap and the
   // input focus find it) and lingers only for its short exit.
@@ -387,20 +461,67 @@ export function CommandPalette({
               <input
                 ref={inputRef}
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search apps, jump to a page, run an action…"
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  setActive(0);
+                }}
+                placeholder="Search apps, deployments, domains, keys, or invocation IDs…"
                 aria-label="Search commands"
                 role="combobox"
                 aria-expanded={results.length > 0}
                 aria-controls={listId}
                 aria-autocomplete="list"
-                aria-activedescendant={results[active] ? `cmd-${active}` : undefined}
+                aria-activedescendant={results[activeIndex] ? `cmd-${activeIndex}` : undefined}
                 className="h-12 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
               />
               <Kbd>esc</Kbd>
             </div>
 
-            {results.length === 0 ? (
+            {resources.enabled && (
+              <div className="flex flex-col gap-2 border-b border-border px-4 py-3 text-xs text-muted-foreground">
+                {resources.loading && <p role="status">Searching account resources…</p>}
+                {resources.errors.length > 0 && (
+                  <div role="alert">
+                    <p>
+                      Some resources could not be searched:{' '}
+                      {resources.errors.map(errorMessage).join('; ')}
+                    </p>
+                    <Button size="xs" variant="outline" onClick={resources.retry}>
+                      Retry resource search
+                    </Button>
+                  </div>
+                )}
+                <p>
+                  Release and invocation history includes loaded pages. Paste a full ID to look it
+                  up directly.
+                </p>
+                {(resources.moreDeployments || resources.moreInvocations) && (
+                  <div className="flex flex-wrap gap-2">
+                    {resources.moreDeployments && (
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        disabled={resources.loading}
+                        onClick={resources.loadDeployments}
+                      >
+                        Search older deployments
+                      </Button>
+                    )}
+                    {resources.moreInvocations && (
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        disabled={resources.loading}
+                        onClick={resources.loadInvocations}
+                      >
+                        Search older invocations
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+            {results.length === 0 && !resources.loading ? (
               <div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
                 <p className="text-sm text-muted-foreground">No matches for “{query}”.</p>
                 <button
@@ -425,8 +546,7 @@ export function CommandPalette({
               >
                 {results.map(({ command: cmd, indices }, i) => {
                   const Icon = cmd.icon;
-                  const newGroup = grouped && cmd.group !== lastGroup;
-                  lastGroup = cmd.group;
+                  const newGroup = i === 0 || results[i - 1].command.group !== cmd.group;
                   return [
                     newGroup && (
                       <li
@@ -441,8 +561,8 @@ export function CommandPalette({
                       key={`${cmd.group}-${cmd.id}`}
                       id={`cmd-${i}`}
                       role="option"
-                      aria-selected={i === active}
-                      data-active={i === active}
+                      aria-selected={i === activeIndex}
+                      data-active={i === activeIndex}
                       onMouseMove={() => setActive(i)}
                       onClick={() => {
                         recordRecent(cmd.id);
@@ -450,14 +570,14 @@ export function CommandPalette({
                       }}
                       className={cn(
                         'relative isolate flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-2 text-sm transition-colors',
-                        i === active
+                        i === activeIndex
                           ? cn('text-foreground', reduce && 'bg-muted')
                           : 'text-muted-foreground'
                       )}
                     >
                       {/* One highlight slides between options rather than each
                       row lighting up on its own. */}
-                      {i === active && !reduce && (
+                      {i === activeIndex && !reduce && (
                         <motion.span
                           aria-hidden="true"
                           layoutId="palette-active"
@@ -484,17 +604,15 @@ export function CommandPalette({
                           )
                         )}
                       </span>
-                      {/* Searching drops the group headers, so each row has to
-                          say where it came from on its own. */}
-                      {!grouped && !cmd.hint && (
-                        <span className="shrink-0 text-xs text-muted-foreground/70">
-                          {cmd.group}
+                      {cmd.hint && (
+                        <span
+                          title={cmd.hint}
+                          className="max-w-[45%] shrink-0 truncate text-xs text-muted-foreground"
+                        >
+                          {cmd.hint}
                         </span>
                       )}
-                      {cmd.hint && (
-                        <span className="shrink-0 text-xs text-muted-foreground">{cmd.hint}</span>
-                      )}
-                      {i === active && <UTurnArrowLeft className="h-3 w-3 shrink-0" />}
+                      {i === activeIndex && <UTurnArrowLeft className="h-3 w-3 shrink-0" />}
                     </li>,
                   ];
                 })}

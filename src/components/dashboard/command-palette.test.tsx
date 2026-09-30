@@ -8,6 +8,17 @@ vi.mock('@tanstack/react-router', () => ({
   useRouterState: () => ({ pathname: '/dashboard', search: {}, hash: '' }),
 }));
 
+vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { id: 'account1' } }) }));
+vi.mock('@/lib/api/palette', () => ({
+  usePaletteResources: () => ({
+    deployments: [],
+    domains: [],
+    keys: [],
+    invocations: [],
+    enabled: false,
+  }),
+}));
+
 vi.mock('@/lib/store', () => ({
   useData: () => ({ workflows: [] }),
 }));
