@@ -1,8 +1,9 @@
-import { useMemo } from 'react';
-import { Link } from '@tanstack/react-router';
+import { useMemo, useState } from 'react';
+import { Plus } from 'iconoir-react';
 import { InlinePhase, PageHeader, Panel, queryPhase } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
-import { PlanGated } from '@/components/dashboard/plan-gated';
+import { isPlanGate, PlanGated } from '@/components/dashboard/plan-gated';
+import { JobCreateDialog } from './job-create-dialog';
 import { JobRuns } from '@/components/dashboard/job-runs';
 import { JobTasks } from '@/components/dashboard/job-tasks';
 import { JobDefinition, JobRunDetail } from '@/components/dashboard/job-detail';
@@ -18,9 +19,7 @@ import type { JobsSelectionProps } from './jobs-search';
  * Jobs are plan-gated — Free answers `402 jobs_not_allowed` — so the page
  * leads with that rather than an error when the account cannot use them.
  *
- * Creating and editing stay in the CLI: a job is an image reference, a
- * command, a parallelism and a retry policy, which is configuration that
- * belongs in version control rather than in a form.
+ * New definitions can be created here or through the CLI.
  */
 interface JobRow {
   id: string;
@@ -40,6 +39,7 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export function WorkloadsBody({ search, onSelection }: JobsSelectionProps) {
+  const [creating, setCreating] = useState(false);
   // Browsing uses the paged query so a large account is not silently capped
   // at the first response. A selected URL keeps the older lookup query, which
   // walks pages until it finds the requested job before rendering its detail.
@@ -154,8 +154,25 @@ export function WorkloadsBody({ search, onSelection }: JobsSelectionProps) {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Workloads"
-        description="CLI-defined container and batch jobs. Run, watched and cancelled here."
+        description="Container jobs for batch and recurring work. Create workloads and inspect their runs."
+        actions={
+          !isPlanGate(error) && (
+            <Button size="sm" onClick={() => setCreating(true)}>
+              <Plus className="h-4 w-4" />
+              New workload
+            </Button>
+          )
+        }
       />
+      {creating && (
+        <JobCreateDialog
+          onClose={() => setCreating(false)}
+          onCreated={(created) => {
+            setCreating(false);
+            onSelection({ job: created.id, run: undefined, task: undefined });
+          }}
+        />
+      )}
 
       <PlanGated error={error} feature="Jobs">
         {search.job && data && !job && <p role="status">Workload not found</p>}
@@ -165,15 +182,11 @@ export function WorkloadsBody({ search, onSelection }: JobsSelectionProps) {
           initialSort={{ key: 'name', dir: 'asc' }}
           searchKeys={['name', 'image', 'kind']}
           searchPlaceholder="Filter by job, image, or kind…"
-          emptyMessage="No jobs yet. Create one with the CLI."
+          emptyMessage="No workloads yet. Start with a container image."
           emptyAction={
-            <Link
-              to="/docs/$slug"
-              params={{ slug: 'cli' }}
-              className="text-sm underline underline-offset-4"
-            >
-              Read the CLI guide
-            </Link>
+            <Button size="sm" onClick={() => setCreating(true)}>
+              Create your first workload
+            </Button>
           }
           minWidth="min-w-[900px]"
           loading={listLoading}
@@ -214,7 +227,7 @@ export function WorkloadsBody({ search, onSelection }: JobsSelectionProps) {
         {job && (
           <Panel
             title={`Definition — ${job}`}
-            description="As deployed. Jobs are defined and changed with the CLI."
+            description="Current configuration. Further changes can be made with the CLI."
           >
             <JobDefinition name={job} />
           </Panel>

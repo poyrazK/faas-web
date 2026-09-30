@@ -16,6 +16,7 @@ import { Panel } from '@/components/dashboard/primitives';
 import { useConfirm } from '@/components/ui/confirm';
 import { errorMessage } from '@/lib/api/errors';
 import { consoleHead } from '@/lib/seo';
+import { SpendCap } from '@/components/dashboard/spend-cap';
 
 export const Route = createFileRoute('/dashboard/plans')({
   component: PlansPage,
@@ -250,6 +251,8 @@ function PlansPage() {
           );
         })}
       </div>
+
+      <SpendCap />
 
       <Modal
         open={pending !== null}

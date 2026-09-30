@@ -376,20 +376,23 @@ export function DeploymentsPage() {
           onClose={() =>
             select({ deployment: undefined, build: undefined, releaseSection: undefined })
           }
+          footer={
+            selected &&
+            appById.has(selected.app_id) && (
+              <Link
+                to="/dashboard/workflows/$workflowId"
+                params={{ workflowId: appById.get(selected.app_id)! }}
+                search={{
+                  tab: 'Deployments',
+                  deployment: selected.id,
+                  releaseSection: search.releaseSection,
+                }}
+              >
+                Open {appById.get(selected.app_id)}
+              </Link>
+            )
+          }
         />
-      )}
-      {selected && appById.has(selected.app_id) && (
-        <Link
-          to="/dashboard/workflows/$workflowId"
-          params={{ workflowId: appById.get(selected.app_id)! }}
-          search={{
-            tab: 'Deployments',
-            deployment: selected.id,
-            releaseSection: search.releaseSection,
-          }}
-        >
-          Open {appById.get(selected.app_id)}
-        </Link>
       )}
     </div>
   );
