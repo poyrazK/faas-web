@@ -151,7 +151,11 @@ function SettingsPage() {
             ))}
           </nav>
           {scope === 'personal' ? (
-            <PersonalKeysBody />
+            <PersonalKeysBody
+              selectedKeyId={search.key}
+              onCloseKey={() => onSelection({ key: undefined })}
+              onSelectKey={(key) => onSelection({ key })}
+            />
           ) : (
             <OrganizationScope search={search} onSelection={onSelection} />
           )}

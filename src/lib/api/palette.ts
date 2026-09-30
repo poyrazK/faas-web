@@ -1,3 +1,5 @@
+import { resourceId } from '@/lib/resource-id';
+export { resourceId } from '@/lib/resource-id';
 import { useEffect, useState } from 'react';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { api, unwrap } from './client';
@@ -5,10 +7,6 @@ import { ApiError } from './errors';
 import type { components } from './schema';
 
 const PAGE_SIZE = 100;
-export const RESOURCE_ID = /^(?:[a-f0-9]{32}|[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12})$/i;
-export function resourceId(value: unknown): string | undefined {
-  return typeof value === 'string' && RESOURCE_ID.test(value) ? value : undefined;
-}
 
 type Deployment = components['schemas']['DeploymentResponse'];
 type Invocation = components['schemas']['Invocation'];
@@ -177,4 +175,26 @@ export function usePaletteResources(accountId: string | undefined, open: boolean
       if (!invocations.isFetching) void invocations.fetchNextPage();
     },
   };
+}
+
+/** Key details are a fresh account-scoped metadata read, never a secret reveal. */
+export function usePaletteKey(accountId: string | undefined, id: string | undefined) {
+  return useQuery({
+    queryKey: ['palette', accountId, 'key-detail', id],
+    enabled: Boolean(accountId && resourceId(id)),
+    retry: false,
+    queryFn: async ({ signal }) => {
+      const rows = await unwrap(api.GET('/v1/keys', { signal }));
+      const key = rows.find((row) => row.id === id);
+      return key
+        ? {
+            id: key.id,
+            label: key.label || key.id,
+            scopes: key.scopes,
+            lastUsed: key.last_used_at,
+            created: key.created_at,
+          }
+        : null;
+    },
+  });
 }

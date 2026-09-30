@@ -3,7 +3,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from './client';
-import { resourceId, usePaletteResources } from './palette';
+import { resourceId, usePaletteKey, usePaletteResources } from './palette';
 
 const id = 'a'.repeat(32);
 const deployment = { id, app_id: 'app1', status: 'failed', image_digest: 'sha256:abc' };
@@ -30,7 +30,7 @@ const fixture: Record<string, unknown> = {
   ],
   '/v1/keys': [
     {
-      id: 'key1',
+      id: 'a'.repeat(32),
       label: 'deploy-bot',
       scopes: ['deploy:write'],
       prefix: 'SECRET_PREFIX',
@@ -171,5 +171,23 @@ describe('palette resource reads', () => {
     expect(resourceId('01234567-89ab-cdef-0123-456789abcdef')).toBeDefined();
     for (const invalid of ['../keys', 'not-an-id', '', id + '?token=secret', ['a']])
       expect(resourceId(invalid)).toBeUndefined();
+  });
+  it('keeps key detail metadata separate from one-time credentials and account caches', async () => {
+    const { result, rerender } = renderHook(
+      ({ account }) => usePaletteKey(account, 'a'.repeat(32)),
+      { wrapper, initialProps: { account: 'old' } }
+    );
+    await waitFor(() => expect(result.current.data?.label).toBe('deploy-bot'));
+    expect(
+      JSON.stringify(
+        client
+          .getQueryCache()
+          .getAll()
+          .map((query) => query.state.data)
+      )
+    ).not.toContain('SECRET_');
+    get.mockImplementation(() => new Promise(() => {}));
+    rerender({ account: 'new' });
+    expect(result.current.data).toBeUndefined();
   });
 });
