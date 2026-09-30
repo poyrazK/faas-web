@@ -293,9 +293,8 @@ describe('dashboard navigation foundation', () => {
     }
   );
 
-  it('makes standalone app sections, including Edge rules, discoverable from Apps', async () => {
-    await renderShell('/dashboard/workflows');
-    await userEvent.click(screen.getByText('App sections', { selector: 'summary' }));
+  it('keeps standalone app sections, including Edge rules, accessible from app pages', async () => {
+    await renderShell('/dashboard/logs');
     const sections = screen.getByRole('navigation', { name: 'App sections' });
     for (const [label, path] of [
       ['Logs', 'logs'],
@@ -414,10 +413,14 @@ describe('dashboard navigation foundation', () => {
     expect(router.state.location.href).toBe('/dashboard/workflows?q=api&state=running#list');
   });
 
-  it('exposes app sections from a trailing-slash Apps bookmark', async () => {
-    await renderShell('/dashboard/workflows/');
-    expect(screen.getByText('App sections', { selector: 'summary' })).toBeInTheDocument();
-  });
+  it.each(['/dashboard/workflows', '/dashboard/workflows/'])(
+    'omits app sections from the All apps page at %s',
+    async (path) => {
+      await renderShell(path);
+      expect(screen.queryByText('App sections', { selector: 'summary' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('navigation', { name: 'App sections' })).not.toBeInTheDocument();
+    }
+  );
 
   it('keeps saved legacy page commands available as recent commands', async () => {
     window.localStorage.setItem(
