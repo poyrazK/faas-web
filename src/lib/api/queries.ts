@@ -932,8 +932,8 @@ export function useUpdateDeploymentTraffic() {
 /**
  * Cancel a deployment that is still in flight.
  *
- * The API answers 409 once the deployment has gone live — by then there is
- * nothing to cancel, which is an outcome to explain rather than an error.
+ * The API answers 409 for a terminal-state race. Refresh both global and app
+ * histories after every result; a conflict does not imply the release is live.
  */
 export function useCancelDeployment() {
   const qc = useQueryClient();
@@ -942,7 +942,13 @@ export function useCancelDeployment() {
       unwrap(
         api.POST('/v1/apps/{slug}/deployments/{id}/cancel', { params: { path: { slug, id } } })
       ),
-    onSettled: () => qc.invalidateQueries({ queryKey: keys.deployments }),
+    // Mutation retries can create another attempt; retry is an explicit action.
+    retry: false,
+    onSettled: () =>
+      Promise.all([
+        qc.invalidateQueries({ queryKey: keys.deployments }),
+        qc.invalidateQueries({ queryKey: keys.apps }),
+      ]),
   });
 }
 
@@ -960,7 +966,13 @@ export function useRetryDeployment() {
       unwrap(
         api.POST('/v1/deployments/{id}/retry', { params: { path: { id } }, body: { from_stage } })
       ),
-    onSettled: () => qc.invalidateQueries({ queryKey: keys.deployments }),
+    // Mutation retries can create another attempt; retry is an explicit action.
+    retry: false,
+    onSettled: () =>
+      Promise.all([
+        qc.invalidateQueries({ queryKey: keys.deployments }),
+        qc.invalidateQueries({ queryKey: keys.apps }),
+      ]),
   });
 }
 
