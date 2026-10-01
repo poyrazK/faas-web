@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
+import { deploymentRecovery } from '@/lib/deployment-recovery';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import {
   useApps,
@@ -24,9 +25,6 @@ import type { components } from '@/lib/api/schema';
  * entry. That is deliberate: the history is supposed to show that a retry
  * happened, not overwrite the failure that prompted it.
  */
-
-/** Statuses where the build is still running and can still be stopped. */
-const IN_FLIGHT = new Set(['pending', 'building', 'imaging', 'snapshotting']);
 
 /** ADR-117's closed-6 vocabulary, earliest stage first. */
 const STAGES: { value: RetryStage; label: string }[] = [
@@ -53,9 +51,9 @@ export function DeploymentLifecycle({
   const [retryError, setRetryError] = useState<string | null>(null);
   const retryLock = useRef(false);
 
-  const inFlight = IN_FLIGHT.has(deployment.status);
-  const failed = deployment.status === 'failed';
-  if (!inFlight && !failed) return null;
+  const availability = deploymentRecovery(deployment.status);
+  const inFlight = availability.kind === 'cancel';
+  const failed = availability.kind === 'retry';
 
   // Cancel is keyed by app slug; the deployment carries only the id.
   const slug = (apps ?? []).find((a) => a.id === deployment.app_id)?.slug;
@@ -118,6 +116,7 @@ export function DeploymentLifecycle({
   return (
     <div className="rounded-lg border border-border p-4">
       <p className="label-mono mb-3 text-muted-foreground">Lifecycle</p>
+      <p className="mb-3 text-xs text-muted-foreground">{availability.explanation}</p>
 
       {inFlight && (
         <div className="flex flex-wrap items-center gap-3">
