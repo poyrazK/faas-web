@@ -29,6 +29,7 @@ vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn() }));
 vi.mock('@/components/dashboard/object-storage-usage', () => ({
   ObjectStorageUsagePanel: () => null,
 }));
+vi.mock('@/components/dashboard/financial-costs', () => ({ FinancialCostsPanel: () => null }));
 let cap: number | null;
 let readFails: boolean;
 beforeEach(() => {

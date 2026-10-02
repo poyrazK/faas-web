@@ -4,6 +4,90 @@
  */
 
 export interface paths {
+    "/v1/billing/costs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read attributable usage costs and historical price contracts.
+         * @description Requires usage:read and session MFA. Uses retained account-owned evidence
+         *     and immutable price versions. Applies a single shared monthly allowance;
+         *     when the plan changes, the largest recorded grant is retained and shared
+         *     proportionally across versions. Known usage amounts use integer millicents.
+         *     Missing samples and historical prices are explicit coverage gaps.
+         *     The reported compute/interface-egress scope excludes other bill components.
+         *     Stored provider invoices are separate facts and are not automatically
+         *     reconciled to this usage ledger. The UTC usage month and provider invoice
+         *     periods can differ. At most 10000 allocations are returned; larger reports
+         *     fail without returning truncated totals. This endpoint has no writes.
+         */
+        get: operations["getFinancialCosts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/billing/forecast": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read usage cost forecasts with coverage and method.
+         * @description Requires usage:read and session MFA. Elapsed-time quantity forecasts apply
+         *     the recorded price after the shared allowance. At least one complete day,
+         *     fresh evidence, and unchanged pricing are required. Unavailable forecasts
+         *     contain a reason and omit projected amounts. The overall invoice forecast
+         *     remains unavailable until all bill components have authoritative coverage.
+         *     This endpoint is read-only and never changes workload admission.
+         */
+        get: operations["getFinancialForecast"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/billing/budgets/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview a scoped budget and its workload consequences without writes.
+         * @description Requires usage:read and session MFA. Uses the current UTC usage period.
+         *     Validates account ownership and authoritative workload eligibility.
+         *     Reports known attributed cost, coverage, affected and continuing targets.
+         *     Net usage shares the account allowance once; strict scoped policies use
+         *     gross compute. Rejecting traffic does not stop background or idle compute.
+         *     A broad strict policy must suspend every covered workload; selective
+         *     preview/background actions cannot cap continuing production spending.
+         *     Environment targets are discovered from current live deployment scopes.
+         *     No policies, holds, decisions, dispatches or instances are written.
+         *     Enforcement remains unavailable while owner integrations and native
+         *     lifecycle acceptance are pending, as reported by enforcement_ready=false.
+         */
+        post: operations["previewFinancialBudget"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/preflight": {
         parameters: {
             query?: never;
@@ -8291,6 +8375,237 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description Authoritative account or resource identity; resource ids must belong to the account. */
+        FinancialBudgetScope: {
+            /** @enum {string} */
+            kind: "account" | "project" | "environment" | "app" | "job";
+            /**
+             * Format: uuid
+             * @description Omitted for account scope and required for resource scopes.
+             */
+            id?: string;
+        };
+        /** @description Customer budget intent; activation and enforcement are separately acknowledged. */
+        FinancialBudgetSpec: {
+            /** @description Nonblank name bounded to 128 UTF-8 bytes. */
+            name: string;
+            scope: components["schemas"]["FinancialBudgetScope"];
+            /** @enum {string} */
+            currency: "EUR";
+            /** @description Sorted meter names; strict mode covers compute only. */
+            meters: ("compute" | "egress")[];
+            /**
+             * @description Net usage after the shared account allowance or gross usage before it; strict resource scopes require gross usage.
+             * @enum {string}
+             */
+            basis: "net_usage" | "gross_usage";
+            /** Format: int64 */
+            limit_millicents: number;
+            /** @description Increasing nonnegative thresholds at or below the limit. */
+            notify_millicents: number[];
+            /** @enum {string} */
+            mode: "monitored" | "strict";
+            /** @enum {string} */
+            action: "notify" | "reject_traffic" | "suspend_background" | "stop_previews" | "suspend_workloads";
+            /** @description Notify uses zero; stopping targets drain before the deadline. */
+            drain_seconds: number;
+            /** @enum {string} */
+            resume_rule: "manual" | "next_period";
+            enabled: boolean;
+        };
+        /** @description Proposed budget intent to inspect without saving or activating it. */
+        FinancialBudgetPreviewRequest: {
+            spec: components["schemas"]["FinancialBudgetSpec"];
+        };
+        /** @description Current workload selected or left running by a proposed response. */
+        FinancialBudgetTarget: {
+            /** @enum {string} */
+            kind: "app" | "job";
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: uuid */
+            environment_id?: string;
+            /** Format: uuid */
+            deployment_id?: string;
+            effect: string;
+        };
+        /** @description Known spending, evidence gaps, workload consequences and explicit readiness. */
+        FinancialBudgetPreviewResponse: {
+            spec: components["schemas"]["FinancialBudgetSpec"];
+            /** Format: date-time */
+            period_start: string;
+            /** Format: date-time */
+            period_end: string;
+            /** Format: date-time */
+            as_of: string;
+            /** Format: int64 */
+            known_millicents: number;
+            /** @description Known subtotal is at or above the limit; inspect coverage before inferring complete spending. */
+            known_limit_reached: boolean;
+            coverage_complete: boolean;
+            fresh: boolean;
+            reasons: string[];
+            /** @description False while durable decisions and owner integrations lack acceptance; preview never activates a policy. */
+            enforcement_ready: boolean;
+            guarantee: string;
+            targets: components["schemas"]["FinancialBudgetTarget"][];
+            continuing_targets: components["schemas"]["FinancialBudgetTarget"][];
+        };
+        /** @description Immutable version of a meter's exact price and allowance terms. */
+        FinancialPrice: {
+            version: string;
+            meter: string;
+            /** @enum {string} */
+            currency: "EUR";
+            unit: string;
+            /** Format: int64 */
+            unit_quantity: number;
+            /** Format: int64 */
+            millicents_per_unit: number;
+            /** Format: int64 */
+            included_quantity: number;
+        };
+        /** @description Historical activation of recorded account pricing. */
+        FinancialPriceContract: {
+            price: components["schemas"]["FinancialPrice"];
+            /** @enum {string} */
+            plan: "free" | "hobby" | "pro" | "scale";
+            /** Format: date-time */
+            effective_from: string;
+            /** @enum {string} */
+            delivery_mode: "live" | "shadow" | "off";
+        };
+        /** @description Workload identity retained at first observation, surviving rename and deletion. */
+        FinancialAttribution: {
+            app_id?: string;
+            job_id?: string;
+            project_id?: string;
+            environment_id?: string;
+            deployment_id?: string;
+            name?: string;
+        };
+        /** @description Exact quantity-share allocation; row amounts and account totals reconcile. */
+        FinancialAllocation: {
+            attribution: components["schemas"]["FinancialAttribution"];
+            /** Format: int64 */
+            quantity: number;
+            /** Format: int64 */
+            gross_millicents: number;
+            /** Format: int64 */
+            allowance_millicents: number;
+            /** Format: int64 */
+            net_millicents: number;
+        };
+        /** @description Meter cost priced by one immutable contract with its assigned allowance. */
+        FinancialMeterCost: {
+            price: components["schemas"]["FinancialPrice"];
+            /** Format: int64 */
+            quantity: number;
+            /** Format: int64 */
+            included_quantity: number;
+            /** Format: int64 */
+            gross_millicents: number;
+            /** Format: int64 */
+            allowance_millicents: number;
+            /** Format: int64 */
+            net_millicents: number;
+            allocation_method: string;
+            allocations: components["schemas"]["FinancialAllocation"][];
+        };
+        /** @description One shared period allowance applied across historical rate versions. */
+        FinancialContractCosts: {
+            meter: string;
+            /** Format: int64 */
+            quantity: number;
+            /** Format: int64 */
+            included_quantity: number;
+            /** Format: int64 */
+            net_millicents: number;
+            allowance_method: string;
+            contracts: components["schemas"]["FinancialMeterCost"][];
+        };
+        /** @description Quantity run-rate projection; absent amounts mean unavailable, never zero. */
+        FinancialForecast: {
+            method: string;
+            available: boolean;
+            reason?: string;
+            account_id: string;
+            /** Format: date-time */
+            period_start: string;
+            /** Format: date-time */
+            period_end: string;
+            /** Format: date-time */
+            complete_through: string;
+            price_version: string;
+            meter: string;
+            /** @enum {string} */
+            currency: "EUR";
+            /** Format: int64 */
+            projected_quantity?: number;
+            /** Format: int64 */
+            projected_net_millicents?: number;
+        };
+        /** @description Completeness and freshness of authoritative retained meter evidence. */
+        FinancialMeterCoverage: {
+            complete: boolean;
+            fresh: boolean;
+            /** Format: int64 */
+            expected_minutes: number;
+            /** Format: int64 */
+            complete_minutes: number;
+            /** Format: int64 */
+            unpriced_quantity: number;
+            /** Format: int64 */
+            non_billable_quantity: number;
+            reasons: string[];
+        };
+        /** @description Accrued meter costs, source coverage, historical terms, and forecast. */
+        FinancialMeterCosts: {
+            meter: string;
+            coverage: components["schemas"]["FinancialMeterCoverage"];
+            accrued: components["schemas"]["FinancialContractCosts"];
+            forecast: components["schemas"]["FinancialForecast"];
+            price_contracts: components["schemas"]["FinancialPriceContract"][];
+        };
+        /** @description Account usage costs for a UTC period; invoice facts remain separate. */
+        FinancialCostsResponse: {
+            account_id: string;
+            /** @enum {string} */
+            currency: "EUR";
+            /** Format: date-time */
+            period_start: string;
+            /** Format: date-time */
+            period_end: string;
+            /** Format: date-time */
+            as_of: string;
+            /** Format: date-time */
+            retained_from: string;
+            /** Format: int64 */
+            evidence_through_id: number;
+            /** Format: int64 */
+            known_usage_millicents: number;
+            meters: components["schemas"]["FinancialMeterCosts"][];
+            scope: string;
+            invoices: components["schemas"]["Invoice"][];
+            /** @enum {string} */
+            invoice_reconciliation: "not_reconciled";
+            missing_bill_components: string[];
+        };
+        /** @description Meter projections; a complete bill forecast requires all bill components. */
+        FinancialForecastResponse: {
+            /** Format: date-time */
+            period_start: string;
+            /** Format: date-time */
+            period_end: string;
+            /** Format: date-time */
+            as_of: string;
+            /** @enum {string} */
+            currency: "EUR";
+            meters: components["schemas"]["FinancialMeterCosts"][];
+            bill_estimate_available: boolean;
+            missing_bill_components: string[];
+        };
         /**
          * @description `green` satisfies the container contract as written, `amber` needs a
          *     declared change, `red` cannot run.
@@ -18319,6 +18634,92 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getFinancialCosts: {
+        parameters: {
+            query?: {
+                /** @description Current or historical UTC usage month; defaults to the current month. */
+                month?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Account-owned cost breakdown, coverage, forecasts, and separate invoice facts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinancialCostsResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getFinancialForecast: {
+        parameters: {
+            query?: {
+                /** @description UTC usage month for the projection; defaults to the current month. */
+                month?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Meter forecasts and explicit missing bill components. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinancialForecastResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    previewFinancialBudget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FinancialBudgetPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Financial observation, workload consequences and enforcement readiness. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinancialBudgetPreviewResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
     getMigrationPreflight: {
         parameters: {
             query: {

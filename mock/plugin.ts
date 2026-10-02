@@ -3,6 +3,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import type { Plugin } from 'vite';
 import type { components } from '../src/lib/api/schema';
 import * as db from './data';
+import { financialReport } from './financial';
 import {
   FREE_TRIGGER_ERROR_CODE,
   KAFKA_SASL_MECHANISMS,
@@ -3897,6 +3898,9 @@ route('GET', '/v1/audit-log', ({ query }) => {
 });
 
 route('GET', '/v1/usage/summary', () => db.usage);
+route('GET', '/v1/billing/costs', ({ query }) =>
+  financialReport(query.get('month') ?? new Date().toISOString().slice(0, 7))
+);
 route('GET', '/v1/usage/storage', () => ({ items: db.storage }));
 route('GET', '/v1/invoices', () => ({ items: db.invoices, next_before: null }));
 route('GET', '/v1/billing/portal', () => db.billingPortal);
