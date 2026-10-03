@@ -7934,6 +7934,74 @@ export interface paths {
         patch: operations["updateOrg"];
         trace?: never;
     };
+    "/v1/orgs/{slug}/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Org slug. Lowercase letters, digits, hyphens; must start
+                 *     and end with alnum. 3..32 chars. Mirrors `OrgSlugPattern`
+                 *     in `pkg/api/errors.go` exactly so the spec drift gate
+                 *     (`make spec-check`) stays green.
+                 */
+                slug: components["parameters"]["OrgSlug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List the organization's global infrastructure activity.
+         * @description Returns one newest-first timeline across applications, deployments,
+         *     environment configuration, domains, certificates, and automated
+         *     platform actions. Every active member may read it (`org.view`).
+         *
+         *     Entries are a curated customer-facing projection, not raw provider or
+         *     security audit payloads. Labels are captured at write time and `data`
+         *     contains non-secret display metadata only; environment values and
+         *     credentials are never included. Pass `next_before` back unchanged as
+         *     `before` to fetch the next older page.
+         */
+        get: operations["listOrgActivity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/orgs/{slug}/apps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Org slug. Lowercase letters, digits, hyphens; must start
+                 *     and end with alnum. 3..32 chars. Mirrors `OrgSlugPattern`
+                 *     in `pkg/api/errors.go` exactly so the spec drift gate
+                 *     (`make spec-check`) stays green.
+                 */
+                slug: components["parameters"]["OrgSlug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List apps attributed to this workspace.
+         * @description Returns a newest-first inventory of non-deleted apps whose persisted
+         *     `org_id` matches this workspace. Any active member with `org.view`
+         *     may read the minimal summary; creator identity and app configuration
+         *     are intentionally omitted while app-specific routes remain
+         *     creator-scoped.
+         */
+        get: operations["listOrgApps"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/orgs/{slug}/members": {
         parameters: {
             query?: never;
@@ -17085,6 +17153,77 @@ export interface components {
         /** @description GET /v1/orgs response. Sorted by slug. */
         OrgListResponse: {
             orgs: components["schemas"]["OrgResponse"][];
+        };
+        /**
+         * @description Deliberately small inventory projection for an organization app.
+         *     Does not expose creator identity, environment, secrets, or app
+         *     configuration while app-specific routes remain creator-scoped.
+         */
+        OrgAppSummary: {
+            /** Format: uuid */
+            id: string;
+            slug: string;
+            /** @enum {string} */
+            type: "app" | "function";
+            /** @description Runtime identifier for functions when configured. */
+            runtime?: string;
+            status: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        /** @description Newest-first safe inventory of apps attributed to an organization. */
+        OrgAppListResponse: {
+            apps: components["schemas"]["OrgAppSummary"][];
+        };
+        /** @description Captured identity responsible for an activity item. */
+        ActivityActorResponse: {
+            /** @enum {string} */
+            type: "user" | "api_key" | "github" | "system" | "operator";
+            /** @description Actor name captured when the activity occurred. */
+            label: string;
+            /**
+             * Format: uuid
+             * @description Present for a locally-known human actor.
+             */
+            account_id?: string;
+        };
+        /** @description Primary infrastructure object affected by an activity item. */
+        ActivityResourceResponse: {
+            /** @example app */
+            type: string;
+            /** @description Stable resource identifier, when one exists. */
+            id?: string;
+            /** @description Resource name captured when the activity occurred. */
+            label: string;
+        };
+        /** @description One safe, display-ready organization activity fact. */
+        OrgActivityResponse: {
+            /** @description Monotonic bigint row id encoded as a string. */
+            id: string;
+            /** Format: date-time */
+            occurred_at: string;
+            /** @example app.deployed */
+            kind: string;
+            /** @example Bahadir deployed payments */
+            summary: string;
+            actor: components["schemas"]["ActivityActorResponse"];
+            resource: components["schemas"]["ActivityResourceResponse"];
+            /** Format: uuid */
+            app_id?: string;
+            /** Format: uuid */
+            project_id?: string;
+            /** Format: uuid */
+            deployment_id?: string;
+            /** @description Kind-specific non-secret display metadata. */
+            data: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description Newest-first global organization activity page. */
+        ListOrgActivityResponse: {
+            items: components["schemas"]["OrgActivityResponse"][];
+            /** @description Continue from this value to retrieve older organization activity. */
+            next_before?: string;
         };
         /**
          * @description OrgResponse + the caller's role on the active org. Used by
@@ -32251,6 +32390,98 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    listOrgActivity: {
+        parameters: {
+            query?: {
+                /** @description Opaque cursor returned as `next_before` by the prior page. */
+                before?: string;
+                /** @description Maximum number of activity items to return in this page. */
+                limit?: number;
+                /** @description Optional namespaced kind prefix, such as `deploy.`. */
+                kind_prefix?: string;
+                /** @description Restrict results to one captured actor category. */
+                actor_type?: "user" | "api_key" | "github" | "system" | "operator";
+                /** @description Restrict results to activity associated with this application. */
+                app_id?: string;
+            };
+            header?: never;
+            path: {
+                /**
+                 * @description Org slug. Lowercase letters, digits, hyphens; must start
+                 *     and end with alnum. 3..32 chars. Mirrors `OrgSlugPattern`
+                 *     in `pkg/api/errors.go` exactly so the spec drift gate
+                 *     (`make spec-check`) stays green.
+                 */
+                slug: components["parameters"]["OrgSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A stable keyset page of organization activity. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListOrgActivityResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            /** @description Workspace app inventory requires the `org.view` action. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    listOrgApps: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Org slug. Lowercase letters, digits, hyphens; must start
+                 *     and end with alnum. 3..32 chars. Mirrors `OrgSlugPattern`
+                 *     in `pkg/api/errors.go` exactly so the spec drift gate
+                 *     (`make spec-check`) stays green.
+                 */
+                slug: components["parameters"]["OrgSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Safe summary of apps attributed to this workspace. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgAppListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Caller is not an active member with `org.view`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            404: components["responses"]["NotFound"];
             429: components["responses"]["TooManyRequests"];
         };
     };
