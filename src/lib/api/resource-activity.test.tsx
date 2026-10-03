@@ -108,11 +108,12 @@ describe('resource activity contract', () => {
       .mockResolvedValueOnce(reply({ items: [row('1')] }));
     const { wrapper } = setup();
     const hook = renderHook(
-      () =>
-        useResourceActivity('account-1', 'team', app, {
+      () => ({
+        ...useResourceActivity('account-1', 'team', app, {
           kind_prefix: 'domain.',
           actor_type: 'system',
         }),
+      }),
       { wrapper }
     );
     await waitFor(() => expect(hook.result.current.isSuccess).toBe(true));

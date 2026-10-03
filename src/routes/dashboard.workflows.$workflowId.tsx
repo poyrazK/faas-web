@@ -97,6 +97,7 @@ const TABS = [
   'Metrics',
   'Invoke',
   'Deployments',
+  'Activity',
   'Logs',
   'Errors',
   'Routes',
