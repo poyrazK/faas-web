@@ -19,6 +19,7 @@ import { formatUsageBytes, formatUsageNumber } from '@/lib/usage-format';
 import { SpendCap } from '@/components/dashboard/spend-cap';
 import { ObjectStorageUsagePanel } from '@/components/dashboard/object-storage-usage';
 import { FinancialCostsPanel } from '@/components/dashboard/financial-costs';
+import { FinancialBudgetsPanel } from '@/components/dashboard/financial-budgets';
 
 export const Route = createFileRoute('/dashboard/usage')({
   component: UsagePage,
@@ -185,6 +186,7 @@ function UsagePage() {
 
       <ObjectStorageUsagePanel />
       <FinancialCostsPanel />
+      <FinancialBudgetsPanel />
 
       {phase === 'unreachable' ? (
         <UnreachableState onRetry={() => void refetch()} />

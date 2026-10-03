@@ -3901,6 +3901,196 @@ route('GET', '/v1/usage/summary', () => db.usage);
 route('GET', '/v1/billing/costs', ({ query }) =>
   financialReport(query.get('month') ?? new Date().toISOString().slice(0, 7))
 );
+route('GET', '/v1/projects', () => []);
+route('GET', '/v1/projects/{slug}/environments', () => []);
+
+type MockBudget = components['schemas']['FinancialBudgetResponse'];
+type MockBudgetRevision = components['schemas']['FinancialBudgetRevisionResponse'];
+const financialBudgets = new Map<string, MockBudget>();
+const financialBudgetRevisions = new Map<string, MockBudgetRevision[]>();
+const financialBudgetKeys = new Map<string, string>();
+function mockBudget(id: string) {
+  const budget = financialBudgets.get(id);
+  if (!budget) throw new Problem(404, 'not_found', 'Budget policy not found.');
+  return budget;
+}
+function recordMockBudget(budget: MockBudget, mutation: MockBudgetRevision['mutation']) {
+  financialBudgets.set(budget.id, budget);
+  const revisions = financialBudgetRevisions.get(budget.id) ?? [];
+  revisions.push({
+    policy_id: budget.id,
+    revision: budget.revision,
+    actor: `account:${db.account.id}`,
+    mutation,
+    spec: structuredClone(budget.spec),
+    recorded_at: budget.updated_at,
+  });
+  financialBudgetRevisions.set(budget.id, revisions);
+  return budget;
+}
+function mockDraftSpec(body: Record<string, unknown>) {
+  const spec = body.spec as components['schemas']['FinancialBudgetSpec'] | undefined;
+  if (
+    !spec?.name ||
+    !spec.scope ||
+    !Number.isSafeInteger(spec.limit_millicents) ||
+    spec.limit_millicents < 0
+  )
+    throw new Problem(400, 'validation_failed', 'Expected a budget spec.');
+  if (spec.enabled)
+    throw new Problem(
+      422,
+      'financial_budget_activation_unavailable',
+      'Save a disabled draft; enforcement is unavailable.'
+    );
+  return structuredClone(spec);
+}
+route('GET', '/v1/billing/budgets', () => ({
+  budgets: [...financialBudgets.values()].filter((p) => !p.deleted_at),
+}));
+route('POST', '/v1/billing/budgets', ({ body, req }) => {
+  const spec = mockDraftSpec(body);
+  const key = String(req.headers['idempotency-key'] ?? '');
+  if (!key) throw new Problem(400, 'validation_failed', 'Idempotency-Key required.');
+  const previous = financialBudgetKeys.get(key);
+  if (previous) return status(201, mockBudget(previous));
+  const at = new Date().toISOString();
+  const budget: MockBudget = {
+    id: db.id(),
+    account_id: db.account.id!,
+    revision: 1,
+    spec,
+    created_at: at,
+    updated_at: at,
+    status: 'draft',
+    enforcement_ready: false,
+    reasons: ['enforcement_integration_pending'],
+  };
+  financialBudgetKeys.set(key, budget.id);
+  return status(201, recordMockBudget(budget, 'created'));
+});
+route('GET', '/v1/billing/budgets/{id}', ({ params }) => mockBudget(params.id));
+route('PUT', '/v1/billing/budgets/{id}', ({ params, body }) => {
+  const old = mockBudget(params.id);
+  if (old.deleted_at || old.revision !== body.expected_revision)
+    throw new Problem(409, 'conflict', 'Read the current budget before editing.');
+  return recordMockBudget(
+    {
+      ...old,
+      revision: old.revision + 1,
+      spec: mockDraftSpec(body),
+      updated_at: new Date().toISOString(),
+    },
+    'updated'
+  );
+});
+route('DELETE', '/v1/billing/budgets/{id}', ({ params, body }) => {
+  const old = mockBudget(params.id);
+  if (old.deleted_at || old.revision !== body.expected_revision)
+    throw new Problem(409, 'conflict', 'Read the current budget before deleting.');
+  const at = new Date().toISOString();
+  return recordMockBudget(
+    { ...old, revision: old.revision + 1, status: 'deleted', deleted_at: at, updated_at: at },
+    'deleted'
+  );
+});
+route('GET', '/v1/billing/budgets/{id}/revisions', ({ params, query }) => {
+  mockBudget(params.id);
+  const after = Number(query.get('after_revision') ?? 0);
+  const limit = Number(query.get('limit') ?? 100);
+  const revisions = (financialBudgetRevisions.get(params.id) ?? [])
+    .filter((p) => p.revision > after)
+    .slice(0, limit);
+  return {
+    revisions,
+    ...(revisions.length === limit
+      ? { next_revision: revisions[revisions.length - 1].revision }
+      : {}),
+  };
+});
+route('POST', '/v1/billing/budgets/preview', ({ body }) => {
+  const spec = body.spec as components['schemas']['FinancialBudgetSpec'];
+  if (!spec?.scope) throw new Problem(400, 'validation_failed', 'Expected a budget spec.');
+  const report = financialReport(new Date().toISOString().slice(0, 7));
+  const allocations = report.meters.flatMap((meter) =>
+    meter.accrued.contracts.flatMap((contract) => contract.allocations)
+  );
+  const known = allocations
+    .filter(
+      (a) =>
+        spec.scope.kind === 'account' ||
+        (spec.scope.kind === 'app' && a.attribution.app_id === spec.scope.id) ||
+        (spec.scope.kind === 'job' && a.attribution.job_id === spec.scope.id)
+    )
+    .reduce(
+      (sum, a) => sum + (spec.basis === 'gross_usage' ? a.gross_millicents : a.net_millicents),
+      0
+    );
+  const members = [
+    ...db.apps.map((app) => ({
+      kind: 'app' as const,
+      id: app.id,
+      name: app.slug,
+      background: app.workload_class === 'worker' || app.workload_class === 'job',
+      preview: 'preview_of_slug' in app && !!app.preview_of_slug,
+    })),
+    ...jobs.map((job) => ({
+      kind: 'job' as const,
+      id: job.id,
+      name: job.name,
+      background: true,
+      preview: false,
+    })),
+  ].filter(
+    (m) => spec.scope.kind === 'account' || (m.kind === spec.scope.kind && m.id === spec.scope.id)
+  );
+  const targets: components['schemas']['FinancialBudgetTarget'][] = [];
+  const continuing: components['schemas']['FinancialBudgetTarget'][] = [];
+  for (const member of members) {
+    const selected =
+      spec.enabled &&
+      (spec.action === 'notify' ||
+        spec.action === 'suspend_workloads' ||
+        (spec.action === 'reject_traffic' && !member.background) ||
+        (spec.action === 'suspend_background' && member.background) ||
+        (spec.action === 'stop_previews' && member.preview));
+    if (selected)
+      targets.push({
+        kind: member.kind,
+        id: member.id,
+        name: member.name,
+        effect:
+          spec.action === 'notify'
+            ? 'notify_only'
+            : spec.action === 'reject_traffic'
+              ? 'reject_new_traffic'
+              : 'block_then_stop_at_drain_deadline',
+      });
+    if (!selected || spec.action === 'notify' || spec.action === 'reject_traffic')
+      continuing.push({
+        kind: member.kind,
+        id: member.id,
+        name: member.name,
+        effect: 'compute_can_continue',
+      });
+  }
+  const response: components['schemas']['FinancialBudgetPreviewResponse'] = {
+    spec,
+    period_start: report.period_start,
+    period_end: report.period_end,
+    as_of: report.as_of,
+    known_millicents: known,
+    known_limit_reached: known >= spec.limit_millicents,
+    coverage_complete: false,
+    fresh: true,
+    reasons: ['enforcement_integration_pending'],
+    enforcement_ready: false,
+    guarantee: 'monitored_after_retained_evidence; delayed_sources_and_drain_can_exceed_limit',
+    targets,
+    continuing_targets: continuing,
+  };
+  return response;
+});
 route('GET', '/v1/usage/storage', () => ({ items: db.storage }));
 route('GET', '/v1/invoices', () => ({ items: db.invoices, next_before: null }));
 route('GET', '/v1/billing/portal', () => db.billingPortal);

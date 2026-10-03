@@ -30,6 +30,7 @@ vi.mock('@/components/dashboard/object-storage-usage', () => ({
   ObjectStorageUsagePanel: () => null,
 }));
 vi.mock('@/components/dashboard/financial-costs', () => ({ FinancialCostsPanel: () => null }));
+vi.mock('@/components/dashboard/financial-budgets', () => ({ FinancialBudgetsPanel: () => null }));
 let cap: number | null;
 let readFails: boolean;
 beforeEach(() => {

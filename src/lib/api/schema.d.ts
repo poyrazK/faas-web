@@ -4,6 +4,26 @@
  */
 
 export interface paths {
+    "/v1/projects/{slug}/environments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project slug whose environment registry is addressed. */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        /** List durable environments for a project. */
+        get: operations["listProjectEnvironments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/billing/costs": {
         parameters: {
             query?: never;
@@ -50,6 +70,88 @@ export interface paths {
          *     This endpoint is read-only and never changes workload admission.
          */
         get: operations["getFinancialForecast"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/billing/budgets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List account budget policies and their enforcement readiness.
+         * @description Requires usage:read and session MFA. Deleted policies are omitted. Drafts do not enforce limits.
+         */
+        get: operations["listFinancialBudgets"];
+        put?: never;
+        /**
+         * Save an account-owned budget draft with atomic revision audit.
+         * @description Requires admin scope and session MFA. Idempotency-Key is required (1..255 bytes).
+         *     It fixes creation identity beyond replay-cache retention. Reusing an operation
+         *     identity cannot overwrite a changed or deleted policy. Set enabled=false:
+         *     activation currently returns 422 financial_budget_activation_unavailable.
+         *     Saving a draft creates no holds, decisions, notifications or workload changes.
+         */
+        post: operations["createFinancialBudget"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/billing/budgets/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Stable identity of an account-owned budget policy. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read an account-owned budget, including its deletion tombstone.
+         * @description Requires usage:read and session MFA. Foreign or missing policies return 404.
+         */
+        get: operations["getFinancialBudget"];
+        /**
+         * Replace a budget draft at its expected revision.
+         * @description Requires admin scope, session MFA and Idempotency-Key. expected_revision
+         *     must match the current policy; stale edits return 409. Set enabled=false:
+         *     activation remains unavailable. Scope ownership and action eligibility are
+         *     revalidated. Payment, security and user holds are independent of this intent.
+         */
+        put: operations["updateFinancialBudget"];
+        post?: never;
+        /**
+         * Tombstone a policy while retaining its immutable revision history.
+         * @description Requires admin scope, session MFA and Idempotency-Key. expected_revision prevents stale deletion. Does not change account status or unrelated holds.
+         */
+        delete: operations["deleteFinancialBudget"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/billing/budgets/{id}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Page through immutable budget revisions, including deleted policies.
+         * @description Requires usage:read and session MFA. Ownership is checked before history is read. Use next_revision as after_revision for continuation; a final full page may be followed by an empty page.
+         */
+        get: operations["listFinancialBudgetRevisions"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5508,7 +5610,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** List durable projects owned by the current account. */
+        get: operations["listProjects"];
         put?: never;
         /**
          * Apply a deploy plan in one transaction.
@@ -8375,6 +8478,104 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description Stable account-scoped project list item. */
+        ProjectSummaryResponse: {
+            id: string;
+            slug: string;
+            repo_full_name?: string;
+            production_branch?: string;
+            scan_source: string;
+            workload_count: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /** @description Durable named environment target for a project. */
+        ProjectEnvironmentResponse: {
+            id: string;
+            project_id: string;
+            /** @description Project environment slug; the reserved app scope `default` cannot be used. */
+            slug: string;
+            protected: boolean;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            cloned_from?: string;
+            clone?: components["schemas"]["ProjectEnvironmentCloneResponse"];
+        };
+        /** @description Non-secret copy counts for an environment clone. Managed database or bucket data appears as shared only after explicit opt-in. */
+        ProjectEnvironmentCloneResponse: {
+            configuration_copied: boolean;
+            variables_copied: number;
+            secrets_copied: number;
+            workloads_copied: number;
+            bindings_copied: number;
+            routes_copied: number;
+            policies_copied: number;
+            shared_resources: ("domains" | "policies" | "routes" | "managed_postgres_data" | "object_storage_bucket_data")[];
+        };
+        /** @description Saved policy intent; draft and unavailable policies do not protect workloads. */
+        FinancialBudgetResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            account_id: string;
+            /** Format: int64 */
+            revision: number;
+            spec: components["schemas"]["FinancialBudgetSpec"];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: date-time */
+            deleted_at?: string;
+            /** @enum {string} */
+            status: "draft" | "unavailable" | "deleted";
+            /** @description False until runtime integrations and acceptance are complete. */
+            enforcement_ready: boolean;
+            reasons: string[];
+        };
+        /** @description Nondeleted account-owned policy intents with separately reported readiness. */
+        FinancialBudgetListResponse: {
+            budgets: components["schemas"]["FinancialBudgetResponse"][];
+        };
+        /** @description New budget intent; this deployment accepts disabled drafts only. */
+        CreateFinancialBudgetRequest: {
+            spec: components["schemas"]["FinancialBudgetSpec"];
+        };
+        /** @description Complete replacement of budget intent guarded by its current revision. */
+        UpdateFinancialBudgetRequest: {
+            /** Format: int64 */
+            expected_revision: number;
+            spec: components["schemas"]["FinancialBudgetSpec"];
+        };
+        /** @description Optimistic revision condition for retaining a policy deletion tombstone. */
+        DeleteFinancialBudgetRequest: {
+            /** Format: int64 */
+            expected_revision: number;
+        };
+        /** @description Immutable intent audit written in the same transaction as the policy. */
+        FinancialBudgetRevisionResponse: {
+            /** Format: uuid */
+            policy_id: string;
+            /** Format: int64 */
+            revision: number;
+            /** @description Authenticated account or API key identity; never a supplied actor value. */
+            actor: string;
+            /** @enum {string} */
+            mutation: "created" | "updated" | "deleted";
+            spec: components["schemas"]["FinancialBudgetSpec"];
+            /** Format: date-time */
+            recorded_at: string;
+        };
+        /** @description Immutable policy revision page and an optional exclusive continuation cursor. */
+        FinancialBudgetHistoryResponse: {
+            revisions: components["schemas"]["FinancialBudgetRevisionResponse"][];
+            /** Format: int64 */
+            next_revision?: number;
+        };
         /** @description Authoritative account or resource identity; resource ids must belong to the account. */
         FinancialBudgetScope: {
             /** @enum {string} */
@@ -18634,6 +18835,32 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listProjectEnvironments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project slug whose environment registry is addressed. */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Account-scoped project environments. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectEnvironmentResponse"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
     getFinancialCosts: {
         parameters: {
             query?: {
@@ -18687,6 +18914,214 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             422: components["responses"]["ValidationFailed"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listFinancialBudgets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Account-owned policies, bounded to 128. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinancialBudgetListResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    createFinancialBudget: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Stable creation operation identity, required for retries across replay-cache retention. */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateFinancialBudgetRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved draft with revision 1; retries retain its identity. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinancialBudgetResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description Invalid policy count or financial_budget_activation_unavailable; no policy mutation occurred. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getFinancialBudget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Stable identity of an account-owned budget policy. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Saved intent and explicit enforcement readiness. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinancialBudgetResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    updateFinancialBudget: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Retry key for this replacement at its expected policy revision. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                /** @description Stable identity of an account-owned budget policy. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateFinancialBudgetRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated draft and incremented revision. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinancialBudgetResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description financial_budget_activation_unavailable; the existing policy revision is unchanged. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    deleteFinancialBudget: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Retry identity for this policy tombstone operation. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                /** @description Stable identity of an account-owned budget policy. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeleteFinancialBudgetRequest"];
+            };
+        };
+        responses: {
+            /** @description Tombstone and incremented revision. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinancialBudgetResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listFinancialBudgetRevisions: {
+        parameters: {
+            query?: {
+                /** @description Exclusive revision cursor; use the previous response's next_revision. */
+                after_revision?: number;
+                /** @description Maximum number of immutable revision records in this page. */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Budget identity whose immutable revision audit is being listed. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revision page in ascending order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinancialBudgetHistoryResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             503: components["responses"]["ServiceUnavailable"];
         };
     };
@@ -27783,6 +28218,28 @@ export interface operations {
             402: components["responses"]["CronInvalid"];
             403: components["responses"]["PlanLimit"];
             413: components["responses"]["SourceTooLarge"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    listProjects: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Account-scoped project summaries. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectSummaryResponse"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
             429: components["responses"]["TooManyRequests"];
         };
     };
