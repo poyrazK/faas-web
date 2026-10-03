@@ -73,6 +73,7 @@ import {
   validateReleasesSearch,
   type ReleaseSection,
 } from '@/components/dashboard/releases-search';
+import { AppActivityTimeline } from '@/components/dashboard/resource-activity';
 import { DeploymentHistoryPanel } from '@/components/dashboard/deployment-history';
 import { ClearObsoleteDeploymentsButton } from '@/components/dashboard/deployment-actions';
 import { Modal } from '@/components/ui/modal';
@@ -742,6 +743,7 @@ function FunctionDetailPage() {
               </>
             )}
 
+            {tab === 'Activity' && <AppActivityTimeline slug={fn.id} />}
             {tab === 'Logs' && (
               <DeploymentCapability
                 slug={fn.id}

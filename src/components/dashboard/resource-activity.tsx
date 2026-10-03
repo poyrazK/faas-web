@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/auth';
+import { useApp } from '@/lib/api/queries';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import {
   activityOutcome,
@@ -12,6 +13,31 @@ import {
   type ActivityFilters,
   type ResourceActivity,
 } from '@/lib/api/resource-activity';
+
+/** Resolve the stable app ID only when the Activity tab is opened. */
+export function AppActivityTimeline({ slug }: { slug: string }) {
+  const app = useApp(slug);
+  if (app.error)
+    return (
+      <div className="space-y-3">
+        <p role="alert">{errorMessage(app.error)}</p>
+        <Button size="xs" variant="outline" onClick={() => void app.refetch()}>
+          Retry app read
+        </Button>
+      </div>
+    );
+  if (app.isPending)
+    return (
+      <p role="status" className="text-sm text-muted-foreground">
+        Resolving app activity…
+      </p>
+    );
+  if (!app.data)
+    return (
+      <p className="text-sm text-muted-foreground">App unavailable. Activity cannot be scoped.</p>
+    );
+  return <ResourceActivityTimeline appId={app.data.id} appSlug={slug} />;
+}
 
 export function ResourceActivityTimeline(props: {
   appId: string;

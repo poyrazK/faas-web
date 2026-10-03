@@ -8,6 +8,7 @@ import {
   useDeploymentStages,
   type DeploymentStages as Stages,
 } from '@/lib/api/queries';
+import { activityOutcome } from '@/lib/api/resource-activity';
 import { deploymentPhase } from '@/lib/deployment-status';
 import { formatRelative } from '@/lib/mock-data';
 
@@ -194,9 +195,19 @@ export function DeploymentAudit({ deploymentId }: { deploymentId: string }) {
   if (audit.isPending) {
     body = <p className="text-sm text-muted-foreground">Reading the audit timeline…</p>;
   } else if (audit.error && isNotFound(audit.error)) {
-    body = <p className="text-sm text-muted-foreground">No audit rows for this deployment.</p>;
+    body = (
+      <p className="text-sm text-muted-foreground">
+        This deployment’s audit is unavailable to your account.
+      </p>
+    );
   } else if (audit.error) {
-    body = <p className="text-sm text-muted-foreground">{errorMessage(audit.error)}</p>;
+    body = (
+      <p role="alert" className="text-sm text-muted-foreground">
+        {audit.error instanceof ApiError && audit.error.status === 403
+          ? 'Your account does not have permission to read this deployment audit.'
+          : errorMessage(audit.error)}
+      </p>
+    );
   } else if (items.length === 0) {
     body = <p className="text-sm text-muted-foreground">Nothing has been recorded yet.</p>;
   } else {
@@ -207,8 +218,15 @@ export function DeploymentAudit({ deploymentId }: { deploymentId: string }) {
             <div className="flex flex-wrap items-center gap-3">
               <span className="text-sm">{AUDIT_LABEL[row.kind] ?? row.kind}</span>
               <span className="font-mono text-xs text-muted-foreground">{row.actor}</span>
-              <span className="ml-auto text-xs text-muted-foreground">{relativeTime(row.at)}</span>
+              <time
+                dateTime={row.at}
+                title={row.at}
+                className="ml-auto text-xs text-muted-foreground"
+              >
+                {relativeTime(row.at)}
+              </time>
             </div>
+            <p className="text-xs text-muted-foreground">Outcome: {activityOutcome(row.kind)}</p>
             {row.data != null && (
               <details className="text-xs text-muted-foreground">
                 <summary className="cursor-pointer">Details</summary>
@@ -231,7 +249,20 @@ export function DeploymentAudit({ deploymentId }: { deploymentId: string }) {
   return (
     <div>
       <p className="label-mono mb-2 text-muted-foreground">Audit timeline</p>
+      <p className="mb-3 text-xs text-muted-foreground">
+        Deployment-specific forensic audit. The API exposes only the latest{' '}
+        {audit.data?.limit ?? 50} rows without an older-page cursor or retention expiry. Workspace
+        activity above has separate coverage and pagination.
+      </p>
       {body}
+      {Boolean(audit.error) && (
+        <button
+          className="mt-2 text-xs text-brand hover:underline"
+          onClick={() => void audit.refetch()}
+        >
+          Retry deployment audit
+        </button>
+      )}
     </div>
   );
 }
