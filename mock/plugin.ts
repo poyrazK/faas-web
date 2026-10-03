@@ -2359,8 +2359,8 @@ route('POST', '/v1/apps/{slug}/webhooks/{id}/deliveries/{did}/retry', ({ params 
 route('POST', '/v1/apps/{slug}/deployments/{id}/cancel', ({ params }) => {
   const d = db.deployments.find((x) => x.id === params.id);
   if (!d) throw new Problem(404, 'deployment_not_found');
-  if (d.status === 'live')
-    throw new Problem(409, 'conflict', 'Live deployment cannot be cancelled.');
+  if (!['pending', 'building', 'imaging', 'snapshotting'].includes(d.status))
+    throw new Problem(409, 'conflict', `Deployment is ${d.status} and cannot be cancelled.`);
   d.status = 'cancelled';
   return d;
 });
@@ -2368,6 +2368,8 @@ route('POST', '/v1/apps/{slug}/deployments/{id}/cancel', ({ params }) => {
 route('POST', '/v1/deployments/{id}/retry', ({ params, body }) => {
   const d = db.deployments.find((x) => x.id === params.id);
   if (!d) throw new Problem(404, 'deployment_not_found');
+  if (d.status !== 'failed')
+    throw new Problem(409, 'conflict', 'Only failed deployments can be retried.');
   const stages = [
     'source_download',
     'dependency_restore',

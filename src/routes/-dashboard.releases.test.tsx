@@ -475,11 +475,10 @@ describe('Releases hub', () => {
     expect(screen.getByText('/app/config:4')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Overview' }));
     await userEvent.click(screen.getByRole('button', { name: 'Retry options' }));
-    fireEvent.change(screen.getByRole('combobox', { name: 'Resume from' }), {
-      target: { value: 'image_build' },
-    });
+    expect(screen.queryByRole('combobox', { name: 'Resume from' })).not.toBeInTheDocument();
+    expect(screen.getByText(/Intermediate checkpoints are not retained/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Retry deployment' }));
-    expect(fixtures.retry).toHaveBeenCalledWith({ id: 'dep-1', from_stage: 'image_build' });
+    expect(fixtures.retry).toHaveBeenCalledWith({ id: 'dep-1', from_stage: 'source_download' });
     expect(await screen.findByRole('link', { name: 'View new deployment' })).toHaveAttribute(
       'href',
       '/dashboard/deployments?deployment=retry-1&releaseSection=overview'

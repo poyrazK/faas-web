@@ -43,77 +43,208 @@ beforeEach(() => {
 });
 
 describe('DeploymentLifecycle', () => {
-  it('links to the returned deployment after retry, not the failed record', async () => {
+  it('confirms an immutable full retry and links to the new record', async () => {
     retry.mockResolvedValue({ id: 'new-deployment' });
     render(<DeploymentLifecycle deployment={deployment('failed')} />);
     await userEvent.click(screen.getByRole('button', { name: 'Retry deployment' }));
+    expect(confirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Retry this failed deployment?',
+        description: expect.stringContaining('recorded source/image and release inputs'),
+      })
+    );
+    expect(retry).toHaveBeenCalledWith({ id: 'd'.repeat(32), from_stage: 'source_download' });
     expect(await screen.findByRole('link', { name: 'View new deployment' })).toHaveAttribute(
       'href',
       '/dashboard/deployments?deployment=new-deployment&releaseSection=overview'
     );
-  });
-  it('preserves retry stage and displays a rejected mutation inline', async () => {
-    retry.mockRejectedValue(
-      new ApiError({ status: 403, code: 'forbidden', title: 'Deploy permission required' })
-    );
-    render(<DeploymentLifecycle deployment={deployment('failed')} />);
-    await userEvent.selectOptions(screen.getByLabelText(/resume from/i), 'image_build');
-    await userEvent.click(screen.getByRole('button', { name: 'Retry deployment' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Deploy permission required');
-    expect(screen.getByLabelText(/resume from/i)).toHaveValue('image_build');
-    expect(screen.queryByRole('link', { name: 'View new deployment' })).not.toBeInTheDocument();
-  });
-  it('does not submit twice while a retry is unresolved', async () => {
-    retry.mockReturnValue(new Promise(() => {}));
-    render(<DeploymentLifecycle deployment={deployment('failed')} />);
-    await userEvent.dblClick(screen.getByRole('button', { name: 'Retry deployment' }));
-    expect(retry).toHaveBeenCalledOnce();
-  });
-  it('offers cancel while a deployment is in flight', () => {
-    render(<DeploymentLifecycle deployment={deployment('building')} />);
-    expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /^retry/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('failed record is unchanged');
+    expect(screen.getByRole('button', { name: 'Retry deployment' })).toBeDisabled();
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
   });
 
-  it('offers retry once a deployment has failed', () => {
-    render(<DeploymentLifecycle deployment={deployment('failed')} />);
-    expect(screen.getByRole('button', { name: /^retry/i })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /cancel/i })).not.toBeInTheDocument();
-  });
+  it.each(['cancel', 'retry'] as const)(
+    'declining %s confirmation sends no mutation',
+    async (action) => {
+      confirm.mockResolvedValue(false);
+      render(
+        <DeploymentLifecycle deployment={deployment(action === 'cancel' ? 'building' : 'failed')} />
+      );
+      await userEvent.click(
+        screen.getByRole('button', {
+          name: action === 'cancel' ? 'Cancel deployment' : 'Retry deployment',
+        })
+      );
+      expect(confirm).toHaveBeenCalledOnce();
+      expect(cancel).not.toHaveBeenCalled();
+      expect(retry).not.toHaveBeenCalled();
+    }
+  );
 
-  it('offers neither once a deployment is live', () => {
-    render(<DeploymentLifecycle deployment={deployment('live')} />);
-    expect(screen.queryByRole('button', { name: /cancel/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /^retry/i })).not.toBeInTheDocument();
-  });
+  it.each(['cancel', 'retry'] as const)(
+    'locks %s before the confirmation promise resolves',
+    async (action) => {
+      let answer!: (value: boolean) => void;
+      confirm.mockReturnValue(
+        new Promise<boolean>((resolve) => {
+          answer = resolve;
+        })
+      );
+      const mutation = action === 'cancel' ? cancel : retry;
+      mutation.mockReturnValue(new Promise(() => {}));
+      render(
+        <DeploymentLifecycle deployment={deployment(action === 'cancel' ? 'building' : 'failed')} />
+      );
+      await userEvent.dblClick(
+        screen.getByRole('button', {
+          name: action === 'cancel' ? 'Cancel deployment' : 'Retry deployment',
+        })
+      );
+      expect(confirm).toHaveBeenCalledOnce();
+      expect(mutation).not.toHaveBeenCalled();
+      answer(true);
+      await waitFor(() => expect(mutation).toHaveBeenCalledOnce());
+    }
+  );
 
-  it('cancels against the app slug, behind a confirm', async () => {
+  it.each(['live', 'superseded', 'cancelled', 'future-state'])(
+    'explains unavailable recovery for %s',
+    (status) => {
+      render(<DeploymentLifecycle deployment={deployment(status)} />);
+      expect(screen.queryByRole('button')).not.toBeInTheDocument();
+      expect(screen.getByText(/unavailable|already cancelled/i)).toBeInTheDocument();
+    }
+  );
+
+  it('cancels against the app slug after confirmation', async () => {
     cancel.mockResolvedValue({});
     render(<DeploymentLifecycle deployment={deployment('building')} />);
-    await userEvent.click(screen.getByRole('button', { name: /cancel/i }));
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel deployment' }));
     await waitFor(() => expect(cancel).toHaveBeenCalledWith({ slug: 'api', id: 'd'.repeat(32) }));
-    expect(confirm).toHaveBeenCalled();
+    expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Deployment cancelled' }));
   });
 
-  it('explains a 409 as the deployment already being live', async () => {
-    cancel.mockRejectedValue(
-      new ApiError({ status: 409, code: 'conflict', title: 'Live deployment' })
+  it.each(['cancel', 'retry'] as const)(
+    'does not submit %s after the deployment changes state in an open dialog',
+    async (action) => {
+      let answer!: (value: boolean) => void;
+      confirm.mockReturnValue(
+        new Promise<boolean>((resolve) => {
+          answer = resolve;
+        })
+      );
+      const view = render(
+        <DeploymentLifecycle deployment={deployment(action === 'cancel' ? 'building' : 'failed')} />
+      );
+      await userEvent.click(
+        screen.getByRole('button', {
+          name: action === 'cancel' ? 'Cancel deployment' : 'Retry deployment',
+        })
+      );
+      view.rerender(<DeploymentLifecycle deployment={deployment('live')} />);
+      answer(true);
+      expect(await screen.findByRole('alert')).toHaveTextContent('state changed');
+      expect(cancel).not.toHaveBeenCalled();
+      expect(retry).not.toHaveBeenCalled();
+    }
+  );
+
+  it('does not retry an old selection after the dialog owner unmounts', async () => {
+    let answer!: (value: boolean) => void;
+    confirm.mockReturnValue(
+      new Promise<boolean>((resolve) => {
+        answer = resolve;
+      })
     );
-    render(<DeploymentLifecycle deployment={deployment('building')} />);
-    await userEvent.click(screen.getByRole('button', { name: /cancel/i }));
-    await waitFor(() => expect(toast).toHaveBeenCalled());
-    expect(toast).toHaveBeenCalledWith(
-      expect.objectContaining({ description: expect.stringMatching(/already live/i) })
-    );
+    const view = render(<DeploymentLifecycle deployment={deployment('failed')} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Retry deployment' }));
+    view.unmount();
+    answer(true);
+    await Promise.resolve();
+    expect(retry).not.toHaveBeenCalled();
   });
 
-  it('retries from the chosen stage', async () => {
-    retry.mockResolvedValue({});
+  it.each(['cancel', 'retry'] as const)('keeps %s permission errors inline', async (action) => {
+    (action === 'cancel' ? cancel : retry).mockRejectedValue(
+      new ApiError({ status: 403, code: 'forbidden', title: 'Deploy permission required' })
+    );
+    render(
+      <DeploymentLifecycle deployment={deployment(action === 'cancel' ? 'building' : 'failed')} />
+    );
+    await userEvent.click(
+      screen.getByRole('button', {
+        name: action === 'cancel' ? 'Cancel deployment' : 'Retry deployment',
+      })
+    );
+    expect(await screen.findByRole('alert')).toHaveTextContent('do not have permission');
+    expect(screen.queryByRole('link', { name: 'View new deployment' })).not.toBeInTheDocument();
+  });
+
+  it.each(['cancel', 'retry'] as const)(
+    'explains inaccessible %s targets without inventing a result',
+    async (action) => {
+      (action === 'cancel' ? cancel : retry).mockRejectedValue(
+        new ApiError({ status: 404, code: 'not_found', title: 'Not found' })
+      );
+      render(
+        <DeploymentLifecycle deployment={deployment(action === 'cancel' ? 'building' : 'failed')} />
+      );
+      await userEvent.click(
+        screen.getByRole('button', {
+          name: action === 'cancel' ? 'Cancel deployment' : 'Retry deployment',
+        })
+      );
+      expect(await screen.findByRole('alert')).toHaveTextContent('unavailable to your account');
+    }
+  );
+
+  it.each(['failed', 'cancelled', 'live'])(
+    'explains a cancellation race with %s accurately',
+    async (status) => {
+      cancel.mockRejectedValue(
+        new ApiError({ status: 409, code: 'conflict', title: `Deployment is ${status}` })
+      );
+      render(<DeploymentLifecycle deployment={deployment('building')} />);
+      await userEvent.click(screen.getByRole('button', { name: 'Cancel deployment' }));
+      expect(await screen.findByRole('alert')).toHaveTextContent(`Deployment is ${status}`);
+      expect(screen.getByRole('alert')).not.toHaveTextContent('already live');
+    }
+  );
+
+  it.each([
+    ['source_invalid', 'Original archive no longer available', 'original source is unavailable'],
+    ['conflict', 'Deployment is no longer failed', 'current state'],
+  ])('explains retry rejection %s', async (code, title, expected) => {
+    retry.mockRejectedValue(new ApiError({ status: 409, code, title }));
     render(<DeploymentLifecycle deployment={deployment('failed')} />);
-    await userEvent.selectOptions(screen.getByLabelText(/resume from/i), 'image_build');
-    await userEvent.click(screen.getByRole('button', { name: /^retry/i }));
-    await waitFor(() =>
-      expect(retry).toHaveBeenCalledWith({ id: 'd'.repeat(32), from_stage: 'image_build' })
+    await userEvent.click(screen.getByRole('button', { name: 'Retry deployment' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(expected);
+    expect(screen.getByRole('button', { name: 'Retry deployment' })).toBeEnabled();
+  });
+
+  it('prevents another retry after a dropped response until history is checked', async () => {
+    retry.mockRejectedValue(new TypeError('Connection dropped'));
+    render(<DeploymentLifecycle deployment={deployment('failed')} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Retry deployment' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('outcome is unknown');
+    expect(screen.getByRole('button', { name: 'Retry deployment' })).toBeDisabled();
+    expect(screen.getByRole('link', { name: 'Check deployment history' })).toHaveAttribute(
+      'href',
+      '/dashboard/deployments?'
     );
   });
+
+  it.each([{}, { id: 'd'.repeat(32) }])(
+    'handles an accepted retry without a valid new identity safely',
+    async (result) => {
+      retry.mockResolvedValue(result);
+      render(<DeploymentLifecycle deployment={deployment('failed')} />);
+      await userEvent.click(screen.getByRole('button', { name: 'Retry deployment' }));
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'did not identify a new deployment'
+      );
+      expect(screen.getByRole('button', { name: 'Retry deployment' })).toBeDisabled();
+      expect(screen.queryByRole('link', { name: 'View new deployment' })).not.toBeInTheDocument();
+    }
+  );
 });
