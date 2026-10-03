@@ -3972,6 +3972,54 @@ route('GET', '/v1/orgs', () => ({
     .filter((org) => org.status !== 'deleted_pending')
     .sort((a, b) => a.slug.localeCompare(b.slug)),
 }));
+
+function inventoryForOrg(slug: string) {
+  const org = requireOrgRole(slug, ['owner', 'admin', 'developer', 'viewer', 'billing']);
+  return db.apps.filter((app) =>
+    org.personal
+      ? app.slug !== 'search-indexer'
+      : slug === 'acme-corp' && app.slug === 'search-indexer'
+  );
+}
+route('GET', '/v1/orgs/{slug}/apps', ({ params }) => ({
+  apps: inventoryForOrg(params.slug).map(({ id, slug, type, runtime, status }) => ({
+    id,
+    slug,
+    type,
+    runtime,
+    status,
+    created_at: new Date(Date.UTC(2026, 8, 1)).toISOString(),
+  })),
+}));
+route('GET', '/v1/orgs/{slug}/activity', ({ params, query }) => {
+  const apps = new Set(inventoryForOrg(params.slug).map((app) => app.id));
+  const identity = (value: string) => value.replaceAll('-', '').toLowerCase();
+  const appId = query.get('app_id');
+  if (appId && !/^(?:[a-f\d]{32}|[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12})$/i.test(appId))
+    throw new Problem(400, 'validation_failed');
+  const raw = query.get('before');
+  if (raw && !/^activity:\d+$/.test(raw))
+    throw new Problem(400, 'validation_failed', 'Invalid activity cursor.');
+  const limit = Math.min(100, Math.max(1, Number(query.get('limit') ?? 50)));
+  const offset = raw ? Number(raw.split(':')[1]) : 0;
+  const rows = db.orgActivity
+    .filter(
+      (row) =>
+        apps.has(row.app_id ?? '') &&
+        (!appId || identity(row.app_id ?? '') === identity(appId)) &&
+        (!query.get('kind_prefix') || row.kind.startsWith(query.get('kind_prefix')!)) &&
+        (!query.get('actor_type') || row.actor.type === query.get('actor_type'))
+    )
+    .sort(
+      (left, right) =>
+        right.occurred_at.localeCompare(left.occurred_at) || Number(right.id) - Number(left.id)
+    );
+  return {
+    items: rows.slice(offset, offset + limit),
+    ...(rows.length > offset + limit ? { next_before: `activity:${offset + limit}` } : {}),
+  };
+});
+
 route('POST', '/v1/orgs', ({ body }) => {
   const slug = String(body.slug ?? '');
   const name = String(body.name ?? '').trim();

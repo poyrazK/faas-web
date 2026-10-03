@@ -452,3 +452,28 @@ submission. Retrying is non-idempotent: automatic mutation retries are disabled,
 and a dropped/5xx response directs the user to inspect history before refreshing
 and trying again. It cannot claim failure or start a second attempt while the
 first request's outcome is unknown.
+
+### Resource activity
+
+The app **Activity** tab and release **Audit context** show the existing curated
+workspace activity feed. The app's stable ID is resolved through accessible
+workspace inventories, including personal and shared workspaces; the console's
+workspace label is not an ownership signal. Every feed request filters by app ID
+on the server. Release views further restrict loaded events to the exact recorded
+deployment ID and link to app-wide config/domain context. No browser event store,
+unscoped fallback, or duplicated audit producer is added.
+
+Events remain newest first with captured actor, UTC timestamp, affected-resource
+links, safe details, and outcomes derived only for known event kinds. Unknown
+kinds explicitly have no reported outcome. Category and actor filters use the API;
+older pages use its opaque cursor. Account/app/filter changes isolate caches and
+selection state. Failed older-page reads keep loaded evidence available to review
+and retry. The timeline polls every 30 seconds while open and can be refreshed.
+
+Workspace membership controls access. The API does not advertise a retention
+expiry; historical coverage can be incomplete for older/deleted resources.
+Deployment forensics remains a distinct, latest-50-row audit without a pagination
+cursor. Its separate limits and permission failures are stated beside the feed.
+The account audit log remains linked for security/account events outside the
+resource timeline. Mock mode includes scoped inventory, curated actor categories,
+config/environment/domain/TLS events, and older pages.
