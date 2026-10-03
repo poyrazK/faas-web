@@ -40,12 +40,10 @@ describe('deployment recovery mutations', () => {
     ).toBe(true);
   });
   it('posts only the original release ID and requested stage, without recreating configuration', async () => {
-    const post = vi
-      .spyOn(api, 'POST')
-      .mockResolvedValue({
-        data: { id: 'new-id' },
-        response: new Response(null, { status: 202 }),
-      } as never);
+    const post = vi.spyOn(api, 'POST').mockResolvedValue({
+      data: { id: 'new-id' },
+      response: new Response(null, { status: 202 }),
+    } as never);
     const { client, wrapper } = setup();
     const hook = renderHook(() => useRetryDeployment(), { wrapper });
     await act(async () => {
