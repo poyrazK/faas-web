@@ -250,7 +250,7 @@ function CapabilityRow({ component }: { component: PublicStatusComponent }) {
 
 function DayBar({ day }: { day: PublicStatusDaily }) {
   const uptime = day.uptime_pct === null ? 'No data' : `${day.uptime_pct.toFixed(3)}% uptime`;
-  const label = `${day.date}: ${stateLabels[day.status]}. ${uptime}. ${day.coverage_pct.toFixed(0)}% telemetry coverage.`;
+  const label = `${day.date}: ${day.status === 'pre_release' ? 'Pre-release' : stateLabels[day.status]}. ${uptime}. ${day.coverage_pct.toFixed(0)}% telemetry coverage.`;
   return (
     <span
       className={`status-day status-day--${day.status}`}

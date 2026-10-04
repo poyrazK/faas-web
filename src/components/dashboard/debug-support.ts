@@ -53,19 +53,20 @@ export function safeDebugBundle(slug: string, data: DebugRequestEvidence, buildI
 
 export function suggestedDebugChecks(data: DebugRequestEvidence): string[] {
   const checks: string[] = [];
-  if (data.request.status >= 500 && data.request.status < 600)
+  const status = data.request.status;
+  if (status !== undefined && status >= 500 && status < 600)
     checks.push(
       'Suggested check: HTTP 5xx was recorded; inspect app logs around the request timestamp.'
     );
-  else if (data.request.status === 429)
+  else if (status === 429)
     checks.push(
       'Suggested check: HTTP 429 was recorded; inspect configured rate limits and app logs.'
     );
-  else if (data.request.status === 401 || data.request.status === 403)
+  else if (status === 401 || status === 403)
     checks.push(
       'Suggested check: HTTP 401 / 403 was recorded; review route authentication and access settings.'
     );
-  else if (data.request.status >= 400 && data.request.status < 500)
+  else if (status !== undefined && status >= 400 && status < 500)
     checks.push(
       'Suggested check: HTTP 4xx was recorded; review the route and method against its configuration.'
     );

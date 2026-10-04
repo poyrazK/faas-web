@@ -285,7 +285,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
       id: c.id,
       app: bySlug.get(c.app_id) ?? c.app_id,
       schedule: c.schedule,
-      path: c.path,
+      path: c.kind === 'command' ? (c.command ?? []).join(' ') : (c.path ?? '/'),
       enabled: c.enabled,
       lastFiredAt: c.last_fired_at ?? null,
     }));
@@ -437,6 +437,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
               .mutateAsync({
                 app_id: targetApp,
                 schedule: schedule.trim(),
+                command_shell: false,
                 path: path.trim() || '/',
               })
               .then((c) => {

@@ -329,7 +329,7 @@ describe('mock API', () => {
       );
     }
   });
-  it('requires the one-time token for invitation revocation and never returns it in lists', async () => {
+  it('revokes invitations by stable ID and never exposes one-time acceptance tokens in lists', async () => {
     const plugin = mockApi();
     let middleware: Connect.NextHandleFunction | undefined;
     if (typeof plugin.configureServer !== 'function') throw new Error('Missing server hook');
@@ -361,7 +361,7 @@ describe('mock API', () => {
       });
       expect(created.status).toBe(201);
       const invitation = (await created.json()) as { id: string; token: string };
-      const invalid = await fetch(`${base}/v1/orgs/${org.slug}/invitations/${invitation.id}`, {
+      const invalid = await fetch(`${base}/v1/orgs/${org.slug}/invitations/${invitation.token}`, {
         method: 'DELETE',
       });
       expect(invalid.status).toBe(410);
@@ -374,13 +374,13 @@ describe('mock API', () => {
       });
       expect(JSON.stringify(listed)).not.toContain(invitation.token);
       expect(listed.invitations.every((i) => i.token === undefined)).toBe(true);
-      const revoked = await fetch(`${base}/v1/orgs/${org.slug}/invitations/${invitation.token}`, {
+      const revoked = await fetch(`${base}/v1/orgs/${org.slug}/invitations/${invitation.id}`, {
         method: 'DELETE',
       });
       expect(revoked.status).toBe(204);
       expect(
         (
-          await fetch(`${base}/v1/orgs/${org.slug}/invitations/${invitation.token}`, {
+          await fetch(`${base}/v1/orgs/${org.slug}/invitations/${invitation.id}`, {
             method: 'DELETE',
           })
         ).status

@@ -38,10 +38,11 @@ paths are checked against `api/openapi.yaml` by `src/lib/mock-spec-drift.test.ts
   a couple of types; `lib/mock-resources.ts` is unused by routes. Do not add
   fixture data back — if an endpoint cannot answer something, say so in the UI
   rather than inventing a plausible number.
-- **The API has no projects, no regions, and no time-series metrics.** All were
-  removed from the UI rather than faked. Do not reintroduce any of them, and in
-  particular do not add charts to the console: `/v1/apps/{slug}/metrics` returns
-  scalars, so a line chart there would be fabricated.
+- **Resource pickers must use supported API reads.** Budget scope selection
+  now reads `/v1/projects` and `/v1/projects/{slug}/environments`; no project or
+  environment membership is invented locally. Regions and time-series metrics
+  remain unavailable. `/v1/apps/{slug}/metrics` returns scalars, so a line chart
+  there would be fabricated.
 - **Per-app resources need an app picker.** Secrets, env, alerts, webhooks,
   queues, upstreams, routes, and logs are all `/v1/apps/{slug}/…` with no
   account-wide read. Use `useSelectedApp` + `AppSelect`.

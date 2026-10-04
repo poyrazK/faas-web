@@ -23,6 +23,7 @@ const instance: Instance = {
   state: 'parked',
   host_ip: '10.0.1.2',
   ram_mb: 512,
+  resident: true,
   wake_id: 'wake-1',
   execution_mode: 'service',
   started_at: '2026-09-11T10:00:00Z',
@@ -81,7 +82,10 @@ beforeEach(() => {
   appState = 'ready';
   wakeState = 'ready';
   paginationState = false;
-  vi.spyOn(api, 'GET').mockImplementation(async (path, options) => {
+  vi.spyOn(
+    api as unknown as { GET: (path: string, options?: unknown) => Promise<unknown> },
+    'GET'
+  ).mockImplementation(async (path, options) => {
     const request = options as {
       params?: {
         path?: Record<string, string>;
@@ -390,7 +394,16 @@ describe('Instance details', () => {
   });
 
   it('shows missing optional evidence without inventing durations or starting a wake read', async () => {
-    rows = [{ id: 'vm-1', app_id: 'app-1', deployment_id: '', ram_mb: 256, state: 'waking' }];
+    rows = [
+      {
+        id: 'vm-1',
+        app_id: 'app-1',
+        deployment_id: '',
+        ram_mb: 256,
+        resident: true,
+        state: 'waking',
+      },
+    ];
     await mount('/dashboard/workers?instance=vm-1');
     const view = within(await screen.findByRole('region', { name: 'Instance details' }));
     expect(await view.findByText(/no wake ID was returned/i)).toBeInTheDocument();

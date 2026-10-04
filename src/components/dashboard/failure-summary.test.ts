@@ -9,8 +9,6 @@ const deployment: components['schemas']['DeploymentResponse'] = {
   kind: 'github',
   image_digest: '',
   created_at: '2026-09-12T00:00:00Z',
-  rollback_on_5xx: false,
-  first_5xx_count: 0,
 };
 
 describe('failureSummary', () => {

@@ -78,17 +78,7 @@ function def<K extends Kind>(d: KindDef<K>): KindDef<K> {
 }
 
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as const;
-const ALGORITHMS = [
-  'RS256',
-  'RS384',
-  'RS512',
-  'ES256',
-  'ES384',
-  'ES512',
-  'HS256',
-  'HS384',
-  'HS512',
-] as const;
+const ALGORITHMS = ['RS256', 'RS384', 'RS512', 'ES256', 'ES384', 'ES512'] as const;
 
 const required = (value: string | undefined, field: string, message: string) =>
   value?.trim() ? {} : { [field]: message };
@@ -578,7 +568,13 @@ export const KINDS = {
   throttle: def<'throttle'>({
     label: 'Rate limit',
     desc: 'Shed traffic over a rate, with a burst allowance.',
-    empty: () => ({ requests_per_second: 10, burst: 20, key_by: 'none', max_keys_per_rule: 0 }),
+    empty: () => ({
+      requests_per_second: 10,
+      burst: 20,
+      key_by: 'none',
+      max_keys_per_rule: 0,
+      missing_key_policy: 'shared',
+    }),
     summary: (a) => `${a.requests_per_second} rps · burst ${a.burst}`,
     validate: (a) => ({
       ...(a.requests_per_second > 0 ? {} : { requests_per_second: 'Must be more than zero.' }),

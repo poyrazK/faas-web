@@ -75,7 +75,12 @@ function EnableForm({
             .mutateAsync({
               slug,
               name,
-              body: { webhook_url: url.trim(), webhook_secret: secret, enabled: true },
+              body: {
+                webhook_url: url.trim(),
+                webhook_secret: secret,
+                action: 'webhook',
+                enabled: true,
+              },
             })
             .then(() => {
               toast({ kind: 'success', title: 'Preset enabled' });

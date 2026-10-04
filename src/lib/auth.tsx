@@ -11,6 +11,7 @@ import {
 import { api, setUnauthorizedHandler, unwrap } from './api/client';
 import { ApiError } from './api/errors';
 import type { components } from './api/schema';
+import { useQueryClient } from '@tanstack/react-query';
 
 /**
  * The real session layer, against `apid`'s cookie auth.
@@ -235,6 +236,7 @@ interface AuthValue {
 const AuthContext = createContext<AuthValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [user, setUser] = useState<User | null>(() => readSession());
   const [account, setAccount] = useState<Account | null>(null);
   const [apiReachable, setReachable] = useState(true);
@@ -243,20 +245,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => readSession() !== null || hasOAuthPending()
   );
 
-  const setSession = useCallback((next: User | null) => {
-    writeSession(next);
-    setUser(next);
-    if (!next) setAccount(null);
-  }, []);
+  const session = useRef({
+    email: user?.email ?? null,
+    accountID: null as string | null,
+    generation: 0,
+  });
+  const clearSessionQueries = useCallback(() => {
+    session.current.generation++;
+    session.current.accountID = null;
+    // Destroy queries synchronously, including pending requests, before a new
+    // session can render. Their late results must not repopulate the cache.
+    queryClient.clear();
+    setAccount(null);
+  }, [queryClient]);
+
+  const setSession = useCallback(
+    (next: User | null) => {
+      if (!next || next.email !== session.current.email) clearSessionQueries();
+      session.current.email = next?.email ?? null;
+      writeSession(next);
+      setUser(next);
+    },
+    [clearSessionQueries]
+  );
 
   const refreshAccount = useCallback(async () => {
+    const generation = session.current.generation;
     const next = await unwrap(api.GET('/v1/account', {}));
+    if (generation !== session.current.generation) return;
+    if (session.current.accountID && session.current.accountID !== next.id) clearSessionQueries();
     setReachable(true);
-    setAccount(next);
     // The server is authoritative on the address; a hint written from a typo'd
     // or since-changed email gets corrected here.
     if (next.email) setSession(userFor(next.email));
-  }, [setSession]);
+    session.current.accountID = next.id;
+    setAccount(next);
+  }, [clearSessionQueries, setSession]);
 
   /**
    * Any 401 from anywhere means the cookie is gone or expired. Drop the hint so
@@ -268,12 +292,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // With no backend there is no cookie, so every call is a 401; under the
       // dev bypass that must not bounce the designer back to sign-in.
       if (isDevBypass()) return;
-      writeSession(null);
-      setUser(null);
-      setAccount(null);
+      setSession(null);
     });
     return () => setUnauthorizedHandler(null);
-  }, []);
+  }, [setSession]);
 
   // Verify the hint once on mount. StrictMode double-invokes effects in dev, and
   // this one is a network call, so it is guarded.
@@ -301,6 +323,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signIn = useCallback(
     async (email: string, password: string) => {
       await unwrap(api.POST('/login', { body: { email: email.trim(), password } }));
+      clearSessionQueries();
       const next = userFor(email);
       setSession(next);
       // Fire and forget: the plan and quota banner can arrive a beat later
@@ -308,18 +331,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       void refreshAccount().catch(() => {});
       return next;
     },
-    [refreshAccount, setSession]
+    [clearSessionQueries, refreshAccount, setSession]
   );
 
   const signUp = useCallback(
     async (email: string, password: string) => {
       await unwrap(api.POST('/signup', { body: { email: email.trim(), password } }));
+      clearSessionQueries();
       const next = userFor(email);
       setSession(next);
       void refreshAccount().catch(() => {});
       return next;
     },
-    [refreshAccount, setSession]
+    [clearSessionQueries, refreshAccount, setSession]
   );
 
   /**

@@ -3,6 +3,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import type { Plugin } from 'vite';
 import type { components } from '../src/lib/api/schema';
 import * as db from './data';
+import { financialReport } from './financial';
 import {
   FREE_TRIGGER_ERROR_CODE,
   KAFKA_SASL_MECHANISMS,
@@ -449,7 +450,7 @@ route('POST', '/v1/apps', ({ body }) => {
     runtime: (body.runtime as db.App['runtime']) ?? 'node24',
     ram_mb: Number(body.ram_mb ?? 256),
     min_instances: 0,
-    status: 'pending',
+    status: 'undeployed',
     url: `https://${slug}.gregale.app`,
   };
   db.apps.push(created);
@@ -468,7 +469,11 @@ route('POST', '/v1/apps/{slug}/wake', ({ params }) => {
   return NO_CONTENT;
 });
 route('POST', '/v1/apps/{slug}/park', ({ params }) => {
-  app(params.slug).status = 'parked';
+  const target = app(params.slug);
+  for (const instance of db.instances.filter((row) => row.app_id === target.id)) {
+    instance.state = 'parked';
+    instance.resident = false;
+  }
   return NO_CONTENT;
 });
 const PATCHABLE = [
@@ -514,12 +519,10 @@ route('POST', '/v1/apps/{slug}/deployments/source-ref', ({ params, body }) => {
     status: 'building',
     created_at: db.iso(0),
     traffic_percent: 0,
-    rollback_on_5xx: false,
-    first_5xx_count: 0,
     scan: null,
   };
   db.deployments.unshift(dep);
-  a.status = 'deploying';
+  a.status = 'active';
   return status(202, dep);
 });
 route('POST', '/v1/apps/{slug}/rollback', ({ params }) => {
@@ -562,6 +565,9 @@ route('PUT', '/v1/apps/{slug}/secrets/{key}', ({ params }) => {
   const created = {
     key: params.key,
     scope: 'default',
+    secret_class: 'persistent' as const,
+    delivery_version: 1,
+    delivery_status: 'pending' as const,
     kid: db.id().slice(0, 8),
     created_at: now,
     updated_at: now,
@@ -821,7 +827,13 @@ route('PATCH', '/v1/apps/{slug}/alerts/{id}', ({ params, body }) => {
   rule.updated_at = db.iso(0);
   return rule;
 });
-route('POST', '/v1/apps/{slug}/alerts/{id}/rotate-secret', ({ params }) => {
+route('POST', '/v1/apps/{slug}/alerts/{id}/rotate-secret', ({ params, body }) => {
+  if (
+    typeof body.webhook_secret !== 'string' ||
+    !body.webhook_secret ||
+    body.webhook_secret.length > 256
+  )
+    throw new Problem(400, 'validation_failed', 'Provide a replacement signing secret.');
   const rule = listOf(db.alerts, params.slug).find((r) => r.id === params.id);
   if (!rule) throw new Problem(404, 'alert_rule_not_found');
   rule.updated_at = db.iso(0);
@@ -888,6 +900,7 @@ route('POST', '/v1/apps/{slug}/mirrors', ({ params, body }) => {
     percent,
     enabled: true,
     include_body: body.include_body === true,
+    allow_unsafe_methods: body.allow_unsafe_methods === true,
     redact_headers: Array.isArray(body.redact_headers) ? body.redact_headers.map(String) : [],
     always_stripped_headers: ['Authorization', 'Cookie'],
     created_at: db.iso(0),
@@ -1510,6 +1523,7 @@ type AnalyticsMethod = NonNullable<AnalyticsTimeseries['method']>;
 
 const ANALYTICS_WINDOW_HOURS: Record<string, number> = { '24h': 24, '3d': 72, '7d': 168 };
 const ANALYTICS_GROUPS: Record<AnalyticsGroupBy, string[]> = {
+  consumer_id: ['consumer-one', 'consumer-two'],
   route: ['/orders', '/orders/{id}', '/health', '/search'],
   country: ['DE', 'TR', 'US', 'FR'],
   referrer_host: ['acme.example', 'news.example', '(direct)'],
@@ -2264,6 +2278,7 @@ route('POST', '/v1/apps/{slug}/webhooks', ({ params, body }) => {
       ? (body.event_filter as (typeof list)[number]['event_filter'])
       : [],
     retry_policy: (body.retry_policy ?? 'default') as (typeof list)[number]['retry_policy'],
+    delivery_format: (body.delivery_format ?? 'json') as (typeof list)[number]['delivery_format'],
     enabled: body.enabled !== false,
     created_at: db.iso(0),
     updated_at: db.iso(0),
@@ -2288,7 +2303,13 @@ route('DELETE', '/v1/apps/{slug}/webhooks/{id}', ({ params }) => {
   list.splice(i, 1);
   return NO_CONTENT;
 });
-route('POST', '/v1/apps/{slug}/webhooks/{id}/rotate-secret', ({ params }) => {
+route('POST', '/v1/apps/{slug}/webhooks/{id}/rotate-secret', ({ params, body }) => {
+  if (
+    typeof body.webhook_secret !== 'string' ||
+    !body.webhook_secret ||
+    body.webhook_secret.length > 256
+  )
+    throw new Problem(400, 'validation_failed', 'Provide a replacement signing secret.');
   const hook = listOf(db.webhooks, params.slug).find((w) => w.id === params.id);
   if (!hook) throw new Problem(404, 'webhook_not_found');
   hook.updated_at = db.iso(0);
@@ -2596,7 +2617,7 @@ route('GET', '/v1/apps/{slug}/logs', ({ params, query, req, res }) => {
   }
 
   // A parked app has nothing to say; the stream ends the way the real one does.
-  if (a.status === 'parked') {
+  if (a.status === 'evicted_cold') {
     send(
       'log',
       JSON.stringify({
@@ -3641,6 +3662,7 @@ route('POST', '/v1/crons', ({ body }) => {
     id: db.id(),
     app_id: a.id,
     schedule,
+    kind: 'http' as const,
     path: String(body.path ?? '/'),
     enabled: body.enabled !== false,
     timezone: String(body.timezone ?? 'UTC'),
@@ -3784,6 +3806,7 @@ route('POST', '/v1/apps/{slug}/edge-rules', ({ params, body }) => {
     app_id: a.id,
     match_host: String(body.match_host ?? ''),
     match_path: String(body.match_path ?? '/*'),
+    match_headers: {},
     match_methods: Array.isArray(body.match_methods) ? (body.match_methods as string[]) : [],
     priority: Number(body.priority ?? 100),
     enabled: body.enabled !== false,
@@ -3897,6 +3920,199 @@ route('GET', '/v1/audit-log', ({ query }) => {
 });
 
 route('GET', '/v1/usage/summary', () => db.usage);
+route('GET', '/v1/billing/costs', ({ query }) =>
+  financialReport(query.get('month') ?? new Date().toISOString().slice(0, 7))
+);
+route('GET', '/v1/projects', () => []);
+route('GET', '/v1/projects/{slug}/environments', () => []);
+
+type MockBudget = components['schemas']['FinancialBudgetResponse'];
+type MockBudgetRevision = components['schemas']['FinancialBudgetRevisionResponse'];
+const financialBudgets = new Map<string, MockBudget>();
+const financialBudgetRevisions = new Map<string, MockBudgetRevision[]>();
+const financialBudgetKeys = new Map<string, string>();
+function mockBudget(id: string) {
+  const budget = financialBudgets.get(id);
+  if (!budget) throw new Problem(404, 'not_found', 'Budget policy not found.');
+  return budget;
+}
+function recordMockBudget(budget: MockBudget, mutation: MockBudgetRevision['mutation']) {
+  financialBudgets.set(budget.id, budget);
+  const revisions = financialBudgetRevisions.get(budget.id) ?? [];
+  revisions.push({
+    policy_id: budget.id,
+    revision: budget.revision,
+    actor: `account:${db.account.id}`,
+    mutation,
+    spec: structuredClone(budget.spec),
+    recorded_at: budget.updated_at,
+  });
+  financialBudgetRevisions.set(budget.id, revisions);
+  return budget;
+}
+function mockDraftSpec(body: Record<string, unknown>) {
+  const spec = body.spec as components['schemas']['FinancialBudgetSpec'] | undefined;
+  if (
+    !spec?.name ||
+    !spec.scope ||
+    !Number.isSafeInteger(spec.limit_millicents) ||
+    spec.limit_millicents < 0
+  )
+    throw new Problem(400, 'validation_failed', 'Expected a budget spec.');
+  if (spec.enabled)
+    throw new Problem(
+      422,
+      'financial_budget_activation_unavailable',
+      'Save a disabled draft; enforcement is unavailable.'
+    );
+  return structuredClone(spec);
+}
+route('GET', '/v1/billing/budgets', () => ({
+  budgets: [...financialBudgets.values()].filter((p) => !p.deleted_at),
+}));
+route('POST', '/v1/billing/budgets', ({ body, req }) => {
+  const spec = mockDraftSpec(body);
+  const key = String(req.headers['idempotency-key'] ?? '');
+  if (!key) throw new Problem(400, 'validation_failed', 'Idempotency-Key required.');
+  const previous = financialBudgetKeys.get(key);
+  if (previous) return status(201, mockBudget(previous));
+  const at = new Date().toISOString();
+  const budget: MockBudget = {
+    id: db.id(),
+    account_id: db.account.id!,
+    revision: 1,
+    spec,
+    created_at: at,
+    updated_at: at,
+    status: 'draft',
+    enforcement_ready: false,
+    reasons: ['enforcement_integration_pending'],
+  };
+  financialBudgetKeys.set(key, budget.id);
+  return status(201, recordMockBudget(budget, 'created'));
+});
+route('GET', '/v1/billing/budgets/{id}', ({ params }) => mockBudget(params.id));
+route('PUT', '/v1/billing/budgets/{id}', ({ params, body }) => {
+  const old = mockBudget(params.id);
+  if (old.deleted_at || old.revision !== body.expected_revision)
+    throw new Problem(409, 'conflict', 'Read the current budget before editing.');
+  return recordMockBudget(
+    {
+      ...old,
+      revision: old.revision + 1,
+      spec: mockDraftSpec(body),
+      updated_at: new Date().toISOString(),
+    },
+    'updated'
+  );
+});
+route('DELETE', '/v1/billing/budgets/{id}', ({ params, body }) => {
+  const old = mockBudget(params.id);
+  if (old.deleted_at || old.revision !== body.expected_revision)
+    throw new Problem(409, 'conflict', 'Read the current budget before deleting.');
+  const at = new Date().toISOString();
+  return recordMockBudget(
+    { ...old, revision: old.revision + 1, status: 'deleted', deleted_at: at, updated_at: at },
+    'deleted'
+  );
+});
+route('GET', '/v1/billing/budgets/{id}/revisions', ({ params, query }) => {
+  mockBudget(params.id);
+  const after = Number(query.get('after_revision') ?? 0);
+  const limit = Number(query.get('limit') ?? 100);
+  const revisions = (financialBudgetRevisions.get(params.id) ?? [])
+    .filter((p) => p.revision > after)
+    .slice(0, limit);
+  return {
+    revisions,
+    ...(revisions.length === limit
+      ? { next_revision: revisions[revisions.length - 1].revision }
+      : {}),
+  };
+});
+route('POST', '/v1/billing/budgets/preview', ({ body }) => {
+  const spec = body.spec as components['schemas']['FinancialBudgetSpec'];
+  if (!spec?.scope) throw new Problem(400, 'validation_failed', 'Expected a budget spec.');
+  const report = financialReport(new Date().toISOString().slice(0, 7));
+  const allocations = report.meters.flatMap((meter) =>
+    meter.accrued.contracts.flatMap((contract) => contract.allocations)
+  );
+  const known = allocations
+    .filter(
+      (a) =>
+        spec.scope.kind === 'account' ||
+        (spec.scope.kind === 'app' && a.attribution.app_id === spec.scope.id) ||
+        (spec.scope.kind === 'job' && a.attribution.job_id === spec.scope.id)
+    )
+    .reduce(
+      (sum, a) => sum + (spec.basis === 'gross_usage' ? a.gross_millicents : a.net_millicents),
+      0
+    );
+  const members = [
+    ...db.apps.map((app) => ({
+      kind: 'app' as const,
+      id: app.id,
+      name: app.slug,
+      background: app.workload_class === 'worker' || app.workload_class === 'job',
+      preview: 'preview_of_slug' in app && !!app.preview_of_slug,
+    })),
+    ...jobs.map((job) => ({
+      kind: 'job' as const,
+      id: job.id,
+      name: job.name,
+      background: true,
+      preview: false,
+    })),
+  ].filter(
+    (m) => spec.scope.kind === 'account' || (m.kind === spec.scope.kind && m.id === spec.scope.id)
+  );
+  const targets: components['schemas']['FinancialBudgetTarget'][] = [];
+  const continuing: components['schemas']['FinancialBudgetTarget'][] = [];
+  for (const member of members) {
+    const selected =
+      spec.enabled &&
+      (spec.action === 'notify' ||
+        spec.action === 'suspend_workloads' ||
+        (spec.action === 'reject_traffic' && !member.background) ||
+        (spec.action === 'suspend_background' && member.background) ||
+        (spec.action === 'stop_previews' && member.preview));
+    if (selected)
+      targets.push({
+        kind: member.kind,
+        id: member.id,
+        name: member.name,
+        effect:
+          spec.action === 'notify'
+            ? 'notify_only'
+            : spec.action === 'reject_traffic'
+              ? 'reject_new_traffic'
+              : 'block_then_stop_at_drain_deadline',
+      });
+    if (!selected || spec.action === 'notify' || spec.action === 'reject_traffic')
+      continuing.push({
+        kind: member.kind,
+        id: member.id,
+        name: member.name,
+        effect: 'compute_can_continue',
+      });
+  }
+  const response: components['schemas']['FinancialBudgetPreviewResponse'] = {
+    spec,
+    period_start: report.period_start,
+    period_end: report.period_end,
+    as_of: report.as_of,
+    known_millicents: known,
+    known_limit_reached: known >= spec.limit_millicents,
+    coverage_complete: false,
+    fresh: true,
+    reasons: ['enforcement_integration_pending'],
+    enforcement_ready: false,
+    guarantee: 'monitored_after_retained_evidence; delayed_sources_and_drain_can_exceed_limit',
+    targets,
+    continuing_targets: continuing,
+  };
+  return response;
+});
 route('GET', '/v1/usage/storage', () => ({ items: db.storage }));
 route('GET', '/v1/invoices', () => ({ items: db.invoices, next_before: null }));
 route('GET', '/v1/billing/portal', () => db.billingPortal);
@@ -4001,11 +4217,10 @@ route('DELETE', '/v1/orgs/{slug}/members/{user_id}', ({ params }) => {
   members.splice(i, 1);
   return NO_CONTENT;
 });
-route('DELETE', '/v1/orgs/{slug}/invitations/{token}', ({ params }) => {
+route('DELETE', '/v1/orgs/{slug}/invitations/{invitation_id}', ({ params }) => {
   requireOrgRole(params.slug, ['owner', 'admin']);
-  const hash = createHash('sha256').update(Buffer.from(params.token, 'base64url')).digest('hex');
   const inv = db.invitations.find(
-    (x) => invitationTokenHashes.get(x.id) === hash && x.org_slug === params.slug
+    (x) => x.id === params.invitation_id && x.org_slug === params.slug
   );
   if (!inv || inv.status !== 'pending' || Date.parse(inv.expires_at) <= Date.now())
     throw new Problem(410, 'org_invitation_invalid');
@@ -4421,7 +4636,7 @@ route('GET', '/v1/cron-fire-now-requests/{request_id}', ({ params }) => {
 const ERR_FP = 'fp_5c1a9b2e77d34fa0';
 route('GET', '/v1/apps/{slug}/errors/summary', ({ params }) => {
   const a = db.apps.find((x) => x.slug === params.slug);
-  const failing = a?.status === 'error';
+  const failing = a && db.deploymentStateFor(a) === 'failed';
   return {
     generated_at: new Date().toISOString(),
     app_id: a?.id ?? 'unknown',

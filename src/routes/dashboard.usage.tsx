@@ -18,6 +18,8 @@ import { consoleHead } from '@/lib/seo';
 import { formatUsageBytes, formatUsageNumber } from '@/lib/usage-format';
 import { SpendCap } from '@/components/dashboard/spend-cap';
 import { ObjectStorageUsagePanel } from '@/components/dashboard/object-storage-usage';
+import { FinancialCostsPanel } from '@/components/dashboard/financial-costs';
+import { FinancialBudgetsPanel } from '@/components/dashboard/financial-budgets';
 
 export const Route = createFileRoute('/dashboard/usage')({
   component: UsagePage,
@@ -38,85 +40,6 @@ function formatMoney(cents: number | undefined): string {
   if (cents == null) return '—';
   return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'EUR' }).format(
     cents / 100
-  );
-}
-
-/**
- * Where the month ends up if the pace holds. A linear projection over the
- * metered figure — arithmetic, not a model, and labelled as such. Renders
- * nothing until the period is the current calendar month and at least a
- * full day has been metered; a projection from an hour of data is noise
- * wearing a number.
- */
-function ForecastPanel({
-  used,
-  included,
-  month,
-}: {
-  used: number;
-  included: number;
-  month: string | undefined;
-}) {
-  const now = new Date();
-  const [y, m] = (month ?? '').split('-').map(Number);
-  const isCurrentMonth = y === now.getUTCFullYear() && m === now.getUTCMonth() + 1;
-  const dayOfMonth = now.getUTCDate();
-  if (!isCurrentMonth || used <= 0 || dayOfMonth < 2) return null;
-
-  const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
-  const projected = (used / dayOfMonth) * daysInMonth;
-  const overBy = projected - included;
-  const pctUsed = included > 0 ? Math.min(100, (used / included) * 100) : 0;
-  const pctProjected = included > 0 ? Math.min(100, (projected / included) * 100) : 0;
-
-  return (
-    <Panel
-      title="Trajectory"
-      description={`Linear projection from ${dayOfMonth} of ${daysInMonth} days.`}
-    >
-      <div className="flex flex-col gap-3">
-        <div
-          className="relative h-2 w-full overflow-hidden rounded-full bg-muted"
-          role="meter"
-          aria-valuenow={Math.round(pctProjected)}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-label="Projected share of allowance by month end"
-        >
-          {/* The ghost is the projection; the solid bar is what is real. */}
-          <div
-            className="absolute inset-y-0 left-0 rounded-full opacity-40"
-            style={{
-              width: `${pctProjected}%`,
-              background: overBy > 0 ? 'var(--status-warning)' : 'var(--brand)',
-            }}
-          />
-          <div
-            className="absolute inset-y-0 left-0 rounded-full"
-            style={{
-              width: `${pctUsed}%`,
-              background: overBy > 0 ? 'var(--status-warning)' : 'var(--brand)',
-            }}
-          />
-        </div>
-        <p className="text-xs text-muted-foreground">
-          At this pace: ~
-          <span className="text-foreground [font-variant-numeric:tabular-nums]">
-            {formatUsageNumber(projected)}
-          </span>{' '}
-          GB-hours by month end
-          {overBy > 0 ? (
-            <span style={{ color: 'var(--status-warning)' }}>
-              {' '}
-              — ≈{formatUsageNumber(overBy)} past the allowance. Your spend cap determines whether
-              further overage is allowed.
-            </span>
-          ) : (
-            ' — inside the allowance.'
-          )}
-        </p>
-      </div>
-    </Panel>
   );
 }
 
@@ -262,6 +185,8 @@ function UsagePage() {
       />
 
       <ObjectStorageUsagePanel />
+      <FinancialCostsPanel />
+      <FinancialBudgetsPanel />
 
       {phase === 'unreachable' ? (
         <UnreachableState onRetry={() => void refetch()} />
@@ -317,7 +242,6 @@ function UsagePage() {
             <StatTile label="Apps" value={String(account?.app_count ?? '—')} />
           </div>
 
-          <ForecastPanel used={used} included={included} month={data?.month} />
           <PerAppUsagePanel />
 
           {account?.limits && (

@@ -354,6 +354,7 @@ function CreateMirrorRule({ slug, deployments }: { slug: string; deployments: De
         mirror_deployment_id: mirrorId,
         percent: percentValue,
         include_body: includeBody,
+        allow_unsafe_methods: false,
         redact_headers: redact
           .split(',')
           .map((h) => h.trim())

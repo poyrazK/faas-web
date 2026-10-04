@@ -108,6 +108,7 @@ describe('MirrorRules', () => {
         mirror_deployment_id: 'bbbbbbbb2222',
         percent: 100,
         include_body: false,
+        allow_unsafe_methods: false,
         redact_headers: ['X-Trace', 'X-Debug'],
       })
     );

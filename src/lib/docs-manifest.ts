@@ -152,6 +152,13 @@ export const DOC_SECTIONS: DocSection[] = [
         summary: 'Generated platform prices, included compute, and hard plan limits.',
       },
       {
+        slug: 'billing',
+        source: 'docs/billing.md',
+        title: 'Billing and budget drafts',
+        summary:
+          'Retained compute and egress costs, forecast coverage, disabled budget drafts, and invoice exports.',
+      },
+      {
         slug: 'egress-denylist',
         source: 'docs/denylist.md',
         title: 'Egress denylist',

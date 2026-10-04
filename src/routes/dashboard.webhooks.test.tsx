@@ -72,12 +72,12 @@ describe('webhook form validation', () => {
       'https://hooks.example.com'
     );
     await userEvent.type(screen.getByLabelText('Secret'), 'x');
-    await userEvent.click(screen.getByRole('button', { name: 'budget.threshold' }));
+    await userEvent.click(screen.getByRole('button', { name: 'routes.monitor.recovered' }));
     await userEvent.click(screen.getByRole('button', { name: 'Add webhook' }));
 
     await waitFor(() =>
       expect(createWebhook).toHaveBeenCalledWith(
-        expect.objectContaining({ event_filter: ['budget.threshold'] })
+        expect.objectContaining({ event_filter: ['routes.monitor.recovered'] })
       )
     );
   });

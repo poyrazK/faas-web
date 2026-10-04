@@ -259,6 +259,7 @@ export function NewAppWizard({
       repo: repo.trim(),
       ref: normalizedRef,
       format: 'tarball',
+      no_triggers: false,
     });
   }
 

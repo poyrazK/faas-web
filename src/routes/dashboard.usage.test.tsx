@@ -26,6 +26,8 @@ vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }));
 vi.mock('@/components/dashboard/object-storage-usage', () => ({
   ObjectStorageUsagePanel: () => null,
 }));
+vi.mock('@/components/dashboard/financial-costs', () => ({ FinancialCostsPanel: () => null }));
+vi.mock('@/components/dashboard/financial-budgets', () => ({ FinancialBudgetsPanel: () => null }));
 
 const { Route } = await import('./dashboard.usage');
 const UsagePage = (Route as unknown as { component: React.ComponentType }).component;

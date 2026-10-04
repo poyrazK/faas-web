@@ -11,6 +11,7 @@ import { AlertPresets } from '@/components/dashboard/alert-presets';
 import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
 import { useToast } from '@/components/ui/toast';
 import { useConfirm } from '@/components/ui/confirm';
+import { SigningSecretEditor } from '@/components/dashboard/signing-secret-editor';
 import {
   useAlerts,
   useCreateAlert,
@@ -82,6 +83,7 @@ export function AlertsBody({ slug }: { slug: string }) {
   const deleteAlert = useDeleteAlert(slug);
   const updateAlert = useUpdateAlert(slug);
   const rotateSecret = useRotateAlertSecret(slug);
+  const [rotationID, setRotationID] = useState('');
   const createAlert = useCreateAlert(slug);
 
   const [name, setName] = useState('');
@@ -207,27 +209,7 @@ export function AlertsBody({ slug }: { slug: string }) {
           <button
             type="button"
             aria-label={`Rotate secret for ${a.name}`}
-            onClick={async () => {
-              if (
-                !(await confirm({
-                  title: `Rotate the secret for ${a.name}?`,
-                  description:
-                    'A new HMAC secret is minted server-side. Deliveries signed with the old one stop verifying immediately — update the receiver first.',
-                  confirmLabel: 'Rotate secret',
-                }))
-              )
-                return;
-              void rotateSecret
-                .mutateAsync(a.id)
-                .then(() => toast({ kind: 'success', title: 'Secret rotated' }))
-                .catch((err: unknown) =>
-                  toast({
-                    kind: 'error',
-                    title: 'Could not rotate',
-                    description: errorMessage(err),
-                  })
-                );
-            }}
+            onClick={() => setRotationID(a.id)}
             className="text-muted-foreground transition-colors hover:text-foreground"
           >
             <Refresh className="h-3.5 w-3.5" />
@@ -268,6 +250,15 @@ export function AlertsBody({ slug }: { slug: string }) {
 
   return (
     <div className="flex flex-col gap-6">
+      {rotationID && (
+        <SigningSecretEditor
+          onClose={() => setRotationID('')}
+          onSave={async (webhook_secret) => {
+            await rotateSecret.mutateAsync({ id: rotationID, webhook_secret });
+            toast({ kind: 'success', title: 'Secret replaced' });
+          }}
+        />
+      )}
       <Panel
         lit
         title="Add a rule"

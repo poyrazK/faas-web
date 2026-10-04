@@ -59,7 +59,10 @@ async function mount() {
 
 beforeEach(() => {
   reads = [];
-  vi.spyOn(api, 'GET').mockImplementation(async (path, options) => {
+  vi.spyOn(
+    api as unknown as { GET: (path: string, options?: unknown) => Promise<unknown> },
+    'GET'
+  ).mockImplementation(async (path, options) => {
     const query = (options as { params?: { query?: { before?: string; limit?: number } } })?.params
       ?.query;
     reads.push(`${path}:${JSON.stringify(query ?? {})}`);
