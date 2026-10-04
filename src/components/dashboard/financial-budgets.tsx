@@ -523,6 +523,11 @@ function BudgetEditor({
               : 'Partial coverage; the known amount can omit costs.'}{' '}
             {observation.fresh ? '' : 'Usage reports are delayed.'} Enforcement is unavailable.
           </p>
+          {observation.reasons.some((reason) => reason.endsWith(':missing_scope_attribution')) && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Some recorded usage cannot be attributed to this scope.
+            </p>
+          )}
           <p className="mt-3 font-medium">Affected workloads</p>
           {observation.targets.length ? (
             <ul>

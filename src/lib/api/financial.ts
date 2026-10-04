@@ -1,45 +1,52 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, unwrap } from './client';
 import type { components } from './schema';
+import { useAuth } from '../auth';
 
 export type FinancialCosts = components['schemas']['FinancialCostsResponse'];
 export type FinancialBudget = components['schemas']['FinancialBudgetResponse'];
 export type FinancialBudgetSpec = components['schemas']['FinancialBudgetSpec'];
 
 export function useBudgetProjects(enabled: boolean) {
+  const { account } = useAuth();
   return useQuery({
-    queryKey: ['financial', 'scope-projects'],
-    queryFn: () => unwrap(api.GET('/v1/projects')),
-    enabled,
+    queryKey: ['financial', account?.id, 'scope-projects'],
+    queryFn: ({ signal }) => unwrap(api.GET('/v1/projects', { signal })),
+    enabled: enabled && !!account?.id,
   });
 }
 
 export function useBudgetEnvironments(slug: string) {
+  const { account } = useAuth();
   return useQuery({
-    queryKey: ['financial', 'scope-environments', slug],
-    queryFn: () =>
-      unwrap(api.GET('/v1/projects/{slug}/environments', { params: { path: { slug } } })),
-    enabled: !!slug,
+    queryKey: ['financial', account?.id, 'scope-environments', slug],
+    queryFn: ({ signal }) =>
+      unwrap(api.GET('/v1/projects/{slug}/environments', { params: { path: { slug } }, signal })),
+    enabled: !!account?.id && !!slug,
   });
 }
 
 export function useFinancialBudgets() {
+  const { account } = useAuth();
   return useQuery({
-    queryKey: ['financial', 'budgets'],
-    queryFn: () => unwrap(api.GET('/v1/billing/budgets')),
+    queryKey: ['financial', account?.id, 'budgets'],
+    queryFn: ({ signal }) => unwrap(api.GET('/v1/billing/budgets', { signal })),
+    enabled: !!account?.id,
   });
 }
 
 export function useFinancialBudgetHistory(id: string, after = 0) {
+  const { account } = useAuth();
   return useQuery({
-    queryKey: ['financial', 'budget-history', id, after],
-    queryFn: () =>
+    queryKey: ['financial', account?.id, 'budget-history', id, after],
+    queryFn: ({ signal }) =>
       unwrap(
         api.GET('/v1/billing/budgets/{id}/revisions', {
           params: { path: { id }, query: { after_revision: after, limit: 100 } },
+          signal,
         })
       ),
-    enabled: !!id,
+    enabled: !!account?.id && !!id,
   });
 }
 
@@ -94,10 +101,12 @@ export function useDeleteFinancialBudget() {
 }
 
 export function useFinancialCosts(month: string) {
+  const { account } = useAuth();
   return useQuery({
-    queryKey: ['financial', 'costs', month],
-    queryFn: () => unwrap(api.GET('/v1/billing/costs', { params: { query: { month } } })),
-    enabled: !!month,
+    queryKey: ['financial', account?.id, 'costs', month],
+    queryFn: ({ signal }) =>
+      unwrap(api.GET('/v1/billing/costs', { params: { query: { month } }, signal })),
+    enabled: !!account?.id && !!month,
     refetchInterval: 60_000,
   });
 }

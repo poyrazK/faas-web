@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FinancialBudget } from '@/lib/api/financial';
 
 const methods = vi.hoisted(() => ({ GET: vi.fn(), POST: vi.fn(), PUT: vi.fn(), DELETE: vi.fn() }));
+vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { id: 'account' } }) }));
 vi.mock('@/lib/api/client', async (original) => ({ ...(await original<object>()), api: methods }));
 const { FinancialBudgetsPanel } = await import('./financial-budgets');
 const { parseFinancialMoney } = await import('@/lib/api/financial');
@@ -65,7 +66,7 @@ describe('scoped budget drafts', () => {
           coverage_complete: false,
           fresh: true,
           enforcement_ready: false,
-          reasons: [],
+          reasons: ['compute:missing_scope_attribution'],
           targets: [{ kind: 'app', id: 'a', name: 'Selected preview', effect: 'stop' }],
           continuing_targets: [
             { kind: 'app', id: 'b', name: 'Critical production', effect: 'compute_can_continue' },
@@ -88,6 +89,9 @@ describe('scoped budget drafts', () => {
     expect(await within(dialog).findByText('Selected preview · Stop previews')).toBeInTheDocument();
     expect(within(dialog).getByText('Critical production')).toBeInTheDocument();
     expect(within(dialog).getByText(/Partial coverage/)).toBeInTheDocument();
+    expect(
+      within(dialog).getByText('Some recorded usage cannot be attributed to this scope.')
+    ).toBeInTheDocument();
     expect(methods.POST.mock.calls[0][1].body.spec).toMatchObject({
       enabled: true,
       limit_millicents: 12300001,
@@ -168,6 +172,7 @@ describe('scoped budget drafts', () => {
     await within(dialog).findByText(/Revision 101 · deleted/);
     expect(methods.GET).toHaveBeenLastCalledWith('/v1/billing/budgets/{id}/revisions', {
       params: { path: { id: budget.id }, query: { after_revision: 100, limit: 100 } },
+      signal: expect.any(AbortSignal),
     });
     expect(
       within(dialog).getByText(/does not establish that a workload stopped/)
