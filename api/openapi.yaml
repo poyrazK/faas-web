@@ -326,6 +326,63 @@ security:
   - bearerAuth: []
 
 paths:
+  /v1/outbound/integrations/{integration}/probe-policy:
+    parameters:
+      - name: integration
+        in: path
+        required: true
+        description: Customer-owned outbound integration identifier.
+        schema: { type: string, format: uuid }
+    get:
+      tags: [outbound]
+      operationId: getOutboundBindingProbePolicy
+      summary: Read an explicitly configured outbound probe policy
+      description: Read a customer-owned integration's safe-method probe configuration. This does not send traffic to a provider.
+      responses:
+        '200':
+          description: Probe policy
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OutboundBindingProbePolicy' }
+        default:
+          description: Probe policy lookup was rejected or the catalog is unavailable
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+    put:
+      tags: [outbound]
+      operationId: setOutboundBindingProbePolicy
+      summary: Configure an outbound binding probe
+      description: Declare a GET or HEAD path safe to probe and its expected 2xx status. The path must fit the customer-owned integration's route policy. Configuration sends no provider requests. Requires deploy-write access and MFA.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OutboundBindingProbePolicy' }
+      responses:
+        '200':
+          description: Confirmed probe policy
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OutboundBindingProbePolicy' }
+        default:
+          description: Probe policy update was rejected or could not be persisted
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+    delete:
+      tags: [outbound]
+      operationId: deleteOutboundBindingProbePolicy
+      summary: Remove an outbound binding probe configuration
+      description: Remove a customer-owned integration's probe policy, invalidating prior evidence. Requires deploy-write access and MFA. This does not revoke provider credentials.
+      responses:
+        '204': { description: Probe configuration removed }
+        default:
+          description: Probe policy removal was rejected or could not be persisted
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
   /v1/outbound/integrations:
     get:
       tags: [outbound]
@@ -511,6 +568,50 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /v1/apps/{slug}/bindings:
+    get:
+      tags: [apps]
+      operationId: getAppBindingInventory
+      summary: Inspect all runtime resource bindings attached to an app.
+      description: |
+        Read-only, best-effort metadata for service, PostgreSQL, object-storage,
+        queue and outbound bindings. Requires apps:read or admin. PostgreSQL
+        sections additionally require managed-postgres:read or admin; object
+        storage sections require storage:manage or admin, matching the existing
+        compute-binding read surface. MFA-pending sessions are rejected.
+        Missing permissions and failed sections appear as structured issues in
+        a 200 response with complete=false; successfully read sections remain.
+        An unconfigured managed PostgreSQL feature is a warning. Other issues
+        have error severity. No provider calls, workload probes or writes occur.
+        State describes configuration/provisioning, not applied runtime health.
+        Runtime status is unknown unless a scheduler queue observation exists;
+        verification status includes durable service, PostgreSQL and object-storage task-guest canary results. GeneratedAt is collection time, not a
+        promise of an atomic snapshot. Credential material and raw errors are
+        excluded. Responses use Cache-Control: no-store.
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - name: deployment_id
+          in: query
+          description: Select evidence for this exact app-owned, materialized live deployment, including zero-traffic candidates. No fallback to evidence from another deployment. Omit to use the manual-task selection.
+          schema: { type: string, format: uuid }
+        - name: scope
+          in: query
+          description: Filter database and bucket binding scopes. Omit to include all scopes. App-wide service, queue and outbound bindings always remain included.
+          schema: { type: string, minLength: 3, maxLength: 40, pattern: '^[a-z0-9]([a-z0-9-]{1,38})[a-z0-9]$' }
+      responses:
+        '200':
+          description: Complete or partial binding inventory, without credentials.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AppBindingInventory' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
   /v1/apps/{slug}/outbound-bindings:
     get:
       tags: [outbound]
@@ -13547,6 +13648,122 @@ paths:
           content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
         '429': { $ref: '#/components/responses/TooManyRequests' }
 
+  /v1/deployments/{id}/promote:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, pattern: '^(?:[a-fA-F0-9]{32}|[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12})$' }
+        description: Deployment UUID in canonical or 32-hex form.
+    post:
+      tags: [deployments]
+      operationId: promoteDeploymentWithBindings
+      summary: Promote a deployment after an atomic bindings check.
+      description: |
+        Available on all supported plans. Evaluate the exact live, materialized candidate using
+        the bindings preflight policy, then compare its binding/configuration,
+        probe and runtime revision inside the traffic transaction. Blockers,
+        expired evidence or changed observations return 409 without changing
+        traffic. No probes or restarts are scheduled. Queue/outbound probe
+        coverage requires an explicit allow_unsupported waiver and remains
+        partial. A successful receipt confirms the applied policy and check.
+        An optional serving expectation is checked under the traffic locks.
+        An already promoted target still requires a passed bindings check;
+        it returns an idempotent receipt without requiring the previous
+        deployment to remain at 100%. Active managed canaries cannot be bypassed.
+        This dedicated route prevents older servers from ignoring the bindings gate.
+        For require_application_ack use promote-with-application-ack so an older
+        server cannot silently ignore the new policy field.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BindingPromotionRequest' }
+      responses:
+        '200':
+          description: Promoted deployment and the server-enforced bindings check.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BindingPromotionResponse' }
+        '400':
+          description: Invalid JSON request.
+          content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: Traffic promotion is not allowed by the account plan or token scope.
+          content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Bindings check failed or changed, target is unavailable, serving expectation changed, or a managed canary owns traffic. Binding failures include a structured bindings_check report.
+          content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
+        '422':
+          description: Invalid policy duration or deployment identifier.
+          content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500':
+          description: The check or transaction could not complete; traffic is unchanged.
+          content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
+        '503':
+          description: The binding catalogs cannot enforce the promotion fence.
+          content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
+
+  /v1/deployments/{id}/promote-with-application-ack:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, pattern: '^(?:[a-fA-F0-9]{32}|[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12})$' }
+        description: Candidate UUID for strict adoption promotion; canonical and compact hexadecimal forms are accepted.
+    post:
+      tags: [deployments]
+      operationId: promoteDeploymentWithApplicationAck
+      summary: Promote after atomic bindings and application acknowledgement checks.
+      description: |
+        Always require current version-bound application acknowledgements from
+        every authorized resident workload of PostgreSQL and object-storage
+        bindings in the candidate scope, including a resident candidate target
+        for each binding. Missing, stale, failed, disabled or unknown receipts
+        block promotion. Application receipts are self-attestations, distinct
+        from connectivity probes and guest projection/signal outcomes.
+        require_application_ack is forced true even if the request omits it or
+        supplies false. All normal bindings checks, permissions and atomic
+        traffic fences also apply. Changes to credentials, authorized workload
+        rosters, reload support or receipts invalidate the check at the write.
+        Use this route for strict promotion; older servers return 404 before
+        changing traffic. Never fall back to the ordinary promotion route.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BindingPromotionRequest' }
+      responses:
+        '200':
+          description: Traffic receipt confirming bindings checks and required current application acknowledgements.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BindingPromotionResponse' }
+        '400':
+          description: The strict promotion policy body could not be decoded.
+          content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: Strict adoption promotion requires an eligible account and deployment write permission.
+          content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: The strict binding/application policy failed or changed, or the candidate, serving expectation or managed canary prevents promotion. A bindings_check report accompanies adoption failures.
+          content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
+        '422':
+          description: The strict promotion request supplied an invalid evidence age or deployment expectation.
+          content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500':
+          description: Application adoption promotion could not finish its observation read or traffic transaction.
+          content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
+        '503':
+          description: Strict promotion cannot share a transaction fence across its binding catalogs and traffic backend.
+          content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
+
   /v1/deployments/{id}/canary/advance:
     parameters:
       - $ref: '#/components/parameters/Id32'
@@ -22408,261 +22625,6 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
-  # ADR-522: separate scope prevents account spending disclosure to app receivers.
-  /v1/billing/budget-webhooks:
-    get:
-      tags: [billing]
-      operationId: listFinancialBudgetWebhooks
-      summary: List account budget receivers.
-      description: |
-        Lists only financial receivers owned by the authenticated account. Requires account admin and session MFA, including access to receiver URLs. All plans support at most eight receivers; registration does not activate a budget.
-      responses:
-        '200':
-          description: Owned financial receiver collection with masked secrets.
-          content:
-            application/json:
-              schema:
-                type: array
-                items: { $ref: '#/components/schemas/FinancialBudgetWebhookResponse' }
-        '400': { $ref: '#/components/responses/ValidationFailed' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '503': { $ref: '#/components/responses/ServiceUnavailable' }
-    post:
-      tags: [billing]
-      operationId: createFinancialBudgetWebhook
-      summary: Configure a budget event receiver.
-      description: |
-        Registers an explicit financial event filter and seals the supplied signing secret. Requires account admin and session MFA. The independent account quota is eight on every plan. Only future committed decisions capture this receiver; public budget activation remains unavailable.
-      parameters:
-        - in: header
-          name: Idempotency-Key
-          description: Optional retry identity for registering this budget receiver. Changed input requires a new key.
-          schema: { type: string, minLength: 1, maxLength: 255 }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/CreateFinancialBudgetWebhookRequest' }
-      responses:
-        '201':
-          description: Newly registered financial receiver with its sealed secret masked.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/FinancialBudgetWebhookResponse' }
-        '400': { $ref: '#/components/responses/ValidationFailed' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '503': { $ref: '#/components/responses/ServiceUnavailable' }
-        '422':
-          description: Budget receiver limit exceeded.
-          content:
-            application/problem+json:
-              schema: { $ref: '#/components/schemas/Problem' }
-
-  /v1/billing/budget-webhooks/{id}:
-    parameters:
-      - in: path
-        name: id
-        description: Account-owned financial receiver identity for /v1/billing/budget-webhooks/{id}.
-        required: true
-        schema: { type: string, format: uuid }
-    get:
-      tags: [billing]
-      operationId: getFinancialBudgetWebhook
-      summary: Read a budget receiver.
-      description: |
-        Reads one account-owned financial receiver with its signing secret masked. Requires account admin and session MFA. Foreign-account and nonfinancial subscription IDs are unavailable through this route.
-      responses:
-        '200':
-          description: Selected financial receiver configuration without plaintext or ciphertext secrets.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/FinancialBudgetWebhookResponse' }
-        '400': { $ref: '#/components/responses/ValidationFailed' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '503': { $ref: '#/components/responses/ServiceUnavailable' }
-    patch:
-      tags: [billing]
-      operationId: updateFinancialBudgetWebhook
-      summary: Update or rotate the secret of a budget receiver.
-      description: |
-        Changes a financial receiver or replaces its sealed signing secret. Requires account admin and session MFA. Filter edits apply to future decisions; queued events use current transport settings. Disabling suppresses queued work but cannot recall an in-flight request.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/UpdateFinancialBudgetWebhookRequest' }
-      responses:
-        '200':
-          description: Updated financial receiver configuration; omitted secret remains unchanged.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/FinancialBudgetWebhookResponse' }
-        '400': { $ref: '#/components/responses/ValidationFailed' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '503': { $ref: '#/components/responses/ServiceUnavailable' }
-    delete:
-      tags: [billing]
-      operationId: deleteFinancialBudgetWebhook
-      summary: Delete a budget receiver and its delivery records.
-      description: |
-        Removes an owned financial receiver and its delivery records after account admin and session MFA checks. Financial decision history is retained separately. Deletion does not release budget holds and an in-flight HTTP request may finish.
-      responses:
-        '204':
-          description: Financial receiver and delivery history removed; policy audit retained.
-        '400': { $ref: '#/components/responses/ValidationFailed' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '503': { $ref: '#/components/responses/ServiceUnavailable' }
-
-  /v1/billing/budget-webhooks/{id}/deliveries:
-    parameters:
-      - in: path
-        name: id
-        description: Account-owned financial receiver identity for /v1/billing/budget-webhooks/{id}/deliveries.
-        required: true
-        schema: { type: string, format: uuid }
-      - in: query
-        name: page_size
-        description: Maximum returned financial deliveries; defaults to 100.
-        schema: { type: integer, minimum: 1, maximum: 100, default: 100 }
-      - in: query
-        name: page_token
-        description: Opaque continuation token from the preceding financial-delivery page; at most 512 bytes.
-        schema: { type: string, maxLength: 512 }
-    get:
-      tags: [billing]
-      operationId: listFinancialBudgetWebhookDeliveries
-      summary: List budget event deliveries.
-      description: |
-        Pages account-owned notification deliveries after account admin and session MFA checks. A relayed decision and a successful HTTP delivery are separate facts; neither establishes workload enforcement. Disabled draft policies produce no spending events.
-      responses:
-        '200':
-          description: One page of retained budget notification deliveries and an optional continuation token.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/AppWebhookDeliveryListResponse' }
-        '400': { $ref: '#/components/responses/ValidationFailed' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '503': { $ref: '#/components/responses/ServiceUnavailable' }
-
-  /v1/billing/budget-webhooks/{id}/health:
-    parameters:
-      - in: path
-        name: id
-        description: Account-owned financial receiver identity for /v1/billing/budget-webhooks/{id}/health.
-        required: true
-        schema: { type: string, format: uuid }
-    get:
-      tags: [billing]
-      operationId: getFinancialBudgetWebhookDeliveryHealth
-      summary: Read budget receiver queue health.
-      description: |
-        Reads pending, in-flight, dead and recent completed delivery counts for an owned financial receiver. Requires account admin and session MFA. The receiver cooldown state describes transport health and does not acknowledge workload shutdown.
-      responses:
-        '200':
-          description: Current financial receiver queue and cooldown health snapshot.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/AppWebhookDeliveryHealthResponse' }
-        '400': { $ref: '#/components/responses/ValidationFailed' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '503': { $ref: '#/components/responses/ServiceUnavailable' }
-
-  /v1/billing/budget-webhooks/{id}/deliveries/{did}/attempts:
-    parameters:
-      - in: path
-        name: id
-        description: Account-owned financial receiver identity for /v1/billing/budget-webhooks/{id}/deliveries/{did}/attempts.
-        required: true
-        schema: { type: string, format: uuid }
-      - in: path
-        name: did
-        description: Stable HTTP delivery identity under the selected financial receiver for /v1/billing/budget-webhooks/{id}/deliveries/{did}/attempts.
-        required: true
-        schema: { type: string }
-      - in: query
-        name: page_size
-        description: Maximum returned completed attempts; defaults to 100.
-        schema: { type: integer, minimum: 1, maximum: 100, default: 100 }
-      - in: query
-        name: page_token
-        description: Opaque continuation token from the preceding completed-attempt page; at most 512 bytes.
-        schema: { type: string, maxLength: 512 }
-    get:
-      tags: [billing]
-      operationId: listFinancialBudgetWebhookDeliveryAttempts
-      summary: List completed attempts for a budget event delivery.
-      description: |
-        Pages completed HTTP attempts, preserving earlier replay generations for the selected account-owned delivery. Requires account admin and session MFA. An unfinished claim is not a completed attempt, and receiver success does not establish budget enforcement.
-      responses:
-        '200':
-          description: Completed attempts for this financial delivery with an optional continuation token.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/AppWebhookDeliveryAttemptListResponse' }
-        '400': { $ref: '#/components/responses/ValidationFailed' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '503': { $ref: '#/components/responses/ServiceUnavailable' }
-
-  /v1/billing/budget-webhooks/{id}/deliveries/{did}/retry:
-    parameters:
-      - in: path
-        name: id
-        description: Account-owned financial receiver identity for /v1/billing/budget-webhooks/{id}/deliveries/{did}/retry.
-        required: true
-        schema: { type: string, format: uuid }
-      - in: path
-        name: did
-        description: Stable HTTP delivery identity under the selected financial receiver for /v1/billing/budget-webhooks/{id}/deliveries/{did}/retry.
-        required: true
-        schema: { type: string }
-    post:
-      tags: [billing]
-      operationId: retryFinancialBudgetWebhookDelivery
-      summary: Retry a dead delivery to an enabled budget receiver.
-      description: |
-        Re-arms a dead notification only while its account-owned financial receiver is enabled. Requires account admin and session MFA. The stable delivery ID survives replay; prior completed attempt history remains available. Retrying does not re-evaluate a policy or release a hold.
-      parameters:
-        - in: header
-          name: Idempotency-Key
-          description: Optional retry identity for re-arming this dead financial delivery after an ambiguous response.
-          schema: { type: string, minLength: 1, maxLength: 255 }
-      responses:
-        '200':
-          description: Dead financial delivery re-armed with its stable identity and prior history preserved.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/AppWebhookRetryDeliveryResponse' }
-        '400': { $ref: '#/components/responses/ValidationFailed' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '503': { $ref: '#/components/responses/ServiceUnavailable' }
-
   /v1/billing/budgets:
     get:
       tags: [billing]
@@ -25764,257 +25726,6 @@ components:
       description: "Cursor — the last id from the previous page (omit for the first page)."
 
   schemas:
-    FinancialBudgetResponse:
-      type: object
-      description: Saved policy intent; draft and unavailable policies do not protect workloads.
-      required: [id, account_id, revision, spec, created_at, updated_at, status, enforcement_ready, reasons]
-      properties:
-        id: { type: string, format: uuid }
-        account_id: { type: string, format: uuid }
-        revision: { type: integer, format: int64, minimum: 1, maximum: 9007199254740991 }
-        spec: { $ref: '#/components/schemas/FinancialBudgetSpec' }
-        created_at: { type: string, format: date-time }
-        updated_at: { type: string, format: date-time }
-        deleted_at: { type: string, format: date-time }
-        status: { type: string, enum: [draft, unavailable, deleted] }
-        enforcement_ready: { type: boolean, description: False until runtime integrations and acceptance are complete. }
-        reasons: { type: array, items: { type: string } }
-    FinancialBudgetListResponse:
-      type: object
-      description: Nondeleted account-owned policy intents with separately reported readiness.
-      required: [budgets]
-      properties:
-        budgets: { type: array, maxItems: 128, items: { $ref: '#/components/schemas/FinancialBudgetResponse' } }
-    CreateFinancialBudgetRequest:
-      type: object
-      description: New budget intent; this deployment accepts disabled drafts only.
-      required: [spec]
-      properties:
-        spec: { $ref: '#/components/schemas/FinancialBudgetSpec' }
-    UpdateFinancialBudgetRequest:
-      type: object
-      description: Complete replacement of budget intent guarded by its current revision.
-      required: [expected_revision, spec]
-      properties:
-        expected_revision: { type: integer, format: int64, minimum: 1, maximum: 9007199254740990 }
-        spec: { $ref: '#/components/schemas/FinancialBudgetSpec' }
-    DeleteFinancialBudgetRequest:
-      type: object
-      description: Optimistic revision condition for retaining a policy deletion tombstone.
-      required: [expected_revision]
-      properties:
-        expected_revision: { type: integer, format: int64, minimum: 1, maximum: 9007199254740990 }
-    FinancialBudgetRevisionResponse:
-      type: object
-      description: Immutable intent audit written in the same transaction as the policy.
-      required: [policy_id, revision, actor, mutation, spec, recorded_at]
-      properties:
-        policy_id: { type: string, format: uuid }
-        revision: { type: integer, format: int64, minimum: 1, maximum: 9007199254740991 }
-        actor: { type: string, description: Authenticated account or API key identity; never a supplied actor value. }
-        mutation: { type: string, enum: [created, updated, deleted] }
-        spec: { $ref: '#/components/schemas/FinancialBudgetSpec' }
-        recorded_at: { type: string, format: date-time }
-    FinancialBudgetHistoryResponse:
-      type: object
-      description: Immutable policy revision page and an optional exclusive continuation cursor.
-      required: [revisions]
-      properties:
-        revisions: { type: array, maxItems: 100, items: { $ref: '#/components/schemas/FinancialBudgetRevisionResponse' } }
-        next_revision: { type: integer, format: int64, minimum: 1, maximum: 9007199254740991 }
-    FinancialBudgetScope:
-      type: object
-      description: Authoritative account or resource identity; resource ids must belong to the account.
-      required: [kind]
-      properties:
-        kind: { type: string, enum: [account, project, environment, app, job] }
-        id: { type: string, format: uuid, description: Omitted for account scope and required for resource scopes. }
-    FinancialBudgetSpec:
-      type: object
-      description: Customer budget intent; activation and enforcement are separately acknowledged.
-      required: [name, scope, currency, meters, basis, limit_millicents, notify_millicents, mode, action, drain_seconds, resume_rule, enabled]
-      properties:
-        name: { type: string, minLength: 1, maxLength: 128, description: Nonblank name bounded to 128 UTF-8 bytes. }
-        scope: { $ref: '#/components/schemas/FinancialBudgetScope' }
-        currency: { type: string, enum: [EUR] }
-        meters: { type: array, minItems: 1, maxItems: 2, uniqueItems: true, description: Sorted meter names; strict mode covers compute only., items: { type: string, enum: [compute, egress] } }
-        basis: { type: string, enum: [net_usage, gross_usage], description: Net usage after the shared account allowance or gross usage before it; strict resource scopes require gross usage. }
-        limit_millicents: { type: integer, format: int64, minimum: 0, maximum: 9007199254740991 }
-        notify_millicents: { type: array, maxItems: 8, uniqueItems: true, description: Increasing nonnegative thresholds at or below the limit., items: { type: integer, format: int64, minimum: 0, maximum: 9007199254740991 } }
-        mode: { type: string, enum: [monitored, strict] }
-        action: { type: string, enum: [notify, reject_traffic, suspend_background, stop_previews, suspend_workloads] }
-        drain_seconds: { type: integer, minimum: 0, maximum: 300, description: Notify uses zero; stopping targets drain before the deadline. }
-        resume_rule: { type: string, enum: [manual, next_period] }
-        enabled: { type: boolean }
-    FinancialBudgetPreviewRequest:
-      type: object
-      description: Proposed budget intent to inspect without saving or activating it.
-      required: [spec]
-      properties:
-        spec: { $ref: '#/components/schemas/FinancialBudgetSpec' }
-    FinancialBudgetTarget:
-      type: object
-      description: Current workload selected or left running by a proposed response.
-      required: [kind, id, name, effect]
-      properties:
-        kind: { type: string, enum: [app, job] }
-        id: { type: string, format: uuid }
-        name: { type: string }
-        environment_id: { type: string, format: uuid }
-        deployment_id: { type: string, format: uuid }
-        effect: { type: string }
-    FinancialBudgetPreviewResponse:
-      type: object
-      description: Known spending, evidence gaps, workload consequences and explicit readiness.
-      required: [spec, period_start, period_end, as_of, known_millicents, known_limit_reached, coverage_complete, fresh, reasons, enforcement_ready, guarantee, targets, continuing_targets]
-      properties:
-        spec: { $ref: '#/components/schemas/FinancialBudgetSpec' }
-        period_start: { type: string, format: date-time }
-        period_end: { type: string, format: date-time }
-        as_of: { type: string, format: date-time }
-        known_millicents: { type: integer, format: int64 }
-        known_limit_reached: { type: boolean, description: Known subtotal is at or above the limit; inspect coverage before inferring complete spending. }
-        coverage_complete: { type: boolean }
-        fresh: { type: boolean }
-        reasons: { type: array, items: { type: string } }
-        enforcement_ready: { type: boolean, description: False while durable decisions and owner integrations lack acceptance; preview never activates a policy. }
-        guarantee: { type: string }
-        targets: { type: array, maxItems: 10000, items: { $ref: '#/components/schemas/FinancialBudgetTarget' } }
-        continuing_targets: { type: array, maxItems: 10000, items: { $ref: '#/components/schemas/FinancialBudgetTarget' } }
-    FinancialPrice:
-      type: object
-      description: Immutable version of a meter's exact price and allowance terms.
-      required: [version, meter, currency, unit, unit_quantity, millicents_per_unit, included_quantity]
-      properties:
-        version: { type: string }
-        meter: { type: string }
-        currency: { type: string, enum: [EUR] }
-        unit: { type: string }
-        unit_quantity: { type: integer, format: int64, minimum: 1 }
-        millicents_per_unit: { type: integer, format: int64, minimum: 0 }
-        included_quantity: { type: integer, format: int64, minimum: 0 }
-    FinancialPriceContract:
-      type: object
-      description: Historical activation of recorded account pricing.
-      required: [price, plan, effective_from, delivery_mode]
-      properties:
-        price: { $ref: '#/components/schemas/FinancialPrice' }
-        plan: { type: string, enum: [free, hobby, pro, scale] }
-        effective_from: { type: string, format: date-time }
-        delivery_mode: { type: string, enum: [live, shadow, off] }
-    FinancialAttribution:
-      type: object
-      description: Workload identity retained at first observation, surviving rename and deletion.
-      properties:
-        app_id: { type: string }
-        job_id: { type: string }
-        project_id: { type: string }
-        environment_id: { type: string }
-        deployment_id: { type: string }
-        name: { type: string }
-    FinancialAllocation:
-      type: object
-      description: Exact quantity-share allocation; row amounts and account totals reconcile.
-      required: [attribution, quantity, gross_millicents, allowance_millicents, net_millicents]
-      properties:
-        attribution: { $ref: '#/components/schemas/FinancialAttribution' }
-        quantity: { type: integer, format: int64 }
-        gross_millicents: { type: integer, format: int64 }
-        allowance_millicents: { type: integer, format: int64 }
-        net_millicents: { type: integer, format: int64 }
-    FinancialMeterCost:
-      type: object
-      description: Meter cost priced by one immutable contract with its assigned allowance.
-      required: [price, quantity, included_quantity, gross_millicents, allowance_millicents, net_millicents, allocation_method, allocations]
-      properties:
-        price: { $ref: '#/components/schemas/FinancialPrice' }
-        quantity: { type: integer, format: int64 }
-        included_quantity: { type: integer, format: int64 }
-        gross_millicents: { type: integer, format: int64 }
-        allowance_millicents: { type: integer, format: int64 }
-        net_millicents: { type: integer, format: int64 }
-        allocation_method: { type: string }
-        allocations: { type: array, maxItems: 10000, items: { $ref: '#/components/schemas/FinancialAllocation' } }
-    FinancialContractCosts:
-      type: object
-      description: One shared period allowance applied across historical rate versions.
-      required: [meter, quantity, included_quantity, net_millicents, allowance_method, contracts]
-      properties:
-        meter: { type: string }
-        quantity: { type: integer, format: int64 }
-        included_quantity: { type: integer, format: int64 }
-        net_millicents: { type: integer, format: int64 }
-        allowance_method: { type: string }
-        contracts: { type: array, items: { $ref: '#/components/schemas/FinancialMeterCost' } }
-    FinancialForecast:
-      type: object
-      description: Quantity run-rate projection; absent amounts mean unavailable, never zero.
-      required: [method, available, account_id, period_start, period_end, complete_through, price_version, meter, currency]
-      properties:
-        method: { type: string }
-        available: { type: boolean }
-        reason: { type: string }
-        account_id: { type: string }
-        period_start: { type: string, format: date-time }
-        period_end: { type: string, format: date-time }
-        complete_through: { type: string, format: date-time }
-        price_version: { type: string }
-        meter: { type: string }
-        currency: { type: string, enum: [EUR] }
-        projected_quantity: { type: integer, format: int64 }
-        projected_net_millicents: { type: integer, format: int64 }
-    FinancialMeterCoverage:
-      type: object
-      description: Completeness and freshness of authoritative retained meter evidence.
-      required: [complete, fresh, expected_minutes, complete_minutes, unpriced_quantity, non_billable_quantity, reasons]
-      properties:
-        complete: { type: boolean }
-        fresh: { type: boolean }
-        expected_minutes: { type: integer, format: int64 }
-        complete_minutes: { type: integer, format: int64 }
-        unpriced_quantity: { type: integer, format: int64 }
-        non_billable_quantity: { type: integer, format: int64 }
-        reasons: { type: array, items: { type: string } }
-    FinancialMeterCosts:
-      type: object
-      description: Accrued meter costs, source coverage, historical terms, and forecast.
-      required: [meter, coverage, accrued, forecast, price_contracts]
-      properties:
-        meter: { type: string }
-        coverage: { $ref: '#/components/schemas/FinancialMeterCoverage' }
-        accrued: { $ref: '#/components/schemas/FinancialContractCosts' }
-        forecast: { $ref: '#/components/schemas/FinancialForecast' }
-        price_contracts: { type: array, items: { $ref: '#/components/schemas/FinancialPriceContract' } }
-    FinancialCostsResponse:
-      type: object
-      description: Account usage costs for a UTC period; invoice facts remain separate.
-      required: [account_id, currency, period_start, period_end, as_of, retained_from, evidence_through_id, known_usage_millicents, meters, scope, invoices, invoice_reconciliation, missing_bill_components]
-      properties:
-        account_id: { type: string }
-        currency: { type: string, enum: [EUR] }
-        period_start: { type: string, format: date-time }
-        period_end: { type: string, format: date-time }
-        as_of: { type: string, format: date-time }
-        retained_from: { type: string, format: date-time }
-        evidence_through_id: { type: integer, format: int64 }
-        known_usage_millicents: { type: integer, format: int64 }
-        meters: { type: array, items: { $ref: '#/components/schemas/FinancialMeterCosts' } }
-        scope: { type: string }
-        invoices: { type: array, items: { $ref: '#/components/schemas/Invoice' } }
-        invoice_reconciliation: { type: string, enum: [not_reconciled] }
-        missing_bill_components: { type: array, items: { type: string } }
-    FinancialForecastResponse:
-      type: object
-      description: Meter projections; a complete bill forecast requires all bill components.
-      required: [period_start, period_end, as_of, currency, meters, bill_estimate_available, missing_bill_components]
-      properties:
-        period_start: { type: string, format: date-time }
-        period_end: { type: string, format: date-time }
-        as_of: { type: string, format: date-time }
-        currency: { type: string, enum: [EUR] }
-        meters: { type: array, items: { $ref: '#/components/schemas/FinancialMeterCosts' } }
-        bill_estimate_available: { type: boolean }
-        missing_bill_components: { type: array, items: { type: string } }
     RouteRequirementsConfig:
       type: object
       description: Version 1 requires 1..500 concrete routes. Version 2 assigns every captured operation to groups, concrete routes, or public exceptions; overlapping groups are conjunctive.
@@ -27125,6 +26836,507 @@ components:
         replayed: { type: boolean }
         gateway_state: { type: string, enum: [active, converging, unknown, unobserved] }
         gateway_generation: { type: integer, format: int64 }
+
+    AppBindingInventory:
+      type: object
+      description: Best-effort app binding metadata with explicit completeness and sanitized section issues.
+      required: [app, generated_at, complete, bindings]
+      properties:
+        app: { type: string }
+        scope: { type: string, description: 'Resource scope filter. Absent means all scopes.' }
+        generated_at: { type: string, format: date-time }
+        requested_deployment_id: { type: string, format: uuid, description: 'Confirms that the explicit deployment_id selector was applied. Absent for default selection.' }
+        verification_deployment_id: { type: string, format: uuid, description: 'Deployment selected for evidence: explicit selector or current manual-task deployment.' }
+        verification_scope: { type: string, description: 'Scope of the selected verification deployment.' }
+        runtime_freshness: { $ref: '#/components/schemas/BindingRuntimeFreshness' }
+        complete: { type: boolean, description: 'All binding sections could be read; this does not mean that bindings are healthy or verified.' }
+        bindings:
+          type: array
+          items: { $ref: '#/components/schemas/AppBindingInventoryItem' }
+        issues:
+          type: array
+          items: { $ref: '#/components/schemas/BindingInventoryIssue' }
+        warnings:
+          type: array
+          description: Human-readable, sanitized messages for each issue.
+          items: { type: string }
+    BindingAdoptionCounts:
+      type: object
+      description: Counts of authorized workload/secret pairs, derived from versioned receipts.
+      required: [current, failed, stale, unknown]
+      properties:
+        current: { type: integer, minimum: 0 }
+        failed: { type: integer, minimum: 0 }
+        stale: { type: integer, minimum: 0 }
+        unknown: { type: integer, minimum: 0 }
+    BindingApplicationAckTarget:
+      type: object
+      description: Authorized resident workload and managed secret metadata, with independently versioned reload and application observations. Contains no credential values, hashes or private binding IDs. Empty workload_name means the main workload.
+      required: [deployment_id, instance_id, runtime_state, key, reload_support, current_version, reload_version, application_ack_version]
+      properties:
+        deployment_id: { type: string, format: uuid }
+        instance_id: { type: string, format: uuid }
+        workload_name: { type: string }
+        runtime_state: { type: string }
+        key: { type: string }
+        reload_support: { type: string, enum: [enabled, disabled, unknown] }
+        current_version: { type: integer, format: int64 }
+        reload_version: { type: integer, format: int64 }
+        projection: { type: string, enum: [updated, unchanged, failed] }
+        signal: { type: string, enum: [sent, queued, failed, not_attempted] }
+        reload_at: { type: string, format: date-time }
+        application_ack_version: { type: integer, format: int64 }
+        application_ack: { type: string, enum: [applied, failed] }
+        application_ack_at: { type: string, format: date-time }
+        process_generation: { type: string, pattern: '^[0-9a-f]{32}$', description: Active execution identity; absent for legacy or retired processes. }
+        application_ack_generation: { type: string, pattern: '^[0-9a-f]{32}$', description: Execution identity supplied in the application ACK; strict adoption requires it to match process_generation. }
+        reload_status: { type: string, enum: [current, failed, stale, unknown], description: 'Derived status for this workload and its secret projection and notification.' }
+        reload_reason: { type: string, enum: [current, binding_secret_unexpected, target_inconsistent, reload_observation_missing, reload_observation_time_invalid, reload_version_invalid, projection_failed, signal_failed, reload_outcome_unknown, reload_stale], description: 'Stable sanitized reason for reload_status; contains no raw errors or secret data.' }
+        application_ack_status: { type: string, enum: [current, failed, stale, unknown], description: 'Derived status for this workload and its application acknowledgement, including process-generation fencing.' }
+        application_ack_reason: { type: string, enum: [current, binding_secret_unexpected, process_generation_missing, process_generation_invalid, application_ack_generation_missing, application_ack_generation_mismatch, target_inconsistent, reload_disabled, reload_support_unknown, application_ack_missing, application_ack_time_invalid, application_ack_version_invalid, application_ack_outcome_unknown, application_ack_stale, application_ack_failed], description: 'Stable sanitized reason for application_ack_status; contains no generation values, raw errors or secret data.' }
+    BindingApplicationAdoption:
+      type: object
+      description: Metadata-only application self-attestations for managed PostgreSQL or object-storage secrets. Counts refer to workload/secret pairs. Reads use a single state snapshot and include missing reports. Task guests, jobs, mirrors and unauthorized workloads are excluded. Receipts expire when secret versions change, independently of probe age. An older guest projection does not erase a newer application receipt. complete describes this optional observation read; a read failure leaves default checks unchanged and blocks strict checks.
+      required: [source, status, observed_at, complete, secrets_expected, secrets_observed, reload, application, targets]
+      properties:
+        source: { type: string, enum: [application_ack] }
+        status: { type: string, enum: [current, failed, stale, unknown, inactive] }
+        observed_at: { type: string, format: date-time }
+        complete: { type: boolean }
+        secrets_expected: { type: integer, minimum: 1 }
+        secrets_observed: { type: integer, minimum: 0 }
+        reload: { $ref: '#/components/schemas/BindingAdoptionCounts' }
+        application: { $ref: '#/components/schemas/BindingAdoptionCounts' }
+        targets: { type: array, items: { $ref: '#/components/schemas/BindingApplicationAckTarget' } }
+    BindingCheckFinding:
+      type: object
+      description: Stable, sanitized blocker or warning for the bindings policy.
+      required: [code, message]
+      properties:
+        code: { type: string }
+        type: { type: string }
+        name: { type: string }
+        binding: { type: string }
+        scope: { type: string }
+        deployment_id: { type: string, format: uuid }
+        message: { type: string }
+    BindingCheckBindingResult:
+      type: object
+      description: Preflight status and safe evidence summary for one binding.
+      required: [type, name, scope, status]
+      properties:
+        type: { type: string }
+        name: { type: string }
+        binding: { type: string }
+        scope: { type: string }
+        status: { type: string, description: 'passed, blocked, unsupported or skipped.' }
+        reason: { type: string }
+        verification_status: { type: string }
+        checked_at: { type: string, format: date-time }
+        refresh_status: { type: string }
+        application_adoption: { $ref: '#/components/schemas/BindingApplicationAdoption' }
+    BindingCheckReport:
+      type: object
+      description: Safe preflight findings for the declared policy at checked_at. Coverage may be complete, partial or none; a passed report does not independently establish application readiness or credential use. Optional application acknowledgements are version-bound self-attestations.
+      required: [app, scope, deployment_id, checked_at, inventory_generated_at, max_verification_age, allow_unsupported, passed, coverage, bindings, runtime, issues, blockers, warnings]
+      properties:
+        expected_deployment_id: { type: string, format: uuid }
+        app: { type: string }
+        scope: { type: string }
+        deployment_id: { type: string, format: uuid }
+        checked_at: { type: string, format: date-time }
+        inventory_generated_at: { type: string, format: date-time }
+        max_verification_age: { type: string }
+        allow_unsupported: { type: boolean }
+        require_application_ack: { type: boolean, description: 'Whether this check required application self-attestations for current managed PostgreSQL/object-storage secrets.' }
+        passed: { type: boolean }
+        coverage: { type: string }
+        bindings: { type: array, items: { $ref: '#/components/schemas/BindingCheckBindingResult' } }
+        runtime: { type: array, items: { $ref: '#/components/schemas/BindingRuntimeDeployment' } }
+        issues: { type: array, items: { $ref: '#/components/schemas/BindingInventoryIssue' } }
+        blockers: { type: array, items: { $ref: '#/components/schemas/BindingCheckFinding' } }
+        warnings: { type: array, items: { $ref: '#/components/schemas/BindingCheckFinding' } }
+    OutboundBindingProbePolicy:
+      type: object
+      description: Explicit provider endpoint declared safe to probe using managed outbound admission. Queries, redirects and unsuccessful expected statuses are unsupported.
+      required: [method, path, expected_status]
+      properties:
+        method: { type: string, enum: [GET, HEAD] }
+        path: { type: string, minLength: 1, maxLength: 512 }
+        expected_status: { type: integer, minimum: 200, maximum: 299 }
+
+    BindingPromotionRequest:
+      type: object
+      description: Policy for a server-enforced bindings promotion; the gate is always required on this route.
+      properties:
+        expected_serving_deployment_id: { type: string, format: uuid }
+        max_verification_age: { type: string, default: 10m, description: 'Positive Go duration; maximum age of passed verification evidence.' }
+        allow_unsupported: { type: boolean, default: false, description: 'Explicit queue/outbound connectivity probe waiver; coverage remains partial. Push consumer readiness and the independent 30-second poll window cannot be waived.' }
+        require_application_ack: { type: boolean, default: false, description: 'Require current managed-secret application receipts; use the dedicated promote-with-application-ack route for compatibility with older servers. The dedicated route always forces true.' }
+    BindingPromotionResponse:
+      type: object
+      description: Atomic traffic transition and the bindings check enforced at its write boundary.
+      required: [deployment, from_percent, to_percent, already_promoted, bindings_check]
+      properties:
+        deployment: { $ref: '#/components/schemas/DeploymentResponse' }
+        from_percent: { type: integer }
+        to_percent: { type: integer }
+        already_promoted: { type: boolean }
+        bindings_check: { $ref: '#/components/schemas/BindingCheckReport' }
+    BindingVerification:
+      type: object
+      description: Sanitized durable evidence from the latest admitted service, PostgreSQL or object-storage task guest canary. Object-storage verification checks bucket-list read access only; resident application adoption is not checked.
+      required: [result, source, deployment_id, scope]
+      properties:
+        result: { type: string, description: 'Outcome of the recorded canary: passed, failed or unknown. May describe stale evidence.' }
+        reason: { type: string, description: 'Stable reason such as configuration_changed, deployment_changed, probe_pending, report_invalid or report_truncated.' }
+        source: { type: string, description: 'Currently task_guest.' }
+        deployment_id: { type: string, format: uuid }
+        scope: { type: string }
+        checked_at: { type: string, format: date-time }
+        credential_generation: { type: integer, format: int64 }
+        checks:
+          type: array
+          items: { $ref: '#/components/schemas/BindingVerificationCheck' }
+    BindingVerificationCheck:
+      type: object
+      description: One platform canary stage with its bounded status; raw details and errors are omitted.
+      required: [name, status]
+      properties:
+        name: { type: string }
+        status: { type: string, description: 'passed, failed or not_checked.' }
+    BindingInventoryIssue:
+      type: object
+      description: Stable and sanitized reason why a binding inventory section could not be read.
+      required: [type, code, severity, message]
+      properties:
+        type: { type: string, description: 'Binding family or runtime_freshness or binding_refresh whose read was incomplete.' }
+        code: { type: string, description: 'Stable reason such as forbidden, unavailable, query_failed, consumer_status_unavailable or managed_postgres_unavailable.' }
+        severity: { type: string, enum: [warning, error] }
+        message: { type: string, description: 'Sanitized explanation without raw provider errors.' }
+    AppBindingInventoryItem:
+      type: object
+      description: Public binding configuration with separately reported runtime observations and verification status.
+      required: [type, name, binding, scope, access, state, runtime_status, verification_status]
+      properties:
+        type: { type: string, enum: [service, postgres, object_storage, queue, outbound] }
+        name: { type: string }
+        binding: { type: string, description: 'Logical binding name or environment key. Empty for outbound bindings.' }
+        scope: { type: string, description: 'Resource environment scope or app for an app-wide binding.' }
+        access: { type: string }
+        state: { type: string, description: 'Configuration or provisioning state; never evidence of connectivity.' }
+        runtime_status: { type: string, description: 'Last-known queue consumer liveness (healthy, stale or degraded), otherwise unknown.' }
+        verification_status: { type: string, description: 'Latest platform canary: passed, failed, unknown or stale. Deployment or configuration changes invalidate old evidence. Inventory does not run probes.' }
+        verification: { $ref: '#/components/schemas/BindingVerification' }
+        refresh: { $ref: '#/components/schemas/BindingRefresh' }
+        application_adoption: { $ref: '#/components/schemas/BindingApplicationAdoption' }
+        observed_at: { type: string, format: date-time, description: 'Scheduler observation time. Absent when no observation exists.' }
+        http_url: { type: string }
+        https_env: { type: string }
+        https_url: { type: string }
+        transport: { type: string }
+        credential_generation: { type: integer, format: int64 }
+        rotation_pending: { type: boolean }
+        consumer_state: { type: string }
+        consumer_state_reason: { type: string }
+        consumer_liveness: { type: string }
+        outbound_probe: { $ref: '#/components/schemas/OutboundBindingProbePolicy' }
+        credential_configured: { type: boolean }
+        allowed_methods: { type: array, items: { type: string } }
+        allowed_path_prefixes: { type: array, items: { type: string } }
+    BindingRuntimeFreshness:
+      type: object
+      description: App-wide timestamp-based configuration freshness, independent of canary verification. This is not guest acknowledgement, readiness or proof of credential use. Scope filtering selects deployments; task guests, jobs and mirrors are excluded.
+      required: [source, observed_at, deployments]
+      properties:
+        source: { type: string, description: 'Currently instance_started_at.' }
+        observed_at: { type: string, format: date-time }
+        config_changed_at: { type: string, format: date-time, description: 'Latest app-wide environment or secret change. Without a stamp, resident freshness is unknown.' }
+        deployments:
+          type: array
+          items: { $ref: '#/components/schemas/BindingRuntimeDeployment' }
+    BindingRuntimeDeployment:
+      type: object
+      description: A live deployment or one retaining resident app instances. Serving counts running rows; resident includes serving, starting, warm, snapshotting, draining and migrating rows. Parked and terminal rows are excluded.
+      required: [deployment_id, scope, deployment_status, status, serving, resident, starting]
+      properties:
+        deployment_id: { type: string, format: uuid }
+        scope: { type: string }
+        deployment_status: { type: string }
+        status: { type: string, enum: [current, stale, unknown, updating, inactive], description: 'Stale residents take precedence, then unknown residents, then starting instances. Current does not imply connectivity or readiness.' }
+        serving: { $ref: '#/components/schemas/BindingRuntimeInstanceCounts' }
+        resident: { $ref: '#/components/schemas/BindingRuntimeInstanceCounts' }
+        starting: { type: integer, minimum: 0, description: 'Waking or cold-booting instances, also included in resident counts.' }
+    BindingRuntimeInstanceCounts:
+      type: object
+      description: Disjoint counts compared with the app-wide change stamp. Current means admitted after the stamp; stale means admitted at or before it; unknown means missing stamp or start timestamp.
+      required: [current, stale, unknown]
+      properties:
+        current: { type: integer, minimum: 0 }
+        stale: { type: integer, minimum: 0 }
+        unknown: { type: integer, minimum: 0 }
+    BindingRefresh:
+      type: object
+      description: Durable rolling restart handoff for a pending PostgreSQL or object-storage rotation. Completion does not imply fresh resident instances or successful verification. Not_queued means no retained outbox record was found; unknown means progress could not be read.
+      required: [wake_id, status, attempts]
+      properties:
+        wake_id: { type: string, format: uuid }
+        status: { type: string, enum: [queued, retrying, running, completed, failed, not_queued, unknown] }
+        attempts: { type: integer, minimum: 0 }
+        failure_reason: { type: string, enum: [telemetry_missing, requests_active, quiet_period_not_elapsed, restart_attempt_failed] }
+        requested_at: { type: string, format: date-time }
+        completed_at: { type: string, format: date-time }
+    FinancialBudgetResponse:
+      type: object
+      description: Saved policy intent; draft and unavailable policies do not protect workloads.
+      required: [id, account_id, revision, spec, created_at, updated_at, status, enforcement_ready, reasons]
+      properties:
+        id: { type: string, format: uuid }
+        account_id: { type: string, format: uuid }
+        revision: { type: integer, format: int64, minimum: 1, maximum: 9007199254740991 }
+        spec: { $ref: '#/components/schemas/FinancialBudgetSpec' }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        deleted_at: { type: string, format: date-time }
+        status: { type: string, enum: [draft, unavailable, deleted] }
+        enforcement_ready: { type: boolean, description: False until runtime integrations and acceptance are complete. }
+        reasons: { type: array, items: { type: string } }
+    FinancialBudgetListResponse:
+      type: object
+      description: Nondeleted account-owned policy intents with separately reported readiness.
+      required: [budgets]
+      properties:
+        budgets: { type: array, maxItems: 128, items: { $ref: '#/components/schemas/FinancialBudgetResponse' } }
+    CreateFinancialBudgetRequest:
+      type: object
+      description: New budget intent; this deployment accepts disabled drafts only.
+      required: [spec]
+      properties:
+        spec: { $ref: '#/components/schemas/FinancialBudgetSpec' }
+    UpdateFinancialBudgetRequest:
+      type: object
+      description: Complete replacement of budget intent guarded by its current revision.
+      required: [expected_revision, spec]
+      properties:
+        expected_revision: { type: integer, format: int64, minimum: 1, maximum: 9007199254740990 }
+        spec: { $ref: '#/components/schemas/FinancialBudgetSpec' }
+    DeleteFinancialBudgetRequest:
+      type: object
+      description: Optimistic revision condition for retaining a policy deletion tombstone.
+      required: [expected_revision]
+      properties:
+        expected_revision: { type: integer, format: int64, minimum: 1, maximum: 9007199254740990 }
+    FinancialBudgetRevisionResponse:
+      type: object
+      description: Immutable intent audit written in the same transaction as the policy.
+      required: [policy_id, revision, actor, mutation, spec, recorded_at]
+      properties:
+        policy_id: { type: string, format: uuid }
+        revision: { type: integer, format: int64, minimum: 1, maximum: 9007199254740991 }
+        actor: { type: string, description: Authenticated account or API key identity; never a supplied actor value. }
+        mutation: { type: string, enum: [created, updated, deleted] }
+        spec: { $ref: '#/components/schemas/FinancialBudgetSpec' }
+        recorded_at: { type: string, format: date-time }
+    FinancialBudgetHistoryResponse:
+      type: object
+      description: Immutable policy revision page and an optional exclusive continuation cursor.
+      required: [revisions]
+      properties:
+        revisions: { type: array, maxItems: 100, items: { $ref: '#/components/schemas/FinancialBudgetRevisionResponse' } }
+        next_revision: { type: integer, format: int64, minimum: 1, maximum: 9007199254740991 }
+    FinancialBudgetScope:
+      type: object
+      description: Authoritative account or resource identity; resource ids must belong to the account.
+      required: [kind]
+      properties:
+        kind: { type: string, enum: [account, project, environment, app, job] }
+        id: { type: string, format: uuid, description: Omitted for account scope and required for resource scopes. }
+    FinancialBudgetSpec:
+      type: object
+      description: Customer budget intent; activation and enforcement are separately acknowledged.
+      required: [name, scope, currency, meters, basis, limit_millicents, notify_millicents, mode, action, drain_seconds, resume_rule, enabled]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 128, description: Nonblank name bounded to 128 UTF-8 bytes. }
+        scope: { $ref: '#/components/schemas/FinancialBudgetScope' }
+        currency: { type: string, enum: [EUR] }
+        meters: { type: array, minItems: 1, maxItems: 2, uniqueItems: true, description: Sorted meter names; strict mode covers compute only., items: { type: string, enum: [compute, egress] } }
+        basis: { type: string, enum: [net_usage, gross_usage], description: Net usage after the shared account allowance or gross usage before it; strict resource scopes require gross usage. }
+        limit_millicents: { type: integer, format: int64, minimum: 0, maximum: 9007199254740991 }
+        notify_millicents: { type: array, maxItems: 8, uniqueItems: true, description: Increasing nonnegative thresholds at or below the limit., items: { type: integer, format: int64, minimum: 0, maximum: 9007199254740991 } }
+        mode: { type: string, enum: [monitored, strict] }
+        action: { type: string, enum: [notify, reject_traffic, suspend_background, stop_previews, suspend_workloads] }
+        drain_seconds: { type: integer, minimum: 0, maximum: 300, description: Notify uses zero; stopping targets drain before the deadline. }
+        resume_rule: { type: string, enum: [manual, next_period] }
+        enabled: { type: boolean }
+    FinancialBudgetPreviewRequest:
+      type: object
+      description: Proposed budget intent to inspect without saving or activating it.
+      required: [spec]
+      properties:
+        spec: { $ref: '#/components/schemas/FinancialBudgetSpec' }
+    FinancialBudgetTarget:
+      type: object
+      description: Current workload selected or left running by a proposed response.
+      required: [kind, id, name, effect]
+      properties:
+        kind: { type: string, enum: [app, job] }
+        id: { type: string, format: uuid }
+        name: { type: string }
+        environment_id: { type: string, format: uuid }
+        deployment_id: { type: string, format: uuid }
+        effect: { type: string }
+    FinancialBudgetPreviewResponse:
+      type: object
+      description: Known spending, evidence gaps, workload consequences and explicit readiness.
+      required: [spec, period_start, period_end, as_of, known_millicents, known_limit_reached, coverage_complete, fresh, reasons, enforcement_ready, guarantee, targets, continuing_targets]
+      properties:
+        spec: { $ref: '#/components/schemas/FinancialBudgetSpec' }
+        period_start: { type: string, format: date-time }
+        period_end: { type: string, format: date-time }
+        as_of: { type: string, format: date-time }
+        known_millicents: { type: integer, format: int64 }
+        known_limit_reached: { type: boolean, description: Known subtotal is at or above the limit; inspect coverage before inferring complete spending. }
+        coverage_complete: { type: boolean }
+        fresh: { type: boolean }
+        reasons: { type: array, items: { type: string } }
+        enforcement_ready: { type: boolean, description: False while durable decisions and owner integrations lack acceptance; preview never activates a policy. }
+        guarantee: { type: string }
+        targets: { type: array, maxItems: 10000, items: { $ref: '#/components/schemas/FinancialBudgetTarget' } }
+        continuing_targets: { type: array, maxItems: 10000, items: { $ref: '#/components/schemas/FinancialBudgetTarget' } }
+    FinancialPrice:
+      type: object
+      description: Immutable version of a meter's exact price and allowance terms.
+      required: [version, meter, currency, unit, unit_quantity, millicents_per_unit, included_quantity]
+      properties:
+        version: { type: string }
+        meter: { type: string }
+        currency: { type: string, enum: [EUR] }
+        unit: { type: string }
+        unit_quantity: { type: integer, format: int64, minimum: 1 }
+        millicents_per_unit: { type: integer, format: int64, minimum: 0 }
+        included_quantity: { type: integer, format: int64, minimum: 0 }
+    FinancialPriceContract:
+      type: object
+      description: Historical activation of recorded account pricing.
+      required: [price, plan, effective_from, delivery_mode]
+      properties:
+        price: { $ref: '#/components/schemas/FinancialPrice' }
+        plan: { type: string, enum: [free, hobby, pro, scale] }
+        effective_from: { type: string, format: date-time }
+        delivery_mode: { type: string, enum: [live, shadow, off] }
+    FinancialAttribution:
+      type: object
+      description: Workload identity retained at first observation, surviving rename and deletion.
+      properties:
+        app_id: { type: string }
+        job_id: { type: string }
+        project_id: { type: string }
+        environment_id: { type: string }
+        deployment_id: { type: string }
+        name: { type: string }
+    FinancialAllocation:
+      type: object
+      description: Exact quantity-share allocation; row amounts and account totals reconcile.
+      required: [attribution, quantity, gross_millicents, allowance_millicents, net_millicents]
+      properties:
+        attribution: { $ref: '#/components/schemas/FinancialAttribution' }
+        quantity: { type: integer, format: int64 }
+        gross_millicents: { type: integer, format: int64 }
+        allowance_millicents: { type: integer, format: int64 }
+        net_millicents: { type: integer, format: int64 }
+    FinancialMeterCost:
+      type: object
+      description: Meter cost priced by one immutable contract with its assigned allowance.
+      required: [price, quantity, included_quantity, gross_millicents, allowance_millicents, net_millicents, allocation_method, allocations]
+      properties:
+        price: { $ref: '#/components/schemas/FinancialPrice' }
+        quantity: { type: integer, format: int64 }
+        included_quantity: { type: integer, format: int64 }
+        gross_millicents: { type: integer, format: int64 }
+        allowance_millicents: { type: integer, format: int64 }
+        net_millicents: { type: integer, format: int64 }
+        allocation_method: { type: string }
+        allocations: { type: array, maxItems: 10000, items: { $ref: '#/components/schemas/FinancialAllocation' } }
+    FinancialContractCosts:
+      type: object
+      description: One shared period allowance applied across historical rate versions.
+      required: [meter, quantity, included_quantity, net_millicents, allowance_method, contracts]
+      properties:
+        meter: { type: string }
+        quantity: { type: integer, format: int64 }
+        included_quantity: { type: integer, format: int64 }
+        net_millicents: { type: integer, format: int64 }
+        allowance_method: { type: string }
+        contracts: { type: array, items: { $ref: '#/components/schemas/FinancialMeterCost' } }
+    FinancialForecast:
+      type: object
+      description: Quantity run-rate projection; absent amounts mean unavailable, never zero.
+      required: [method, available, account_id, period_start, period_end, complete_through, price_version, meter, currency]
+      properties:
+        method: { type: string }
+        available: { type: boolean }
+        reason: { type: string }
+        account_id: { type: string }
+        period_start: { type: string, format: date-time }
+        period_end: { type: string, format: date-time }
+        complete_through: { type: string, format: date-time }
+        price_version: { type: string }
+        meter: { type: string }
+        currency: { type: string, enum: [EUR] }
+        projected_quantity: { type: integer, format: int64 }
+        projected_net_millicents: { type: integer, format: int64 }
+    FinancialMeterCoverage:
+      type: object
+      description: Completeness and freshness of authoritative retained meter evidence.
+      required: [complete, fresh, expected_minutes, complete_minutes, unpriced_quantity, non_billable_quantity, reasons]
+      properties:
+        complete: { type: boolean }
+        fresh: { type: boolean }
+        expected_minutes: { type: integer, format: int64 }
+        complete_minutes: { type: integer, format: int64 }
+        unpriced_quantity: { type: integer, format: int64 }
+        non_billable_quantity: { type: integer, format: int64 }
+        reasons: { type: array, items: { type: string } }
+    FinancialMeterCosts:
+      type: object
+      description: Accrued meter costs, source coverage, historical terms, and forecast.
+      required: [meter, coverage, accrued, forecast, price_contracts]
+      properties:
+        meter: { type: string }
+        coverage: { $ref: '#/components/schemas/FinancialMeterCoverage' }
+        accrued: { $ref: '#/components/schemas/FinancialContractCosts' }
+        forecast: { $ref: '#/components/schemas/FinancialForecast' }
+        price_contracts: { type: array, items: { $ref: '#/components/schemas/FinancialPriceContract' } }
+    FinancialCostsResponse:
+      type: object
+      description: Account usage costs for a UTC period; invoice facts remain separate.
+      required: [account_id, currency, period_start, period_end, as_of, retained_from, evidence_through_id, known_usage_millicents, meters, scope, invoices, invoice_reconciliation, missing_bill_components]
+      properties:
+        account_id: { type: string }
+        currency: { type: string, enum: [EUR] }
+        period_start: { type: string, format: date-time }
+        period_end: { type: string, format: date-time }
+        as_of: { type: string, format: date-time }
+        retained_from: { type: string, format: date-time }
+        evidence_through_id: { type: integer, format: int64 }
+        known_usage_millicents: { type: integer, format: int64 }
+        meters: { type: array, items: { $ref: '#/components/schemas/FinancialMeterCosts' } }
+        scope: { type: string }
+        invoices: { type: array, items: { $ref: '#/components/schemas/Invoice' } }
+        invoice_reconciliation: { type: string, enum: [not_reconciled] }
+        missing_bill_components: { type: array, items: { type: string } }
+    FinancialForecastResponse:
+      type: object
+      description: Meter projections; a complete bill forecast requires all bill components.
+      required: [period_start, period_end, as_of, currency, meters, bill_estimate_available, missing_bill_components]
+      properties:
+        period_start: { type: string, format: date-time }
+        period_end: { type: string, format: date-time }
+        as_of: { type: string, format: date-time }
+        currency: { type: string, enum: [EUR] }
+        meters: { type: array, items: { $ref: '#/components/schemas/FinancialMeterCosts' } }
+        bill_estimate_available: { type: boolean }
+        missing_bill_components: { type: array, items: { type: string } }
     CreateDevBridgeRequest:
       type: object
       description: Owned app and explicit development graph for local execution.
@@ -33176,7 +33388,11 @@ components:
         secret_reload_signal:
           type: [string, "null"]
           enum: [SIGHUP, SIGUSR1, SIGUSR2, null]
-          description: "Opt this image's workload into live secret-file refresh by selecting the signal guest-init sends after replacing FAAS_SECRETS_FILE; the app must handle the signal and reload its config. For the main image this remains limited to single-workload deployments; long-running sidecar images are opted in independently. Must differ from stop_signal (ADR-222)."
+          description: "Opt this image's workload into live secret-file refresh by selecting the signal guest-init sends after replacing FAAS_SECRETS_FILE; the app must handle the signal and reload its config. Main and long-running sidecar images opt in independently, including deployments with companions; each workload reloads only its own granted secrets. Must differ from stop_signal (ADR-222)."
+        secret_reload_readiness:
+          type: boolean
+          default: false
+          description: "Wait for the workload to publish FAAS_SECRETS_RELOAD_READY_FILE before sending a secret reload signal. Requires secret_reload_signal. Main and sidecar workloads opt in independently (ADR-506)."
         stop_grace_period:
           type: [string, "null"]
           description: "OCI StopGracePeriod as a Go duration string (e.g. \"30s\"). Per-plan cap (Hobby 30s, Pro 60s, Scale 120s) enforced by Validate() — ADR-138 §Decision 4."
@@ -45068,14 +45284,24 @@ components:
     CreateAppTaskRequest:
       description: |
         One manual command to execute against the app's live deployment.
+        verification_deployment_id optionally selects an exact app-owned,
+        materialized live deployment for the reserved service, PostgreSQL,
+        object-storage or configured outbound verification probes only. Generic and smoke commands
+        cannot select a deployment. An explicit probe requires authorized,
+        managed binding metadata and remains live at atomic task admission.
+        The selector is supported only on direct POST /v1/apps/{slug}/tasks;
+        exclusive-operation task admission rejects it.
         `command_shell=false` executes argv directly. Shell mode requires one
         command string and is explicit so clients preserve quoting semantics.
         `__gregale_service_binding_probe_v1__ <service>` is reserved for the
         Gregale HTTPS service-binding canary and is handled by guest-init.
+        `__gregale_outbound_binding_probe_v1__ <integration-id>` selects a
+        configured outbound probe; the server supplies immutable gateway routing metadata.
       type: object
       required: [command]
       additionalProperties: false
       properties:
+        verification_deployment_id: { type: string, format: uuid, description: "Exact source deployment for a reserved binding verification probe; omit for the current manual-task selection." }
         command:
           type: array
           minItems: 1
@@ -45771,6 +45997,7 @@ components:
         observed: null
         docs_url: "https://gregale.dev/docs/errors/validation_failed"
       properties:
+        bindings_check: { $ref: '#/components/schemas/BindingCheckReport' }
         type: { type: string, format: uri-reference, example: "https://gregale.dev/docs/errors/validation_failed"}
         title: { type: string , example: "Validation failed"}
         status: { type: integer , example: 422}
@@ -47432,67 +47659,6 @@ components:
         created_at: "2026-08-06T10:00:00Z"
         updated_at: "2026-08-06T10:00:00Z"
 
-    CreateFinancialBudgetWebhookRequest:
-      type: object
-      description: Account budget receiver. Explicit financial event opt-in; no historical backfill.
-      required: [target_url, webhook_secret, event_filter]
-      properties:
-        webhook_secret: { type: string, minLength: 1, maxLength: 256, writeOnly: true }
-        target_url: { type: string, format: uri, minLength: 8, maxLength: 2048 }
-        event_filter:
-          type: array
-          minItems: 1
-          maxItems: 5
-          uniqueItems: true
-          items:
-            type: string
-            enum: [billing.budget.threshold_crossed, billing.budget.limit_reached, billing.budget.hold_requested, billing.budget.hold_updated, billing.budget.hold_released]
-        retry_policy: { type: string, enum: [default, aggressive, none] }
-        delivery_format: { type: string, enum: [json, cloudevents] }
-        enabled: { type: boolean }
-
-    UpdateFinancialBudgetWebhookRequest:
-      type: object
-      description: Partial financial receiver changes; omitted fields and signing secret remain unchanged. Filter changes affect future decisions.
-      properties:
-        webhook_secret: { type: string, minLength: 1, maxLength: 256, writeOnly: true }
-        target_url: { type: string, format: uri, minLength: 8, maxLength: 2048 }
-        event_filter:
-          type: array
-          minItems: 1
-          maxItems: 5
-          uniqueItems: true
-          items:
-            type: string
-            enum: [billing.budget.threshold_crossed, billing.budget.limit_reached, billing.budget.hold_requested, billing.budget.hold_updated, billing.budget.hold_released]
-        retry_policy: { type: string, enum: [default, aggressive, none] }
-        delivery_format: { type: string, enum: [json, cloudevents] }
-        enabled: { type: boolean }
-
-    FinancialBudgetWebhookResponse:
-      type: object
-      description: Account-owned financial receiver configuration with a masked secret; no plaintext or sealed ciphertext is returned.
-      required: [id, scope, account_id, target_url, webhook_secret_sealed_masked, event_filter, retry_policy, delivery_format, enabled, created_at, updated_at]
-      properties:
-        id: { type: string, format: uuid }
-        scope: { type: string, enum: [financial_budget] }
-        account_id: { type: string, format: uuid }
-        webhook_secret_sealed_masked: { type: string, enum: ["***"] }
-        created_at: { type: string, format: date-time }
-        updated_at: { type: string, format: date-time }
-        target_url: { type: string, format: uri, minLength: 8, maxLength: 2048 }
-        event_filter:
-          type: array
-          minItems: 1
-          maxItems: 5
-          uniqueItems: true
-          items:
-            type: string
-            enum: [billing.budget.threshold_crossed, billing.budget.limit_reached, billing.budget.hold_requested, billing.budget.hold_updated, billing.budget.hold_released]
-        retry_policy: { type: string, enum: [default, aggressive, none] }
-        delivery_format: { type: string, enum: [json, cloudevents] }
-        enabled: { type: boolean }
-
     AccountReleaseWebhookResponse:
       type: object
       description: Account-owned release receiver; no app_id because it follows all current and future apps.
@@ -48102,9 +48268,9 @@ components:
         dead row back to status='pending' for one more shot.
       required: [id, webhook_id, account_id, event, attempt, status, next_attempt_at, created_at, updated_at]
       properties:
-        id: { type: string, pattern: '^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$' }
-        webhook_id: { type: string, pattern: '^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$' }
-        app_id: { type: string, pattern: '^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$', description: Omitted for account billing and platform tenant events. }
+        id: { type: string, pattern: '^[0-9a-f]{32}$' }
+        webhook_id: { type: string, pattern: '^[0-9a-f]{32}$' }
+        app_id: { type: string, pattern: '^[0-9a-f]{32}$', description: Omitted for events sourced from a platform tenant rather than one app. }
         account_id: { type: string, format: uuid }
         event:
           type: string

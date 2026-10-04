@@ -312,6 +312,7 @@ export const apps: App[] = APP_SEEDS.map((a, i) => ({
     healthz: '/healthz',
     health_path: '/healthz',
     health_path_wakes: false,
+    secret_reload_readiness: false,
     session_affinity: false,
     version_affinity_managed_cookie: false,
     revision_pin_ttl_seconds: 0,

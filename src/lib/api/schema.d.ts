@@ -4,6 +4,37 @@
  */
 
 export interface paths {
+    "/v1/outbound/integrations/{integration}/probe-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Customer-owned outbound integration identifier. */
+                integration: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read an explicitly configured outbound probe policy
+         * @description Read a customer-owned integration's safe-method probe configuration. This does not send traffic to a provider.
+         */
+        get: operations["getOutboundBindingProbePolicy"];
+        /**
+         * Configure an outbound binding probe
+         * @description Declare a GET or HEAD path safe to probe and its expected 2xx status. The path must fit the customer-owned integration's route policy. Configuration sends no provider requests. Requires deploy-write access and MFA.
+         */
+        put: operations["setOutboundBindingProbePolicy"];
+        post?: never;
+        /**
+         * Remove an outbound binding probe configuration
+         * @description Remove a customer-owned integration's probe policy, invalidating prior evidence. Requires deploy-write access and MFA. This does not revoke provider credentials.
+         */
+        delete: operations["deleteOutboundBindingProbePolicy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/outbound/integrations": {
         parameters: {
             query?: never;
@@ -165,6 +196,39 @@ export interface paths {
          * @description Requires MFA and deploy-write scope. Deletes the integration, its sealed credential, app bindings, and admission state. Operator-provisioned integrations cannot be deleted here.
          */
         delete: operations["deleteOutboundIntegration"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/bindings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Inspect all runtime resource bindings attached to an app.
+         * @description Read-only, best-effort metadata for service, PostgreSQL, object-storage,
+         *     queue and outbound bindings. Requires apps:read or admin. PostgreSQL
+         *     sections additionally require managed-postgres:read or admin; object
+         *     storage sections require storage:manage or admin, matching the existing
+         *     compute-binding read surface. MFA-pending sessions are rejected.
+         *     Missing permissions and failed sections appear as structured issues in
+         *     a 200 response with complete=false; successfully read sections remain.
+         *     An unconfigured managed PostgreSQL feature is a warning. Other issues
+         *     have error severity. No provider calls, workload probes or writes occur.
+         *     State describes configuration/provisioning, not applied runtime health.
+         *     Runtime status is unknown unless a scheduler queue observation exists;
+         *     verification status includes durable service, PostgreSQL and object-storage task-guest canary results. GeneratedAt is collection time, not a
+         *     promise of an atomic snapshot. Credential material and raw errors are
+         *     excluded. Responses use Cache-Control: no-store.
+         */
+        get: operations["getAppBindingInventory"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -9134,6 +9198,76 @@ export interface paths {
         patch: operations["updateDeploymentTraffic"];
         trace?: never;
     };
+    "/v1/deployments/{id}/promote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Deployment UUID in canonical or 32-hex form. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Promote a deployment after an atomic bindings check.
+         * @description Available on all supported plans. Evaluate the exact live, materialized candidate using
+         *     the bindings preflight policy, then compare its binding/configuration,
+         *     probe and runtime revision inside the traffic transaction. Blockers,
+         *     expired evidence or changed observations return 409 without changing
+         *     traffic. No probes or restarts are scheduled. Queue/outbound probe
+         *     coverage requires an explicit allow_unsupported waiver and remains
+         *     partial. A successful receipt confirms the applied policy and check.
+         *     An optional serving expectation is checked under the traffic locks.
+         *     An already promoted target still requires a passed bindings check;
+         *     it returns an idempotent receipt without requiring the previous
+         *     deployment to remain at 100%. Active managed canaries cannot be bypassed.
+         *     This dedicated route prevents older servers from ignoring the bindings gate.
+         *     For require_application_ack use promote-with-application-ack so an older
+         *     server cannot silently ignore the new policy field.
+         */
+        post: operations["promoteDeploymentWithBindings"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/deployments/{id}/promote-with-application-ack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Candidate UUID for strict adoption promotion; canonical and compact hexadecimal forms are accepted. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Promote after atomic bindings and application acknowledgement checks.
+         * @description Always require current version-bound application acknowledgements from
+         *     every authorized resident workload of PostgreSQL and object-storage
+         *     bindings in the candidate scope, including a resident candidate target
+         *     for each binding. Missing, stale, failed, disabled or unknown receipts
+         *     block promotion. Application receipts are self-attestations, distinct
+         *     from connectivity probes and guest projection/signal outcomes.
+         *     require_application_ack is forced true even if the request omits it or
+         *     supplies false. All normal bindings checks, permissions and atomic
+         *     traffic fences also apply. Changes to credentials, authorized workload
+         *     rosters, reload support or receipts invalidate the check at the write.
+         *     Use this route for strict promotion; older servers return 404 before
+         *     changing traffic. Never fall back to the ordinary promotion route.
+         */
+        post: operations["promoteDeploymentWithApplicationAck"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/deployments/{id}/canary/advance": {
         parameters: {
             query?: never;
@@ -15027,167 +15161,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/billing/budget-webhooks": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List account budget receivers.
-         * @description Lists only financial receivers owned by the authenticated account. Requires account admin and session MFA, including access to receiver URLs. All plans support at most eight receivers; registration does not activate a budget.
-         */
-        get: operations["listFinancialBudgetWebhooks"];
-        put?: never;
-        /**
-         * Configure a budget event receiver.
-         * @description Registers an explicit financial event filter and seals the supplied signing secret. Requires account admin and session MFA. The independent account quota is eight on every plan. Only future committed decisions capture this receiver; public budget activation remains unavailable.
-         */
-        post: operations["createFinancialBudgetWebhook"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/billing/budget-webhooks/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Account-owned financial receiver identity for /v1/billing/budget-webhooks/{id}. */
-                id: string;
-            };
-            cookie?: never;
-        };
-        /**
-         * Read a budget receiver.
-         * @description Reads one account-owned financial receiver with its signing secret masked. Requires account admin and session MFA. Foreign-account and nonfinancial subscription IDs are unavailable through this route.
-         */
-        get: operations["getFinancialBudgetWebhook"];
-        put?: never;
-        post?: never;
-        /**
-         * Delete a budget receiver and its delivery records.
-         * @description Removes an owned financial receiver and its delivery records after account admin and session MFA checks. Financial decision history is retained separately. Deletion does not release budget holds and an in-flight HTTP request may finish.
-         */
-        delete: operations["deleteFinancialBudgetWebhook"];
-        options?: never;
-        head?: never;
-        /**
-         * Update or rotate the secret of a budget receiver.
-         * @description Changes a financial receiver or replaces its sealed signing secret. Requires account admin and session MFA. Filter edits apply to future decisions; queued events use current transport settings. Disabling suppresses queued work but cannot recall an in-flight request.
-         */
-        patch: operations["updateFinancialBudgetWebhook"];
-        trace?: never;
-    };
-    "/v1/billing/budget-webhooks/{id}/deliveries": {
-        parameters: {
-            query?: {
-                /** @description Maximum returned financial deliveries; defaults to 100. */
-                page_size?: number;
-                /** @description Opaque continuation token from the preceding financial-delivery page; at most 512 bytes. */
-                page_token?: string;
-            };
-            header?: never;
-            path: {
-                /** @description Account-owned financial receiver identity for /v1/billing/budget-webhooks/{id}/deliveries. */
-                id: string;
-            };
-            cookie?: never;
-        };
-        /**
-         * List budget event deliveries.
-         * @description Pages account-owned notification deliveries after account admin and session MFA checks. A relayed decision and a successful HTTP delivery are separate facts; neither establishes workload enforcement. Disabled draft policies produce no spending events.
-         */
-        get: operations["listFinancialBudgetWebhookDeliveries"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/billing/budget-webhooks/{id}/health": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Account-owned financial receiver identity for /v1/billing/budget-webhooks/{id}/health. */
-                id: string;
-            };
-            cookie?: never;
-        };
-        /**
-         * Read budget receiver queue health.
-         * @description Reads pending, in-flight, dead and recent completed delivery counts for an owned financial receiver. Requires account admin and session MFA. The receiver cooldown state describes transport health and does not acknowledge workload shutdown.
-         */
-        get: operations["getFinancialBudgetWebhookDeliveryHealth"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/billing/budget-webhooks/{id}/deliveries/{did}/attempts": {
-        parameters: {
-            query?: {
-                /** @description Maximum returned completed attempts; defaults to 100. */
-                page_size?: number;
-                /** @description Opaque continuation token from the preceding completed-attempt page; at most 512 bytes. */
-                page_token?: string;
-            };
-            header?: never;
-            path: {
-                /** @description Account-owned financial receiver identity for /v1/billing/budget-webhooks/{id}/deliveries/{did}/attempts. */
-                id: string;
-                /** @description Stable HTTP delivery identity under the selected financial receiver for /v1/billing/budget-webhooks/{id}/deliveries/{did}/attempts. */
-                did: string;
-            };
-            cookie?: never;
-        };
-        /**
-         * List completed attempts for a budget event delivery.
-         * @description Pages completed HTTP attempts, preserving earlier replay generations for the selected account-owned delivery. Requires account admin and session MFA. An unfinished claim is not a completed attempt, and receiver success does not establish budget enforcement.
-         */
-        get: operations["listFinancialBudgetWebhookDeliveryAttempts"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/billing/budget-webhooks/{id}/deliveries/{did}/retry": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Account-owned financial receiver identity for /v1/billing/budget-webhooks/{id}/deliveries/{did}/retry. */
-                id: string;
-                /** @description Stable HTTP delivery identity under the selected financial receiver for /v1/billing/budget-webhooks/{id}/deliveries/{did}/retry. */
-                did: string;
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Retry a dead delivery to an enabled budget receiver.
-         * @description Re-arms a dead notification only while its account-owned financial receiver is enabled. Requires account admin and session MFA. The stable delivery ID survives replay; prior completed attempt history remains available. Retrying does not re-evaluate a policy or release a hold.
-         */
-        post: operations["retryFinancialBudgetWebhookDelivery"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/v1/billing/budgets": {
         parameters: {
             query?: never;
@@ -17035,297 +17008,6 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /** @description Saved policy intent; draft and unavailable policies do not protect workloads. */
-        FinancialBudgetResponse: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            account_id: string;
-            /** Format: int64 */
-            revision: number;
-            spec: components["schemas"]["FinancialBudgetSpec"];
-            /** Format: date-time */
-            created_at: string;
-            /** Format: date-time */
-            updated_at: string;
-            /** Format: date-time */
-            deleted_at?: string;
-            /** @enum {string} */
-            status: "draft" | "unavailable" | "deleted";
-            /** @description False until runtime integrations and acceptance are complete. */
-            enforcement_ready: boolean;
-            reasons: string[];
-        };
-        /** @description Nondeleted account-owned policy intents with separately reported readiness. */
-        FinancialBudgetListResponse: {
-            budgets: components["schemas"]["FinancialBudgetResponse"][];
-        };
-        /** @description New budget intent; this deployment accepts disabled drafts only. */
-        CreateFinancialBudgetRequest: {
-            spec: components["schemas"]["FinancialBudgetSpec"];
-        };
-        /** @description Complete replacement of budget intent guarded by its current revision. */
-        UpdateFinancialBudgetRequest: {
-            /** Format: int64 */
-            expected_revision: number;
-            spec: components["schemas"]["FinancialBudgetSpec"];
-        };
-        /** @description Optimistic revision condition for retaining a policy deletion tombstone. */
-        DeleteFinancialBudgetRequest: {
-            /** Format: int64 */
-            expected_revision: number;
-        };
-        /** @description Immutable intent audit written in the same transaction as the policy. */
-        FinancialBudgetRevisionResponse: {
-            /** Format: uuid */
-            policy_id: string;
-            /** Format: int64 */
-            revision: number;
-            /** @description Authenticated account or API key identity; never a supplied actor value. */
-            actor: string;
-            /** @enum {string} */
-            mutation: "created" | "updated" | "deleted";
-            spec: components["schemas"]["FinancialBudgetSpec"];
-            /** Format: date-time */
-            recorded_at: string;
-        };
-        /** @description Immutable policy revision page and an optional exclusive continuation cursor. */
-        FinancialBudgetHistoryResponse: {
-            revisions: components["schemas"]["FinancialBudgetRevisionResponse"][];
-            /** Format: int64 */
-            next_revision?: number;
-        };
-        /** @description Authoritative account or resource identity; resource ids must belong to the account. */
-        FinancialBudgetScope: {
-            /** @enum {string} */
-            kind: "account" | "project" | "environment" | "app" | "job";
-            /**
-             * Format: uuid
-             * @description Omitted for account scope and required for resource scopes.
-             */
-            id?: string;
-        };
-        /** @description Customer budget intent; activation and enforcement are separately acknowledged. */
-        FinancialBudgetSpec: {
-            /** @description Nonblank name bounded to 128 UTF-8 bytes. */
-            name: string;
-            scope: components["schemas"]["FinancialBudgetScope"];
-            /** @enum {string} */
-            currency: "EUR";
-            /** @description Sorted meter names; strict mode covers compute only. */
-            meters: ("compute" | "egress")[];
-            /**
-             * @description Net usage after the shared account allowance or gross usage before it; strict resource scopes require gross usage.
-             * @enum {string}
-             */
-            basis: "net_usage" | "gross_usage";
-            /** Format: int64 */
-            limit_millicents: number;
-            /** @description Increasing nonnegative thresholds at or below the limit. */
-            notify_millicents: number[];
-            /** @enum {string} */
-            mode: "monitored" | "strict";
-            /** @enum {string} */
-            action: "notify" | "reject_traffic" | "suspend_background" | "stop_previews" | "suspend_workloads";
-            /** @description Notify uses zero; stopping targets drain before the deadline. */
-            drain_seconds: number;
-            /** @enum {string} */
-            resume_rule: "manual" | "next_period";
-            enabled: boolean;
-        };
-        /** @description Proposed budget intent to inspect without saving or activating it. */
-        FinancialBudgetPreviewRequest: {
-            spec: components["schemas"]["FinancialBudgetSpec"];
-        };
-        /** @description Current workload selected or left running by a proposed response. */
-        FinancialBudgetTarget: {
-            /** @enum {string} */
-            kind: "app" | "job";
-            /** Format: uuid */
-            id: string;
-            name: string;
-            /** Format: uuid */
-            environment_id?: string;
-            /** Format: uuid */
-            deployment_id?: string;
-            effect: string;
-        };
-        /** @description Known spending, evidence gaps, workload consequences and explicit readiness. */
-        FinancialBudgetPreviewResponse: {
-            spec: components["schemas"]["FinancialBudgetSpec"];
-            /** Format: date-time */
-            period_start: string;
-            /** Format: date-time */
-            period_end: string;
-            /** Format: date-time */
-            as_of: string;
-            /** Format: int64 */
-            known_millicents: number;
-            /** @description Known subtotal is at or above the limit; inspect coverage before inferring complete spending. */
-            known_limit_reached: boolean;
-            coverage_complete: boolean;
-            fresh: boolean;
-            reasons: string[];
-            /** @description False while durable decisions and owner integrations lack acceptance; preview never activates a policy. */
-            enforcement_ready: boolean;
-            guarantee: string;
-            targets: components["schemas"]["FinancialBudgetTarget"][];
-            continuing_targets: components["schemas"]["FinancialBudgetTarget"][];
-        };
-        /** @description Immutable version of a meter's exact price and allowance terms. */
-        FinancialPrice: {
-            version: string;
-            meter: string;
-            /** @enum {string} */
-            currency: "EUR";
-            unit: string;
-            /** Format: int64 */
-            unit_quantity: number;
-            /** Format: int64 */
-            millicents_per_unit: number;
-            /** Format: int64 */
-            included_quantity: number;
-        };
-        /** @description Historical activation of recorded account pricing. */
-        FinancialPriceContract: {
-            price: components["schemas"]["FinancialPrice"];
-            /** @enum {string} */
-            plan: "free" | "hobby" | "pro" | "scale";
-            /** Format: date-time */
-            effective_from: string;
-            /** @enum {string} */
-            delivery_mode: "live" | "shadow" | "off";
-        };
-        /** @description Workload identity retained at first observation, surviving rename and deletion. */
-        FinancialAttribution: {
-            app_id?: string;
-            job_id?: string;
-            project_id?: string;
-            environment_id?: string;
-            deployment_id?: string;
-            name?: string;
-        };
-        /** @description Exact quantity-share allocation; row amounts and account totals reconcile. */
-        FinancialAllocation: {
-            attribution: components["schemas"]["FinancialAttribution"];
-            /** Format: int64 */
-            quantity: number;
-            /** Format: int64 */
-            gross_millicents: number;
-            /** Format: int64 */
-            allowance_millicents: number;
-            /** Format: int64 */
-            net_millicents: number;
-        };
-        /** @description Meter cost priced by one immutable contract with its assigned allowance. */
-        FinancialMeterCost: {
-            price: components["schemas"]["FinancialPrice"];
-            /** Format: int64 */
-            quantity: number;
-            /** Format: int64 */
-            included_quantity: number;
-            /** Format: int64 */
-            gross_millicents: number;
-            /** Format: int64 */
-            allowance_millicents: number;
-            /** Format: int64 */
-            net_millicents: number;
-            allocation_method: string;
-            allocations: components["schemas"]["FinancialAllocation"][];
-        };
-        /** @description One shared period allowance applied across historical rate versions. */
-        FinancialContractCosts: {
-            meter: string;
-            /** Format: int64 */
-            quantity: number;
-            /** Format: int64 */
-            included_quantity: number;
-            /** Format: int64 */
-            net_millicents: number;
-            allowance_method: string;
-            contracts: components["schemas"]["FinancialMeterCost"][];
-        };
-        /** @description Quantity run-rate projection; absent amounts mean unavailable, never zero. */
-        FinancialForecast: {
-            method: string;
-            available: boolean;
-            reason?: string;
-            account_id: string;
-            /** Format: date-time */
-            period_start: string;
-            /** Format: date-time */
-            period_end: string;
-            /** Format: date-time */
-            complete_through: string;
-            price_version: string;
-            meter: string;
-            /** @enum {string} */
-            currency: "EUR";
-            /** Format: int64 */
-            projected_quantity?: number;
-            /** Format: int64 */
-            projected_net_millicents?: number;
-        };
-        /** @description Completeness and freshness of authoritative retained meter evidence. */
-        FinancialMeterCoverage: {
-            complete: boolean;
-            fresh: boolean;
-            /** Format: int64 */
-            expected_minutes: number;
-            /** Format: int64 */
-            complete_minutes: number;
-            /** Format: int64 */
-            unpriced_quantity: number;
-            /** Format: int64 */
-            non_billable_quantity: number;
-            reasons: string[];
-        };
-        /** @description Accrued meter costs, source coverage, historical terms, and forecast. */
-        FinancialMeterCosts: {
-            meter: string;
-            coverage: components["schemas"]["FinancialMeterCoverage"];
-            accrued: components["schemas"]["FinancialContractCosts"];
-            forecast: components["schemas"]["FinancialForecast"];
-            price_contracts: components["schemas"]["FinancialPriceContract"][];
-        };
-        /** @description Account usage costs for a UTC period; invoice facts remain separate. */
-        FinancialCostsResponse: {
-            account_id: string;
-            /** @enum {string} */
-            currency: "EUR";
-            /** Format: date-time */
-            period_start: string;
-            /** Format: date-time */
-            period_end: string;
-            /** Format: date-time */
-            as_of: string;
-            /** Format: date-time */
-            retained_from: string;
-            /** Format: int64 */
-            evidence_through_id: number;
-            /** Format: int64 */
-            known_usage_millicents: number;
-            meters: components["schemas"]["FinancialMeterCosts"][];
-            scope: string;
-            invoices: components["schemas"]["Invoice"][];
-            /** @enum {string} */
-            invoice_reconciliation: "not_reconciled";
-            missing_bill_components: string[];
-        };
-        /** @description Meter projections; a complete bill forecast requires all bill components. */
-        FinancialForecastResponse: {
-            /** Format: date-time */
-            period_start: string;
-            /** Format: date-time */
-            period_end: string;
-            /** Format: date-time */
-            as_of: string;
-            /** @enum {string} */
-            currency: "EUR";
-            meters: components["schemas"]["FinancialMeterCosts"][];
-            bill_estimate_available: boolean;
-            missing_bill_components: string[];
-        };
         /** @description Version 1 requires 1..500 concrete routes. Version 2 assigns every captured operation to groups, concrete routes, or public exceptions; overlapping groups are conjunctive. */
         RouteRequirementsConfig: {
             /** @enum {integer} */
@@ -18501,6 +18183,605 @@ export interface components {
             gateway_state: "active" | "converging" | "unknown" | "unobserved";
             /** Format: int64 */
             gateway_generation?: number;
+        };
+        /** @description Best-effort app binding metadata with explicit completeness and sanitized section issues. */
+        AppBindingInventory: {
+            app: string;
+            /** @description Resource scope filter. Absent means all scopes. */
+            scope?: string;
+            /** Format: date-time */
+            generated_at: string;
+            /**
+             * Format: uuid
+             * @description Confirms that the explicit deployment_id selector was applied. Absent for default selection.
+             */
+            requested_deployment_id?: string;
+            /**
+             * Format: uuid
+             * @description Deployment selected for evidence: explicit selector or current manual-task deployment.
+             */
+            verification_deployment_id?: string;
+            /** @description Scope of the selected verification deployment. */
+            verification_scope?: string;
+            runtime_freshness?: components["schemas"]["BindingRuntimeFreshness"];
+            /** @description All binding sections could be read; this does not mean that bindings are healthy or verified. */
+            complete: boolean;
+            bindings: components["schemas"]["AppBindingInventoryItem"][];
+            issues?: components["schemas"]["BindingInventoryIssue"][];
+            /** @description Human-readable, sanitized messages for each issue. */
+            warnings?: string[];
+        };
+        /** @description Counts of authorized workload/secret pairs, derived from versioned receipts. */
+        BindingAdoptionCounts: {
+            current: number;
+            failed: number;
+            stale: number;
+            unknown: number;
+        };
+        /** @description Authorized resident workload and managed secret metadata, with independently versioned reload and application observations. Contains no credential values, hashes or private binding IDs. Empty workload_name means the main workload. */
+        BindingApplicationAckTarget: {
+            /** Format: uuid */
+            deployment_id: string;
+            /** Format: uuid */
+            instance_id: string;
+            workload_name?: string;
+            runtime_state: string;
+            key: string;
+            /** @enum {string} */
+            reload_support: "enabled" | "disabled" | "unknown";
+            /** Format: int64 */
+            current_version: number;
+            /** Format: int64 */
+            reload_version: number;
+            /** @enum {string} */
+            projection?: "updated" | "unchanged" | "failed";
+            /** @enum {string} */
+            signal?: "sent" | "queued" | "failed" | "not_attempted";
+            /** Format: date-time */
+            reload_at?: string;
+            /** Format: int64 */
+            application_ack_version: number;
+            /** @enum {string} */
+            application_ack?: "applied" | "failed";
+            /** Format: date-time */
+            application_ack_at?: string;
+            /** @description Active execution identity; absent for legacy or retired processes. */
+            process_generation?: string;
+            /** @description Execution identity supplied in the application ACK; strict adoption requires it to match process_generation. */
+            application_ack_generation?: string;
+            /**
+             * @description Derived status for this workload and its secret projection and notification.
+             * @enum {string}
+             */
+            reload_status?: "current" | "failed" | "stale" | "unknown";
+            /**
+             * @description Stable sanitized reason for reload_status; contains no raw errors or secret data.
+             * @enum {string}
+             */
+            reload_reason?: "current" | "binding_secret_unexpected" | "target_inconsistent" | "reload_observation_missing" | "reload_observation_time_invalid" | "reload_version_invalid" | "projection_failed" | "signal_failed" | "reload_outcome_unknown" | "reload_stale";
+            /**
+             * @description Derived status for this workload and its application acknowledgement, including process-generation fencing.
+             * @enum {string}
+             */
+            application_ack_status?: "current" | "failed" | "stale" | "unknown";
+            /**
+             * @description Stable sanitized reason for application_ack_status; contains no generation values, raw errors or secret data.
+             * @enum {string}
+             */
+            application_ack_reason?: "current" | "binding_secret_unexpected" | "process_generation_missing" | "process_generation_invalid" | "application_ack_generation_missing" | "application_ack_generation_mismatch" | "target_inconsistent" | "reload_disabled" | "reload_support_unknown" | "application_ack_missing" | "application_ack_time_invalid" | "application_ack_version_invalid" | "application_ack_outcome_unknown" | "application_ack_stale" | "application_ack_failed";
+        };
+        /** @description Metadata-only application self-attestations for managed PostgreSQL or object-storage secrets. Counts refer to workload/secret pairs. Reads use a single state snapshot and include missing reports. Task guests, jobs, mirrors and unauthorized workloads are excluded. Receipts expire when secret versions change, independently of probe age. An older guest projection does not erase a newer application receipt. complete describes this optional observation read; a read failure leaves default checks unchanged and blocks strict checks. */
+        BindingApplicationAdoption: {
+            /** @enum {string} */
+            source: "application_ack";
+            /** @enum {string} */
+            status: "current" | "failed" | "stale" | "unknown" | "inactive";
+            /** Format: date-time */
+            observed_at: string;
+            complete: boolean;
+            secrets_expected: number;
+            secrets_observed: number;
+            reload: components["schemas"]["BindingAdoptionCounts"];
+            application: components["schemas"]["BindingAdoptionCounts"];
+            targets: components["schemas"]["BindingApplicationAckTarget"][];
+        };
+        /** @description Stable, sanitized blocker or warning for the bindings policy. */
+        BindingCheckFinding: {
+            code: string;
+            type?: string;
+            name?: string;
+            binding?: string;
+            scope?: string;
+            /** Format: uuid */
+            deployment_id?: string;
+            message: string;
+        };
+        /** @description Preflight status and safe evidence summary for one binding. */
+        BindingCheckBindingResult: {
+            type: string;
+            name: string;
+            binding?: string;
+            scope: string;
+            /** @description passed, blocked, unsupported or skipped. */
+            status: string;
+            reason?: string;
+            verification_status?: string;
+            /** Format: date-time */
+            checked_at?: string;
+            refresh_status?: string;
+            application_adoption?: components["schemas"]["BindingApplicationAdoption"];
+        };
+        /** @description Safe preflight findings for the declared policy at checked_at. Coverage may be complete, partial or none; a passed report does not independently establish application readiness or credential use. Optional application acknowledgements are version-bound self-attestations. */
+        BindingCheckReport: {
+            /** Format: uuid */
+            expected_deployment_id?: string;
+            app: string;
+            scope: string;
+            /** Format: uuid */
+            deployment_id: string;
+            /** Format: date-time */
+            checked_at: string;
+            /** Format: date-time */
+            inventory_generated_at: string;
+            max_verification_age: string;
+            allow_unsupported: boolean;
+            /** @description Whether this check required application self-attestations for current managed PostgreSQL/object-storage secrets. */
+            require_application_ack?: boolean;
+            passed: boolean;
+            coverage: string;
+            bindings: components["schemas"]["BindingCheckBindingResult"][];
+            runtime: components["schemas"]["BindingRuntimeDeployment"][];
+            issues: components["schemas"]["BindingInventoryIssue"][];
+            blockers: components["schemas"]["BindingCheckFinding"][];
+            warnings: components["schemas"]["BindingCheckFinding"][];
+        };
+        /** @description Explicit provider endpoint declared safe to probe using managed outbound admission. Queries, redirects and unsuccessful expected statuses are unsupported. */
+        OutboundBindingProbePolicy: {
+            /** @enum {string} */
+            method: "GET" | "HEAD";
+            path: string;
+            expected_status: number;
+        };
+        /** @description Policy for a server-enforced bindings promotion; the gate is always required on this route. */
+        BindingPromotionRequest: {
+            /** Format: uuid */
+            expected_serving_deployment_id?: string;
+            /**
+             * @description Positive Go duration; maximum age of passed verification evidence.
+             * @default 10m
+             */
+            max_verification_age: string;
+            /**
+             * @description Explicit queue/outbound connectivity probe waiver; coverage remains partial. Push consumer readiness and the independent 30-second poll window cannot be waived.
+             * @default false
+             */
+            allow_unsupported: boolean;
+            /**
+             * @description Require current managed-secret application receipts; use the dedicated promote-with-application-ack route for compatibility with older servers. The dedicated route always forces true.
+             * @default false
+             */
+            require_application_ack: boolean;
+        };
+        /** @description Atomic traffic transition and the bindings check enforced at its write boundary. */
+        BindingPromotionResponse: {
+            deployment: components["schemas"]["DeploymentResponse"];
+            from_percent: number;
+            to_percent: number;
+            already_promoted: boolean;
+            bindings_check: components["schemas"]["BindingCheckReport"];
+        };
+        /** @description Sanitized durable evidence from the latest admitted service, PostgreSQL or object-storage task guest canary. Object-storage verification checks bucket-list read access only; resident application adoption is not checked. */
+        BindingVerification: {
+            /** @description Outcome of the recorded canary: passed, failed or unknown. May describe stale evidence. */
+            result: string;
+            /** @description Stable reason such as configuration_changed, deployment_changed, probe_pending, report_invalid or report_truncated. */
+            reason?: string;
+            /** @description Currently task_guest. */
+            source: string;
+            /** Format: uuid */
+            deployment_id: string;
+            scope: string;
+            /** Format: date-time */
+            checked_at?: string;
+            /** Format: int64 */
+            credential_generation?: number;
+            checks?: components["schemas"]["BindingVerificationCheck"][];
+        };
+        /** @description One platform canary stage with its bounded status; raw details and errors are omitted. */
+        BindingVerificationCheck: {
+            name: string;
+            /** @description passed, failed or not_checked. */
+            status: string;
+        };
+        /** @description Stable and sanitized reason why a binding inventory section could not be read. */
+        BindingInventoryIssue: {
+            /** @description Binding family or runtime_freshness or binding_refresh whose read was incomplete. */
+            type: string;
+            /** @description Stable reason such as forbidden, unavailable, query_failed, consumer_status_unavailable or managed_postgres_unavailable. */
+            code: string;
+            /** @enum {string} */
+            severity: "warning" | "error";
+            /** @description Sanitized explanation without raw provider errors. */
+            message: string;
+        };
+        /** @description Public binding configuration with separately reported runtime observations and verification status. */
+        AppBindingInventoryItem: {
+            /** @enum {string} */
+            type: "service" | "postgres" | "object_storage" | "queue" | "outbound";
+            name: string;
+            /** @description Logical binding name or environment key. Empty for outbound bindings. */
+            binding: string;
+            /** @description Resource environment scope or app for an app-wide binding. */
+            scope: string;
+            access: string;
+            /** @description Configuration or provisioning state; never evidence of connectivity. */
+            state: string;
+            /** @description Last-known queue consumer liveness (healthy, stale or degraded), otherwise unknown. */
+            runtime_status: string;
+            /** @description Latest platform canary: passed, failed, unknown or stale. Deployment or configuration changes invalidate old evidence. Inventory does not run probes. */
+            verification_status: string;
+            verification?: components["schemas"]["BindingVerification"];
+            refresh?: components["schemas"]["BindingRefresh"];
+            application_adoption?: components["schemas"]["BindingApplicationAdoption"];
+            /**
+             * Format: date-time
+             * @description Scheduler observation time. Absent when no observation exists.
+             */
+            observed_at?: string;
+            http_url?: string;
+            https_env?: string;
+            https_url?: string;
+            transport?: string;
+            /** Format: int64 */
+            credential_generation?: number;
+            rotation_pending?: boolean;
+            consumer_state?: string;
+            consumer_state_reason?: string;
+            consumer_liveness?: string;
+            outbound_probe?: components["schemas"]["OutboundBindingProbePolicy"];
+            credential_configured?: boolean;
+            allowed_methods?: string[];
+            allowed_path_prefixes?: string[];
+        };
+        /** @description App-wide timestamp-based configuration freshness, independent of canary verification. This is not guest acknowledgement, readiness or proof of credential use. Scope filtering selects deployments; task guests, jobs and mirrors are excluded. */
+        BindingRuntimeFreshness: {
+            /** @description Currently instance_started_at. */
+            source: string;
+            /** Format: date-time */
+            observed_at: string;
+            /**
+             * Format: date-time
+             * @description Latest app-wide environment or secret change. Without a stamp, resident freshness is unknown.
+             */
+            config_changed_at?: string;
+            deployments: components["schemas"]["BindingRuntimeDeployment"][];
+        };
+        /** @description A live deployment or one retaining resident app instances. Serving counts running rows; resident includes serving, starting, warm, snapshotting, draining and migrating rows. Parked and terminal rows are excluded. */
+        BindingRuntimeDeployment: {
+            /** Format: uuid */
+            deployment_id: string;
+            scope: string;
+            deployment_status: string;
+            /**
+             * @description Stale residents take precedence, then unknown residents, then starting instances. Current does not imply connectivity or readiness.
+             * @enum {string}
+             */
+            status: "current" | "stale" | "unknown" | "updating" | "inactive";
+            serving: components["schemas"]["BindingRuntimeInstanceCounts"];
+            resident: components["schemas"]["BindingRuntimeInstanceCounts"];
+            /** @description Waking or cold-booting instances, also included in resident counts. */
+            starting: number;
+        };
+        /** @description Disjoint counts compared with the app-wide change stamp. Current means admitted after the stamp; stale means admitted at or before it; unknown means missing stamp or start timestamp. */
+        BindingRuntimeInstanceCounts: {
+            current: number;
+            stale: number;
+            unknown: number;
+        };
+        /** @description Durable rolling restart handoff for a pending PostgreSQL or object-storage rotation. Completion does not imply fresh resident instances or successful verification. Not_queued means no retained outbox record was found; unknown means progress could not be read. */
+        BindingRefresh: {
+            /** Format: uuid */
+            wake_id: string;
+            /** @enum {string} */
+            status: "queued" | "retrying" | "running" | "completed" | "failed" | "not_queued" | "unknown";
+            attempts: number;
+            /** @enum {string} */
+            failure_reason?: "telemetry_missing" | "requests_active" | "quiet_period_not_elapsed" | "restart_attempt_failed";
+            /** Format: date-time */
+            requested_at?: string;
+            /** Format: date-time */
+            completed_at?: string;
+        };
+        /** @description Saved policy intent; draft and unavailable policies do not protect workloads. */
+        FinancialBudgetResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            account_id: string;
+            /** Format: int64 */
+            revision: number;
+            spec: components["schemas"]["FinancialBudgetSpec"];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: date-time */
+            deleted_at?: string;
+            /** @enum {string} */
+            status: "draft" | "unavailable" | "deleted";
+            /** @description False until runtime integrations and acceptance are complete. */
+            enforcement_ready: boolean;
+            reasons: string[];
+        };
+        /** @description Nondeleted account-owned policy intents with separately reported readiness. */
+        FinancialBudgetListResponse: {
+            budgets: components["schemas"]["FinancialBudgetResponse"][];
+        };
+        /** @description New budget intent; this deployment accepts disabled drafts only. */
+        CreateFinancialBudgetRequest: {
+            spec: components["schemas"]["FinancialBudgetSpec"];
+        };
+        /** @description Complete replacement of budget intent guarded by its current revision. */
+        UpdateFinancialBudgetRequest: {
+            /** Format: int64 */
+            expected_revision: number;
+            spec: components["schemas"]["FinancialBudgetSpec"];
+        };
+        /** @description Optimistic revision condition for retaining a policy deletion tombstone. */
+        DeleteFinancialBudgetRequest: {
+            /** Format: int64 */
+            expected_revision: number;
+        };
+        /** @description Immutable intent audit written in the same transaction as the policy. */
+        FinancialBudgetRevisionResponse: {
+            /** Format: uuid */
+            policy_id: string;
+            /** Format: int64 */
+            revision: number;
+            /** @description Authenticated account or API key identity; never a supplied actor value. */
+            actor: string;
+            /** @enum {string} */
+            mutation: "created" | "updated" | "deleted";
+            spec: components["schemas"]["FinancialBudgetSpec"];
+            /** Format: date-time */
+            recorded_at: string;
+        };
+        /** @description Immutable policy revision page and an optional exclusive continuation cursor. */
+        FinancialBudgetHistoryResponse: {
+            revisions: components["schemas"]["FinancialBudgetRevisionResponse"][];
+            /** Format: int64 */
+            next_revision?: number;
+        };
+        /** @description Authoritative account or resource identity; resource ids must belong to the account. */
+        FinancialBudgetScope: {
+            /** @enum {string} */
+            kind: "account" | "project" | "environment" | "app" | "job";
+            /**
+             * Format: uuid
+             * @description Omitted for account scope and required for resource scopes.
+             */
+            id?: string;
+        };
+        /** @description Customer budget intent; activation and enforcement are separately acknowledged. */
+        FinancialBudgetSpec: {
+            /** @description Nonblank name bounded to 128 UTF-8 bytes. */
+            name: string;
+            scope: components["schemas"]["FinancialBudgetScope"];
+            /** @enum {string} */
+            currency: "EUR";
+            /** @description Sorted meter names; strict mode covers compute only. */
+            meters: ("compute" | "egress")[];
+            /**
+             * @description Net usage after the shared account allowance or gross usage before it; strict resource scopes require gross usage.
+             * @enum {string}
+             */
+            basis: "net_usage" | "gross_usage";
+            /** Format: int64 */
+            limit_millicents: number;
+            /** @description Increasing nonnegative thresholds at or below the limit. */
+            notify_millicents: number[];
+            /** @enum {string} */
+            mode: "monitored" | "strict";
+            /** @enum {string} */
+            action: "notify" | "reject_traffic" | "suspend_background" | "stop_previews" | "suspend_workloads";
+            /** @description Notify uses zero; stopping targets drain before the deadline. */
+            drain_seconds: number;
+            /** @enum {string} */
+            resume_rule: "manual" | "next_period";
+            enabled: boolean;
+        };
+        /** @description Proposed budget intent to inspect without saving or activating it. */
+        FinancialBudgetPreviewRequest: {
+            spec: components["schemas"]["FinancialBudgetSpec"];
+        };
+        /** @description Current workload selected or left running by a proposed response. */
+        FinancialBudgetTarget: {
+            /** @enum {string} */
+            kind: "app" | "job";
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: uuid */
+            environment_id?: string;
+            /** Format: uuid */
+            deployment_id?: string;
+            effect: string;
+        };
+        /** @description Known spending, evidence gaps, workload consequences and explicit readiness. */
+        FinancialBudgetPreviewResponse: {
+            spec: components["schemas"]["FinancialBudgetSpec"];
+            /** Format: date-time */
+            period_start: string;
+            /** Format: date-time */
+            period_end: string;
+            /** Format: date-time */
+            as_of: string;
+            /** Format: int64 */
+            known_millicents: number;
+            /** @description Known subtotal is at or above the limit; inspect coverage before inferring complete spending. */
+            known_limit_reached: boolean;
+            coverage_complete: boolean;
+            fresh: boolean;
+            reasons: string[];
+            /** @description False while durable decisions and owner integrations lack acceptance; preview never activates a policy. */
+            enforcement_ready: boolean;
+            guarantee: string;
+            targets: components["schemas"]["FinancialBudgetTarget"][];
+            continuing_targets: components["schemas"]["FinancialBudgetTarget"][];
+        };
+        /** @description Immutable version of a meter's exact price and allowance terms. */
+        FinancialPrice: {
+            version: string;
+            meter: string;
+            /** @enum {string} */
+            currency: "EUR";
+            unit: string;
+            /** Format: int64 */
+            unit_quantity: number;
+            /** Format: int64 */
+            millicents_per_unit: number;
+            /** Format: int64 */
+            included_quantity: number;
+        };
+        /** @description Historical activation of recorded account pricing. */
+        FinancialPriceContract: {
+            price: components["schemas"]["FinancialPrice"];
+            /** @enum {string} */
+            plan: "free" | "hobby" | "pro" | "scale";
+            /** Format: date-time */
+            effective_from: string;
+            /** @enum {string} */
+            delivery_mode: "live" | "shadow" | "off";
+        };
+        /** @description Workload identity retained at first observation, surviving rename and deletion. */
+        FinancialAttribution: {
+            app_id?: string;
+            job_id?: string;
+            project_id?: string;
+            environment_id?: string;
+            deployment_id?: string;
+            name?: string;
+        };
+        /** @description Exact quantity-share allocation; row amounts and account totals reconcile. */
+        FinancialAllocation: {
+            attribution: components["schemas"]["FinancialAttribution"];
+            /** Format: int64 */
+            quantity: number;
+            /** Format: int64 */
+            gross_millicents: number;
+            /** Format: int64 */
+            allowance_millicents: number;
+            /** Format: int64 */
+            net_millicents: number;
+        };
+        /** @description Meter cost priced by one immutable contract with its assigned allowance. */
+        FinancialMeterCost: {
+            price: components["schemas"]["FinancialPrice"];
+            /** Format: int64 */
+            quantity: number;
+            /** Format: int64 */
+            included_quantity: number;
+            /** Format: int64 */
+            gross_millicents: number;
+            /** Format: int64 */
+            allowance_millicents: number;
+            /** Format: int64 */
+            net_millicents: number;
+            allocation_method: string;
+            allocations: components["schemas"]["FinancialAllocation"][];
+        };
+        /** @description One shared period allowance applied across historical rate versions. */
+        FinancialContractCosts: {
+            meter: string;
+            /** Format: int64 */
+            quantity: number;
+            /** Format: int64 */
+            included_quantity: number;
+            /** Format: int64 */
+            net_millicents: number;
+            allowance_method: string;
+            contracts: components["schemas"]["FinancialMeterCost"][];
+        };
+        /** @description Quantity run-rate projection; absent amounts mean unavailable, never zero. */
+        FinancialForecast: {
+            method: string;
+            available: boolean;
+            reason?: string;
+            account_id: string;
+            /** Format: date-time */
+            period_start: string;
+            /** Format: date-time */
+            period_end: string;
+            /** Format: date-time */
+            complete_through: string;
+            price_version: string;
+            meter: string;
+            /** @enum {string} */
+            currency: "EUR";
+            /** Format: int64 */
+            projected_quantity?: number;
+            /** Format: int64 */
+            projected_net_millicents?: number;
+        };
+        /** @description Completeness and freshness of authoritative retained meter evidence. */
+        FinancialMeterCoverage: {
+            complete: boolean;
+            fresh: boolean;
+            /** Format: int64 */
+            expected_minutes: number;
+            /** Format: int64 */
+            complete_minutes: number;
+            /** Format: int64 */
+            unpriced_quantity: number;
+            /** Format: int64 */
+            non_billable_quantity: number;
+            reasons: string[];
+        };
+        /** @description Accrued meter costs, source coverage, historical terms, and forecast. */
+        FinancialMeterCosts: {
+            meter: string;
+            coverage: components["schemas"]["FinancialMeterCoverage"];
+            accrued: components["schemas"]["FinancialContractCosts"];
+            forecast: components["schemas"]["FinancialForecast"];
+            price_contracts: components["schemas"]["FinancialPriceContract"][];
+        };
+        /** @description Account usage costs for a UTC period; invoice facts remain separate. */
+        FinancialCostsResponse: {
+            account_id: string;
+            /** @enum {string} */
+            currency: "EUR";
+            /** Format: date-time */
+            period_start: string;
+            /** Format: date-time */
+            period_end: string;
+            /** Format: date-time */
+            as_of: string;
+            /** Format: date-time */
+            retained_from: string;
+            /** Format: int64 */
+            evidence_through_id: number;
+            /** Format: int64 */
+            known_usage_millicents: number;
+            meters: components["schemas"]["FinancialMeterCosts"][];
+            scope: string;
+            invoices: components["schemas"]["Invoice"][];
+            /** @enum {string} */
+            invoice_reconciliation: "not_reconciled";
+            missing_bill_components: string[];
+        };
+        /** @description Meter projections; a complete bill forecast requires all bill components. */
+        FinancialForecastResponse: {
+            /** Format: date-time */
+            period_start: string;
+            /** Format: date-time */
+            period_end: string;
+            /** Format: date-time */
+            as_of: string;
+            /** @enum {string} */
+            currency: "EUR";
+            meters: components["schemas"]["FinancialMeterCosts"][];
+            bill_estimate_available: boolean;
+            missing_bill_components: string[];
         };
         /** @description Owned app and explicit development graph for local execution. */
         CreateDevBridgeRequest: {
@@ -23823,10 +24104,15 @@ export interface components {
             /** @description OCI STOPSIGNAL (default SIGTERM). Wired into the Engine.StopInstance signal-and-grace flow in M-2. */
             stop_signal?: string | null;
             /**
-             * @description Opt this image's workload into live secret-file refresh by selecting the signal guest-init sends after replacing FAAS_SECRETS_FILE; the app must handle the signal and reload its config. For the main image this remains limited to single-workload deployments; long-running sidecar images are opted in independently. Must differ from stop_signal (ADR-222).
+             * @description Opt this image's workload into live secret-file refresh by selecting the signal guest-init sends after replacing FAAS_SECRETS_FILE; the app must handle the signal and reload its config. Main and long-running sidecar images opt in independently, including deployments with companions; each workload reloads only its own granted secrets. Must differ from stop_signal (ADR-222).
              * @enum {string|null}
              */
             secret_reload_signal?: "SIGHUP" | "SIGUSR1" | "SIGUSR2" | null;
+            /**
+             * @description Wait for the workload to publish FAAS_SECRETS_RELOAD_READY_FILE before sending a secret reload signal. Requires secret_reload_signal. Main and sidecar workloads opt in independently (ADR-506).
+             * @default false
+             */
+            secret_reload_readiness: boolean;
             /** @description OCI StopGracePeriod as a Go duration string (e.g. "30s"). Per-plan cap (Hobby 30s, Pro 60s, Scale 120s) enforced by Validate() — ADR-138 §Decision 4. */
             stop_grace_period?: string | null;
             /**
@@ -33894,12 +34180,26 @@ export interface components {
         };
         /**
          * @description One manual command to execute against the app's live deployment.
+         *     verification_deployment_id optionally selects an exact app-owned,
+         *     materialized live deployment for the reserved service, PostgreSQL,
+         *     object-storage or configured outbound verification probes only. Generic and smoke commands
+         *     cannot select a deployment. An explicit probe requires authorized,
+         *     managed binding metadata and remains live at atomic task admission.
+         *     The selector is supported only on direct POST /v1/apps/{slug}/tasks;
+         *     exclusive-operation task admission rejects it.
          *     `command_shell=false` executes argv directly. Shell mode requires one
          *     command string and is explicit so clients preserve quoting semantics.
          *     `__gregale_service_binding_probe_v1__ <service>` is reserved for the
          *     Gregale HTTPS service-binding canary and is handled by guest-init.
+         *     `__gregale_outbound_binding_probe_v1__ <integration-id>` selects a
+         *     configured outbound probe; the server supplies immutable gateway routing metadata.
          */
         CreateAppTaskRequest: {
+            /**
+             * Format: uuid
+             * @description Exact source deployment for a reserved binding verification probe; omit for the current manual-task selection.
+             */
+            verification_deployment_id?: string;
             command: string[];
             /** @default false */
             command_shell: boolean;
@@ -34606,6 +34906,7 @@ export interface components {
          *     }
          */
         Problem: {
+            bindings_check?: components["schemas"]["BindingCheckReport"];
             /**
              * Format: uri-reference
              * @example https://gregale.dev/docs/errors/validation_failed
@@ -35950,53 +36251,6 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
-        /** @description Account budget receiver. Explicit financial event opt-in; no historical backfill. */
-        CreateFinancialBudgetWebhookRequest: {
-            webhook_secret: string;
-            /** Format: uri */
-            target_url: string;
-            event_filter: ("billing.budget.threshold_crossed" | "billing.budget.limit_reached" | "billing.budget.hold_requested" | "billing.budget.hold_updated" | "billing.budget.hold_released")[];
-            /** @enum {string} */
-            retry_policy?: "default" | "aggressive" | "none";
-            /** @enum {string} */
-            delivery_format?: "json" | "cloudevents";
-            enabled?: boolean;
-        };
-        /** @description Partial financial receiver changes; omitted fields and signing secret remain unchanged. Filter changes affect future decisions. */
-        UpdateFinancialBudgetWebhookRequest: {
-            webhook_secret?: string;
-            /** Format: uri */
-            target_url?: string;
-            event_filter?: ("billing.budget.threshold_crossed" | "billing.budget.limit_reached" | "billing.budget.hold_requested" | "billing.budget.hold_updated" | "billing.budget.hold_released")[];
-            /** @enum {string} */
-            retry_policy?: "default" | "aggressive" | "none";
-            /** @enum {string} */
-            delivery_format?: "json" | "cloudevents";
-            enabled?: boolean;
-        };
-        /** @description Account-owned financial receiver configuration with a masked secret; no plaintext or sealed ciphertext is returned. */
-        FinancialBudgetWebhookResponse: {
-            /** Format: uuid */
-            id: string;
-            /** @enum {string} */
-            scope: "financial_budget";
-            /** Format: uuid */
-            account_id: string;
-            /** @enum {string} */
-            webhook_secret_sealed_masked: "***";
-            /** Format: date-time */
-            created_at: string;
-            /** Format: date-time */
-            updated_at: string;
-            /** Format: uri */
-            target_url: string;
-            event_filter: ("billing.budget.threshold_crossed" | "billing.budget.limit_reached" | "billing.budget.hold_requested" | "billing.budget.hold_updated" | "billing.budget.hold_released")[];
-            /** @enum {string} */
-            retry_policy: "default" | "aggressive" | "none";
-            /** @enum {string} */
-            delivery_format: "json" | "cloudevents";
-            enabled: boolean;
-        };
         /** @description Account-owned release receiver; no app_id because it follows all current and future apps. */
         AccountReleaseWebhookResponse: {
             id: string;
@@ -36665,7 +36919,7 @@ export interface components {
         AppWebhookDeliveryResponse: {
             id: string;
             webhook_id: string;
-            /** @description Omitted for account billing and platform tenant events. */
+            /** @description Omitted for events sourced from a platform tenant rather than one app. */
             app_id?: string;
             /** Format: uuid */
             account_id: string;
@@ -38779,6 +39033,104 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getOutboundBindingProbePolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Customer-owned outbound integration identifier. */
+                integration: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Probe policy */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutboundBindingProbePolicy"];
+                };
+            };
+            /** @description Probe policy lookup was rejected or the catalog is unavailable */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    setOutboundBindingProbePolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Customer-owned outbound integration identifier. */
+                integration: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OutboundBindingProbePolicy"];
+            };
+        };
+        responses: {
+            /** @description Confirmed probe policy */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutboundBindingProbePolicy"];
+                };
+            };
+            /** @description Probe policy update was rejected or could not be persisted */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    deleteOutboundBindingProbePolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Customer-owned outbound integration identifier. */
+                integration: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Probe configuration removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Probe policy removal was rejected or could not be persisted */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     listOutboundIntegrationOffers: {
         parameters: {
             query?: never;
@@ -39040,6 +39392,41 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
             503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getAppBindingInventory: {
+        parameters: {
+            query?: {
+                /** @description Select evidence for this exact app-owned, materialized live deployment, including zero-traffic candidates. No fallback to evidence from another deployment. Omit to use the manual-task selection. */
+                deployment_id?: string;
+                /** @description Filter database and bucket binding scopes. Omit to include all scopes. App-wide service, queue and outbound bindings always remain included. */
+                scope?: string;
+            };
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Complete or partial binding inventory, without credentials. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppBindingInventory"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+            429: components["responses"]["TooManyRequests"];
         };
     };
     listOutboundAppBindings: {
@@ -54594,6 +54981,174 @@ export interface operations {
             429: components["responses"]["TooManyRequests"];
         };
     };
+    promoteDeploymentWithBindings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Deployment UUID in canonical or 32-hex form. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BindingPromotionRequest"];
+            };
+        };
+        responses: {
+            /** @description Promoted deployment and the server-enforced bindings check. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BindingPromotionResponse"];
+                };
+            };
+            /** @description Invalid JSON request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Traffic promotion is not allowed by the account plan or token scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description Bindings check failed or changed, target is unavailable, serving expectation changed, or a managed canary owns traffic. Binding failures include a structured bindings_check report. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid policy duration or deployment identifier. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+            /** @description The check or transaction could not complete; traffic is unchanged. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The binding catalogs cannot enforce the promotion fence. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    promoteDeploymentWithApplicationAck: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Candidate UUID for strict adoption promotion; canonical and compact hexadecimal forms are accepted. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BindingPromotionRequest"];
+            };
+        };
+        responses: {
+            /** @description Traffic receipt confirming bindings checks and required current application acknowledgements. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BindingPromotionResponse"];
+                };
+            };
+            /** @description The strict promotion policy body could not be decoded. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Strict adoption promotion requires an eligible account and deployment write permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description The strict binding/application policy failed or changed, or the candidate, serving expectation or managed canary prevents promotion. A bindings_check report accompanies adoption failures. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The strict promotion request supplied an invalid evidence age or deployment expectation. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+            /** @description Application adoption promotion could not finish its observation read or traffic transaction. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Strict promotion cannot share a transaction fence across its binding catalogs and traffic backend. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     advanceDeploymentCanary: {
         parameters: {
             query?: never;
@@ -64758,296 +65313,6 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             422: components["responses"]["ValidationFailed"];
-            503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    listFinancialBudgetWebhooks: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Owned financial receiver collection with masked secrets. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FinancialBudgetWebhookResponse"][];
-                };
-            };
-            400: components["responses"]["ValidationFailed"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
-            503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    createFinancialBudgetWebhook: {
-        parameters: {
-            query?: never;
-            header?: {
-                /** @description Optional retry identity for registering this budget receiver. Changed input requires a new key. */
-                "Idempotency-Key"?: string;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateFinancialBudgetWebhookRequest"];
-            };
-        };
-        responses: {
-            /** @description Newly registered financial receiver with its sealed secret masked. */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FinancialBudgetWebhookResponse"];
-                };
-            };
-            400: components["responses"]["ValidationFailed"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
-            /** @description Budget receiver limit exceeded. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    getFinancialBudgetWebhook: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Account-owned financial receiver identity for /v1/billing/budget-webhooks/{id}. */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Selected financial receiver configuration without plaintext or ciphertext secrets. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FinancialBudgetWebhookResponse"];
-                };
-            };
-            400: components["responses"]["ValidationFailed"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
-            503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    deleteFinancialBudgetWebhook: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Account-owned financial receiver identity for /v1/billing/budget-webhooks/{id}. */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Financial receiver and delivery history removed; policy audit retained. */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            400: components["responses"]["ValidationFailed"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
-            503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    updateFinancialBudgetWebhook: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Account-owned financial receiver identity for /v1/billing/budget-webhooks/{id}. */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateFinancialBudgetWebhookRequest"];
-            };
-        };
-        responses: {
-            /** @description Updated financial receiver configuration; omitted secret remains unchanged. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FinancialBudgetWebhookResponse"];
-                };
-            };
-            400: components["responses"]["ValidationFailed"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
-            503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    listFinancialBudgetWebhookDeliveries: {
-        parameters: {
-            query?: {
-                /** @description Maximum returned financial deliveries; defaults to 100. */
-                page_size?: number;
-                /** @description Opaque continuation token from the preceding financial-delivery page; at most 512 bytes. */
-                page_token?: string;
-            };
-            header?: never;
-            path: {
-                /** @description Account-owned financial receiver identity for /v1/billing/budget-webhooks/{id}/deliveries. */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description One page of retained budget notification deliveries and an optional continuation token. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AppWebhookDeliveryListResponse"];
-                };
-            };
-            400: components["responses"]["ValidationFailed"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
-            503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    getFinancialBudgetWebhookDeliveryHealth: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Account-owned financial receiver identity for /v1/billing/budget-webhooks/{id}/health. */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Current financial receiver queue and cooldown health snapshot. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AppWebhookDeliveryHealthResponse"];
-                };
-            };
-            400: components["responses"]["ValidationFailed"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
-            503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    listFinancialBudgetWebhookDeliveryAttempts: {
-        parameters: {
-            query?: {
-                /** @description Maximum returned completed attempts; defaults to 100. */
-                page_size?: number;
-                /** @description Opaque continuation token from the preceding completed-attempt page; at most 512 bytes. */
-                page_token?: string;
-            };
-            header?: never;
-            path: {
-                /** @description Account-owned financial receiver identity for /v1/billing/budget-webhooks/{id}/deliveries/{did}/attempts. */
-                id: string;
-                /** @description Stable HTTP delivery identity under the selected financial receiver for /v1/billing/budget-webhooks/{id}/deliveries/{did}/attempts. */
-                did: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Completed attempts for this financial delivery with an optional continuation token. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AppWebhookDeliveryAttemptListResponse"];
-                };
-            };
-            400: components["responses"]["ValidationFailed"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
-            503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    retryFinancialBudgetWebhookDelivery: {
-        parameters: {
-            query?: never;
-            header?: {
-                /** @description Optional retry identity for re-arming this dead financial delivery after an ambiguous response. */
-                "Idempotency-Key"?: string;
-            };
-            path: {
-                /** @description Account-owned financial receiver identity for /v1/billing/budget-webhooks/{id}/deliveries/{did}/retry. */
-                id: string;
-                /** @description Stable HTTP delivery identity under the selected financial receiver for /v1/billing/budget-webhooks/{id}/deliveries/{did}/retry. */
-                did: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Dead financial delivery re-armed with its stable identity and prior history preserved. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AppWebhookRetryDeliveryResponse"];
-                };
-            };
-            400: components["responses"]["ValidationFailed"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
             503: components["responses"]["ServiceUnavailable"];
         };
     };
