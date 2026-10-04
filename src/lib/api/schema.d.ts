@@ -22797,9 +22797,16 @@ export interface components {
         AppWakeResponse: {
             /**
              * Format: uuid
-             * @description Wake id stamped on the admitted instance and wake timeline.
+             * @description Wake id on the admitted instance and wake timeline (the running instance's when already_running).
              */
             wake_id: string;
+            /** @description True when the app already had a routable running instance and no wake was queued. */
+            already_running?: boolean;
+            /**
+             * Format: uuid
+             * @description The running instance, present when already_running is true.
+             */
+            instance_id?: string;
         };
         /** @description Optional per-source gateway limit evaluated before consumer-key lookup, JWT verification, and VM wake. App-wide and failed-response budgets are replica-local; exact routes can opt into shared request budgets. Observe mode records threshold crossings without rejecting requests. */
         PreAuthRateLimitConfig: {
@@ -51322,6 +51329,15 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The app already has a routable running instance; no wake is queued. wake_id is that instance's wake id. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppWakeResponse"];
+                };
+            };
             /** @description Wake accepted and correlated. */
             202: {
                 headers: {
