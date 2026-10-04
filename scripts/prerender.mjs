@@ -33,6 +33,9 @@ const ROUTES = [
   '/',
   '/login',
   '/signup',
+  '/privacy',
+  '/terms',
+  '/support',
   '/status',
   '/will-it-run',
   NOT_FOUND_ROUTE,
@@ -43,7 +46,7 @@ const ROUTES = [
 /** Routes worth indexing. /login and /signup are prerendered so their link
  *  previews are right, but they are not search results. Docs are the opposite:
  *  they are most of the reason anyone would find this site through a search. */
-const INDEXABLE = ['/', '/status', '/will-it-run', ...DOC_ROUTES];
+const INDEXABLE = ['/', '/privacy', '/terms', '/support', '/status', '/will-it-run', ...DOC_ROUTES];
 
 const DIST = 'dist';
 const TEMPLATE = join(DIST, 'index.html');
