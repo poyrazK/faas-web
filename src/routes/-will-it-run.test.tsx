@@ -70,14 +70,20 @@ async function renderPage(search: string) {
 }
 
 function mockReport(report: Report) {
-  vi.spyOn(api, 'GET').mockImplementation(
+  vi.spyOn(
+    api as unknown as { GET: (path: string, options?: unknown) => Promise<unknown> },
+    'GET'
+  ).mockImplementation(
     async () => ({ data: report, response: new Response(null, { status: 200 }) }) as never
   );
 }
 
 function mockProblem(code: string, status: number) {
   const body = { type: 'about:blank', title: 'Problem', status, code };
-  vi.spyOn(api, 'GET').mockImplementation(
+  vi.spyOn(
+    api as unknown as { GET: (path: string, options?: unknown) => Promise<unknown> },
+    'GET'
+  ).mockImplementation(
     async () =>
       ({
         error: body,

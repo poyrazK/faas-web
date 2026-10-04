@@ -10,6 +10,7 @@ import { Pill, ResourceTable, type Column } from '@/components/dashboard/resourc
 import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
 import { useToast } from '@/components/ui/toast';
 import { useConfirm } from '@/components/ui/confirm';
+import { SigningSecretEditor } from '@/components/dashboard/signing-secret-editor';
 import {
   useCreateWebhook,
   useDeleteWebhook,
@@ -37,22 +38,31 @@ interface WebhookRow {
 }
 
 const EVENTS = [
-  'cron.fired',
-  'cron.fired.manually',
-  'app.created',
-  'app.deleted',
-  'app.deployed',
-  'app.scaled',
   'app.parked',
   'app.woken',
-  'build.succeeded',
-  'build.failed',
+  'deployment.live',
   'deployment.failed',
+  'rollout.completed',
   'rollout.aborted',
-  'error.new',
   'job.finished',
-  'preview.created',
-  'budget.threshold',
+  'usage_statement.finalized',
+  'issue.created',
+  'issue.assigned',
+  'issue.resolved',
+  'issue.reopened',
+  'issue.ignored',
+  'issue.regressed',
+  'issue.impact_threshold_reached',
+  'debug.regression.detected',
+  'debug.regression.resolved',
+  'routes.requirements.violated',
+  'routes.requirements.recovered',
+  'routes.requirements.changed',
+  'routes.health.blocked',
+  'routes.health.resumed',
+  'routes.health.aborted',
+  'routes.monitor.violated',
+  'routes.monitor.recovered',
 ] as const;
 type Event = (typeof EVENTS)[number];
 type RetryPolicy = 'default' | 'aggressive' | 'none';
@@ -177,6 +187,7 @@ export function WebhooksBody({ slug }: { slug: string }) {
   const update = useUpdateWebhook(slug);
   const remove = useDeleteWebhook(slug);
   const rotate = useRotateWebhookSecret(slug);
+  const [rotationID, setRotationID] = useState('');
 
   const [target, setTarget] = useState('');
   const [secret, setSecret] = useState('');
@@ -265,27 +276,7 @@ export function WebhooksBody({ slug }: { slug: string }) {
           <button
             type="button"
             aria-label={`Rotate secret for ${w.target}`}
-            onClick={async () => {
-              if (
-                !(await confirm({
-                  title: 'Rotate this webhook secret?',
-                  description:
-                    'A new HMAC secret is minted server-side. Deliveries signed with the old one stop verifying immediately — update the receiver first.',
-                  confirmLabel: 'Rotate secret',
-                }))
-              )
-                return;
-              void rotate
-                .mutateAsync(w.id)
-                .then(() => toast({ kind: 'success', title: 'Secret rotated' }))
-                .catch((err: unknown) =>
-                  toast({
-                    kind: 'error',
-                    title: 'Could not rotate',
-                    description: errorMessage(err),
-                  })
-                );
-            }}
+            onClick={() => setRotationID(w.id)}
             className="text-muted-foreground transition-colors hover:text-foreground"
           >
             <Refresh className="h-3.5 w-3.5" />
@@ -325,6 +316,15 @@ export function WebhooksBody({ slug }: { slug: string }) {
 
   return (
     <div className="flex flex-col gap-6">
+      {rotationID && (
+        <SigningSecretEditor
+          onClose={() => setRotationID('')}
+          onSave={async (webhook_secret) => {
+            await rotate.mutateAsync({ id: rotationID, webhook_secret });
+            toast({ kind: 'success', title: 'Secret replaced' });
+          }}
+        />
+      )}
       <Panel
         lit
         title="Add a webhook"
@@ -346,6 +346,7 @@ export function WebhooksBody({ slug }: { slug: string }) {
                 webhook_secret: secret,
                 event_filter: events,
                 retry_policy: retryPolicy,
+                delivery_format: 'json',
                 enabled: true,
               })
               .then(() => {

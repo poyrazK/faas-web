@@ -97,7 +97,7 @@ describe('NewAppWizard Git submission', () => {
     const summary = await screen.findByText('Resource settings');
     const details = summary.closest('details');
     expect(details).not.toHaveAttribute('open');
-    expect(screen.getByText('128 MB · Parks when idle')).toBeVisible();
+    await waitFor(() => expect(screen.getByText('128 MB · Parks when idle')).toBeVisible());
     await user.click(summary);
     expect(details).toHaveAttribute('open');
     expect(screen.getByRole('switch', { name: /scale to zero/i })).toBeVisible();

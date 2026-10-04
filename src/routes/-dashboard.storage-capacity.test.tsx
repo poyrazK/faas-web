@@ -21,7 +21,10 @@ let fails: boolean;
 beforeEach(() => {
   fails = false;
   account = { plan: 'free', app_count: 1, limits: { deployed_apps: 3 } };
-  vi.spyOn(api, 'GET').mockImplementation(async (path) => {
+  vi.spyOn(
+    api as unknown as { GET: (path: string, options?: unknown) => Promise<unknown> },
+    'GET'
+  ).mockImplementation(async (path) => {
     if (path === '/v1/account') {
       if (fails) throw new Error('Account capacity unavailable');
       return { data: account, response: new Response() } as never;
@@ -85,7 +88,9 @@ it('does not invent a zero count while loading, and supports retry after failure
 });
 
 it('keeps quota numbers hidden until the account response arrives', async () => {
-  vi.mocked(api.GET).mockImplementation(() => new Promise(() => {}));
+  vi.mocked(
+    (api as unknown as { GET: (path: string, options?: unknown) => Promise<unknown> }).GET
+  ).mockImplementation(() => new Promise(() => {}));
   await mount();
   expect(screen.getByText('Loading app capacity…')).toBeInTheDocument();
   expect(screen.queryByRole('meter')).not.toBeInTheDocument();

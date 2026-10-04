@@ -58,7 +58,8 @@ async function mount() {
 
 beforeEach(() => {
   failOlder = false;
-  vi.spyOn(api, 'GET').mockImplementation(async (path, options) => {
+  const testAPI = api as unknown as { GET: (path: string, options?: unknown) => Promise<unknown> };
+  vi.spyOn(testAPI, 'GET').mockImplementation(async (path, options) => {
     const query = (options as { params?: { query?: { before?: string; limit?: number } } })?.params
       ?.query;
     if (path !== '/v1/audit-log') throw new Error(`Unexpected GET ${path}`);
@@ -68,7 +69,7 @@ beforeEach(() => {
         ? { entries: [olderEntry], limit: 1 }
         : { entries: [firstEntry], limit: 1, next_before: 'audit-cursor-1' },
       response: new Response(),
-    } as never;
+    };
   });
 });
 

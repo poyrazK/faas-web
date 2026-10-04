@@ -102,6 +102,7 @@ const analytics: components['schemas']['RequestAnalyticsResponse'] = {
   routes: [],
   routes_limit: 50,
   routes_truncated: false,
+  dependencies_truncated: false,
 };
 const ready = (data: unknown) => ({ data, isPending: false, error: null, refetch: vi.fn() });
 const failed = (error: unknown) => ({ data: undefined, isPending: false, error, refetch: vi.fn() });

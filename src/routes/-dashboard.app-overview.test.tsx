@@ -35,8 +35,6 @@ const deployment = (over: Partial<Deployment> = {}): Deployment => ({
   kind: 'github',
   image_digest: 'sha256:abcdef1234567890',
   created_at: '2026-09-12T12:00:00Z',
-  rollback_on_5xx: false,
-  first_5xx_count: 0,
   min_instances: 0,
   traffic_percent: 100,
   build_id: 'build-new',

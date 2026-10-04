@@ -67,7 +67,12 @@ describe('AlertPresets', () => {
       expect(enable).toHaveBeenCalledWith({
         slug: 'api',
         name: 'error_rate_2pct',
-        body: { webhook_url: 'https://hooks.example.com/a', webhook_secret: 'shh', enabled: true },
+        body: {
+          webhook_url: 'https://hooks.example.com/a',
+          webhook_secret: 'shh',
+          action: 'webhook',
+          enabled: true,
+        },
       })
     );
   });

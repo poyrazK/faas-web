@@ -136,6 +136,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
           ram_mb: input.memoryMb,
           // Defaulted in the spec, but openapi-typescript makes defaulted
           // properties required, so the API defaults are sent explicitly.
+          visibility: 'public',
+          health_path: '/healthz',
+          health_path_wakes: false,
+          session_affinity: false,
+          version_affinity_managed_cookie: false,
+          revision_pin_ttl_seconds: 0,
           cpu_millicores: 1000,
           head_wakes: false,
           crawler_policy: 'wake',

@@ -790,6 +790,7 @@ function FunctionDetailPage() {
                     repo: deployRepo.trim(),
                     ref: deployRef.trim(),
                     format: 'tarball',
+                    no_triggers: false,
                   })
                   .then((deployment) => {
                     setActiveDeployment({

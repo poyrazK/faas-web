@@ -21,7 +21,8 @@ let noApps: boolean;
 let appFails: boolean;
 beforeEach(() => {
   empty = doctorFails = noApps = appFails = false;
-  vi.spyOn(api, 'GET').mockImplementation(async (path) => {
+  const testAPI = api as unknown as { GET: (path: string, options?: unknown) => Promise<unknown> };
+  vi.spyOn(testAPI, 'GET').mockImplementation(async (path) => {
     if (path === '/v1/domains/{domain}/doctor' && doctorFails) throw new Error('DNS probe offline');
     if (path === '/v1/apps' && appFails) throw new Error('App lookup offline');
     const data =

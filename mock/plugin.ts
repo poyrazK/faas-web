@@ -450,7 +450,7 @@ route('POST', '/v1/apps', ({ body }) => {
     runtime: (body.runtime as db.App['runtime']) ?? 'node24',
     ram_mb: Number(body.ram_mb ?? 256),
     min_instances: 0,
-    status: 'pending',
+    status: 'undeployed',
     url: `https://${slug}.gregale.app`,
   };
   db.apps.push(created);
@@ -469,7 +469,11 @@ route('POST', '/v1/apps/{slug}/wake', ({ params }) => {
   return NO_CONTENT;
 });
 route('POST', '/v1/apps/{slug}/park', ({ params }) => {
-  app(params.slug).status = 'parked';
+  const target = app(params.slug);
+  for (const instance of db.instances.filter((row) => row.app_id === target.id)) {
+    instance.state = 'parked';
+    instance.resident = false;
+  }
   return NO_CONTENT;
 });
 const PATCHABLE = [
@@ -515,12 +519,10 @@ route('POST', '/v1/apps/{slug}/deployments/source-ref', ({ params, body }) => {
     status: 'building',
     created_at: db.iso(0),
     traffic_percent: 0,
-    rollback_on_5xx: false,
-    first_5xx_count: 0,
     scan: null,
   };
   db.deployments.unshift(dep);
-  a.status = 'deploying';
+  a.status = 'active';
   return status(202, dep);
 });
 route('POST', '/v1/apps/{slug}/rollback', ({ params }) => {
@@ -563,6 +565,9 @@ route('PUT', '/v1/apps/{slug}/secrets/{key}', ({ params }) => {
   const created = {
     key: params.key,
     scope: 'default',
+    secret_class: 'persistent' as const,
+    delivery_version: 1,
+    delivery_status: 'pending' as const,
     kid: db.id().slice(0, 8),
     created_at: now,
     updated_at: now,
@@ -822,7 +827,13 @@ route('PATCH', '/v1/apps/{slug}/alerts/{id}', ({ params, body }) => {
   rule.updated_at = db.iso(0);
   return rule;
 });
-route('POST', '/v1/apps/{slug}/alerts/{id}/rotate-secret', ({ params }) => {
+route('POST', '/v1/apps/{slug}/alerts/{id}/rotate-secret', ({ params, body }) => {
+  if (
+    typeof body.webhook_secret !== 'string' ||
+    !body.webhook_secret ||
+    body.webhook_secret.length > 256
+  )
+    throw new Problem(400, 'validation_failed', 'Provide a replacement signing secret.');
   const rule = listOf(db.alerts, params.slug).find((r) => r.id === params.id);
   if (!rule) throw new Problem(404, 'alert_rule_not_found');
   rule.updated_at = db.iso(0);
@@ -889,6 +900,7 @@ route('POST', '/v1/apps/{slug}/mirrors', ({ params, body }) => {
     percent,
     enabled: true,
     include_body: body.include_body === true,
+    allow_unsafe_methods: body.allow_unsafe_methods === true,
     redact_headers: Array.isArray(body.redact_headers) ? body.redact_headers.map(String) : [],
     always_stripped_headers: ['Authorization', 'Cookie'],
     created_at: db.iso(0),
@@ -1511,6 +1523,7 @@ type AnalyticsMethod = NonNullable<AnalyticsTimeseries['method']>;
 
 const ANALYTICS_WINDOW_HOURS: Record<string, number> = { '24h': 24, '3d': 72, '7d': 168 };
 const ANALYTICS_GROUPS: Record<AnalyticsGroupBy, string[]> = {
+  consumer_id: ['consumer-one', 'consumer-two'],
   route: ['/orders', '/orders/{id}', '/health', '/search'],
   country: ['DE', 'TR', 'US', 'FR'],
   referrer_host: ['acme.example', 'news.example', '(direct)'],
@@ -2265,6 +2278,7 @@ route('POST', '/v1/apps/{slug}/webhooks', ({ params, body }) => {
       ? (body.event_filter as (typeof list)[number]['event_filter'])
       : [],
     retry_policy: (body.retry_policy ?? 'default') as (typeof list)[number]['retry_policy'],
+    delivery_format: (body.delivery_format ?? 'json') as (typeof list)[number]['delivery_format'],
     enabled: body.enabled !== false,
     created_at: db.iso(0),
     updated_at: db.iso(0),
@@ -2289,7 +2303,13 @@ route('DELETE', '/v1/apps/{slug}/webhooks/{id}', ({ params }) => {
   list.splice(i, 1);
   return NO_CONTENT;
 });
-route('POST', '/v1/apps/{slug}/webhooks/{id}/rotate-secret', ({ params }) => {
+route('POST', '/v1/apps/{slug}/webhooks/{id}/rotate-secret', ({ params, body }) => {
+  if (
+    typeof body.webhook_secret !== 'string' ||
+    !body.webhook_secret ||
+    body.webhook_secret.length > 256
+  )
+    throw new Problem(400, 'validation_failed', 'Provide a replacement signing secret.');
   const hook = listOf(db.webhooks, params.slug).find((w) => w.id === params.id);
   if (!hook) throw new Problem(404, 'webhook_not_found');
   hook.updated_at = db.iso(0);
@@ -2597,7 +2617,7 @@ route('GET', '/v1/apps/{slug}/logs', ({ params, query, req, res }) => {
   }
 
   // A parked app has nothing to say; the stream ends the way the real one does.
-  if (a.status === 'parked') {
+  if (a.status === 'evicted_cold') {
     send(
       'log',
       JSON.stringify({
@@ -3642,6 +3662,7 @@ route('POST', '/v1/crons', ({ body }) => {
     id: db.id(),
     app_id: a.id,
     schedule,
+    kind: 'http' as const,
     path: String(body.path ?? '/'),
     enabled: body.enabled !== false,
     timezone: String(body.timezone ?? 'UTC'),
@@ -3785,6 +3806,7 @@ route('POST', '/v1/apps/{slug}/edge-rules', ({ params, body }) => {
     app_id: a.id,
     match_host: String(body.match_host ?? ''),
     match_path: String(body.match_path ?? '/*'),
+    match_headers: {},
     match_methods: Array.isArray(body.match_methods) ? (body.match_methods as string[]) : [],
     priority: Number(body.priority ?? 100),
     enabled: body.enabled !== false,
@@ -4195,11 +4217,10 @@ route('DELETE', '/v1/orgs/{slug}/members/{user_id}', ({ params }) => {
   members.splice(i, 1);
   return NO_CONTENT;
 });
-route('DELETE', '/v1/orgs/{slug}/invitations/{token}', ({ params }) => {
+route('DELETE', '/v1/orgs/{slug}/invitations/{invitation_id}', ({ params }) => {
   requireOrgRole(params.slug, ['owner', 'admin']);
-  const hash = createHash('sha256').update(Buffer.from(params.token, 'base64url')).digest('hex');
   const inv = db.invitations.find(
-    (x) => invitationTokenHashes.get(x.id) === hash && x.org_slug === params.slug
+    (x) => x.id === params.invitation_id && x.org_slug === params.slug
   );
   if (!inv || inv.status !== 'pending' || Date.parse(inv.expires_at) <= Date.now())
     throw new Problem(410, 'org_invitation_invalid');
@@ -4615,7 +4636,7 @@ route('GET', '/v1/cron-fire-now-requests/{request_id}', ({ params }) => {
 const ERR_FP = 'fp_5c1a9b2e77d34fa0';
 route('GET', '/v1/apps/{slug}/errors/summary', ({ params }) => {
   const a = db.apps.find((x) => x.slug === params.slug);
-  const failing = a?.status === 'error';
+  const failing = a && db.deploymentStateFor(a) === 'failed';
   return {
     generated_at: new Date().toISOString(),
     app_id: a?.id ?? 'unknown',

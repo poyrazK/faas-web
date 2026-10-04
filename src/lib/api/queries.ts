@@ -478,7 +478,12 @@ export function useScheduleDelayedTask(slug: string) {
       unwrap(
         api.POST('/v1/apps/{slug}/delayed-tasks', {
           params: { path: { slug } },
-          body: { scheduled_at: input.scheduledAt, payload: input.payload },
+          body: {
+            scheduled_at: input.scheduledAt,
+            payload: input.payload,
+            method: 'POST',
+            path: '/',
+          },
         })
       ),
   });
@@ -2848,10 +2853,12 @@ export function useUpdateAlert(slug: string) {
 export function useRotateAlertSecret(slug: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
+    gcTime: 0,
+    mutationFn: ({ id, webhook_secret }: { id: string; webhook_secret: string }) =>
       unwrap(
         api.POST('/v1/apps/{slug}/alerts/{id}/rotate-secret', {
           params: { path: { slug, id } },
+          body: { webhook_secret },
         })
       ),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.appAlerts(slug) }),
@@ -2893,10 +2900,12 @@ export function useDeleteWebhook(slug: string) {
 export function useRotateWebhookSecret(slug: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
+    gcTime: 0,
+    mutationFn: ({ id, webhook_secret }: { id: string; webhook_secret: string }) =>
       unwrap(
         api.POST('/v1/apps/{slug}/webhooks/{id}/rotate-secret', {
           params: { path: { slug, id } },
+          body: { webhook_secret },
         })
       ),
     onSuccess: () => qc.invalidateQueries({ queryKey: webhookKey(slug) }),
@@ -2968,10 +2977,10 @@ export function useRemoveMember(org: string) {
 export function useRevokeInvitation(org: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (token: string) =>
+    mutationFn: (invitation_id: string) =>
       unwrap(
-        api.DELETE('/v1/orgs/{slug}/invitations/{token}', {
-          params: { path: { slug: org, token } },
+        api.DELETE('/v1/orgs/{slug}/invitations/{invitation_id}', {
+          params: { path: { slug: org, invitation_id } },
         })
       ),
     onSuccess: () => qc.invalidateQueries({ queryKey: orgKey(org, 'invitations') }),

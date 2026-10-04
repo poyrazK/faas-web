@@ -30,8 +30,8 @@ interface Row {
   id: string;
   route: string;
   method: string;
-  status: number;
-  latency: number;
+  status: number | null;
+  latency: number | null;
   cold: boolean;
   received: string;
   deployment: string;
@@ -41,7 +41,8 @@ interface Row {
 /** Only windows the plan actually retains — the server clamps silently. */
 export { WINDOWS } from './debug-search';
 
-function statusColor(status: number): string {
+function statusColor(status: number | null): string {
+  if (status === null) return 'var(--muted-foreground)';
   if (status >= 500) return 'var(--status-critical)';
   if (status >= 400) return 'var(--status-warning)';
   return 'var(--status-good)';
@@ -56,22 +57,22 @@ export function DebugRequests({ slug, search, onSelect }: { slug: string } & Deb
 
   const rows: Row[] = (data?.requests ?? [])
     .filter((r) => {
-      if (filter === 'failed') return r.status >= 400 && r.status < 600;
-      if (filter === 'slow') return r.latency_ms >= SLOW_MS;
+      if (filter === 'failed') return r.status !== undefined && r.status >= 400 && r.status < 600;
+      if (filter === 'slow') return r.latency_ms !== undefined && r.latency_ms >= SLOW_MS;
       if (filter === 'cold') return r.cold_boot === true;
       if (filter === 'regressions')
         return regressions.data?.regressions.some((item) => matchesRegression(r, item));
       return true;
     })
     .map((r) => ({
-      id: r.id,
-      route: r.route,
-      method: r.method,
-      status: r.status,
-      latency: r.latency_ms,
+      id: r.id ?? r.trace_id ?? r.received_at,
+      route: r.route ?? 'Unavailable',
+      method: r.method ?? 'Unavailable',
+      status: r.status ?? null,
+      latency: r.latency_ms ?? null,
       cold: r.cold_boot,
       received: r.received_at,
-      deployment: r.deployment_id,
+      deployment: r.deployment_id ?? '',
       trace: r.trace_id ?? '',
     }));
 
@@ -91,14 +92,23 @@ export function DebugRequests({ slug, search, onSelect }: { slug: string } & Deb
       key: 'status',
       label: 'Status',
       width: 'w-24',
-      render: (r) => <Pill label={String(r.status)} color={statusColor(r.status)} />,
+      render: (r) => (
+        <Pill
+          label={r.status === null ? 'Unavailable' : String(r.status)}
+          color={statusColor(r.status)}
+        />
+      ),
     },
     {
       key: 'latency',
       label: 'Latency',
       numeric: true,
       width: 'w-28',
-      render: (r) => <span className="[font-variant-numeric:tabular-nums]">{r.latency} ms</span>,
+      render: (r) => (
+        <span className="[font-variant-numeric:tabular-nums]">
+          {r.latency === null ? 'Unavailable' : `${r.latency} ms`}
+        </span>
+      ),
     },
     {
       key: 'cold',

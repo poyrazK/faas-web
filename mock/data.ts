@@ -83,15 +83,25 @@ export const publicStatus: S['PublicStatusOverview'] = {
       value: 99.97,
       unit: '%',
       target: 99.9,
+      sample_status: 'sufficient',
       comparison: 'gte',
     },
-    { id: 'wake_p95', label: 'Wake p95', value: 284, unit: 'ms', target: 350, comparison: 'lte' },
+    {
+      id: 'wake_p95',
+      label: 'Wake p95',
+      value: 284,
+      unit: 'ms',
+      target: 350,
+      sample_status: 'sufficient',
+      comparison: 'lte',
+    },
     {
       id: 'build_success',
       label: 'Build success',
       value: 98.8,
       unit: '%',
       target: 99,
+      sample_status: 'sufficient',
       comparison: 'gte',
     },
   ],
@@ -184,6 +194,9 @@ export const account: S['AccountResponse'] = {
   status: 'active',
   limits: {
     plan: 'pro',
+    vcpu: 2,
+    preview_apps: 25,
+    deploys_per_hour: 120,
     ram_mb: 4096,
     max_concurrency: 64,
     deployed_apps: 25,
@@ -251,6 +264,13 @@ export const apps: App[] = APP_SEEDS.map((a, i) => ({
   slug: a.slug,
   type: a.type,
   runtime: a.runtime,
+  visibility: 'public',
+  vcpu: 2,
+  build_cache_hit_rate_pct: 0,
+  consumer_auth_mode: 'optional',
+  platform_tenant_required: false,
+  version_affinity_managed_cookie: false,
+  revision_pin_ttl_seconds: 0,
   ram_mb: a.ram,
   cpu_millicores: 500,
   configured_resources: { memory_mb: a.ram, cpu_millicores: 500 },
@@ -270,12 +290,15 @@ export const apps: App[] = APP_SEEDS.map((a, i) => ({
     request_budget_ms: 30000,
     request_budget_max_ms: 300000,
     response_write_timeout_s: 60,
+    concurrency_queue_depth: 128,
+    concurrency_queue_wait_ms: 5000,
+    request_body_max_bytes: 6291456,
   },
   max_concurrency: a.type === 'app' ? 8 : 4,
   concurrency_per_vm: 5,
   idle_timeout_s: 60,
   min_instances: a.min,
-  status: a.status,
+  status: a.status === 'parked' ? 'evicted_cold' : 'active',
   url: `https://${a.slug}.gregale.app`,
   manifest: {
     entrypoint: a.runtime.startsWith('node')
@@ -287,6 +310,11 @@ export const apps: App[] = APP_SEEDS.map((a, i) => ({
     head_wakes: false,
     crawler_policy: 'wake',
     healthz: '/healthz',
+    health_path: '/healthz',
+    health_path_wakes: false,
+    session_affinity: false,
+    version_affinity_managed_cookie: false,
+    revision_pin_ttl_seconds: 0,
   },
   autoscale_target_rps: 50,
   autoscale_target_cpu_pct: 70,
@@ -317,6 +345,13 @@ export const slugById = (appId: string) => apps.find((a) => a.id === appId)?.slu
 
 const digest = () => `sha256:${hex(64)}`;
 
+export function deploymentStateFor(app: App): string {
+  const current = deployments.find((row) => row.app_id === app.id);
+  if (current) return current.status;
+  const seed = APP_SEEDS.find((item) => item.slug === app.slug);
+  return seed?.status === 'error' ? 'failed' : seed?.status === 'deploying' ? 'building' : 'live';
+}
+
 export const deployments: Deployment[] = [];
 export const builds: Build[] = [];
 
@@ -330,9 +365,9 @@ for (const app of apps) {
     // here meant the console's live deployments rendered as "building" in
     // dev and the drift stayed invisible.
     const status = latest
-      ? app.status === 'error'
+      ? deploymentStateFor(app) === 'failed'
         ? 'failed'
-        : app.status === 'deploying'
+        : deploymentStateFor(app) === 'building'
           ? 'building'
           : 'live'
       : rand() < 0.12
@@ -359,8 +394,6 @@ for (const app of apps) {
       created_at: iso(ageMs),
       min_instances: app.min_instances,
       traffic_percent: latest ? 100 : 0,
-      rollback_on_5xx: false,
-      first_5xx_count: 0,
       scan: null,
     };
     deployments.push(dep);
@@ -463,7 +496,7 @@ const RANGE_HOURS: Record<string, number> = {
 
 export function metricsFor(app: App, range: string): S['AppMetricsResponse'] {
   const r = (RANGE_HOURS[range] ?? 24) * (SCALE[app.slug] ?? 0.1);
-  const failing = app.status === 'error';
+  const failing = deploymentStateFor(app) === 'failed';
   return {
     app_id: app.id,
     range: (range in RANGE_HOURS ? range : '24h') as S['AppMetricsResponse']['range'],
@@ -499,6 +532,8 @@ export const routesFor = (app: App): S['AppRoutesResponse'] => ({
         ]
       : ['/', '/healthz', '/invoke'],
   source: 'live',
+  collectors_expected: 1,
+  collectors_healthy: 1,
   cap_hit: false,
 });
 
@@ -514,7 +549,15 @@ export const secrets = new Map<string, S['AppSecretResponse'][]>(
       'STRIPE_SECRET_KEY',
       'JWT_SIGNING_KEY',
       a.type === 'app' ? 'REDIS_URL' : 'S3_SECRET',
-    ].map((key) => ({ key, scope: 'default', kid: hex(8), ...stamp() })),
+    ].map((key) => ({
+      key,
+      scope: 'default',
+      secret_class: 'persistent' as const,
+      delivery_version: 1,
+      delivery_status: 'pending' as const,
+      kid: hex(8),
+      ...stamp(),
+    })),
   ])
 );
 
@@ -532,7 +575,7 @@ export const env = new Map<string, S['AppEnvResponse'][]>(
 export const upstreams = new Map<string, S['DataUpstreamResponse'][]>(
   apps.map((a) => [
     a.slug,
-    a.status === 'parked'
+    a.status === 'evicted_cold'
       ? []
       : [
           { kind: 'postgres', port: 5432, host_last4: 'neon' },
@@ -585,8 +628,8 @@ export const alerts = new Map<string, S['AlertRuleResponse'][]>(
       webhook_secret_sealed_masked: '***',
       cooldown_minutes: 30,
       action: 'webhook',
-      state: a.status === 'error' && r.metric === 'error_rate_pct' ? 'firing' : 'ok',
-      last_fired_at: a.status === 'error' ? iso(22 * 60_000) : undefined,
+      state: deploymentStateFor(a) === 'failed' && r.metric === 'error_rate_pct' ? 'firing' : 'ok',
+      last_fired_at: deploymentStateFor(a) === 'failed' ? iso(22 * 60_000) : undefined,
       last_evaluated_at: iso(60_000),
       ...stamp(),
     })),
@@ -614,6 +657,7 @@ export const mirrorRules = new Map<string, S['MirrorRuleResponse'][]>(
           percent: 25,
           enabled: true,
           include_body: false,
+          allow_unsafe_methods: false,
           redact_headers: ['X-Tenant-Id'],
           always_stripped_headers: ['Authorization', 'Cookie'],
           created_at: iso(3 * D),
@@ -837,6 +881,7 @@ export const webhooks = new Map<string, S['AppWebhookResponse'][]>(
       webhook_secret_sealed_masked: '***' as const,
       event_filter: w.filter as S['AppWebhookResponse']['event_filter'],
       retry_policy: 'default' as const,
+      delivery_format: 'json',
       enabled: true,
       ...stamp(),
     })),
@@ -861,6 +906,7 @@ export const crons: S['CronResponse'][] = [
   {
     id: id(),
     app_id: apps[3].id,
+    kind: 'http',
     schedule: '0 2 * * *',
     path: '/run',
     enabled: true,
@@ -872,6 +918,7 @@ export const crons: S['CronResponse'][] = [
   {
     id: id(),
     app_id: apps[5].id,
+    kind: 'http',
     schedule: '*/15 * * * *',
     path: '/reconcile',
     enabled: true,
@@ -883,6 +930,7 @@ export const crons: S['CronResponse'][] = [
   {
     id: id(),
     app_id: apps[4].id,
+    kind: 'http',
     schedule: '0 */6 * * *',
     path: '/reindex',
     enabled: false,
@@ -894,6 +942,7 @@ export const crons: S['CronResponse'][] = [
   {
     id: id(),
     app_id: apps[1].id,
+    kind: 'http',
     schedule: '30 4 * * 1',
     path: '/purge-cache',
     enabled: true,
@@ -1026,6 +1075,7 @@ export const edgeRules: S['EdgeRuleResponse'][] = (
   app_id: apps[r.app].id,
   match_host: r.host,
   match_path: r.path,
+  match_headers: {},
   match_methods: r.kind === 'cors' ? ['GET', 'OPTIONS'] : [],
   priority: (i + 1) * 10,
   enabled: r.kind !== 'maintenance',
@@ -1036,7 +1086,7 @@ export const edgeRules: S['EdgeRuleResponse'][] = (
 }));
 
 export const invocations: S['Invocation'][] = Array.from({ length: 40 }, (_, i) => {
-  const app = pick(apps.filter((a) => a.status !== 'parked'));
+  const app = pick(apps.filter((a) => a.status !== 'evicted_cold'));
   const state = pick([
     'completed',
     'completed',
@@ -1070,19 +1120,25 @@ export const invocations: S['Invocation'][] = Array.from({ length: 40 }, (_, i) 
 });
 
 export const instances: S['InstanceResponse'][] = apps.flatMap((a) => {
-  const n = a.status === 'parked' ? 1 : a.status === 'active' ? int(1, 3) : 1;
+  const n = a.status === 'evicted_cold' ? 1 : a.status === 'active' ? int(1, 3) : 1;
   const dep = deployments.find((d) => d.app_id === a.id)!;
   return Array.from({ length: n }, () => ({
     id: id(),
     app_id: a.id,
     deployment_id: dep.id,
-    state: a.status === 'parked' ? 'parked' : a.status === 'deploying' ? 'pending' : 'running',
+    state:
+      a.status === 'evicted_cold'
+        ? 'parked'
+        : deploymentStateFor(a) === 'building'
+          ? 'pending'
+          : 'running',
     host_ip: `10.40.${int(0, 3)}.${int(10, 250)}`,
     ram_mb: a.ram_mb,
+    resident: a.status !== 'evicted_cold',
     wake_id: `wk_${hex(6)}`,
     started_at: iso(between(0.2, 30) * H),
-    last_request_at: a.status === 'parked' ? iso(14 * H) : iso(between(1, 400) * 1000),
-    parked_at: a.status === 'parked' ? iso(13 * H) : null,
+    last_request_at: a.status === 'evicted_cold' ? iso(14 * H) : iso(between(1, 400) * 1000),
+    parked_at: a.status === 'evicted_cold' ? iso(13 * H) : null,
     min_instances_target: a.min_instances,
   }));
 });
@@ -1283,7 +1339,7 @@ export const queuePeek = (app: App): S['QueuePeekResponse'] => ({
 export const queueDeadLetter = (app: App): S['QueueDeadLetterResponse'] => ({
   app_slug: app.slug,
   messages: Array.from(
-    { length: app.status === 'error' ? 4 : app.status === 'active' ? int(0, 2) : 0 },
+    { length: deploymentStateFor(app) === 'failed' ? 4 : app.status === 'active' ? int(0, 2) : 0 },
     () => ({
       id: id(),
       created_at: iso(int(2, 40) * H),
@@ -1407,7 +1463,7 @@ export function logFrame(app: App): LogFrame {
   const instance = instances.find((i) => i.app_id === app.id)?.id ?? id();
   // An app the fleet considers failing says so in its output, which is also
   // what makes the error view worth looking at in the mock.
-  const failing = app.status === 'error';
+  const failing = deploymentStateFor(app) === 'failed';
   const roll = rand() * (failing ? 0.35 : 1);
   const base = { ts: new Date().toISOString(), instance_id: instance };
 
