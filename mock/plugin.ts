@@ -536,6 +536,61 @@ route('POST', '/v1/apps/{slug}/rollback', ({ params }) => {
   db.deployments.unshift(dep);
   return status(202, dep);
 });
+route('GET', '/v1/apps/{slug}/health', ({ params }) => {
+  const a = app(params.slug);
+  const serving = db.deployments.filter(
+    (d) => d.app_id === a.id && d.status === 'live' && (d.traffic_percent ?? 0) > 0
+  );
+  const latest = db.deployments.find((d) => d.app_id === a.id);
+  const failed = latest?.status === 'failed';
+  const idle = ['parked', 'evicted_cold'].includes(a.status);
+  return {
+    app_id: a.id,
+    status: failed ? 'degraded' : 'unknown',
+    phase:
+      latest?.status === 'building'
+        ? 'deploying'
+        : idle
+          ? 'idle'
+          : serving.length
+            ? 'serving'
+            : 'not_deployed',
+    scope: 'default',
+    summary: failed
+      ? 'The latest deployment failed. Inspect its release details.'
+      : 'Request and readiness evidence are not simulated by this preview.',
+    evaluated_at: new Date().toISOString(),
+    valid_for_seconds: 120,
+    serving_deployment_ids: serving.map((d) => d.id),
+    latest_deployment_id: latest?.id,
+    capacity: { known: false, required: 0, ready: 0, starting: 0, unready: 0, unknown: 0 },
+    checks: [
+      ...(failed
+        ? [
+            {
+              code: 'latest_deployment' as const,
+              status: 'warning' as const,
+              detail: 'The latest deployment failed.',
+              action: 'deployments' as const,
+              deployment_id: latest.id,
+            },
+          ]
+        : []),
+      {
+        code: 'readiness',
+        status: 'unknown',
+        detail: 'Readiness is not simulated by this preview.',
+        action: 'logs',
+      },
+      {
+        code: 'requests',
+        status: 'unknown',
+        detail: 'Request telemetry is not simulated by this preview.',
+        action: 'metrics',
+      },
+    ],
+  } satisfies components['schemas']['AppHealthResponse'];
+});
 route('GET', '/v1/apps/{slug}/metrics', ({ params, query }) =>
   db.metricsFor(app(params.slug), query.get('range') ?? '24h')
 );
