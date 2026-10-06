@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { consoleHead, pageHead, SITE_NAME } from './seo';
+import { readFileSync } from 'node:fs';
+import { consoleHead, pageHead, SITE_DESCRIPTION, SITE_NAME } from './seo';
 import { NAV_ITEMS } from '@/components/dashboard/nav-config';
 
 const titleOf = (head: ReturnType<typeof pageHead>) =>
@@ -79,5 +80,21 @@ describe('titles across the app', () => {
     ].map(titleOf);
 
     expect(new Set(titles).size).toBe(titles.length);
+  });
+});
+
+describe('SITE_DESCRIPTION', () => {
+  it('leads with the wedge rather than the mechanism', () => {
+    expect(SITE_DESCRIPTION).toMatch(/without the cold start/i);
+    expect(SITE_DESCRIPTION.length).toBeLessThanOrEqual(160);
+  });
+
+  it('is the same string index.html serves, in both meta tags', () => {
+    // The description lives in three places (here, and twice in index.html
+    // for description + og:description) because the shell has to carry it
+    // before React boots. Nothing keeps them in sync but this test.
+    const html = readFileSync('index.html', 'utf8');
+    const contents = [...html.matchAll(/content="([^"]*)"/g)].map((m) => m[1]);
+    expect(contents.filter((c) => c === SITE_DESCRIPTION)).toHaveLength(2);
   });
 });

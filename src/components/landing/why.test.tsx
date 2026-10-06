@@ -9,6 +9,24 @@ import { REASONS, Why } from './why';
  * one body is always open, and moving focus opens the card under it.
  */
 describe('Why', () => {
+  it('leads with the scale-to-zero wedge, in order', () => {
+    expect(REASONS.map((r) => r.title)).toEqual([
+      'Idle costs nothing',
+      'No cold-start tax',
+      'Its own kernel',
+      'Bring your own state',
+    ]);
+  });
+
+  it('keeps the wake figure out of the reason bodies', () => {
+    // The number lives once, in the hero, with its measurement boundary
+    // attached (see hero.test.tsx). A card body restating it would be a
+    // bare claim with the caveat stripped off.
+    for (const r of REASONS) {
+      expect(r.body).not.toMatch(/350\s*ms/);
+    }
+  });
+
   it('shows all four reasons with the second open by default', () => {
     render(<Why />);
     for (const r of REASONS) {

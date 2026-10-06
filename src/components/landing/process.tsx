@@ -17,7 +17,7 @@ const Tick = () => <Check className="size-3 shrink-0 text-brand" />;
 export const STEPS: readonly Step[] = [
   {
     title: 'Deploy',
-    body: 'Connect your GitHub repository, choose a branch or commit, and follow the build to a live app. Each release keeps its source and build details together.',
+    body: 'Connect a repo and pick a branch. Every pull request gets its own URL under your domain, and egress stays denied by default until you open it.',
     mosaic: [
       [1, 4, 2],
       [2, 3, 1],
@@ -35,23 +35,8 @@ export const STEPS: readonly Step[] = [
     panel: <DeploymentPreview />,
   },
   {
-    title: 'Wake',
-    body: 'Let quiet apps scale to zero instead of keeping an instance running. Requests wake them again. For latency-sensitive workloads, supported plans let you keep instances warm.',
-    mosaic: [
-      [5, 0, 0],
-      [4, 1, 2],
-      [3, 2, 0],
-      [2, 3, 1],
-      [4, 3, 1],
-      [5, 4, 2],
-      [6, 2, 2],
-    ],
-    links: [{ label: 'How wakes work', doc: 'scale-to-zero' }],
-    panel: <WakeSourcesPreview />,
-  },
-  {
     title: 'Run',
-    body: 'Use Node.js, Python, or Go, and connect the database or object store you already use. Store connection details as secrets, not in your source code.',
+    body: 'Node, Python or Go, each in a microVM of its own. The database or bucket you already use goes in as a sealed secret, never in your source.',
     mosaic: [
       [1, 0, 2],
       [2, 1, 0],
@@ -95,8 +80,23 @@ export const STEPS: readonly Step[] = [
     ),
   },
   {
+    title: 'Park & wake',
+    body: 'When traffic stops, the app snapshots to disk and drops to zero. The next request — or a cron tick, or a queue message — restores that snapshot instead of booting from scratch.',
+    mosaic: [
+      [5, 0, 0],
+      [4, 1, 2],
+      [3, 2, 0],
+      [2, 3, 1],
+      [4, 3, 1],
+      [5, 4, 2],
+      [6, 2, 2],
+    ],
+    links: [{ label: 'How wakes work', doc: 'scale-to-zero' }],
+    panel: <WakeSourcesPreview />,
+  },
+  {
     title: 'Observe',
-    body: 'See your app’s status, inspect a release, and read its logs in the console. When a deployment fails, start with its failure details instead of guessing what happened.',
+    body: 'Streamed logs, a trace for every invocation, and a deployment that failed for a reason you can read instead of guess at.',
     mosaic: [
       [5, 0, 0],
       [3, 1, 1],

@@ -1,6 +1,8 @@
 import { motion, useReducedMotion } from 'motion/react';
 import { ArrowRight } from 'iconoir-react';
 import { SweepLink } from '@/components/sweep-link';
+import { RestoreTarget } from '@/components/restore-target';
+import { RESTORE_CONTEXT } from '@/lib/platform-claims';
 import { DeployTerminal } from './deploy-terminal';
 import { InstallCommand } from './install-command';
 import { EASE } from './reveal';
@@ -63,9 +65,9 @@ export function Hero() {
             className="animate-hero-enter relative text-balance text-[40px] font-semibold leading-[0.98] tracking-[-0.065em] text-[#212121] sm:text-[58px] lg:text-[62px]"
             style={{ animationDelay: '0.06s' }}
           >
-            Build the API. <br />
+            Always deployed. <br />
             <span className="bg-gradient-to-r from-[color-mix(in_oklab,var(--brand)_70%,#3987e5)] via-brand to-[#2f9d86] bg-clip-text text-transparent">
-              We’ll run it.
+              Never always-on.
             </span>
           </h1>
 
@@ -73,8 +75,8 @@ export function Hero() {
             className="animate-hero-enter relative mt-6 max-w-[30rem] text-pretty text-[15px] leading-[1.5] text-[#3d4a45] sm:text-[17px]"
             style={{ animationDelay: '0.12s' }}
           >
-            Deploy APIs and functions from your repository. Gregale runs them in isolated microVMs,
-            scales them to zero when idle, and wakes them when requests arrive.
+            Deploy once and the URL keeps working. When traffic stops your API parks as a snapshot —
+            and the next request restores it instead of booting it from scratch.
           </p>
 
           {/* the pill: install command on the left, the action on the right */}
@@ -112,7 +114,8 @@ export function Hero() {
           <DeployTerminal />
         </motion.div>
         <p className="mb-8 text-center font-mono text-[11px] text-muted-foreground">
-          Example deployment and requests. Timings are illustrative, not a performance guarantee.
+          Example deployment and requests; timings are illustrative. <RestoreTarget />.{' '}
+          <span>{RESTORE_CONTEXT}</span>
         </p>
       </section>
     </>
