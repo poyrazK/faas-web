@@ -3,6 +3,7 @@ import { RefreshDouble } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { ErrorState, InlinePhase, LoadingState, UnreachableState, queryPhase } from './primitives';
+import { LogStreamRecovery } from './log-stream-recovery';
 import { ReleaseStatusLabel } from './release-status-label';
 import { useLogStream } from '@/lib/api/logs';
 import { useApp, useApps, useBuild, useDeployment } from '@/lib/api/queries';
@@ -286,14 +287,20 @@ export function ReleaseDetailPanel({
               </>
             )}
             {activeSection === 'output' && (
-              <div>
+              <div className="flex flex-col gap-3">
+                <LogStreamRecovery
+                  status={buildLog.status}
+                  reason={buildLog.reason}
+                  canRetry={buildLog.canRetry}
+                  retry={buildLog.retry}
+                />
                 {buildLog.lines.length ? (
                   <LogView lines={buildLog.lines} className="max-h-72" />
                 ) : (
                   <p className="text-sm text-muted-foreground">
                     {!resolvedDeploymentId
                       ? 'Build output is available once a deployment is attached.'
-                      : buildLog.status === 'connecting'
+                      : buildLog.status === 'connecting' || buildLog.status === 'reconnecting'
                         ? 'Reading the build log…'
                         : buildLog.status === 'error'
                           ? `The build log disconnected${buildLog.reason ? `: ${buildLog.reason}` : '.'}`

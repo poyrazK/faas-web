@@ -40,6 +40,7 @@ import { errorMessage } from '@/lib/api/errors';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import { consoleHead } from '@/lib/seo';
+import { LogStreamRecovery } from '@/components/dashboard/log-stream-recovery';
 import { DeploymentGate } from '@/components/dashboard/deployment-gate';
 import { hasRunnableDeployment } from '@/lib/deployment-status';
 
@@ -68,6 +69,7 @@ interface LogsSearch {
 const STATUS_LABEL: Record<string, { label: string; color?: string }> = {
   idle: { label: 'idle' },
   connecting: { label: 'connecting', color: 'var(--status-warning)' },
+  reconnecting: { label: 'reconnecting', color: 'var(--status-warning)' },
   streaming: { label: 'live', color: 'var(--status-good)' },
   paused: { label: 'paused', color: 'var(--status-warning)' },
   ended: { label: 'ended' },
@@ -145,7 +147,7 @@ export function LogsBody({
     [mode, slug, chosenInstance, date, grep, level]
   );
   // An archive read is a one-shot fetch, so the pause switch does not apply.
-  const { lines, status, reason, error, truncated, clear } = useLogStream(
+  const { lines, status, reason, error, truncated, clear, canRetry, retry } = useLogStream(
     source,
     mode === 'archive' ? true : connected
   );
@@ -369,13 +371,13 @@ export function LogsBody({
         </div>
       </div>
 
-      {/* An unknown `level` comes back as an SSE error frame with a code, which
-          is worth more than a generic disconnect. */}
-      {status === 'error' && reason && (
+      {mode === 'live' ? (
+        <LogStreamRecovery status={status} reason={reason} canRetry={canRetry} retry={retry} />
+      ) : status === 'error' && reason ? (
         <p role="alert" className="text-xs text-muted-foreground">
-          The stream stopped: <span className="font-mono">{reason}</span>
+          The archive could not be read: <span className="font-mono">{reason}</span>
         </p>
-      )}
+      ) : null}
       {mode === 'archive' && lines.length > 0 && reason && (
         <p className="text-xs text-muted-foreground">
           {lines.length} lines from {date}. {ARCHIVE_REASON[reason] ?? reason}
@@ -412,9 +414,13 @@ export function LogsBody({
                 ? 'Reading the archive…'
                 : (reason && ARCHIVE_REASON[reason]) ||
                   (error ? errorMessage(error) : 'Nothing archived for this instance and date.')
-              : connected
-                ? 'Waiting for output. A parked app produces nothing until it wakes.'
-                : 'Paused. Resume to stream logs.'
+              : status === 'reconnecting'
+                ? 'Waiting to reconnect…'
+                : status === 'error'
+                  ? 'The log stream is disconnected.'
+                  : connected
+                    ? 'Waiting for output. A parked app produces nothing until it wakes.'
+                    : 'Paused. Resume to stream logs.'
           }
         />
       ) : (
