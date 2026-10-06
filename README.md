@@ -530,3 +530,22 @@ calling a function with the wrong type.
 Formatting was adopted after the bulk of the code was written; `npm run format`
 was applied across the tree in a single dedicated commit, kept separate so it
 never obscures a real change.
+
+### Release recovery
+
+Release detail offers cancellation only for pending, building, imaging, and
+snapshotting attempts. Live, superseded, cancelled, failed, and unknown states
+explain why cancellation is unavailable. Only a failed record can be retried.
+Both actions require confirmation; a state change during the dialog cancels the
+submission. The retry names the selected original release and starts a new
+attempt from its recorded source/image and release inputs. The backend currently
+rebuilds retained source instead of restoring intermediate checkpoints, so all
+build and security stages run again. Missing original source is an explicit
+rejection; the UI never substitutes current editor configuration.
+
+Recovery refreshes global and app history even on permission or terminal-state
+races. Accepted retries link directly to their new record and disable another
+submission. Retrying is non-idempotent: automatic mutation retries are disabled,
+and a dropped/5xx response directs the user to inspect history before refreshing
+and trying again. It cannot claim failure or start a second attempt while the
+first request's outcome is unknown.
