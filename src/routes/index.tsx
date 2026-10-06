@@ -5,7 +5,8 @@ import { Nav } from '@/components/landing/nav';
 import { Hero } from '@/components/landing/hero';
 import { HowItWorks } from '@/components/landing/how-it-works';
 import { Process } from '@/components/landing/process';
-import { Why } from '@/components/landing/why';
+import { FeatureExplorer } from '@/components/landing/feature-explorer';
+import { PracticalQuestions } from '@/components/landing/practical-questions';
 import { Pricing } from '@/components/landing/pricing';
 import { Footer } from '@/components/landing/footer';
 import { clearOAuthPending, hasOAuthPending, hasOnboarded, useAuth } from '@/lib/auth';
@@ -39,7 +40,8 @@ function LandingPage() {
           <Hero />
           <HowItWorks />
           <Process />
-          <Why />
+          <FeatureExplorer />
+          <PracticalQuestions />
           <Pricing />
         </main>
         <Footer />
