@@ -12,7 +12,7 @@ const metaOf = (head: ReturnType<typeof pageHead>, key: string) =>
 
 describe('pageHead', () => {
   it('gives the untitled (landing) case the bare brand string', () => {
-    expect(titleOf(pageHead())).toBe('Gregale — Backend hosting, now in beta');
+    expect(titleOf(pageHead())).toBe('Gregale — Your backend, working together');
   });
 
   it('suffixes the brand so the distinguishing half survives a narrow tab', () => {
@@ -84,8 +84,10 @@ describe('titles across the app', () => {
 });
 
 describe('SITE_DESCRIPTION', () => {
-  it('leads with the wedge rather than the mechanism', () => {
-    expect(SITE_DESCRIPTION).toMatch(/without the cold start/i);
+  it('states the backend platform and beta versus preview availability', () => {
+    expect(SITE_DESCRIPTION).toMatch(/APIs, services and background work/i);
+    expect(SITE_DESCRIPTION).toMatch(/Hosting is in public beta/i);
+    expect(SITE_DESCRIPTION).toMatch(/are in preview/i);
     expect(SITE_DESCRIPTION.length).toBeLessThanOrEqual(160);
   });
 

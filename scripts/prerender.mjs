@@ -165,8 +165,8 @@ for (const route of ROUTES) {
           operatingSystem: 'Linux',
           url: `${SITE_URL}/`,
           description:
-            'Scale to zero without the cold start. Deploy your API from a repo; Gregale parks it '  +
-            'when idle and restores it from a snapshot on the next request.',
+            'Bring APIs, services and background work onto one platform. Hosting is in public beta; ' +
+            'background jobs, workflows and internal services are in preview.',
           softwareHelp: `${SITE_URL}/docs`,
         },
       ],
