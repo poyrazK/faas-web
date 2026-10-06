@@ -2,7 +2,6 @@ import { Link } from '@tanstack/react-router';
 import { ArrowRight, ArrowUpRight, Check } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { SweepLink } from '@/components/sweep-link';
-import { InstallCommand } from './install-command';
 import { Reveal } from './reveal';
 import { TextReveal } from './text-reveal';
 import { FloorGlow } from './floor-glow';
@@ -42,9 +41,9 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
   {
     title: 'Product',
     links: [
-      { label: 'How it works', href: '#how' },
-      { label: 'Why microVMs', href: '#why' },
-      { label: 'Deploying', href: '#deploy' },
+      { label: 'Deploy your API', href: '#deploy' },
+      { label: 'Features', href: '#why' },
+      { label: 'Practical questions', href: '#questions' },
       { label: 'Pricing', href: '#pricing' },
     ],
   },
@@ -232,8 +231,8 @@ export function Footer() {
             className="relative mt-5 text-4xl leading-[1.08] sm:text-5xl"
             delay={0.1}
             segments={[
-              { text: 'Put your next API' },
-              { text: 'on Gregale.', className: 'text-brand' },
+              { text: 'Start with your API.' },
+              { text: 'Grow from there.', className: 'text-brand' },
             ]}
           />
 
@@ -241,8 +240,8 @@ export function Footer() {
               have landed. */}
           <Reveal delay={0.45}>
             <p className="relative mx-auto mt-4 max-w-md text-balance text-muted-foreground">
-              Start with a side project, demo, or non-critical workload. Deploy it, try the console,
-              and help us learn what needs to work better during beta.
+              Join the public beta with a demo, side project or another non-critical workload. Bring
+              the work around it onto Gregale as the platform grows.
             </p>
 
             <div className="relative mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
@@ -257,7 +256,17 @@ export function Footer() {
                   <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
                 </SweepLink>
               </Button>
-              <InstallCommand />
+              <Link
+                to="/docs"
+                className="group relative isolate flex h-11 min-w-0 items-center overflow-hidden rounded-full border border-border bg-card/70 pl-5 pr-2 text-left font-mono text-sm text-muted-foreground outline-none backdrop-blur-sm transition-[box-shadow,border-color] duration-300 hover:border-brand/40 hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 motion-reduce:transition-none"
+              >
+                <span className="relative z-10 flex min-w-0 flex-1 items-center gap-3">
+                  Read the docs
+                  <span className="ml-auto flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground group-hover:bg-secondary">
+                    <ArrowRight className="size-3.5" />
+                  </span>
+                </span>
+              </Link>
             </div>
 
             <ul className="relative mt-9 flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
