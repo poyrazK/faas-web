@@ -202,7 +202,7 @@ function resolveDocHref(href: string, sourcePath?: string): string {
 
 export function Markdown({ source, sourcePath }: { source: string; sourcePath?: string }) {
   return (
-    <div className="text-sm">
+    <div className="docs-prose">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
