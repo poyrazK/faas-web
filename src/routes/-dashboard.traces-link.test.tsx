@@ -9,11 +9,12 @@ import {
   RouterProvider,
 } from '@tanstack/react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from '@/lib/api/errors';
 import { Route as Traces } from './dashboard.traces';
 
 const listedId = 'a'.repeat(32);
 const olderId = 'b'.repeat(32);
-const mocks = vi.hoisted(() => ({ read: vi.fn(), missing: false }));
+const mocks = vi.hoisted(() => ({ read: vi.fn(), missing: false, errorStatus: 0 }));
 vi.mock('@/lib/api/queries', () => ({
   useApps: () => ({ data: [{ id: 'app1', slug: 'api' }] }),
   useInfiniteInvocations: () => ({
@@ -41,7 +42,7 @@ vi.mock('@/lib/api/queries', () => ({
     mocks.read(id);
     return {
       data:
-        id && !mocks.missing
+        id && !mocks.missing && !mocks.errorStatus
           ? {
               id,
               state: 'completed',
@@ -52,7 +53,14 @@ vi.mock('@/lib/api/queries', () => ({
             }
           : undefined,
       isPending: false,
-      error: null,
+      error: mocks.errorStatus
+        ? new ApiError({
+            status: mocks.errorStatus,
+            code: mocks.errorStatus === 404 ? 'invocation_not_found' : 'forbidden',
+            title: 'Invocation unavailable',
+            detail: 'This invocation is unavailable.',
+          })
+        : null,
     };
   },
 }));
@@ -61,6 +69,7 @@ vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn() }));
 beforeEach(() => {
   mocks.read.mockReset();
   mocks.missing = false;
+  mocks.errorStatus = 0;
 });
 async function mount(entry: string) {
   const root = createRootRoute({ component: Outlet });
@@ -117,6 +126,17 @@ describe('invocation detail links', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(mocks.read).not.toHaveBeenCalledWith('invalid/path');
   });
+  it.each([403, 404])(
+    'keeps a denied or stale ID visible without substituting list data (%s)',
+    async (status) => {
+      mocks.errorStatus = status;
+      const { router } = await mount(`/dashboard/traces?invocation=${olderId}`);
+      expect(screen.getByRole('dialog')).toHaveTextContent(olderId);
+      expect(screen.getByRole('dialog')).toHaveTextContent('This invocation is unavailable.');
+      expect(screen.getByRole('dialog')).not.toHaveTextContent('POST /work');
+      expect(router.state.location.search.invocation).toBe(olderId);
+    }
+  );
   it('handles an unavailable linked invocation without selecting another record', async () => {
     mocks.missing = true;
     await mount(`/dashboard/traces?invocation=${olderId}`);

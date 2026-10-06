@@ -1,5 +1,5 @@
 import { RESTORE_TARGET, RESTORE_CONTEXT } from '@/lib/platform-claims';
-import { useId, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createFileRoute, Link, useParams } from '@tanstack/react-router';
 import { motion, useReducedMotion } from 'motion/react';
 import { ArrowLeft, OpenNewWindow, Pause, Play, Refresh, Rocket } from 'iconoir-react';
@@ -36,6 +36,13 @@ import { useAuth } from '@/lib/auth';
 import { isPaidPlan } from '@/lib/plan';
 import { cn } from '@/lib/utils';
 import { LogsBody } from './dashboard.logs';
+import {
+  logFilters,
+  logsSearch,
+  logsSearchPatch,
+  validateLogsSearch,
+  type LogsSearch,
+} from '@/components/dashboard/logs-search';
 import { RoutesBody } from './dashboard.apis';
 import { SecretsBody } from './dashboard.secrets';
 import { EnvBody } from './dashboard.env';
@@ -139,8 +146,10 @@ export const Route = createFileRoute('/dashboard/workflows/$workflowId')({
   // no query string behind.
   validateSearch: (
     search: Record<string, unknown>
-  ): DebugSearch & { tab?: Tab; deployment?: string; releaseSection?: ReleaseSection } => ({
+  ): DebugSearch &
+    LogsSearch & { tab?: Tab; deployment?: string; releaseSection?: ReleaseSection } => ({
     ...validateDebugSearch(search),
+    ...logsSearchPatch(validateLogsSearch(search)),
     tab: TABS.includes(search.tab as Tab) ? (search.tab as Tab) : undefined,
     deployment:
       typeof search.deployment === 'string' && search.deployment ? search.deployment : undefined,
@@ -157,6 +166,15 @@ function FunctionDetailPage() {
   // Preserve nested investigations when the operator leaves and returns to a tab.
   const setTab = (next: Tab) =>
     navigate({ search: (current) => ({ ...current, tab: next }), hash: true });
+  useEffect(() => {
+    if (search.tab === 'Logs' && search.mode === 'archive' && !search.date) {
+      void navigate({
+        replace: true,
+        search: (current) => ({ ...current, ...logsSearchPatch(logsSearch(logFilters(search))) }),
+        hash: true,
+      });
+    }
+  }, [search, navigate]);
   const tabsId = useId();
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const reduce = useReducedMotion();
@@ -732,7 +750,20 @@ function FunctionDetailPage() {
                 hasRunnable={hasRunnable}
                 onRetry={() => void appDeploymentQuery.refetch()}
               >
-                <LogsBody slug={fn.id} />
+                <LogsBody
+                  slug={fn.id}
+                  filters={logFilters(search)}
+                  onFilters={(filters, replace) => {
+                    void navigate({
+                      replace,
+                      search: (current) => ({
+                        ...current,
+                        ...logsSearchPatch(logsSearch(filters)),
+                      }),
+                      hash: true,
+                    });
+                  }}
+                />
               </DeploymentCapability>
             )}
             {tab === 'Errors' && <ErrorsBody slug={fn.id} />}

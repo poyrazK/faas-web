@@ -224,6 +224,15 @@ that budget. Pause, server-reported errors, completed streams, and archive
 reads do not automatically retry. Recovery preserves the displayed buffer;
 the API does not guarantee replay of lines missed during a disconnect.
 
+Log investigation URLs on `/dashboard/logs` and the app's Logs tab restore
+`app` (or the app path), `mode`, `level`, `q`, `instance`, and UTC `date`.
+Text filters apply on Enter. Explicit edits add browser history; default archive
+coordinates replace the current entry. Saved views include archive coordinates.
+An unavailable app link does not fall back to another app. Invocation drawers
+use `/dashboard/traces?invocation=<id>`, including IDs outside loaded history;
+refresh and browser navigation retain that selection. Invalid filters are ignored,
+and unavailable or denied records remain explicit error states.
+
 The command palette searches account-scoped deployment, domain, API-key,
 and invocation metadata while a query is entered. Search results are grouped
 by resource type and open detail URLs. Historical results cover loaded pages;
