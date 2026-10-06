@@ -30,6 +30,8 @@ export interface DocEntry {
   slug: string;
   /** Path in the upstream repository. */
   source: string;
+  /** Locally authored customer guides must not be overwritten by docs:pull. */
+  local?: boolean;
   title: string;
   /** One line, used on the index and as the meta description. */
   summary: string;
