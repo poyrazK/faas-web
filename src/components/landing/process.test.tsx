@@ -3,20 +3,22 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { withRouter } from '@/test/router';
 import { Process, STEPS } from './process';
+import { DeploymentPreview, TracePreview, WakeSourcesPreview } from './product-previews';
 
-/**
- * The platform row is the same accordion as "Why": four cards, one open,
- * hover or focus opens another. It replaces the grid, so every docs
- * destination the grid offered must still be reachable from the open cards.
- */
+/** The existing hover/focus accordion now walks through a first deployment. */
 describe('Process', () => {
-  it('shows the four stops as cards with the first open by default', async () => {
+  it('shows an ordered deployment walkthrough with the first step open', async () => {
     render(withRouter(<Process />));
     const cards = await screen.findAllByRole('button', { expanded: undefined });
-    expect(cards).toHaveLength(4);
-    for (const s of STEPS) {
-      expect(screen.getByRole('heading', { name: s.title })).toBeInTheDocument();
-    }
+    expect(cards).toHaveLength(3);
+    expect(
+      screen.getByRole('heading', { name: 'From repository to running API.' })
+    ).toBeInTheDocument();
+    expect(cards.map((card) => within(card).getByRole('heading').textContent)).toEqual([
+      'Bring your repository.',
+      'Set your configuration.',
+      'Deploy and verify.',
+    ]);
     expect(cards[0]).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByText(STEPS[0].body)).toBeInTheDocument();
   });
@@ -32,33 +34,26 @@ describe('Process', () => {
     expect(cards[0]).toHaveAttribute('aria-expanded', 'false');
   });
 
-  it('keeps every docs link the platform grid had', async () => {
+  it('links beta hosting capabilities to their published guides', async () => {
     render(withRouter(<Process />));
     await screen.findAllByRole('button');
     // jsdom reports no `min-width` match, so every card renders open here.
     const hrefs = new Set(screen.getAllByRole('link').map((a) => a.getAttribute('href') ?? ''));
-    for (const slug of [
-      'deploy-from-source',
-      'preview-environments',
-      'egress-denylist',
-      'scale-to-zero',
-      'runtime-node',
-      'storage',
-      'tracing',
-    ]) {
+    for (const slug of ['deploy-from-source', 'storage', 'runtime-node']) {
       expect(hrefs).toContain(`/docs/${slug}`);
     }
   });
 });
 
 describe('product previews', () => {
-  // Addressed by title, not index: the four stops are ordered to read as a
-  // chronology, and that order is copy, not contract.
-  const panelFor = (title: string) => {
-    const step = STEPS.find((s) => s.title === title);
-    if (!step) throw new Error(`no step titled ${title}`);
-    return step.panel;
-  };
+  const panelFor = (title: string) =>
+    title === 'Deploy' ? (
+      <DeploymentPreview />
+    ) : title === 'Park & wake' ? (
+      <WakeSourcesPreview />
+    ) : (
+      <TracePreview requests />
+    );
 
   it.each(['Deploy', 'Park & wake', 'Observe'])(
     'identifies the %s preview as illustrative rather than live account data',
