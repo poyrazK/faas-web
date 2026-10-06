@@ -18,7 +18,7 @@ function renderHero() {
 }
 
 /**
- * The headline, the primary action and the install command are the page's
+ * The headline and beta/docs actions are the page's
  * message; the light behind them must stay decorative to assistive tech.
  *
  * The wake figure is the page's one load-bearing number, and it is a
@@ -28,19 +28,18 @@ function renderHero() {
  * claim string, with its measurement boundary next to it.
  */
 describe('Hero', () => {
-  it('leads with the always-deployed, never-always-on line', async () => {
+  it('leads with the backend platform and states beta versus preview availability', async () => {
     renderHero();
     const h1 = await screen.findByRole('heading', { level: 1 });
-    expect(h1).toHaveTextContent('Always deployed. Never always-on.');
+    expect(h1).toHaveAccessibleName(/Next-generation cloud for APIs, services/);
+    expect(screen.getByText(/Hosting and PR previews are in public beta/)).toBeInTheDocument();
   });
 
-  it('keeps the primary action and the install command as real controls', async () => {
+  it('keeps the primary beta action and secondary docs action as real links', async () => {
     renderHero();
     const cta = await screen.findByRole('link', { name: /join the beta/i });
     expect(cta).toHaveAttribute('href', '/signup');
-    expect(
-      screen.getByRole('button', { name: 'Copy install command: npm install -g gregale' })
-    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Read the docs' })).toHaveAttribute('href', '/docs');
   });
 
   it('states the wake figure as the sanctioned claim, linked to its docs page', async () => {
