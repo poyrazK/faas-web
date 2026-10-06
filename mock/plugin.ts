@@ -578,34 +578,74 @@ route('DELETE', '/v1/apps/{slug}/secrets/{key}', ({ params }) => {
   return NO_CONTENT;
 });
 
-route('GET', '/v1/apps/{slug}/env', ({ params }) => {
-  const env = listOf(db.env, params.slug);
-  return { env, env_by_scope: { app: env }, quota_max: 128, count: env.length };
+// Dev-only plaintext values belong to env, never the sealed-secret fixtures.
+const envValues = new Map<string, string>();
+const envValueKey = (slug: string, scope: string, key: string) =>
+  `${db.appBySlug(slug)?.id ?? slug}/${scope}/${key}`;
+for (const [slug, rows] of db.env)
+  for (const row of rows)
+    envValues.set(
+      envValueKey(slug, row.scope, row.key),
+      row.key === 'LOG_LEVEL' ? 'info' : row.key === 'NODE_ENV' ? 'production' : 'mock-value'
+    );
+const envScope = (query: URLSearchParams) => {
+  const scope = query.get('scope') || 'default';
+  if (!/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(scope)) throw new Problem(400, 'env_scope_invalid');
+  return scope;
+};
+route('GET', '/v1/apps/{slug}/env', ({ params, query }) => {
+  const all = listOf(db.env, params.slug);
+  if (query.get('scope') === '__all__')
+    return {
+      env: [],
+      env_by_scope: all.reduce<Record<string, typeof all>>((groups, row) => {
+        (groups[row.scope] ??= []).push(row);
+        return groups;
+      }, {}),
+      quota_max: 128,
+      count: all.length,
+    };
+  const scope = envScope(query);
+  return { env: all.filter((row) => row.scope === scope), quota_max: 128, count: all.length };
 });
-route('PUT', '/v1/apps/{slug}/env/{key}', ({ params, body }) => {
+route('PUT', '/v1/apps/{slug}/env/{key}', ({ params, body, query }) => {
+  const scope = envScope(query);
+  if (!/^[A-Z][A-Z0-9_]*$/.test(params.key) || params.key.length > 128)
+    throw new Problem(400, 'env_var_invalid_key');
   const list = listOf(db.env, params.slug);
-  const existing = list.find((e) => e.key === params.key);
+  const existing = list.find((entry) => entry.key === params.key && entry.scope === scope);
   const now = db.iso(0);
+  if (!existing && list.length >= 128) throw new Problem(403, 'plan_limit_env_vars');
+  envValues.set(envValueKey(params.slug, scope, params.key), String(body.value ?? ''));
   if (existing) {
     existing.updated_at = now;
     return existing;
   }
-  const created = {
-    key: params.key,
-    scope: String(body.scope ?? 'app'),
-    created_at: now,
-    updated_at: now,
-  };
+  const created = { key: params.key, scope, created_at: now, updated_at: now };
   list.push(created);
   db.env.set(params.slug, list);
   return created;
 });
-route('DELETE', '/v1/apps/{slug}/env/{key}', ({ params }) => {
+route('DELETE', '/v1/apps/{slug}/env/{key}', ({ params, query }) => {
+  const scope = envScope(query);
   const list = listOf(db.env, params.slug);
-  const i = list.findIndex((e) => e.key === params.key);
-  if (i < 0) throw new Problem(404, 'env_not_found');
-  list.splice(i, 1);
+  const index = list.findIndex((entry) => entry.key === params.key && entry.scope === scope);
+  if (index < 0) throw new Problem(404, 'env_not_found');
+  list.splice(index, 1);
+  envValues.delete(envValueKey(params.slug, scope, params.key));
   return NO_CONTENT;
+});
+route('POST', '/v1/apps/{slug}/env-export', ({ params, query, body }) => {
+  if (body.acknowledge_sensitive_values !== true) throw new Problem(400, 'validation_error');
+  const scope = envScope(query);
+  const rows = listOf(db.env, params.slug).filter((row) => row.scope === scope);
+  return {
+    app_slug: params.slug,
+    scope,
+    values: Object.fromEntries(
+      rows.map((row) => [row.key, envValues.get(envValueKey(params.slug, scope, row.key)) ?? ''])
+    ),
+  };
 });
 
 route('GET', '/v1/apps/{slug}/upstreams', ({ params }) => {
