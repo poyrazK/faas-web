@@ -10,6 +10,7 @@ import { useApp, useApps, useBuild, useDeployment } from '@/lib/api/queries';
 import { deploymentPhase, isDeploymentTerminal } from '@/lib/deployment-status';
 import { formatRelative } from '@/lib/mock-data';
 import { AdvanceCanaryButton, ReorderDeploymentControl } from './deployment-actions';
+import { ResourceActivityTimeline } from './resource-activity';
 import { DeploymentAudit, DeploymentPreviewUrl, DeploymentStages } from './deployment-insights';
 import { DeploymentReleaseSummary } from './deployment-release-summary';
 import { DeploymentLifecycle } from './deployment-lifecycle';
@@ -338,7 +339,14 @@ export function ReleaseDetailPanel({
               />
             )}
             {!deploymentUnavailable && deployment && activeSection === 'audit' && (
-              <DeploymentAudit deploymentId={deployment.id} />
+              <>
+                <ResourceActivityTimeline
+                  appId={deployment.app_id}
+                  appSlug={slug}
+                  deploymentId={deployment.id}
+                />
+                <DeploymentAudit deploymentId={deployment.id} />
+              </>
             )}
           </div>
         )}

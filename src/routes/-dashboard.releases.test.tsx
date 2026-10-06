@@ -78,6 +78,14 @@ vi.mock('@/lib/store', () => ({
     refresh: vi.fn(),
   }),
 }));
+vi.mock('@/components/dashboard/resource-activity', () => ({
+  ResourceActivityTimeline: ({ appId, deploymentId }: { appId: string; deploymentId: string }) => (
+    <div aria-label="Release activity" data-app={appId} data-release={deploymentId}>
+      Scoped release activity
+    </div>
+  ),
+  AppActivityTimeline: ({ slug }: { slug: string }) => <div>App activity for {slug}</div>,
+}));
 vi.mock('@/components/dashboard/tarball-deploy', () => ({ TarballDeploy: () => null }));
 vi.mock('@/lib/api/queries', async (original) => {
   const actual = await original<object>();
@@ -231,6 +239,16 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('Releases hub', () => {
+  it('opens app Activity from its URL and restores it through browser history', async () => {
+    const router = await mount('/dashboard/workflows/alpha?tab=Activity');
+    expect(await screen.findByText('App activity for alpha')).toBeInTheDocument();
+    expect(router.state.location.search.tab).toBe('Activity');
+    await userEvent.click(screen.getByRole('tab', { name: 'Deployments' }));
+    await waitFor(() => expect(router.state.location.search.tab).toBe('Deployments'));
+    act(() => router.history.back());
+    expect(await screen.findByText('App activity for alpha')).toBeInTheDocument();
+  });
+
   it('shortens list identifiers but keeps full IDs and digests searchable and readable in detail', async () => {
     fixtures.deployment.id = '0123456789abcdef0123456789abcdef';
     fixtures.deployment.image_digest = `sha256:${'a'.repeat(64)}`;
@@ -496,6 +514,8 @@ describe('Releases hub', () => {
     expect(fixtures.traffic).toHaveBeenCalledWith({ id: 'dep-1', traffic_percent: 25 });
     await userEvent.click(screen.getByRole('button', { name: 'Audit context' }));
     expect(await screen.findByText('Audit timeline')).toBeInTheDocument();
+    expect(screen.getByLabelText('Release activity')).toHaveAttribute('data-app', 'app-1');
+    expect(screen.getByLabelText('Release activity')).toHaveAttribute('data-release', 'dep-1');
     expect(screen.getByText('operator@example.test')).toBeInTheDocument();
     expect(router.state.location.search).toMatchObject({
       deployment: 'dep-1',

@@ -1552,3 +1552,45 @@ export function buildLog(
   );
   return frames;
 }
+
+// Curated display metadata only; these fixtures never contain environment values.
+export const orgActivity: S['OrgActivityResponse'][] = apps.flatMap((app, appIndex) => {
+  const release = deployments.find((deployment) => deployment.app_id === app.id)?.id;
+  const kinds = [
+    'deploy.requested',
+    'app.deployed',
+    'deploy.failed',
+    'app.config_updated',
+    'env.set',
+    'domain.added',
+    'domain.tls_issued',
+  ];
+  return Array.from({ length: 63 }, (_, index) => {
+    const kind = kinds[index % kinds.length];
+    const deploy = kind.startsWith('deploy.') || kind === 'app.deployed';
+    const domain = kind.startsWith('domain.');
+    return {
+      id: String((apps.length - appIndex) * 1000 - index),
+      app_id: app.id,
+      ...(deploy && release ? { deployment_id: release } : {}),
+      occurred_at: iso(index * H + appIndex * 60_000),
+      kind,
+      summary: `${app.slug}: ${kind === 'domain.tls_issued' ? 'TLS certificate issued' : kind === 'app.config_updated' ? 'Application settings updated' : kind === 'env.set' ? 'Environment key LOG_LEVEL updated' : kind.replace('.', ' ')}`,
+      actor: {
+        type: domain ? ('system' as const) : deploy ? ('github' as const) : ('user' as const),
+        label: domain ? 'Certificate manager' : deploy ? 'GitHub Actions' : account.email,
+      },
+      resource: {
+        type: domain ? 'domain' : deploy ? 'deployment' : 'app',
+        label: domain ? `${app.slug}.example.com` : app.slug,
+        ...(deploy && release ? { id: release } : {}),
+      },
+      data:
+        kind === 'env.set'
+          ? { key: 'LOG_LEVEL', scope: 'default' }
+          : kind === 'app.config_updated'
+            ? { changes: [{ field: 'idle_timeout_s' }] }
+            : {},
+    };
+  });
+});
