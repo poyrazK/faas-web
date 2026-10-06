@@ -586,3 +586,23 @@ describe('canonical Settings', () => {
     expect(screen.getByRole('button', { name: 'Invite member' })).toBeDisabled();
   });
 });
+
+describe('personal key deep links', () => {
+  it('opens the requested key metadata and clears the URL when closed', async () => {
+    const id = 'd'.repeat(32);
+    const read = api.GET.getMockImplementation()!;
+    api.GET.mockImplementation((path, options) =>
+      path === '/v1/keys' ? ok([{ ...key(id), label: 'deployment bot' }]) : read(path, options)
+    );
+    const { router } = await mount(`/dashboard/settings?section=api-keys&scope=personal&key=${id}`);
+    const dialog = await screen.findByRole('dialog', { name: 'API key details' });
+    await waitFor(() => expect(dialog).toHaveTextContent('deployment bot'));
+    expect(dialog).toHaveTextContent(id);
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(router.state.location.search.key).toBeUndefined());
+  });
+  it('drops malformed key selections', async () => {
+    await mount('/dashboard/settings?section=api-keys&key=invalid');
+    expect(screen.queryByRole('dialog', { name: 'API key details' })).not.toBeInTheDocument();
+  });
+});

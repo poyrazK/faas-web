@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { Refresh } from 'iconoir-react';
 import { InlinePhase, PageHeader, queryPhase } from '@/components/dashboard/primitives';
@@ -16,10 +16,12 @@ import { Modal } from '@/components/ui/modal';
 import { slugIndex } from '@/lib/api/adapters';
 import { errorMessage } from '@/lib/api/errors';
 import { formatRelative } from '@/lib/mock-data';
+import { resourceId } from '@/lib/resource-id';
 import { consoleHead } from '@/lib/seo';
 
 export const Route = createFileRoute('/dashboard/traces')({
   component: InvocationsPage,
+  validateSearch: (raw: Record<string, unknown>) => ({ invocation: resourceId(raw.invocation) }),
   head: () => consoleHead('traces'),
 });
 
@@ -142,7 +144,11 @@ function InvocationsPage() {
   const invocations = useInfiniteInvocations();
   const { data: apps } = useApps();
   const replay = useReplayInvocation();
-  const [selected, setSelected] = useState<string | null>(null);
+  const search = Route.useSearch();
+  const navigate = Route.useNavigate();
+  const selected = search.invocation ?? null;
+  const setSelected = (invocation: string | null) =>
+    void navigate({ search: (current) => ({ ...current, invocation: invocation ?? undefined }) });
   const data = useMemo(
     () => invocations.data?.pages.flatMap((page) => page.invocations) ?? [],
     [invocations.data]
