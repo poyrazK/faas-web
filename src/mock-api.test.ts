@@ -45,6 +45,14 @@ async function get(path: string) {
   return { response, body: await response.json() };
 }
 
+it('issues GitHub connect proof with the dedicated cookie', async () => {
+  const { response, body } = await get('/v1/auth/csrf?action=connect_github');
+  expect(response.status).toBe(200);
+  expect(body).toEqual({ csrf_token: 'mock-csrf' });
+  expect(response.headers.get('set-cookie')).toContain('faas_csrf_github_connect=mock-csrf');
+  expect(response.headers.get('set-cookie')).not.toContain('faas_csrf=');
+});
+
 it('reads back the saved spend cap, preserving zero and null', async () => {
   for (const cap of [1250, 0, null]) {
     const saved = await fetch(`${origin}/v1/account/overage-cap`, {

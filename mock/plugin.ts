@@ -4237,6 +4237,7 @@ const MOCK_CSRF_ACTIONS = new Set([
   'mfa_recover',
   'mfa_disable',
   'set_password',
+  'connect_github',
 ]);
 route('GET', '/v1/auth/csrf', ({ query, res }) => {
   const action = query.get('action') ?? '';
@@ -4246,7 +4247,12 @@ route('GET', '/v1/auth/csrf', ({ query, res }) => {
       'validation_failed',
       'the requested action is not available to browser clients'
     );
-  res.setHeader('Set-Cookie', CSRF_COOKIE);
+  res.setHeader(
+    'Set-Cookie',
+    action === 'connect_github'
+      ? 'faas_csrf_github_connect=mock-csrf; Path=/; HttpOnly; SameSite=Lax'
+      : CSRF_COOKIE
+  );
   return { csrf_token: 'mock-csrf' };
 });
 // ADR-140 cohorts. The real server decides the proof from the account; the

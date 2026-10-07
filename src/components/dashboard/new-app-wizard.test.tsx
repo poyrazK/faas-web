@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NewAppWizard } from './new-app-wizard';
@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   deployFromRef: vi.fn(),
   updateApp: vi.fn(),
   toast: vi.fn(),
+  issueCSRF: vi.fn(),
   deploymentStatus: 'building',
   account: {
     plan: 'hobby' as 'free' | 'hobby' | 'pro' | 'scale',
@@ -63,6 +64,7 @@ vi.mock('@/lib/api/queries', () => ({
   // The wizard reads the starter catalog to prefill from a `?template=` name.
   useTemplates: () => ({ data: [], isPending: false, error: null }),
 }));
+vi.mock('@/lib/api/client', () => ({ issueCSRF: mocks.issueCSRF }));
 
 async function submitGitApp(onDeploymentAccepted = vi.fn()) {
   const user = userEvent.setup();
@@ -86,9 +88,31 @@ beforeEach(() => {
   mocks.bindRepo.mockResolvedValue({ binding_id: 'bind-1' });
   mocks.deployFromRef.mockResolvedValue({ id: 'deployment-1' });
   mocks.updateApp.mockResolvedValue({});
+  mocks.issueCSRF.mockResolvedValue('wizard-proof');
 });
 
+afterEach(() => vi.restoreAllMocks());
+
 describe('NewAppWizard Git submission', () => {
+  it('connects GitHub with proof and preserves the onboarding return marker', async () => {
+    mocks.account.github_install_id = '';
+    const onConnectGitHub = vi.fn();
+    let posted: FormData | undefined;
+    const submit = vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(function (
+      this: HTMLFormElement
+    ) {
+      expect(onConnectGitHub).toHaveBeenCalledTimes(1);
+      posted = new FormData(this);
+    });
+    render(<NewAppWizard onboarding onConnectGitHub={onConnectGitHub} />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Connect GitHub' }));
+    await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    expect(mocks.issueCSRF).toHaveBeenCalledWith('connect_github');
+    expect(posted?.get('csrf_token')).toBe('wizard-proof');
+    expect(posted?.get('return_to')).toBe('/dashboard/settings?section=integrations');
+  });
+
   it('keeps resource defaults available behind a named disclosure', async () => {
     const user = userEvent.setup();
     render(<NewAppWizard onboarding />);
