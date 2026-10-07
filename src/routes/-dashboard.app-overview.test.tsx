@@ -58,6 +58,7 @@ const metrics = (over: Partial<AppMetrics> = {}): AppMetrics => ({
   ...over,
 });
 
+vi.mock('@/components/dashboard/app-health', () => ({ AppHealthPanel: () => null }));
 vi.mock('@/lib/auth', () => ({
   useAuth: () => ({ account: { plan: fixtures.plan }, loading: false }),
 }));
@@ -166,7 +167,7 @@ describe('App Overview', () => {
   it('opens a useful overview for Free accounts without fetching per-release builds', async () => {
     await mount();
     expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('region', { name: 'App status' })).toHaveTextContent('Running');
+    expect(screen.getByRole('region', { name: 'App status' })).toHaveTextContent('Active');
     expect(screen.getByRole('region', { name: 'Latest release' })).toHaveTextContent('release-new');
     expect(screen.getByRole('link', { name: 'Open app' })).toHaveAttribute(
       'href',
@@ -182,7 +183,7 @@ describe('App Overview', () => {
       deployment({ id: 'release-live', created_at: '2026-09-11T12:00:00Z' }),
     ];
     const router = await mount('/dashboard/workflows/alpha?keep=yes#context');
-    expect(screen.getByRole('region', { name: 'App status' })).toHaveTextContent('Running');
+    expect(screen.getByRole('region', { name: 'App status' })).toHaveTextContent('Active');
     const attention = screen.getByRole('region', { name: 'Needs attention' });
     expect(attention).toHaveTextContent('The start command was not found.');
     await userEvent.click(within(attention).getByRole('button', { name: 'Inspect failure' }));

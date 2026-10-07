@@ -6,6 +6,7 @@ import type { AppMetrics, Deployment } from '@/lib/api/queries';
 import { deploymentPhase } from '@/lib/deployment-status';
 import { ReleaseStatusLabel } from './release-status-label';
 import { failureSummary } from './failure-summary';
+import { AppHealthPanel } from './app-health';
 
 type Read<T> = { data?: T; isPending: boolean; error: unknown };
 type Destination = 'Metrics' | 'Deployments' | 'Logs' | 'Errors' | 'Configuration';
@@ -23,14 +24,14 @@ interface AppOverviewProps {
 
 const APP_STATES: Record<string, { label: string; detail: string; tone: string }> = {
   active: {
-    label: 'Running',
-    detail: 'Your app is active. Check traffic below for recent request health.',
-    tone: 'var(--status-good)',
+    label: 'Active',
+    detail: 'Your app is enabled. Observed health above assesses its serving evidence.',
+    tone: 'var(--muted-foreground)',
   },
   running: {
-    label: 'Running',
-    detail: 'Your app is active. Check traffic below for recent request health.',
-    tone: 'var(--status-good)',
+    label: 'Active',
+    detail: 'Your app is enabled. Observed health above assesses its serving evidence.',
+    tone: 'var(--muted-foreground)',
   },
   parked: {
     label: 'Idle',
@@ -174,6 +175,7 @@ export function AppOverview({
 
   return (
     <div className="flex min-w-0 flex-col gap-5">
+      <AppHealthPanel slug={app.id} onNavigate={onNavigate} />
       <section
         aria-label="App status"
         className="overflow-hidden rounded-xl border border-border bg-card"

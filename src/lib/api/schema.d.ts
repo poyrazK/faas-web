@@ -1730,6 +1730,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/apps/{slug}/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Explain observed app serving health.
+         * @description Read-only assessment of default-scope HTTP serving deployments,
+         *     replica readiness, node evidence and the last 5 minutes of request
+         *     telemetry. Request metrics aggregate all app scopes. It never wakes
+         *     or probes a workload. Structural evidence is available on every plan;
+         *     request telemetry follows the existing Hobby+ metrics entitlement.
+         *     Missing, failed, stale or truncated evidence cannot confirm health.
+         *     A failed latest release does not erase older serving evidence.
+         *     Scale-to-zero idle is expected when no warm replicas are required.
+         *     Worker and job execution health is not assessed.
+         *     Requires apps:read or admin scope. No MFA required.
+         */
+        get: operations["getAppHealth"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/apps/{slug}/metrics": {
         parameters: {
             query?: never;
@@ -15002,6 +15034,52 @@ export interface components {
              */
             cold_boots?: number;
         };
+        /** @description Read-only observed health of default-scope HTTP serving workloads. */
+        AppHealthResponse: {
+            app_id: string;
+            /** @enum {string} */
+            status: "healthy" | "degraded" | "unhealthy" | "unknown";
+            /** @enum {string} */
+            phase: "serving" | "idle" | "starting" | "deploying" | "stopped" | "not_deployed" | "maintenance" | "unsupported" | "unknown";
+            summary: string;
+            /** @enum {string} */
+            scope: "default";
+            /** Format: date-time */
+            evaluated_at: string;
+            /** @description Maximum age before clients must reconfirm this assessment. */
+            valid_for_seconds: number;
+            /**
+             * Format: date-time
+             * @description Actual telemetry sample time; absent when unconfirmed.
+             */
+            metrics_as_of?: string;
+            serving_deployment_ids: string[];
+            latest_deployment_id?: string;
+            capacity: components["schemas"]["AppHealthCapacity"];
+            checks: components["schemas"]["AppHealthCheck"][];
+        };
+        /** @description Measured serving replica counts, with explicit evidence availability. */
+        AppHealthCapacity: {
+            /** @description False when instance evidence is unavailable or truncated. */
+            known: boolean;
+            required: number;
+            ready: number;
+            starting: number;
+            unready: number;
+            unknown: number;
+        };
+        /** @description Safe evidence explanation and an optional inspection destination. */
+        AppHealthCheck: {
+            /** @enum {string} */
+            code: "workload" | "deployment" | "latest_deployment" | "readiness" | "traffic_readiness" | "maintenance" | "requests";
+            /** @enum {string} */
+            status: "pass" | "warning" | "fail" | "unknown" | "not_applicable";
+            /** @description Safe explanation without raw backend errors or probe output. */
+            detail: string;
+            /** @enum {string} */
+            action?: "deployments" | "configuration" | "logs" | "metrics" | "errors";
+            deployment_id?: string;
+        };
         /**
          * @description Per-app metrics snapshot (issue #273 / ADR-041). Latencies are
          *     milliseconds for the 2xx class only; failures surface as
@@ -21636,6 +21714,65 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
             429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getAppHealth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Evidence assessment, including unknown checks. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppHealthResponse"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Read scope required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description App not found for this account. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rate limit exceeded. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     getAppMetrics: {

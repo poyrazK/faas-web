@@ -27,6 +27,7 @@ import type { components, paths } from './schema';
 
 export type App = components['schemas']['AppResponse'];
 export type Deployment = components['schemas']['DeploymentResponse'];
+export type AppHealth = components['schemas']['AppHealthResponse'];
 export type AppMetrics = components['schemas']['AppMetricsResponse'];
 export type MetricsRange = AppMetrics['range'];
 export type AppSLOWindow = components['schemas']['AppSLOResponse']['window'];
@@ -38,6 +39,7 @@ export const keys = {
   apps: ['apps'] as const,
   app: (slug: string) => ['apps', slug] as const,
   appsMetrics: (range: MetricsRange) => ['apps', 'metrics', range] as const,
+  appHealth: (slug: string) => ['apps', slug, 'health'] as const,
   appMetrics: (slug: string, range: MetricsRange) => ['apps', slug, 'metrics', range] as const,
   appSlo: (slug: string, window: AppSLOWindow) => ['apps', slug, 'slo', window] as const,
   accountSlo: (window: AppSLOWindow) => ['account', 'slo', window] as const,
@@ -3492,5 +3494,17 @@ export function useDeletePostgresBinding(databaseId: string) {
       unwrap(api.DELETE('/v1/postgres/bindings/{id}', { params: { path: { id } } })),
     onSuccess: () =>
       void qc.invalidateQueries({ queryKey: [...postgresKey, databaseId, 'bindings'] }),
+  });
+}
+
+/** Read-only assessment; the API supplies reasons and freshness, not client heuristics. */
+export function useAppHealth(slug: string, options?: Options<AppHealth>) {
+  return useQuery({
+    queryKey: keys.appHealth(slug),
+    queryFn: () => unwrap(api.GET('/v1/apps/{slug}/health', { params: { path: { slug } } })),
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+    ...options,
+    enabled: Boolean(slug) && options?.enabled !== false,
   });
 }

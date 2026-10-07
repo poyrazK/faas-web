@@ -78,6 +78,7 @@ const fixtures = vi.hoisted(() => ({
     last_detected_at: '2026-09-11T09:00:00Z',
   },
 }));
+vi.mock('@/components/dashboard/app-health', () => ({ AppHealthPanel: () => null }));
 vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { plan: 'pro' }, loading: false }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn() }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
