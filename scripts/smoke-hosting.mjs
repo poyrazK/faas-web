@@ -6,9 +6,9 @@
  */
 
 const base = (process.env.GREGALE_SITE_URL ?? 'https://gregale.dev').replace(/\/$/, '');
-const paths = ['/', '/dashboard', '/dashboard/workflows'];
+const paths = ['/', '/dashboard', '/dashboard/workflows', '/dashboard/settings?section=integrations', '/dashboard/workflows/new'];
 const required = {
-  'content-security-policy': ["frame-ancestors 'none'", "object-src 'none'"],
+  'content-security-policy': ["frame-ancestors 'none'", "object-src 'none'", "form-action 'self' https://github.com;"],
   'x-content-type-options': ['nosniff'],
   'x-frame-options': ['DENY'],
   'referrer-policy': ['strict-origin-when-cross-origin'],
