@@ -47,10 +47,12 @@ function DocPage() {
   }, [entry.slug]);
 
   return (
-    <div className="flex gap-10">
-      <article className="min-w-0 max-w-3xl flex-1">
+    <div className="docs-article-layout">
+      <article className="docs-article min-w-0 flex-1">
         <header className="border-b border-border pb-6">
-          {section && <p className="label-mono text-brand">{section.title}</p>}
+          <Link to="/docs" className="docs-breadcrumb">
+            Documentation <span aria-hidden="true">/</span> {section?.title}
+          </Link>
           <h1 className="mt-3 text-3xl font-semibold tracking-tight">{entry.title}</h1>
           <p className="mt-3 text-balance text-muted-foreground">{entry.summary}</p>
           <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2">
@@ -61,6 +63,18 @@ function DocPage() {
           </div>
         </header>
 
+        {headings.length > 2 && (
+          <details className="docs-mobile-toc">
+            <summary>On this page</summary>
+            <ul>
+              {headings.map((heading) => (
+                <li key={heading.id}>
+                  <a href={`#${heading.id}`}>{heading.text}</a>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
         <Markdown source={body} sourcePath={entry.source} />
 
         <nav aria-label="Pagination" className="mt-10 grid gap-3 sm:grid-cols-2">

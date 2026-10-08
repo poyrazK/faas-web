@@ -63,6 +63,7 @@ let written = 0;
 const failures = [];
 
 for (const entry of DOC_ENTRIES) {
+  if (entry.local) continue;
   const response = await fetch(url(entry.source), { headers });
 
   if (!response.ok) {
@@ -78,7 +79,9 @@ for (const entry of DOC_ENTRIES) {
   written++;
 }
 
-console.log(`\npulled ${written}/${DOC_ENTRIES.length} docs from ${REPO}@${REF}`);
+console.log(
+  `\npulled ${written}/${DOC_ENTRIES.filter((entry) => !entry.local).length} upstream docs from ${REPO}@${REF}`
+);
 
 if (failures.length) {
   console.error(`\n${failures.length} failed:`);
