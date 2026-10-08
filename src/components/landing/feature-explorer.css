@@ -428,6 +428,13 @@
   text-underline-offset: 4px;
 }
 
+.feature-guide-pending {
+  align-self: start;
+  margin-top: 1.6rem;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+
 .feature-explorer button:focus-visible,
 .feature-detail:focus-visible,
 .feature-guide:focus-visible {

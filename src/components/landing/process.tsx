@@ -53,7 +53,7 @@ export const STEPS: readonly Step[] = [
   {
     title: 'Deploy and verify.',
     body: 'Follow the build and readiness checks to a verified URL. Inspect logs when something fails, then deploy your next change through the same path.',
-    links: [{ label: 'Deployment guide', doc: 'deploy-from-source' }],
+    links: [{ label: 'Deployment guide', doc: 'deploy-from-github' }],
     mosaic: [
       [5, 0, 0],
       [4, 1, 2],

@@ -39,7 +39,7 @@ describe('Process', () => {
     await screen.findAllByRole('button');
     // jsdom reports no `min-width` match, so every card renders open here.
     const hrefs = new Set(screen.getAllByRole('link').map((a) => a.getAttribute('href') ?? ''));
-    for (const slug of ['deploy-from-source', 'storage', 'runtime-node']) {
+    for (const slug of ['deploy-from-source', 'deploy-from-github', 'storage', 'runtime-node']) {
       expect(hrefs).toContain(`/docs/${slug}`);
     }
   });

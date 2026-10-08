@@ -27,7 +27,7 @@ describe('feature explorer', () => {
     expect(within(detail).getByText('Public beta')).toBeInTheDocument();
     expect(within(detail).getByRole('link', { name: /read the guide/i })).toHaveAttribute(
       'href',
-      '/docs/deploy-from-source'
+      '/docs/deploy-from-github'
     );
   });
 
@@ -81,9 +81,17 @@ describe('feature explorer', () => {
     expect(screen.queryByRole('tab', { name: 'Custom domains' })).not.toBeInTheDocument();
     const services = screen.getByRole('tabpanel', { name: 'Service connections' });
     expect(within(services).getByText('Preview')).toBeInTheDocument();
+    expect(within(services).getByText('Guide coming soon')).toBeInTheDocument();
+    expect(
+      within(services).queryByRole('link', { name: /read platform docs/i })
+    ).not.toBeInTheDocument();
     await user.click(screen.getByRole('tab', { name: 'Release coordination' }));
     const release = screen.getByRole('tabpanel', { name: 'Release coordination' });
     expect(within(release).getByText('In development')).toBeInTheDocument();
+    expect(within(release).getByText('Guide coming soon')).toBeInTheDocument();
+    expect(
+      within(release).queryByRole('link', { name: /read platform docs/i })
+    ).not.toBeInTheDocument();
     await user.click(screen.getByRole('tab', { name: /hosting/i }));
     expect(screen.getByRole('tab', { name: 'Source deploys' })).toHaveAttribute(
       'aria-selected',

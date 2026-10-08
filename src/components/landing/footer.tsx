@@ -75,8 +75,8 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
       { label: 'Documentation', href: '/docs', doc: true },
       {
         label: 'Deploying from source',
-        href: '/docs/deploy-from-source',
-        doc: 'deploy-from-source',
+        href: '/docs/deploy-from-github',
+        doc: 'deploy-from-github',
       },
       { label: 'CLI setup', href: '/docs/cli', doc: 'cli' },
       // Served by apid on this same origin, so it needs no absolute URL.

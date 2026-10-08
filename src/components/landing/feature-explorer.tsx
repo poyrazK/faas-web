@@ -29,7 +29,7 @@ const GROUPS: { title: string; availability: string; features: Feature[] }[] = [
         availability: 'Public beta',
         diagram: 'deploy',
         caption: 'An illustrated path from commit to running app.',
-        doc: 'deploy-from-source',
+        doc: 'deploy-from-github',
       },
       {
         id: 'compute',
@@ -454,9 +454,7 @@ export function FeatureExplorer() {
                   Read the guide <ArrowRight aria-hidden="true" />
                 </Link>
               ) : (
-                <Link to="/docs" className="feature-guide">
-                  Read platform docs <ArrowRight aria-hidden="true" />
-                </Link>
+                <span className="feature-guide-pending">Guide coming soon</span>
               )}
             </div>
           </div>
