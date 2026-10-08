@@ -6,6 +6,7 @@ import type { AppMetrics, Deployment } from '@/lib/api/queries';
 import { deploymentPhase } from '@/lib/deployment-status';
 import { ReleaseStatusLabel } from './release-status-label';
 import { failureSummary } from './failure-summary';
+import { publicAppUrl } from '@/lib/app-url';
 
 type Read<T> = { data?: T; isPending: boolean; error: unknown };
 type Destination = 'Metrics' | 'Deployments' | 'Logs' | 'Errors' | 'Configuration';
@@ -86,17 +87,6 @@ const SOURCE_LABELS = new Map([
   ['oci', 'Container image'],
 ]);
 
-function endpoint(value: string): string | undefined {
-  try {
-    const url = new URL(value);
-    return ['https:', 'http:'].includes(url.protocol) && !url.username && !url.password
-      ? url.href
-      : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 function timestamp(value: string): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
@@ -154,7 +144,7 @@ export function AppOverview({
     deploymentPhase(latest.status) === 'failed' &&
     latest.status.toLowerCase() !== 'cancelled';
   const appError = ['error', 'failed', 'crashed'].includes(rawState.toLowerCase());
-  const url = endpoint(app.url);
+  const url = publicAppUrl(app.url);
   const canOpen =
     url &&
     releasesReady &&
@@ -218,7 +208,21 @@ export function AppOverview({
           <div className="col-span-2 min-w-0 sm:col-span-1">
             <dt className="text-muted-foreground">Endpoint</dt>
             <dd className="mt-1.5 [overflow-wrap:anywhere]">
-              {url ? url.replace(/^https?:\/\//, '').replace(/\/$/, '') : 'Not available'}
+              {url && canOpen ? (
+                <a
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={`Endpoint ${url.replace(/^https?:\/\//, '').replace(/\/$/, '')}`}
+                  className="text-brand underline-offset-2 hover:underline focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+                >
+                  {url.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+                </a>
+              ) : url ? (
+                url.replace(/^https?:\/\//, '').replace(/\/$/, '')
+              ) : (
+                'Not available'
+              )}
             </dd>
           </div>
         </dl>

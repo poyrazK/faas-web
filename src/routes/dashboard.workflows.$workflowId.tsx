@@ -770,7 +770,7 @@ function FunctionDetailPage() {
               </DeploymentCapability>
             )}
             {tab === 'Errors' && <ErrorsBody slug={fn.id} />}
-            {tab === 'Routes' && <RoutesBody slug={fn.id} />}
+            {tab === 'Routes' && <RoutesBody slug={fn.id} baseUrl={fn.url} />}
             {tab === 'Secrets' && <SecretsBody slug={fn.id} />}
             {tab === 'Env vars' && <EnvBody slug={fn.id} />}
             {tab === 'Queues' && <QueuesBody slug={fn.id} />}

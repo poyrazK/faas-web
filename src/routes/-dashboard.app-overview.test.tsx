@@ -172,6 +172,10 @@ describe('App Overview', () => {
       'href',
       'https://alpha.example.test/'
     );
+    expect(screen.getByRole('link', { name: 'Endpoint alpha.example.test' })).toHaveAttribute(
+      'href',
+      'https://alpha.example.test/'
+    );
     expect(screen.queryByRole('heading', { name: 'Per-app metrics' })).not.toBeInTheDocument();
     expect(fixtures.buildIds).toEqual([]);
   });
