@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { AutomationsBody } from './automations-body';
 
@@ -17,11 +18,21 @@ vi.mock('@/lib/api/queries', () => ({
 }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn() }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
-vi.mock('./automation-editor', () => ({
-  AutomationEditor: () => <div>Draft editor</div>,
-  JsonReadout: () => null,
-  JsonField: () => null,
-}));
+vi.mock('./automation-editor', async () => {
+  const { Modal } = await import('@/components/ui/modal');
+  return {
+    AutomationEditor: ({ onClose }: { onClose?: () => void }) =>
+      onClose ? (
+        <Modal open title="New automation" onClose={onClose}>
+          <div>Draft editor</div>
+        </Modal>
+      ) : (
+        <div>Draft editor</div>
+      ),
+    JsonReadout: () => null,
+    JsonField: () => null,
+  };
+});
 vi.mock('./automation-runs', () => ({ AutomationRuns: () => null }));
 vi.mock('@/lib/api/automations', () => ({
   useAutomations: (...args: unknown[]) => {
@@ -90,4 +101,22 @@ it('shows an empty app scope without starting disabled automation queries', () =
   expect(screen.getByText(/workspace has none yet/)).toBeInTheDocument();
   expect(state.read).not.toHaveBeenCalled();
   expect(screen.queryByText('Loading…')).not.toBeInTheDocument();
+});
+it('opens creation through URL selection and clears it when the dialog closes', async () => {
+  const onSelection = vi.fn();
+  const view = render(<AutomationsBody search={{ app: 'alpha' }} onSelection={onSelection} />);
+  expect(screen.queryByText('Draft editor')).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'New automation' }));
+  expect(onSelection).toHaveBeenCalledWith({
+    automation: undefined,
+    automationView: undefined,
+    automationRun: undefined,
+    automationNew: true,
+  });
+  view.rerender(
+    <AutomationsBody search={{ app: 'alpha', automationNew: true }} onSelection={onSelection} />
+  );
+  expect(screen.getByRole('dialog', { name: 'New automation' })).toHaveTextContent('Draft editor');
+  await userEvent.click(screen.getByRole('button', { name: 'Close' }));
+  expect(onSelection).toHaveBeenLastCalledWith({ automationNew: undefined });
 });

@@ -267,6 +267,8 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
   const updateCron = useUpdateCron();
   const createCron = useCreateCron();
 
+  const [creating, setCreating] = useState(false);
+  const [creationError, setCreationError] = useState<string | null>(null);
   const [appId, setAppId] = useState('');
   const [schedule, setSchedule] = useState('');
   const scheduleInput = useRef<HTMLInputElement>(null);
@@ -274,10 +276,25 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
   const [fireRequest, setFireRequest] = useState<string | null>(null);
   const validation = useFormValidation<'schedule'>();
 
-  const targetApp = appId || apps?.[0]?.id || '';
+  const targetApp = apps?.find((app) => app.id === appId)?.id || apps?.[0]?.id || '';
   const scheduleOk = isCronSchedule(schedule);
   const scheduleError = scheduleOk ? undefined : 'Enter a five-field cron schedule.';
   const shownScheduleError = validation.submitAttempted ? scheduleError : undefined;
+
+  useEffect(() => {
+    if (!creating) return;
+    const frame = requestAnimationFrame(() => scheduleInput.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [creating]);
+
+  const closeCreation = () => {
+    if (createCron.isPending) return;
+    setCreating(false);
+    setSchedule('');
+    setPath('/');
+    setCreationError(null);
+    validation.resetValidation();
+  };
 
   const rows = useMemo<CronRow[]>(() => {
     const bySlug = slugIndex(apps ?? []);
@@ -416,110 +433,152 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
       <PageHeader
         title="Scheduled requests"
         description="HTTP requests on a Cron schedule. Firing one by hand does not change its schedule."
+        actions={
+          <Button type="button" onClick={() => setCreating(true)}>
+            <Plus className="h-4 w-4" />
+            New scheduled request
+          </Button>
+        }
       />
       {search.schedule && data && !history && <p role="status">Scheduled request not found</p>}
 
-      <Panel lit title="Add a cron">
-        <form
-          noValidate
-          className="flex flex-wrap items-end gap-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (
-              !validation.validate({ schedule: scheduleError }, e.currentTarget) ||
-              !targetApp ||
-              appQuery.isPending ||
-              appQuery.error ||
-              createCron.isPending
-            )
-              return;
-            void createCron
-              .mutateAsync({
-                app_id: targetApp,
-                schedule: schedule.trim(),
-                path: path.trim() || '/',
-              })
-              .then((c) => {
-                setSchedule('');
-                setPath('/');
-                validation.resetValidation();
-                toast({
-                  kind: 'success',
-                  title: 'Cron added',
-                  description: `${c.schedule} → ${c.path}`,
-                });
-              })
-              .catch((err: unknown) =>
-                toast({ kind: 'error', title: 'Could not add', description: errorMessage(err) })
-              );
-          }}
+      {creating && (
+        <Modal
+          open
+          onClose={closeCreation}
+          title="New scheduled request"
+          description="Send an HTTP GET to an app on a recurring UTC schedule."
+          width="max-w-lg"
         >
-          <label className="flex flex-col gap-1.5">
-            <span className="label-mono text-muted-foreground">App</span>
-            <select
-              value={targetApp}
-              onChange={(e) => setAppId(e.target.value)}
-              className={`${FIELD} min-w-44`}
-            >
-              {(apps ?? []).map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.slug}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex min-w-48 flex-1 flex-col gap-1.5">
-            <span className="label-mono text-muted-foreground">Schedule</span>
-            <input
-              ref={scheduleInput}
-              name="schedule"
-              value={schedule}
-              onChange={(e) => setSchedule(e.target.value)}
-              {...fieldErrorProps(shownScheduleError, 'cron-schedule-error')}
-              placeholder="*/15 * * * *"
-              spellCheck={false}
-              className={`${FIELD} font-mono`}
-            />
-            {shownScheduleError && (
-              <FieldError id="cron-schedule-error">{shownScheduleError}</FieldError>
-            )}
-          </label>
-          <label className="flex min-w-40 flex-col gap-1.5">
-            <span className="label-mono text-muted-foreground">Path</span>
-            <input
-              value={path}
-              onChange={(e) => setPath(e.target.value)}
-              placeholder="/run"
-              spellCheck={false}
-              className={`${FIELD} font-mono`}
-            />
-          </label>
-          <Button
-            type="submit"
-            size="sm"
-            className="gap-1.5"
-            disabled={!targetApp || appQuery.isPending || Boolean(appQuery.error)}
-            busy={createCron.isPending}
+          <form
+            noValidate
+            className="max-h-[calc(100dvh-17rem)] space-y-5 overflow-y-auto p-1"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (
+                !validation.validate({ schedule: scheduleError }, e.currentTarget) ||
+                !targetApp ||
+                appQuery.isPending ||
+                appQuery.error ||
+                createCron.isPending
+              )
+                return;
+              setCreationError(null);
+              void createCron
+                .mutateAsync({
+                  app_id: targetApp,
+                  schedule: schedule.trim(),
+                  path: path.trim() || '/',
+                })
+                .then((c) => {
+                  setCreating(false);
+                  setSchedule('');
+                  setPath('/');
+                  validation.resetValidation();
+                  toast({
+                    kind: 'success',
+                    title: 'Scheduled request created',
+                    description: `${c.schedule} → ${c.path}`,
+                  });
+                })
+                .catch((err: unknown) => setCreationError(errorMessage(err)));
+            }}
           >
-            <Plus className="h-3.5 w-3.5" />
-            Add cron
-          </Button>
-          <p className="basis-full text-xs text-muted-foreground">
-            Five fields, UTC: minute, hour, day of month, month, day of week. The request is a GET
-            to the path on a fresh or warm instance.
-          </p>
-        </form>
-        {(appQuery.isPending || appQuery.error) && (
-          <div className="mt-3">
-            <InlinePhase
-              phase={queryPhase({ loading: appQuery.isPending, error: appQuery.error })}
-              loadingMessage="Loading apps…"
-              error={appQuery.error}
-              onRetry={() => void appQuery.refetch()}
-            />
-          </div>
-        )}
-      </Panel>
+            <fieldset disabled={createCron.isPending} className="space-y-5">
+              <label className="flex flex-col gap-1.5">
+                <span className="label-mono text-muted-foreground">App</span>
+                <select
+                  value={targetApp}
+                  onChange={(e) => setAppId(e.target.value)}
+                  className={`${FIELD} w-full`}
+                  disabled={!targetApp || appQuery.isPending || Boolean(appQuery.error)}
+                >
+                  {!targetApp && <option value="">Select an app</option>}
+                  {(apps ?? []).map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.slug}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="label-mono text-muted-foreground">Schedule</span>
+                <input
+                  ref={scheduleInput}
+                  name="schedule"
+                  value={schedule}
+                  onChange={(e) => setSchedule(e.target.value)}
+                  {...fieldErrorProps(shownScheduleError, 'cron-schedule-error')}
+                  placeholder="*/15 * * * *"
+                  spellCheck={false}
+                  className={`${FIELD} w-full font-mono`}
+                />
+                {shownScheduleError && (
+                  <FieldError id="cron-schedule-error">{shownScheduleError}</FieldError>
+                )}
+              </label>
+              <p className="-mt-3 text-xs text-muted-foreground">
+                Five fields, UTC: minute, hour, day of month, month, day of week. For example, */15
+                * * * * runs every 15 minutes.
+              </p>
+              <label className="flex flex-col gap-1.5">
+                <span className="label-mono text-muted-foreground">Path</span>
+                <input
+                  value={path}
+                  onChange={(e) => setPath(e.target.value)}
+                  placeholder="/run"
+                  spellCheck={false}
+                  className={`${FIELD} w-full font-mono`}
+                />
+              </label>
+              <p className="-mt-3 text-xs text-muted-foreground">
+                The request runs against this path on your app. Leave / to use its root.
+              </p>
+            </fieldset>
+            {creationError && (
+              <p role="alert" className="text-sm" style={{ color: 'var(--status-critical)' }}>
+                {creationError}
+              </p>
+            )}
+            {!appQuery.isPending && !appQuery.error && !targetApp && (
+              <p className="text-sm text-muted-foreground">
+                Create an app before scheduling requests.{' '}
+                <Link to="/dashboard/workflows/new" className="underline underline-offset-4">
+                  Create an app
+                </Link>
+              </p>
+            )}
+            {(appQuery.isPending || appQuery.error) && (
+              <div className="mt-3">
+                <InlinePhase
+                  phase={queryPhase({ loading: appQuery.isPending, error: appQuery.error })}
+                  loadingMessage="Loading apps…"
+                  error={appQuery.error}
+                  onRetry={() => void appQuery.refetch()}
+                />
+              </div>
+            )}
+            <div className="flex justify-end gap-2 border-t border-border pt-4">
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={createCron.isPending}
+                onClick={closeCreation}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={!targetApp || appQuery.isPending || Boolean(appQuery.error)}
+                busy={createCron.isPending}
+                aria-label="Create scheduled request"
+              >
+                Create scheduled request
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
 
       <ResourceTable
         rows={rows}
@@ -530,13 +589,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
         emptyMessage="No scheduled requests yet."
         emptyAction={
           appQuery.isPending || appQuery.error ? undefined : targetApp ? (
-            <Button
-              size="sm"
-              onClick={() => {
-                scheduleInput.current?.scrollIntoView({ block: 'center' });
-                scheduleInput.current?.focus();
-              }}
-            >
+            <Button size="sm" onClick={() => setCreating(true)}>
               Create your first scheduled request
             </Button>
           ) : (
