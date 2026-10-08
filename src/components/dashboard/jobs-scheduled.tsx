@@ -3,7 +3,7 @@ import { Link } from '@tanstack/react-router';
 import { Clock, Play, Plus, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
-import { FIELD, FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
+import { FIELD, useFormValidation } from '@/components/ui/field';
 import { Switch } from '@/components/ui/switch';
 import { Modal } from '@/components/ui/modal';
 import { InlinePhase, PageHeader, Panel, queryPhase } from '@/components/dashboard/primitives';
@@ -24,6 +24,13 @@ import { slugIndex } from '@/lib/api/adapters';
 import { errorMessage } from '@/lib/api/errors';
 import { formatRelative } from '@/lib/mock-data';
 import type { JobsSelectionProps } from './jobs-search';
+import { ScheduleField, useScheduleClock } from './schedule-field';
+import {
+  describeCronSchedule,
+  formatCronTime,
+  isCronSchedule,
+  upcomingCronRuns,
+} from '@/lib/cron-schedule';
 
 /**
  * Scheduled requests into an app.
@@ -70,6 +77,9 @@ interface CronRow {
   path: string;
   enabled: boolean;
   lastFiredAt: string | null;
+  description: string;
+  nextRunAt: string | null;
+  timezone: string;
 }
 
 function formatWhen(value: string | null | undefined): string {
@@ -85,92 +95,6 @@ const OUTCOME_COLOR: Record<string, string | undefined> = {
   dead_letter: 'var(--status-critical)',
   running: 'var(--status-warning)',
 };
-
-const MONTH_NAMES: Readonly<Record<string, number>> = {
-  jan: 1,
-  feb: 2,
-  mar: 3,
-  apr: 4,
-  may: 5,
-  jun: 6,
-  jul: 7,
-  aug: 8,
-  sep: 9,
-  oct: 10,
-  nov: 11,
-  dec: 12,
-};
-const WEEKDAY_NAMES: Readonly<Record<string, number>> = {
-  sun: 0,
-  mon: 1,
-  tue: 2,
-  wed: 3,
-  thu: 4,
-  fri: 5,
-  sat: 6,
-};
-interface CronField {
-  minimum: number;
-  maximum: number;
-  names?: Readonly<Record<string, number>>;
-}
-const CRON_FIELDS: readonly CronField[] = [
-  { minimum: 0, maximum: 59 },
-  { minimum: 0, maximum: 23 },
-  { minimum: 1, maximum: 31 },
-  { minimum: 1, maximum: 12, names: MONTH_NAMES },
-  { minimum: 0, maximum: 6, names: WEEKDAY_NAMES },
-];
-
-function cronValue(value: string, names?: Readonly<Record<string, number>>): number | undefined {
-  const named = names?.[value.toLowerCase()];
-  if (named !== undefined) return named;
-  if (!/^\+?\d+$/.test(value)) return undefined;
-  const parsed = Number(value);
-  return Number.isSafeInteger(parsed) ? parsed : undefined;
-}
-
-function isCronSegment(segment: string, field: CronField): boolean {
-  const rangeAndStep = segment.split('/');
-  if (rangeAndStep.length > 2) return false;
-
-  const [base, rawStep] = rangeAndStep;
-  const step = rawStep === undefined ? 1 : cronValue(rawStep);
-  if (step === undefined || step === 0) return false;
-
-  const bounds = base.split('-');
-  if (bounds.length > 2) return false;
-  const [rawStart, rawEnd] = bounds;
-  const wildcard = rawStart === '*' || rawStart === '?';
-  if (wildcard && rawEnd !== undefined) return false;
-
-  const start = wildcard ? field.minimum : cronValue(rawStart, field.names);
-  const end = wildcard
-    ? field.maximum
-    : rawEnd !== undefined
-      ? cronValue(rawEnd, field.names)
-      : rawStep !== undefined
-        ? field.maximum
-        : start;
-  return (
-    start !== undefined &&
-    end !== undefined &&
-    start >= field.minimum &&
-    end <= field.maximum &&
-    start <= end
-  );
-}
-
-function isCronSchedule(value: string): boolean {
-  const fields = value.trim().split(/\s+/);
-  return (
-    fields.length === CRON_FIELDS.length &&
-    fields.every((field, index) => {
-      const cronField = CRON_FIELDS[index];
-      return field.split(',').every((segment) => isCronSegment(segment, cronField));
-    })
-  );
-}
 
 /** The last runs of one cron — outcome, duration, and the error if any. */
 function RunHistory({
@@ -277,8 +201,14 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
   const validation = useFormValidation<'schedule'>();
 
   const targetApp = apps?.find((app) => app.id === appId)?.id || apps?.[0]?.id || '';
+  const now = useScheduleClock();
   const scheduleOk = isCronSchedule(schedule);
-  const scheduleError = scheduleOk ? undefined : 'Enter a five-field cron schedule.';
+  const upcoming = useMemo(() => upcomingCronRuns(schedule, new Date(now), 1), [schedule, now]);
+  const scheduleError = !scheduleOk
+    ? 'Enter a five-field cron schedule.'
+    : upcoming?.length === 0
+      ? 'Choose a schedule with an upcoming run within five years.'
+      : undefined;
   const shownScheduleError = validation.submitAttempted ? scheduleError : undefined;
 
   useEffect(() => {
@@ -305,8 +235,14 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
       path: c.path,
       enabled: c.enabled,
       lastFiredAt: c.last_fired_at ?? null,
+      timezone: c.timezone || 'UTC',
+      description: describeCronSchedule(c.schedule).replace(/\bUTC\b/g, c.timezone || 'UTC'),
+      nextRunAt:
+        c.enabled && (!c.timezone || c.timezone === 'UTC')
+          ? (upcomingCronRuns(c.schedule, new Date(now), 1)?.[0]?.toISOString() ?? null)
+          : null,
     }));
-  }, [data, apps]);
+  }, [data, apps, now]);
   const history = rows.find((cron) => cron.id === search.schedule) ?? null;
 
   const setEnabled = (c: CronRow, enabled: boolean) =>
@@ -321,7 +257,14 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
     {
       key: 'schedule',
       label: 'Schedule',
-      render: (c) => <span className="font-mono text-xs">{c.schedule}</span>,
+      render: (c) => (
+        <div className="flex flex-col gap-1">
+          <span className="text-sm">{c.description}</span>
+          <span className="text-xs text-muted-foreground">
+            <code>{c.schedule}</code> · {c.timezone}
+          </span>
+        </div>
+      ),
     },
     {
       key: 'app',
@@ -348,6 +291,30 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
           className="data-[state=checked]:bg-brand"
         />
       ),
+    },
+    {
+      key: 'nextRunAt',
+      label: 'Next scheduled',
+      priority: 'secondary',
+      render: (c) =>
+        c.enabled ? (
+          c.timezone !== 'UTC' ? (
+            <span
+              className="text-xs text-muted-foreground"
+              title={`Next-run previews are available for UTC schedules. This schedule uses ${c.timezone}.`}
+            >
+              Preview unavailable
+            </span>
+          ) : c.nextRunAt ? (
+            <time className="text-xs text-muted-foreground" dateTime={c.nextRunAt}>
+              {formatCronTime(new Date(c.nextRunAt))}
+            </time>
+          ) : (
+            <span className="text-xs text-muted-foreground">No upcoming run</span>
+          )
+        ) : (
+          <span className="text-xs text-muted-foreground">Paused</span>
+        ),
     },
     {
       key: 'lastFiredAt',
@@ -452,7 +419,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
         >
           <form
             noValidate
-            className="max-h-[calc(100dvh-17rem)] space-y-5 overflow-y-auto p-1"
+            className="flex flex-col gap-5"
             onSubmit={(e) => {
               e.preventDefault();
               if (
@@ -484,81 +451,69 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
                 .catch((err: unknown) => setCreationError(errorMessage(err)));
             }}
           >
-            <fieldset disabled={createCron.isPending} className="space-y-5">
-              <label className="flex flex-col gap-1.5">
-                <span className="label-mono text-muted-foreground">App</span>
-                <select
-                  value={targetApp}
-                  onChange={(e) => setAppId(e.target.value)}
-                  className={`${FIELD} w-full`}
-                  disabled={!targetApp || appQuery.isPending || Boolean(appQuery.error)}
-                >
-                  {!targetApp && <option value="">Select an app</option>}
-                  {(apps ?? []).map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.slug}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex flex-col gap-1.5">
-                <span className="label-mono text-muted-foreground">Schedule</span>
-                <input
-                  ref={scheduleInput}
-                  name="schedule"
+            <div className="max-h-[calc(100dvh-14rem)] space-y-5 overflow-y-auto p-1">
+              <fieldset disabled={createCron.isPending} className="space-y-5">
+                <label className="flex flex-col gap-1.5">
+                  <span className="label-mono text-muted-foreground">App</span>
+                  <select
+                    value={targetApp}
+                    onChange={(e) => setAppId(e.target.value)}
+                    className={`${FIELD} w-full`}
+                    disabled={!targetApp || appQuery.isPending || Boolean(appQuery.error)}
+                  >
+                    {!targetApp && <option value="">Select an app</option>}
+                    {(apps ?? []).map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.slug}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <ScheduleField
                   value={schedule}
-                  onChange={(e) => setSchedule(e.target.value)}
-                  {...fieldErrorProps(shownScheduleError, 'cron-schedule-error')}
-                  placeholder="*/15 * * * *"
-                  spellCheck={false}
-                  className={`${FIELD} w-full font-mono`}
+                  onChange={setSchedule}
+                  inputRef={scheduleInput}
+                  error={shownScheduleError}
                 />
-                {shownScheduleError && (
-                  <FieldError id="cron-schedule-error">{shownScheduleError}</FieldError>
-                )}
-              </label>
-              <p className="-mt-3 text-xs text-muted-foreground">
-                Five fields, UTC: minute, hour, day of month, month, day of week. For example, */15
-                * * * * runs every 15 minutes.
-              </p>
-              <label className="flex flex-col gap-1.5">
-                <span className="label-mono text-muted-foreground">Path</span>
-                <input
-                  value={path}
-                  onChange={(e) => setPath(e.target.value)}
-                  placeholder="/run"
-                  spellCheck={false}
-                  className={`${FIELD} w-full font-mono`}
-                />
-              </label>
-              <p className="-mt-3 text-xs text-muted-foreground">
-                The request runs against this path on your app. Leave / to use its root.
-              </p>
-            </fieldset>
-            {creationError && (
-              <p role="alert" className="text-sm" style={{ color: 'var(--status-critical)' }}>
-                {creationError}
-              </p>
-            )}
-            {!appQuery.isPending && !appQuery.error && !targetApp && (
-              <p className="text-sm text-muted-foreground">
-                Create an app before scheduling requests.{' '}
-                <Link to="/dashboard/workflows/new" className="underline underline-offset-4">
-                  Create an app
-                </Link>
-              </p>
-            )}
-            {(appQuery.isPending || appQuery.error) && (
-              <div className="mt-3">
-                <InlinePhase
-                  phase={queryPhase({ loading: appQuery.isPending, error: appQuery.error })}
-                  loadingMessage="Loading apps…"
-                  error={appQuery.error}
-                  onRetry={() => void appQuery.refetch()}
-                />
-              </div>
-            )}
-            <div className="flex justify-end gap-2 border-t border-border pt-4">
+                <label className="flex flex-col gap-1.5">
+                  <span className="label-mono text-muted-foreground">Path</span>
+                  <input
+                    value={path}
+                    onChange={(e) => setPath(e.target.value)}
+                    placeholder="/run"
+                    spellCheck={false}
+                    className={`${FIELD} w-full font-mono`}
+                  />
+                </label>
+                <p className="-mt-3 text-xs text-muted-foreground">
+                  The request runs against this path on your app. Leave / to use its root.
+                </p>
+              </fieldset>
+              {creationError && (
+                <p role="alert" className="text-sm" style={{ color: 'var(--status-critical)' }}>
+                  {creationError}
+                </p>
+              )}
+              {!appQuery.isPending && !appQuery.error && !targetApp && (
+                <p className="text-sm text-muted-foreground">
+                  Create an app before scheduling requests.{' '}
+                  <Link to="/dashboard/workflows/new" className="underline underline-offset-4">
+                    Create an app
+                  </Link>
+                </p>
+              )}
+              {(appQuery.isPending || appQuery.error) && (
+                <div className="mt-3">
+                  <InlinePhase
+                    phase={queryPhase({ loading: appQuery.isPending, error: appQuery.error })}
+                    loadingMessage="Loading apps…"
+                    error={appQuery.error}
+                    onRetry={() => void appQuery.refetch()}
+                  />
+                </div>
+              )}
+            </div>
+            <footer className="-mx-5 -mb-4 flex justify-end gap-2 border-t border-border px-5 py-3.5">
               <Button
                 type="button"
                 variant="ghost"
@@ -575,7 +530,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
               >
                 Create scheduled request
               </Button>
-            </div>
+            </footer>
           </form>
         </Modal>
       )}
@@ -584,9 +539,9 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
         rows={rows}
         columns={columns}
         initialSort={{ key: 'schedule', dir: 'asc' }}
-        searchKeys={['schedule', 'path', 'app']}
-        searchPlaceholder="Filter by schedule or path…"
-        emptyMessage="No scheduled requests yet."
+        searchKeys={rows.length ? ['schedule', 'description', 'path', 'app'] : undefined}
+        searchPlaceholder="Filter by schedule, app, or path…"
+        emptyMessage="Schedule a request to your app’s endpoint for regular tasks like reports, cleanup, or syncing data."
         emptyAction={
           appQuery.isPending || appQuery.error ? undefined : targetApp ? (
             <Button size="sm" onClick={() => setCreating(true)}>
@@ -598,7 +553,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
             </Link>
           )
         }
-        minWidth="min-w-[820px]"
+        minWidth="min-w-[960px]"
         loading={isPending}
         error={error}
         onRetry={() => void refetch()}

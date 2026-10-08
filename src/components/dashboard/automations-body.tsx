@@ -137,6 +137,13 @@ function AppAutomations({
     ? availabilityMessage(q.data.runtime_enabled, q.data.unavailable_reason)
     : undefined;
   const atLimit = Boolean(q.data && rows.length >= q.data.max_definitions);
+  const create = () =>
+    onSelection({
+      automation: undefined,
+      automationView: undefined,
+      automationRun: undefined,
+      automationNew: true,
+    });
   const select = (name: string, view?: 'editor' | 'runs' | 'revisions', run?: string) =>
     onSelection({
       automation: name,
@@ -210,18 +217,7 @@ function AppAutomations({
         title="Automations"
         description="Connect app handlers into durable steps, with dependencies, retries, and waits."
         actions={
-          <Button
-            size="sm"
-            disabled={phase !== 'ready' || atLimit}
-            onClick={() =>
-              onSelection({
-                automation: undefined,
-                automationView: undefined,
-                automationRun: undefined,
-                automationNew: true,
-              })
-            }
-          >
+          <Button size="sm" disabled={phase !== 'ready' || atLimit} onClick={create}>
             <Plus className="h-4 w-4" />
             New automation
           </Button>
@@ -245,13 +241,21 @@ function AppAutomations({
         <ResourceTable
           rows={rows}
           columns={columns}
-          searchKeys={['name', 'trigger']}
+          searchKeys={rows.length ? ['name', 'trigger'] : undefined}
           searchPlaceholder="Find an automation…"
           minWidth="min-w-[680px]"
           loading={q.isPending}
           error={q.error}
           onRetry={() => void q.refetch()}
-          emptyMessage="No automations for this app yet. Create a draft to connect its handlers."
+          emptyMessage={`Create your first automation for ${slug}. Call a handler, run on a schedule, or connect two steps. Start with a draft and publish when you're ready.`}
+          emptyAction={
+            phase === 'ready' && !atLimit ? (
+              <Button size="sm" onClick={create}>
+                <Plus className="h-4 w-4" />
+                Create your first automation
+              </Button>
+            ) : undefined
+          }
         />
       </Panel>
       {phase === 'ready' && isNew && !atLimit && (
