@@ -8,6 +8,8 @@ import { JobRuns } from '@/components/dashboard/job-runs';
 import { JobTasks } from '@/components/dashboard/job-tasks';
 import { JobDefinition, JobRunDetail } from '@/components/dashboard/job-detail';
 import { Button } from '@/components/ui/button';
+import { CopyIconButton } from '@/components/ui/copy-button';
+import { Tooltip, TooltipProvider } from '@/components/ui/tooltip';
 import { useInfiniteJobs, useJobs } from '@/lib/api/queries';
 import type { JobsSelectionProps } from './jobs-search';
 
@@ -80,6 +82,7 @@ export function WorkloadsBody({ search, onSelection }: JobsSelectionProps) {
     {
       key: 'name',
       label: 'Job',
+      width: 'w-[65%] md:w-52',
       render: (j) => (
         <button
           type="button"
@@ -90,7 +93,8 @@ export function WorkloadsBody({ search, onSelection }: JobsSelectionProps) {
               task: undefined,
             });
           }}
-          className="font-mono text-xs underline-offset-2 hover:underline"
+          title={j.name}
+          className="block w-full truncate text-left font-mono text-xs underline-offset-2 hover:underline"
         >
           {j.name}
         </button>
@@ -100,7 +104,7 @@ export function WorkloadsBody({ search, onSelection }: JobsSelectionProps) {
       key: 'kind',
       label: 'Kind',
       priority: 'secondary',
-      width: 'w-28',
+      width: 'w-24',
       render: (j) => (
         <Pill
           label={j.kind}
@@ -111,7 +115,7 @@ export function WorkloadsBody({ search, onSelection }: JobsSelectionProps) {
     {
       key: 'status',
       label: 'Status',
-      width: 'w-24',
+      width: 'w-[35%] md:w-24',
       render: (j) => <Pill label={j.status} color={STATUS_COLOR[j.status]} />,
     },
     {
@@ -119,9 +123,19 @@ export function WorkloadsBody({ search, onSelection }: JobsSelectionProps) {
       label: 'Image',
       priority: 'secondary',
       render: (j) => (
-        <span className="truncate font-mono text-xs text-muted-foreground" title={j.image}>
-          {j.image}
-        </span>
+        <TooltipProvider>
+          <Tooltip content={<span className="break-all font-mono">{j.image}</span>}>
+            <span
+              tabIndex={0}
+              className="flex min-w-0 items-start gap-2 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring md:items-center"
+            >
+              <span className="min-w-0 flex-1 break-all font-mono text-xs text-muted-foreground md:truncate">
+                {j.image}
+              </span>
+              <CopyIconButton text={j.image} label={`image reference for ${j.name}`} />
+            </span>
+          </Tooltip>
+        </TooltipProvider>
       ),
     },
     {
@@ -129,8 +143,10 @@ export function WorkloadsBody({ search, onSelection }: JobsSelectionProps) {
       label: 'RAM',
       priority: 'secondary',
       numeric: true,
-      width: 'w-24',
-      render: (j) => <span className="[font-variant-numeric:tabular-nums]">{j.ram} MB</span>,
+      width: 'w-20',
+      render: (j) => (
+        <span className="whitespace-nowrap [font-variant-numeric:tabular-nums]">{j.ram} MB</span>
+      ),
     },
     {
       key: 'parallelism',
@@ -145,13 +161,13 @@ export function WorkloadsBody({ search, onSelection }: JobsSelectionProps) {
       label: 'Retries',
       priority: 'secondary',
       numeric: true,
-      width: 'w-24',
+      width: 'w-20',
       render: (j) => <span className="[font-variant-numeric:tabular-nums]">{j.retries}</span>,
     },
   ];
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="@container flex flex-col gap-6">
       <PageHeader
         title="Workloads"
         description="Container jobs for batch and recurring work. Create workloads and inspect their runs."
@@ -176,6 +192,9 @@ export function WorkloadsBody({ search, onSelection }: JobsSelectionProps) {
 
       <PlanGated error={error} feature="Jobs">
         {search.job && data && !job && <p role="status">Workload not found</p>}
+        <p className="hidden text-xs text-muted-foreground md:@max-[900px]:block">
+          Scroll the table horizontally to see all workload settings.
+        </p>
         <ResourceTable
           rows={rows}
           columns={columns}
@@ -188,7 +207,8 @@ export function WorkloadsBody({ search, onSelection }: JobsSelectionProps) {
               Create your first workload
             </Button>
           }
-          minWidth="min-w-[900px]"
+          tableLayout="fixed"
+          desktopMinWidth="md:min-w-[900px]"
           loading={listLoading}
           error={listError}
           onRetry={() => void (search.job ? selectedJobs.refetch() : jobs.refetch())}
