@@ -1,4 +1,5 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { useState } from 'react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AutomationEditor } from './automation-editor';
@@ -12,10 +13,13 @@ const mocks = vi.hoisted(() => ({
   simulate: vi.fn(),
   saved: vi.fn(),
   reload: vi.fn(),
+  close: vi.fn(),
+  guard: vi.fn(),
+  pending: false,
 }));
-vi.mock('@/lib/use-unsaved-guard', () => ({ useUnsavedGuard: () => {} }));
+vi.mock('@/lib/use-unsaved-guard', () => ({ useUnsavedGuard: mocks.guard }));
 vi.mock('@/lib/api/automations', () => ({
-  useWriteAutomation: () => ({ mutateAsync: mocks.write, isPending: false }),
+  useWriteAutomation: () => ({ mutateAsync: mocks.write, isPending: mocks.pending }),
   useValidateAutomation: () => ({ mutateAsync: mocks.validate, isPending: false }),
   useSimulateAutomation: () => ({ mutateAsync: mocks.simulate, isPending: false }),
 }));
@@ -48,6 +52,7 @@ function mount(record = automation) {
 }
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.pending = false;
   mocks.write.mockResolvedValue({ ...automation, version: 13 });
   mocks.validate.mockResolvedValue({ valid: true, issues: [], step_order: ['process'] });
   mocks.simulate.mockResolvedValue({
@@ -57,6 +62,120 @@ beforeEach(() => {
     warnings: [],
     step_order: ['process'],
     trace: [{ step_name: 'process', kind: 'path', state: 'would_execute' }],
+  });
+});
+
+function CreationDialog() {
+  const [open, setOpen] = useState(true);
+  return (
+    <ConfirmProvider>
+      {open && (
+        <AutomationEditor
+          account="account-1"
+          slug="app-1"
+          onSaved={(next) => {
+            mocks.saved(next);
+            setOpen(false);
+          }}
+          onClose={() => {
+            mocks.close();
+            setOpen(false);
+          }}
+          onReload={mocks.reload}
+        />
+      )}
+    </ConfirmProvider>
+  );
+}
+
+describe('new automation dialog', () => {
+  it('focuses the name and cancels an untouched draft without writing', async () => {
+    render(<CreationDialog />);
+    expect(screen.getByRole('dialog', { name: 'New automation' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText('Automation name')).toHaveFocus());
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'New automation' })).not.toBeInTheDocument()
+    );
+    expect(mocks.close).toHaveBeenCalledOnce();
+    expect(mocks.write).not.toHaveBeenCalled();
+  });
+
+  it('preserves edits when discard is cancelled and asks only once on accepted close', async () => {
+    render(<CreationDialog />);
+    await userEvent.type(screen.getByLabelText('Automation name'), 'orders');
+    await userEvent.keyboard('{Escape}');
+    const confirmation = screen.getByRole('dialog', { name: 'Discard automation edits?' });
+    await userEvent.click(within(confirmation).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(confirmation).not.toBeInTheDocument());
+    expect(screen.getByLabelText('Automation name')).toHaveValue('orders');
+    expect(mocks.close).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Discard changes' }));
+    await waitFor(() => expect(mocks.close).toHaveBeenCalledOnce());
+    // Closing changes URL search state; the router guard must accept that
+    // navigation without asking for the same discard a second time.
+    const ask = mocks.guard.mock.lastCall![1] as () => Promise<boolean>;
+    expect(await ask()).toBe(true);
+    expect(mocks.write).not.toHaveBeenCalled();
+  });
+
+  it('creates revision zero as a draft and closes after saving without publishing', async () => {
+    render(<CreationDialog />);
+    await userEvent.type(screen.getByLabelText('Automation name'), 'orders');
+    await userEvent.click(screen.getByRole('button', { name: 'Create draft' }));
+    await waitFor(() => expect(mocks.saved).toHaveBeenCalledOnce());
+    expect(mocks.write).toHaveBeenCalledExactlyOnceWith({
+      kind: 'save',
+      name: 'orders',
+      body: expect.objectContaining({ expected_version: 0 }),
+    });
+    expect(screen.queryByRole('dialog', { name: 'New automation' })).not.toBeInTheDocument();
+    expect(mocks.close).not.toHaveBeenCalled();
+  });
+
+  it('keeps a failed draft open for correction', async () => {
+    mocks.write.mockRejectedValue(
+      new ApiError({
+        status: 400,
+        code: 'automation_invalid_definition',
+        title: 'Invalid definition',
+      })
+    );
+    render(<CreationDialog />);
+    await userEvent.type(screen.getByLabelText('Automation name'), 'orders');
+    await userEvent.click(screen.getByRole('button', { name: 'Create draft' }));
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Invalid definition'));
+    expect(screen.getByLabelText('Automation name')).toHaveValue('orders');
+    expect(screen.getByRole('dialog', { name: 'New automation' })).toBeInTheDocument();
+    expect(mocks.saved).not.toHaveBeenCalled();
+  });
+
+  it('prevents dismissal and further creation while a write is pending', async () => {
+    const view = render(<CreationDialog />);
+    await userEvent.type(screen.getByLabelText('Automation name'), 'orders');
+    let finish!: (record: Automation) => void;
+    mocks.write.mockReturnValue(new Promise<Automation>((resolve) => (finish = resolve)));
+    await userEvent.click(screen.getByRole('button', { name: 'Create draft' }));
+    mocks.pending = true;
+    view.rerender(<CreationDialog />);
+    expect(screen.getByRole('button', { name: 'Creating…' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+    expect(screen.getByLabelText('Automation name')).toBeDisabled();
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(screen.getByRole('button', { name: 'Close dialog' }));
+    expect(
+      screen.queryByRole('dialog', { name: 'Discard automation edits?' })
+    ).not.toBeInTheDocument();
+    expect(mocks.close).not.toHaveBeenCalled();
+    const ask = mocks.guard.mock.lastCall![1] as () => Promise<boolean>;
+    expect(await ask()).toBe(false);
+    expect(mocks.write).toHaveBeenCalledOnce();
+    await act(async () => finish(automation));
+    expect(mocks.saved).toHaveBeenCalledWith(automation);
+    // A successful save may navigate before the mutation's pending flag clears.
+    expect(await ask()).toBe(true);
   });
 });
 

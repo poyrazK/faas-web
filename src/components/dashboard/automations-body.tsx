@@ -259,6 +259,7 @@ function AppAutomations({
           key={`new-${reloadKey}`}
           account={account}
           slug={slug}
+          onClose={() => onSelection({ automationNew: undefined })}
           onSaved={(next) => select(next.name)}
           onReload={() => {
             setReloadKey((key) => key + 1);

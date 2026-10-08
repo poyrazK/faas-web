@@ -1,8 +1,9 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState, type Ref } from 'react';
 import { CheckCircle, Plus, Trash, WarningTriangle } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { FIELD, Select } from '@/components/ui/field';
 import { useConfirm } from '@/components/ui/confirm';
+import { Modal } from '@/components/ui/modal';
 import { Panel } from './primitives';
 import { useUnsavedGuard } from '@/lib/use-unsaved-guard';
 import { ApiError, errorMessage } from '@/lib/api/errors';
@@ -46,17 +47,20 @@ function TextField({
   onChange,
   disabled,
   placeholder,
+  inputRef,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   disabled?: boolean;
   placeholder?: string;
+  inputRef?: Ref<HTMLInputElement>;
 }) {
   return (
     <label className="flex flex-col gap-1.5">
       <span className="label-mono text-muted-foreground">{label}</span>
       <input
+        ref={inputRef}
         className={FIELD}
         value={value}
         disabled={disabled}
@@ -261,12 +265,15 @@ export function AutomationEditor({
   automation,
   onSaved,
   onReload,
+  onClose,
 }: {
   account: string;
   slug: string;
   automation?: Automation;
   onSaved: (automation: Automation) => void;
   onReload: () => void;
+  /** New definitions can be authored in a dialog; existing drafts stay inline. */
+  onClose?: () => void;
 }) {
   const initial = automation?.draft ?? newDefinition();
   const [draft, setDraft] = useState(() => definitionDraft(initial));
@@ -284,21 +291,49 @@ export function AutomationEditor({
   const [rawOpen, setRawOpen] = useState(false);
   const confirm = useConfirm();
   const bypassGuard = useRef(false);
+  const closing = useRef(false);
+  const nameRef = useRef<HTMLInputElement>(null);
+  const errorRef = useRef<HTMLParagraphElement>(null);
   const write = useWriteAutomation(account, slug);
   const validate = useValidateAutomation(slug);
   const simulate = useSimulateAutomation(slug);
   const busy = write.isPending || validate.isPending || simulate.isPending;
+  const inDialog = Boolean(onClose);
   const dirty = JSON.stringify(draft) !== baseline || rawOpen;
-  useUnsavedGuard(dirty, () =>
+  const discardEdits = () =>
+    confirm({
+      title: 'Discard automation edits?',
+      description: 'Your changes have not been saved as a draft.',
+      confirmLabel: 'Discard changes',
+      destructive: true,
+    });
+  useUnsavedGuard(dirty || (inDialog && busy), () =>
     bypassGuard.current
       ? Promise.resolve(true)
-      : confirm({
-          title: 'Discard automation edits?',
-          description: 'Your changes have not been saved as a draft.',
-          confirmLabel: 'Discard changes',
-          destructive: true,
-        })
+      : inDialog && busy
+        ? Promise.resolve(false)
+        : discardEdits()
   );
+  useEffect(() => {
+    if (!inDialog) return;
+    const frame = requestAnimationFrame(() => nameRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [inDialog]);
+  useEffect(() => {
+    if (inDialog && error) errorRef.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [inDialog, error]);
+
+  const close = async () => {
+    if (!onClose || busy || closing.current) return;
+    closing.current = true;
+    try {
+      if (dirty && !(await discardEdits())) return;
+      bypassGuard.current = true;
+      onClose();
+    } finally {
+      closing.current = false;
+    }
+  };
 
   const edit = (next: DefinitionDraft) => {
     bypassGuard.current = false;
@@ -408,16 +443,21 @@ export function AutomationEditor({
     onReload();
   };
 
-  return (
+  const content = (
     <div className="flex flex-col gap-5">
       <Panel
-        title={savedName ? 'Draft definition' : 'New automation'}
-        description={`App: ${slug} · ${savedName ? `Editing revision ${version}` : 'Save a draft before publishing'}`}
+        title={onClose ? 'Definition' : savedName ? 'Draft definition' : 'New automation'}
+        description={
+          onClose
+            ? undefined
+            : `App: ${slug} · ${savedName ? `Editing revision ${version}` : 'Save a draft before publishing'}`
+        }
       >
         <fieldset disabled={busy} className="flex min-w-0 flex-col gap-5">
           <div className="grid gap-4 sm:grid-cols-2">
             <TextField
               label="Automation name"
+              inputRef={nameRef}
               value={draft.spec.name}
               disabled={Boolean(savedName)}
               placeholder="process-order"
@@ -598,21 +638,25 @@ export function AutomationEditor({
             >
               Advanced JSON
             </Button>
-            <Button
-              size="sm"
-              disabled={reloadRequired || (!dirty && Boolean(savedName))}
-              onClick={() => void save()}
-            >
-              Save draft
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={!savedName || dirty || reloadRequired}
-              onClick={() => void publish()}
-            >
-              Publish draft
-            </Button>
+            {!onClose && (
+              <>
+                <Button
+                  size="sm"
+                  disabled={reloadRequired || (!dirty && Boolean(savedName))}
+                  onClick={() => void save()}
+                >
+                  Save draft
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={!savedName || dirty || reloadRequired}
+                  onClick={() => void publish()}
+                >
+                  Publish draft
+                </Button>
+              </>
+            )}
           </div>
         </fieldset>
         {rawOpen && (
@@ -651,6 +695,7 @@ export function AutomationEditor({
         )}
         {error && (
           <p
+            ref={errorRef}
             role="alert"
             className="mt-4 flex items-start gap-2 text-sm"
             style={{ color: 'var(--status-critical)' }}
@@ -785,5 +830,32 @@ export function AutomationEditor({
         )}
       </Panel>
     </div>
+  );
+
+  if (!onClose) return content;
+  return (
+    <Modal
+      open
+      onClose={() => void close()}
+      title="New automation"
+      description={`App: ${slug} · Create a draft, then publish it when you're ready.`}
+      width="max-w-3xl"
+      footer={
+        <>
+          <Button variant="ghost" size="sm" disabled={busy} onClick={() => void close()}>
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            disabled={busy || reloadRequired || rawOpen}
+            onClick={() => void save()}
+          >
+            {write.isPending ? 'Creating…' : 'Create draft'}
+          </Button>
+        </>
+      }
+    >
+      <div className="max-h-[calc(100dvh-14rem)] overflow-y-auto pr-1">{content}</div>
+    </Modal>
   );
 }
