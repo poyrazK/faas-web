@@ -231,10 +231,11 @@ describe('Jobs hub', () => {
       lists.empty = true;
       lists.appsRead = state;
       await mount('/dashboard/jobs?section=scheduled');
+      await userEvent.click(screen.getByRole('button', { name: 'New scheduled request' }));
       expect(
         screen.getByText(state === 'pending' ? 'Loading apps…' : 'App lookup offline')
       ).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Add cron' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Create scheduled request' })).toBeDisabled();
       expect(screen.queryByRole('link', { name: 'Create an app' })).not.toBeInTheDocument();
       if (state === 'error') {
         await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
@@ -279,7 +280,7 @@ describe('Jobs hub', () => {
     await userEvent.click(
       screen.getByRole('button', { name: 'Create your first scheduled request' })
     );
-    expect(screen.getByRole('textbox', { name: 'Schedule' })).toHaveFocus();
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Schedule' })).toHaveFocus());
   });
 
   it('uses compact workload columns and discoverable schedule actions', async () => {
@@ -327,7 +328,8 @@ describe('Jobs hub', () => {
     expect(screen.getByRole('columnheader', { name: 'Image' })).toBeInTheDocument();
     await userEvent.click(within(navigation).getByRole('link', { name: 'Scheduled requests' }));
     expect(await screen.findByText(/HTTP requests on a Cron schedule/)).toBeInTheDocument();
-    expect(screen.getByRole('textbox', { name: 'Path' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'New scheduled request' })).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'Path' })).not.toBeInTheDocument();
     expect(screen.queryByRole('columnheader', { name: 'Image' })).not.toBeInTheDocument();
     expect(router.state.location.search).toMatchObject({
       section: 'scheduled',
