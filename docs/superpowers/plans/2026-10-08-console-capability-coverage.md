@@ -22,6 +22,7 @@
 - Do not test discovery by deleting real apps, sending provider events, invoking customer handlers, or changing production configuration.
 - Use the API's actual ownership/scopes, session MFA, origin checks, and action-specific CSRF contracts. Never store an account API key in the browser to bypass a missing integration.
 - Never cache one-time credentials in TanStack Query, URLs, local/session storage, logs, analytics, or mock snapshots containing real secrets.
+- A client-added Idempotency-Key does not make an endpoint replay-safe. Verify the endpoint's backend wrapper before retrying a state-changing request after an ambiguous outcome.
 - Keep this work separate from cost forecasting (#111), documentation coverage (#93), and installation onboarding (#120); link/update those scopes rather than duplicating them.
 
 ## Review Focus
@@ -294,10 +295,12 @@ These scopes require their own bounded implementation plans before execution; th
 **Permissions/states:** Use app-owned resource scopes and completed session MFA/origin protections; verify backend route wiring. Empty endpoint list starts setup; unavailable signing/sealing runtime is not invalid customer input; 404 receipt means not retained/found, not delivery success.
 
 - [ ] Provide Stripe setup, password-style signing-secret entry, one-time URL copy and explicit acknowledgment before dismissing. Clear sensitive mutation state after completion; never promise URL retrieval or re-show a cached URL.
+- [ ] Handle creation-success/response-loss separately from ordinary validation failure. Inbound endpoint creation is not wrapped in idempotency replay: repeating the same name can return 409, while the committed endpoint's URL cannot be recovered from metadata or secret rotation. Do not automatically retry creation on a transport failure. Keep non-secret setup identity in the active form, refresh same-app endpoint metadata, and offer explicit inspection. If the customer confirms an inaccessible endpoint's identity, offer reviewed disable/delete and replacement; never delete a same-name endpoint automatically or modify another user's endpoint on an unproven match. A new replacement URL must be copied into the provider explicitly.
+- [ ] Keep the raw endpoint URL only in the active disclosure dialog; return sanitized metadata to query/mutation caches. Closing/reloading before capture requires the same reviewed replacement flow, not reconstruction of the token or a fabricated URL. A clipboard failure leaves the dialog open and shows a manual-copy option.
 - [ ] Separate ingress Enabled from accepted delivery/run success. Explain disabling/deleting stops future ingress but does not cancel accepted queued deliveries.
 - [ ] Review explicit `take_over_delivery: true` before binding; use `expected_version` for updates and removal; show 409 conflict and refresh without overwriting another user's binding.
 - [ ] Offer known-event receipt lookup with run/invocation links. A full receipt inbox needs a backend list endpoint with filters/cursors and account ownership; do not fake one from local session history.
-- [ ] Test one-time disclosure, reload/list without URL, redaction, disabled endpoint, unpublished/wrong-app automation, conflict, duplicate accepted event and queued/failed delivery. Keep generic HMAC provider out of the first Stripe PR until qualified.
+- [ ] Test one-time disclosure, reload/list without URL, creation committed with a dropped response, a same-name retry returning 409, concurrent same-name creation, failed clipboard copy and explicit replacement confirmation. Assert no automatic retry/deletion and no raw URL in retained query/mutation data. Also test redaction, disabled endpoint, unpublished/wrong-app automation, binding conflict, duplicate accepted event and queued/failed delivery. Keep generic HMAC provider out of the first Stripe PR until qualified.
 
 ### G. Instrumented Issues setup and triage
 
@@ -308,9 +311,11 @@ These scopes require their own bounded implementation plans before execution; th
 **Maturity/availability:** `issues`, Preview, Hobby+. Reads use read-surface scopes; actions/token management require deploy-write and MFA. Confirm trusted-origin cookie integration; HTML CSRF actions cannot be assumed available through `issueCSRF`.
 
 - [ ] Add Issues beside Errors, explain instrumentation, provide deployment-bound one-time reporting-token setup and verified SDK/OTLP guidance. Do not imply all exceptions are automatically collected.
+- [ ] Treat a reporting-token creation transport failure as an unknown outcome, not permission to mint again. This POST is not wrapped in idempotency replay; repeating it may create another active token and consume quota. Refresh same-app token metadata and let the customer inspect deployment, environment, name, expiry and token ID. Offer explicit revocation of an identified unused token followed by deliberate recreation; metadata cannot recover token bytes, and a name alone is not a unique operation identity. Never bulk-revoke or auto-revoke matching names when concurrent creation makes attribution ambiguous.
+- [ ] Keep returned token bytes only in the active disclosure dialog, with copy/manual-copy and acknowledgment; retain only sanitized metadata in query/mutation caches. Lost responses or dismissal/reload before capture use the reviewed revoke/recreate flow. Clearing the dialog does not itself revoke the credential; say so explicitly.
 - [ ] Implement bounded filterable inbox and independently paginated occurrences/releases/activity. Keep ordering/window/filter identity stable when passing opaque cursors; reset cursors on filter changes.
 - [ ] Add assign/resolve-against-deployment/reopen/ignore with server-owned member/deployment options and authoritative audit result. Show recurrence, retained verified customer evidence and unattributed counts without inferring causation or complete coverage.
-- [ ] Test permission/MFA denial, expired/revoked token, one-time disclosure, stale action/conflict, older-release event versus recurrence, missing retained evidence and independent detail cursors. Ownership-rule replacement and customer-impact alert editing are separate PRs, not first inbox scope.
+- [ ] Test permission/MFA denial, expired/revoked token, one-time disclosure, token creation committed with a dropped response, concurrent same-name tokens, quota consumed by an orphaned token, clipboard failure and reload before capture. Assert no automatic mint/revoke and no raw token in retained query/mutation data. Also test stale action/conflict, older-release event versus recurrence, missing retained evidence and independent detail cursors. Ownership-rule replacement and customer-impact alert editing are separate PRs, not first inbox scope.
 
 ### H. Private apps and internal services
 
