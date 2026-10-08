@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useRef, useId } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { Link } from '@tanstack/react-router';
 import { Clock, Play, Plus, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
@@ -191,7 +191,6 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
   const updateCron = useUpdateCron();
   const createCron = useCreateCron();
 
-  const formId = useId();
   const [creating, setCreating] = useState(false);
   const [creationError, setCreationError] = useState<string | null>(null);
   const [appId, setAppId] = useState('');
@@ -417,32 +416,10 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
           title="New scheduled request"
           description="Send an HTTP GET to an app on a recurring UTC schedule."
           width="max-w-lg"
-          footer={
-            <>
-              <Button
-                type="button"
-                variant="ghost"
-                disabled={createCron.isPending}
-                onClick={closeCreation}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                form={formId}
-                disabled={!targetApp || appQuery.isPending || Boolean(appQuery.error)}
-                busy={createCron.isPending}
-                aria-label="Create scheduled request"
-              >
-                Create scheduled request
-              </Button>
-            </>
-          }
         >
           <form
-            id={formId}
             noValidate
-            className="max-h-[calc(100dvh-14rem)] space-y-5 overflow-y-auto p-1"
+            className="flex flex-col gap-5"
             onSubmit={(e) => {
               e.preventDefault();
               if (
@@ -474,66 +451,86 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
                 .catch((err: unknown) => setCreationError(errorMessage(err)));
             }}
           >
-            <fieldset disabled={createCron.isPending} className="space-y-5">
-              <label className="flex flex-col gap-1.5">
-                <span className="label-mono text-muted-foreground">App</span>
-                <select
-                  value={targetApp}
-                  onChange={(e) => setAppId(e.target.value)}
-                  className={`${FIELD} w-full`}
-                  disabled={!targetApp || appQuery.isPending || Boolean(appQuery.error)}
-                >
-                  {!targetApp && <option value="">Select an app</option>}
-                  {(apps ?? []).map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.slug}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <ScheduleField
-                value={schedule}
-                onChange={setSchedule}
-                inputRef={scheduleInput}
-                error={shownScheduleError}
-              />
-              <label className="flex flex-col gap-1.5">
-                <span className="label-mono text-muted-foreground">Path</span>
-                <input
-                  value={path}
-                  onChange={(e) => setPath(e.target.value)}
-                  placeholder="/run"
-                  spellCheck={false}
-                  className={`${FIELD} w-full font-mono`}
+            <div className="max-h-[calc(100dvh-14rem)] space-y-5 overflow-y-auto p-1">
+              <fieldset disabled={createCron.isPending} className="space-y-5">
+                <label className="flex flex-col gap-1.5">
+                  <span className="label-mono text-muted-foreground">App</span>
+                  <select
+                    value={targetApp}
+                    onChange={(e) => setAppId(e.target.value)}
+                    className={`${FIELD} w-full`}
+                    disabled={!targetApp || appQuery.isPending || Boolean(appQuery.error)}
+                  >
+                    {!targetApp && <option value="">Select an app</option>}
+                    {(apps ?? []).map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.slug}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <ScheduleField
+                  value={schedule}
+                  onChange={setSchedule}
+                  inputRef={scheduleInput}
+                  error={shownScheduleError}
                 />
-              </label>
-              <p className="-mt-3 text-xs text-muted-foreground">
-                The request runs against this path on your app. Leave / to use its root.
-              </p>
-            </fieldset>
-            {creationError && (
-              <p role="alert" className="text-sm" style={{ color: 'var(--status-critical)' }}>
-                {creationError}
-              </p>
-            )}
-            {!appQuery.isPending && !appQuery.error && !targetApp && (
-              <p className="text-sm text-muted-foreground">
-                Create an app before scheduling requests.{' '}
-                <Link to="/dashboard/workflows/new" className="underline underline-offset-4">
-                  Create an app
-                </Link>
-              </p>
-            )}
-            {(appQuery.isPending || appQuery.error) && (
-              <div className="mt-3">
-                <InlinePhase
-                  phase={queryPhase({ loading: appQuery.isPending, error: appQuery.error })}
-                  loadingMessage="Loading apps…"
-                  error={appQuery.error}
-                  onRetry={() => void appQuery.refetch()}
-                />
-              </div>
-            )}
+                <label className="flex flex-col gap-1.5">
+                  <span className="label-mono text-muted-foreground">Path</span>
+                  <input
+                    value={path}
+                    onChange={(e) => setPath(e.target.value)}
+                    placeholder="/run"
+                    spellCheck={false}
+                    className={`${FIELD} w-full font-mono`}
+                  />
+                </label>
+                <p className="-mt-3 text-xs text-muted-foreground">
+                  The request runs against this path on your app. Leave / to use its root.
+                </p>
+              </fieldset>
+              {creationError && (
+                <p role="alert" className="text-sm" style={{ color: 'var(--status-critical)' }}>
+                  {creationError}
+                </p>
+              )}
+              {!appQuery.isPending && !appQuery.error && !targetApp && (
+                <p className="text-sm text-muted-foreground">
+                  Create an app before scheduling requests.{' '}
+                  <Link to="/dashboard/workflows/new" className="underline underline-offset-4">
+                    Create an app
+                  </Link>
+                </p>
+              )}
+              {(appQuery.isPending || appQuery.error) && (
+                <div className="mt-3">
+                  <InlinePhase
+                    phase={queryPhase({ loading: appQuery.isPending, error: appQuery.error })}
+                    loadingMessage="Loading apps…"
+                    error={appQuery.error}
+                    onRetry={() => void appQuery.refetch()}
+                  />
+                </div>
+              )}
+            </div>
+            <footer className="-mx-5 -mb-4 flex justify-end gap-2 border-t border-border px-5 py-3.5">
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={createCron.isPending}
+                onClick={closeCreation}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={!targetApp || appQuery.isPending || Boolean(appQuery.error)}
+                busy={createCron.isPending}
+                aria-label="Create scheduled request"
+              >
+                Create scheduled request
+              </Button>
+            </footer>
           </form>
         </Modal>
       )}
