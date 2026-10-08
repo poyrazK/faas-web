@@ -89,6 +89,88 @@ function CreationDialog() {
 }
 
 describe('new automation dialog', () => {
+  it('starts with basic fields and preserves advanced edits when collapsed', async () => {
+    render(<CreationDialog />);
+    const advanced = screen.getByText('Advanced step settings').closest('details')!;
+    expect(advanced).not.toHaveAttribute('open');
+    expect(screen.getByText('Simulate with sample data').closest('details')).not.toHaveAttribute(
+      'open'
+    );
+    await userEvent.click(screen.getByText('Advanced step settings'));
+    await userEvent.type(screen.getByLabelText('Timeout'), '45s');
+    await userEvent.click(screen.getByText('Advanced step settings'));
+    await userEvent.type(screen.getByLabelText('Automation name'), 'orders');
+    await userEvent.click(screen.getByRole('button', { name: 'Create draft' }));
+    await waitFor(() =>
+      expect(mocks.write).toHaveBeenCalledWith(
+        expect.objectContaining({
+          body: expect.objectContaining({
+            definition: expect.objectContaining({
+              steps: [expect.objectContaining({ timeout: '45s' })],
+            }),
+          }),
+        })
+      )
+    );
+  });
+
+  it('creates a scheduled draft from a template without publishing it', async () => {
+    render(<CreationDialog />);
+    await userEvent.click(screen.getByRole('button', { name: /Run on a schedule/ }));
+    expect(screen.getByLabelText('Schedule')).toHaveValue('0 * * * *');
+    expect(screen.getByLabelText('HTTP method')).toHaveValue('GET');
+    expect(mocks.write).not.toHaveBeenCalled();
+    await userEvent.type(screen.getByLabelText('Automation name'), 'hourly-report');
+    await userEvent.click(screen.getByRole('button', { name: 'Create draft' }));
+    await waitFor(() =>
+      expect(mocks.write).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: 'save',
+          body: expect.objectContaining({
+            definition: expect.objectContaining({
+              trigger: expect.objectContaining({
+                type: 'schedule',
+                schedule: '0 * * * *',
+                timezone: 'UTC',
+                overlap: 'skip',
+              }),
+            }),
+          }),
+        })
+      )
+    );
+    expect(mocks.write).toHaveBeenCalledOnce();
+  });
+
+  it('keeps customized steps when replacement is cancelled and preserves the name on acceptance', async () => {
+    render(<CreationDialog />);
+    await userEvent.type(screen.getByLabelText('Automation name'), 'orders');
+    await userEvent.type(screen.getByLabelText('Handler path'), 'custom');
+    await userEvent.click(screen.getByRole('button', { name: /Connect two steps/ }));
+    let confirmation = within(screen.getByRole('dialog', { name: 'Replace the current steps?' }));
+    await userEvent.click(confirmation.getByRole('button', { name: 'Cancel' }));
+    expect(screen.getByLabelText('Handler path')).toHaveValue('/custom');
+    await userEvent.click(screen.getByRole('button', { name: /Connect two steps/ }));
+    confirmation = within(screen.getByRole('dialog', { name: 'Replace the current steps?' }));
+    await userEvent.click(confirmation.getByRole('button', { name: 'Use template' }));
+    expect(screen.getByLabelText('Automation name')).toHaveValue('orders');
+    expect(screen.getAllByLabelText('Handler path')).toHaveLength(2);
+    await userEvent.click(screen.getByRole('button', { name: 'Create draft' }));
+    await waitFor(() =>
+      expect(mocks.write).toHaveBeenCalledWith(
+        expect.objectContaining({
+          body: expect.objectContaining({
+            definition: expect.objectContaining({
+              steps: [
+                expect.objectContaining({ name: 'step-1' }),
+                expect.objectContaining({ name: 'step-2', depends_on: ['step-1'] }),
+              ],
+            }),
+          }),
+        })
+      )
+    );
+  });
   it('focuses the name and cancels an untouched draft without writing', async () => {
     render(<CreationDialog />);
     expect(screen.getByRole('dialog', { name: 'New automation' })).toBeInTheDocument();

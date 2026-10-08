@@ -8,6 +8,7 @@ const state = vi.hoisted(() => ({
   apps: [{ id: 'app-1', slug: 'alpha' }],
   read: vi.fn(),
   runtime: false,
+  empty: false,
 }));
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children }: { children: ReactNode }) => <a>{children}</a>,
@@ -47,17 +48,19 @@ vi.mock('@/lib/api/automations', () => ({
         runtime_enabled: state.runtime,
         unavailable_reason: state.runtime ? undefined : 'runtime_disabled',
         max_definitions: 10,
-        automations: [
-          {
-            name: 'orders',
-            draft: definition,
-            published: definition,
-            published_version: 2,
-            version: 3,
-            source: 'dashboard',
-            enabled: true,
-          },
-        ],
+        automations: state.empty
+          ? []
+          : [
+              {
+                name: 'orders',
+                draft: definition,
+                published: definition,
+                published_version: 2,
+                version: 3,
+                source: 'dashboard',
+                enabled: true,
+              },
+            ],
       },
       isPending: false,
       error: null,
@@ -80,6 +83,7 @@ vi.mock('@/lib/api/automations', () => ({
 beforeEach(() => {
   state.apps = [{ id: 'app-1', slug: 'alpha' }];
   state.runtime = false;
+  state.empty = false;
   state.read.mockClear();
 });
 it('keeps authoring discoverable while runtime execution is disabled', () => {
@@ -119,4 +123,19 @@ it('opens creation through URL selection and clears it when the dialog closes', 
   expect(screen.getByRole('dialog', { name: 'New automation' })).toHaveTextContent('Draft editor');
   await userEvent.click(screen.getByRole('button', { name: 'Close' }));
   expect(onSelection).toHaveBeenLastCalledWith({ automationNew: undefined });
+});
+
+it('offers an app-scoped first-automation action without an empty search', async () => {
+  state.empty = true;
+  const onSelection = vi.fn();
+  render(<AutomationsBody search={{ app: 'alpha' }} onSelection={onSelection} />);
+  expect(screen.getByText(/Create your first automation for alpha/)).toBeInTheDocument();
+  expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Create your first automation' }));
+  expect(onSelection).toHaveBeenCalledWith({
+    automation: undefined,
+    automationView: undefined,
+    automationRun: undefined,
+    automationNew: true,
+  });
 });

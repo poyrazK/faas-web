@@ -5,6 +5,7 @@ import { FIELD, Select } from '@/components/ui/field';
 import { useConfirm } from '@/components/ui/confirm';
 import { Modal } from '@/components/ui/modal';
 import { Panel } from './primitives';
+import { ScheduleField } from './schedule-field';
 import { useUnsavedGuard } from '@/lib/use-unsaved-guard';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import {
@@ -26,6 +27,8 @@ import {
   jsonValue,
   stepKind,
   changeStepKind,
+  AUTOMATION_TEMPLATES,
+  type AutomationTemplate,
   type DefinitionDraft,
   type StepDraft,
   type StepKind,
@@ -104,11 +107,13 @@ function StepFields({
   index,
   onChange,
   onRemove,
+  compact,
 }: {
   step: StepDraft;
   index: number;
   onChange: (step: StepDraft) => void;
   onRemove: () => void;
+  compact: boolean;
 }) {
   const kind = stepKind(step.spec);
   const patch = (value: Partial<StepDraft['spec']>) =>
@@ -187,74 +192,89 @@ function StepFields({
             onChange={(wait_for_event) => patch({ wait_for_event })}
           />
         )}
-        <TextField
-          label="Dependencies (comma separated)"
-          value={step.dependencies}
-          onChange={(dependencies) => onChange({ ...step, dependencies })}
-          placeholder="lookup, charge"
-        />
-        {kind !== 'duration' && (
-          <TextField
-            label="Timeout"
-            value={step.spec.timeout ?? ''}
-            onChange={(timeout) => patch({ timeout: timeout || undefined })}
-            placeholder="30s"
-          />
-        )}
-        {kind === 'path' && (
-          <>
-            <label className="flex flex-col gap-1.5">
-              <span className="label-mono text-muted-foreground">Maximum attempts</span>
-              <input
-                className={FIELD}
-                type="number"
-                min={1}
-                max={25}
-                value={step.spec.retry?.max_attempts ?? 3}
-                onChange={(event) =>
-                  patch({ retry: { ...step.spec.retry, max_attempts: Number(event.target.value) } })
-                }
-              />
-            </label>
-            <label className="flex flex-col gap-1.5">
-              <span className="label-mono text-muted-foreground">Retry backoff</span>
-              <Select
-                value={step.spec.retry?.backoff ?? 'fixed'}
-                onChange={(event) =>
-                  patch({
-                    retry: {
-                      max_attempts: step.spec.retry?.max_attempts ?? 3,
-                      backoff: event.target.value as 'fixed' | 'exponential',
-                    },
-                  })
-                }
-              >
-                <option value="fixed">Fixed</option>
-                <option value="exponential">Exponential</option>
-              </Select>
-            </label>
-          </>
-        )}
-        {(kind === 'path' || (kind === 'advanced' && !step.spec.wait_for_condition)) && (
-          <div className="sm:col-span-2">
-            <JsonField
-              label="Input mapping (JSON)"
-              value={step.input}
-              onChange={(input) => onChange({ ...step, input })}
-            />
-            <p className="mt-1.5 text-xs text-muted-foreground">
-              Leave blank to omit input. Templates can reference workflow input and dependency
-              outputs.
-            </p>
-          </div>
-        )}
-        {kind === 'advanced' && (
-          <div className="sm:col-span-2 text-xs text-muted-foreground">
-            This action is preserved. Use Advanced JSON to edit its operation, loop, integration, or
-            condition.
-          </div>
-        )}
       </div>
+      <details
+        className="mt-4 rounded-md border border-border p-3"
+        open={
+          !compact ||
+          Boolean(step.dependencies || step.input || step.spec.timeout || step.spec.retry)
+        }
+      >
+        <summary className="cursor-pointer text-sm text-muted-foreground">
+          Advanced step settings
+        </summary>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <TextField
+            label="Dependencies (comma separated)"
+            value={step.dependencies}
+            onChange={(dependencies) => onChange({ ...step, dependencies })}
+            placeholder="lookup, charge"
+          />
+          {kind !== 'duration' && (
+            <TextField
+              label="Timeout"
+              value={step.spec.timeout ?? ''}
+              onChange={(timeout) => patch({ timeout: timeout || undefined })}
+              placeholder="30s"
+            />
+          )}
+          {kind === 'path' && (
+            <>
+              <label className="flex flex-col gap-1.5">
+                <span className="label-mono text-muted-foreground">Maximum attempts</span>
+                <input
+                  className={FIELD}
+                  type="number"
+                  min={1}
+                  max={25}
+                  value={step.spec.retry?.max_attempts ?? 3}
+                  onChange={(event) =>
+                    patch({
+                      retry: { ...step.spec.retry, max_attempts: Number(event.target.value) },
+                    })
+                  }
+                />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="label-mono text-muted-foreground">Retry backoff</span>
+                <Select
+                  value={step.spec.retry?.backoff ?? 'fixed'}
+                  onChange={(event) =>
+                    patch({
+                      retry: {
+                        max_attempts: step.spec.retry?.max_attempts ?? 3,
+                        backoff: event.target.value as 'fixed' | 'exponential',
+                      },
+                    })
+                  }
+                >
+                  <option value="fixed">Fixed</option>
+                  <option value="exponential">Exponential</option>
+                </Select>
+              </label>
+            </>
+          )}
+          {(kind === 'path' || (kind === 'advanced' && !step.spec.wait_for_condition)) && (
+            <div className="sm:col-span-2">
+              <JsonField
+                label="Input mapping (JSON)"
+                value={step.input}
+                onChange={(input) => onChange({ ...step, input })}
+              />
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                Leave blank to omit input. Templates can reference workflow input and dependency
+                outputs.
+              </p>
+            </div>
+          )}
+        </div>
+      </details>
+      {kind === 'advanced' && (
+        <div className="sm:col-span-2 text-xs text-muted-foreground">
+          This action is preserved. Use Advanced JSON to edit its operation, loop, integration, or
+          condition.
+        </div>
+      )}
     </fieldset>
   );
 }
@@ -289,6 +309,7 @@ export function AutomationEditor({
   const [outputs, setOutputs] = useState('{}');
   const [raw, setRaw] = useState('');
   const [rawOpen, setRawOpen] = useState(false);
+  const [template, setTemplate] = useState<AutomationTemplate>('handler');
   const confirm = useConfirm();
   const bypassGuard = useRef(false);
   const closing = useRef(false);
@@ -454,6 +475,45 @@ export function AutomationEditor({
         }
       >
         <fieldset disabled={busy} className="flex min-w-0 flex-col gap-5">
+          {inDialog && !savedName && (
+            <div>
+              <p className="mb-2 text-xs text-muted-foreground">
+                Start with a template, then customize your handlers.
+              </p>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {AUTOMATION_TEMPLATES.map((item) => (
+                  <button
+                    type="button"
+                    key={item.id}
+                    aria-pressed={template === item.id}
+                    className="rounded-lg border border-border bg-background/40 p-3 text-left transition-colors hover:border-brand/50 aria-pressed:border-brand/50 aria-pressed:bg-brand/5"
+                    onClick={async () => {
+                      if (item.id === template) return;
+                      if (
+                        dirty &&
+                        !(await confirm({
+                          title: 'Replace the current steps?',
+                          description:
+                            'This template replaces the trigger and steps. Your automation name will be kept.',
+                          confirmLabel: 'Use template',
+                        }))
+                      )
+                        return;
+                      const definition = newDefinition(item.id);
+                      edit(definitionDraft({ ...definition, name: draft.spec.name }));
+                      setTemplate(item.id);
+                      setRawOpen(false);
+                    }}
+                  >
+                    <span className="block text-sm font-medium">{item.title}</span>
+                    <span className="mt-1 block text-xs text-muted-foreground">
+                      {item.description}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="grid gap-4 sm:grid-cols-2">
             <TextField
               label="Automation name"
@@ -490,16 +550,28 @@ export function AutomationEditor({
             </label>
             {draft.spec.trigger?.type === 'schedule' && (
               <>
-                <TextField
-                  label="Cron expression"
-                  value={draft.spec.trigger.schedule ?? ''}
-                  onChange={(schedule) =>
-                    edit({
-                      ...draft,
-                      spec: { ...draft.spec, trigger: { ...draft.spec.trigger!, schedule } },
-                    })
-                  }
-                />
+                {(draft.spec.trigger.timezone ?? 'UTC') === 'UTC' ? (
+                  <ScheduleField
+                    value={draft.spec.trigger.schedule ?? ''}
+                    onChange={(schedule) =>
+                      edit({
+                        ...draft,
+                        spec: { ...draft.spec, trigger: { ...draft.spec.trigger!, schedule } },
+                      })
+                    }
+                  />
+                ) : (
+                  <TextField
+                    label="Cron expression"
+                    value={draft.spec.trigger.schedule ?? ''}
+                    onChange={(schedule) =>
+                      edit({
+                        ...draft,
+                        spec: { ...draft.spec, trigger: { ...draft.spec.trigger!, schedule } },
+                      })
+                    }
+                  />
+                )}
                 <TextField
                   label="Timezone"
                   value={draft.spec.trigger.timezone ?? 'UTC'}
@@ -510,32 +582,42 @@ export function AutomationEditor({
                     })
                   }
                 />
-                <label className="flex flex-col gap-1.5">
-                  <span className="label-mono text-muted-foreground">Overlapping runs</span>
-                  <Select
-                    value={draft.spec.trigger.overlap ?? 'skip'}
-                    onChange={(event) =>
-                      edit({
-                        ...draft,
-                        spec: {
-                          ...draft.spec,
-                          trigger: {
-                            ...draft.spec.trigger!,
-                            overlap: event.target.value as 'skip' | 'allow',
-                          },
-                        },
-                      })
-                    }
-                  >
-                    <option value="skip">Skip while active</option>
-                    <option value="allow">Allow overlap</option>
-                  </Select>
-                </label>
-                <JsonField
-                  label="Scheduled input (JSON)"
-                  value={draft.scheduledInput}
-                  onChange={(scheduledInput) => edit({ ...draft, scheduledInput })}
-                />
+                <details
+                  className="rounded-md border border-border p-3 sm:col-span-2"
+                  open={!inDialog}
+                >
+                  <summary className="cursor-pointer text-sm text-muted-foreground">
+                    Advanced trigger settings
+                  </summary>
+                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                    <label className="flex flex-col gap-1.5">
+                      <span className="label-mono text-muted-foreground">Overlapping runs</span>
+                      <Select
+                        value={draft.spec.trigger.overlap ?? 'skip'}
+                        onChange={(event) =>
+                          edit({
+                            ...draft,
+                            spec: {
+                              ...draft.spec,
+                              trigger: {
+                                ...draft.spec.trigger!,
+                                overlap: event.target.value as 'skip' | 'allow',
+                              },
+                            },
+                          })
+                        }
+                      >
+                        <option value="skip">Skip while active</option>
+                        <option value="allow">Allow overlap</option>
+                      </Select>
+                    </label>
+                    <JsonField
+                      label="Scheduled input (JSON)"
+                      value={draft.scheduledInput}
+                      onChange={(scheduledInput) => edit({ ...draft, scheduledInput })}
+                    />
+                  </div>
+                </details>
               </>
             )}
             {draft.spec.trigger?.type === 'event' && (
@@ -560,13 +642,21 @@ export function AutomationEditor({
                     })
                   }
                 />
-                <div className="sm:col-span-2">
-                  <JsonField
-                    label="Event filter (JSON)"
-                    value={draft.eventFilter}
-                    onChange={(eventFilter) => edit({ ...draft, eventFilter })}
-                  />
-                </div>
+                <details
+                  className="rounded-md border border-border p-3 sm:col-span-2"
+                  open={!inDialog || draft.eventFilter !== '{}'}
+                >
+                  <summary className="cursor-pointer text-sm text-muted-foreground">
+                    Advanced event filter
+                  </summary>
+                  <div className="mt-4">
+                    <JsonField
+                      label="Event filter (JSON)"
+                      value={draft.eventFilter}
+                      onChange={(eventFilter) => edit({ ...draft, eventFilter })}
+                    />
+                  </div>
+                </details>
               </>
             )}
           </div>
@@ -598,6 +688,7 @@ export function AutomationEditor({
               key={index}
               step={step}
               index={index}
+              compact={inDialog}
               onChange={(next) =>
                 edit({
                   ...draft,
@@ -749,86 +840,91 @@ export function AutomationEditor({
           </div>
         )}
       </Panel>
-      <Panel
-        title="Simulate with sample data"
-        description="Test data flow with hypothetical handler outputs. Simulation does not invoke the app or create a run."
-      >
-        <div className="grid gap-4 sm:grid-cols-2">
-          <JsonField
-            disabled={busy}
-            label="Sample input (JSON)"
-            value={sample}
-            onChange={(value) => {
-              setSample(value);
-              setSimulation(undefined);
-            }}
-          />
-          <JsonField
-            disabled={busy}
-            label="Mock outputs by step (JSON)"
-            value={outputs}
-            onChange={(value) => {
-              setOutputs(value);
-              setSimulation(undefined);
-            }}
-          />
+      <details open={!inDialog} className="rounded-lg border border-border p-4">
+        <summary className="cursor-pointer text-sm font-medium">Simulate with sample data</summary>
+        <div className="mt-4">
+          <Panel
+            title={inDialog ? undefined : 'Simulate with sample data'}
+            description="Test data flow with hypothetical handler outputs. Simulation does not invoke the app or create a run."
+          >
+            <div className="grid gap-4 sm:grid-cols-2">
+              <JsonField
+                disabled={busy}
+                label="Sample input (JSON)"
+                value={sample}
+                onChange={(value) => {
+                  setSample(value);
+                  setSimulation(undefined);
+                }}
+              />
+              <JsonField
+                disabled={busy}
+                label="Mock outputs by step (JSON)"
+                value={outputs}
+                onChange={(value) => {
+                  setOutputs(value);
+                  setSimulation(undefined);
+                }}
+              />
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="mt-4"
+              disabled={busy || rawOpen}
+              onClick={async () => {
+                setError('');
+                try {
+                  setSimulation(
+                    await simulate.mutateAsync({
+                      definition: candidate(),
+                      input: jsonValue(sample, 'Sample input'),
+                      mock_outputs: jsonObject(outputs, 'Mock outputs'),
+                    })
+                  );
+                } catch (err) {
+                  setError(errorMessage(err));
+                }
+              }}
+            >
+              Simulate definition
+            </Button>
+            {simulation && (
+              <div className="mt-4 flex flex-col gap-3" role="status">
+                <p className="flex items-center gap-2 text-sm font-medium">
+                  {simulation.definition_valid && simulation.complete ? (
+                    <CheckCircle className="h-4 w-4 text-brand" />
+                  ) : (
+                    <WarningTriangle className="h-4 w-4" />
+                  )}
+                  {!simulation.definition_valid
+                    ? 'Definition needs changes'
+                    : simulation.complete
+                      ? 'Simulation complete'
+                      : 'Partial simulation — some outcomes remain unresolved'}
+                </p>
+                {[...simulation.issues, ...simulation.warnings].map((issue, i) => (
+                  <p key={i} className="text-xs text-muted-foreground">
+                    {issue}
+                  </p>
+                ))}
+                {simulation.trace.map((step, i) => (
+                  <details key={i} className="rounded-md border border-border p-3">
+                    <summary className="cursor-pointer text-sm">
+                      <span className="font-mono">{step.step_name}</span> ·{' '}
+                      {step.state.replaceAll('_', ' ')}
+                      {step.reason && ` · ${step.reason}`}
+                    </summary>
+                    <div className="mt-3">
+                      <JsonReadout value={step} />
+                    </div>
+                  </details>
+                ))}
+              </div>
+            )}
+          </Panel>
         </div>
-        <Button
-          size="sm"
-          variant="outline"
-          className="mt-4"
-          disabled={busy || rawOpen}
-          onClick={async () => {
-            setError('');
-            try {
-              setSimulation(
-                await simulate.mutateAsync({
-                  definition: candidate(),
-                  input: jsonValue(sample, 'Sample input'),
-                  mock_outputs: jsonObject(outputs, 'Mock outputs'),
-                })
-              );
-            } catch (err) {
-              setError(errorMessage(err));
-            }
-          }}
-        >
-          Simulate definition
-        </Button>
-        {simulation && (
-          <div className="mt-4 flex flex-col gap-3" role="status">
-            <p className="flex items-center gap-2 text-sm font-medium">
-              {simulation.definition_valid && simulation.complete ? (
-                <CheckCircle className="h-4 w-4 text-brand" />
-              ) : (
-                <WarningTriangle className="h-4 w-4" />
-              )}
-              {!simulation.definition_valid
-                ? 'Definition needs changes'
-                : simulation.complete
-                  ? 'Simulation complete'
-                  : 'Partial simulation — some outcomes remain unresolved'}
-            </p>
-            {[...simulation.issues, ...simulation.warnings].map((issue, i) => (
-              <p key={i} className="text-xs text-muted-foreground">
-                {issue}
-              </p>
-            ))}
-            {simulation.trace.map((step, i) => (
-              <details key={i} className="rounded-md border border-border p-3">
-                <summary className="cursor-pointer text-sm">
-                  <span className="font-mono">{step.step_name}</span> ·{' '}
-                  {step.state.replaceAll('_', ' ')}
-                  {step.reason && ` · ${step.reason}`}
-                </summary>
-                <div className="mt-3">
-                  <JsonReadout value={step} />
-                </div>
-              </details>
-            ))}
-          </div>
-        )}
-      </Panel>
+      </details>
     </div>
   );
 

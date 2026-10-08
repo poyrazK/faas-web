@@ -118,13 +118,42 @@ export function changeStepKind(step: AutomationStep, kind: StepKind): Automation
   return step;
 }
 
-export function newDefinition(): Definition {
+export type AutomationTemplate = 'handler' | 'scheduled' | 'sequence';
+
+export const AUTOMATION_TEMPLATES: {
+  id: AutomationTemplate;
+  title: string;
+  description: string;
+}[] = [
+  { id: 'handler', title: 'Call a handler', description: 'Start manually with one app endpoint.' },
+  {
+    id: 'scheduled',
+    title: 'Run on a schedule',
+    description: 'Call an endpoint every hour in UTC.',
+  },
+  {
+    id: 'sequence',
+    title: 'Connect two steps',
+    description: 'Run a second handler after the first succeeds.',
+  },
+];
+
+export function newDefinition(template: AutomationTemplate = 'handler'): Definition {
   return {
     name: '',
-    trigger: { type: 'manual' },
+    trigger:
+      template === 'scheduled'
+        ? { type: 'schedule', schedule: '0 * * * *', timezone: 'UTC', overlap: 'skip' }
+        : { type: 'manual' },
     max_concurrent_runs: 0,
     max_concurrent_actions: 0,
-    steps: [{ name: 'step-1', path: '/', method: 'POST' }],
+    steps:
+      template === 'sequence'
+        ? [
+            { name: 'step-1', path: '/', method: 'POST' },
+            { name: 'step-2', path: '/', method: 'POST', depends_on: ['step-1'] },
+          ]
+        : [{ name: 'step-1', path: '/', method: template === 'scheduled' ? 'GET' : 'POST' }],
   };
 }
 
