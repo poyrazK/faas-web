@@ -55,6 +55,8 @@ export interface ResourceTableProps<T> {
   filteredEmptyMessage?: string;
   emptyAction?: ReactNode;
   minWidth?: string;
+  /** Optional responsive minimum for tables whose secondary columns appear on desktop. */
+  desktopMinWidth?: string;
   /** Opt in when columns have explicit widths and long identifiers must not resize them. */
   tableLayout?: 'auto' | 'fixed';
   /** True while the first fetch is in flight. Replaces the table, not the header. */
@@ -87,6 +89,7 @@ export function ResourceTable<T extends { id: string }>({
   filteredEmptyMessage = 'No matching results.',
   emptyAction,
   minWidth = 'min-w-[820px]',
+  desktopMinWidth,
   tableLayout = 'auto',
   loading = false,
   error,
@@ -262,6 +265,7 @@ export function ResourceTable<T extends { id: string }>({
                 className={cn(
                   'w-full text-sm',
                   secondary.length ? 'min-w-0' : minWidth,
+                  desktopMinWidth,
                   tableLayout === 'fixed' && 'table-fixed'
                 )}
               >
