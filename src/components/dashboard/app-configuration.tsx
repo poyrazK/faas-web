@@ -21,6 +21,7 @@ import { RegistryCredentialsPanel } from './app-core-panels';
 import { SupplyChainPanel } from './supply-chain-panel';
 import { StaticEgressIP, StreamingCapNote } from './app-insights';
 import { PurgeCacheControl } from './app-lifecycle';
+import { publicAppUrl } from '@/lib/app-url';
 
 /**
  * The app's own settings, editable.
@@ -701,12 +702,29 @@ export function AppConfiguration({ slug }: { slug: string }) {
             ['Runtime', data.runtime ?? data.type],
             ['Type', data.type],
             ['Endpoint', data.url],
-          ].map(([label, value]) => (
-            <div key={label} className="flex flex-col gap-1 py-4">
-              <dt className="label-mono text-muted-foreground">{label}</dt>
-              <dd className="truncate font-mono text-sm">{value}</dd>
-            </div>
-          ))}
+          ].map(([label, value]) => {
+            const href = label === 'Endpoint' ? publicAppUrl(value) : undefined;
+            return (
+              <div key={label} className="flex flex-col gap-1 py-4">
+                <dt className="label-mono text-muted-foreground">{label}</dt>
+                <dd className="truncate font-mono text-sm">
+                  {href ? (
+                    <a
+                      href={href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={`Open endpoint ${value}`}
+                      className="text-brand underline-offset-2 hover:underline focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+                    >
+                      {value}
+                    </a>
+                  ) : (
+                    value || 'Not assigned'
+                  )}
+                </dd>
+              </div>
+            );
+          })}
         </dl>
       </Panel>
       {/* Keyed on the id so a rename or a fresh read reseeds the draft. */}

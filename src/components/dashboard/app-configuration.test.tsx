@@ -18,6 +18,7 @@ vi.mock('@/lib/api/queries', () => ({
       slug: 'alpha',
       type: 'function',
       runtime: 'node',
+      url: 'https://alpha.example.test',
       ram_mb: 256,
       max_concurrency: 1,
       min_instances: 0,
@@ -38,6 +39,17 @@ beforeEach(() => {
 });
 
 describe('App deletion contract copy', () => {
+  it('makes the API-assigned endpoint clickable in configuration', () => {
+    render(
+      <ConfirmProvider>
+        <AppConfiguration slug="alpha" />
+      </ConfirmProvider>
+    );
+    expect(
+      screen.getByRole('link', { name: 'Open endpoint https://alpha.example.test' })
+    ).toHaveAttribute('href', 'https://alpha.example.test/');
+  });
+
   it('explains the restore window without weakening typed confirmation', async () => {
     render(
       <ConfirmProvider>

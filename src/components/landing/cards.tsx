@@ -19,6 +19,8 @@ import { EASE } from './reveal';
 
 export interface CardItem {
   title: string;
+  /** Availability stays visible even when a capability card is closed. */
+  status?: 'Public beta' | 'Preview';
   body: string;
   /** Cells of the mosaic on a 7×5 grid: [col, row, tint 0–2]. */
   mosaic: [number, number, number][];
@@ -161,6 +163,7 @@ export function Cards({
                   <h3 className="text-[26px] font-medium leading-[1.1] tracking-[-0.02em] text-foreground sm:text-[32px]">
                     {item.title}
                   </h3>
+                  {item.status && <p className="label-mono mt-4 text-brand">{item.status}</p>}
                   <p className="mt-4 text-[14px] leading-[1.35] text-muted-foreground">
                     {item.body}
                   </p>
@@ -197,6 +200,7 @@ export function Cards({
                 <h3 className="text-[20px] font-medium leading-tight tracking-[-0.01em] text-foreground">
                   {item.title}
                 </h3>
+                {item.status && <p className="label-mono mt-4 text-brand">{item.status}</p>}
               </div>
             )}
           </motion.div>

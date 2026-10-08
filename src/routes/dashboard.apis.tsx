@@ -5,6 +5,8 @@ import { PageHeader } from '@/components/dashboard/primitives';
 import { ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
 import { useAppRoutes } from '@/lib/api/queries';
+import { appRouteUrl } from '@/lib/app-url';
+import { CopyIconButton } from '@/components/ui/copy-button';
 import { consoleHead } from '@/lib/seo';
 
 export const Route = createFileRoute('/dashboard/apis')({
@@ -35,7 +37,7 @@ interface RouteRow {
  * the two can never drift into two different implementations of the
  * same resource.
  */
-export function RoutesBody({ slug }: { slug: string }) {
+export function RoutesBody({ slug, baseUrl }: { slug: string; baseUrl?: string }) {
   const { data, isPending, error, refetch } = useAppRoutes(slug);
 
   const rows = useMemo<RouteRow[]>(
@@ -47,7 +49,29 @@ export function RoutesBody({ slug }: { slug: string }) {
     {
       key: 'path',
       label: 'Route',
-      render: (r) => <span className="font-mono text-xs">{r.path}</span>,
+      render: (r) => {
+        const match = /^([A-Z]+) (\/.*)$/.exec(r.path);
+        const url = match ? appRouteUrl(baseUrl, match[2]) : undefined;
+        if (!url) return <span className="font-mono text-xs">{r.path}</span>;
+        return (
+          <span className="inline-flex items-center gap-1 font-mono text-xs">
+            {match?.[1] === 'GET' ? (
+              <a
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`Open ${r.path}`}
+                className="text-brand underline-offset-2 hover:underline focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+              >
+                {r.path}
+              </a>
+            ) : (
+              <span>{r.path}</span>
+            )}
+            {match?.[1] !== 'GET' && <CopyIconButton text={url} label={`${r.path} URL`} />}
+          </span>
+        );
+      },
     },
   ];
 
@@ -110,7 +134,7 @@ function ApisPage() {
       />
 
       <AppScope state={appState} resource="routes">
-        <RoutesBody slug={slug} />
+        <RoutesBody slug={slug} baseUrl={apps.find((app) => app.slug === slug)?.url} />
       </AppScope>
     </div>
   );
