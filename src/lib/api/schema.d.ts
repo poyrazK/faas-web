@@ -4824,7 +4824,7 @@ export interface paths {
             path: {
                 /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
                 slug: components["parameters"]["Slug"];
-                /** @description Workflow name from the app's current live deployment. */
+                /** @description Workflow name from the app's effective published definitions. */
                 name: string;
             };
             cookie?: never;
@@ -4833,9 +4833,13 @@ export interface paths {
         put?: never;
         /**
          * Start a durable workflow run.
-         * @description Snapshots the named workflow definition from the app's current live
-         *     deployment and creates a pending run. The optional request body is
-         *     retained as the workflow input and may be any valid JSON value.
+         * @description Snapshots the named effective workflow definition from the app's live
+         *     default deployment and dashboard publications and creates a pending run. The optional request body is
+         *     retained as the workflow input and may be any valid JSON value. An
+         *     optional Idempotency-Key binds this request to its original run for as
+         *     long as that run is retained. A matching retry returns the original
+         *     run, including its original definition snapshot; reusing the key with
+         *     different input returns 409.
          */
         post: operations["createWorkflowRun"];
         delete?: never;
@@ -8398,10 +8402,735 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/apps/{slug}/automations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /** List drafts and published automations, including YAML definitions. */
+        get: operations["listAutomations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/automations:simulate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Simulate automation data flow with sample input and successful action mocks.
+         * @description Returns a deterministic hypothetical trace without saving a definition,
+         *     creating runs, invoking handlers, publishing events or calling integrations.
+         *     Requires ownership, MFA and read scope. Works without a live deployment
+         *     or enabled workflow runtime. Definition validation uses the account plan
+         *     and checks managed integration bindings without opening credentials.
+         *     Missing action results block dependent steps. Waits remain unresolved;
+         *     failure and timeout outcomes cannot be injected. Action mocks using the
+         *     reserved exact {"timeout":true} output with an on_timeout route return
+         *     400. Loop mocks form a
+         *     sequential prefix. A complete trace means all roots resolved or skipped
+         *     under the supplied successful mocks, not that live execution will succeed.
+         *     Limits: 3 MiB request, 1 MiB definition and each sample value, 128 roots,
+         *     1024 trace entries and 4 MiB response, plus existing loop bounds.
+         *     Invalid definitions return 200 with definition_valid=false and no trace.
+         */
+        post: operations["simulateAutomation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/automations:validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Validate a definition without saving it or executing any steps. */
+        post: operations["validateAutomation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/automations/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation name, shared with workflow run endpoints. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        /** Read an automation draft and its published definition. */
+        get: operations["getAutomation"];
+        /** Save a draft with optimistic version checking; running definitions stay unchanged. */
+        put: operations["saveAutomationDraft"];
+        post?: never;
+        /** Remove a dashboard definition; restoring YAML ownership requires explicit confirmation. */
+        delete: operations["deleteAutomation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/automations/{name}/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation whose recent execution health is summarized. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Get bounded execution health for one automation.
+         * @description Returns run counts by status, the completed-run success rate, median
+         *     and p95 duration, recent run identities and the most common failed
+         *     steps. Inputs, outputs, and error text are never included. The default
+         *     window is the previous seven days; the maximum window is 30 days.
+         *     created_after and created_before are inclusive RFC3339 timestamps, and
+         *     created_before may not be in the future. Failed loop items are grouped
+         *     under their parent step; at most ten failed steps are returned.
+         */
+        get: operations["getAutomationHealth"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/automations/{name}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation whose immutable published revisions are listed. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        /** List published automation revisions, newest first. */
+        get: operations["listAutomationRevisions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/automations/{name}/revisions/{version}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation that owns the requested published revision. */
+                name: string;
+                /** @description Published revision identifier returned by the revision list. */
+                version: number;
+            };
+            cookie?: never;
+        };
+        /** Read one immutable published automation revision. */
+        get: operations["getAutomationRevision"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/automations/{name}/revisions/{version}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation that receives the restored draft. */
+                name: string;
+                /** @description Published revision to copy into the current draft. */
+                version: number;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore a published revision as a new draft using optimistic version checking.
+         * @description Copies the selected immutable revision into the automation's draft. It
+         *     does not publish the copy or change running and accepted workflows.
+         *     Send expected_version from the latest automation read; use zero when
+         *     creating a draft after the automation was deleted. YAML ownership still
+         *     requires explicit takeover when the restored draft is later published.
+         */
+        post: operations["restoreAutomationRevision"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/automations/{name}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation whose saved draft will be published. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Validate and publish the saved draft; taking over a YAML name requires explicit confirmation.
+         * @description Published definitions survive future YAML deployments. A live default deployment is required. Runtime execution also requires FAAS_WORKFLOWS_ENABLED on apid and schedd. Events accepted before publication retain their captured definition.
+         */
+        post: operations["publishAutomation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/automations/{name}/enabled": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation whose automatic starts will be paused or resumed. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Pause or resume automatic starts without cancelling existing runs. */
+        put: operations["setAutomationEnabled"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workflows/runs/{id}/steps/{step}/attempts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Parent run for the requested executor-attempt history. */
+                id: string;
+                /** @description Workflow step name whose executor attempts are returned. */
+                step: string;
+            };
+            cookie?: never;
+        };
+        /** List executor attempts for one workflow step. */
+        get: operations["listWorkflowStepAttempts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * @description Exactly one of run, path or outbound. No nested iteration, dependencies,
+         *     waits, joins or exception routes. An optional when guard is evaluated once
+         *     for each item using input.item, input.index and input.input, plus outputs of
+         *     the parent's declared dependencies. Omitted input sends the item itself.
+         *     Explicit input templates use the same item context. Inputs and guard decisions
+         *     are snapshotted before dispatch and never reevaluated on retry. Mutating
+         *     outbound retries require provider idempotency support.
+         */
+        WorkflowForEachActionSpec: {
+            run?: string;
+            path?: string;
+            outbound?: components["schemas"]["WorkflowOutboundSpec"];
+            /** @enum {string} */
+            method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
+            /** @description Typed JSON input template for each item. */
+            input?: {
+                [key: string]: unknown;
+            } | unknown[] | string | number | boolean | null;
+            /**
+             * @description Per-item action timeout, bounded by the workflow plan limit.
+             * @example 30s
+             */
+            timeout?: string;
+            retry?: components["schemas"]["WorkflowRetrySpec"];
+            when?: components["schemas"]["WorkflowGuardSpec"];
+        };
+        /** @description Bounded scheduled checker. Each 2xx response must be a JSON object with boolean done. A false response becomes the next check's input; no compute is held between checks. */
+        WorkflowConditionSpec: {
+            /** @description Named app handler that checks the condition. */
+            run: string;
+            /**
+             * @description Delay between checks; at least 1m and no more than the plan wait limit.
+             * @example 30m
+             */
+            interval: string;
+            max_attempts: number;
+        };
+        /**
+         * @description Bounded declarative when predicate. Specify exactly one of all, any,
+         *     not, or ref/op/value. References select input or a direct dependency
+         *     output using input.foo or steps.lookup.output.body.foo without template
+         *     delimiters. Equality is type-sensitive and accepts scalar literals only.
+         *     Numeric comparisons are exact; numbers are bounded to 4096 bytes and
+         *     exponent magnitude 4096. Missing paths fail comparisons, including ne;
+         *     exists distinguishes missing from present null. not negates normally.
+         *     At most 32 predicate nodes, 8 levels and 16 KiB per guard. Guards are
+         *     forbidden on on_failure/on_timeout handler targets. A false guard skips
+         *     its step and propagates through dependencies; skipped paths do not join.
+         */
+        WorkflowGuardSpec: {
+            all?: components["schemas"]["WorkflowGuardSpec"][];
+            any?: components["schemas"]["WorkflowGuardSpec"][];
+            not?: components["schemas"]["WorkflowGuardSpec"];
+            /**
+             * @description Input path or output path of a declared direct dependency.
+             * @example steps.lookup.output.body.overdue
+             */
+            ref?: string;
+            /** @enum {string} */
+            op?: "eq" | "ne" | "gt" | "gte" | "lt" | "lte" | "exists";
+            /** @description Scalar JSON literal; numeric operators require a number and exists requires a boolean. */
+            value?: string | number | boolean | null;
+        };
+        /**
+         * @description Call an existing customer managed outbound integration bound to this app.
+         *     Credentials and fixed-origin routing remain with outboundd. Input is a
+         *     templated JSON body. Path segments and query values support the workflow
+         *     template syntax; dynamic path values are escaped as one segment. GET and
+         *     HEAD have no body and forbid explicit input.
+         *     One provider call occurs per workflow attempt. Automatic mutating retries
+         *     require explicit provider idempotency support. Workflow outputs contain
+         *     status and body; sensitive headers and failed-response bodies are omitted.
+         */
+        WorkflowOutboundSpec: {
+            /**
+             * Format: uuid
+             * @description Canonical UUID of the customer managed integration bound to the app.
+             */
+            integration_id: string;
+            /**
+             * @description Provider HTTP method within both integration and app binding permissions.
+             * @enum {string}
+             */
+            method: "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE";
+            /**
+             * @description Canonical relative provider path. A whole segment may be a template, such as /v1/contacts/{{input.contact_id}}; resolved values are escaped and checked against the bound route policy at execution time.
+             * @example /v1/contacts/{{input.contact_id}}
+             */
+            path: string;
+            /**
+             * @description Optional static query keys with templated scalar values. Values are URL-encoded; the request remains bound to this integration and its route permissions.
+             * @example {
+             *       "email": "{{input.email}}"
+             *     }
+             */
+            query?: {
+                [key: string]: string;
+            };
+            /**
+             * @description Assert that the provider deduplicates the stable Idempotency-Key for this mutating operation; enables retries and recovery.
+             * @default false
+             */
+            idempotency_supported: boolean;
+        };
+        /**
+         * @description Native branch join. Waits for all dependencies to finish and permits only
+         *     skips caused by false guards, including their descendants. Failed,
+         *     cancelled, unknown and exception-route skips cannot activate a join.
+         *     The first succeeded dependency in output_from order supplies the durable
+         *     output {source: step name, value: original output}. All inactive branches
+         *     skip the join and its continuation. Consumes zero execution attempts.
+         *     Requires 2-128 dependencies and cannot have input, method, when, timeout,
+         *     retry or exception routes, or be/depend on an exception handler.
+         */
+        WorkflowJoinSpec: {
+            /** @description Every direct dependency exactly once, in explicit selection priority order. */
+            output_from: string[];
+        };
+        /**
+         * @description Bounded-concurrency action over a JSON array from input or a direct dependency
+         *     output. Snapshots all items and resolved action inputs before dispatch. At most
+         *     128 items, 1 MiB source/prepared inputs and 1 MiB collected output. Parent names
+         *     permit at most 64 UTF-8 bytes. Omitted or zero max_parallel means one active
+         *     item; values up to 16 limit active items per batch. Items are admitted in
+         *     input order within a bounded window, and collected output always follows input
+         *     order. By default no new items start after a terminal item failure; already
+         *     active items finish and the parent fails. `on_item_failure: continue` attempts
+         *     later items and still marks the parent unsuccessful if any item failed.
+         *     Completed items survive recovery. With the default stop policy, output retains
+         *     the completed prefix. With continue, output includes every input position and
+         *     null for guarded or unsuccessful items. An empty list succeeds with []. Parent
+         *     consumes zero attempts; each item has its own ledger.
+         */
+        WorkflowForEachSpec: {
+            /** @description Array reference without delimiters, such as input.invoices or steps.lookup.output.items. */
+            items: string;
+            action: components["schemas"]["WorkflowForEachActionSpec"];
+            /** @description Maximum active items for this batch. Omit or set 0 for sequential execution. */
+            max_parallel?: number;
+            /**
+             * @description Continue after failed or dead items and mark the parent unsuccessful after all items are attempted. Omit to stop at the first failure.
+             * @enum {string}
+             */
+            on_item_failure?: "continue";
+        };
+        /** @description Immutable effect identity and current delivery status from the signed webhook ledger. */
+        OperationEffectRecord: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: int64 */
+            generation: number;
+            /** Format: uuid */
+            webhook_id?: string;
+            /**
+             * Format: uuid
+             * @description Stable across webhook retries; equals the effect ID.
+             */
+            delivery_id?: string;
+            type?: string;
+            /**
+             * @description recorded is an opaque effect with no adapter; unavailable indicates deleted or pruned delivery history. Completion of the operation does not imply delivery succeeded.
+             * @enum {string}
+             */
+            status: "recorded" | "pending" | "in_flight" | "succeeded" | "failed" | "dead" | "unavailable";
+            attempt: number;
+            last_error?: string;
+        };
+        /** @description Safe summary of one supplied hypothetical attempt outcome. */
+        AutomationSimulationAttempt: {
+            attempt: number;
+            /** @enum {string} */
+            outcome: "success" | "failure" | "timeout";
+            http_status?: number;
+        };
+        /** @description One durable executor invocation for a workflow step. */
+        WorkflowStepAttemptResponse: {
+            attempt: number;
+            /** @enum {string} */
+            status: "running" | "retrying" | "succeeded" | "failed";
+            http_status?: number | null;
+            /** Format: date-time */
+            started_at: string;
+            /** Format: date-time */
+            finished_at?: string | null;
+            /** Format: date-time */
+            next_attempt_at?: string | null;
+            error?: string | null;
+            /** @description Accepted operation webhook effects and their delivery status. */
+            effects?: components["schemas"]["OperationEffectRecord"][];
+        };
+        /** @description Number of terminal runs that failed at this logical step; loop items are grouped by parent. */
+        AutomationHealthStepFailure: {
+            step_name: string;
+            /** Format: int64 */
+            failed_run_count: number;
+            /** Format: date-time */
+            last_failed_at: string;
+        };
+        /** @description Safe recent-run identity and timestamps; workflow input, output and error text are omitted. */
+        AutomationHealthRun: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            status: "pending" | "running" | "awaiting_event" | "succeeded" | "failed" | "dead";
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            finished_at?: string;
+        };
+        /** @description One hypothetical root or loop item with resolved data and its control-flow decision. */
+        AutomationSimulationStep: {
+            step_name: string;
+            /** @enum {string} */
+            kind: "run" | "path" | "outbound" | "for_each" | "join" | "event_wait" | "callback_wait" | "duration_wait" | "condition_wait";
+            /** @enum {string} */
+            state: "would_execute" | "mocked" | "would_wait" | "resolved" | "expanded" | "skipped" | "blocked" | "would_retry" | "timed_out" | "failed" | "dead" | "error";
+            /** @description Stable decision reason with no referenced customer values. */
+            reason?: string;
+            blocked_by?: string[];
+            when_matched?: boolean;
+            /** @description Resolved action input or materialized loop source; any JSON type is preserved. */
+            input?: unknown;
+            /** @description Supplied successful mock, timeout sentinel or control output; omitted when no result is known. */
+            output?: unknown;
+            /** @description Safe summary of supplied action attempt outcomes; mocked error text is exposed only through eligible failure context. */
+            attempts?: components["schemas"]["AutomationSimulationAttempt"][];
+            run?: string;
+            path?: string;
+            method?: string;
+            integration_id?: string;
+            wait_for?: string;
+            parent_step?: string;
+            item_index?: number;
+            item_count?: number;
+        };
+        /** @description One mocked attempt; success requires output, failure requires exactly one of error or non-2xx http_status, and timeout has no additional fields. */
+        AutomationSimulationMockAttempt: {
+            /** @enum {string} */
+            outcome: "success" | "failure" | "timeout";
+            /** @description Successful result; any JSON value, including null. */
+            output?: unknown;
+            /** @description Mocked transport or action error message used as failure.message. */
+            error?: string;
+            /** @description Mocked non-2xx response status. */
+            http_status?: number;
+        };
+        /** @description The ordered executor-attempt history for one workflow step. */
+        ListWorkflowStepAttemptsResponse: {
+            attempts: components["schemas"]["WorkflowStepAttemptResponse"][];
+        };
+        /** @description Publication revision and the desired state of automatic starts. */
+        SetAutomationEnabledRequest: {
+            /**
+             * Format: int64
+             * @description Current automation revision to pause or resume.
+             */
+            expected_version: number;
+            enabled: boolean;
+        };
+        /** @description Saved draft revision to publish, with explicit YAML takeover when needed. */
+        PublishAutomationRequest: {
+            /**
+             * Format: int64
+             * @description Current saved draft revision to validate and publish.
+             */
+            expected_version: number;
+            /** @default false */
+            take_over_manifest: boolean;
+        };
+        /** @description Restores a selected immutable publication into the draft without publishing it. */
+        RestoreAutomationRevisionRequest: {
+            /**
+             * Format: int64
+             * @description Current draft revision for optimistic concurrency; zero creates a draft after deletion.
+             */
+            expected_version: number;
+        };
+        /** @description Immutable published automation definition with actor and rollout provenance. */
+        AutomationRevisionResponse: {
+            /**
+             * Format: int64
+             * @description Immutable published revision identifier.
+             */
+            version: number;
+            definition: components["schemas"]["WorkflowSpec"];
+            /** @description SHA-256 of the canonical JSON encoding of definition. */
+            definition_hash: string;
+            /**
+             * Format: date-time
+             * @description When this immutable history record was stored; for legacy snapshots this is the migration time.
+             */
+            recorded_at: string;
+            /** @description True for the one current publication copied into history during rollout; older history was not retained. */
+            legacy_snapshot: boolean;
+            /**
+             * Format: uuid
+             * @description Account that published this revision, or owned the legacy snapshot at rollout.
+             */
+            published_by_account_id: string;
+            /**
+             * Format: uuid
+             * @description API key used for the publish when the request used key authentication; omitted for session authentication and legacy snapshots.
+             */
+            published_by_api_key_id?: string;
+        };
+        /** @description Newest-first immutable publication history and pagination metadata. */
+        ListAutomationRevisionsResponse: {
+            revisions: components["schemas"]["AutomationRevisionResponse"][];
+            total: number;
+            limit: number;
+            offset: number;
+        };
+        /** @description Bounded aggregate automation health. Customer payloads and error strings are never returned. */
+        AutomationHealthResponse: {
+            app_slug: string;
+            automation_name: string;
+            /** Format: date-time */
+            window_start: string;
+            /** Format: date-time */
+            window_end: string;
+            /** Format: int64 */
+            run_count: number;
+            /** Format: int64 */
+            completed_run_count: number;
+            /**
+             * Format: int64
+             * @description Current non-terminal runs that have started, including retries and parked waits; independent of the requested health window.
+             */
+            active_run_count: number;
+            /**
+             * Format: int64
+             * @description Current pending runs that have not started; independent of the requested health window.
+             */
+            queued_run_count: number;
+            /**
+             * Format: double
+             * @description Succeeded runs divided by succeeded, failed and dead runs; zero when none completed.
+             */
+            success_rate: number;
+            status_counts: {
+                /** Format: int64 */
+                pending: number;
+                /** Format: int64 */
+                running: number;
+                /** Format: int64 */
+                awaiting_event: number;
+                /** Format: int64 */
+                succeeded: number;
+                /** Format: int64 */
+                failed: number;
+                /** Format: int64 */
+                dead: number;
+            };
+            /**
+             * Format: int64
+             * @description Median duration of completed runs with start and finish timestamps; omitted when no samples exist.
+             */
+            p50_duration_ms?: number;
+            /**
+             * Format: int64
+             * @description 95th percentile duration of completed runs with start and finish timestamps; omitted when no samples exist.
+             */
+            p95_duration_ms?: number;
+            last_run?: components["schemas"]["AutomationHealthRun"];
+            last_success?: components["schemas"]["AutomationHealthRun"];
+            last_failure?: components["schemas"]["AutomationHealthRun"];
+            failed_steps: components["schemas"]["AutomationHealthStepFailure"][];
+        };
+        /** @description Draft definition and the revision that the caller edited. */
+        SaveAutomationDraftRequest: {
+            /**
+             * Format: int64
+             * @description Saved revision observed by the editor; zero creates the first draft.
+             */
+            expected_version: number;
+            definition: components["schemas"]["WorkflowSpec"];
+        };
+        /** @description Saved draft, publication, ownership and opaque revision of one automation. */
+        AutomationResponse: {
+            name: string;
+            /**
+             * Format: int64
+             * @description Opaque monotonically increasing revision. Zero creates the first draft. A stale value returns automation_version_conflict.
+             */
+            version: number;
+            /** @enum {string} */
+            source: "manifest" | "dashboard" | "draft";
+            draft: components["schemas"]["WorkflowSpec"];
+            published?: components["schemas"]["WorkflowSpec"];
+            /** Format: int64 */
+            published_version?: number;
+            enabled: boolean;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        /** @description Candidate automation definition for a read-only validation. */
+        ValidateAutomationRequest: {
+            definition: components["schemas"]["WorkflowSpec"];
+        };
+        /** @description Validation issues, execution order and nominal next schedule occurrence. */
+        ValidateAutomationResponse: {
+            valid: boolean;
+            issues: string[];
+            step_order: string[];
+            /** Format: date-time */
+            next_fire_at?: string;
+        };
+        /** @description Definition validity, submitted-definition SHA-256 and deterministic simulated data flow. */
+        SimulateAutomationResponse: {
+            /** @description Whether the definition and managed integration bindings passed validation. */
+            definition_valid: boolean;
+            /** @description SHA-256 of the JSON-serialized submitted definition, independent of samples; not a publication revision. */
+            definition_hash: string;
+            /** @description Every root reached a known terminal outcome under these mocks; false for missing results, unresolved retries, waits or evaluation errors. */
+            complete: boolean;
+            issues: string[];
+            warnings: string[];
+            step_order: string[];
+            trace: components["schemas"]["AutomationSimulationStep"][];
+        };
+        /** @description Sample workflow data and mocked action or timeout outcomes for a stateless simulation. */
+        SimulateAutomationRequest: {
+            definition: components["schemas"]["WorkflowSpec"];
+            /** @description Workflow input as any JSON value; omission is equivalent to null. */
+            input?: unknown;
+            /** @description Successful action outputs keyed by root step name; explicit null is a supplied result. */
+            mock_outputs?: {
+                [key: string]: unknown;
+            };
+            /** @description Ordered successful output prefix keyed by for_each root name; waits and controls cannot be mocked. */
+            mock_item_outputs?: {
+                [key: string]: unknown[];
+            };
+            /** @description Ordered per-attempt outcomes keyed by action name; waits accept one timeout outcome when they have an on_timeout route. Action timeouts also require on_timeout. Cannot be combined with mock_outputs for the same step. */
+            mock_attempts?: {
+                [key: string]: components["schemas"]["AutomationSimulationMockAttempt"][];
+            };
+        };
+        /** @description App automation definitions, plan limit and execution availability. */
+        ListAutomationsResponse: {
+            app_slug: string;
+            runtime_enabled: boolean;
+            unavailable_reason?: string;
+            max_definitions: number;
+            automations: components["schemas"]["AutomationResponse"][];
+        };
         /**
          * @description `green` satisfies the container contract as written, `amber` needs a
          *     declared change, `red` cannot run.
@@ -11343,10 +12072,33 @@ export interface components {
             delta_cents: number;
             new_balance: number;
         };
-        /** @description How a workflow starts. Manual is the only supported trigger in v1. */
+        /** @description Manual start, a five-field recurring schedule, or an internal event start. Event triggers use source/event_type patterns and a JSON content filter; matching runs receive the full CloudEvents envelope as input. Event recipients and workflow definitions are captured when an event is accepted. Scheduled starts skip missed minutes and default to skipping overlapping runs. Scheduling is active only on the live default deployment and requires the workflow runtime. New deployments arm schedules before their next eligible minute. An app owner may mark a schedule tenant_configurable to let each linked customer manage only its own cadence, timezone, overlap behavior, and enabled state. */
         WorkflowTriggerSpec: {
             /** @enum {string} */
-            type: "manual";
+            type: "manual" | "schedule" | "event";
+            /** @description Five-field cron expression, required for schedule triggers. */
+            schedule?: string;
+            /** @description IANA timezone for schedule triggers; defaults to UTC. */
+            timezone?: string;
+            /** @description Fixed JSON input for scheduled runs, bounded by the workflow run-input limit. */
+            input?: unknown;
+            /**
+             * @description Skip a minute while any run of this workflow is active, or allow overlap subject to the app run quota. Defaults to skip.
+             * @enum {string}
+             */
+            overlap?: "skip" | "allow";
+            /** @description Whether the automatic trigger is enabled; defaults to true. Already accepted events and existing runs continue after disabling. */
+            enabled?: boolean;
+            /** @description For schedule triggers, allow each linked platform tenant to manage its own schedule, timezone, overlap behavior, and enabled state. Workflow input and definition remain app-owned. */
+            tenant_configurable?: boolean;
+            /** @description Required for event triggers; exact source or edge wildcard pattern. */
+            source?: string;
+            /** @description Required for event triggers; exact event type or edge wildcard pattern. */
+            event_type?: string;
+            /** @description Optional JSON predicate evaluated against the CloudEvents envelope. Event triggers reject schedule, timezone, input, and overlap options. */
+            filter?: {
+                [key: string]: unknown;
+            };
         };
         /** @description Retry policy for one workflow step. */
         WorkflowRetrySpec: {
@@ -11357,13 +12109,22 @@ export interface components {
         /**
          * @description One workflow step. The canonical ADR-081 target is `run`; `path`
          *     and `method` remain accepted for the existing HTTP wake executor
-         *     during the runtime migration. Exactly one of `run`, `path`, or
-         *     `wait_for_event` must be supplied.
+         *     during the runtime migration. Exactly one of `run`, `path`,
+         *     `wait_for_event`, `wait_for_callback`, `wait_for_duration`,
+         *     `wait_for_condition`, `outbound`, `join`, or `for_each` must be supplied.
+         *     Set `managed_operation` on an executable HTTP step to persist its business
+         *     result transactionally and replay it safely when the workflow retries
+         *     after an uncertain response.
          */
         WorkflowStepSpec: {
             name: string;
             /** @description Named platform operation to invoke. */
             run?: string;
+            /** @description Opt into the managed PostgreSQL operation result protocol for this executable HTTP step. The handler must use the transactional operation SDK. */
+            managed_operation?: boolean;
+            for_each?: components["schemas"]["WorkflowForEachSpec"];
+            join?: components["schemas"]["WorkflowJoinSpec"];
+            outbound?: components["schemas"]["WorkflowOutboundSpec"];
             /** @description JSON input passed to the named operation. */
             input?: {
                 [key: string]: unknown;
@@ -11372,28 +12133,58 @@ export interface components {
             path?: string;
             /** @enum {string} */
             method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
+            when?: components["schemas"]["WorkflowGuardSpec"];
             depends_on?: string[];
             wait_for_event?: string;
+            /** @description Park for one account-authorized callback completion. Requires a wait timeout. */
+            wait_for_callback?: boolean;
+            /**
+             * @description Durable timer, from 1s up to the plan's 7-day workflow wait limit. Fixed day suffixes such as `3d` mean 24-hour days; no compute is held while waiting.
+             * @example 3d
+             */
+            wait_for_duration?: string;
+            wait_for_condition?: components["schemas"]["WorkflowConditionSpec"];
             /**
              * @description Step or wait timeout in time.ParseDuration form, for example `30s`; workflow also accepts fixed 24-hour day suffixes such as `7d`.
              * @example 30s
              */
             timeout?: string;
             on_timeout?: string;
+            /** @description Name of the handler step to run after this step reaches a terminal failure. */
+            on_failure?: string;
             retry?: components["schemas"]["WorkflowRetrySpec"] | null;
         };
-        /** @description A named workflow DAG submitted with a deployment (ADR-081). */
+        /** @description A named workflow DAG submitted with a deployment (ADR-081). max_concurrent_runs caps active run instances for this workflow; excess admitted runs remain pending until a slot opens, subject to the app plan's run quota. max_concurrent_actions caps active executor steps across runs of this workflow; steps wait in the scheduler queue while all action slots are occupied. */
         WorkflowSpec: {
             name: string;
             trigger?: components["schemas"]["WorkflowTriggerSpec"] | null;
+            /**
+             * @description Maximum active run instances for this workflow. Omit or set 0 to rely only on the app plan limit. Pending runs that have not started are queued and do not consume a slot.
+             * @default 0
+             */
+            max_concurrent_runs: number;
+            /**
+             * @description Maximum running action and condition-check steps across runs of this workflow. Omit or set 0 for no additional per-workflow action cap. Event, callback, and duration waits do not consume an action slot. Runs use the value from their immutable definition snapshot.
+             * @default 0
+             */
+            max_concurrent_actions: number;
             steps: components["schemas"]["WorkflowStepSpec"][];
         };
         /** @description A persisted durable workflow run (ADR-081). */
         WorkflowRunResponse: {
+            /** @description Number of accepted resumptions; send this value when requesting continuation. */
+            resume_count?: number;
+            /** Format: date-time */
+            cancelled_at?: string;
             /** Format: uuid */
             id: string;
             /** Format: uuid */
             app_id: string;
+            /**
+             * Format: uuid
+             * @description Platform tenant authorized for this workflow run
+             */
+            platform_tenant_id?: string | null;
             workflow_name: string;
             /** @enum {string} */
             status: "pending" | "running" | "awaiting_event" | "succeeded" | "failed" | "dead";
@@ -11419,14 +12210,35 @@ export interface components {
         };
         /** @description A step attempt within a durable workflow run. */
         WorkflowStepResponse: {
+            /** @description Attempt number at the latest resume; attempts since this number consume the current retry budget. */
+            retry_base?: number;
+            /** @description Parent step name for a persisted iteration item. */
+            for_each_parent?: string;
+            /** @description Stable zero-based index within the snapshotted list. */
+            for_each_index?: number;
+            /** @description Snapshotted item count on an initialized parent; zero is an empty batch. */
+            for_each_count?: number;
             step_name: string;
             /** @enum {string} */
             status: "pending" | "running" | "awaiting_event" | "succeeded" | "failed" | "dead" | "skipped";
             attempt: number;
             input?: unknown;
             output?: unknown;
+            /** @description Persisted guard decision; absent when the guard has not run or a dependency was skipped. */
+            when_matched?: boolean;
+            /** Format: date-time */
+            when_evaluated_at?: string;
+            /**
+             * @description Why a pending step was skipped; contains no referenced customer values.
+             * @enum {string}
+             */
+            skip_reason?: "when_false" | "dependency_skipped" | "dependency_failed" | "route_not_taken";
             /** Format: date-time */
             started_at?: string | null;
+            /** Format: date-time */
+            next_check_at?: string | null;
+            /** Format: date-time */
+            next_retry_at?: string | null;
             /** Format: date-time */
             finished_at?: string | null;
             error?: string | null;
@@ -17828,6 +18640,33 @@ export interface components {
         };
     };
     responses: {
+        /** @description The workflow run is absent or not owned by the caller, or code: workflow_step_not_found — the requested step is absent. */
+        WorkflowStepAttemptsNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description code: automation_invalid | validation_failed — the definition, revision, or request fields are invalid. */
+        AutomationInvalid: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description code: automation_version_conflict | automation_ownership_conflict — reload a stale revision or explicitly confirm transfer of YAML ownership. */
+        AutomationConflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
         /** @description code: tenant_surfaces_not_allowed — this plan or cluster does not enable tenant surfaces. */
         TenantSurfacesNotAllowed: {
             headers: {
@@ -26505,11 +27344,14 @@ export interface operations {
     createWorkflowRun: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Stable caller key for retrying this run creation. Reuse only with the same workflow input. */
+                "Idempotency-Key"?: string;
+            };
             path: {
                 /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
                 slug: components["parameters"]["Slug"];
-                /** @description Workflow name from the app's current live deployment. */
+                /** @description Workflow name from the app's effective published definitions. */
                 name: string;
             };
             cookie?: never;
@@ -26558,6 +27400,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Tenant-required apps need a tenant-scoped run route, or the Idempotency-Key was already used with different workflow input. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             429: components["responses"]["TooManyRequests"];
             503: components["responses"]["ServerError"];
         };
@@ -26567,6 +27418,12 @@ export interface operations {
             query?: {
                 /** @description Optional exact status filter. */
                 status?: "pending" | "running" | "awaiting_event" | "succeeded" | "failed" | "dead";
+                /** @description Optional exact workflow name filter. */
+                workflow_name?: string;
+                /** @description Include runs created at or after this RFC3339 timestamp. */
+                created_after?: string;
+                /** @description Include runs created at or before this RFC3339 timestamp. */
+                created_before?: string;
                 /** @description Maximum runs to return in this page. */
                 limit?: number;
                 /** @description Number of runs to skip before returning results. */
@@ -26590,6 +27447,7 @@ export interface operations {
                     "application/json": components["schemas"]["ListWorkflowRunsResponse"];
                 };
             };
+            400: components["responses"]["ValidationFailed"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
             429: components["responses"]["TooManyRequests"];
@@ -33199,6 +34057,488 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+        };
+    };
+    listAutomations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description listAutomations result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListAutomationsResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PaymentRequired"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["AutomationConflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            422: components["responses"]["AutomationInvalid"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServerError"];
+        };
+    };
+    simulateAutomation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /** @description Candidate definition, workflow input and hypothetical successful action results. */
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SimulateAutomationRequest"];
+            };
+        };
+        responses: {
+            /** @description Definition validation and the bounded hypothetical execution trace. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimulateAutomationResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            413: components["responses"]["PayloadTooLarge"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServerError"];
+        };
+    };
+    validateAutomation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ValidateAutomationRequest"];
+            };
+        };
+        responses: {
+            /** @description validateAutomation result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidateAutomationResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PaymentRequired"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["AutomationConflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            422: components["responses"]["AutomationInvalid"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServerError"];
+        };
+    };
+    getAutomation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation name, shared with workflow run endpoints. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description getAutomation result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PaymentRequired"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["AutomationConflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            422: components["responses"]["AutomationInvalid"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServerError"];
+        };
+    };
+    saveAutomationDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation name, shared with workflow run endpoints. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveAutomationDraftRequest"];
+            };
+        };
+        responses: {
+            /** @description saveAutomationDraft result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PaymentRequired"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["AutomationConflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            422: components["responses"]["AutomationInvalid"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServerError"];
+        };
+    };
+    deleteAutomation: {
+        parameters: {
+            query: {
+                /** @description Revision returned by the most recent read or save. */
+                expected_version: number;
+                /** @description Explicitly return ownership to the current YAML definition after deletion. */
+                restore_manifest?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation name, shared with workflow run endpoints. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description deleteAutomation result. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PaymentRequired"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["AutomationConflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            422: components["responses"]["AutomationInvalid"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServerError"];
+        };
+    };
+    getAutomationHealth: {
+        parameters: {
+            query?: {
+                /** @description Inclusive start of the summary window; defaults to seven days before created_before or now. */
+                created_after?: string;
+                /** @description Inclusive end of the summary window; defaults to now. */
+                created_before?: string;
+            };
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation whose recent execution health is summarized. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Safe operational summary for the selected automation and time window. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationHealthResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServerError"];
+        };
+    };
+    listAutomationRevisions: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of revisions to return (1–100; defaults to 50). */
+                limit?: number;
+                /** @description Number of newest revisions to skip before returning results (maximum 2147483647). */
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation whose immutable published revisions are listed. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Immutable published definitions and pagination metadata. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListAutomationRevisionsResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServerError"];
+        };
+    };
+    getAutomationRevision: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation that owns the requested published revision. */
+                name: string;
+                /** @description Published revision identifier returned by the revision list. */
+                version: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The selected published definition and its canonical hash. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationRevisionResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServerError"];
+        };
+    };
+    restoreAutomationRevision: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description Idempotency key for the POST. Stored for 24h. On replay the server
+                 *     returns the original response with `Idempotent-Replayed: true`.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation that receives the restored draft. */
+                name: string;
+                /** @description Published revision to copy into the current draft. */
+                version: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RestoreAutomationRevisionRequest"];
+            };
+        };
+        responses: {
+            /** @description The updated automation draft; publishing remains a separate operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PaymentRequired"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["AutomationConflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            422: components["responses"]["AutomationInvalid"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServerError"];
+        };
+    };
+    publishAutomation: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description Idempotency key for the POST. Stored for 24h. On replay the server
+                 *     returns the original response with `Idempotent-Replayed: true`.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation whose saved draft will be published. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublishAutomationRequest"];
+            };
+        };
+        responses: {
+            /** @description publishAutomation result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PaymentRequired"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["AutomationConflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            422: components["responses"]["AutomationInvalid"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServerError"];
+        };
+    };
+    setAutomationEnabled: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation whose automatic starts will be paused or resumed. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetAutomationEnabledRequest"];
+            };
+        };
+        responses: {
+            /** @description setAutomationEnabled result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PaymentRequired"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["AutomationConflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            422: components["responses"]["AutomationInvalid"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServerError"];
+        };
+    };
+    listWorkflowStepAttempts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Parent run for the requested executor-attempt history. */
+                id: string;
+                /** @description Workflow step name whose executor attempts are returned. */
+                step: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Ordered executor attempts, including retry and condition-check outcomes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListWorkflowStepAttemptsResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["WorkflowStepAttemptsNotFound"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServerError"];
         };
     };
 }

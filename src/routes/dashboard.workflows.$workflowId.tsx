@@ -1,7 +1,13 @@
+import {
+  AppTabNavigation,
+  APP_DETAIL_TABS,
+  type AppTab,
+} from '@/components/dashboard/app-tab-navigation';
+import { AutomationsBody } from '@/components/dashboard/automations-body';
+import { automationSearchPatch, validateJobsSearch } from '@/components/dashboard/jobs-search';
 import { RESTORE_TARGET, RESTORE_CONTEXT } from '@/lib/platform-claims';
-import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
 import { createFileRoute, Link, useParams } from '@tanstack/react-router';
-import { motion, useReducedMotion } from 'motion/react';
 import { ArrowLeft, OpenNewWindow, Pause, Play, Refresh, Rocket } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -93,29 +99,8 @@ const METRIC_RANGES: MetricsRange[] = ['5m', '15m', '1h', '6h', '24h', '7d', '15
  * here, so the question is asked once and a shared link lands on the right
  * app and the right tab.
  */
-const TABS = [
-  'Overview',
-  'Metrics',
-  'Invoke',
-  'Deployments',
-  'Activity',
-  'Logs',
-  'Errors',
-  'Routes',
-  'Secrets',
-  'Env vars',
-  'Queues',
-  'Upstreams',
-  'Alerts',
-  'Webhooks',
-  'Edge rules',
-  'Debugger',
-  'Mirrors',
-  'Tenant surfaces',
-  'OpenAPI',
-  'Configuration',
-] as const;
-type Tab = (typeof TABS)[number];
+const TABS = APP_DETAIL_TABS;
+type Tab = AppTab;
 
 function DeploymentCapability({
   slug,
@@ -149,8 +134,14 @@ export const Route = createFileRoute('/dashboard/workflows/$workflowId')({
   validateSearch: (
     search: Record<string, unknown>
   ): DebugSearch &
-    LogsSearch & { tab?: Tab; deployment?: string; releaseSection?: ReleaseSection } => ({
+    LogsSearch &
+    ReturnType<typeof automationSearchPatch> & {
+      tab?: Tab;
+      deployment?: string;
+      releaseSection?: ReleaseSection;
+    } => ({
     ...validateDebugSearch(search),
+    ...automationSearchPatch(validateJobsSearch(search)),
     ...logsSearchPatch(validateLogsSearch(search)),
     tab: TABS.includes(search.tab as Tab) ? (search.tab as Tab) : undefined,
     deployment:
@@ -178,21 +169,6 @@ function FunctionDetailPage() {
     }
   }, [search, navigate]);
   const tabsId = useId();
-  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
-  const reduce = useReducedMotion();
-  // Roving focus: arrows move between tabs and select as they go.
-  const onTabKeyDown = (e: React.KeyboardEvent, index: number) => {
-    const last = TABS.length - 1;
-    let next: number | null = null;
-    if (e.key === 'ArrowRight') next = index === last ? 0 : index + 1;
-    else if (e.key === 'ArrowLeft') next = index === 0 ? last : index - 1;
-    else if (e.key === 'Home') next = 0;
-    else if (e.key === 'End') next = last;
-    if (next === null) return;
-    e.preventDefault();
-    tabRefs.current[next]?.focus();
-    setTab(TABS[next]);
-  };
   const [range, setRange] = useState<MetricsRange>('24h');
   const { getWorkflow, redeploy, loading, error, refresh } = useData();
   const { account, loading: authLoading } = useAuth();
@@ -481,55 +457,32 @@ function FunctionDetailPage() {
         />
       )}
 
-      {/* Tabs */}
-      <div
-        role="tablist"
-        aria-label="App detail"
-        className="scrollbar-none flex gap-1 overflow-x-auto border-b border-border"
-      >
-        {TABS.map((t, i) => (
-          <button
-            key={t}
-            ref={(el) => {
-              tabRefs.current[i] = el;
-            }}
-            type="button"
-            role="tab"
-            id={`${tabsId}-tab-${t}`}
-            aria-selected={tab === t}
-            aria-controls={`${tabsId}-panel`}
-            tabIndex={tab === t ? 0 : -1}
-            onClick={() => setTab(t)}
-            onKeyDown={(e) => onTabKeyDown(e, i)}
-            className={cn(
-              'pressable relative -mb-px whitespace-nowrap px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
-              tab === t ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
-            )}
-          >
-            {t}
-            {/* The active underline slides between tabs — one shared element,
-                the same spring the sidebar pill rides. Reduced motion keeps a
-                static underline per tab. */}
-            {tab === t &&
-              (reduce ? (
-                <span aria-hidden className="absolute inset-x-0 bottom-0 h-0.5 bg-brand" />
-              ) : (
-                <motion.span
-                  aria-hidden
-                  layoutId="app-tab-underline"
-                  className="absolute inset-x-0 bottom-0 h-0.5 bg-brand"
-                  transition={{ type: 'spring', stiffness: 500, damping: 40 }}
-                />
-              ))}
-          </button>
-        ))}
-      </div>
+      <AppTabNavigation
+        tab={tab}
+        onSelect={(next) => void setTab(next)}
+        panelId={`${tabsId}-panel`}
+      />
 
-      <div role="tabpanel" id={`${tabsId}-panel`} aria-labelledby={`${tabsId}-tab-${tab}`}>
+      <div role="tabpanel" id={`${tabsId}-panel`} aria-labelledby={`${tabsId}-panel-tab-${tab}`}>
         {/* Keyed by tab, so switching cross-fades the panel in rather than
             hard-swapping — the tab strip above stays put either way. */}
         <Swap id={tab}>
           <div className="flex flex-col gap-6">
+            {tab === 'Automations' && (
+              <AutomationsBody
+                fixedSlug={workflowId}
+                search={search}
+                onSelection={(patch) => {
+                  void navigate({
+                    search: (current) => ({
+                      ...current,
+                      ...automationSearchPatch({ ...current, ...patch }),
+                    }),
+                    hash: true,
+                  });
+                }}
+              />
+            )}
             {tab === 'Overview' && (
               <AppOverview
                 app={fn}

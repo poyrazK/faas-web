@@ -150,7 +150,7 @@ describe('canonical hub navigation inside the dashboard shell', () => {
           within(sections)
             .getAllByRole('link')
             .map((link) => link.textContent)
-        ).toEqual(['Workloads', 'Scheduled requests', 'Triggers']);
+        ).toEqual(['Automations', 'Workloads', 'Scheduled requests', 'Triggers']);
         expect(within(sections).getByRole('link', { name })).toHaveAttribute(
           'aria-current',
           'page'

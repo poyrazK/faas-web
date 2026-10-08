@@ -88,6 +88,12 @@ export const NAV_HUBS: NavHub[] = [
     pageOwnsNavigation: true,
     sections: [
       { to: '/dashboard/jobs', label: 'Jobs', icon: Play },
+      {
+        to: '/dashboard/jobs',
+        label: 'Automations',
+        icon: WorkflowIcon,
+        search: { section: 'automations' },
+      },
       { to: '/dashboard/crons', label: 'Cron Jobs', icon: Timer },
       { to: '/dashboard/triggers', label: 'Triggers', icon: Antenna },
     ],

@@ -22,6 +22,8 @@ import { SupplyChainPanel } from './supply-chain-panel';
 import { StaticEgressIP, StreamingCapNote } from './app-insights';
 import { PurgeCacheControl } from './app-lifecycle';
 import { publicAppUrl } from '@/lib/app-url';
+import { useAuth } from '@/lib/auth';
+import { MemorySelect } from './memory-select';
 
 /**
  * The app's own settings, editable.
@@ -35,8 +37,6 @@ import { publicAppUrl } from '@/lib/app-url';
  * Reads the real `AppResponse` rather than the store's `Workflow` adapter,
  * which flattens exactly the fields this page needs to edit.
  */
-
-const MEMORY = [128, 256, 512, 1024, 2048] as const;
 
 type Draft = {
   ram_mb: number;
@@ -149,6 +149,7 @@ function Toggle({
 }
 
 function ConfigForm({ app }: { app: App }) {
+  const { account, loading: limitsLoading } = useAuth();
   const { toast } = useToast();
   const confirm = useConfirm();
   const update = useUpdateApp(app.slug);
@@ -195,6 +196,8 @@ function ConfigForm({ app }: { app: App }) {
     return out;
   }, [app, draft]);
   const dirty = Object.keys(changes).length > 0;
+  const memoryBlocked =
+    'ram_mb' in changes && (limitsLoading || !account || draft.ram_mb > account.limits.ram_mb);
 
   // Navigating away with unsaved edits asks first — in the same dialog every
   // other destructive act uses — instead of silently discarding them.
@@ -208,6 +211,7 @@ function ConfigForm({ app }: { app: App }) {
   );
 
   const save = () => {
+    if (memoryBlocked) return;
     void update
       .mutateAsync(changes)
       .then((next) => {
@@ -254,7 +258,12 @@ function ConfigForm({ app }: { app: App }) {
             >
               Preview
             </Button>
-            <Button size="sm" disabled={!dirty} busy={update.isPending} onClick={save}>
+            <Button
+              size="sm"
+              disabled={!dirty || memoryBlocked}
+              busy={update.isPending}
+              onClick={save}
+            >
               Save changes
             </Button>
           </>
@@ -263,25 +272,16 @@ function ConfigForm({ app }: { app: App }) {
         <div className="grid gap-5 sm:grid-cols-2">
           <label className="flex flex-col gap-1.5">
             <span className="label-mono text-muted-foreground">Memory</span>
-            <div className="flex flex-wrap gap-1.5">
-              {MEMORY.map((mb) => (
-                <button
-                  key={mb}
-                  type="button"
-                  aria-pressed={draft.ram_mb === mb}
-                  onClick={() => set('ram_mb', mb)}
-                  className={`h-9 rounded-md border px-3 font-mono text-xs pressable ${
-                    draft.ram_mb === mb
-                      ? 'border-brand bg-brand/10 text-foreground'
-                      : 'border-border text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  {mb} MB
-                </button>
-              ))}
-            </div>
+            <MemorySelect
+              value={draft.ram_mb}
+              maxMb={limitsLoading ? undefined : account?.limits.ram_mb}
+              onChange={(mb) => set('ram_mb', mb)}
+            />
             <span className="text-xs text-muted-foreground">
-              Per instance. Billed as GB-seconds while resident.
+              {account
+                ? `${account.plan} plan · up to ${account.limits.ram_mb} MB per instance. `
+                : 'Checking plan limits… '}
+              Billed as GB-seconds while resident.
             </span>
           </label>
 

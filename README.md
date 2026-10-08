@@ -256,6 +256,26 @@ The dedicated operations console is deployed separately at
 `https://operations.gregale.dev`; the CLI device-code flow, OAuth callbacks,
 and the Stripe webhook receiver remain non-UI surfaces in this project.
 
+**Automations** is available in Jobs and the app's Automate group. It reads
+drafts, publications, execution availability, and definition quotas from the
+automation API. The editor supports manual, scheduled, and event starts,
+handler steps, dependencies, retries, and durable waits. Advanced JSON preserves
+other workflow fields. Validation and sample simulation have no execution side
+effects; saving a draft and publishing it are separate actions. Writes use the
+observed version, and conflicts or uncertain responses require a fresh read.
+Manifest takeover is explicit. Pausing automatic starts leaves accepted work
+running. Real manual starts carry a stable idempotency key for retries with the
+same input. Health, paginated runs, step attempts, and immutable publication
+history come from the API; restoring a revision creates a draft. The run API
+does not expose its pinned publication revision, so the UI states that limit.
+Mock mode includes these screens; `MOCK_AUTOMATIONS_DISABLED=1` exercises the
+runtime-disabled presentation. No mock data ships in the preview build.
+
+App detail navigation groups its tabs under Overview, Delivery, Observe,
+Connect, Automate, and Configure while preserving existing `?tab=` links.
+App creation and configuration share a memory selector that disables sizes
+above the account's reported RAM limit.
+
 ### Where the UI and the API disagreed
 
 Several pages showed things the platform does not have. They now show what it

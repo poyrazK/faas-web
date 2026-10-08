@@ -614,9 +614,12 @@ describe('Releases hub', () => {
     expect(router.state.location.search).toMatchObject(investigation);
     expect(router.state.location.search.deployment).toBeUndefined();
     expect(router.state.location.search.releaseSection).toBeUndefined();
+    await userEvent.click(screen.getByRole('button', { name: 'Observe app section' }));
     await userEvent.click(screen.getByRole('tab', { name: 'Debugger' }));
     expect(await screen.findByRole('dialog', { name: 'Request evidence' })).toBeInTheDocument();
     expect(router.state.location.search).toMatchObject(investigation);
+    await act(async () => router.history.back());
+    await waitFor(() => expect(router.state.location.search.tab).toBe('Logs'));
     await act(async () => router.history.back());
     await waitFor(() =>
       expect(screen.getByRole('tab', { name: 'Deployments' })).toHaveAttribute(

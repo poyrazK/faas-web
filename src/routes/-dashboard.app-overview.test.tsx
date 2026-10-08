@@ -348,8 +348,8 @@ describe('App log investigation links', () => {
       router.history.back();
     });
     await waitFor(() => expect(screen.getByLabelText('Instance to read')).toHaveValue(instance));
-    await userEvent.click(screen.getByRole('tab', { name: 'Overview' }));
-    await userEvent.click(screen.getByRole('tab', { name: 'Logs' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Overview app section' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Observe app section' }));
     expect(screen.getByLabelText('Archive date')).toHaveValue('2026-09-28');
   });
   it('rejects invalid log parameters even when another tab validator preserves unknown context', async () => {
