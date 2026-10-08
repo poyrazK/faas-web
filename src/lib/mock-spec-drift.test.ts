@@ -23,7 +23,7 @@ const MOCK = readFileSync(resolve('mock/plugin.ts'), 'utf8');
 const OUTSIDE_SPEC = new Set(['/login', '/signup', '/login/forgot']);
 
 it('every mocked route exists in the OpenAPI spec', () => {
-  const specPaths = new Set([...SPEC.matchAll(/^ {2}(\/[^\s:]+):/gm)].map((m) => m[1]));
+  const specPaths = new Set([...SPEC.matchAll(/^ {2}(\/\S+):\s*$/gm)].map((m) => m[1]));
   // Sanity: both parses actually found things, or the assertion below would
   // pass vacuously after a format change.
   expect(specPaths.size).toBeGreaterThan(100);

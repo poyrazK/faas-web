@@ -1,3 +1,4 @@
+import { MemorySelect } from './memory-select';
 import { RestoreTarget } from '@/components/restore-target';
 import { RESTORE_CONTEXT } from '@/lib/platform-claims';
 import { useEffect, useRef, useState } from 'react';
@@ -90,8 +91,6 @@ const APP_TYPES: { id: 'function' | 'app'; label: string; desc: string }[] = [
   { id: 'function', label: 'Function', desc: 'Source built against a managed runtime.' },
   { id: 'app', label: 'App', desc: 'Your own container image.' },
 ];
-
-const MEMORY = [128, 256, 512, 1024, 2048];
 
 // Scoped pilot sizing, with light-onboarding fallbacks.
 const CONTROL =
@@ -770,30 +769,16 @@ export function NewAppWizard({
                 </summary>
                 <div className="mt-4">
                   <span className={LABEL}>Memory</span>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {MEMORY.map((m) => (
-                      <button
-                        key={m}
-                        type="button"
-                        disabled={m > maxMemoryMb}
-                        onClick={() => setMemoryMb(m)}
-                        aria-pressed={selectedMemoryMb === m}
-                        aria-disabled={m > maxMemoryMb}
-                        title={m > maxMemoryMb ? `Requires a plan with ${m} MB per app` : undefined}
-                        className={cn(
-                          'rounded-md border px-3 py-1.5 font-mono text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-40',
-                          selectedMemoryMb === m
-                            ? 'border-brand bg-brand/10 text-foreground'
-                            : 'border-border text-muted-foreground hover:text-foreground'
-                        )}
-                      >
-                        {m} MB
-                      </button>
-                    ))}
+                  <div className="mt-2">
+                    <MemorySelect
+                      value={selectedMemoryMb}
+                      maxMb={limitsLoading ? undefined : account?.limits.ram_mb}
+                      onChange={setMemoryMb}
+                    />
                   </div>
                   {account ? (
                     <p className="mt-2 text-[13px] leading-5 text-muted-foreground">
-                      {account.plan} plan · up to {account.limits.ram_mb} MB per app
+                      {account.plan} plan · up to {account.limits.ram_mb} MB per instance
                     </p>
                   ) : limitsLoading ? (
                     <p className="mt-2 text-xs text-muted-foreground" role="status">

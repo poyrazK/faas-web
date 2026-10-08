@@ -3,6 +3,7 @@ import { PageHeader } from '@/components/dashboard/primitives';
 import { WorkloadsBody } from '@/components/dashboard/jobs-workloads';
 import { ScheduledRequestsBody } from '@/components/dashboard/jobs-scheduled';
 import { TriggersBody } from '@/components/dashboard/jobs-triggers';
+import { AutomationsBody } from '@/components/dashboard/automations-body';
 import {
   validateJobsSearch,
   type JobsSearch,
@@ -17,6 +18,7 @@ export const Route = createFileRoute('/dashboard/jobs')({
 });
 
 const sections: { value: JobsSection; label: string }[] = [
+  { value: 'automations', label: 'Automations' },
   { value: 'workloads', label: 'Workloads' },
   { value: 'scheduled', label: 'Scheduled requests' },
   { value: 'triggers', label: 'Triggers' },
@@ -33,7 +35,7 @@ function JobsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Jobs"
-        description="Workloads, scheduled HTTP requests, and event triggers."
+        description="Durable automations, workloads, scheduled HTTP requests, and event triggers."
       />
       <nav aria-label="Jobs sections" className="flex flex-wrap gap-2 border-b border-border pb-3">
         {sections.map(({ value, label }) => (
@@ -54,6 +56,7 @@ function JobsPage() {
         ))}
       </nav>
       {section === 'workloads' && <WorkloadsBody search={search} onSelection={onSelection} />}
+      {section === 'automations' && <AutomationsBody search={search} onSelection={onSelection} />}
       {section === 'scheduled' && (
         <ScheduledRequestsBody search={search} onSelection={onSelection} />
       )}

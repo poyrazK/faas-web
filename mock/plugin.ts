@@ -3,6 +3,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import type { Plugin } from 'vite';
 import type { components } from '../src/lib/api/schema';
 import * as db from './data';
+import * as automationMock from './automations';
 import {
   FREE_TRIGGER_ERROR_CODE,
   KAFKA_SASL_MECHANISMS,
@@ -4775,6 +4776,182 @@ route('POST', '/v1/projects', () => ({
     .map((w, i) => ({ slug: w.name, id: `app_import_${i}` })),
   builds: [],
 }));
+
+// --- Automations (dev only) ---------------------------------------------------
+
+function mockAutomation(slug: string, name: string) {
+  const item = automationMock.definitions.get(slug)?.find((item) => item.name === name);
+  if (!item) throw new Problem(404, 'automation_not_found', 'Automation not found.');
+  return item;
+}
+function assertAutomationVersion(
+  item: components['schemas']['AutomationResponse'] | undefined,
+  version: unknown
+) {
+  if ((item?.version ?? 0) !== version)
+    throw new Problem(409, 'automation_version_conflict', 'Reload the current definition.');
+}
+route('GET', '/v1/apps/{slug}/automations', ({ params }) => ({
+  app_slug: params.slug,
+  runtime_enabled: process.env.MOCK_AUTOMATIONS_DISABLED !== '1',
+  unavailable_reason:
+    process.env.MOCK_AUTOMATIONS_DISABLED === '1' ? 'runtime_disabled' : undefined,
+  max_definitions: 16,
+  automations: automationMock.definitions.get(params.slug) ?? [],
+}));
+route('GET', '/v1/apps/{slug}/automations/{name}', ({ params }) =>
+  mockAutomation(params.slug, params.name)
+);
+route('POST', '/v1/apps/{slug}/automations:validate', ({ body }) =>
+  automationMock.validate(body.definition as components['schemas']['WorkflowSpec'])
+);
+route('POST', '/v1/apps/{slug}/automations:simulate', ({ body }) =>
+  automationMock.simulate(body as components['schemas']['SimulateAutomationRequest'])
+);
+route('PUT', '/v1/apps/{slug}/automations/{name}', ({ params, body }) => {
+  const list = automationMock.definitions.get(params.slug) ?? [];
+  const previous = list.find((item) => item.name === params.name);
+  assertAutomationVersion(previous, body.expected_version);
+  const definition = body.definition as components['schemas']['WorkflowSpec'];
+  if (!automationMock.validate(definition).valid)
+    throw new Problem(422, 'automation_invalid', 'Definition is invalid.');
+  const next: components['schemas']['AutomationResponse'] = {
+    ...previous,
+    name: params.name,
+    version: (previous?.version ?? 0) + 1,
+    source: previous?.source ?? 'draft',
+    draft: definition,
+    enabled: previous?.enabled ?? true,
+    updated_at: new Date().toISOString(),
+  };
+  automationMock.definitions.set(params.slug, [
+    ...list.filter((item) => item.name !== params.name),
+    next,
+  ]);
+  return next;
+});
+route('POST', '/v1/apps/{slug}/automations/{name}/publish', ({ params, body }) => {
+  const item = mockAutomation(params.slug, params.name);
+  assertAutomationVersion(item, body.expected_version);
+  item.version += 1;
+  item.published_version = item.version;
+  item.published = item.draft;
+  item.source = 'dashboard';
+  const key = `${params.slug}/${params.name}`;
+  const list = automationMock.revisions.get(key) ?? [];
+  list.unshift({
+    version: item.version,
+    definition: item.draft,
+    definition_hash: 'c'.repeat(64),
+    recorded_at: new Date().toISOString(),
+    legacy_snapshot: false,
+    published_by_account_id: db.account.id,
+  });
+  automationMock.revisions.set(key, list);
+  return item;
+});
+route('PUT', '/v1/apps/{slug}/automations/{name}/enabled', ({ params, body }) => {
+  const item = mockAutomation(params.slug, params.name);
+  assertAutomationVersion(item, body.expected_version);
+  item.enabled = Boolean(body.enabled);
+  item.version += 1;
+  return item;
+});
+route('GET', '/v1/apps/{slug}/automations/{name}/health', ({ params }) =>
+  automationMock.health(params.slug, params.name)
+);
+route('GET', '/v1/apps/{slug}/automations/{name}/revisions', ({ params, query }) => {
+  const list = automationMock.revisions.get(`${params.slug}/${params.name}`) ?? [];
+  const offset = Number(query.get('offset') ?? 0);
+  const limit = Number(query.get('limit') ?? 25);
+  return { revisions: list.slice(offset, offset + limit), total: list.length, offset, limit };
+});
+route(
+  'POST',
+  '/v1/apps/{slug}/automations/{name}/revisions/{version}/restore',
+  ({ params, body }) => {
+    const item = mockAutomation(params.slug, params.name);
+    assertAutomationVersion(item, body.expected_version);
+    const revision = automationMock.revisions
+      .get(`${params.slug}/${params.name}`)
+      ?.find((row) => row.version === Number(params.version));
+    if (!revision) throw new Problem(404, 'automation_revision_not_found');
+    item.draft = revision.definition;
+    item.version += 1;
+    return item;
+  }
+);
+route('GET', '/v1/apps/{slug}/workflows/runs', ({ params, query }) => {
+  const list = (automationMock.runs.get(params.slug) ?? []).filter(
+    (run) => !query.get('workflow_name') || run.workflow_name === query.get('workflow_name')
+  );
+  const offset = Number(query.get('offset') ?? 0);
+  const limit = Number(query.get('limit') ?? 25);
+  return { runs: list.slice(offset, offset + limit), total: list.length };
+});
+const automationRunKeys = new Map<string, components['schemas']['WorkflowRunResponse']>();
+route('POST', '/v1/apps/{slug}/workflows/{name}/runs', ({ params, body, req }) => {
+  const requestKey = `${params.slug}/${params.name}/${req.headers['idempotency-key']}`;
+  const previous = automationRunKeys.get(requestKey);
+  if (previous) return status(201, previous);
+  const item = mockAutomation(params.slug, params.name);
+  const now = new Date().toISOString();
+  const run: components['schemas']['WorkflowRunResponse'] = {
+    id: crypto.randomUUID(),
+    app_id: app(params.slug).id,
+    workflow_name: params.name,
+    status: 'succeeded',
+    created_at: now,
+    updated_at: now,
+    scheduled_for: now,
+    started_at: now,
+    finished_at: now,
+    input: body,
+    output: { ok: true },
+  };
+  const list = automationMock.runs.get(params.slug) ?? [];
+  list.unshift(run);
+  automationMock.runs.set(params.slug, list);
+  automationMock.steps.set(
+    run.id,
+    item.draft.steps.map((step) => ({
+      step_name: step.name,
+      status: 'succeeded',
+      attempt: 1,
+      created_at: now,
+      started_at: now,
+      finished_at: now,
+      input: body,
+      output: { ok: true },
+    }))
+  );
+  automationRunKeys.set(requestKey, run);
+  return status(201, run);
+});
+route('GET', '/v1/workflows/runs/{id}', ({ params }) => {
+  const run = [...automationMock.runs.values()].flat().find((run) => run.id === params.id);
+  if (!run) throw new Problem(404, 'workflow_run_not_found');
+  return run;
+});
+route('GET', '/v1/workflows/runs/{id}/steps', ({ params }) => ({
+  steps: automationMock.steps.get(params.id) ?? [],
+}));
+route('GET', '/v1/workflows/runs/{id}/steps/{step}/attempts', ({ params }) => {
+  const step = automationMock.steps.get(params.id)?.find((step) => step.step_name === params.step);
+  return {
+    attempts: step
+      ? [
+          {
+            attempt: step.attempt,
+            status: 'succeeded',
+            http_status: 200,
+            started_at: step.started_at,
+            finished_at: step.finished_at,
+          },
+        ]
+      : [],
+  };
+});
 
 // --- Plumbing ------------------------------------------------------------------
 

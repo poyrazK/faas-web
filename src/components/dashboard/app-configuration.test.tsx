@@ -7,6 +7,9 @@ import { AppConfiguration } from './app-configuration';
 const mocks = vi.hoisted(() => ({ remove: vi.fn(), navigate: vi.fn(), toast: vi.fn() }));
 vi.mock('@tanstack/react-router', () => ({ useNavigate: () => mocks.navigate }));
 vi.mock('@/lib/use-unsaved-guard', () => ({ useUnsavedGuard: () => {} }));
+vi.mock('@/lib/auth', () => ({
+  useAuth: () => ({ account: { plan: 'scale', limits: { ram_mb: 1024 } }, loading: false }),
+}));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: mocks.toast }) }));
 vi.mock('./app-core-panels', () => ({ RegistryCredentialsPanel: () => null }));
 vi.mock('./supply-chain-panel', () => ({ SupplyChainPanel: () => null }));
@@ -39,6 +42,16 @@ beforeEach(() => {
 });
 
 describe('App deletion contract copy', () => {
+  it('disables memory sizes above the account limit in configuration', () => {
+    render(
+      <ConfirmProvider>
+        <AppConfiguration slug="alpha" />
+      </ConfirmProvider>
+    );
+    expect(screen.getByRole('button', { name: '2048 MB' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '1024 MB' })).toBeEnabled();
+    expect(screen.getByText(/scale plan · up to 1024 MB per instance/)).toBeInTheDocument();
+  });
   it('makes the API-assigned endpoint clickable in configuration', () => {
     render(
       <ConfirmProvider>

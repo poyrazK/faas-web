@@ -372,7 +372,8 @@ describe('Debugger investigation navigation', () => {
     const router = await mount(
       '/dashboard/workflows/alpha?tab=Debugger&debugFilter=cold&keep=yes#context'
     );
-    fireEvent.click(screen.getByRole('tab', { name: 'Metrics' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Overview app section' }));
+    await userEvent.click(screen.getByRole('tab', { name: 'Metrics' }));
     await waitFor(() =>
       expect(router.state.location.search).toMatchObject({
         tab: 'Metrics',
@@ -381,6 +382,8 @@ describe('Debugger investigation navigation', () => {
       })
     );
     expect(router.state.location.hash).toBe('context');
+    await act(async () => router.history.back());
+    await waitFor(() => expect(router.state.location.search.tab).toBe('Overview'));
     await act(async () => router.history.back());
     expect(await screen.findByLabelText('Quick filter')).toHaveValue('cold');
   });
