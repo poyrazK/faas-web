@@ -24,6 +24,9 @@ import { PurgeCacheControl } from './app-lifecycle';
 import { publicAppUrl } from '@/lib/app-url';
 import { useAuth } from '@/lib/auth';
 import { MemorySelect } from './memory-select';
+import { configurationEffects } from '@/lib/api/runtime-policy';
+import { PolicyStatus } from './policy-status';
+import { usePolicyOperation } from './policy-operation';
 
 /**
  * The app's own settings, editable.
@@ -153,6 +156,8 @@ function ConfigForm({ app }: { app: App }) {
   const { toast } = useToast();
   const confirm = useConfirm();
   const update = useUpdateApp(app.slug);
+  const operation = usePolicyOperation(account?.id ?? '', app.slug, app.id, 'configuration');
+  const [savedEffects, setSavedEffects] = useState<ReturnType<typeof configurationEffects>>();
   const diff = useAppDiff(app.slug);
   const [preview, setPreview] = useState<Awaited<ReturnType<typeof diff.mutateAsync>> | null>(null);
   const [draft, setDraft] = useState<Draft>(() => draftFrom(app));
@@ -211,15 +216,19 @@ function ConfigForm({ app }: { app: App }) {
   );
 
   const save = () => {
-    if (memoryBlocked) return;
-    void update
-      .mutateAsync(changes)
+    if (memoryBlocked || operation.busy) return;
+    const effects = configurationEffects(Object.keys(changes));
+    setSavedEffects(undefined);
+    void operation
+      .run(effects.components, () => update.mutateAsync(changes))
       .then((next) => {
+        if (!next) return;
         setDraft(draftFrom(next));
+        setSavedEffects(effects);
         toast({
           kind: 'success',
           title: 'Settings saved',
-          description: `${app.slug} will use them on its next wake.`,
+          description: 'Runtime application is verified separately below.',
         });
       })
       .catch((err: unknown) =>
@@ -261,7 +270,7 @@ function ConfigForm({ app }: { app: App }) {
             <Button
               size="sm"
               disabled={!dirty || memoryBlocked}
-              busy={update.isPending}
+              busy={update.isPending || operation.busy}
               onClick={save}
             >
               Save changes
@@ -269,6 +278,21 @@ function ConfigForm({ app }: { app: App }) {
           </>
         }
       >
+        {operation.receipt && operation.receipt.components.length > 0 && (
+          <PolicyStatus accountId={account?.id ?? ''} slug={app.slug} receipt={operation.receipt} />
+        )}
+        {savedEffects?.replacement.length ? (
+          <p className="mb-4 text-xs text-muted-foreground">
+            Saved: {savedEffects.replacement.join(', ')}. Running instances retain their boot
+            configuration; a fresh instance is required.
+          </p>
+        ) : null}
+        {savedEffects?.future.length ? (
+          <p className="mb-4 text-xs text-muted-foreground">
+            Saved: {savedEffects.future.join(', ')}. These settings affect subsequent runtime
+            decisions; no live acknowledgment is available here.
+          </p>
+        ) : null}
         <div className="grid gap-5 sm:grid-cols-2">
           <label className="flex flex-col gap-1.5">
             <span className="label-mono text-muted-foreground">Memory</span>
@@ -378,7 +402,7 @@ function ConfigForm({ app }: { app: App }) {
             <StaticEgressIP slug={app.slug} />
           </div>
           <div className="sm:col-span-2">
-            <PurgeCacheControl slug={app.slug} />
+            <PurgeCacheControl slug={app.slug} appId={app.id} />
           </div>
         </div>
       </Panel>
@@ -687,7 +711,12 @@ function DangerZone({ app }: { app: App }) {
 }
 
 export function AppConfiguration({ slug }: { slug: string }) {
-  const { data, isPending, error, refetch } = useApp(slug);
+  const { account } = useAuth();
+  const { data, isPending, error, refetch } = useApp(
+    slug,
+    { enabled: Boolean(account?.id) },
+    account?.id ?? ''
+  );
   const phase = queryPhase({ error, loading: isPending });
 
   if (phase === 'unreachable') return <UnreachableState onRetry={() => void refetch()} />;
@@ -728,7 +757,7 @@ export function AppConfiguration({ slug }: { slug: string }) {
         </dl>
       </Panel>
       {/* Keyed on the id so a rename or a fresh read reseeds the draft. */}
-      <ConfigForm key={`${data.id}:${data.slug}`} app={data} />
+      <ConfigForm key={`${account?.id}:${data.id}:${data.slug}`} app={data} />
       <SupplyChainPanel slug={data.slug} />
       <RegistryCredentialsPanel slug={data.slug} />
       <RenamePanel key={`rename:${data.slug}`} app={data} />

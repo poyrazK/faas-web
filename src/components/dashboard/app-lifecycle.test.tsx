@@ -14,6 +14,7 @@ vi.mock('@/lib/api/queries', () => ({
 }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => confirm }));
+vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { id: 'account' } }) }));
 
 const { PurgeCacheControl, RestartAppButton } = await import('./app-lifecycle');
 

@@ -7,6 +7,9 @@ import { useToast } from '@/components/ui/toast';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import { usePurgeAppCache, useRestartApp } from '@/lib/api/queries';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/lib/auth';
+import { PolicyStatus } from './policy-status';
+import { usePolicyOperation } from './policy-operation';
 
 /**
  * Two operations on a running app that had CLI verbs and no button.
@@ -81,13 +84,16 @@ export function RestartAppButton({ slug }: { slug: string }) {
   );
 }
 
-export function PurgeCacheControl({ slug }: { slug: string }) {
+export function PurgeCacheControl({ slug, appId = '' }: { slug: string; appId?: string }) {
+  const { account } = useAuth();
   const { toast } = useToast();
   const confirm = useConfirm();
   const purge = usePurgeAppCache(slug);
   const [path, setPath] = useState('');
+  const operation = usePolicyOperation(account?.id ?? '', slug, appId, 'purge');
 
   const onPurge = async () => {
+    if (operation.busy) return;
     const glob = path.trim();
     if (
       !(await confirm({
@@ -99,13 +105,17 @@ export function PurgeCacheControl({ slug }: { slug: string }) {
     )
       return;
     try {
-      await purge.mutateAsync(glob || undefined);
+      const accepted = await operation.run(['response_cache'], async () => {
+        await purge.mutateAsync(glob || undefined);
+        return true;
+      });
+      if (!accepted) return;
       toast({
         kind: 'success',
         title: 'Purge requested',
         description: glob
-          ? `Every gateway was asked to drop ${glob}.`
-          : 'Every gateway was asked to drop this app’s cache.',
+          ? `The purge for ${glob} is saved. Runtime application is verified separately.`
+          : 'The purge is saved. Runtime application is verified separately.',
       });
       setPath('');
     } catch (err) {
@@ -128,7 +138,7 @@ export function PurgeCacheControl({ slug }: { slug: string }) {
         className="flex flex-wrap items-center gap-2"
         onSubmit={(e) => {
           e.preventDefault();
-          if (!purge.isPending) void onPurge();
+          if (!purge.isPending && !operation.busy) void onPurge();
         }}
       >
         <input
@@ -139,7 +149,7 @@ export function PurgeCacheControl({ slug }: { slug: string }) {
           aria-label="Path glob to purge"
           className={cn(FIELD, 'w-72')}
         />
-        <Button type="submit" size="sm" variant="outline" busy={purge.isPending}>
+        <Button type="submit" size="sm" variant="outline" busy={purge.isPending || operation.busy}>
           <Trash className="h-3.5 w-3.5" />
           Purge
         </Button>
@@ -148,6 +158,9 @@ export function PurgeCacheControl({ slug }: { slug: string }) {
         Asks every gateway to drop its in-process cache for this app. Cached responses elsewhere are
         unaffected.
       </span>
+      {operation.receipt && appId && (
+        <PolicyStatus accountId={account?.id ?? ''} slug={slug} receipt={operation.receipt} />
+      )}
     </div>
   );
 }
