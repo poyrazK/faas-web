@@ -7,6 +7,8 @@ import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
 import { errorMessage } from '@/lib/api/errors';
 import { BucketAccess } from './bucket-access';
+import { useCapability } from '@/lib/api/capabilities';
+import { CapabilityNotice } from './capability-notice';
 import {
   bucketKey,
   objectKey,
@@ -32,12 +34,20 @@ function formatUploadLimit(bytes: number): string {
 
 export function ObjectStorage() {
   const app = useSelectedApp();
+  const availability = useCapability('object-storage');
   return (
     <Panel
       title="Object storage"
       description="Private S3-backed buckets. Separate from VM snapshots and image-layer usage."
     >
       <div className="flex flex-col gap-4 p-4">
+        {availability.state !== 'available' && (
+          <CapabilityNotice
+            capability={availability.capability}
+            state={availability.state}
+            onRetry={availability.refresh}
+          />
+        )}
         <AppSelect slug={app.slug} onSelect={app.select} apps={app.apps} />
         <AppScope state={app} resource="buckets">
           <BucketManager key={app.slug} slug={app.slug} />
@@ -48,6 +58,7 @@ export function ObjectStorage() {
 }
 
 function BucketManager({ slug }: { slug: string }) {
+  const availability = useCapability('object-storage');
   const query = useObjectBuckets(slug);
   const cache = useQueryClient();
   const confirm = useConfirm();
@@ -67,6 +78,7 @@ function BucketManager({ slug }: { slug: string }) {
   });
   const create = (event: FormEvent) => {
     event.preventDefault();
+    if (availability.state !== 'available' || !query.data?.enabled) return;
     mutation.mutate(async () => {
       const bucket = await createObjectBucket(
         slug,
@@ -80,15 +92,20 @@ function BucketManager({ slug }: { slug: string }) {
   };
   if (query.isPending) return <LoadingState message="Loading buckets…" />;
   if (query.error) return <ErrorState error={query.error} onRetry={() => void query.refetch()} />;
-  const data = query.data!;
+  const data = {
+    ...query.data!,
+    enabled: query.data!.enabled && availability.state === 'available',
+  };
   const bucket = data.items.find((b) => b.id === selected);
   const directUploadMaxBytes = Math.min(data.max_upload_bytes, MAX_SINGLE_PUT_BYTES);
   return (
     <div className="flex flex-col gap-4">
       {!data.enabled ? (
-        <p className="text-sm text-muted-foreground">
-          Object storage has not been enabled by the operator.
-        </p>
+        availability.state === 'available' ? (
+          <p className="text-sm text-muted-foreground">
+            Object storage is unavailable on this installation. Contact support for availability.
+          </p>
+        ) : null
       ) : (
         <>
           <p className="text-sm text-muted-foreground">
@@ -195,7 +212,12 @@ function BucketManager({ slug }: { slug: string }) {
             maxBytes={directUploadMaxBytes}
             signingEnabled={data.enabled}
           />
-          <BucketAccess key={bucket.id} slug={slug} bucketId={bucket.id} />
+          <BucketAccess
+            key={bucket.id}
+            slug={slug}
+            bucketId={bucket.id}
+            provisioningEnabled={data.enabled}
+          />
         </>
       )}
       {bucket && bucket.state !== 'ready' && (

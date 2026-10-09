@@ -48,16 +48,32 @@ const KEY_STATUS_COLOR: Record<string, string> = {
   revoked: 'var(--status-critical)',
 };
 
-export function BucketAccess({ slug, bucketId }: { slug: string; bucketId: string }) {
+export function BucketAccess({
+  slug,
+  bucketId,
+  provisioningEnabled = true,
+}: {
+  slug: string;
+  bucketId: string;
+  provisioningEnabled?: boolean;
+}) {
   return (
     <div className="grid gap-6 lg:grid-cols-2">
-      <AccessGrants slug={slug} bucket={bucketId} />
-      <S3Credentials slug={slug} bucket={bucketId} />
+      <AccessGrants slug={slug} bucket={bucketId} provisioningEnabled={provisioningEnabled} />
+      <S3Credentials slug={slug} bucket={bucketId} provisioningEnabled={provisioningEnabled} />
     </div>
   );
 }
 
-function AccessGrants({ slug, bucket }: { slug: string; bucket: string }) {
+function AccessGrants({
+  slug,
+  bucket,
+  provisioningEnabled,
+}: {
+  slug: string;
+  bucket: string;
+  provisioningEnabled: boolean;
+}) {
   const { toast } = useToast();
   const confirm = useConfirm();
   const qc = useQueryClient();
@@ -83,7 +99,7 @@ function AccessGrants({ slug, bucket }: { slug: string; bucket: string }) {
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (!chosen) return;
+    if (!chosen || !provisioningEnabled) return;
     mutation.mutate(async () => {
       await setBucketAccessGrant(slug, bucket, chosen, permission);
       setKeyId('');
@@ -113,6 +129,7 @@ function AccessGrants({ slug, bucket }: { slug: string; bucket: string }) {
               <Pill label={grant.key_status} color={KEY_STATUS_COLOR[grant.key_status]} />
               <Select
                 value={grant.permission}
+                disabled={!provisioningEnabled || mutation.isPending}
                 onChange={(e) =>
                   mutation.mutate(async () => {
                     await setBucketAccessGrant(
@@ -192,7 +209,13 @@ function AccessGrants({ slug, bucket }: { slug: string; bucket: string }) {
               ))}
             </Select>
           </label>
-          <Button type="submit" size="sm" variant="outline" busy={mutation.isPending}>
+          <Button
+            type="submit"
+            size="sm"
+            variant="outline"
+            busy={mutation.isPending}
+            disabled={!provisioningEnabled}
+          >
             <Plus className="h-3.5 w-3.5" />
             Grant
           </Button>
@@ -202,7 +225,15 @@ function AccessGrants({ slug, bucket }: { slug: string; bucket: string }) {
   );
 }
 
-function S3Credentials({ slug, bucket }: { slug: string; bucket: string }) {
+function S3Credentials({
+  slug,
+  bucket,
+  provisioningEnabled,
+}: {
+  slug: string;
+  bucket: string;
+  provisioningEnabled: boolean;
+}) {
   const { toast } = useToast();
   const confirm = useConfirm();
   const qc = useQueryClient();
@@ -224,7 +255,7 @@ function S3Credentials({ slug, bucket }: { slug: string; bucket: string }) {
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (!label.trim()) return;
+    if (!label.trim() || !provisioningEnabled) return;
     mutation.mutate(async () => {
       const created = await createBucketS3Credential(slug, bucket, label.trim(), permission);
       setLabel('');
@@ -346,7 +377,7 @@ function S3Credentials({ slug, bucket }: { slug: string; bucket: string }) {
           type="submit"
           size="sm"
           variant="outline"
-          disabled={!label.trim()}
+          disabled={!label.trim() || !provisioningEnabled}
           busy={mutation.isPending}
         >
           <Plus className="h-3.5 w-3.5" />

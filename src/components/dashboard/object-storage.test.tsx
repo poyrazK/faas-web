@@ -11,7 +11,9 @@ const mocks = vi.hoisted(() => ({
   create: vi.fn(),
   sign: vi.fn(),
   toast: vi.fn(),
+  capability: vi.fn(),
 }));
+vi.mock('@/lib/api/capabilities', () => ({ useCapability: mocks.capability }));
 vi.mock('./app-select', () => ({
   useSelectedApp: () => ({ slug: 'demo', apps: [{ slug: 'demo' }], select: vi.fn() }),
   AppSelect: () => null,
@@ -52,6 +54,7 @@ function show() {
 }
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.capability.mockReturnValue({ state: 'available', refresh: vi.fn() });
   mocks.buckets.mockReturnValue({ data: capabilities, isPending: false, error: null });
   mocks.objects.mockReturnValue({
     data: { items: [{ key: 'folder/file.txt', size_bytes: 3 }] },
@@ -67,9 +70,24 @@ it('does not offer creation when the operator disables storage', () => {
   });
   show();
   expect(
-    screen.getByText('Object storage has not been enabled by the operator.')
+    screen.getByText(
+      'Object storage is unavailable on this installation. Contact support for availability.'
+    )
   ).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Create bucket' })).not.toBeInTheDocument();
+});
+it('does not create a bucket from stale available storage metadata after registry failure', () => {
+  mocks.capability.mockReturnValue({ state: 'registry-error', refresh: vi.fn() });
+  show();
+  expect(screen.queryByRole('button', { name: 'Create bucket' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Retry capabilities' })).toBeInTheDocument();
+  expect(mocks.create).not.toHaveBeenCalled();
+});
+it('explains runtime availability even if the bucket inventory read fails', () => {
+  mocks.capability.mockReturnValue({ state: 'runtime-unavailable', refresh: vi.fn() });
+  mocks.buckets.mockReturnValue({ error: new Error('Inventory unavailable'), isPending: false });
+  show();
+  expect(screen.getByText(/Unavailable on this installation/)).toBeInTheDocument();
 });
 it('keeps cleanup available when the operator disables storage', async () => {
   const user = userEvent.setup();
