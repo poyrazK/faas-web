@@ -58,6 +58,31 @@ beforeEach(() => {
 });
 
 describe('first deployment progress', () => {
+  it('describes OCI preparation without opening an unsupported build stream', () => {
+    render(
+      <DeploymentProgress
+        appCreated
+        appName="image-app"
+        deploymentId="deploy-1"
+        source={{ kind: 'image', reference: `r/x@sha256:${'a'.repeat(64)}` }}
+      />
+    );
+    expect(screen.getByRole('heading', { name: 'Preparing your image deployment' })).toBeVisible();
+    expect(screen.queryByText('Build output')).not.toBeInTheDocument();
+    expect(screen.getByText(`r/x@sha256:${'a'.repeat(64)}`)).toBeVisible();
+  });
+  it('does not offer an inert build output button for a failed OCI release without a build', () => {
+    api.status = 'failed';
+    render(
+      <DeploymentProgress
+        appCreated
+        appName="image-app"
+        deploymentId="deploy-1"
+        source={{ kind: 'image', reference: 'r/x' }}
+      />
+    );
+    expect(screen.queryByRole('button', { name: 'View build output' })).not.toBeInTheDocument();
+  });
   it.each([
     ['pending', 'Queued for build'],
     ['building', 'Building your app'],
