@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { isValidGitHubRepo, isValidGitRef } from './new-app-source';
+import { isValidGitHubRepo, isValidGitRef, validateNewAppSearch } from './new-app-source';
 
 describe('new app Git source validation', () => {
+  it('retains a direct container source URL', () => {
+    expect(validateNewAppSearch({ source: 'container' }).source).toBe('container');
+  });
   it('accepts API-shaped GitHub owner/repository slugs', () => {
     for (const repo of ['gregale/api', 'one-box/faas_web.git', 'A.B-C/repo_2']) {
       expect(isValidGitHubRepo(repo), repo).toBe(true);

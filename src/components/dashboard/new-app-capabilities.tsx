@@ -5,6 +5,7 @@ import { CapabilityNotice } from './capability-notice';
 
 function Handoff({ capabilityKey, title }: { capabilityKey: string; title: string }) {
   const availability = useCapability(capabilityKey);
+  const target = capabilityEntrypoint(capabilityKey);
   return (
     <div className="flex flex-col gap-2">
       <h3 className="text-sm font-medium">{title}</h3>
@@ -13,11 +14,14 @@ function Handoff({ capabilityKey, title }: { capabilityKey: string; title: strin
         state={availability.state}
         onRetry={availability.refresh}
       />
-      {availability.state === 'available' && (
-        <p className="text-xs text-muted-foreground">
-          {capabilityEntrypoint(capabilityKey).instruction}
-        </p>
-      )}
+      {availability.state === 'available' &&
+        (target.href ? (
+          <a className="w-fit text-sm text-brand underline" href={target.href}>
+            {target.label}
+          </a>
+        ) : (
+          <p className="text-xs text-muted-foreground">{target.instruction}</p>
+        ))}
     </div>
   );
 }
