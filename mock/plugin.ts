@@ -6,6 +6,7 @@ import * as db from './data';
 import * as automationMock from './automations';
 import { mockCapabilities } from './capabilities';
 import { isDigestPinnedImage } from '../src/lib/oci-image';
+import { projects, projectSummaries } from './projects';
 import {
   FREE_TRIGGER_ERROR_CODE,
   KAFKA_SASL_MECHANISMS,
@@ -4857,6 +4858,12 @@ const MOCK_PLAN = {
 };
 
 route('POST', '/v1/projects/scan', () => MOCK_PLAN);
+route('GET', '/v1/projects', () => projectSummaries());
+route('GET', '/v1/projects/{slug}', ({ params }) => {
+  const project = projects.find((item) => item.slug === params.slug);
+  if (!project) throw new Problem(404, 'not_found', 'Project not found.');
+  return project;
+});
 route('POST', '/v1/projects', () => ({
   ...MOCK_PLAN,
   project_id: 'proj_mock01',

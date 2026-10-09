@@ -96,7 +96,7 @@
       }
     },
     {
-      "src": "^/dashboard(?:/(?:account|alerts|analytics|apis|audit|builds|crons|databases|debug|deployments|domains|edge-rules|env|import|invoices|jobs|keys|logs|metrics|mirrors|openapi|plans|postgres|queues|secrets|security|settings|storage|team|templates|tenant-surfaces|traces|triggers(?:/[^/]+)?|usage|webhooks|workers|workflows(?:/[^/]+)?))?/?$",
+      "src": "^/dashboard(?:/(?:account|alerts|analytics|apis|audit|builds|crons|databases|debug|deployments|domains|edge-rules|env|import|invoices|jobs|keys|logs|metrics|mirrors|openapi|plans|postgres|projects(?:/[^/]+)?|queues|secrets|security|settings|storage|team|templates|tenant-surfaces|traces|triggers(?:/[^/]+)?|usage|webhooks|workers|workflows(?:/[^/]+)?))?/?$",
       "dest": "/index.html"
     },
     {

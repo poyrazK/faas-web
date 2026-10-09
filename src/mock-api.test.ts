@@ -44,6 +44,15 @@ async function get(path: string) {
   const response = await fetch(`${origin}${path}`);
   return { response, body: await response.json() };
 }
+it('serves durable project inventory/detail and hides unknown project identities', async () => {
+  const inventory = await get('/v1/projects');
+  expect(inventory.response.status).toBe(200);
+  expect(inventory.body).toHaveLength(2);
+  const detail = await get(`/v1/projects/${inventory.body[0].slug}`);
+  expect(detail.body.id).toBe(inventory.body[0].id);
+  expect(detail.body.workloads.length).toBe(inventory.body[0].workload_count);
+  expect((await get('/v1/projects/not-owned')).response.status).toBe(404);
+});
 it('replays app creation and accepts a digest-pinned image without a build ID', async () => {
   const slug = `image-${Date.now()}`;
   const options = {

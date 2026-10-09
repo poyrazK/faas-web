@@ -47,6 +47,8 @@
 /dashboard/webhooks    /index.html   200
 /dashboard/workers    /index.html   200
 /dashboard/workflows    /index.html   200
+/dashboard/projects    /index.html   200
+/dashboard/projects/:projectSlug    /index.html   200
 /dashboard/workflows/:workflowId    /index.html   200
 /dashboard/workflows/new    /index.html   200
 /invite/:token    /index.html   200
