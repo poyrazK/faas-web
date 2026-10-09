@@ -146,6 +146,7 @@ it('links an empty inventory to import, not empty project creation', async () =>
   );
 });
 it('loads a direct detail URL with actual partial status, not invented Ready', async () => {
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
   await mount('/dashboard/projects/shop');
   const table = await screen.findByRole('table', { name: 'Project workloads' });
   expect(within(table).getByText('failed')).toBeInTheDocument();
@@ -158,6 +159,7 @@ it('loads a direct detail URL with actual partial status, not invented Ready', a
   expect(
     within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByText('shop')
   ).toBeInTheDocument();
+  expect(errors.mock.calls.map((call) => String(call[0])).join('\n')).not.toContain('same key');
 });
 it('shows a read error rather than an empty inventory', async () => {
   const { get, router } = await mount('/dashboard/projects', []);
