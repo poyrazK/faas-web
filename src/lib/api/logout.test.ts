@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { endServerSession } from './logout';
+import { endServerSession, endServerSessionBestEffort } from './logout';
 import { ApiError } from './errors';
 
 /**
@@ -55,6 +55,14 @@ describe('endServerSession', () => {
     await expect(endServerSession({ mintCSRF })).resolves.toBeUndefined();
   });
 
+  it('treats a request with no session cookie at all as signed out', async () => {
+    // apid answers a missing or unverifiable faas_sid with 401 `unauthorized`,
+    // e.g. a second tab signing out after the first one cleared the cookie.
+    stubFetch(answer(401, { code: 'unauthorized' }));
+
+    await expect(endServerSession({ mintCSRF })).resolves.toBeUndefined();
+  });
+
   it('treats an expired session at mint time as signed out, without posting', async () => {
     const fetchMock = stubFetch(answer(204));
     const expiredMint = vi.fn(async () => {
@@ -77,6 +85,30 @@ describe('endServerSession', () => {
     stubFetch(new TypeError('Failed to fetch'));
 
     await expect(endServerSession({ mintCSRF })).rejects.toBeInstanceOf(TypeError);
+  });
+});
+
+describe('endServerSessionBestEffort', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('never rejects, but reports a refusal so a regression is visible', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const refused = new ApiError({ status: 400, code: 'csrf_mismatch', title: 'CSRF Error' });
+
+    await expect(
+      endServerSessionBestEffort(async () => Promise.reject(refused))
+    ).resolves.toBeUndefined();
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]).toContain(refused);
+  });
+
+  it('stays quiet when the network is down', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await expect(
+      endServerSessionBestEffort(async () => Promise.reject(new TypeError('Failed to fetch')))
+    ).resolves.toBeUndefined();
+    expect(warn).not.toHaveBeenCalled();
   });
 });
 

@@ -10,7 +10,7 @@ import {
 } from 'react';
 import { api, setUnauthorizedHandler, unwrap } from './api/client';
 import { ApiError } from './api/errors';
-import { endServerSession } from './api/logout';
+import { endServerSessionBestEffort } from './api/logout';
 import type { components } from './api/schema';
 
 /**
@@ -338,11 +338,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = useCallback(async () => {
     exitDevBypass();
     setSession(null);
-    try {
-      await endServerSession();
-    } catch {
-      // Intentionally ignored — see above.
-    }
+    await endServerSessionBestEffort();
   }, [setSession]);
 
   const requestPasswordReset = useCallback(async (email: string) => {

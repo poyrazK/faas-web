@@ -1,9 +1,6 @@
 import { issueCSRF } from './client';
 import { ApiError, toApiError } from './errors';
 
-/** A session the server no longer holds is already signed out. */
-const ALREADY_SIGNED_OUT = new Set(['session_expired', 'session_invalid']);
-
 /**
  * Ends the server-side session behind the `faas_sid` cookie.
  *
@@ -16,8 +13,10 @@ const ALREADY_SIGNED_OUT = new Set(['session_expired', 'session_invalid']);
  * operation, so the typed client cannot send one; this goes out through
  * `fetch`, as `setAccountPassword` does.
  *
- * Resolves when the session is gone, including when it was already gone.
- * Rejects on anything else, so a regression is observable to whoever calls it.
+ * Resolves when the session is gone, including when it was already gone: any
+ * 401 means there is no live session to revoke, whether the cookie is missing
+ * (`unauthorized`, e.g. another tab already signed out) or revoked
+ * (`session_expired`). Rejects on anything else.
  */
 export async function endServerSession({
   mintCSRF = issueCSRF,
@@ -35,7 +34,24 @@ export async function endServerSession({
     if (res.ok) return;
     throw await toApiError(res);
   } catch (err) {
-    if (err instanceof ApiError && ALREADY_SIGNED_OUT.has(err.code)) return;
+    if (err instanceof ApiError && err.isAuth) return;
     throw err;
+  }
+}
+
+/**
+ * Sign-out's server half: never rejects, because refusing to sign someone out
+ * locally over a server answer is the worse failure. It still reports a
+ * refusal: the original bug survived because a 400 here was swallowed
+ * silently. A network failure stays quiet; the cookie expires on its own.
+ */
+export async function endServerSessionBestEffort(
+  end: () => Promise<void> = endServerSession
+): Promise<void> {
+  try {
+    await end();
+  } catch (err) {
+    if (err instanceof TypeError) return;
+    console.warn('Sign-out did not end the server session', err);
   }
 }
