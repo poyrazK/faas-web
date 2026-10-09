@@ -44,6 +44,31 @@ async function get(path: string) {
   const response = await fetch(`${origin}${path}`);
   return { response, body: await response.json() };
 }
+it('replays app creation and accepts a digest-pinned image without a build ID', async () => {
+  const slug = `image-${Date.now()}`;
+  const options = {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Idempotency-Key': `create-${slug}` },
+    body: JSON.stringify({ slug, type: 'app', ram_mb: 128 }),
+  };
+  const first = await fetch(`${origin}/v1/apps`, options);
+  const created = await first.json();
+  const replay = await fetch(`${origin}/v1/apps`, options);
+  expect(replay.status).toBe(201);
+  expect((await replay.json()).id).toBe(created.id);
+  const accepted = await fetch(`${origin}/v1/apps/${slug}/deployments`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Idempotency-Key': `deploy-${slug}` },
+    body: JSON.stringify({ image: `ghcr.io/team/api@sha256:${'a'.repeat(64)}` }),
+  });
+  expect(accepted.status).toBe(202);
+  expect(await accepted.json()).toMatchObject({
+    app_id: created.id,
+    kind: 'image',
+    status: 'imaging',
+    build_id: null,
+  });
+});
 
 it('reports registry plan denial separately from installation availability', async () => {
   process.env.MOCK_PLAN = 'free';

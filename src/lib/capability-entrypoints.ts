@@ -23,7 +23,8 @@ const TARGETS: Record<string, Entrypoint> = {
   'scale-to-zero': { href: '/dashboard/workflows', label: 'Choose an app' },
   'workflows-and-jobs': { href: '/dashboard/jobs?section=automations', label: 'Open automations' },
   'container-deployments': {
-    instruction: 'Use the CLI to deploy a compatible image. Start with gregale deploy --help.',
+    href: '/dashboard/workflows/new?source=container',
+    label: 'Deploy an image',
   },
   'disposable-runs': {
     instruction: 'Use the CLI or API for isolated runs. See the disposable executions guide.',

@@ -26,6 +26,7 @@ import {
 import { TemplateCatalog } from '@/components/dashboard/template-catalog';
 import { ProjectImport } from '@/components/dashboard/project-import';
 import { NewAppCapabilities } from './new-app-capabilities';
+import { ImageDeployForm } from './image-deploy-form';
 import { CopyIconButton } from '@/components/ui/copy-button';
 import { templateBySlug } from '@/lib/templates';
 import { type Runtime } from '@/lib/mock-data';
@@ -52,6 +53,12 @@ const STEPS = ['Source', 'Configure', 'Review'] as const;
 /** Git deploys immediately; empty/template apps await CLI deployment.
  * Import keeps the existing project scan/apply contract inside this flow. */
 const SOURCES = [
+  {
+    id: 'container',
+    name: 'Container image',
+    desc: 'Deploy an immutable HTTP image by digest. No GitHub connection required.',
+    icon: Package,
+  },
   {
     id: 'git',
     name: 'Git repository',
@@ -498,6 +505,19 @@ export function NewAppWizard({
     );
   }
 
+  const containerForm = (
+    <div className="mx-auto flex max-w-2xl flex-col gap-6">
+      <button
+        type="button"
+        className="w-fit text-sm text-muted-foreground underline"
+        onClick={() => changeSearch({ ...search, source: undefined, step: undefined })}
+      >
+        Choose another source
+      </button>
+      <PageHeader title="New app" description="Deploy a compatible HTTP container image." />
+      <ImageDeployForm />
+    </div>
+  );
   const form = (
     <div
       className={cn(
@@ -925,7 +945,11 @@ export function NewAppWizard({
 
   return (
     <>
-      {deploying ? renderCompletion() : form}
+      {deploying
+        ? renderCompletion()
+        : !onboarding && source === 'container'
+          ? containerForm
+          : form}
       {/* Keep the archive and plan mounted through source switches and
           submission/completion, including a failed attempt from another source. */}
       {!onboarding && (

@@ -25,6 +25,8 @@ vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => vi.fn(),
 }));
 vi.mock('@/lib/use-unsaved-guard', () => ({ useUnsavedGuard: vi.fn() }));
+vi.mock('./image-deploy-form', () => ({ ImageDeployForm: () => <div>HTTP image setup</div> }));
+vi.mock('./project-import', () => ({ ProjectImport: () => null }));
 vi.mock('@/lib/api/logs', () => ({
   useLogStream: () => ({ lines: [], status: 'streaming', reason: null }),
 }));
@@ -94,6 +96,15 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('NewAppWizard Git submission', () => {
+  it('offers container setup without a GitHub installation', async () => {
+    mocks.account.github_install_id = '';
+    render(<NewAppWizard />);
+    await userEvent.click(
+      screen.getByRole('button', { name: /Container image.*Deploy an immutable/ })
+    );
+    expect(await screen.findByText('HTTP image setup')).toBeInTheDocument();
+    expect(screen.queryByText('Connect GitHub first')).not.toBeInTheDocument();
+  });
   it('connects GitHub with proof and preserves the onboarding return marker', async () => {
     mocks.account.github_install_id = '';
     const onConnectGitHub = vi.fn();

@@ -5,6 +5,7 @@ import type { components } from '../src/lib/api/schema';
 import * as db from './data';
 import * as automationMock from './automations';
 import { mockCapabilities } from './capabilities';
+import { isDigestPinnedImage } from '../src/lib/oci-image';
 import {
   FREE_TRIGGER_ERROR_CODE,
   KAFKA_SASL_MECHANISMS,
@@ -444,7 +445,15 @@ route('GET', '/v1/apps/metrics', ({ query }) => {
     apps: Object.fromEntries(db.apps.map((a) => [a.slug, db.metricsFor(a, range)])),
   };
 });
-route('POST', '/v1/apps', ({ body }) => {
+const imageAppReceipts = new Map<string, { body: string; app: db.App; at: number }>();
+const imageDeployReceipts = new Map<string, db.Deployment>();
+route('POST', '/v1/apps', ({ body, req }) => {
+  const key = String(req.headers['idempotency-key'] ?? '');
+  const receipt = key && imageAppReceipts.get(key);
+  if (receipt && Date.now() - receipt.at < 24 * 60 * 60 * 1000) {
+    if (receipt.body !== JSON.stringify(body)) throw new Problem(409, 'idempotency_conflict');
+    return status(201, receipt.app);
+  }
   const slug = String(body.slug ?? '').trim();
   if (!/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(slug))
     throw new Problem(400, 'invalid_slug', 'Slugs are lowercase letters, digits, and dashes.');
@@ -462,7 +471,79 @@ route('POST', '/v1/apps', ({ body }) => {
     url: `https://${slug}.gregale.app`,
   };
   db.apps.push(created);
+  if (key) imageAppReceipts.set(key, { body: JSON.stringify(body), app: created, at: Date.now() });
   return status(201, created);
+});
+route('POST', '/v1/apps/{slug}/deployments', ({ params, body, req }) => {
+  const a = app(params.slug);
+  if (a.type !== 'app')
+    throw new Problem(422, 'invalid_app_type', 'Image deployment requires an app.');
+  if (typeof body.image !== 'string' || !isDigestPinnedImage(body.image))
+    throw new Problem(400, 'image_not_digest_pinned', 'Use a digest-pinned image.');
+  const key = `${a.id}:${String(req.headers['idempotency-key'] ?? '')}`;
+  const prior = imageDeployReceipts.get(key);
+  if (prior && !['failed', 'cancelled', 'superseded'].includes(prior.status))
+    return status(202, prior);
+  const deployment: db.Deployment = {
+    id: db.id(),
+    app_id: a.id,
+    image_digest: body.image.slice(body.image.indexOf('@')),
+    kind: 'image',
+    status: 'imaging',
+    build_id: null,
+    rollback_on_5xx: false,
+    first_5xx_count: 0,
+    created_at: new Date().toISOString(),
+  };
+  db.deployments.unshift(deployment);
+  imageDeployReceipts.set(key, deployment);
+  return status(202, deployment);
+});
+const imageRegistryMetadata = new Map<
+  string,
+  components['schemas']['AppRegistryCredentialResponse'][]
+>();
+route('GET', '/v1/apps/{slug}/registry-credentials', ({ params }) => {
+  const a = app(params.slug);
+  const credentials = imageRegistryMetadata.get(a.id) ?? [];
+  return { credentials, quota_max: 20, count: credentials.length };
+});
+route('PUT', '/v1/apps/{slug}/registry-credentials', ({ params, body }) => {
+  const a = app(params.slug);
+  if (
+    typeof body.registry !== 'string' ||
+    typeof body.username !== 'string' ||
+    typeof body.password !== 'string' ||
+    !body.password
+  )
+    throw new Problem(422, 'invalid_registry_credentials');
+  let parsed: URL;
+  try {
+    parsed = new URL(body.registry);
+  } catch {
+    throw new Problem(422, 'invalid_registry');
+  }
+  if (
+    parsed.protocol !== 'https:' ||
+    parsed.username ||
+    parsed.password ||
+    parsed.pathname !== '/' ||
+    parsed.search ||
+    parsed.hash
+  )
+    throw new Problem(422, 'invalid_registry');
+  const metadata = {
+    registry: parsed.host,
+    username: body.username,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+  const rows = imageRegistryMetadata.get(a.id) ?? [];
+  imageRegistryMetadata.set(a.id, [
+    ...rows.filter((item) => item.registry !== metadata.registry),
+    metadata,
+  ]);
+  return metadata;
 });
 route('GET', '/v1/apps/{slug}', ({ params }) => app(params.slug));
 route('DELETE', '/v1/apps/{slug}', ({ params }) => {
