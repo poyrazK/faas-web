@@ -36,6 +36,7 @@ export function DeploymentProgress({
   submissionError,
   endpoint,
   onLive,
+  onTerminal,
 }: {
   appCreated: boolean;
   appName: string;
@@ -46,6 +47,7 @@ export function DeploymentProgress({
   submissionError?: string | null;
   endpoint?: string | null;
   onLive?: (deployment: Deployment) => void;
+  onTerminal?: (deployment: Deployment) => void;
 }) {
   const navigate = useNavigate();
   const outputRef = useRef<HTMLDetailsElement>(null);
@@ -70,6 +72,10 @@ export function DeploymentProgress({
   useEffect(() => {
     if (live && deployment) onLive?.(deployment);
   }, [live, deployment, onLive]);
+  useEffect(() => {
+    if (deployment && !unavailable && !submissionError && isDeploymentTerminal(deployment.status))
+      onTerminal?.(deployment);
+  }, [deployment, unavailable, submissionError, onTerminal]);
   const superseded = phase === 'superseded';
   const failed = Boolean(submissionError) || (phase === 'failed' && !unavailable);
   const cancelled = status === 'cancelled';

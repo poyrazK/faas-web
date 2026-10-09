@@ -14,10 +14,12 @@ export interface ImageOperation {
   deployRequest: components['schemas']['CreateDeploymentRequest'];
   stage:
     | 'create-pending'
+    | 'create-rejected'
     | 'app-created'
     | 'credentials'
     | 'deploy-submitting'
     | 'deploy-unknown'
+    | 'deploy-rejected'
     | 'accepted';
   appId?: string;
   endpoint?: string;
@@ -107,16 +109,19 @@ export function readImageOperation(accountId: string, existingSlug: string): Ima
       !Number.isFinite(operation.attemptAt) ||
       ![
         'create-pending',
+        'create-rejected',
         'app-created',
         'credentials',
         'deploy-submitting',
         'deploy-unknown',
+        'deploy-rejected',
         'accepted',
       ].includes(operation.stage) ||
       !/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(operation.createRequest.slug)
     )
       throw new Error();
-    if (operation.stage !== 'create-pending' && !operation.appId) throw new Error();
+    if (!['create-pending', 'create-rejected'].includes(operation.stage) && !operation.appId)
+      throw new Error();
     if (operation.stage === 'accepted' && !operation.deploymentId) throw new Error();
     return sanitized(operation);
   } catch {

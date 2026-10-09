@@ -9,14 +9,32 @@ import { readImageOperation, saveImageOperation, newImageOperation } from '@/lib
 const state = vi.hoisted(() => ({
   account: { id: 'a', plan: 'free', limits: { ram_mb: 128 }, app_count: 0 },
   availability: 'available',
+  terminal: '',
 }));
 vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: state.account }) }));
 vi.mock('@/lib/api/capabilities', () => ({
   useCapability: () => ({ state: state.availability, refresh: vi.fn() }),
 }));
 vi.mock('./deployment-progress', () => ({
-  DeploymentProgress: ({ deploymentId }: { deploymentId: string }) => (
-    <div>Release {deploymentId}</div>
+  DeploymentProgress: ({
+    deploymentId,
+    onTerminal,
+  }: {
+    deploymentId: string;
+    onTerminal?: (deployment: never) => void;
+  }) => (
+    <div>
+      Release {deploymentId}
+      {state.terminal && (
+        <button
+          onClick={() =>
+            onTerminal?.({ id: deploymentId, app_id: 'app-1', status: state.terminal } as never)
+          }
+        >
+          Read confirmed terminal status
+        </button>
+      )}
+    </div>
   ),
 }));
 vi.mock('@/lib/use-unsaved-guard', () => ({ useUnsavedGuard: vi.fn() }));
@@ -35,12 +53,126 @@ beforeEach(() => {
   state.account.id = 'a';
   state.account.plan = 'free';
   state.availability = 'available';
+  state.terminal = '';
   vi.spyOn(api, 'GET').mockImplementation(async (path) =>
     path === '/v1/apps/{slug}'
       ? ok({ id: 'app-1', slug: 'my-api', type: 'app' })
       : ok({ credentials: [], count: 0, quota_max: 0 })
   );
 });
+it.each(['free', 'hobby'])(
+  'inherits the %s plan idle timeout rather than sending an inadmissible override',
+  async (plan) => {
+    state.account.plan = plan;
+    vi.spyOn(api, 'POST').mockImplementation(async (path, options) => {
+      if (path === '/v1/apps') {
+        const timeout =
+          (options as { body?: { idle_timeout_s?: number } } | undefined)?.body?.idle_timeout_s ??
+          0;
+        if (timeout !== 0 && (timeout < 10 || timeout > 120))
+          return {
+            error: { title: 'Idle timeout rejected', code: 'validation_failed' },
+            response: new Response(null, { status: 422 }),
+          } as never;
+        return ok({ id: 'app-1', slug: 'my-api' });
+      }
+      return ok({ id: 'dep-1' });
+    });
+    mount();
+    await review();
+    await userEvent.click(screen.getByRole('button', { name: 'Create app and deploy image' }));
+    expect(await screen.findByText('Release dep-1')).toBeInTheDocument();
+  }
+);
+it.each([422, 409])(
+  'corrects a definitive initial %s slug rejection after reload using a new creation key',
+  async (rejection) => {
+    const post = vi
+      .spyOn(api, 'POST')
+      .mockRejectedValueOnce(
+        new ApiError({ status: rejection, code: 'validation_failed', title: 'Reserved slug' })
+      )
+      .mockImplementation(async (path) =>
+        path === '/v1/apps' ? ok({ id: 'app-1', slug: 'my-api' }) : ok({ id: 'dep-1' })
+      );
+    mount();
+    await userEvent.type(screen.getByLabelText('App name'), 'api');
+    await userEvent.type(screen.getByLabelText('Image reference'), reference);
+    await userEvent.click(screen.getByRole('button', { name: 'Review image deployment' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Create app and deploy image' }));
+    await screen.findByText('Reserved slug');
+    const original = readImageOperation('a', '')!;
+    cleanup();
+    mount();
+    await userEvent.click(screen.getByRole('button', { name: 'Edit rejected request' }));
+    await userEvent.clear(screen.getByLabelText('App name'));
+    await userEvent.type(screen.getByLabelText('App name'), 'my-api');
+    await userEvent.click(screen.getByRole('button', { name: 'Review image deployment' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Create app and deploy image' }));
+    await screen.findByText('Release dep-1');
+    expect(readImageOperation('a', '')?.createKey).not.toBe(original.createKey);
+    expect(post).toHaveBeenCalledTimes(3);
+  }
+);
+it('corrects a definitively rejected image payload without recreating its accepted app', async () => {
+  const post = vi
+    .spyOn(api, 'POST')
+    .mockResolvedValueOnce(ok({ id: 'app-1', slug: 'my-api' }))
+    .mockRejectedValueOnce(
+      new ApiError({ status: 422, code: 'validation_failed', title: 'Image override rejected' })
+    )
+    .mockResolvedValue(ok({ id: 'dep-2' }));
+  mount();
+  await review();
+  await userEvent.click(screen.getByRole('button', { name: 'Create app and deploy image' }));
+  await screen.findByText('Image override rejected');
+  const rejected = readImageOperation('a', '')!;
+  cleanup();
+  mount();
+  await userEvent.click(screen.getByRole('button', { name: 'Edit rejected request' }));
+  expect(screen.queryByLabelText('App name')).not.toBeInTheDocument();
+  await userEvent.clear(screen.getByLabelText('Image reference'));
+  await userEvent.type(
+    screen.getByLabelText('Image reference'),
+    `ghcr.io/team/api@sha256:${'b'.repeat(64)}`
+  );
+  await userEvent.click(screen.getByRole('button', { name: 'Review image deployment' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Deploy reviewed image' }));
+  await screen.findByText('Release dep-2');
+  expect(post.mock.calls.filter((call) => call[0] === '/v1/apps')).toHaveLength(1);
+  expect(readImageOperation('a', '')?.appId).toBe('app-1');
+  expect(readImageOperation('a', '')?.deployKey).not.toBe(rejected.deployKey);
+});
+it.each(['failed', 'cancelled', 'superseded'])(
+  'offers an explicit new image after reading a confirmed %s release following reload',
+  async (status) => {
+    const op = newImageOperation(
+      'a',
+      { slug: 'my-api', type: 'app' },
+      { image: reference },
+      'my-api'
+    );
+    saveImageOperation({ ...op, stage: 'accepted', appId: 'app-1', deploymentId: 'dep-old' });
+    state.terminal = status;
+    const post = vi.spyOn(api, 'POST').mockResolvedValue(ok({ id: 'dep-new' }));
+    mount('my-api');
+    expect(screen.queryByRole('button', { name: 'Choose another image' })).not.toBeInTheDocument();
+    expect(post).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'Read confirmed terminal status' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Choose another image' }));
+    await userEvent.clear(screen.getByLabelText('Image reference'));
+    await userEvent.type(
+      screen.getByLabelText('Image reference'),
+      `ghcr.io/team/api@sha256:${'b'.repeat(64)}`
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Review image deployment' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Deploy reviewed image' }));
+    await screen.findByText('Release dep-new');
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(post.mock.calls[0]?.[0]).toBe('/v1/apps/{slug}/deployments');
+    expect(readImageOperation('a', 'my-api')?.deployKey).not.toBe(op.deployKey);
+  }
+);
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();

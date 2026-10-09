@@ -23,6 +23,14 @@ import { CapabilityNotice } from './capability-notice';
 import { DeploymentProgress } from './deployment-progress';
 import type { components } from '@/lib/api/schema';
 
+// A new request's settled admission/validation refusal did not accept a release.
+// Conflict and transport/server failures remain ambiguous; never clear those implicitly.
+function definitivelyRejected(error: unknown) {
+  return (
+    error instanceof ApiError && [400, 401, 402, 403, 404, 413, 422, 429].includes(error.status)
+  );
+}
+
 export function ImageDeployForm({ slug }: { slug?: string }) {
   const { account } = useAuth();
   if (!account) return <p role="status">Verifying your account…</p>;
@@ -66,6 +74,9 @@ function ImageJourney({
     }
   });
   const [operation, setOperation] = useState<ImageOperation | null>(recovery.operation);
+  const [editingApp, setEditingApp] = useState<ImageOperation | null>(null);
+  const [observedTerminal, setObservedTerminal] = useState<string>();
+  const fixedApp = editingApp?.createRequest.slug || slug;
   const [name, setName] = useState(slug);
   const [image, setImage] = useState('');
   const [port, setPort] = useState('');
@@ -96,7 +107,7 @@ function ImageJourney({
       active.current = false;
     };
   }, []);
-  const registrySlug = operation?.appId ? operation.createRequest.slug : slug;
+  const registrySlug = operation?.appId ? operation.createRequest.slug : fixedApp;
   const registry = useQuery({
     queryKey: ['account', accountId, 'image-registry', registrySlug],
     queryFn: ({ signal }) =>
@@ -151,7 +162,11 @@ function ImageJourney({
       void cache.invalidateQueries({ queryKey: keys.deployments });
       void cache.invalidateQueries({ queryKey: keys.appDeployments(current.createRequest.slug) });
     } catch (error) {
-      if (active.current) persist({ ...current, stage: 'deploy-unknown' });
+      if (active.current)
+        persist({
+          ...current,
+          stage: definitivelyRejected(error) ? 'deploy-rejected' : 'deploy-unknown',
+        });
       throw error;
     }
   }
@@ -194,13 +209,26 @@ function ImageJourney({
       if (active.current) setBusy(false);
     }
   }
-  async function createOrRecover(current: ImageOperation) {
+  async function createOrRecover(current: ImageOperation, freshRequest = false) {
     ensureCanWrite();
     if (!creationReplayAllowed(current) || conflicted)
       throw new Error(
         'The creation outcome is unresolved. Inspect the app; do not create a renamed replacement.'
       );
-    const app = await createImageApp(current.createRequest, current.createKey);
+    let app;
+    try {
+      app = await createImageApp(current.createRequest, current.createKey);
+    } catch (error) {
+      // An old ambiguous creation may already have created its app. A later
+      // refusal after account changes is not proof about that earlier attempt.
+      if (
+        freshRequest &&
+        active.current &&
+        (definitivelyRejected(error) || (error instanceof ApiError && error.status === 409))
+      )
+        persist({ ...current, stage: 'create-rejected' });
+      throw error;
+    }
     if (!app?.id || app.slug !== current.createRequest.slug)
       throw new Error(
         'App creation returned an unexpected identity. Inspect your apps before resuming.'
@@ -217,19 +245,59 @@ function ImageJourney({
   }
   async function start() {
     const request = imageRequest(image, port, health, allowAuto);
-    if (!slug && appNameError(name)) throw new Error(appNameError(name)!);
+    if (!fixedApp && appNameError(name)) throw new Error(appNameError(name)!);
     if (memory > maxMemory) throw new Error('Memory exceeds this plan’s per-app limit.');
     const current = persist({
       ...newImageOperation(
         accountId,
-        { slug: slug || name, type: 'app', ram_mb: memory, idle_timeout_s: 300 },
+        editingApp?.createRequest ?? {
+          slug: fixedApp || name,
+          type: 'app',
+          ram_mb: memory,
+          idle_timeout_s: 0,
+        },
         request,
-        slug
+        editingApp?.existingSlug ?? slug
       ),
       needsCredentials: privateRegistry,
+      ...(editingApp
+        ? {
+            appId: editingApp.appId,
+            endpoint: editingApp.endpoint,
+            stage: privateRegistry ? ('credentials' as const) : ('app-created' as const),
+          }
+        : {}),
     });
-    if (slug) await resumeExisting(current);
-    else await createOrRecover(current);
+    if (editingApp) {
+      if (current.needsCredentials) await saveCredentialAndDeploy(current);
+      else await submitDeployment(current);
+    } else if (slug) await resumeExisting(current);
+    else await createOrRecover(current, true);
+  }
+  function editRequest(current: ImageOperation) {
+    if (!active.current || busy) return;
+    try {
+      clearImageOperation(current);
+      setEditingApp(current.appId ? current : null);
+      setOperation(null);
+      setObservedTerminal(undefined);
+      setConflicted(false);
+      setReviewing(false);
+      setName(current.createRequest.slug);
+      setImage(current.deployRequest.image ?? '');
+      setPort(
+        current.deployRequest.overrides?.port ? String(current.deployRequest.overrides.port) : ''
+      );
+      setHealth(current.deployRequest.overrides?.healthcheck?.path ?? '');
+      setMemory(current.createRequest.ram_mb ?? 128);
+      setAllowAuto(current.deployRequest.full_rootfs_allow_auto === true);
+      setPrivateRegistry(false);
+      setUsername('');
+      setPassword('');
+      setError(null);
+    } catch (error) {
+      setError(errorMessage(error));
+    }
   }
   async function resumeExisting(current: ImageOperation) {
     ensureCanWrite();
@@ -303,6 +371,20 @@ function ImageJourney({
             This request is frozen. Recovery keeps its app identity and never creates a renamed
             replacement.
           </p>
+          {(operation.stage === 'create-rejected' || operation.stage === 'deploy-rejected') && (
+            <>
+              <p role="status">
+                This attempt was rejected before acceptance.{' '}
+                {operation.appId
+                  ? 'Your existing app is kept.'
+                  : 'No app was accepted for this attempt.'}{' '}
+                Edit and review a new request.
+              </p>
+              <Button disabled={busy} onClick={() => editRequest(operation)}>
+                Edit rejected request
+              </Button>
+            </>
+          )}
           {operation.stage === 'create-pending' && (
             <>
               {(!creationReplayAllowed(operation) || conflicted) && (
@@ -438,7 +520,25 @@ function ImageJourney({
                 )
                   clearImageOperation(operation);
               }}
+              onTerminal={(deployment) => {
+                if (
+                  deployment.id === operation.deploymentId &&
+                  deployment.app_id === operation.appId
+                )
+                  setObservedTerminal(deployment.id);
+              }}
             />
+          )}
+          {operation.stage === 'accepted' && observedTerminal === operation.deploymentId && (
+            <>
+              <p className="text-xs text-muted-foreground">
+                This release has a confirmed terminal outcome. Your app is kept; another image
+                requires a new review and request.
+              </p>
+              <Button disabled={busy} onClick={() => editRequest(operation)}>
+                Choose another image
+              </Button>
+            </>
           )}
           <a
             className="w-fit text-sm text-brand underline"
@@ -449,7 +549,12 @@ function ImageJourney({
         </>
       ) : (
         <>
-          {!slug && (
+          {editingApp && (
+            <p className="text-sm">
+              Continuing with saved app <strong>{fixedApp}</strong>. No new app will be created.
+            </p>
+          )}
+          {!fixedApp && (
             <label className="text-sm">
               App name
               <Input
@@ -470,7 +575,7 @@ function ImageJourney({
               autoComplete="off"
             />
           </label>
-          {!slug && (
+          {!fixedApp && (
             <label className="text-sm">
               Memory (MB)
               <Input
@@ -525,7 +630,7 @@ function ImageJourney({
               )}
             </div>
           </details>
-          {slug && (
+          {fixedApp && (
             <div className="text-xs text-muted-foreground">
               {registry.isError
                 ? 'Registry metadata unavailable; no saved credential is assumed.'
@@ -578,7 +683,7 @@ function ImageJourney({
           {reviewing ? (
             <>
               <p className="text-sm">
-                Review: {slug || name} · {memory} MB ·{' '}
+                Review: {fixedApp || name} · {memory} MB ·{' '}
                 {allowAuto ? 'Self-contained fallback allowed' : 'Image defaults'}
                 {port && ` · Port ${port}`}
                 {health && ` · Health path ${health}`}.{' '}
@@ -591,7 +696,7 @@ function ImageJourney({
                   Edit configuration
                 </Button>
                 <Button disabled={!permitted} onClick={() => void run(start)}>
-                  {slug ? 'Deploy reviewed image' : 'Create app and deploy image'}
+                  {fixedApp ? 'Deploy reviewed image' : 'Create app and deploy image'}
                 </Button>
               </div>
             </>
@@ -601,7 +706,7 @@ function ImageJourney({
               onClick={() => {
                 try {
                   imageRequest(image, port, health, allowAuto);
-                  if (!slug && appNameError(name)) throw new Error(appNameError(name)!);
+                  if (!fixedApp && appNameError(name)) throw new Error(appNameError(name)!);
                   if (privateRegistry && (!username || !password))
                     throw new Error('Enter registry credentials before review.');
                   if (!Number.isInteger(memory) || memory < 128 || memory > maxMemory)

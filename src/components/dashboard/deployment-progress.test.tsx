@@ -58,6 +58,24 @@ beforeEach(() => {
 });
 
 describe('first deployment progress', () => {
+  it.each(['failed', 'cancelled', 'superseded'])(
+    'notifies a confirmed terminal %s outcome without retrying a deployment',
+    (status) => {
+      api.status = status;
+      const onTerminal = vi.fn();
+      render(<DeploymentProgress {...props} onTerminal={onTerminal} />);
+      expect(onTerminal).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'deploy-1', app_id: 'app-1', status })
+      );
+    }
+  );
+  it('does not release recovery when a retained terminal response has a current read error', () => {
+    api.status = 'failed';
+    api.readFailed = true;
+    const onTerminal = vi.fn();
+    render(<DeploymentProgress {...props} onTerminal={onTerminal} />);
+    expect(onTerminal).not.toHaveBeenCalled();
+  });
   it('describes OCI preparation without opening an unsupported build stream', () => {
     render(
       <DeploymentProgress
