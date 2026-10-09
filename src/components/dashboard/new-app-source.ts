@@ -1,4 +1,4 @@
-export type AppSource = 'git' | 'empty' | 'template' | 'import';
+export type AppSource = 'git' | 'container' | 'empty' | 'template' | 'import';
 export interface NewAppSearch {
   source?: AppSource;
   template?: string;
@@ -11,6 +11,7 @@ export function validateNewAppSearch(search: Record<string, unknown>): NewAppSea
   return {
     source:
       search.source === 'git' ||
+      search.source === 'container' ||
       search.source === 'empty' ||
       search.source === 'template' ||
       search.source === 'import'
