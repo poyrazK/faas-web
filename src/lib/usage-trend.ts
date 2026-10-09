@@ -73,6 +73,11 @@ const DAY_LABEL = new Intl.DateTimeFormat('en-US', {
   timeZone: 'UTC',
 });
 
+/** "Oct 2" for a UTC calendar day. */
+export function dayLabel(date: string): string {
+  return DAY_LABEL.format(Date.parse(`${date}T00:00:00Z`));
+}
+
 /**
  * Chart rows and series config. The allowance is a constant series rather
  * than a reference line because the y-scale is fitted to the series: drawn as
@@ -87,7 +92,7 @@ export function trendChart(
   if (showAllowance) config.included = { label: 'Included', color: 'grey' };
 
   const data = points.map((point) => ({
-    day: DAY_LABEL.format(Date.parse(`${point.date}T00:00:00Z`)),
+    day: dayLabel(point.date),
     used: point.cumulativeGbHours,
     ...(showAllowance ? { included: includedGbHours } : {}),
   }));
