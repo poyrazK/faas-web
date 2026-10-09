@@ -6,6 +6,7 @@ import * as db from './data';
 import * as automationMock from './automations';
 import { mockCapabilities } from './capabilities';
 import { isDigestPinnedImage } from '../src/lib/oci-image';
+import { advancePolicy, mockRuntimePolicy } from './runtime-policy';
 import { projects, projectSummaries } from './projects';
 import {
   environmentInventory,
@@ -553,6 +554,9 @@ route('PUT', '/v1/apps/{slug}/registry-credentials', ({ params, body }) => {
   return metadata;
 });
 route('GET', '/v1/apps/{slug}', ({ params }) => app(params.slug));
+route('GET', '/v1/apps/{slug}/policy/status', ({ params }) =>
+  mockRuntimePolicy(app(params.slug).id)
+);
 route('DELETE', '/v1/apps/{slug}', ({ params }) => {
   const a = app(params.slug);
   // Active reads hide tombstones; the restore API retains the same app identity.
@@ -587,6 +591,8 @@ route('PATCH', '/v1/apps/{slug}', ({ params, body }) => {
   const a = app(params.slug);
   for (const k of PATCHABLE)
     if (k in body && body[k] !== null) (a as Record<string, unknown>)[k] = body[k];
+  // Deliberately mixed evidence in the dev fixture; mutation acceptance is not convergence.
+  advancePolicy(a.id, ['request_policy', 'egress_allowlist', 'cpu_limit', 'scheduler_scaling']);
   return a;
 });
 route('POST', '/v1/apps/{slug}/rename', ({ params, body }) => {
@@ -1900,10 +1906,11 @@ route('GET', '/v1/apps/{slug}/debug/requests/{req_id}/evidence', ({ params }) =>
 });
 
 route('DELETE', '/v1/apps/{slug}/cache', ({ params, query }) => {
-  app(params.slug);
+  const a = app(params.slug);
   const path = query.get('path');
   if (path !== null && !path.startsWith('/'))
     throw new Problem(422, 'validation_failed', 'a path glob starts with "/".');
+  advancePolicy(a.id, ['response_cache']);
   return NO_CONTENT;
 });
 
