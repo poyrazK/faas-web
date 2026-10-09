@@ -8850,6 +8850,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/apps/{slug}/policy/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Check whether runtime policy changes have reached their serving consumers.
+         * @description Reports desired/applied positions for the gateway request envelope,
+         *     gateway app-cache and traffic policy, edge rules, account CORS presets,
+         *     explicit response-cache purges, app egress allowlists on nodes hosting
+         *     live instances, and scheduler scaling-policy observation. The
+         *     `request_policy` component covers app-row request settings such as
+         *     request timeout and concurrency, and excludes deployment-traffic
+         *     revisions. A response-cache purge is active only after every serving
+         *     gateway has invalidated its local cache and optional shared tier. The
+         *     top-level state and gateway counts remain the app-cache/traffic
+         *     projection; use each named component for its own convergence state.
+         *     `active` requires fresh observations from every relevant serving
+         *     consumer. The egress allowlist is replayed from current app state by
+         *     schedd if a notification is missed. Scheduler scaling `active` means
+         *     the owning schedd loaded the policy, not that the replica target was
+         *     reached. This does not attest host-level firewall policy or guest
+         *     configuration.
+         *     `unverified` means no revision or no relevant serving fleet can be observed.
+         */
+        get: operations["getRuntimePolicyStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -19266,6 +19305,82 @@ export interface components {
             source_sha256?: string;
             commit_sha?: string;
             build_id?: string;
+        };
+        /** @description Runtime policy status across gateway replicas, the owning scheduler, and live VM consumers. Each component reports its scoped desired revision. Gateway request policy filters app-row changes from the combined app-cache and traffic projection; consumers use their existing acknowledged cursor. */
+        RuntimePolicyStatusResponse: {
+            app_id: string;
+            /**
+             * Format: int64
+             * @description Latest desired control-plane revision for app-cache and deployment traffic policy.
+             */
+            desired_revision: number;
+            /** @enum {string} */
+            state: "active" | "pending" | "unverified";
+            /**
+             * @example [
+             *       "gateway_app_cache",
+             *       "gateway_request_policy",
+             *       "deployment_traffic",
+             *       "response_cache_purge",
+             *       "app_egress_allowlist",
+             *       "app_cpu_limit",
+             *       "scheduler_scaling"
+             *     ]
+             */
+            coverage: string[];
+            serving_gateways: number;
+            applied_gateways: number;
+            pending_gateways: number;
+            stale_gateways: number;
+            request_policy: components["schemas"]["RuntimePolicyComponentStatus"];
+            edge_rules: components["schemas"]["RuntimePolicyComponentStatus"];
+            cors_presets: components["schemas"]["RuntimePolicyComponentStatus"];
+            response_cache: components["schemas"]["RuntimePolicyComponentStatus"];
+            egress_allowlist: components["schemas"]["RuntimePolicyNodeStatus"];
+            cpu_limit: components["schemas"]["RuntimePolicyNodeStatus"];
+            scheduler_scaling: components["schemas"]["RuntimePolicySchedulerStatus"];
+        };
+        /** @description Fresh serving-gateway status for a policy component with explicit scope. Its desired revision is meaningful within that component's ledger or filtered projection. */
+        RuntimePolicyComponentStatus: {
+            /** @enum {string} */
+            scope?: "app" | "account";
+            /** Format: int64 */
+            desired_revision: number;
+            /** @enum {string} */
+            state: "active" | "pending" | "unverified";
+            serving_gateways: number;
+            applied_gateways: number;
+            pending_gateways: number;
+            stale_gateways: number;
+        };
+        /** @description Fresh app-level host policy status for compute nodes currently hosting live instances of this app. This shape is used by the egress_allowlist and cpu_limit components. */
+        RuntimePolicyNodeStatus: {
+            /** @enum {string} */
+            scope?: "app";
+            /** Format: int64 */
+            desired_revision: number;
+            /** @enum {string} */
+            state: "active" | "pending" | "unverified";
+            serving_nodes: number;
+            applied_nodes: number;
+            pending_nodes: number;
+            stale_nodes: number;
+        };
+        /** @description Fresh observation of the desired scaling policy by the owning schedd. Active means the policy was loaded, not that a metric-driven replica target has been reached. */
+        RuntimePolicySchedulerStatus: {
+            /** @enum {string} */
+            scope: "app";
+            /** Format: int64 */
+            desired_revision: number;
+            /** Format: int64 */
+            observed_revision: number;
+            /** @enum {string} */
+            state: "active" | "pending" | "unverified";
+            /** @description Scheduler owner node when this app is sharded. */
+            scheduler_node_id?: string;
+            /** Format: date-time */
+            observed_at?: string | null;
+            stale: boolean;
         };
     };
     responses: {
@@ -35386,6 +35501,36 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getRuntimePolicyStatus: {
+        parameters: {
+            query?: {
+                /** @description Optional bounded wait for active state, up to 10s. */
+                wait?: string;
+            };
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current application state; pending remains possible after wait expires. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimePolicyStatusResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
             429: components["responses"]["TooManyRequests"];
         };
