@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { endServerSession } from './logout';
 import { ApiError } from './errors';
@@ -75,5 +77,17 @@ describe('endServerSession', () => {
     stubFetch(new TypeError('Failed to fetch'));
 
     await expect(endServerSession({ mintCSRF })).rejects.toBeInstanceOf(TypeError);
+  });
+});
+
+describe('logout call sites', () => {
+  it('only endServerSession talks to the logout endpoint', () => {
+    const src = resolve('src');
+    const offenders = (readdirSync(src, { recursive: true }) as string[])
+      .map((f) => f.replaceAll('\\', '/'))
+      .filter((f) => /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f) && !f.endsWith('.d.ts'))
+      .filter((f) => readFileSync(join(src, f), 'utf8').includes("'/v1/auth/logout'"));
+
+    expect(offenders).toEqual(['lib/api/logout.ts']);
   });
 });

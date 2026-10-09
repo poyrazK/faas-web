@@ -10,6 +10,7 @@ import {
 } from 'react';
 import { api, setUnauthorizedHandler, unwrap } from './api/client';
 import { ApiError } from './api/errors';
+import { endServerSession } from './api/logout';
 import type { components } from './api/schema';
 
 /**
@@ -338,7 +339,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     exitDevBypass();
     setSession(null);
     try {
-      await unwrap(api.POST('/v1/auth/logout', {}));
+      await endServerSession();
     } catch {
       // Intentionally ignored — see above.
     }
