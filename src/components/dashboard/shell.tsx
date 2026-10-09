@@ -479,7 +479,8 @@ function Breadcrumbs() {
   if (hub && (hub.label !== pageLabel || detail)) {
     trail.push({ label: hub.label, to: hub.to });
   }
-  if (!(section === 'workflows' && detail)) trail.push({ label: pageLabel });
+  if (!(['workflows', 'projects'].includes(section) && detail)) trail.push({ label: pageLabel });
+  if (section === 'projects' && detail) trail.push({ label: detail });
   if (section === 'workflows' && detail) {
     trail.push({
       label: detail === 'new' ? 'New app' : (workflows.find((w) => w.id === detail)?.name ?? 'App'),

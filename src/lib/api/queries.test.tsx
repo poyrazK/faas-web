@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { File as NodeFile } from 'node:buffer';
 
 function response() {
   return new Response(JSON.stringify({}), {
@@ -49,6 +50,47 @@ afterEach(() => {
 });
 
 describe('analytics query contracts', () => {
+  it.each(['scan', 'apply'])('sends a real multipart source for project %s', async (kind) => {
+    // Match Node's real Request encoder rather than mixing jsdom FormData
+    // with Node File (which jsdom otherwise converts to a string).
+    const nativeForm = await new Response('', {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    }).formData();
+    vi.stubGlobal('FormData', nativeForm.constructor);
+    vi.stubGlobal('File', NodeFile);
+    const fetchMock = vi.fn().mockResolvedValue(response());
+    stubApiFetch(fetchMock);
+    const { useProjectScan, useProjectApply } = await import('./queries');
+    const client = new QueryClient();
+    const hook = renderHook(
+      () => {
+        const scan = useProjectScan();
+        const apply = useProjectApply();
+        return kind === 'scan' ? scan : apply;
+      },
+      { wrapper: queryWrapper(client) }
+    );
+    const file = new NodeFile(['archive-bytes'], 'repo.tar.gz', {
+      type: 'application/gzip',
+    }) as unknown as File;
+    await act(async () => {
+      await hook.result.current.mutateAsync({
+        file,
+        slug: 'shop',
+        branch: 'main',
+        planToken: 'token',
+      });
+    });
+    await waitFor(() => expect(hook.result.current.isSuccess).toBe(true));
+    const request = fetchMock.mock.calls[0][0] as Request;
+    expect(request.headers.get('content-type')).toEqual(
+      expect.stringMatching(/^multipart\/form-data; boundary=/)
+    );
+    const body = await request.formData();
+    expect(body.get('project_slug')).toBe('shop');
+    expect(body.get('production_branch')).toBe('main');
+    expect(await (body.get('source') as Blob).text()).toBe('archive-bytes');
+  });
   it('defaults account SLO requests and cache identity to 24h', async () => {
     const fetchMock = vi.fn().mockResolvedValue(response());
     stubApiFetch(fetchMock);
