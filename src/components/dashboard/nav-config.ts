@@ -81,6 +81,12 @@ export const NAV_HUBS: NavHub[] = [
     ],
   },
   {
+    to: '/dashboard/projects',
+    label: 'Projects',
+    icon: Cube,
+    sidebarIconClassName: 'text-cat-compute/80',
+  },
+  {
     to: '/dashboard/jobs',
     label: 'Jobs',
     icon: Play,
@@ -192,7 +198,7 @@ export const NAV_HUBS: NavHub[] = [
  */
 const SIDEBAR_GROUPS: { title?: string; hubs: string[] }[] = [
   { hubs: ['Overview'] },
-  { title: 'Build', hubs: ['Apps', 'Jobs', 'Releases', 'Instances'] },
+  { title: 'Build', hubs: ['Apps', 'Projects', 'Jobs', 'Releases', 'Instances'] },
   { title: 'Operate', hubs: ['Domains', 'Data', 'Analytics', 'Observe'] },
   { title: 'Account', hubs: ['Billing', 'Settings'] },
 ];

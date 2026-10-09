@@ -101,6 +101,7 @@ const RAIL = [
   'All apps',
   'Templates',
   'Import',
+  'Projects',
   'Jobs',
   'Releases',
   'Instances',
