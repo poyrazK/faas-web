@@ -334,7 +334,16 @@ const login: Handler = ({ body, res }) => {
 route('POST', '/login', login);
 route('POST', '/signup', login);
 route('POST', '/login/forgot', () => ({}));
-route('POST', '/v1/auth/logout', ({ res }) => {
+// apid revokes the session only against a double-submitted `auth.logout`
+// token (ADR-039 / ADR-140). Refusing here keeps a console that forgets the
+// token from looking signed out in dev while apid would keep the session.
+route('POST', '/v1/auth/logout', ({ body, res }) => {
+  if (body.csrf_token !== 'mock-csrf')
+    throw new Problem(
+      400,
+      'csrf_mismatch',
+      "the form's csrf_token does not match the bound action"
+    );
   res.setHeader('Set-Cookie', ['faas_sid=; Path=/; Max-Age=0', 'faas_csrf=; Path=/; Max-Age=0']);
   return NO_CONTENT;
 });
