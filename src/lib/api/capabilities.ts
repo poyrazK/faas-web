@@ -34,12 +34,13 @@ export function useCapabilityRegistry() {
     : !id || query.isPending || query.isFetching || registryPlan !== plan
       ? 'loading'
       : 'ready';
-  return { query, phase, plan } as const;
+  return { query, phase, plan, accountId: id } as const;
 }
 export function useCapability(key: string) {
-  const { query, phase, plan } = useCapabilityRegistry();
+  const { query, phase, plan, accountId } = useCapabilityRegistry();
   const capability = query.data?.capabilities.find((entry) => entry.key === key);
   return {
+    accountId,
     capability,
     state: capabilityViewState(capability, phase, plan),
     refresh: () => void query.refetch(),

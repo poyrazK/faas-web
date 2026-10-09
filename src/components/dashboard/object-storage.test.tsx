@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { ObjectStorage } from './object-storage';
@@ -12,21 +12,29 @@ const mocks = vi.hoisted(() => ({
   sign: vi.fn(),
   toast: vi.fn(),
   capability: vi.fn(),
+  confirm: vi.fn(),
+  upload: vi.fn(),
+  selected: 'demo',
 }));
 vi.mock('@/lib/api/capabilities', () => ({ useCapability: mocks.capability }));
 vi.mock('./app-select', () => ({
-  useSelectedApp: () => ({ slug: 'demo', apps: [{ slug: 'demo' }], select: vi.fn() }),
+  useSelectedApp: () => ({
+    slug: mocks.selected,
+    apps: [{ slug: mocks.selected }],
+    select: vi.fn(),
+  }),
   AppSelect: () => null,
   AppScope: ({ children }: { children: ReactNode }) => children,
 }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: mocks.toast }) }));
-vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn().mockResolvedValue(true) }));
+vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => mocks.confirm }));
 vi.mock('@/lib/api/object-storage', async (original) => ({
   ...(await original<typeof import('@/lib/api/object-storage')>()),
   useObjectBuckets: mocks.buckets,
   useBucketObjects: mocks.objects,
   createObjectBucket: mocks.create,
   signStoredObject: mocks.sign,
+  uploadSignedObject: mocks.upload,
 }));
 const bucket = {
   id: 'bucket-one',
@@ -54,6 +62,8 @@ function show() {
 }
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.selected = 'demo';
+  mocks.confirm.mockResolvedValue(true);
   mocks.capability.mockReturnValue({ state: 'available', refresh: vi.fn() });
   mocks.buckets.mockReturnValue({ data: capabilities, isPending: false, error: null });
   mocks.objects.mockReturnValue({
@@ -63,6 +73,45 @@ beforeEach(() => {
   });
   mocks.create.mockResolvedValue(bucket);
 });
+it.each(['runtime-unavailable', 'registry-error', 'app-change', 'account-change'])(
+  'blocks a delayed upload confirmation after %s',
+  async (reason) => {
+    let resolve!: (confirmed: boolean) => void;
+    mocks.confirm.mockReturnValue(
+      new Promise<boolean>((done) => {
+        resolve = done;
+      })
+    );
+    mocks.capability.mockReturnValue({ state: 'available', accountId: 'first', refresh: vi.fn() });
+    const client = new QueryClient();
+    const view = render(
+      <QueryClientProvider client={client}>
+        <ObjectStorage />
+      </QueryClientProvider>
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'assets' }));
+    fireEvent.change(screen.getByLabelText('File'), {
+      target: { files: [new File(['x'], 'report.txt')] },
+    });
+    fireEvent.submit(screen.getByRole('button', { name: 'Upload' }).closest('form')!);
+    expect(mocks.confirm).toHaveBeenCalledTimes(1);
+    if (reason === 'app-change') mocks.selected = 'other';
+    else
+      mocks.capability.mockReturnValue({
+        state: reason === 'account-change' ? 'available' : reason,
+        accountId: reason === 'account-change' ? 'second' : 'first',
+        refresh: vi.fn(),
+      });
+    view.rerender(
+      <QueryClientProvider client={client}>
+        <ObjectStorage />
+      </QueryClientProvider>
+    );
+    await act(async () => resolve(true));
+    expect(mocks.sign).not.toHaveBeenCalled();
+    expect(mocks.upload).not.toHaveBeenCalled();
+  }
+);
 it('does not offer creation when the operator disables storage', () => {
   mocks.buckets.mockReturnValue({
     data: { ...capabilities, enabled: false, items: [] },

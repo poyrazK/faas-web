@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { AppScope, AppSelect, useSelectedApp } from './app-select';
 import { ErrorState, LoadingState, Panel } from './primitives';
@@ -50,7 +50,7 @@ export function ObjectStorage() {
         )}
         <AppSelect slug={app.slug} onSelect={app.select} apps={app.apps} />
         <AppScope state={app} resource="buckets">
-          <BucketManager key={app.slug} slug={app.slug} />
+          <BucketManager key={`${availability.accountId}:${app.slug}`} slug={app.slug} />
         </AppScope>
       </div>
     </Panel>
@@ -244,6 +244,13 @@ function ObjectBrowser({
   const [cursor, setCursor] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [key, setKey] = useState('');
+  const writable = useRef(signingEnabled);
+  useLayoutEffect(() => {
+    writable.current = signingEnabled;
+    return () => {
+      writable.current = false;
+    };
+  }, [signingEnabled]);
   const query = useBucketObjects(slug, bucket.id, prefix, cursor);
   const cache = useQueryClient();
   const confirm = useConfirm();
@@ -274,7 +281,9 @@ function ObjectBrowser({
       }))
     )
       return;
+    if (!writable.current) return;
     mutation.mutate(async () => {
+      if (!writable.current) return;
       const signed = await signStoredObject(slug, bucket.id, {
         method: 'PUT',
         expires_in: 300,
@@ -282,6 +291,8 @@ function ObjectBrowser({
         size_bytes: file.size,
         content_type: file.type || 'application/octet-stream',
       });
+      if (!writable.current)
+        throw new Error('Storage availability or selection changed. Upload was not sent.');
       await uploadSignedObject(signed, file);
       toast({ kind: 'success', title: 'Object uploaded' });
     });
