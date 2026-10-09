@@ -241,7 +241,7 @@ function ConfigForm({ app }: { app: App }) {
       <Panel
         lit
         title="Runtime"
-        description="Applied on the next wake. A running instance keeps what it booted with."
+        description="Request, egress and scaling policies can converge live. Memory requires a fresh instance."
         actions={
           <>
             {/* The CLI's deploy --diff, one click before Save: the server

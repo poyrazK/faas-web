@@ -96,6 +96,15 @@ describe('App deletion contract copy', () => {
     expect(screen.getByText('Desired revision 6 · App scope')).toBeVisible();
     expect(screen.queryByText('Active')).not.toBeInTheDocument();
   });
+  it('explains live policy convergence separately from boot-time memory', () => {
+    render(
+      <ConfirmProvider>
+        <AppConfiguration slug="alpha" />
+      </ConfirmProvider>
+    );
+    expect(screen.queryByText(/Applied on the next wake/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Memory requires a fresh instance/)).toBeVisible();
+  });
   it('disables memory sizes above the account limit in configuration', () => {
     render(
       <ConfirmProvider>

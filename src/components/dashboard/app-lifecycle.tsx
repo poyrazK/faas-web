@@ -99,7 +99,7 @@ export function PurgeCacheControl({ slug, appId = '' }: { slug: string; appId?: 
       !(await confirm({
         title: glob ? `Purge cached responses under ${glob}?` : 'Purge every cached response?',
         description:
-          'The next request for each purged path is served by the app rather than the edge.',
+          'Records a purge request. Cached responses may remain until serving gateways apply it.',
         confirmLabel: 'Purge',
       }))
     )
@@ -155,8 +155,8 @@ export function PurgeCacheControl({ slug, appId = '' }: { slug: string; appId?: 
         </Button>
       </form>
       <span className="text-xs text-muted-foreground">
-        Asks every gateway to drop its in-process cache for this app. Cached responses elsewhere are
-        unaffected.
+        Requests a purge of Gregale’s gateway cache and optional shared Redis tier. External caches
+        and CDNs are unaffected.
       </span>
       {operation.receipt && appId && (
         <PolicyStatus accountId={account?.id ?? ''} slug={slug} receipt={operation.receipt} />
