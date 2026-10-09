@@ -8500,6 +8500,20 @@ paths:
         '429': { $ref: '#/components/responses/TooManyRequests' }
 
   /v1/projects:
+    get:
+      tags: [projects]
+      operationId: listProjects
+      summary: List durable projects owned by the current account.
+      responses:
+        '200':
+          description: Account-scoped project summaries.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ProjectSummaryResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
     post:
       tags: [projects]
       operationId: applyProject
@@ -8563,6 +8577,27 @@ paths:
         '403': { $ref: '#/components/responses/PlanLimit' }
         '409': { $ref: '#/components/responses/ValidationFailed' }
         '413': { $ref: '#/components/responses/SourceTooLarge' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/projects/{slug}:
+    parameters:
+      - name: slug
+        in: path
+        required: true
+        description: Project slug in the authenticated account.
+        schema: { type: string, pattern: '^[a-z0-9][a-z0-9-]{0,62}$' }
+    get:
+      tags: [projects]
+      operationId: getProject
+      summary: Inspect a project, its workloads, exclusions, and latest status.
+      responses:
+        '200':
+          description: Project recovery and workload state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
 
   /v1/projects/{slug}/exclusions/{slug2}:
@@ -16373,6 +16408,48 @@ components:
       required: [wake_id]
       properties:
         wake_id: { type: string, format: uuid, description: "Wake id stamped on the replacement instance and wake timeline." }
+
+    ProjectSummaryResponse:
+      description: Stable account-scoped project list item.
+      type: object
+      required: [id, slug, scan_source, workload_count, created_at, updated_at]
+      properties:
+        id: { type: string, pattern: '^[a-f0-9]{32}$' }
+        slug: { type: string, pattern: '^[a-z0-9][a-z0-9-]{0,62}$' }
+        repo_full_name: { type: string }
+        production_branch: { type: string }
+        scan_source: { type: string }
+        workload_count: { type: integer, minimum: 0 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    ProjectWorkloadResponse:
+      description: Live app attached to a durable project and its latest release state.
+      type: object
+      required: [slug, workload_name, status]
+      properties:
+        slug: { type: string }
+        workload_name: { type: string }
+        status: { type: string }
+        deployment_status: { type: string }
+        rollout_state: { type: string }
+        build_status: { type: string }
+
+    ProjectResponse:
+      description: Project metadata with its workloads, exclusions, and latest reconciliation state.
+      allOf:
+        - $ref: '#/components/schemas/ProjectSummaryResponse'
+        - type: object
+          required: [workloads, exclusions]
+          properties:
+            workloads:
+              type: array
+              items: { $ref: '#/components/schemas/ProjectWorkloadResponse' }
+            exclusions:
+              type: array
+              items: { type: string }
+            last_reconciliation_status: { type: string }
+            last_build_status: { type: string }
 
     CreateAppRequest:
       description: "App creation payload: slug, type (app|function), runtime (only for function), RAM MB, max concurrency, idle timeout, and optional manifest."
