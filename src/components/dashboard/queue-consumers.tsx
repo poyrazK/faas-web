@@ -7,6 +7,7 @@ import {
 } from '@/lib/api/queue-bindings';
 import { Button } from '@/components/ui/button';
 import { Panel } from './primitives';
+import { QueueConsumerControls } from './queue-consumer-controls';
 
 function ConsumerStatus({
   accountId,
@@ -73,7 +74,7 @@ export function QueueConsumers({ slug }: { slug: string }) {
   return (
     <Panel
       title="Queue consumers"
-      description="Durable bindings and read-only, binding-scoped scheduler evidence. Queue messages remain below."
+      description="Durable bindings and binding-scoped scheduler evidence. Queue messages remain below."
     >
       <div className="space-y-3 p-4 text-sm">
         {capability.accountId !== accountId || capability.state !== 'available' ? (
@@ -102,6 +103,18 @@ export function QueueConsumers({ slug }: { slug: string }) {
         ) : (
           <p>No production queue bindings are configured for this app.</p>
         )}
+        {capability.accountId === accountId &&
+          capability.state === 'available' &&
+          !list.isPending &&
+          !list.error &&
+          account?.plan && (
+            <QueueConsumerControls
+              accountId={accountId}
+              plan={account.plan}
+              slug={slug}
+              bindings={list.data ?? []}
+            />
+          )}
         <p className="text-xs text-muted-foreground">
           Pull workers poll and acknowledge externally. Push delivery invokes the configured
           handler; accepted configuration does not prove that it is processing messages. Each

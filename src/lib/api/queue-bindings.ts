@@ -118,40 +118,66 @@ export async function readQueueBindingContext(
   return { app, bindings };
 }
 
-export function createQueueBinding(slug: string, body: CreateQueueBinding, idempotencyKey: string) {
+export function createQueueBinding(
+  slug: string,
+  body: CreateQueueBinding,
+  idempotencyKey: string,
+  signal?: AbortSignal
+) {
   return unwrap(
     api.POST('/v1/apps/{slug}/queue-bindings', {
       params: { path: { slug } },
       body,
       headers: { 'Idempotency-Key': idempotencyKey },
+      ...(signal ? { signal } : {}),
     })
   );
 }
 
-export function updateQueueBinding(slug: string, id: string, body: UpdateQueueBinding) {
+export function updateQueueBinding(
+  slug: string,
+  id: string,
+  body: UpdateQueueBinding,
+  signal?: AbortSignal
+) {
   return unwrap(
     api.PATCH('/v1/apps/{slug}/queue-bindings/{id}', {
       params: { path: { slug, id } },
       body,
+      ...(signal ? { signal } : {}),
     })
   );
 }
 
-export function deleteQueueBinding(slug: string, id: string) {
+export function deleteQueueBinding(slug: string, id: string, signal?: AbortSignal) {
   return unwrap(
-    api.DELETE('/v1/apps/{slug}/queue-bindings/{id}', { params: { path: { slug, id } } })
+    api.DELETE('/v1/apps/{slug}/queue-bindings/{id}', {
+      params: { path: { slug, id } },
+      ...(signal ? { signal } : {}),
+    })
   );
 }
 
-export function configureQueueWorkload(slug: string, body: QueueWorkloadProfile) {
-  return unwrap(api.PUT('/v1/apps/{slug}/queue-workload', { params: { path: { slug } }, body }));
+export function configureQueueWorkload(
+  slug: string,
+  body: QueueWorkloadProfile,
+  signal?: AbortSignal
+) {
+  return unwrap(
+    api.PUT('/v1/apps/{slug}/queue-workload', {
+      params: { path: { slug } },
+      body,
+      ...(signal ? { signal } : {}),
+    })
+  );
 }
 
 export function replaceStageQueueBindings(
   project: string,
   environment: string,
   workload: string,
-  body: components['schemas']['ReplaceProjectEnvironmentQueueBindingsRequest']
+  body: components['schemas']['ReplaceProjectEnvironmentQueueBindingsRequest'],
+  signal?: AbortSignal
 ) {
   if (environment === 'production')
     throw new Error('Production queue bindings use the app queue-bindings API.');
@@ -159,6 +185,7 @@ export function replaceStageQueueBindings(
     api.PUT('/v1/projects/{slug}/environments/{environment}/workloads/{workload}/queue-bindings', {
       params: { path: { slug: project, environment, workload } },
       body,
+      ...(signal ? { signal } : {}),
     })
   );
 }

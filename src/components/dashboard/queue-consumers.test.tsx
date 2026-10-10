@@ -28,6 +28,9 @@ vi.mock('@/lib/api/queue-bindings', () => ({
     refetch: state.retry,
   }),
 }));
+vi.mock('./queue-consumer-controls', () => ({
+  QueueConsumerControls: () => null,
+}));
 const { QueueConsumers } = await import('./queue-consumers');
 
 beforeEach(() => {
