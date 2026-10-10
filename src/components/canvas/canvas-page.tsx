@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
 import { ErrorState, LoadingState, UnreachableState } from '@/components/dashboard/primitives';
+import { ReactFlowProvider } from '@xyflow/react';
 import { CanvasView } from './canvas';
+import { useCamera } from './camera';
 import { toFlow } from './flow';
 import { Inspector } from './inspector';
 import { menuPosition, layout } from './layout';
@@ -16,7 +18,16 @@ import { useApps } from '@/lib/api/queries';
 
 /** Canvas page. `data-gregale-canvas` is the build-elimination sentinel (plan Task 1). */
 export default function CanvasPage({ node }: { node?: string }) {
+  return (
+    <ReactFlowProvider>
+      <CanvasPageBody node={node} />
+    </ReactFlowProvider>
+  );
+}
+
+function CanvasPageBody({ node }: { node?: string }) {
   const navigate = useNavigate();
+  const camera = useCamera();
   const { phase, error, topology, retry } = useTopology();
   const select = useCallback(
     (id?: string) =>
@@ -157,6 +168,10 @@ export default function CanvasPage({ node }: { node?: string }) {
                 edges={withDraft.edges}
                 selected={node}
                 onSelect={select}
+                onPick={(id) => {
+                  select(id);
+                  camera.flyTo(id);
+                }}
               >
                 <LaneHeaders top={-44} />
                 {connect && appData && anchor && !connect.kind && (
