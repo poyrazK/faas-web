@@ -350,3 +350,87 @@ describe('summarizeIssues', () => {
     expect(summarizeIssues([])).toEqual([]);
   });
 });
+
+import { ApiError } from '@/lib/api/errors';
+import { nodeTitle } from './topology';
+
+describe('v2 app fields', () => {
+  it('says metrics are plan-gated on 402 and unavailable otherwise', () => {
+    const plan = buildTopology(
+      input({
+        metrics: {
+          status: 'error',
+          error: new ApiError({ status: 402, code: 'plan', title: 'x' }),
+        },
+      })
+    );
+    expect(plan.nodes.find((n) => n.id === nodeId.app('acme-api'))?.data).toMatchObject({
+      metricsWhy: 'plan',
+    });
+    const other = buildTopology(input({ metrics: { status: 'error', error: new Error('boom') } }));
+    expect(other.nodes.find((n) => n.id === nodeId.app('acme-api'))?.data).toMatchObject({
+      metricsWhy: 'unavailable',
+    });
+  });
+
+  it('carries error rate, runtime and url when known', () => {
+    const t = buildTopology(
+      input({
+        apps: [app('acme-api', { runtime: 'node24', url: 'https://acme-api.gregale.app' })],
+        metrics: {
+          status: 'ready',
+          data: {
+            range: '24h',
+            source: 'p',
+            as_of: '',
+            apps: { 'acme-api': { request_count: 5, error_rate_pct: 3.2 } as never },
+          },
+        },
+      })
+    );
+    expect(t.nodes.find((n) => n.id === nodeId.app('acme-api'))?.data).toMatchObject({
+      errorRatePct: 3.2,
+      runtime: 'node24',
+      url: 'https://acme-api.gregale.app',
+    });
+  });
+
+  it('keys Postgres edges by binding, so two bindings never collide', () => {
+    const t = buildTopology(
+      input({
+        postgres: {
+          status: 'ready',
+          data: {
+            databases: [{ id: 'db1', name: 'main', state: 'ready' } as never],
+            bindings: [
+              { id: 'b1', database_id: 'db1', app_id: 'id-acme-api', state: 'ready' } as never,
+              { id: 'b2', database_id: 'db1', app_id: 'id-acme-api', state: 'ready' } as never,
+            ],
+            failedBindings: [],
+          },
+        },
+      })
+    );
+    const ids = t.edges.filter((e) => e.kind === 'database').map((e) => e.id);
+    expect(ids).toEqual(['database:b1', 'database:b2']);
+  });
+
+  it('titles every kind the way a person names it', () => {
+    expect(nodeTitle({ kind: 'internet' })).toBe('Internet');
+    expect(
+      nodeTitle({
+        kind: 'cron',
+        id: 'c',
+        schedule: '',
+        path: '',
+        timezone: 'UTC',
+        enabled: true,
+        lastFiredAt: null,
+        appSlug: 'a',
+      })
+    ).toBe('/');
+    expect(nodeTitle({ kind: 'bucket', appSlug: 'a', name: 'orders', state: 'ready' })).toBe(
+      'orders'
+    );
+  });
+});

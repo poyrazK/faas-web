@@ -1,6 +1,7 @@
 import type { App, AppsMetrics } from '@/lib/api/queries';
 import type { components } from '@/lib/api/schema';
 import { toRunState } from '@/lib/api/adapters';
+import { ApiError } from '@/lib/api/errors';
 
 /**
  * The canvas's data model, and the only place an edge is decided.
@@ -43,6 +44,11 @@ export type AppData = {
   connections: 'ready' | 'loading' | 'error';
   /** Only known once the app's bucket list has answered. */
   buckets?: { enabled: boolean; atLimit: boolean; defaultRegion: string };
+  /** Why `requests24h`/`p95Ms` are absent, when they are. */
+  metricsWhy?: 'plan' | 'unavailable';
+  errorRatePct?: number;
+  runtime?: string;
+  url?: string;
 };
 export type CronData = {
   kind: 'cron';
@@ -139,6 +145,10 @@ export function buildTopology(input: TopologyInput): Topology {
   const slugById = new Map(apps.map((a) => [a.id, a.slug]));
   const rows = input.metrics.status === 'ready' ? input.metrics.data.apps : null;
   const metricsLoading = input.metrics.status === 'loading';
+  const metricsPlanGated =
+    input.metrics.status === 'error' &&
+    input.metrics.error instanceof ApiError &&
+    input.metrics.error.status === 402;
 
   const domainsBySlug = new Map<string, Domain[]>();
   for (const d of [...input.domains].sort((a, b) => a.domain.localeCompare(b.domain))) {
@@ -169,6 +179,10 @@ export function buildTopology(input: TopologyInput): Topology {
         requests24h: row?.request_count,
         p95Ms: row?.latency_p95_ms,
         metrics: metricsLoading ? 'loading' : row ? 'ready' : 'unavailable',
+        metricsWhy: row || metricsLoading ? undefined : metricsPlanGated ? 'plan' : 'unavailable',
+        errorRatePct: row?.error_rate_pct,
+        runtime: a.runtime ?? a.type,
+        url: a.url || undefined,
         connections: read.status,
         buckets:
           read.status === 'ready'
@@ -304,7 +318,7 @@ export function buildTopology(input: TopologyInput): Topology {
         continue;
       }
       edges.push({
-        id: `database:${slug}>${b.database_id}`,
+        id: `database:${b.id}`,
         source: nodeId.app(slug),
         target,
         kind: 'database',
@@ -337,4 +351,20 @@ export function summarizeIssues(issues: TopologyIssue[]): string[] {
         ? '1 item points at an app that no longer exists.'
         : `${orphans} items point at apps that no longer exist.`),
   ].filter((line): line is string => Boolean(line));
+}
+
+/** The name a person uses for a node: in the finder, the inspector and labels. */
+export function nodeTitle(data: CanvasNodeData): string {
+  switch (data.kind) {
+    case 'internet':
+      return 'Internet';
+    case 'domain':
+      return data.domain;
+    case 'app':
+      return data.slug;
+    case 'cron':
+      return data.path || '/';
+    default:
+      return data.name;
+  }
 }
