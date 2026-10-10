@@ -60,7 +60,7 @@ import { validateDebugSearch, type DebugSearch } from '@/components/dashboard/de
 import { MirrorsBody } from './dashboard.mirrors';
 import { TenantSurfacesBody } from './dashboard.tenant-surfaces';
 import { OpenAPIBody } from './dashboard.openapi';
-import { WebhooksBody } from './dashboard.webhooks';
+import { WebhooksHub } from './dashboard.webhooks';
 import { EdgeRulesBody } from './dashboard.edge-rules';
 import { ErrorsBody } from '@/components/dashboard/errors-body';
 import { AppConfiguration } from '@/components/dashboard/app-configuration';
@@ -141,6 +141,7 @@ export const Route = createFileRoute('/dashboard/workflows/$workflowId')({
       tab?: Tab;
       deployment?: string;
       releaseSection?: ReleaseSection;
+      webhookDirection?: 'inbound' | 'outbound';
     } => ({
     ...validateDebugSearch(search),
     ...automationSearchPatch(validateJobsSearch(search)),
@@ -149,6 +150,7 @@ export const Route = createFileRoute('/dashboard/workflows/$workflowId')({
     deployment:
       typeof search.deployment === 'string' && search.deployment ? search.deployment : undefined,
     releaseSection: validateReleasesSearch({ ...search, build: undefined }).releaseSection,
+    webhookDirection: search.webhookDirection === 'inbound' ? 'inbound' : undefined,
   }),
   component: FunctionDetailPage,
 });
@@ -733,7 +735,22 @@ function FunctionDetailPage() {
             {tab === 'Queues' && <QueuesBody slug={fn.id} />}
             {tab === 'Upstreams' && <UpstreamsBody slug={fn.id} />}
             {tab === 'Alerts' && <AlertsBody slug={fn.id} />}
-            {tab === 'Webhooks' && <WebhooksBody slug={fn.id} />}
+            {tab === 'Webhooks' && (
+              <WebhooksHub
+                accountId={account?.id ?? ''}
+                slug={fn.id}
+                direction={search.webhookDirection ?? 'outbound'}
+                onDirection={(next) =>
+                  void navigate({
+                    search: (current) => ({
+                      ...current,
+                      webhookDirection: next === 'inbound' ? 'inbound' : undefined,
+                    }),
+                    hash: true,
+                  })
+                }
+              />
+            )}
             {tab === 'Edge rules' && <EdgeRulesBody slug={fn.id} />}
             {tab === 'Debugger' && (
               <DebugBody

@@ -20,13 +20,62 @@ import {
   useWebhooks,
 } from '@/lib/api/queries';
 import { errorMessage } from '@/lib/api/errors';
+import { useAuth } from '@/lib/auth';
+import { InboundWebhooks } from '@/components/dashboard/inbound-webhooks';
 import { formatRelative } from '@/lib/mock-data';
 import { consoleHead } from '@/lib/seo';
+
+export function validateWebhookSearch(search: Record<string, unknown>): {
+  direction?: 'inbound' | 'outbound';
+} {
+  return { direction: search.direction === 'inbound' ? 'inbound' : undefined };
+}
 
 export const Route = createFileRoute('/dashboard/webhooks')({
   component: WebhooksPage,
   head: () => consoleHead('webhooks'),
+  validateSearch: validateWebhookSearch,
 });
+
+export function WebhooksHub({
+  accountId,
+  slug,
+  direction,
+  onDirection,
+}: {
+  accountId: string;
+  slug: string;
+  direction: 'inbound' | 'outbound';
+  onDirection: (direction: 'inbound' | 'outbound') => void;
+}) {
+  return (
+    <div className="flex flex-col gap-5">
+      <div role="group" aria-label="Webhook direction" className="flex gap-2">
+        <Button
+          size="sm"
+          variant={direction === 'outbound' ? 'default' : 'outline'}
+          aria-pressed={direction === 'outbound'}
+          onClick={() => onDirection('outbound')}
+        >
+          Outbound
+        </Button>
+        <Button
+          size="sm"
+          variant={direction === 'inbound' ? 'default' : 'outline'}
+          aria-pressed={direction === 'inbound'}
+          onClick={() => onDirection('inbound')}
+        >
+          Inbound
+        </Button>
+      </div>
+      {direction === 'inbound' ? (
+        <InboundWebhooks accountId={accountId} slug={slug} />
+      ) : (
+        <WebhooksBody slug={slug} />
+      )}
+    </div>
+  );
+}
 
 interface WebhookRow {
   id: string;
@@ -460,15 +509,29 @@ export function WebhooksBody({ slug }: { slug: string }) {
 function WebhooksPage() {
   const appState = useSelectedApp();
   const { slug, select, apps } = appState;
+  const { account } = useAuth();
+  const { direction } = Route.useSearch();
+  const navigate = Route.useNavigate();
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Webhooks"
-        description="Signed outbound deliveries. Failed attempts back off and dead-letter after seven tries."
+        description={
+          direction === 'inbound'
+            ? 'Stripe events enter through verified, durable inbound endpoints.'
+            : 'Signed outbound deliveries. Failed attempts back off and dead-letter after seven tries.'
+        }
         actions={<AppSelect slug={slug} onSelect={select} apps={apps} />}
       />
       <AppScope state={appState} resource="webhooks">
-        <WebhooksBody slug={slug} />
+        <WebhooksHub
+          accountId={account?.id ?? ''}
+          slug={slug}
+          direction={direction ?? 'outbound'}
+          onDirection={(next) =>
+            void navigate({ search: { direction: next === 'inbound' ? 'inbound' : undefined } })
+          }
+        />
       </AppScope>
     </div>
   );
