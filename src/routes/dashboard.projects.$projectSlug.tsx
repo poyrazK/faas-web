@@ -10,13 +10,14 @@ export const Route = createFileRoute('/dashboard/projects/$projectSlug')({
   component: ProjectPage,
   validateSearch: (
     search: Record<string, unknown>
-  ): { environment?: string; compare?: string; preview?: string } => {
+  ): { environment?: string; compare?: string; preview?: string; queueWorkload?: string } => {
     const selection = (value: unknown) =>
       value === undefined ? undefined : typeof value === 'string' ? value : '__invalid__';
     return {
       environment: selection(search.environment),
       compare: selection(search.compare),
       preview: selection(search.preview),
+      queueWorkload: selection(search.queueWorkload),
     };
   },
 });
@@ -25,7 +26,7 @@ function ProjectPage() {
   const { account } = useAuth();
   const query = useProject(account?.id ?? '', projectSlug);
   const { q } = ProjectsRoute.useSearch();
-  const { environment, compare, preview } = Route.useSearch();
+  const { environment, compare, preview, queueWorkload } = Route.useSearch();
   const navigate = Route.useNavigate();
   if (query.isError) return <ErrorState error={query.error} onRetry={() => void query.refetch()} />;
   if (!account || query.isPending) return <LoadingState message="Loading project…" />;
@@ -48,7 +49,7 @@ function ProjectPage() {
       </Link>
       <PageHeader
         title={project.slug}
-        description="Project membership and latest reported workload state. Read-only."
+        description="Project membership, environment evidence and stage desired queue settings."
       />
       <Panel title="Project details">
         <dl className="grid gap-4 p-4 text-sm sm:grid-cols-2">
@@ -73,12 +74,28 @@ function ProjectPage() {
       <ProjectWorkloads key={`${account.id}:${project.id}`} workloads={project.workloads} />
       <ProjectEnvironments
         accountId={account.id}
+        plan={account.plan}
         projectId={project.id}
         slug={projectSlug}
         environment={environment}
         compare={compare}
+        queueWorkload={queueWorkload}
         onChange={(next) =>
-          void navigate({ search: (current) => ({ ...current, ...next }), resetScroll: false })
+          void navigate({
+            search: (current) => ({
+              ...current,
+              ...next,
+              queueWorkload:
+                current.environment === next.environment ? current.queueWorkload : undefined,
+            }),
+            resetScroll: false,
+          })
+        }
+        onSelectQueueWorkload={(slug) =>
+          void navigate({
+            search: (current) => ({ ...current, queueWorkload: slug }),
+            resetScroll: false,
+          })
         }
       />
       <ProjectPreviews
