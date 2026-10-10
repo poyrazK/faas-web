@@ -186,7 +186,16 @@ function CanvasPageBody({ node }: { node?: string }) {
               </CanvasView>
             </div>
             {selected && (
-              <Inspector node={selected} topology={topology} onClose={() => select(undefined)} />
+              <Inspector
+                key={selected.id}
+                node={selected}
+                topology={topology}
+                onClose={() => select(undefined)}
+                onFly={(id) => {
+                  select(id);
+                  camera.flyTo(id);
+                }}
+              />
             )}
           </>
         )}
