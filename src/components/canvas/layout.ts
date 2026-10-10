@@ -1,4 +1,6 @@
 import type { CanvasNodeKind, Topology } from './topology';
+import type { CreateKind } from './create';
+import type { ConnectSide } from './nodes';
 import { nodeId } from './topology';
 
 /**
@@ -23,7 +25,20 @@ const ROW = 96; // tallest node (76) + 20
 const STACK = 72; // 56 + 16, for crons above an app
 const BAND_GAP = 56;
 
-export function layout(t: Topology): Map<string, Point> {
+/** An app mid-first-deploy shows its rail, so it is taller. */
+export const APP_TALL = 96;
+export const DRAFT_SIZE: Record<CreateKind, { w: number; h: number }> = {
+  domain: { w: 230, h: 104 },
+  bucket: { w: 230, h: 104 },
+  cron: { w: 230, h: 212 },
+};
+export type DraftSlot = { app: string; side: ConnectSide; kind: CreateKind };
+const DRAFT_GAP = 16;
+
+export function layout(
+  t: Topology,
+  opts: { draft?: DraftSlot; tall?: ReadonlySet<string> } = {}
+): Map<string, Point> {
   const pos = new Map<string, Point>();
   const kindOf = new Map(t.nodes.map((n) => [n.id, n.data.kind]));
   const apps = t.nodes.filter((n) => n.data.kind === 'app');
@@ -51,12 +66,26 @@ export function layout(t: Topology): Map<string, Point> {
 
     crons.forEach((id, i) => pos.set(id, { x: COLUMN.app + 16, y: cursor + i * STACK }));
     const top = cursor + crons.length * STACK;
+    const appH = opts.tall?.has(app.id) ? APP_TALL : NODE_SIZE.app.h;
     const rows = Math.max(1, domains.length, resources.length);
-    const height = rows * ROW - 20;
-    pos.set(app.id, { x: COLUMN.app, y: top + (height - NODE_SIZE.app.h) / 2 });
+    const height = Math.max(rows * ROW - 20, appH);
+    pos.set(app.id, { x: COLUMN.app, y: top + (height - appH) / 2 });
     domains.forEach((id, i) => pos.set(id, { x: COLUMN.domain, y: top + i * ROW + 10 }));
     resources.forEach((id, i) => pos.set(id, { x: COLUMN.resource, y: top + i * ROW + 10 }));
-    cursor = top + height + BAND_GAP;
+    let bandBottom = top + height;
+    // An open draft takes real room under its app, so nothing is covered.
+    if (opts.draft?.app === app.id) {
+      const size = DRAFT_SIZE[opts.draft.kind];
+      pos.set('draft', {
+        x:
+          opts.draft.side === 'in'
+            ? COLUMN.domain - (size.w - NODE_SIZE.domain.w)
+            : COLUMN.resource,
+        y: bandBottom + DRAFT_GAP,
+      });
+      bandBottom += DRAFT_GAP + size.h;
+    }
+    cursor = bandBottom + BAND_GAP;
   }
 
   // Databases nothing binds still exist; they sit in a final band.

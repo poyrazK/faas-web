@@ -51,7 +51,24 @@ function CanvasPageBody({ node }: { node?: string }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [connect, node, select]);
 
-  const positions = useMemo(() => layout(topology), [topology]);
+  const slotKind = connect?.kind;
+  const slotSide = connect?.side;
+  const slotApp = slotKind && connect ? `app:${connect.slug}` : undefined;
+  const slot = useMemo(
+    () =>
+      slotApp && slotKind && slotSide
+        ? { app: slotApp, side: slotSide, kind: slotKind }
+        : undefined,
+    [slotApp, slotSide, slotKind]
+  );
+  const positions = useMemo(() => layout(topology, { draft: slot }), [topology, slot]);
+
+  // Once the bands have eased (240ms), make sure the whole draft is on screen.
+  useEffect(() => {
+    if (!slotApp) return;
+    const id = window.setTimeout(() => camera.ensureVisible(['draft', slotApp]), 260);
+    return () => window.clearTimeout(id);
+  }, [slotApp, camera]);
   const flow = useMemo(
     () =>
       toFlow(topology, positions, {
@@ -77,7 +94,7 @@ function CanvasPageBody({ node }: { node?: string }) {
               {
                 id: draftId,
                 type: 'draft',
-                position: menuPosition(anchor, connect.side),
+                position: positions.get(draftId) ?? menuPosition(anchor, connect.side),
                 data: {
                   kind: connect.kind,
                   app: {
@@ -117,7 +134,7 @@ function CanvasPageBody({ node }: { node?: string }) {
             ],
           }
         : flow,
-    [connect, appData, anchor, appId, flow]
+    [connect, appData, anchor, appId, flow, positions]
   );
   const selected = topology.nodes.find((n) => n.id === node);
   const gaps = useMemo(() => summarizeIssues(topology.issues), [topology.issues]);

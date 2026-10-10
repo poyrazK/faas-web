@@ -43,3 +43,12 @@
     0 0 0 2px var(--background),
     0 0 0 4px var(--brand);
 }
+/* Bands ease when a draft makes room, but never while a node is dragged. */
+.canvas-surface .react-flow__node:not(.dragging) {
+  transition: transform var(--motion-base) var(--motion-ease);
+}
+@media (prefers-reduced-motion: reduce) {
+  .canvas-surface .react-flow__node {
+    transition: none;
+  }
+}

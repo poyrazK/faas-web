@@ -95,3 +95,51 @@ describe('menuPosition', () => {
     expect(menuPosition(app, 'out').x).toBeGreaterThan(app.x);
   });
 });
+
+import { DRAFT_SIZE } from './layout';
+
+describe('layout with a draft', () => {
+  const kinds = [
+    ['domain', 'in'],
+    ['cron', 'in'],
+    ['bucket', 'out'],
+  ] as const;
+
+  it.each(kinds)(
+    'makes room for a %s draft on the %s side without covering anything',
+    (kind, side) => {
+      const t = topo();
+      for (const app of ['acme-api', 'billing', 'worker']) {
+        const pos = layout(t, { draft: { app: nodeId.app(app), side, kind } });
+        const d = pos.get('draft')!;
+        const draft = { ...d, w: DRAFT_SIZE[kind].w, h: DRAFT_SIZE[kind].h };
+        for (const n of t.nodes) {
+          const r = rect(t, pos, n.id);
+          const overlap =
+            r.x < draft.x + draft.w &&
+            draft.x < r.x + r.w &&
+            r.y < draft.y + draft.h &&
+            draft.y < r.y + r.h;
+          expect(overlap, `${kind} draft on ${app} × ${n.id}`).toBe(false);
+        }
+      }
+    }
+  );
+
+  it('pushes only the bands below the draft', () => {
+    const t = topo();
+    const before = layout(t);
+    const after = layout(t, { draft: { app: nodeId.app('billing'), side: 'in', kind: 'domain' } });
+    expect(after.get(nodeId.app('acme-api'))).toEqual(before.get(nodeId.app('acme-api')));
+    expect(after.get(nodeId.app('worker'))!.y).toBeGreaterThan(before.get(nodeId.app('worker'))!.y);
+  });
+
+  it('reserves the tall height for an app in its first deploy', () => {
+    const t = topo();
+    const base = layout(t);
+    // billing has no lanes beside it, so its band is exactly one app tall.
+    const tall = layout(t, { tall: new Set([nodeId.app('billing')]) });
+    expect(tall.get(nodeId.app('worker'))!.y).toBe(base.get(nodeId.app('worker'))!.y + 20);
+    expect(tall.get(nodeId.app('acme-api'))).toEqual(base.get(nodeId.app('acme-api')));
+  });
+});
