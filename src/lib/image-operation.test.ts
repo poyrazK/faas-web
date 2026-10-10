@@ -59,3 +59,32 @@ it('does not silently erase malformed recovery records', () => {
   expect(() => readImageOperation('a', '')).toThrow(/recovery/i);
   expect(localStorage.getItem('gregale.image-operation:a:new')).toBe('{bad');
 });
+it('keeps worker lifecycle intent in a distinct non-secret recovery record', () => {
+  const worker = newImageOperation(
+    'a',
+    {
+      slug: 'batch-worker',
+      type: 'app',
+      visibility: 'internal',
+      execution_mode: 'worker',
+      restart_policy: 'always',
+      startup_deadline_s: 30,
+      max_retries: 5,
+    },
+    request,
+    '',
+    'worker'
+  );
+  saveImageOperation({ ...worker, password: 'never-store' } as never);
+  const saved = readImageOperation('a', '', 'worker');
+  expect(saved?.createRequest).toMatchObject({
+    execution_mode: 'worker',
+    restart_policy: 'always',
+    startup_deadline_s: 30,
+    max_retries: 5,
+  });
+  expect(readImageOperation('a', '')).toBeNull();
+  expect(localStorage.getItem('gregale.worker-image-operation:a:new')).not.toContain('never-store');
+  clearImageOperation(worker);
+  expect(readImageOperation('a', '', 'worker')).toBeNull();
+});
