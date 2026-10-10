@@ -7,6 +7,7 @@ const state = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
 vi.mock('./use-topology', () => ({ useTopology: () => state.value }));
 vi.mock('./canvas', () => ({ CanvasView: () => <div data-testid="flow" /> }));
 vi.mock('./inspector', () => ({ Inspector: () => null }));
+vi.mock('@/lib/api/queries', () => ({ useApps: () => ({ data: [] }) }));
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => vi.fn(),
   Link: ({ children }: { children: ReactNode }) => <a>{children}</a>,
