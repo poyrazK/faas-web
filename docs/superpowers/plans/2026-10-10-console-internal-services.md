@@ -33,4 +33,4 @@
 
 - [x] Extend mock capability/app/bindings contracts, then test Free availability, partial reads, denied callers, stale target list, private transport unavailable, context changes and source-managed policy blocks.
 - [x] Run focused RED/GREEN tests, `npm run check`, production build and Windows Chromium mock walkthrough: creation review, public/internal transitions, null/empty edit, mobile/keyboard, direct reload, app switch, delayed long reads and partial inventory. Cover account/environment context and failure recovery in focused tests; mock browser work does not qualify private fabric or staging.
-- [ ] Request one fresh 6.1 Sol/High final review; fix Critical/Important defects RED/GREEN. Open one bounded PR based on G #160, attach it, update parent #134 as PR-open only. Do not merge or send provider/customer traffic.
+- [x] Request one fresh 6.1 Sol/High final review; fix Critical/Important defects RED/GREEN. Open one bounded PR based on G #160, attach it, update parent #134 as PR-open only. Do not merge or send provider/customer traffic.
