@@ -2074,6 +2074,113 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/apps/{slug}/issues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /** List durable grouped application issues. */
+        get: operations["listIssues"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/issues/{issue_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description UUID of the durable issue within this app. */
+                issue_id: string;
+            };
+            cookie?: never;
+        };
+        /** Read sanitized evidence, release history, activity, and observed customer impact. */
+        get: operations["getIssue"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/issues/{issue_id}/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description UUID of the issue whose ownership or lifecycle should change. */
+                issue_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Assign, resolve in a deployment, reopen, or ignore an issue. */
+        post: operations["actOnIssue"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/issue-ingest-tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /** List issue ingest credential metadata. */
+        get: operations["listIssueIngestTokens"];
+        put?: never;
+        /** Create a reporting-only credential bound to one app and deployment. */
+        post: operations["createIssueIngestToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/issue-ingest-tokens/{token_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description UUID of the reporting credential to revoke. */
+                token_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke an issue ingest credential. */
+        delete: operations["revokeIssueIngestToken"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/apps/{slug}/errors/summary": {
         parameters: {
             query?: never;
@@ -18792,6 +18899,179 @@ export interface components {
             /** Format: date-time */
             accepted_at: string;
         };
+        /** @description A sanitized application stack frame used by grouping version 1. */
+        IssueFrame: {
+            file: string;
+            function: string;
+            line?: number;
+            in_app: boolean;
+        };
+        /** @description Structured exception evidence; credential-derived account and deployment identity cannot be overridden. */
+        IssueEvent: {
+            /** Format: uuid */
+            event_id: string;
+            /** Format: date-time */
+            occurred_at: string;
+            exception_type: string;
+            message: string;
+            stack_trace?: string;
+            frames?: components["schemas"]["IssueFrame"][];
+            fingerprint_override?: string;
+            trace_id?: string;
+            span_id?: string;
+            /** @description Bounded opaque gateway request ID, sanitized before persistence. */
+            request_id?: string;
+            /** Format: uuid */
+            invocation_id?: string;
+            route?: string;
+            http_status?: number;
+            source_kind?: string;
+            redactions?: string[];
+        };
+        /** @description Durable failure group across releases in one app and environment. */
+        Issue: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            app_id: string;
+            environment: string;
+            fingerprint: string;
+            grouping_version: number;
+            title: string;
+            /** @enum {string} */
+            state: "open" | "resolved" | "ignored";
+            /** Format: uuid */
+            assignee_account_id?: string;
+            /** Format: date-time */
+            first_seen_at: string;
+            /** Format: date-time */
+            last_seen_at: string;
+            event_count: number;
+            regression_count: number;
+            impact_24h?: components["schemas"]["IssueImpactSummary"];
+            /** Format: date-time */
+            resolved_at?: string;
+            /** Format: uuid */
+            fixed_deployment_id?: string;
+            /** Format: date-time */
+            fixed_deployment_created_at?: string;
+            /** Format: date-time */
+            ignored_until?: string;
+        };
+        /** @description Observed retained occurrences, verified distinct customers, and unattributed events from the previous 24 hours. */
+        IssueImpactSummary: {
+            identified_customers: number;
+            observed_events: number;
+            unattributed_events: number;
+        };
+        /** @description Retained sanitized occurrence with verified platform attribution and optional debugger correlation. */
+        IssueOccurrence: components["schemas"]["IssueEvent"] & {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            deployment_id: string;
+            /** Format: date-time */
+            received_at: string;
+            /** Format: uuid */
+            verified_consumer_id?: string;
+            /** Format: uuid */
+            verified_platform_tenant_id?: string;
+            /** Format: uuid */
+            debug_request_id?: string;
+            attribution: string;
+        };
+        /** @description Immutable deployment metadata and aggregate observations for one issue. */
+        IssueRelease: {
+            /** Format: uuid */
+            deployment_id: string;
+            commit_sha?: string;
+            image_digest?: string;
+            event_count: number;
+            /** Format: date-time */
+            first_seen_at: string;
+            /** Format: date-time */
+            last_seen_at: string;
+        };
+        /** @description An audited issue lifecycle or ownership transition. */
+        IssueActivity: {
+            /** Format: uuid */
+            id: string;
+            action: string;
+            /** Format: uuid */
+            actor_account_id?: string;
+            /** Format: date-time */
+            created_at: string;
+            details: {
+                [key: string]: string;
+            };
+        };
+        /** @description Observed retained customer impact within an explicit time window; unknown identity remains unattributed. */
+        IssueImpact: {
+            /** Format: date-time */
+            window_start: string;
+            /** Format: date-time */
+            window_end: string;
+            identified_customers: number;
+            observed_events: number;
+            unattributed_events: number;
+            coverage: string;
+        };
+        /** @description Issue metadata and independently paginated occurrence, release, and activity collections. */
+        IssueDetail: {
+            issue: components["schemas"]["Issue"];
+            events: components["schemas"]["IssueOccurrence"][];
+            releases: components["schemas"]["IssueRelease"][];
+            activity: components["schemas"]["IssueActivity"][];
+            impact: components["schemas"]["IssueImpact"];
+            next_event_cursor?: string;
+            next_release_cursor?: string;
+            next_activity_cursor?: string;
+        };
+        /** @description A bounded page of grouped issues with an opaque continuation cursor. */
+        ListIssuesResponse: {
+            items: components["schemas"]["Issue"][];
+            next_cursor?: string;
+        };
+        /** @description Desired ownership or lifecycle action, validated within the app scope. */
+        IssueActionRequest: {
+            /** @enum {string} */
+            action: "assign" | "resolve" | "reopen" | "ignore";
+            /** Format: uuid */
+            assignee_account_id?: string;
+            /** Format: uuid */
+            fixed_deployment_id?: string;
+            /** Format: date-time */
+            ignored_until?: string;
+        };
+        /** @description Create a short-lived reporting credential for one existing deployment and environment. */
+        CreateIssueIngestTokenRequest: {
+            /** Format: uuid */
+            deployment_id: string;
+            environment?: string;
+            name: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
+        /** @description Reporting credential metadata; the bearer secret appears only on initial creation. */
+        IssueIngestToken: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: uuid */
+            app_id: string;
+            /** Format: uuid */
+            deployment_id: string;
+            environment: string;
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: date-time */
+            revoked_at?: string;
+            token?: string;
+        };
+        /** @description A collection of scoped reporting credentials; secret values are never included. */
+        ListIssueIngestTokensResponse: {
+            items: components["schemas"]["IssueIngestToken"][];
+        };
         /**
          * @description An outbound webhook subscription. Carries the masked HMAC secret;
          *     the sealed ciphertext is server-side only.
@@ -23986,6 +24266,226 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
             429: components["responses"]["TooManyRequests"];
+        };
+    };
+    listIssues: {
+        parameters: {
+            query?: {
+                /** @description Filter by open, resolved, or ignored lifecycle state. */
+                state?: string;
+                /** @description Exact issue environment namespace. */
+                environment?: string;
+                /** @description Filter by me, unassigned, or an owner account UUID. */
+                assignee?: string;
+                /** @description Issue ordering; impact ranks by verified distinct customers in the fixed 24-hour window. */
+                sort?: "recent" | "impact";
+                /** @description Return issues affecting at least this many verified distinct customers in the fixed 24-hour window. */
+                min_customers?: number;
+                /** @description Opaque next_cursor from the previous issue page. */
+                cursor?: string;
+            };
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A bounded page of issues for this application. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListIssuesResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    getIssue: {
+        parameters: {
+            query?: {
+                /** @description RFC3339 impact-window start, clamped to plan retention. */
+                since?: string;
+                /** @description Opaque next_event_cursor for earlier occurrences. */
+                event_cursor?: string;
+                /** @description Opaque next_release_cursor for earlier deployment history. */
+                release_cursor?: string;
+                /** @description Opaque next_activity_cursor for earlier actions. */
+                activity_cursor?: string;
+            };
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description UUID of the durable issue within this app. */
+                issue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Issue evidence, verified impact, and paginated history. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueDetail"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    actOnIssue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description UUID of the issue whose ownership or lifecycle should change. */
+                issue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IssueActionRequest"];
+            };
+        };
+        responses: {
+            /** @description Issue state or ownership updated with audited activity. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Issue"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    listIssueIngestTokens: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reporting credential metadata without bearer secrets. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListIssueIngestTokensResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    createIssueIngestToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateIssueIngestTokenRequest"];
+            };
+        };
+        responses: {
+            /** @description Reporting credential created; the secret is shown once. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueIngestToken"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    revokeIssueIngestToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description UUID of the reporting credential to revoke. */
+                token_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reporting credential revoked for subsequent ingestion. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["CapacityUnavailable"];
         };
     };
     getAppErrorsSummary: {
