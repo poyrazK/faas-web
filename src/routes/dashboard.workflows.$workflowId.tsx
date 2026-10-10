@@ -64,6 +64,7 @@ import { WebhooksHub } from './dashboard.webhooks';
 import { EdgeRulesBody } from './dashboard.edge-rules';
 import { ErrorsBody } from '@/components/dashboard/errors-body';
 import { IssuesBody } from '@/components/dashboard/issues-body';
+import { ServiceBindings } from '@/components/dashboard/service-bindings';
 import { validateIssueSearch, type IssueSearch } from '@/components/dashboard/issues-search';
 import { AppConfiguration } from '@/components/dashboard/app-configuration';
 import { InvokePanel, SloPanel } from '@/components/dashboard/app-core-panels';
@@ -752,6 +753,7 @@ function FunctionDetailPage() {
             {tab === 'Env vars' && <EnvBody slug={fn.id} />}
             {tab === 'Queues' && <QueuesBody slug={fn.id} />}
             {tab === 'Upstreams' && <UpstreamsBody slug={fn.id} />}
+            {tab === 'Services' && <ServiceBindings slug={fn.id} />}
             {tab === 'Alerts' && <AlertsBody slug={fn.id} />}
             {tab === 'Webhooks' && (
               <WebhooksHub
