@@ -14,6 +14,7 @@ import type {
   PostgresData,
 } from './topology';
 import type { LaunchStage, LaunchState } from './launch';
+import type { CreateKind } from './create';
 
 export type ConnectSide = 'in' | 'out';
 export type FlowNode = Node<
@@ -484,6 +485,59 @@ export const PostgresNode = memo(function PostgresNode({
   );
 });
 
+/** A next step, offered in the lane its real node would take. */
+export const GhostNode = memo(function GhostNode({
+  data,
+}: NodeProps<
+  Node<{
+    kind: CreateKind;
+    label: string;
+    next: boolean;
+    onPick: () => void;
+    onDismiss?: () => void;
+  }>
+>) {
+  return (
+    <div className="group/ghost relative flex h-11 w-[180px] animate-item-enter items-center rounded-xl border border-dashed border-brand/45 bg-brand/[0.04] transition-colors duration-[var(--motion-fast)] hover:border-brand/70 hover:bg-brand/[0.08]">
+      <Handle id="in" type="target" position={Position.Left} isConnectable={false} />
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          data.onPick();
+        }}
+        className="nodrag flex h-full flex-1 items-center gap-2 rounded-xl px-3.5 text-[12.5px] font-semibold text-brand focus-visible:outline-2 focus-visible:outline-brand"
+      >
+        {data.label}
+        {data.next && (
+          <span
+            aria-hidden
+            className="font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground"
+          >
+            next
+          </span>
+        )}
+      </button>
+      {data.onDismiss && (
+        <button
+          type="button"
+          aria-label="Not now"
+          title="Not now"
+          onClick={(e) => {
+            e.stopPropagation();
+            data.onDismiss?.();
+          }}
+          className="nodrag absolute -top-2 -right-2 grid size-5 place-items-center rounded-full border border-border bg-popover text-[11px] text-muted-foreground opacity-0 transition-opacity duration-[var(--motion-fast)] group-hover/ghost:opacity-100 hover:text-foreground focus-visible:opacity-100"
+        >
+          ×
+        </button>
+      )}
+      <Handle id="out" type="source" position={Position.Right} isConnectable={false} />
+      <Handle id="down" type="source" position={Position.Bottom} isConnectable={false} />
+    </div>
+  );
+});
+
 export const nodeTypes: NodeTypes = {
   internet: InternetNode,
   domain: DomainNode,
@@ -491,4 +545,5 @@ export const nodeTypes: NodeTypes = {
   cron: CronNode,
   bucket: BucketNode,
   postgres: PostgresNode,
+  ghost: GhostNode,
 };

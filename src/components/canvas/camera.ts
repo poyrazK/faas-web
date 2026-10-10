@@ -3,6 +3,9 @@ import { useReactFlow, useStoreApi } from '@xyflow/react';
 
 type Box = { x: number; y: number; width: number; height: number };
 
+/** The toolbar floats over the bottom of the canvas: nothing there counts as seen. */
+export const TOOLBAR_CLEARANCE = 72;
+
 /**
  * The smallest pan that brings `box` fully into `view` with `pad` to spare,
  * in flow units. `fits: false` when no pan can: the box is larger than the
@@ -55,18 +58,22 @@ export function useCamera() {
       const box = flow.getNodesBounds(nodes);
       const { width, height } = store.getState();
       const { x, y, zoom } = flow.getViewport();
-      const view = { x: -x / zoom, y: -y / zoom, width: width / zoom, height: height / zoom };
+      const seen = Math.max(0, height - TOOLBAR_CLEARANCE);
+      const view = { x: -x / zoom, y: -y / zoom, width: width / zoom, height: seen / zoom };
       const { fits, dx, dy } = panToShow(box, view, 48 / zoom);
       if (!fits) {
-        const out = Math.min(zoom, width / (box.width + 96), height / (box.height + 96));
-        void flow.setCenter(box.x + box.width / 2, box.y + box.height / 2, {
+        const out = Math.min(zoom, width / (box.width + 96), seen / (box.height + 96));
+        // Centre the box in the seen area, above the toolbar.
+        const lift = TOOLBAR_CLEARANCE / 2 / out;
+        void flow.setCenter(box.x + box.width / 2, box.y + box.height / 2 + lift, {
           zoom: out,
           duration: 380,
         });
         return;
       }
       if (!dx && !dy) return;
-      void flow.setCenter(view.x + view.width / 2 + dx, view.y + view.height / 2 + dy, {
+      // setCenter centres the whole viewport, toolbar strip included.
+      void flow.setCenter(view.x + view.width / 2 + dx, view.y + height / zoom / 2 + dy, {
         zoom,
         duration: 380,
       });

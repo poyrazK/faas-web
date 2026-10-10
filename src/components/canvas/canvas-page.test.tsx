@@ -7,7 +7,15 @@ import { ApiError } from '@/lib/api/errors';
 const state = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
 const wizardMounts = vi.hoisted(() => ({ count: 0 }));
 vi.mock('./use-topology', () => ({ useTopology: () => state.value }));
-vi.mock('./canvas', () => ({ CanvasView: () => <div data-testid="flow" /> }));
+vi.mock('./canvas', () => ({
+  CanvasView: ({ nodes }: { nodes: { id: string }[] }) => (
+    <div data-testid="flow">
+      {nodes.map((n) => (
+        <i key={n.id}>{n.id}</i>
+      ))}
+    </div>
+  ),
+}));
 vi.mock('./inspector', () => ({ Inspector: () => null }));
 vi.mock('./wizard/wizard', () => ({
   Wizard: ({
@@ -41,8 +49,20 @@ vi.mock('./morph', () => ({
     </p>
   ),
 }));
+const trackerStage = vi.hoisted(() => ({ value: 'building' }));
 vi.mock('./launch-tracker', () => ({
-  LaunchTracker: ({ seed }: { seed: { slug: string } }) => <p>tracking {seed.slug}</p>,
+  LaunchTracker: ({
+    seed,
+    onChange,
+  }: {
+    seed: { slug: string; source: string };
+    onChange: (s: object) => void;
+  }) => {
+    useEffect(() => {
+      onChange({ slug: seed.slug, source: seed.source, stage: trackerStage.value, step: 4 });
+    }, [seed, onChange]);
+    return <p>tracking {seed.slug}</p>;
+  },
 }));
 vi.mock('@/lib/api/create-and-deploy', () => ({
   useCreateAndDeploy: () => ({ createApp: vi.fn(), deployGit: vi.fn() }),
@@ -58,7 +78,29 @@ const empty = { nodes: [], edges: [], issues: [] };
 const render = (ui: ReactNode) =>
   rtlRender(<QueryClientProvider client={new QueryClient()}>{ui}</QueryClientProvider>);
 
-beforeEach(() => sessionStorage.clear());
+beforeEach(() => {
+  sessionStorage.clear();
+  localStorage.clear();
+  trackerStage.value = 'building';
+});
+
+const oneApp = {
+  nodes: [
+    {
+      id: 'app:api',
+      data: { kind: 'app', slug: 'api', phase: 'running', metrics: 'ready', connections: 'ready' },
+    },
+  ],
+  edges: [],
+  issues: [],
+};
+const readyWith = (topology: object) => ({
+  phase: 'ready',
+  topology,
+  retry: vi.fn(),
+  retryApp: vi.fn(),
+  settled: true,
+});
 
 describe('CanvasPage', () => {
   it('holds the space while loading', () => {
@@ -232,5 +274,51 @@ describe('CanvasPage', () => {
     );
     expect(screen.getByText(/wizard new cli/)).toBeInTheDocument();
     expect(wizardMounts.count).toBe(1);
+  });
+
+  it('offers one next step once a first deploy is live', () => {
+    trackerStage.value = 'live';
+    sessionStorage.setItem(
+      'gregale.canvas.launches',
+      JSON.stringify({ api: { slug: 'api', source: 'cli' } })
+    );
+    state.value = readyWith(oneApp);
+    render(<CanvasPage />);
+    expect(screen.getByText('ghost:domain')).toBeInTheDocument();
+    expect(screen.queryByText('ghost:cron')).not.toBeInTheDocument();
+  });
+
+  it('shows all three next steps while the app is selected', () => {
+    trackerStage.value = 'live';
+    sessionStorage.setItem(
+      'gregale.canvas.launches',
+      JSON.stringify({ api: { slug: 'api', source: 'cli' } })
+    );
+    state.value = readyWith(oneApp);
+    render(<CanvasPage node="app:api" />);
+    expect(screen.getByText('ghost:cron')).toBeInTheDocument();
+    expect(screen.getByText('ghost:bucket')).toBeInTheDocument();
+  });
+
+  it('offers nothing for an app whose ghosts were waved off', () => {
+    trackerStage.value = 'live';
+    localStorage.setItem('gregale.canvas.ghosts.api', 'done');
+    sessionStorage.setItem(
+      'gregale.canvas.launches',
+      JSON.stringify({ api: { slug: 'api', source: 'cli' } })
+    );
+    state.value = readyWith(oneApp);
+    render(<CanvasPage />);
+    expect(screen.queryByText('ghost:domain')).not.toBeInTheDocument();
+  });
+
+  it('offers nothing while the first deploy is still building', () => {
+    sessionStorage.setItem(
+      'gregale.canvas.launches',
+      JSON.stringify({ api: { slug: 'api', source: 'cli' } })
+    );
+    state.value = readyWith(oneApp);
+    render(<CanvasPage />);
+    expect(screen.queryByText('ghost:domain')).not.toBeInTheDocument();
   });
 });

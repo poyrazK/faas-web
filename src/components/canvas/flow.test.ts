@@ -107,4 +107,34 @@ describe('toFlow', () => {
     });
     expect(edges.find((e) => e.id === 'i')!.data!.pending).toBeFalsy();
   });
+
+  it('adds only the domain ghost until the app is hovered', () => {
+    const one = toFlow(t, pos, { ghosts: { slug: 'a', all: false }, onGhost: vi.fn() });
+    expect(one.nodes.filter((n) => (n.type as string) === 'ghost').map((n) => n.id)).toEqual([
+      'ghost:domain',
+    ]);
+    const all = toFlow(t, pos, { ghosts: { slug: 'a', all: true }, onGhost: vi.fn() });
+    expect(all.nodes.filter((n) => (n.type as string) === 'ghost').map((n) => n.id)).toEqual([
+      'ghost:domain',
+      'ghost:cron',
+      'ghost:bucket',
+    ]);
+  });
+
+  it('turns a ghost click into the matching draft', () => {
+    const onGhost = vi.fn();
+    const { nodes } = toFlow(t, pos, { ghosts: { slug: 'a', all: true }, onGhost });
+    (nodes.find((n) => n.id === 'ghost:cron')!.data as unknown as { onPick: () => void }).onPick();
+    expect(onGhost).toHaveBeenCalledWith('a', 'cron');
+  });
+
+  it('lets the ghosts stand in for the plus buttons while they are all out', () => {
+    const onConnect = vi.fn();
+    const app = (all: boolean) =>
+      toFlow(t, pos, { ghosts: { slug: 'a', all }, onGhost: vi.fn(), onConnect }).nodes.find(
+        (n) => n.id === 'app:a'
+      )!.data as { onConnect?: unknown };
+    expect(app(false).onConnect).toBeDefined();
+    expect(app(true).onConnect).toBeUndefined();
+  });
 });

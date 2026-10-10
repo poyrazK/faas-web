@@ -35,11 +35,34 @@ export const DRAFT_SIZE: Record<CreateKind, { w: number; h: number }> = {
   cron: { w: 230, h: 212 },
 };
 export type DraftSlot = { app: string; side: ConnectSide; kind: CreateKind };
+
+export const GHOST_SIZE = { w: 180, h: 44 };
+/**
+ * Where each next-step suggestion sits around an app: in the lane its real
+ * node would use. The cron one takes the slot a first cron would, which
+ * `layout(t, { ghostRoom })` keeps free above the app.
+ */
+export function ghostPositions(app: Point): Record<CreateKind, Point> {
+  const across = (NODE_SIZE.app.h - GHOST_SIZE.h) / 2;
+  return {
+    domain: { x: COLUMN.domain, y: app.y + across },
+    cron: {
+      x: COLUMN.app + (NODE_SIZE.app.w - GHOST_SIZE.w) / 2,
+      y: app.y - STACK + (STACK - 16 - GHOST_SIZE.h) / 2,
+    },
+    bucket: { x: COLUMN.resource, y: app.y + across },
+  };
+}
 const DRAFT_GAP = 16;
 
 export function layout(
   t: Topology,
-  opts: { draft?: DraftSlot; heights?: ReadonlyMap<string, number> } = {}
+  opts: {
+    draft?: DraftSlot;
+    heights?: ReadonlyMap<string, number>;
+    /** An app with next-step ghosts: one cron slot is kept free above it. */
+    ghostRoom?: string;
+  } = {}
 ): Map<string, Point> {
   const pos = new Map<string, Point>();
   const kindOf = new Map(t.nodes.map((n) => [n.id, n.data.kind]));
@@ -67,7 +90,8 @@ export function layout(
       .filter((id, i, all) => all.indexOf(id) === i);
 
     crons.forEach((id, i) => pos.set(id, { x: COLUMN.app + 16, y: cursor + i * STACK }));
-    const top = cursor + crons.length * STACK;
+    const room = opts.ghostRoom === app.id && !crons.length ? STACK : 0;
+    const top = cursor + crons.length * STACK + room;
     const appH = opts.heights?.get(app.id) ?? NODE_SIZE.app.h;
     const rows = Math.max(1, domains.length, resources.length);
     const height = Math.max(rows * ROW - 20, appH);

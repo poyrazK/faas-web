@@ -23,6 +23,14 @@ import { summarizeIssues, type AppData } from './topology';
 import { useApps } from '@/lib/api/queries';
 import { Wizard, type LaunchSeed, type WizardStep } from './wizard/wizard';
 
+function ghostsRetired(slug: string) {
+  try {
+    return localStorage.getItem(`gregale.canvas.ghosts.${slug}`) === 'done';
+  } catch {
+    return false;
+  }
+}
+
 /** Canvas page. `data-gregale-canvas` is the build-elimination sentinel (plan Task 1). */
 export default function CanvasPage({ node, wizard }: { node?: string; wizard?: WizardStep }) {
   return (
@@ -138,9 +146,52 @@ function CanvasPageBody({ node, wizard }: { node?: string; wizard?: WizardStep }
       ),
     [launches]
   );
+  // One next step after a first deploy goes live: ghosts around that app,
+  // until something is added to it or they are waved off.
+  const [retiredTick, setRetiredTick] = useState(0);
+  const retire = useCallback((slug: string) => {
+    try {
+      localStorage.setItem(`gregale.canvas.ghosts.${slug}`, 'done');
+    } catch {
+      // Without storage the ghosts still go for this visit.
+    }
+    setRetiredTick((n) => n + 1);
+  }, []);
+  const ghostApp = useMemo(() => {
+    void retiredTick;
+    const live = Object.values(launches).filter(
+      (l) =>
+        l.stage === 'live' &&
+        topology.nodes.some((n) => n.id === `app:${l.slug}`) &&
+        !ghostsRetired(l.slug)
+    );
+    return live.at(-1)?.slug;
+  }, [launches, topology.nodes, retiredTick]);
+  // Hovering the app shows all three; the pointer crossing to a ghost passes
+  // over empty canvas, so leaving waits a beat before they fold away.
+  const [hovered, setHovered] = useState<string>();
+  const leaving = useRef(0);
+  const onHover = useCallback((id?: string) => {
+    window.clearTimeout(leaving.current);
+    if (id) setHovered(id);
+    else leaving.current = window.setTimeout(() => setHovered(undefined), 350);
+  }, []);
+  useEffect(() => () => window.clearTimeout(leaving.current), []);
+  const ghostsShown = ghostApp && !connect && !wizardStep && !morph ? ghostApp : undefined;
+  const ghostAll =
+    Boolean(ghostsShown) &&
+    (hovered === `app:${ghostsShown}` ||
+      Boolean(hovered?.startsWith('ghost:')) ||
+      node === `app:${ghostsShown}`);
+  const ghosts = useMemo(
+    () => (ghostsShown ? { slug: ghostsShown, all: ghostAll } : undefined),
+    [ghostsShown, ghostAll]
+  );
+
+  const ghostRoom = ghostApp && `app:${ghostApp}`;
   const positions = useMemo(
-    () => layout(topology, { draft: slot, heights }),
-    [topology, slot, heights]
+    () => layout(topology, { draft: slot, heights, ghostRoom }),
+    [topology, slot, heights, ghostRoom]
   );
 
   // Once the bands have eased (240ms), make sure the whole draft is on screen.
@@ -157,8 +208,11 @@ function CanvasPageBody({ node, wizard }: { node?: string; wizard?: WizardStep }
         selected: node,
         launches,
         onLaunchAction,
+        ghosts,
+        onGhost: (slug, kind) => setConnect({ slug, side: kind === 'bucket' ? 'out' : 'in', kind }),
+        onDismissGhosts: () => ghostApp && retire(ghostApp),
       }),
-    [topology, positions, retryApp, node, launches, onLaunchAction]
+    [topology, positions, retryApp, node, launches, onLaunchAction, ghosts, ghostApp, retire]
   );
   const connectApp = connect && topology.nodes.find((n) => n.id === `app:${connect.slug}`);
   const appData = connectApp?.data.kind === 'app' ? (connectApp.data as AppData) : undefined;
@@ -184,7 +238,11 @@ function CanvasPageBody({ node, wizard }: { node?: string; wizard?: WizardStep }
                     id: appId,
                     defaultRegion: appData.buckets?.defaultRegion,
                   },
-                  onDone: () => setConnect(undefined),
+                  onDone: () => {
+                    // Something real was added: the suggestions have done their job.
+                    if (connect.slug === ghostApp) retire(connect.slug);
+                    setConnect(undefined);
+                  },
                   onCancel: () => setConnect(undefined),
                 },
                 draggable: false,
@@ -216,7 +274,7 @@ function CanvasPageBody({ node, wizard }: { node?: string; wizard?: WizardStep }
             ],
           }
         : flow,
-    [connect, appData, anchor, appId, flow, positions]
+    [connect, appData, anchor, appId, flow, positions, ghostApp, retire]
   );
   const selected = topology.nodes.find((n) => n.id === node);
   const selectedLaunch =
@@ -324,6 +382,7 @@ function CanvasPageBody({ node, wizard }: { node?: string; wizard?: WizardStep }
                   selected={node}
                   onSelect={select}
                   settled={settled}
+                  onHover={onHover}
                   onNew={() => setWizard('start')}
                   onPick={(id) => {
                     select(id);

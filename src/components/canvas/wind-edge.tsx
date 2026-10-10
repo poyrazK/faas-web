@@ -17,6 +17,8 @@ export type WindEdgeData = {
   highlight?: boolean;
   /** Outside it. */
   dim?: boolean;
+  /** Leads to a next-step suggestion, not to anything real. */
+  ghost?: boolean;
 };
 export type WindFlowEdge = Edge<WindEdgeData, 'wind'>;
 
@@ -48,6 +50,15 @@ export function WindEdge({
   });
   const traffic = particles(data?.requests24h);
 
+  if (data?.ghost) {
+    return (
+      <BaseEdge
+        id={id}
+        path={path}
+        style={{ stroke: 'var(--brand)', strokeOpacity: 0.4, strokeDasharray: '3 5' }}
+      />
+    );
+  }
   if (data?.draft) {
     return (
       <BaseEdge

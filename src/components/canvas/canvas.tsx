@@ -37,6 +37,7 @@ export function CanvasView({
   onPick,
   onNew,
   settled = true,
+  onHover,
   children,
 }: {
   nodes: FlowNode[];
@@ -48,6 +49,8 @@ export function CanvasView({
   onNew?: () => void;
   /** The graph is complete; fit it once. */
   settled?: boolean;
+  /** The node under the pointer, or none. */
+  onHover?: (id?: string) => void;
   children?: ReactNode;
 }) {
   const [flowNodes, setFlowNodes, onNodesChange] = useNodesState<FlowNode>([]);
@@ -72,8 +75,11 @@ export function CanvasView({
       onNodeClick={(_, node) => {
         // Drafts join `nodes` via a cast, so the union cannot name them.
         const type: string | undefined = node.type;
-        if (type !== 'draft') onSelect(type === 'internet' ? undefined : node.id);
+        if (type === 'draft' || type === 'ghost') return;
+        onSelect(type === 'internet' ? undefined : node.id);
       }}
+      onNodeMouseEnter={(_, n) => onHover?.(n.id)}
+      onNodeMouseLeave={() => onHover?.(undefined)}
       onPaneClick={() => onSelect(undefined)}
       fitView
       fitViewOptions={{ padding: 0.2, maxZoom: 1 }}

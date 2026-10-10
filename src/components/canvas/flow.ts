@@ -1,6 +1,7 @@
 import type { FlowNode, ConnectSide } from './nodes';
 import type { WindFlowEdge } from './wind-edge';
-import type { Point } from './layout';
+import { ghostPositions, type Point } from './layout';
+import type { CreateKind } from './create';
 import type { Topology } from './topology';
 import type { LaunchState } from './launch';
 import { neighbourhood } from './focus';
@@ -13,6 +14,16 @@ export type FlowOptions = {
   /** First deploys the canvas is watching, by slug. */
   launches?: Record<string, LaunchState>;
   onLaunchAction?: (slug: string, action: 'retry' | 'logs') => void;
+  /** Next-step suggestions around one app: the domain alone, or all three. */
+  ghosts?: { slug: string; all: boolean };
+  onGhost?: (slug: string, kind: CreateKind) => void;
+  onDismissGhosts?: () => void;
+};
+
+const GHOST_LABEL: Record<CreateKind, string> = {
+  domain: '+ Add a domain',
+  cron: '+ Schedule a cron',
+  bucket: '+ Add storage',
 };
 
 export function toFlow(
@@ -41,9 +52,12 @@ export function toFlow(
           ? {
               ...data,
               dim,
-              ...(opts.onConnect && {
-                onConnect: (side: ConnectSide) => opts.onConnect!(data.slug, side),
-              }),
+              // While its ghosts are out they are the app's way to add things;
+              // the plus buttons would sit on their edges saying the same.
+              ...(opts.onConnect &&
+                !(opts.ghosts?.all && opts.ghosts.slug === data.slug) && {
+                  onConnect: (side: ConnectSide) => opts.onConnect!(data.slug, side),
+                }),
               ...(opts.onRetry && { onRetry: () => opts.onRetry!(data.slug) }),
               launch: launch(data.slug),
               ...(opts.onLaunchAction && {
@@ -69,5 +83,41 @@ export function toFlow(
     },
     selectable: false,
   }));
+
+  const at = opts.ghosts && pos.get(`app:${opts.ghosts.slug}`);
+  if (opts.ghosts && at) {
+    const { slug, all } = opts.ghosts;
+    const appId = `app:${slug}`;
+    const g = ghostPositions(at);
+    const kinds: CreateKind[] = all ? ['domain', 'cron', 'bucket'] : ['domain'];
+    for (const kind of kinds) {
+      nodes.push({
+        id: `ghost:${kind}`,
+        // Ghosts are not topology nodes; this is where they join the union.
+        type: 'ghost' as never,
+        position: g[kind],
+        data: {
+          kind,
+          label: GHOST_LABEL[kind],
+          next: kind === 'domain',
+          onPick: () => opts.onGhost?.(slug, kind),
+          onDismiss: kind === 'domain' ? opts.onDismissGhosts : undefined,
+        } as never,
+        draggable: false,
+        selectable: false,
+        connectable: false,
+      });
+      edges.push({
+        id: `ghost-edge:${kind}`,
+        source: kind === 'bucket' ? appId : `ghost:${kind}`,
+        target: kind === 'bucket' ? `ghost:${kind}` : appId,
+        sourceHandle: kind === 'cron' ? 'down' : 'out',
+        targetHandle: kind === 'cron' ? 'top' : 'in',
+        type: 'wind',
+        data: { ghost: true },
+        selectable: false,
+      });
+    }
+  }
   return { nodes, edges };
 }

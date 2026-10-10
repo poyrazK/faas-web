@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { APP_TALL, menuPosition, layout, NODE_SIZE } from './layout';
+import { APP_TALL, COLUMN, ghostPositions, menuPosition, layout, NODE_SIZE } from './layout';
 import { buildTopology, nodeId, type TopologyInput } from './topology';
 import type { App } from '@/lib/api/queries';
 
@@ -141,5 +141,31 @@ describe('layout with a draft', () => {
     const tall = layout(t, { heights: new Map([[nodeId.app('billing'), APP_TALL]]) });
     expect(tall.get(nodeId.app('worker'))!.y).toBe(base.get(nodeId.app('worker'))!.y + 20);
     expect(tall.get(nodeId.app('acme-api'))).toEqual(base.get(nodeId.app('acme-api')));
+  });
+});
+
+describe('ghostPositions', () => {
+  it('puts each ghost in the lane its real node would use', () => {
+    const g = ghostPositions({ x: 456, y: 200 });
+    expect(g.domain.x).toBe(COLUMN.domain);
+    expect(g.bucket.x).toBe(COLUMN.resource);
+    expect(g.cron.y).toBeLessThan(200);
+  });
+});
+
+describe('ghost room', () => {
+  it('reserves one cron slot above the app the ghosts suggest for', () => {
+    const t = topo();
+    const base = layout(t);
+    const roomy = layout(t, { ghostRoom: nodeId.app('worker') });
+    const worker = roomy.get(nodeId.app('worker'))!;
+    expect(worker.y).toBe(base.get(nodeId.app('worker'))!.y + 72);
+    // The cron ghost sits in that slot, clear of the band above.
+    const above = Math.max(
+      ...[...roomy.entries()]
+        .filter(([id, p]) => p.y < worker.y && id !== nodeId.internet)
+        .map(([id, p]) => p.y + (id.startsWith('app:') ? NODE_SIZE.app.h : 56))
+    );
+    expect(ghostPositions(worker).cron.y).toBeGreaterThanOrEqual(above);
   });
 });

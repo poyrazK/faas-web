@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { render, screen } from '@testing-library/react';
 import { ReactFlowProvider, type Node, type NodeProps } from '@xyflow/react';
 import { describe, expect, it, vi } from 'vitest';
-import { AppNode, DomainNode } from './nodes';
+import { AppNode, DomainNode, GhostNode } from './nodes';
 import type { AppData } from './topology';
 
 const base: AppData = {
@@ -207,5 +207,21 @@ describe('AppNode · first deploy', () => {
       />
     );
     expect(screen.getByText('Queued')).toHaveAttribute('aria-live', 'polite');
+  });
+});
+
+describe('GhostNode', () => {
+  it('reads as a suggestion and can be dismissed', () => {
+    const onPick = vi.fn();
+    const onDismiss = vi.fn();
+    wrap(
+      <GhostNode
+        {...props({ kind: 'domain', label: '+ Add a domain', next: true, onPick, onDismiss })}
+      />
+    );
+    screen.getByRole('button', { name: '+ Add a domain' }).click();
+    screen.getByRole('button', { name: 'Not now' }).click();
+    expect(onPick).toHaveBeenCalled();
+    expect(onDismiss).toHaveBeenCalled();
   });
 });
