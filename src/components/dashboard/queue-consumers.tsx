@@ -10,6 +10,7 @@ import { Panel } from './primitives';
 import { QueueConsumerControls } from './queue-consumer-controls';
 import { QueueBindingEditor } from './queue-binding-editor';
 import { QueueBindingOrphan } from './queue-binding-orphan';
+import { QueueWorkloadProfile } from './queue-workload-profile';
 import { listQueueBindingWrites } from '@/lib/queue-binding-write';
 import type { components } from '@/lib/api/schema';
 
@@ -135,18 +136,30 @@ export function QueueConsumers({ slug }: { slug: string }) {
           !list.isPending &&
           !list.error &&
           account?.plan && (
-            <QueueConsumerControls
-              accountId={accountId}
-              plan={account.plan}
-              slug={slug}
-              bindings={list.data ?? []}
-            />
+            <>
+              <QueueConsumerControls
+                accountId={accountId}
+                plan={account.plan}
+                slug={slug}
+                bindings={list.data ?? []}
+              />
+              <QueueWorkloadProfile
+                accountId={accountId}
+                plan={account.plan}
+                slug={slug}
+                bindings={list.data ?? []}
+              />
+            </>
           )}
         {capability.accountId === accountId &&
           capability.state === 'available' &&
           account?.plan &&
           orphanWrites.map((write) => (
-            <QueueBindingOrphan key={write.bindingId} write={write} plan={account.plan} />
+            <QueueBindingOrphan
+              key={`${write.accountId}:${write.slug}:${write.appId}:${write.bindingId}`}
+              write={write}
+              plan={account.plan}
+            />
           ))}
         <p className="text-xs text-muted-foreground">
           Pull workers poll and acknowledge externally. Push delivery invokes the configured

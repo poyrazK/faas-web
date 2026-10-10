@@ -7,7 +7,7 @@
 ## Contract and decisions
 
 - `worker-pools` is Preview, Hobby+. Create with `execution_mode: worker`; lifecycle fields use backend plan caps, with zero inheriting plan defaults. A created app may lack a characterized `workload_class` until deployment; do not claim it is a verified worker merely from accepted creation.
-- `/queue-workload` is an idempotent production PUT that reconciles the **default push** binding, consumer and queue-depth scaling policy. It is not a generic pull setup. Read the existing default binding and current app/scaling policy before offering a replacement; use `force` only after explicit review of a conflicting queue.
+- `/queue-workload` is a convergent production PUT that reconciles the **default push** binding, consumer and queue-depth scaling policy. Its route is not wrapped by `s.idempotent`, so an ambiguous response must be inspected before another attempt. It is not a generic pull setup. Read the existing default binding and current app/scaling policy before offering a replacement; use `force` only after explicit review of a conflicting queue.
 - Production `/queue-bindings` routes reject stage/scope selectors. Binding POST is idempotently wrapped; PATCH/DELETE are explicit writes. Bindings are durable configuration. Status provides independent `consumer_state`, `consumer_liveness` and timestamps; active plus stale/not_observed is not healthy. Pull reports external liveness.
 - Stage desired bindings use `/v1/projects/{slug}/environments/{environment}/workloads/{workload}/queue-bindings` with `expected_revision` equal to the complete workload revision. `activation_state: unavailable` means no stage delivery or promotion qualification. Protected stages are read-only. Never route stage edits through a production URL or imply active consumers.
 - Jobs are finite executions, App Queues currently shows messages through peek, and sidebar Instances means physical compute. Keep those meanings.
@@ -22,8 +22,8 @@
 ## Task 2: Production consumer journey
 
 - [x] Add App Automate → Queues → Consumers and an entry from global Queues. Show durable binding mode/class/enabled, consumer state, liveness, poll age, lag, queue depth/in-flight/dead-letter separately. Test active+stale, active+not_observed, paused, external pull and read failure before UI.
-- [ ] Add reviewed production create/edit/pause/delete. Explicitly select pull versus push. Re-read app, capability, account, bindings and the affected binding before writes; keep operation identity for idempotent create and reconcile ambiguous responses via read before a new attempt. Do not claim queue delivery from accepted configuration. Test Free denial, conflicts, context changes, 409, ambiguous creation and status recovery.
-- [ ] Offer the simple profile only when a characterized worker/job supports it and the user explicitly selects platform push; review the current default binding, queue, scaling target and `force` replacement. Test conflicting default, no force by default and replacement consent. Commit bounded consumer behavior.
+- [x] Add reviewed production create/edit/pause/delete. Explicitly select pull versus push. Re-read app, capability, account, bindings and the affected binding before writes; keep operation identity for idempotent create and reconcile ambiguous responses via read before a new attempt. Do not claim queue delivery from accepted configuration. Test Free denial, conflicts, context changes, 409, ambiguous creation and status recovery.
+- [x] Offer the simple profile only when a characterized worker/job supports it and the user explicitly selects platform push; review the current default binding, queue, scaling target and `force` replacement. Test conflicting default, no force by default and replacement consent. Commit bounded consumer behavior.
 
 ## Task 3: OCI worker creation and lifecycle
 
@@ -37,6 +37,6 @@
 
 ## Task 5: Qualification and bounded PRs
 
-- [ ] Extend mock API/capabilities and cover conflicts, stale push polls, external pull, paused consumer, delayed status, Free plan, existing default replacement, worker without HTTP listener, and stage activation unavailable.
+- [ ] Extend mock API/capabilities and cover conflicts, stale push polls, external pull, paused consumer, delayed status, Free plan, existing default replacement, worker without HTTP listener, and stage activation unavailable. I-a covers production behavior; I-b/I-c retain their fixture cases.
 - [ ] Run focused RED→GREEN, full `npm run check`, production build and Windows Edge mock walkthroughs: direct/reload/history, keyboard/mobile, long lists, app/account/environment changes, ambiguous recovery and failure retry. Do not invoke real handlers or modify production to test.
 - [ ] Request one fresh 6.1 Sol/High final review for each bounded branch, fix Critical/Important findings RED→GREEN, open dependent PRs, attach each, update #134 accurately. Do not merge or claim stage/provider health.

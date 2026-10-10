@@ -155,3 +155,34 @@ it('requires explicit acknowledgement after inspecting an unconfirmed create', a
   expect(readQueueBindingOperation('account-1', 'worker-1')).toBeNull();
   expect(state.create).toHaveBeenCalledTimes(1);
 });
+
+it('does not reveal a delayed review after switching accounts', async () => {
+  const user = userEvent.setup();
+  let finish: ((value: unknown) => void) | undefined;
+  state.read.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      })
+  );
+  const view = mount();
+  await user.click(screen.getByRole('button', { name: 'New binding' }));
+  await user.type(screen.getByLabelText('Binding name'), 'exports');
+  await user.type(screen.getByLabelText('Queue name'), 'exports');
+  await user.click(screen.getByRole('button', { name: 'Review binding' }));
+  view.rerender(
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+    >
+      <QueueConsumerControls
+        accountId="account-2"
+        plan="hobby"
+        slug="worker-1"
+        bindings={[binding] as never}
+      />
+    </QueryClientProvider>
+  );
+  finish?.({ app, bindings: [binding] });
+  expect(screen.queryByRole('button', { name: 'Create binding' })).not.toBeInTheDocument();
+  expect(state.create).not.toHaveBeenCalled();
+});

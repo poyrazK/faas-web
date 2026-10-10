@@ -6,10 +6,11 @@ const state = vi.hoisted(() => ({
   statuses: {} as Record<string, Record<string, unknown>>,
   listError: false,
   capability: 'available',
+  plan: 'hobby',
   retry: vi.fn(),
 }));
 vi.mock('@/lib/auth', () => ({
-  useAuth: () => ({ account: { id: 'account-1', plan: 'hobby' } }),
+  useAuth: () => ({ account: { id: 'account-1', plan: state.plan } }),
 }));
 vi.mock('@/lib/api/capabilities', () => ({
   useCapability: () => ({ accountId: 'account-1', state: state.capability, refresh: vi.fn() }),
@@ -29,7 +30,7 @@ vi.mock('@/lib/api/queue-bindings', () => ({
   }),
 }));
 vi.mock('./queue-consumer-controls', () => ({
-  QueueConsumerControls: () => null,
+  QueueConsumerControls: () => <button>New binding</button>,
 }));
 vi.mock('./queue-binding-editor', () => ({
   QueueBindingEditor: () => null,
@@ -37,10 +38,14 @@ vi.mock('./queue-binding-editor', () => ({
 vi.mock('./queue-binding-orphan', () => ({
   QueueBindingOrphan: () => null,
 }));
+vi.mock('./queue-workload-profile', () => ({
+  QueueWorkloadProfile: () => <button>Configure platform push profile</button>,
+}));
 const { QueueConsumers } = await import('./queue-consumers');
 
 beforeEach(() => {
   state.capability = 'available';
+  state.plan = 'hobby';
   state.listError = false;
   state.retry.mockClear();
   state.rows = [
@@ -86,6 +91,17 @@ beforeEach(() => {
       generated_at: '2026-10-10T12:01:00Z',
     },
   };
+});
+
+it('hides worker write controls when Free has no confirmed worker capability', () => {
+  state.plan = 'free';
+  state.capability = 'unavailable';
+  render(<QueueConsumers slug="worker-1" />);
+  expect(screen.getByText(/Worker controls require confirmed/)).toBeVisible();
+  expect(screen.queryByRole('button', { name: 'New binding' })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole('button', { name: 'Configure platform push profile' })
+  ).not.toBeInTheDocument();
 });
 
 it('keeps configured state separate from stale push liveness and external pull observation', () => {
