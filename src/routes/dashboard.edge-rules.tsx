@@ -323,7 +323,7 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
       {(creating || editing) && (
         <EdgeRuleDialog
           // Remounts per rule so the draft reseeds without an effect.
-          key={editing?.id ?? 'new'}
+          key={`${accountId}:${slug}:${editing?.id ?? 'new'}`}
           open
           rule={editing}
           slug={editing ? (rows.find((r) => r.id === editing.id)?.app ?? slug) : slug}

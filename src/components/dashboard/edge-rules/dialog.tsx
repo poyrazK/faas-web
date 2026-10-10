@@ -95,8 +95,13 @@ export function EdgeRuleDialog({
 }: EdgeRuleDialogProps) {
   const { toast } = useToast();
   const { account } = useAuth();
+  const contextIdentity = `${account?.id ?? ''}:${slug}:${rule?.id ?? 'new'}`;
+  const [openedFor] = useState(contextIdentity);
+  const contextCurrent =
+    openedFor === contextIdentity && (!rule || rule.account_id === account?.id);
   const cacheCapability = useCapability('declarative-response-caching');
   const canCache =
+    contextCurrent &&
     Boolean(account?.id) &&
     cacheCapability.accountId === account?.id &&
     cacheCapability.state === 'available' &&
@@ -164,6 +169,7 @@ export function EdgeRuleDialog({
 
   const submit = () => {
     if (!kind || !def || !action) return;
+    if (!contextCurrent) return;
     if (kind === 'cache' && !canCache) return;
     // The match block and then the kind's own rules; the server is the
     // backstop, not the plan.
@@ -254,7 +260,7 @@ export function EdgeRuleDialog({
             <Button
               size="sm"
               onClick={submit}
-              disabled={pending || (kind === 'cache' && !canCache)}
+              disabled={pending || !contextCurrent || (kind === 'cache' && !canCache)}
             >
               {pending ? 'Saving…' : editing ? 'Save changes' : 'Create rule'}
             </Button>
@@ -318,6 +324,11 @@ export function EdgeRuleDialog({
         </div>
       ) : (
         <div className="flex flex-col gap-5">
+          {!contextCurrent && (
+            <p role="status" className="text-xs text-muted-foreground">
+              Account or app selection changed. Close and reopen this rule before saving.
+            </p>
+          )}
           {editing && (
             <p className="text-xs text-muted-foreground">
               Kind is <span className="font-mono text-foreground">{kind}</span> and cannot be
@@ -347,6 +358,11 @@ export function EdgeRuleDialog({
             >
               {problem.message} Try a different priority or a narrower path.
             </div>
+          )}
+          {problem && problem.status !== 402 && problem.code !== 'edge_rule_conflict' && (
+            <p role="alert" className="text-xs text-[color:var(--status-critical)]">
+              {errorMessage(problem)}
+            </p>
           )}
 
           <section className="flex flex-col gap-4">
