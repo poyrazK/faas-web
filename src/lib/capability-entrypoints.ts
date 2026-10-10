@@ -30,6 +30,7 @@ const TARGETS: Record<string, Entrypoint> = {
     instruction: 'Use the CLI or API for isolated runs. See the disposable executions guide.',
   },
   'pr-previews': { href: '/dashboard/deployments', label: 'Open releases' },
+  issues: { href: '/dashboard/workflows', label: 'Choose an app, then open Issues' },
 };
 export function capabilityEntrypoint(key: string): Entrypoint {
   return (
