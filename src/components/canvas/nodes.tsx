@@ -16,7 +16,7 @@ import type {
 
 export type ConnectSide = 'in' | 'out';
 export type FlowNode = Node<
-  CanvasNodeData & { onConnect?: (side: ConnectSide) => void; onRetry?: () => void },
+  CanvasNodeData & { onConnect?: (side: ConnectSide) => void; onRetry?: () => void; dim?: boolean },
   CanvasNodeKind
 >;
 
@@ -56,12 +56,14 @@ function Glyph({ kind, children }: { kind: keyof typeof CATEGORY; children: Reac
 function Glass({
   selected,
   tone,
+  dim,
   className,
   children,
   ...rest
 }: {
   selected: boolean;
   tone?: 'warning' | 'critical';
+  dim?: boolean;
   className?: string;
   children: ReactNode;
 } & HTMLAttributes<HTMLDivElement>) {
@@ -70,7 +72,8 @@ function Glass({
       {...rest}
       className={cn(
         'canvas-node relative flex items-center gap-3 rounded-xl border border-canvas-glass-border bg-canvas-glass px-3.5 shadow-elevation-2 backdrop-blur-md',
-        'transition-[box-shadow,border-color,transform] duration-[var(--motion-fast)] ease-console',
+        'transition-[box-shadow,border-color,transform,opacity] duration-[var(--motion-fast)] ease-console',
+        dim && 'opacity-[0.32]',
         'hover:-translate-y-px hover:border-border-secondary hover:shadow-elevation-3',
         tone === 'warning' && 'border-status-warning/35',
         tone === 'critical' && 'border-status-critical/35 border-t-status-critical/60',
@@ -148,9 +151,16 @@ function PlusButton({
   );
 }
 
-export const InternetNode = memo(function InternetNode() {
+export const InternetNode = memo(function InternetNode({
+  data,
+}: NodeProps<Node<{ dim?: boolean }>>) {
   return (
-    <div className="flex flex-col items-center gap-1.5">
+    <div
+      className={cn(
+        'flex flex-col items-center gap-1.5 transition-opacity duration-[var(--motion-base)]',
+        data.dim && 'opacity-[0.32]'
+      )}
+    >
       <span className="canvas-node grid size-11 place-items-center rounded-full border border-canvas-glass-border bg-canvas-glass shadow-elevation-2">
         <Internet aria-hidden className="size-[18px] text-foreground" />
       </span>
@@ -168,6 +178,7 @@ export const DomainNode = memo(function DomainNode({
 }: NodeProps<Node<DomainData>>) {
   return (
     <Glass
+      dim={(data as { dim?: boolean }).dim}
       selected={selected}
       tone={data.verified ? undefined : 'warning'}
       className="h-14 w-[216px]"
@@ -187,7 +198,11 @@ export const DomainNode = memo(function DomainNode({
   );
 });
 
-type AppNodeData = AppData & { onConnect?: (s: ConnectSide) => void; onRetry?: () => void };
+type AppNodeData = AppData & {
+  onConnect?: (s: ConnectSide) => void;
+  onRetry?: () => void;
+  dim?: boolean;
+};
 
 function appStatus(data: AppData) {
   const phase = PHASE[data.phase];
@@ -241,7 +256,12 @@ function AppMetricsRow({ data }: { data: AppNodeData }) {
 export const AppNode = memo(function AppNode({ data, selected }: NodeProps<Node<AppNodeData>>) {
   const status = appStatus(data);
   return (
-    <div className="group relative">
+    <div
+      className={cn(
+        'group relative transition-opacity duration-[var(--motion-base)]',
+        data.dim && 'opacity-[0.32]'
+      )}
+    >
       {data.phase === 'parked' && (
         <span
           data-breathing=""
@@ -288,7 +308,11 @@ export const AppNode = memo(function AppNode({ data, selected }: NodeProps<Node<
 
 export const CronNode = memo(function CronNode({ data, selected }: NodeProps<Node<CronData>>) {
   return (
-    <Glass selected={selected} className={cn('h-14 w-[216px]', !data.enabled && 'opacity-60')}>
+    <Glass
+      dim={(data as { dim?: boolean }).dim}
+      selected={selected}
+      className={cn('h-14 w-[216px]', !data.enabled && 'opacity-60')}
+    >
       <Glyph kind="cron">
         <Timer />
       </Glyph>
@@ -306,7 +330,7 @@ export const BucketNode = memo(function BucketNode({
   selected,
 }: NodeProps<Node<BucketData>>) {
   return (
-    <Glass selected={selected} className="h-14 w-[216px]">
+    <Glass dim={(data as { dim?: boolean }).dim} selected={selected} className="h-14 w-[216px]">
       <Handle id="in" type="target" position={Position.Left} isConnectable={false} />
       <Glyph kind="bucket">
         <HardDrive />
@@ -324,7 +348,7 @@ export const PostgresNode = memo(function PostgresNode({
   selected,
 }: NodeProps<Node<PostgresData>>) {
   return (
-    <Glass selected={selected} className="h-14 w-[216px]">
+    <Glass dim={(data as { dim?: boolean }).dim} selected={selected} className="h-14 w-[216px]">
       <Handle id="in" type="target" position={Position.Left} isConnectable={false} />
       <Glyph kind="postgres">
         <Database />

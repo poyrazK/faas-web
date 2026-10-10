@@ -18,3 +18,13 @@ describe('particles', () => {
     expect(particles(24_000).strokeWidth).toBeGreaterThan(particles(24).strokeWidth);
   });
 });
+
+import { edgeLabel } from './traffic';
+
+describe('edgeLabel', () => {
+  it('labels a real count and stays silent otherwise', () => {
+    expect(edgeLabel(441_600)).toBe('441.6k req / 24h');
+    expect(edgeLabel(0)).toBe('0 req / 24h');
+    expect(edgeLabel(undefined)).toBeUndefined();
+  });
+});

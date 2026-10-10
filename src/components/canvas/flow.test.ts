@@ -71,4 +71,16 @@ describe('toFlow', () => {
     (app.data as { onRetry: () => void }).onRetry();
     expect(onRetry).toHaveBeenCalledWith('a');
   });
+  it('dims everything outside the selection and lights its edges', () => {
+    const { nodes, edges } = toFlow(t, pos, { selected: 'cron:c' });
+    expect(nodes.find((n) => n.id === 'internet')!.data).toMatchObject({ dim: true });
+    expect(nodes.find((n) => n.id === 'app:a')!.data).toMatchObject({ dim: false });
+    expect(edges.find((e) => e.id === 's')!.data).toMatchObject({ highlight: true, dim: false });
+    expect(edges.find((e) => e.id === 'i')!.data).toMatchObject({ highlight: false, dim: true });
+  });
+
+  it('dims nothing without a selection', () => {
+    const { nodes } = toFlow(t, pos);
+    expect(nodes.every((n) => !(n.data as { dim?: boolean }).dim)).toBe(true);
+  });
 });

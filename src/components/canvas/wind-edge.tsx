@@ -1,14 +1,30 @@
-import { BaseEdge, getBezierPath, type Edge, type EdgeProps } from '@xyflow/react';
+import { useState } from 'react';
+import {
+  BaseEdge,
+  EdgeLabelRenderer,
+  getBezierPath,
+  type Edge,
+  type EdgeProps,
+} from '@xyflow/react';
 import { useReducedMotion } from 'motion/react';
-import { particles } from './traffic';
+import { edgeLabel, particles } from './traffic';
 
-export type WindEdgeData = { requests24h?: number; pending?: boolean; draft?: boolean };
+export type WindEdgeData = {
+  requests24h?: number;
+  pending?: boolean;
+  draft?: boolean;
+  /** In the selected node's neighbourhood. */
+  highlight?: boolean;
+  /** Outside it. */
+  dim?: boolean;
+};
 export type WindFlowEdge = Edge<WindEdgeData, 'wind'>;
 
 /**
  * Requests travel as mint particles, as many as the real count earns.
  * Reduced motion swaps them for a static mint stroke whose width carries the
- * same reading.
+ * same reading. Hovering an edge names its count; an unknown count stays
+ * unnamed.
  */
 export function WindEdge({
   id,
@@ -21,7 +37,8 @@ export function WindEdge({
   data,
 }: EdgeProps<WindFlowEdge>) {
   const reduce = useReducedMotion();
-  const [path] = getBezierPath({
+  const [hover, setHover] = useState(false);
+  const [path, labelX, labelY] = getBezierPath({
     sourceX,
     sourceY,
     targetX,
@@ -50,22 +67,45 @@ export function WindEdge({
       <BaseEdge
         id={id}
         path={path}
-        style={{ stroke: 'var(--status-warning)', strokeOpacity: 0.5, strokeDasharray: '2 4' }}
+        style={{
+          stroke: 'var(--status-warning)',
+          strokeOpacity: 0.5,
+          strokeDasharray: '2 4',
+          opacity: data.dim ? 0.25 : 1,
+        }}
       />
     );
   }
+
+  const label = edgeLabel(data?.requests24h);
+  const stroke = data?.highlight
+    ? { stroke: 'var(--brand)', strokeOpacity: 0.55, strokeWidth: 1.5 }
+    : reduce && traffic.count > 0
+      ? { stroke: 'var(--brand)', strokeOpacity: 0.7, strokeWidth: traffic.strokeWidth }
+      : { stroke: 'var(--canvas-edge)', strokeWidth: 1 };
+
   return (
     <>
       <BaseEdge
         id={id}
         path={path}
-        style={
-          reduce && traffic.count > 0
-            ? { stroke: 'var(--brand)', strokeOpacity: 0.7, strokeWidth: traffic.strokeWidth }
-            : { stroke: 'var(--canvas-edge)', strokeWidth: 1 }
-        }
+        style={{
+          ...stroke,
+          opacity: data?.dim ? 0.25 : 1,
+          transition: 'opacity var(--motion-base) var(--motion-ease)',
+        }}
+      />
+      {/* A wide invisible hit area: a 1px line is too thin to hover. */}
+      <path
+        d={path}
+        fill="none"
+        stroke="transparent"
+        strokeWidth={16}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
       />
       {!reduce &&
+        !data?.dim &&
         Array.from({ length: traffic.count }, (_, i) => (
           <circle
             key={i}
@@ -81,6 +121,16 @@ export function WindEdge({
             />
           </circle>
         ))}
+      {hover && label && (
+        <EdgeLabelRenderer>
+          <span
+            className="pointer-events-none absolute rounded-md border border-border bg-popover px-1.5 py-0.5 font-mono text-[10px] tracking-[0.04em] text-foreground shadow-elevation-2"
+            style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
+          >
+            {label}
+          </span>
+        </EdgeLabelRenderer>
+      )}
     </>
   );
 }

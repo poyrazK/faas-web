@@ -7,6 +7,7 @@ import { toFlow } from './flow';
 import { Inspector } from './inspector';
 import { menuPosition, layout } from './layout';
 import { useTopology } from './use-topology';
+import { LaneHeaders } from './lane-headers';
 import { ConnectMenu } from './connect-menu';
 import type { CreateKind } from './create';
 import type { ConnectSide } from './nodes';
@@ -45,8 +46,9 @@ export default function CanvasPage({ node }: { node?: string }) {
       toFlow(topology, positions, {
         onConnect: (slug, side) => setConnect({ slug, side }),
         onRetry: () => retry(),
+        selected: node,
       }),
-    [topology, positions, retry]
+    [topology, positions, retry, node]
   );
   const connectApp = connect && topology.nodes.find((n) => n.id === `app:${connect.slug}`);
   const appData = connectApp?.data.kind === 'app' ? (connectApp.data as AppData) : undefined;
@@ -156,6 +158,7 @@ export default function CanvasPage({ node }: { node?: string }) {
                 selected={node}
                 onSelect={select}
               >
+                <LaneHeaders top={-44} />
                 {connect && appData && anchor && !connect.kind && (
                   <ConnectMenu
                     app={appData}
