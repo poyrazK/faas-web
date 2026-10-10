@@ -6,6 +6,7 @@ import { useAppPolicyOwnership, useBindingInventory } from '@/lib/api/bindings';
 import { Button } from '@/components/ui/button';
 import { CapabilityNotice } from './capability-notice';
 import { Panel } from './primitives';
+import { ServicePolicyEditor } from './service-policy-editor';
 
 export function ServiceBindings({ slug }: { slug: string }) {
   const { account } = useAuth();
@@ -110,6 +111,26 @@ export function ServiceBindings({ slug }: { slug: string }) {
           ) : null}
         </div>
       </Panel>
+
+      {available &&
+        account &&
+        data &&
+        !data.preview_of_slug &&
+        ownership.data?.kind === 'standalone' &&
+        !ownership.isFetching &&
+        !ownership.error && (
+          <ServicePolicyEditor
+            key={`${accountId}:${data.id}`}
+            accountId={accountId}
+            plan={account.plan}
+            slug={slug}
+            app={data}
+            inventoryComplete={inventory.data?.complete === true}
+            verifiedServices={serviceRows
+              .filter((row) => row.verification_status === 'passed')
+              .map((row) => row.name)}
+          />
+        )}
 
       <Panel
         title="Binding inventory"

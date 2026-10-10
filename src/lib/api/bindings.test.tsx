@@ -7,6 +7,7 @@ import {
   bindingInventoryKey,
   patchServicePolicy,
   policyOwnershipKey,
+  readServicePolicyContext,
   useAppPolicyOwnership,
   useBindingInventory,
 } from './bindings';
@@ -68,6 +69,25 @@ it('keys a partial binding inventory by account, app, scope and evidence selecto
   expect(bindingInventoryKey('account-1', 'app-a', 'staging', 'dep-1')).not.toEqual(
     bindingInventoryKey('account-1', 'app-a', 'production', 'dep-1')
   );
+});
+
+it('requires the current account and capability before a service policy review', async () => {
+  const get = vi.spyOn(api, 'GET').mockImplementation(async (path) => {
+    const data =
+      path === '/v1/account'
+        ? { id: 'account-2', plan: 'free' }
+        : path === '/v1/apps/{slug}'
+          ? { id: 'app-id', slug: 'app-a' }
+          : path === '/v1/apps'
+            ? [{ slug: 'app-a' }]
+            : {
+                plan: 'free',
+                capabilities: [{ key: 'internal-services', enabled: true, plans: ['free'] }],
+              };
+    return { data, response: new Response() } as never;
+  });
+  await expect(readServicePolicyContext('account-1', 'app-a', 'free')).rejects.toThrow(/account/i);
+  expect(get).not.toHaveBeenCalledWith('/v1/projects', expect.anything());
 });
 
 it('preserves caller null, empty and omitted PATCH meanings without a generic adapter', async () => {
