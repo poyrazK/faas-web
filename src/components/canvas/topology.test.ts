@@ -71,6 +71,7 @@ describe('buildTopology', () => {
   it('routes a custom domain between the Internet and its app, by app_id', () => {
     const t = buildTopology(
       input({
+        apps: [app('acme-api', { url: '' })],
         domains: [{ domain: 'api.acme.dev', app_id: 'id-acme-api', verified: true }],
         metrics: metricsFor({ 'acme-api': 1200 }),
       })
@@ -87,9 +88,21 @@ describe('buildTopology', () => {
         pending: false,
       })
     );
-    expect(
-      t.edges.some((e) => e.source === nodeId.internet && e.target === nodeId.app('acme-api'))
-    ).toBe(false);
+  });
+
+  it('keeps the default URL as an ingress path, so one domain does not claim all traffic', () => {
+    const t = buildTopology(
+      input({
+        domains: [{ domain: 'api.acme.dev', app_id: 'id-acme-api', verified: true }],
+        metrics: metricsFor({ 'acme-api': 1200 }),
+      })
+    );
+    const direct = t.edges.find(
+      (e) => e.source === nodeId.internet && e.target === nodeId.app('acme-api')
+    );
+    expect(direct).toBeDefined();
+    const ingress = t.edges.filter((e) => e.kind === 'ingress' && e.id.includes('acme'));
+    expect(ingress.every((e) => e.requests24h === undefined)).toBe(true);
   });
 
   it('marks an unverified domain as pending', () => {
@@ -125,7 +138,7 @@ describe('buildTopology', () => {
       })
     );
     const ingress = t.edges.filter((e) => e.kind === 'ingress' && e.id.includes('acme'));
-    expect(ingress.length).toBe(4);
+    expect(ingress.length).toBe(5);
     expect(ingress.every((e) => e.requests24h === undefined)).toBe(true);
     expect(t.nodes.find((n) => n.id === nodeId.app('acme-api'))?.data).toMatchObject({
       requests24h: 900,

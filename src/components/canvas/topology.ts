@@ -177,10 +177,13 @@ export function buildTopology(input: TopologyInput): Topology {
     });
 
     const domains = domainsBySlug.get(a.slug) ?? [];
-    // One ingress path carries the app's whole count. With several, the API
-    // has no per-host split, so no edge claims a share.
-    const ingress = domains.length <= 1 ? row?.request_count : undefined;
-    if (domains.length === 0 && a.url) {
+    // The default URL keeps serving after a custom domain is attached, so it
+    // is a path of its own. Only a single path can carry the app's whole
+    // count; with several, the API has no per-host split and no edge claims
+    // a share.
+    const paths = domains.length + (a.url ? 1 : 0);
+    const ingress = paths === 1 ? row?.request_count : undefined;
+    if (a.url) {
       edges.push({
         id: `ingress:internet>${a.slug}`,
         source: nodeId.internet,
