@@ -86,8 +86,8 @@ function sanitized(operation: ImageOperation): ImageOperation {
   const overrides = operation.deployRequest.overrides;
   const deployRequest = imageRequest(
     operation.deployRequest.image ?? '',
-    overrides?.port ? String(overrides.port) : '',
-    overrides?.healthcheck?.path ?? '',
+    operation.workloadKind === 'worker' ? '' : overrides?.port ? String(overrides.port) : '',
+    operation.workloadKind === 'worker' ? '' : (overrides?.healthcheck?.path ?? ''),
     operation.deployRequest.full_rootfs_allow_auto === true
   );
   return {

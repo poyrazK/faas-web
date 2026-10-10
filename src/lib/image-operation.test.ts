@@ -88,3 +88,25 @@ it('keeps worker lifecycle intent in a distinct non-secret recovery record', () 
   clearImageOperation(worker);
   expect(readImageOperation('a', '', 'worker')).toBeNull();
 });
+it('never persists HTTP port or health overrides for a worker operation', () => {
+  const worker = newImageOperation(
+    'a',
+    {
+      slug: 'batch-worker',
+      type: 'app',
+      visibility: 'internal',
+      execution_mode: 'worker',
+      restart_policy: 'always',
+      startup_deadline_s: 0,
+      max_retries: 0,
+    },
+    {
+      ...request,
+      overrides: { port: 8080, healthcheck: { path: '/ready' } },
+    },
+    '',
+    'worker'
+  );
+  saveImageOperation(worker);
+  expect(readImageOperation('a', '', 'worker')?.deployRequest.overrides).toBeUndefined();
+});
