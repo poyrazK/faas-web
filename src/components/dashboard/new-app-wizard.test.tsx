@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -94,6 +94,39 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('NewAppWizard Git submission', () => {
+  it('deploys the commit carried from the compatibility check without binding auto-deploys to a SHA', async () => {
+    const user = userEvent.setup();
+    function Journey() {
+      const [search, setSearch] = useState<import('./new-app-source').NewAppSearch>({
+        source: 'git',
+        repo: 'team/checked-api',
+        ref: 'a'.repeat(40),
+      });
+      return <NewAppWizard onboarding search={search} onSearchChange={setSearch} />;
+    }
+    render(<Journey />);
+    expect(screen.getByLabelText('Repository')).toHaveValue('team/checked-api');
+    expect(screen.getByLabelText('Ref')).toHaveValue('a'.repeat(40));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.type(await screen.findByLabelText('App name'), 'checked-api');
+    await user.click(screen.getByRole('button', { name: 'Review' }));
+    await user.click(await screen.findByRole('button', { name: 'Deploy app' }));
+    await waitFor(() =>
+      expect(mocks.deployFromRef).toHaveBeenCalledWith({
+        slug: 'demo-app',
+        repo: 'team/checked-api',
+        ref: 'a'.repeat(40),
+        format: 'tarball',
+      })
+    );
+    expect(mocks.bindRepo).toHaveBeenCalledWith({
+      slug: 'demo-app',
+      installationId: 42,
+      repo: 'team/checked-api',
+      branch: '',
+    });
+  });
+
   it('connects GitHub with proof and preserves the onboarding return marker', async () => {
     mocks.account.github_install_id = '';
     const onConnectGitHub = vi.fn();

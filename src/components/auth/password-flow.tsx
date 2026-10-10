@@ -79,11 +79,19 @@ function ssoHref(provider: 'google' | 'github'): string {
   return `/v1/auth/${provider}`;
 }
 
-function SsoButton({ label, provider }: { label: string; provider: 'google' | 'github' }) {
+function SsoButton({
+  label,
+  provider,
+  returnTo,
+}: {
+  label: string;
+  provider: 'google' | 'github';
+  returnTo?: string;
+}) {
   return (
     <a
       href={ssoHref(provider)}
-      onClick={markOAuthPending}
+      onClick={() => markOAuthPending(returnTo)}
       className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg border border-border bg-card text-sm transition-colors hover:border-border-secondary hover:bg-muted"
     >
       {label}
@@ -309,8 +317,8 @@ export function PasswordFlow({
       <p className="mt-2 text-sm text-muted-foreground">{copy.subtitle}</p>
 
       <div className="mt-7 flex gap-2">
-        <SsoButton label="GitHub" provider="github" />
-        <SsoButton label="Google" provider="google" />
+        <SsoButton label="GitHub" provider="github" returnTo={redirectTo} />
+        <SsoButton label="Google" provider="google" returnTo={redirectTo} />
       </div>
 
       <div className="my-6 flex items-center gap-3">

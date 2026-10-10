@@ -9,6 +9,7 @@ import {
   hasOAuthPending,
   isValidEmail,
   markOAuthPending,
+  readOAuthReturnTo,
   markOnboarded,
   readSession,
   readWorkspace,
@@ -51,6 +52,23 @@ describe('session storage', () => {
 });
 
 describe('OAuth handoff marker', () => {
+  it('retains a safe deployment destination across the provider redirect and clears it afterward', () => {
+    const next = '/dashboard/workflows/new?source=git&repo=team%2Fapi&ref=feature%2Fstart';
+    markOAuthPending(next);
+    expect(readOAuthReturnTo()).toBe(next);
+    clearOAuthPending();
+    expect(readOAuthReturnTo()).toBeUndefined();
+  });
+
+  it('does not retain external destinations or reuse an earlier OAuth destination', () => {
+    markOAuthPending('/dashboard/workflows/new?source=git');
+    markOAuthPending('https://attacker.example');
+    expect(readOAuthReturnTo()).toBeUndefined();
+    markOAuthPending('/dashboard');
+    markOAuthPending();
+    expect(readOAuthReturnTo()).toBeUndefined();
+  });
+
   it('round-trips the callback marker through session storage', () => {
     expect(hasOAuthPending()).toBe(false);
     markOAuthPending();

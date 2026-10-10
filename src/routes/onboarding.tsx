@@ -5,16 +5,20 @@ import { Button } from '@/components/ui/button';
 import { PixelBeams } from '@/components/landing/shaders/pixel-beams';
 import { beginOnboardingGitHubConnect, markOnboarded, readSession, useAuth } from '@/lib/auth';
 import { pageHead } from '@/lib/seo';
+import { validateNewAppSearch } from '@/components/dashboard/new-app-source';
 
 export const Route = createFileRoute('/onboarding')({
   head: () => pageHead({ title: 'Get started' }),
-  beforeLoad: () => {
-    if (!readSession()) throw redirect({ to: '/login' });
+  validateSearch: validateNewAppSearch,
+  beforeLoad: ({ location }) => {
+    if (!readSession()) throw redirect({ to: '/login', search: { next: location.href } });
   },
   component: OnboardingPage,
 });
 
 function OnboardingPage() {
+  const search = Route.useSearch();
+  const navigate = Route.useNavigate();
   const sweepNavigate = useSweepNavigate();
   const { user } = useAuth();
 
@@ -52,6 +56,8 @@ function OnboardingPage() {
       <main className="relative px-5 py-10 sm:py-14">
         <NewAppWizard
           onboarding
+          search={{ ...search, source: 'git' }}
+          onSearchChange={(next, options) => void navigate({ search: next, ...options })}
           onDeploymentAccepted={finishDeployment}
           onConnectGitHub={beginOnboardingGitHubConnect}
         />

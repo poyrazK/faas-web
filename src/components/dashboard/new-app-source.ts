@@ -1,3 +1,5 @@
+import { defaultStringifySearch } from '@tanstack/react-router';
+
 export type AppSource = 'git' | 'empty' | 'template' | 'import';
 export interface NewAppSearch {
   source?: AppSource;
@@ -5,6 +7,8 @@ export interface NewAppSearch {
   step?: 'configure' | 'review';
   slug?: string;
   branch?: string;
+  repo?: string;
+  ref?: string;
 }
 
 export function validateNewAppSearch(search: Record<string, unknown>): NewAppSearch {
@@ -20,7 +24,20 @@ export function validateNewAppSearch(search: Record<string, unknown>): NewAppSea
     step: search.step === 'configure' || search.step === 'review' ? search.step : undefined,
     slug: typeof search.slug === 'string' ? search.slug : undefined,
     branch: typeof search.branch === 'string' ? search.branch : undefined,
+    repo: typeof search.repo === 'string' && search.repo.length <= 512 ? search.repo : undefined,
+    ref: typeof search.ref === 'string' && search.ref.length <= 200 ? search.ref : undefined,
   };
+}
+
+/** Carry only wizard fields across full-page authentication and GitHub redirects. */
+export function newAppPath(search: NewAppSearch, onboarding = false): string {
+  const params: Record<string, string> = {};
+  const validated = validateNewAppSearch(search as Record<string, unknown>);
+  for (const key of ['source', 'repo', 'ref', 'template', 'step', 'slug', 'branch'] as const) {
+    if (validated[key]) params[key] = validated[key];
+  }
+  const path = onboarding ? '/onboarding' : '/dashboard/workflows/new';
+  return `${path}${defaultStringifySearch(params)}`;
 }
 const GITHUB_REPO = /^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/;
 const FORBIDDEN_REF_CHAR = /[\\`?%[\]{}<>"'*:^~]/;

@@ -8,6 +8,7 @@ import { DeployTerminal } from './deploy-terminal';
 import { EASE } from './reveal';
 import { LIQUID_PRESETS, LiquidField } from './liquid-field';
 import { HeroHeadline } from './hero-headline';
+import { CompatibilityEntry } from './compatibility-entry';
 
 /**
  * The hero: one full screen of light with the words alone in the middle of
@@ -66,20 +67,17 @@ export function Hero() {
             platform as your product grows.
           </p>
 
-          {/* Keep the joined pill, with docs on the left and signup on the right. */}
-          <div
-            className="animate-hero-enter relative mt-8 flex w-full max-w-[29rem] items-center rounded-full bg-[color-mix(in_srgb,var(--secondary)_78%,transparent)] p-1 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.7),0_1px_2px_rgba(13,21,18,0.05)] backdrop-blur-md"
-            style={{ animationDelay: '0.18s' }}
-          >
+          <CompatibilityEntry />
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-sm">
             <Link
               to="/docs"
-              className="group relative isolate flex h-12 min-w-0 flex-1 items-center overflow-hidden rounded-full pl-5 pr-3 text-left font-mono text-sm text-foreground/80 outline-none transition-[box-shadow,border-color] duration-300 hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 motion-reduce:transition-none"
+              className="rounded text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-brand"
             >
               Read the docs
             </Link>
             <SweepLink
               to="/signup"
-              className="group inline-flex h-12 shrink-0 items-center gap-2 rounded-full bg-[#1c2622] px-6 text-[15px] font-semibold text-white shadow-[inset_0_1px_0_0_rgba(255,255,255,0.12),0_8px_24px_-10px_rgba(13,21,18,0.6)] outline-none transition-[background-color,transform] duration-200 hover:bg-[#0d1512] focus-visible:ring-[3px] focus-visible:ring-ring/50 active:scale-[0.98] motion-reduce:transform-none"
+              className="group inline-flex items-center gap-2 rounded font-medium text-brand hover:text-brand-hover focus-visible:outline-2 focus-visible:outline-brand"
             >
               Join the beta
               <ArrowRight className="size-4 transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transition-none" />
