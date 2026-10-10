@@ -58,8 +58,7 @@ function BindingContext({
   useEffect(() => {
     availableRef.current = available;
   }, [available]);
-  const bindingAbsent = binding.error instanceof ApiError && binding.error.status === 404;
-  const bindingReady = !binding.isPending && (Boolean(binding.data) || bindingAbsent);
+  const bindingReady = !binding.isPending && !binding.error && binding.data !== undefined;
   const published = (automations.data?.automations ?? []).filter((automation) =>
     Boolean(automation.published)
   );
@@ -120,7 +119,7 @@ function BindingContext({
 
   async function remove() {
     const version = binding.data?.version;
-    if (!available || !version || busy || conflicted) return;
+    if (!available || !bindingReady || !version || busy || conflicted) return;
     const approved = await confirm({
       title: 'Restore app delivery?',
       description: `Remove version ${version} of the binding for endpoint ${endpointId}. Future verified events return to app delivery; already accepted receipts keep their captured decision.`,
@@ -134,7 +133,13 @@ function BindingContext({
       await deleteWebhookBinding(slug, endpointId, version);
       if (mounted.current) {
         setMessage('Binding removed for future events. Accepted work remains queued.');
-        void binding.refetch();
+        const refreshed = await binding.refetch();
+        if (mounted.current && !refreshed.isSuccess) {
+          setConflicted(true);
+          setMessage(
+            'Removal accepted, but current binding metadata could not be verified. Refresh before another change.'
+          );
+        }
       }
     } catch (caught) {
       if (mounted.current) {
@@ -154,7 +159,7 @@ function BindingContext({
   async function reviewConflict() {
     const result = await binding.refetch();
     if (!mounted.current) return;
-    if (result.isSuccess || (result.error instanceof ApiError && result.error.status === 404)) {
+    if (result.isSuccess) {
       setConflicted(false);
       setMessage(
         'Current binding metadata refreshed. Review the version and delivery decision before submitting.'
@@ -177,7 +182,7 @@ function BindingContext({
         {automations.error && (
           <p role="alert">Could not read automations: {errorMessage(automations.error)}</p>
         )}
-        {binding.error && !bindingAbsent ? (
+        {binding.error ? (
           <p role="alert">Could not read the current binding: {errorMessage(binding.error)}</p>
         ) : null}
         {binding.data && (
@@ -231,7 +236,7 @@ function BindingContext({
               type="button"
               size="sm"
               variant="outline"
-              disabled={!available || busy || conflicted}
+              disabled={!available || !bindingReady || busy || conflicted}
               onClick={() => void remove()}
             >
               Remove binding

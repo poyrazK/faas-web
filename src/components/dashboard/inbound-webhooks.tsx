@@ -7,6 +7,7 @@ import { useConfirm } from '@/components/ui/confirm';
 import { Panel } from '@/components/dashboard/primitives';
 import { CapabilityNotice } from '@/components/dashboard/capability-notice';
 import { WebhookAutomationBinding } from '@/components/dashboard/webhook-automation-binding';
+import { WebhookReceipt } from '@/components/dashboard/webhook-receipt';
 import { useCapability } from '@/lib/api/capabilities';
 import { ApiError } from '@/lib/api/client';
 import { errorMessage } from '@/lib/api/errors';
@@ -293,7 +294,7 @@ function InboundWebhooksContext({ accountId, slug }: { accountId: string; slug: 
           endpoint.name === selected.name &&
           endpoint.delivery_path === selected.delivery_path
       );
-      if (!stillSelected) {
+      if (!refreshed.isSuccess || refreshed.error || !stillSelected) {
         setManagementMessage(
           'The selected endpoint changed or could not be verified. Inspect the refreshed metadata before deleting.'
         );
@@ -507,11 +508,12 @@ function InboundWebhooksContext({ accountId, slug }: { accountId: string; slug: 
                 <span className="text-xs text-muted-foreground">
                   {endpoint.enabled ? 'Ingress enabled' : 'Ingress disabled'}
                 </span>
-                <span className="flex items-center gap-2">
+                <span className="flex max-w-full flex-wrap items-center gap-2">
                   <Button
                     type="button"
                     size="xs"
                     variant="outline"
+                    className="h-auto min-h-6 max-w-full break-all py-1 text-left whitespace-normal"
                     disabled={!available || managementBusy}
                     onClick={() =>
                       void changeEnabled(endpoint.id, endpoint.name, !endpoint.enabled)
@@ -523,6 +525,7 @@ function InboundWebhooksContext({ accountId, slug }: { accountId: string; slug: 
                     type="button"
                     size="xs"
                     variant="outline"
+                    className="h-auto min-h-6 max-w-full break-all py-1 text-left whitespace-normal"
                     onClick={() => {
                       setSelectedId(endpoint.id);
                       setPathDraft(endpoint.delivery_path);
@@ -610,6 +613,9 @@ function InboundWebhooksContext({ accountId, slug }: { accountId: string; slug: 
           slug={slug}
           endpointId={selectedEndpoint.id}
         />
+      )}
+      {selectedEndpoint && (
+        <WebhookReceipt accountId={accountId} slug={slug} endpointId={selectedEndpoint.id} />
       )}
 
       <Modal

@@ -44,6 +44,56 @@ async function get(path: string) {
   const response = await fetch(`${origin}${path}`);
   return { response, body: await response.json() };
 }
+it('separates one-time Stripe URL from metadata and looks up only a known receipt', async () => {
+  const apps = await get('/v1/apps');
+  const slug = apps.body[0].slug;
+  const name = `stripe-${Date.now()}`;
+  const createdResponse = await fetch(`${origin}/v1/apps/${slug}/inbound-webhooks`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, provider: 'stripe', signing_secret: 'whsec_private' }),
+  });
+  expect(createdResponse.status).toBe(201);
+  const created = await createdResponse.json();
+  expect(created.endpoint_url).toMatch(/^https:\/\//);
+  const list = await get(`/v1/apps/${slug}/inbound-webhooks`);
+  expect(list.body.find((item: { id: string }) => item.id === created.id)).not.toHaveProperty(
+    'endpoint_url'
+  );
+  const metadata = await get(`/v1/apps/${slug}/inbound-webhooks/${created.id}`);
+  expect(metadata.body).not.toHaveProperty('endpoint_url');
+  const duplicate = await fetch(`${origin}/v1/apps/${slug}/inbound-webhooks`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, provider: 'stripe', signing_secret: 'whsec_private' }),
+  });
+  expect(duplicate.status).toBe(409);
+  const binding = await fetch(
+    `${origin}/v1/apps/${slug}/inbound-webhooks/${created.id}/automation-binding`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': `bind-${name}` },
+      body: JSON.stringify({
+        expected_version: 0,
+        workflow_name: 'process-request',
+        event_type: '*',
+        take_over_delivery: true,
+      }),
+    }
+  );
+  expect(binding.status).toBe(200);
+  expect(
+    (await get(`/v1/apps/${slug}/inbound-webhooks/${created.id}/automation-receipts/evt_unknown`))
+      .response.status
+  ).toBe(404);
+  const known = await get(
+    `/v1/apps/${slug}/inbound-webhooks/${created.id}/automation-receipts/evt_mock_pending`
+  );
+  expect(known.body).toMatchObject({
+    provider_event_id: 'evt_mock_pending',
+    routing_status: 'pending',
+  });
+});
 it('separates purge acceptance from the cache revision applying in the mock runtime', async () => {
   const apps = await get('/v1/apps');
   const slug = apps.body[0].slug;

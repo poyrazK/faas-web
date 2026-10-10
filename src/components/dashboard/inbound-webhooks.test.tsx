@@ -39,6 +39,11 @@ vi.mock('@/components/dashboard/webhook-automation-binding', () => ({
     <div>Automation binding for {endpointId}</div>
   ),
 }));
+vi.mock('@/components/dashboard/webhook-receipt', () => ({
+  WebhookReceipt: ({ endpointId }: { endpointId: string }) => (
+    <section aria-label="Known event receipt">Receipt lookup for {endpointId}</section>
+  ),
+}));
 vi.mock('@/lib/api/capabilities', () => ({ useCapability: () => capability }));
 vi.mock('@/components/dashboard/capability-notice', () => ({
   CapabilityNotice: ({ state }: { state: string }) => <span>Capability: {state}</span>,
@@ -94,6 +99,15 @@ beforeEach(() => {
   capability.state = 'available';
   list.data = [];
   list.error = null;
+});
+
+it('opens a known-event receipt lookup for the selected endpoint', async () => {
+  list.data = [
+    { id: 'e1', name: 'stripe-primary', provider: 'stripe', enabled: true, delivery_path: '/' },
+  ];
+  renderInbound();
+  await userEvent.click(screen.getByRole('button', { name: 'Manage stripe-primary' }));
+  expect(screen.getByRole('region', { name: 'Known event receipt' })).toHaveTextContent('e1');
 });
 
 async function fillForm() {
@@ -197,7 +211,7 @@ it('replaces only an explicitly selected inaccessible endpoint after review', as
   await fillForm();
   await userEvent.click(screen.getByRole('button', { name: 'Create Stripe endpoint' }));
   await screen.findByText(/outcome is unknown/i);
-  refetch.mockResolvedValue({ data: list.data });
+  refetch.mockResolvedValue({ data: list.data, isSuccess: true, error: null });
   expect(remove).not.toHaveBeenCalled();
   await userEvent.selectOptions(
     screen.getByRole('combobox', { name: 'Inaccessible endpoint' }),
@@ -211,6 +225,31 @@ it('replaces only an explicitly selected inaccessible endpoint after review', as
   expect(create).toHaveBeenCalledTimes(1);
   expect(screen.getByRole('textbox', { name: 'Endpoint name' })).toHaveValue('stripe-primary');
   expect(screen.getByLabelText('Stripe signing secret')).toHaveValue('');
+});
+
+it('does not delete a cached same-name endpoint when fresh metadata fails', async () => {
+  create.mockRejectedValue(new TypeError('NetworkError'));
+  list.data = [
+    {
+      id: 'e1',
+      name: 'stripe-primary',
+      provider: 'stripe',
+      enabled: true,
+      delivery_path: '/stripe',
+    },
+  ];
+  renderInbound();
+  await fillForm();
+  await userEvent.click(screen.getByRole('button', { name: 'Create Stripe endpoint' }));
+  await screen.findByText(/outcome is unknown/i);
+  refetch.mockResolvedValue({ data: list.data, isSuccess: false, error: new Error('offline') });
+  await userEvent.selectOptions(
+    screen.getByRole('combobox', { name: 'Inaccessible endpoint' }),
+    'e1'
+  );
+  await userEvent.click(screen.getByRole('button', { name: 'Review replacement' }));
+  expect(remove).not.toHaveBeenCalled();
+  expect(screen.getByText(/could not be verified/i)).toBeInTheDocument();
 });
 
 it('does not submit a reviewed endpoint action after the app changes during confirmation', async () => {

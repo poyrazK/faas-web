@@ -1,11 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
-import { api, unwrap } from './client';
+import { api, ApiError, unwrap } from './client';
 import type { components } from './schema';
 import { retryPolicy } from './queries';
 
 export type InboundEndpoint = components['schemas']['InboundWebhookEndpointResponse'];
 export type InboundEndpointMetadata = Omit<InboundEndpoint, 'endpoint_url'>;
 export type WebhookBinding = components['schemas']['WebhookAutomationBindingResponse'];
+export type WebhookReceipt = components['schemas']['WebhookAutomationReceiptResponse'];
 export type StripeEndpointCreate = Omit<
   components['schemas']['CreateInboundWebhookEndpointRequest'],
   'provider' | 'delivery_path' | 'enabled'
@@ -121,12 +122,18 @@ export function useWebhookBinding(accountId: string, slug: string, id: string) {
   return useQuery({
     queryKey: webhookBindingKey(accountId, slug, id),
     queryFn: async ({ signal }) => {
-      const result = await unwrap(
-        api.GET('/v1/apps/{slug}/inbound-webhooks/{id}/automation-binding', {
-          params: { path: { slug, id } },
-          signal,
-        })
-      );
+      let result: WebhookBinding;
+      try {
+        result = await unwrap(
+          api.GET('/v1/apps/{slug}/inbound-webhooks/{id}/automation-binding', {
+            params: { path: { slug, id } },
+            signal,
+          })
+        );
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 404) return null;
+        throw error;
+      }
       const { endpoint_id, workflow_name, event_type, filter, version, updated_at } = result;
       return { endpoint_id, workflow_name, event_type, filter, version, updated_at };
     },
@@ -155,4 +162,64 @@ export function deleteWebhookBinding(slug: string, id: string, version: number) 
       params: { path: { slug, id }, query: { expected_version: version } },
     })
   );
+}
+
+export const webhookReceiptKey = (accountId: string, slug: string, id: string, eventId: string) =>
+  [...inboundWebhookKey(accountId, slug), id, 'automation-receipt', eventId] as const;
+
+/** A receipt is keyed by a customer-known event, not browsable as an inbox. */
+export async function lookupWebhookReceipt(
+  slug: string,
+  id: string,
+  eventId: string,
+  signal?: AbortSignal
+): Promise<WebhookReceipt> {
+  const result = await unwrap(
+    api.GET('/v1/apps/{slug}/inbound-webhooks/{id}/automation-receipts/{event_id}', {
+      params: { path: { slug, id, event_id: eventId } },
+      signal,
+    })
+  );
+  const {
+    receipt_id,
+    endpoint_id,
+    provider_event_id,
+    workflow_name,
+    status,
+    ignored_reason,
+    duplicate,
+    accepted_at,
+    event_source,
+    routing_status,
+    run_id,
+  } = result;
+  return {
+    receipt_id,
+    endpoint_id,
+    provider_event_id,
+    workflow_name,
+    status,
+    ignored_reason,
+    duplicate,
+    accepted_at,
+    event_source,
+    routing_status,
+    run_id,
+  };
+}
+
+export function useWebhookReceipt(accountId: string, slug: string, id: string, eventId: string) {
+  return useQuery({
+    queryKey: webhookReceiptKey(accountId, slug, id, eventId),
+    queryFn: async ({ signal }) => {
+      try {
+        return await lookupWebhookReceipt(slug, id, eventId, signal);
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 404) return null;
+        throw error;
+      }
+    },
+    enabled: Boolean(accountId && slug && id && eventId),
+    retry: retryPolicy,
+  });
 }

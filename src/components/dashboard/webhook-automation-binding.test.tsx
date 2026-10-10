@@ -21,15 +21,16 @@ const automations = {
   error: null as Error | null,
 };
 const binding = {
-  data: undefined as
+  data: null as
     | undefined
+    | null
     | {
         version: number;
         workflow_name: string;
         event_type: string;
         filter?: Record<string, unknown>;
       },
-  error: new ApiError({ status: 404, code: 'not_found', title: 'Not found' }) as Error | null,
+  error: null as Error | null,
   isPending: false,
   refetch: bindingRefetch,
 };
@@ -71,14 +72,14 @@ function renderBinding(accountId = 'account-1', slug = 'app-a', endpointId = 'e1
 beforeEach(() => {
   put.mockReset().mockResolvedValue({ version: 1 });
   remove.mockReset().mockResolvedValue(undefined);
-  bindingRefetch.mockReset();
+  bindingRefetch.mockReset().mockResolvedValue({ isSuccess: true, data: null, error: null });
   confirm.mockReset().mockResolvedValue(true);
   capability.accountId = 'account-1';
   capability.state = 'available';
   automations.data.runtime_enabled = true;
   automations.error = null;
-  binding.data = undefined;
-  binding.error = new ApiError({ status: 404, code: 'not_found', title: 'Not found' });
+  binding.data = null;
+  binding.error = null;
 });
 
 it('requires workflow availability and a published same-app automation', async () => {
@@ -154,6 +155,30 @@ it('removes a binding with the observed version after explicit review', async ()
   renderBinding();
   await userEvent.click(screen.getByRole('button', { name: 'Remove binding' }));
   expect(remove).toHaveBeenCalledWith('app-a', 'e1', 4);
+});
+
+it('creates at version zero after a removed binding is observed absent', async () => {
+  binding.data = { version: 4, workflow_name: 'published', event_type: '*' };
+  bindingRefetch.mockImplementation(async () => {
+    binding.data = null;
+    return { isSuccess: true, data: null, error: null };
+  });
+  const view = renderBinding();
+  await userEvent.click(screen.getByRole('button', { name: 'Remove binding' }));
+  await waitFor(() => expect(bindingRefetch).toHaveBeenCalled());
+  view.rerender(
+    <QueryClientProvider client={new QueryClient()}>
+      <WebhookAutomationBinding accountId="account-1" slug="app-a" endpointId="e1" />
+    </QueryClientProvider>
+  );
+  await userEvent.selectOptions(
+    screen.getByRole('combobox', { name: 'Published automation' }),
+    'published'
+  );
+  await userEvent.type(screen.getByRole('textbox', { name: 'Stripe event type' }), '*');
+  await userEvent.click(screen.getByRole('button', { name: 'Review binding' }));
+  expect(put.mock.calls.at(-1)?.[2]).toMatchObject({ expected_version: 0 });
+  expect(screen.queryByText(/Current binding:/)).not.toBeInTheDocument();
 });
 
 it('does not save after account and app change while takeover review is pending', async () => {

@@ -8,14 +8,17 @@ import {
   deleteInboundEndpoint,
   deleteWebhookBinding,
   inboundWebhookKey,
+  lookupWebhookReceipt,
   putWebhookBinding,
   rotateInboundEndpointSecret,
   setInboundEndpointEnabled,
   setInboundEndpointDeliveryPath,
   stripInboundEndpointSecrets,
   useInboundEndpoints,
+  useWebhookReceipt,
   useWebhookBinding,
   webhookBindingKey,
+  webhookReceiptKey,
 } from './inbound-webhooks';
 
 const rawEndpoint = {
@@ -194,4 +197,111 @@ it('reads a binding in the endpoint scope and sends a versioned takeover without
   expect(remove).toHaveBeenCalledWith('/v1/apps/{slug}/inbound-webhooks/{id}/automation-binding', {
     params: { path: { slug: 'app-a', id: 'e1' }, query: { expected_version: 4 } },
   });
+});
+
+it('replaces retained binding data with explicit absence after a 404 refresh', async () => {
+  const get = vi.spyOn(api, 'GET');
+  get.mockResolvedValueOnce({
+    data: {
+      endpoint_id: 'e1',
+      workflow_name: 'paid',
+      event_type: '*',
+      filter: {},
+      version: 4,
+      updated_at: '2026-10-10T00:00:00Z',
+    },
+    response: new Response(),
+  } as never);
+  get.mockResolvedValueOnce({
+    error: { status: 404, code: 'not_found', title: 'Not found' },
+    response: new Response(JSON.stringify({ status: 404, code: 'not_found', title: 'Not found' }), {
+      status: 404,
+    }),
+  } as never);
+  const { wrapper } = setup();
+  const hook = renderHook(() => useWebhookBinding('account-1', 'app-a', 'e1'), { wrapper });
+  await waitFor(() => expect(hook.result.current.data?.version).toBe(4));
+  await act(async () => {
+    await hook.result.current.refetch();
+  });
+  await waitFor(() => expect(hook.result.current.data).toBeNull());
+  expect(hook.result.current.isSuccess).toBe(true);
+});
+
+it('looks up only a known event, scopes it to account/app/endpoint and strips unexpected secrets', async () => {
+  const receipt = {
+    receipt_id: 'receipt-1',
+    endpoint_id: 'e1',
+    provider_event_id: 'evt_1',
+    workflow_name: 'paid',
+    status: 'accepted',
+    duplicate: true,
+    accepted_at: '2026-10-10T00:00:00Z',
+    event_source: 'gregale.inbound.stripe.e1',
+    routing_status: 'pending',
+    endpoint_url: 'secret-token',
+  };
+  const get = vi
+    .spyOn(api, 'GET')
+    .mockResolvedValue({ data: receipt, response: new Response() } as never);
+  const { client, wrapper } = setup();
+  const hook = renderHook(
+    ({ account, slug, event }) => useWebhookReceipt(account, slug, 'e1', event),
+    {
+      wrapper,
+      initialProps: { account: 'account-1', slug: 'app-a', event: '' },
+    }
+  );
+  expect(get).not.toHaveBeenCalled();
+  hook.rerender({ account: 'account-1', slug: 'app-a', event: 'evt_1' });
+  await waitFor(() => expect(hook.result.current.isSuccess).toBe(true));
+  expect(get).toHaveBeenCalledWith(
+    '/v1/apps/{slug}/inbound-webhooks/{id}/automation-receipts/{event_id}',
+    expect.objectContaining({
+      params: { path: { slug: 'app-a', id: 'e1', event_id: 'evt_1' } },
+      signal: expect.any(AbortSignal),
+    })
+  );
+  expect(
+    JSON.stringify(client.getQueryData(webhookReceiptKey('account-1', 'app-a', 'e1', 'evt_1')))
+  ).not.toContain('secret-token');
+  hook.rerender({ account: 'account-2', slug: 'app-b', event: '' });
+  expect(hook.result.current.data).toBeUndefined();
+  expect(await lookupWebhookReceipt('app-a', 'e1', 'evt_1')).toMatchObject({
+    routing_status: 'pending',
+  });
+});
+
+it('clears a retained receipt when a later known-event lookup returns 404', async () => {
+  const get = vi.spyOn(api, 'GET');
+  get.mockResolvedValueOnce({
+    data: {
+      receipt_id: 'r1',
+      endpoint_id: 'e1',
+      provider_event_id: 'evt_1',
+      workflow_name: 'paid',
+      status: 'accepted',
+      duplicate: false,
+      accepted_at: '2026-10-10T00:00:00Z',
+      event_source: 'gregale.inbound.stripe.e1',
+      routing_status: 'enqueued',
+      run_id: 'run-1',
+    },
+    response: new Response(),
+  } as never);
+  get.mockResolvedValueOnce({
+    error: { status: 404, code: 'not_found', title: 'Not found' },
+    response: new Response(JSON.stringify({ status: 404, code: 'not_found', title: 'Not found' }), {
+      status: 404,
+    }),
+  } as never);
+  const { wrapper } = setup();
+  const hook = renderHook(() => useWebhookReceipt('account-1', 'app-a', 'e1', 'evt_1'), {
+    wrapper,
+  });
+  await waitFor(() => expect(hook.result.current.data?.run_id).toBe('run-1'));
+  await act(async () => {
+    await hook.result.current.refetch();
+  });
+  await waitFor(() => expect(hook.result.current.data).toBeNull());
 });

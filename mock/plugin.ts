@@ -2390,6 +2390,153 @@ route('DELETE', '/v1/postgres/bindings/{id}', ({ params }) => {
   return binding;
 });
 
+type MockInboundEndpoint = components['schemas']['InboundWebhookEndpointResponse'];
+type MockWebhookBinding = components['schemas']['WebhookAutomationBindingResponse'];
+const inboundEndpoints = new Map<string, MockInboundEndpoint[]>();
+const webhookBindings = new Map<string, MockWebhookBinding>();
+function inboundEndpoint(slug: string, id: string) {
+  app(slug);
+  const endpoint = (inboundEndpoints.get(slug) ?? []).find((item) => item.id === id);
+  if (!endpoint) throw new Problem(404, 'inbound_webhook_not_found', 'No such endpoint.');
+  return endpoint;
+}
+route('GET', '/v1/apps/{slug}/inbound-webhooks', ({ params }) => {
+  app(params.slug);
+  return inboundEndpoints.get(params.slug) ?? [];
+});
+route('POST', '/v1/apps/{slug}/inbound-webhooks', ({ params, body }) => {
+  const owner = app(params.slug);
+  const name = String(body.name ?? '');
+  const path = String(body.delivery_path ?? '/');
+  const secret = String(body.signing_secret ?? '');
+  if (
+    body.provider !== 'stripe' ||
+    !/^[a-z][a-z0-9-]{0,62}$/.test(name) ||
+    !path.startsWith('/') ||
+    /[?#]/.test(path) ||
+    !secret ||
+    new TextEncoder().encode(secret).length > 256
+  )
+    throw new Problem(422, 'invalid_inbound_webhook', 'Invalid Stripe endpoint settings.');
+  const list = inboundEndpoints.get(params.slug) ?? [];
+  if (list.some((item) => item.name === name))
+    throw new Problem(409, 'inbound_webhook_exists', 'An endpoint already uses that name.');
+  const now = new Date().toISOString();
+  const endpoint: MockInboundEndpoint = {
+    id: db.id(),
+    app_id: owner.id,
+    account_id: db.ACCOUNT_ID,
+    name,
+    provider: 'stripe',
+    delivery_path: path,
+    enabled: body.enabled !== false,
+    signing_secret_masked: '***',
+    created_at: now,
+    updated_at: now,
+  };
+  list.push(endpoint);
+  inboundEndpoints.set(params.slug, list);
+  // The opaque token is disclosed only on this one response, never stored in metadata.
+  return status(201, {
+    ...endpoint,
+    endpoint_url: `https://hooks.example.test/stripe/${endpoint.id}/${randomBytes(18).toString('hex')}`,
+  });
+});
+route('GET', '/v1/apps/{slug}/inbound-webhooks/{id}', ({ params }) =>
+  inboundEndpoint(params.slug, params.id)
+);
+route('PATCH', '/v1/apps/{slug}/inbound-webhooks/{id}', ({ params, body }) => {
+  const endpoint = inboundEndpoint(params.slug, params.id);
+  if ('delivery_path' in body) {
+    const path = String(body.delivery_path ?? '');
+    if (!path.startsWith('/') || /[?#]/.test(path) || path.length > 256)
+      throw new Problem(422, 'invalid_delivery_path');
+    endpoint.delivery_path = path;
+  }
+  if ('signing_secret' in body && !String(body.signing_secret ?? ''))
+    throw new Problem(422, 'invalid_signing_secret');
+  if ('enabled' in body) endpoint.enabled = Boolean(body.enabled);
+  endpoint.updated_at = new Date().toISOString();
+  return endpoint;
+});
+route('DELETE', '/v1/apps/{slug}/inbound-webhooks/{id}', ({ params }) => {
+  inboundEndpoint(params.slug, params.id);
+  inboundEndpoints.set(
+    params.slug,
+    (inboundEndpoints.get(params.slug) ?? []).filter((item) => item.id !== params.id)
+  );
+  webhookBindings.delete(params.id);
+  return NO_CONTENT;
+});
+route('GET', '/v1/apps/{slug}/inbound-webhooks/{id}/automation-binding', ({ params }) => {
+  inboundEndpoint(params.slug, params.id);
+  const binding = webhookBindings.get(params.id);
+  if (!binding) throw new Problem(404, 'webhook_automation_binding_not_found');
+  return binding;
+});
+route('PUT', '/v1/apps/{slug}/inbound-webhooks/{id}/automation-binding', ({ params, body }) => {
+  inboundEndpoint(params.slug, params.id);
+  const prior = webhookBindings.get(params.id);
+  if ((prior?.version ?? 0) !== body.expected_version)
+    throw new Problem(409, 'webhook_automation_binding_conflict', 'Refresh the binding.');
+  const name = String(body.workflow_name ?? '');
+  if (
+    !body.take_over_delivery ||
+    !automationMock.definitions
+      .get(params.slug)
+      ?.some((item) => item.name === name && item.published)
+  )
+    throw new Problem(422, 'automation_unpublished', 'Choose a published automation in this app.');
+  const binding: MockWebhookBinding = {
+    endpoint_id: params.id,
+    workflow_name: name,
+    event_type: String(body.event_type ?? ''),
+    filter: (body.filter ?? {}) as Record<string, unknown>,
+    version: (prior?.version ?? 0) + 1,
+    updated_at: new Date().toISOString(),
+  };
+  webhookBindings.set(params.id, binding);
+  return binding;
+});
+route('DELETE', '/v1/apps/{slug}/inbound-webhooks/{id}/automation-binding', ({ params, query }) => {
+  inboundEndpoint(params.slug, params.id);
+  const binding = webhookBindings.get(params.id);
+  if (!binding) throw new Problem(404, 'webhook_automation_binding_not_found');
+  if (binding.version !== Number(query.get('expected_version')))
+    throw new Problem(409, 'webhook_automation_binding_conflict', 'Refresh the binding.');
+  webhookBindings.delete(params.id);
+  return NO_CONTENT;
+});
+route(
+  'GET',
+  '/v1/apps/{slug}/inbound-webhooks/{id}/automation-receipts/{event_id}',
+  ({ params }) => {
+    inboundEndpoint(params.slug, params.id);
+    const binding = webhookBindings.get(params.id);
+    if (
+      !binding ||
+      !['evt_mock_pending', 'evt_mock_duplicate', 'evt_mock_failed'].includes(params.event_id)
+    )
+      throw new Problem(404, 'webhook_automation_receipt_not_found');
+    return {
+      receipt_id: db.id(),
+      endpoint_id: params.id,
+      provider_event_id: params.event_id,
+      workflow_name: binding.workflow_name,
+      status: 'accepted' as const,
+      duplicate: params.event_id === 'evt_mock_duplicate',
+      accepted_at: new Date().toISOString(),
+      event_source: `gregale.inbound.stripe.${params.id}`,
+      routing_status:
+        params.event_id === 'evt_mock_failed'
+          ? ('failed' as const)
+          : params.event_id === 'evt_mock_duplicate'
+            ? ('enqueued' as const)
+            : ('pending' as const),
+    };
+  }
+);
+
 route('GET', '/v1/apps/{slug}/webhooks', ({ params }) => listOf(db.webhooks, params.slug));
 route('POST', '/v1/apps/{slug}/webhooks', ({ params, body }) => {
   const a = app(params.slug);
