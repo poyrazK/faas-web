@@ -7,6 +7,7 @@ import { Pill } from '@/components/dashboard/resource-table';
 import { ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
 import { DeadLetterPanel } from '@/components/dashboard/dead-letter-panel';
+import { QueueConsumers } from '@/components/dashboard/queue-consumers';
 import {
   useQueuePeek,
   useQueueSend,
@@ -288,6 +289,8 @@ export function QueuesBody({ slug }: { slug: string }) {
         />
         <StatTile label="Plan cap" value={String(state.data?.plan_cap ?? '—')} />
       </div>
+
+      <QueueConsumers slug={slug} />
 
       <QueueSendPanel slug={slug} />
       <DelayedTasksPanel slug={slug} />
