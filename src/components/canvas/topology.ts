@@ -23,17 +23,17 @@ export type Read<T> =
 
 export type AppPhase = 'running' | 'parked' | 'idle' | 'deploying' | 'error' | 'undeployed';
 
-export interface InternetData {
+export type InternetData = {
   kind: 'internet';
-}
-export interface DomainData {
+};
+export type DomainData = {
   kind: 'domain';
   domain: string;
   verified: boolean;
   txtRecord: string | null;
   appSlug: string;
-}
-export interface AppData {
+};
+export type AppData = {
   kind: 'app';
   slug: string;
   phase: AppPhase;
@@ -43,8 +43,8 @@ export interface AppData {
   connections: 'ready' | 'loading' | 'error';
   /** Only known once the app's bucket list has answered. */
   buckets?: { enabled: boolean; atLimit: boolean; defaultRegion: string };
-}
-export interface CronData {
+};
+export type CronData = {
   kind: 'cron';
   id: string;
   schedule: string;
@@ -53,19 +53,19 @@ export interface CronData {
   enabled: boolean;
   lastFiredAt: string | null;
   appSlug: string;
-}
-export interface BucketData {
+};
+export type BucketData = {
   kind: 'bucket';
   appSlug: string;
   name: string;
   state: string;
-}
-export interface PostgresData {
+};
+export type PostgresData = {
   kind: 'postgres';
   id: string;
   name: string;
   state: string;
-}
+};
 export type CanvasNodeData =
   InternetData | DomainData | AppData | CronData | BucketData | PostgresData;
 export type CanvasNodeKind = CanvasNodeData['kind'];
