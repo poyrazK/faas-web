@@ -141,7 +141,7 @@ it('keeps occurrence, release and activity continuations independent and bounds 
     'app-a',
     'issue-1',
     'events',
-    undefined,
+    '2026-10-09T00:00:00Z',
     'ev-next'
   );
   expect(useIssueHistory).toHaveBeenCalledWith(
@@ -149,7 +149,7 @@ it('keeps occurrence, release and activity continuations independent and bounds 
     'app-a',
     'issue-1',
     'releases',
-    undefined,
+    '2026-10-09T00:00:00Z',
     'rel-next'
   );
   expect(useIssueHistory).toHaveBeenCalledWith(
@@ -157,7 +157,7 @@ it('keeps occurrence, release and activity continuations independent and bounds 
     'app-a',
     'issue-1',
     'activity',
-    undefined,
+    '2026-10-09T00:00:00Z',
     'act-next'
   );
   expect(screen.getByText(/event-2/i)).toBeInTheDocument();

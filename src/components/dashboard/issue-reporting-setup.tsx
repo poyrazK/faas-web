@@ -31,6 +31,11 @@ type Unresolved = {
 function expiryAfterSubmission(hours: number) {
   return new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
 }
+function sameExpiryInstant(left: string, right: string) {
+  const leftTime = Date.parse(left);
+  const rightTime = Date.parse(right);
+  return Number.isFinite(leftTime) && leftTime === rightTime;
+}
 function readRecovery(key: string): Unresolved | null {
   if (typeof window === 'undefined') return null;
   try {
@@ -114,14 +119,6 @@ function SetupContext({ accountId, slug, onClose }: Props) {
     };
   }, []);
   const current = (expected: string) => mounted.current && context === expected;
-  function saveRecovery(value: Unresolved) {
-    setUnresolved(value);
-    try {
-      sessionStorage.setItem(recoveryKey, JSON.stringify(value));
-    } catch {
-      /* Browser storage may be denied. */
-    }
-  }
   function clearRecovery() {
     setUnresolved(null);
     try {
@@ -151,7 +148,7 @@ function SetupContext({ accountId, slug, onClose }: Props) {
         token.name === unresolved.name &&
         token.deployment_id === unresolved.deploymentId &&
         token.environment === unresolved.environment &&
-        token.expires_at === unresolved.expiresAt
+        sameExpiryInstant(token.expires_at, unresolved.expiresAt)
     );
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -186,6 +183,22 @@ function SetupContext({ accountId, slug, onClose }: Props) {
     }
     const expiresAt = expiryAfterSubmission(hours);
     const expected = context;
+    const attempt = {
+      name: requestedName,
+      deploymentId,
+      environment: requestedEnvironment,
+      expiresAt,
+    };
+    // The token POST is not replay safe. Record its identity before the request can commit.
+    try {
+      sessionStorage.setItem(recoveryKey, JSON.stringify(attempt));
+    } catch {
+      setError(
+        'Browser storage is unavailable. Enable session storage before creating a one-time token.'
+      );
+      return;
+    }
+    setUnresolved(attempt);
     setBusy(true);
     setError('');
     try {
@@ -195,45 +208,42 @@ function SetupContext({ accountId, slug, onClose }: Props) {
         environment: requestedEnvironment,
         expires_at: expiresAt,
       });
+      const observed = { ...attempt, ...(result.id ? { tokenId: result.id } : {}) };
+      // A late response still belongs to the original account and app, never the new view.
+      try {
+        sessionStorage.setItem(recoveryKey, JSON.stringify(observed));
+      } catch {
+        /* The preflight record remains in component state for this view. */
+      }
       if (!current(expected) || !availableRef.current) return;
       if (!result.token) {
-        saveRecovery({
-          name: requestedName,
-          deploymentId,
-          environment: requestedEnvironment,
-          expiresAt,
-        });
+        setUnresolved(observed);
         void tokens.refetch();
         return;
       }
       setDisclosure({ token: result.token, id: result.id, context: expected });
-      saveRecovery({
-        name: requestedName,
-        deploymentId,
-        environment: requestedEnvironment,
-        expiresAt,
-        tokenId: result.id,
-      });
+      setUnresolved(observed);
       setAcknowledged(false);
       setCopyFailed(false);
       setName('');
       void cache.invalidateQueries({ queryKey: issueTokensKey(accountId, slug) });
     } catch (caught) {
-      if (!current(expected) || !availableRef.current) return;
       const definitive =
         caught instanceof ApiError &&
         ([400, 401, 402, 403, 404, 422].includes(caught.status) ||
           caught.code === 'issue_quota_exceeded');
-      if (definitive) setError(caught.message);
-      else {
-        saveRecovery({
-          name: requestedName,
-          deploymentId,
-          environment: requestedEnvironment,
-          expiresAt,
-        });
-        void tokens.refetch();
+      if (definitive) {
+        try {
+          sessionStorage.removeItem(recoveryKey);
+        } catch {
+          /* Keep the conservative in-memory block if storage changes fail. */
+        }
       }
+      if (!current(expected) || !availableRef.current) return;
+      if (definitive) {
+        setUnresolved(null);
+        setError(caught.message);
+      } else void tokens.refetch();
     } finally {
       if (current(expected)) setBusy(false);
     }
@@ -259,7 +269,11 @@ function SetupContext({ accountId, slug, onClose }: Props) {
       if (!current(expected)) return;
       const refreshed = await tokens.refetch();
       if (!current(expected)) return;
-      if (refreshed.isSuccess && !refreshed.data?.some((token) => token.id === revokeTarget.id)) {
+      const verified =
+        refreshed.isSuccess &&
+        Array.isArray(refreshed.data) &&
+        !refreshed.data.some((token) => token.id === revokeTarget.id && !token.revoked_at);
+      if (verified) {
         setRevokeTarget(null);
         if (
           unresolved &&

@@ -162,6 +162,62 @@ it('does not show a late bearer after account context changes', async () => {
     expires_at: '2026-10-11T00:00:00Z',
   });
   await waitFor(() => expect(screen.queryByDisplayValue('g_issue_late')).not.toBeInTheDocument());
+  expect(sessionStorage.getItem('gregale.issue-token-recovery.account-1.app-a')).toContain('tok-1');
+});
+
+it('records the attempt before a pending create can outlive the view', async () => {
+  let resolve!: (value: unknown) => void;
+  createIssueTokenOnce.mockImplementationOnce(
+    () =>
+      new Promise((done) => {
+        resolve = done;
+      })
+  );
+  const view = render(<IssueReportingSetup accountId="account-1" slug="app-a" onClose={vi.fn()} />);
+  await fillAndCreate();
+  expect(sessionStorage.getItem('gregale.issue-token-recovery.account-1.app-a')).toContain(
+    'production'
+  );
+  view.unmount();
+  resolve({
+    id: 'tok-1',
+    token: 'g_issue_late',
+    name: 'production',
+    deployment_id: 'dep-1',
+    environment: 'application',
+    expires_at: '2026-10-11T00:00:00Z',
+  });
+  await waitFor(() =>
+    expect(sessionStorage.getItem('gregale.issue-token-recovery.account-1.app-a')).toContain(
+      'tok-1'
+    )
+  );
+  render(<IssueReportingSetup accountId="account-1" slug="app-a" onClose={vi.fn()} />);
+  expect(screen.getByRole('button', { name: 'Create reporting token' })).toBeDisabled();
+  expect(screen.queryByDisplayValue('g_issue_late')).not.toBeInTheDocument();
+});
+
+it('matches an ambiguous token by expiry instant despite Go timestamp normalization', () => {
+  sessionStorage.setItem(
+    'gregale.issue-token-recovery.account-1.app-a',
+    JSON.stringify({
+      name: 'production',
+      deploymentId: 'dep-1',
+      environment: 'application',
+      expiresAt: '2099-01-01T00:00:00.120Z',
+    })
+  );
+  tokens.data = [
+    {
+      id: 'tok-1',
+      name: 'production',
+      deployment_id: 'dep-1',
+      environment: 'application',
+      expires_at: '2099-01-01T00:00:00.12Z',
+    },
+  ];
+  render(<IssueReportingSetup accountId="account-1" slug="app-a" onClose={vi.fn()} />);
+  expect(screen.getByText(/1 exact metadata match/i)).toBeInTheDocument();
 });
 
 it('reviews revocation by token ID even when names collide', async () => {
@@ -216,4 +272,38 @@ it('reports a confirmed token quota denial without entering ambiguous recovery',
   await screen.findByText('Reporting token quota reached.');
   expect(screen.getByRole('button', { name: 'Create reporting token' })).toBeEnabled();
   expect(tokens.refetch).not.toHaveBeenCalled();
+});
+
+it('unblocks reviewed recovery when metadata confirms the identified token is revoked', async () => {
+  sessionStorage.setItem(
+    'gregale.issue-token-recovery.account-1.app-a',
+    JSON.stringify({
+      name: 'production',
+      deploymentId: 'dep-1',
+      environment: 'application',
+      expiresAt: '2099-01-01T00:00:00Z',
+      tokenId: 'tok-1',
+    })
+  );
+  tokens.data = [
+    {
+      id: 'tok-1',
+      name: 'production',
+      deployment_id: 'dep-1',
+      environment: 'application',
+      expires_at: '2099-01-01T00:00:00Z',
+    },
+  ];
+  tokens.refetch.mockResolvedValueOnce({
+    isSuccess: true,
+    data: [{ ...tokens.data[0], revoked_at: '2026-10-10T00:00:00Z' }],
+  });
+  render(<IssueReportingSetup accountId="account-1" slug="app-a" onClose={vi.fn()} />);
+  expect(screen.getByRole('button', { name: 'Create reporting token' })).toBeDisabled();
+  await userEvent.click(screen.getByRole('button', { name: 'Review revoke' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Revoke this token' }));
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: 'Create reporting token' })).toBeEnabled()
+  );
+  expect(sessionStorage.getItem('gregale.issue-token-recovery.account-1.app-a')).toBeNull();
 });

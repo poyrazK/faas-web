@@ -17,14 +17,16 @@ function History({
   slug,
   issueId,
   kind,
+  since,
   first,
   initial,
 }: Props & {
   kind: IssueHistoryKind;
+  since: string;
   first: string | undefined;
   initial: { id: string; text: string }[];
 }) {
-  const continuation = useIssueHistory(accountId, slug, issueId, kind, undefined, first ?? '');
+  const continuation = useIssueHistory(accountId, slug, issueId, kind, since, first ?? '');
   const later =
     continuation.data?.pages.flatMap((page) =>
       kind === 'events'
@@ -288,6 +290,7 @@ export function IssueDetail({ accountId, slug, issueId, onBack }: Props) {
                 issueId={issueId}
                 onBack={onBack}
                 kind="events"
+                since={detail.data.impact.window_start}
                 first={detail.data.next_event_cursor}
                 initial={detail.data.events.map((event) => ({
                   id: event.id ?? `${event.deployment_id}-${event.received_at}`,
@@ -300,6 +303,7 @@ export function IssueDetail({ accountId, slug, issueId, onBack }: Props) {
                 issueId={issueId}
                 onBack={onBack}
                 kind="releases"
+                since={detail.data.impact.window_start}
                 first={detail.data.next_release_cursor}
                 initial={detail.data.releases.map((release) => ({
                   id: release.deployment_id,
@@ -312,6 +316,7 @@ export function IssueDetail({ accountId, slug, issueId, onBack }: Props) {
                 issueId={issueId}
                 onBack={onBack}
                 kind="activity"
+                since={detail.data.impact.window_start}
                 first={detail.data.next_activity_cursor}
                 initial={detail.data.activity.map((activity) => ({
                   id: activity.id,
