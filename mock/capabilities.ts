@@ -126,6 +126,17 @@ const entries: Capability[] = [
     acceptance: 'mock-only',
     enabled: true,
   },
+  {
+    key: 'declarative-response-caching',
+    name: 'Declarative response caching',
+    category: 'delivery',
+    description: 'Reviewed GET and HEAD edge cache rules with targeted invalidation.',
+    maturity: 'preview',
+    plans: PAID,
+    docs_url: '/docs/faas_openapi_spec',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
 ];
 export function mockCapabilities(
   plan: Plan,
