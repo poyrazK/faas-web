@@ -15125,7 +15125,7 @@ export interface components {
              */
             validate_mode: "block" | "observe" | "warn";
             /** @description Kind-tagged union — shape varies by `kind`. */
-            action: components["schemas"]["EdgeRuleRouteAction"] | components["schemas"]["EdgeRuleRewriteAction"] | components["schemas"]["EdgeRuleRedirectAction"] | components["schemas"]["EdgeRuleHeadersAction"] | components["schemas"]["EdgeRuleCORSAction"] | components["schemas"]["EdgeRuleJWTAction"] | components["schemas"]["EdgeRuleIPAction"] | components["schemas"]["EdgeRuleValidateAction"] | components["schemas"]["EdgeRuleLimitAction"] | components["schemas"]["EdgeRuleMaintenanceAction"] | components["schemas"]["EdgeRuleGeoAction"] | components["schemas"]["EdgeRuleThrottleAction"] | components["schemas"]["EdgeRuleBudgetAction"];
+            action: components["schemas"]["EdgeRuleRouteAction"] | components["schemas"]["EdgeRuleRewriteAction"] | components["schemas"]["EdgeRuleRedirectAction"] | components["schemas"]["EdgeRuleHeadersAction"] | components["schemas"]["EdgeRuleCORSAction"] | components["schemas"]["EdgeRuleJWTAction"] | components["schemas"]["EdgeRuleIPAction"] | components["schemas"]["EdgeRuleValidateAction"] | components["schemas"]["EdgeRuleLimitAction"] | components["schemas"]["EdgeRuleMaintenanceAction"] | components["schemas"]["EdgeRuleGeoAction"] | components["schemas"]["EdgeRuleThrottleAction"] | components["schemas"]["EdgeRuleBudgetAction"] | components["schemas"]["EdgeRuleCacheAction"];
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -15151,7 +15151,7 @@ export interface components {
              */
             validate_mode: "block" | "observe" | "warn";
             /** @description Kind-tagged action body — shape depends on `kind`. */
-            action: components["schemas"]["EdgeRuleRouteAction"] | components["schemas"]["EdgeRuleRewriteAction"] | components["schemas"]["EdgeRuleRedirectAction"] | components["schemas"]["EdgeRuleHeadersAction"] | components["schemas"]["EdgeRuleCORSAction"] | components["schemas"]["EdgeRuleJWTAction"] | components["schemas"]["EdgeRuleIPAction"] | components["schemas"]["EdgeRuleValidateAction"] | components["schemas"]["EdgeRuleLimitAction"] | components["schemas"]["EdgeRuleMaintenanceAction"] | components["schemas"]["EdgeRuleGeoAction"] | components["schemas"]["EdgeRuleThrottleAction"] | components["schemas"]["EdgeRuleBudgetAction"];
+            action: components["schemas"]["EdgeRuleRouteAction"] | components["schemas"]["EdgeRuleRewriteAction"] | components["schemas"]["EdgeRuleRedirectAction"] | components["schemas"]["EdgeRuleHeadersAction"] | components["schemas"]["EdgeRuleCORSAction"] | components["schemas"]["EdgeRuleJWTAction"] | components["schemas"]["EdgeRuleIPAction"] | components["schemas"]["EdgeRuleValidateAction"] | components["schemas"]["EdgeRuleLimitAction"] | components["schemas"]["EdgeRuleMaintenanceAction"] | components["schemas"]["EdgeRuleGeoAction"] | components["schemas"]["EdgeRuleThrottleAction"] | components["schemas"]["EdgeRuleBudgetAction"] | components["schemas"]["EdgeRuleCacheAction"];
         };
         /** @description Partial update — every field optional. Kind is not patchable. */
         UpdateEdgeRuleRequest: {
@@ -15167,7 +15167,7 @@ export interface components {
              */
             validate_mode?: "block" | "observe" | "warn";
             /** @description Replaces the jsonb column whole. */
-            action?: components["schemas"]["EdgeRuleRouteAction"] | components["schemas"]["EdgeRuleRewriteAction"] | components["schemas"]["EdgeRuleRedirectAction"] | components["schemas"]["EdgeRuleHeadersAction"] | components["schemas"]["EdgeRuleCORSAction"] | components["schemas"]["EdgeRuleJWTAction"] | components["schemas"]["EdgeRuleIPAction"] | components["schemas"]["EdgeRuleValidateAction"] | components["schemas"]["EdgeRuleLimitAction"] | components["schemas"]["EdgeRuleMaintenanceAction"] | components["schemas"]["EdgeRuleGeoAction"] | components["schemas"]["EdgeRuleThrottleAction"] | components["schemas"]["EdgeRuleBudgetAction"];
+            action?: components["schemas"]["EdgeRuleRouteAction"] | components["schemas"]["EdgeRuleRewriteAction"] | components["schemas"]["EdgeRuleRedirectAction"] | components["schemas"]["EdgeRuleHeadersAction"] | components["schemas"]["EdgeRuleCORSAction"] | components["schemas"]["EdgeRuleJWTAction"] | components["schemas"]["EdgeRuleIPAction"] | components["schemas"]["EdgeRuleValidateAction"] | components["schemas"]["EdgeRuleLimitAction"] | components["schemas"]["EdgeRuleMaintenanceAction"] | components["schemas"]["EdgeRuleGeoAction"] | components["schemas"]["EdgeRuleThrottleAction"] | components["schemas"]["EdgeRuleBudgetAction"] | components["schemas"]["EdgeRuleCacheAction"];
         };
         /** @description Re-targets the matched request to another app owned by the same account. */
         EdgeRuleRouteAction: {
