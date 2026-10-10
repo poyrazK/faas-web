@@ -9,22 +9,30 @@ import { Button } from '@/components/ui/button';
 import { ErrorState, LoadingState, Panel } from '../primitives';
 import { EnvironmentStateView } from './environment-state';
 import { EnvironmentDiffView } from './environment-diff';
+import { StageQueueOverview } from './stage-queue-bindings';
+import type { components } from '@/lib/api/schema';
 const selectClass =
   'h-9 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring';
 type Props = {
   accountId: string;
+  plan: components['schemas']['CapabilitiesResponse']['plan'];
   projectId: string;
   slug: string;
   environment?: string;
   compare?: string;
+  queueWorkload?: string;
   onChange: (next: { environment?: string; compare?: string }) => void;
+  onSelectQueueWorkload: (slug?: string) => void;
 };
 function SelectedEnvironment({
   accountId,
+  plan,
   projectId,
   slug,
   environment,
   compare,
+  queueWorkload,
+  onSelectQueueWorkload,
 }: Props & { environment: string }) {
   const detail = useProjectEnvironment(accountId, slug, environment);
   const state = useEnvironmentState(accountId, slug, environment);
@@ -80,6 +88,21 @@ function SelectedEnvironment({
         </Button>
       </div>
       <EnvironmentStateView data={state.data} />
+      {environment !== 'production' && (
+        <StageQueueOverview
+          key={`${accountId}:${slug}:${environment}`}
+          accountId={accountId}
+          plan={plan}
+          project={slug}
+          projectId={projectId}
+          environment={environment}
+          environmentId={detail.data.id}
+          protectedStage={detail.data.protected}
+          workloads={state.data.workloads}
+          selectedWorkload={queueWorkload}
+          onSelectWorkload={onSelectQueueWorkload}
+        />
+      )}
       {compare && diff.data && <EnvironmentDiffView data={diff.data} />}
     </>
   );
@@ -105,7 +128,7 @@ export function ProjectEnvironments(props: Props) {
     <>
       <Panel
         title="Environments"
-        description="Named environment evidence and comparisons. No configuration or release changes are made here."
+        description="Named environment evidence and comparisons. Stage desired queue settings can be reviewed below."
       >
         <div className="flex flex-wrap gap-4 p-4">
           <label className="flex min-w-40 flex-col gap-2 text-sm">

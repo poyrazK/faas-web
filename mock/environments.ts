@@ -1,6 +1,7 @@
 import type { components } from '../src/lib/api/schema';
 import * as db from './data';
 import { projects } from './projects';
+import { getStageQueueRecord } from './stage-queues';
 type S = components['schemas'];
 export function environmentInventory(slug: string): S['ProjectEnvironmentResponse'][] | undefined {
   const project = projects.find((item) => item.slug === slug);
@@ -41,8 +42,19 @@ export function environmentState(
         environment === 'production'
           ? db.deployments.find((item) => item.app_id === app.id && item.status === 'live')
           : undefined;
+      const stageQueues = getStageQueueRecord({
+        project: slug,
+        environment,
+        workload: workload.slug,
+      });
       return {
         app_id: app.id,
+        ...(stageQueues
+          ? {
+              workload_config_revision: stageQueues.workload_revision,
+              workload_config_hash: stageQueues.config_hash,
+            }
+          : {}),
         workload_slug: workload.slug,
         workload_name: workload.workload_name,
         release: {
