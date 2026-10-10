@@ -102,7 +102,12 @@ export interface TopologyInput {
   metrics: Read<AppsMetrics>;
   /** Keyed by app slug. A missing key reads as still loading. */
   buckets: Record<string, Read<BucketList>>;
-  postgres: Read<{ databases: PostgresDatabase[]; bindings: PostgresBinding[] }>;
+  /** `failedBindings` names databases whose binding list could not be read. */
+  postgres: Read<{
+    databases: PostgresDatabase[];
+    bindings: PostgresBinding[];
+    failedBindings: string[];
+  }>;
 }
 
 export const nodeId = {
@@ -274,7 +279,10 @@ export function buildTopology(input: TopologyInput): Topology {
   }
 
   if (input.postgres.status === 'ready') {
-    const { databases, bindings } = input.postgres.data;
+    const { databases, bindings, failedBindings } = input.postgres.data;
+    for (const id of failedBindings) {
+      issues.push({ kind: 'read_failed', ref: nodeId.postgres(id), detail: 'postgres bindings' });
+    }
     for (const db of [...databases].sort((a, b) => a.name.localeCompare(b.name))) {
       if (GONE.has(db.state)) continue;
       nodes.push({
@@ -307,4 +315,26 @@ export function buildTopology(input: TopologyInput): Topology {
   }
 
   return { nodes, edges, issues };
+}
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/**
+ * The canvas never draws a failed read as empty, so it says what is missing.
+ * One sentence per kind of gap, in the order a reader would care.
+ */
+export function summarizeIssues(issues: TopologyIssue[]): string[] {
+  const failed = issues.filter((i) => i.kind === 'read_failed');
+  const bindings = failed.filter((i) => i.ref.startsWith('postgres:')).length;
+  const apps = failed.filter((i) => i.ref.startsWith('app:')).length;
+  const orphans = issues.filter((i) => i.kind === 'orphan').length;
+  return [
+    failed.some((i) => i.ref === 'postgres') && 'Couldn’t load Postgres.',
+    bindings > 0 && `Couldn’t load bindings for ${plural(bindings, 'database', 'databases')}.`,
+    apps > 0 && `Couldn’t load connections for ${plural(apps, 'app', 'apps')}.`,
+    orphans > 0 &&
+      (orphans === 1
+        ? '1 item points at an app that no longer exists.'
+        : `${orphans} items point at apps that no longer exist.`),
+  ].filter((line): line is string => Boolean(line));
 }

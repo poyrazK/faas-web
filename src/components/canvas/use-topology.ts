@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useQueries } from '@tanstack/react-query';
+import { useQueries, useQueryClient } from '@tanstack/react-query';
 import {
   postgresBindingsOptions,
   useApps,
@@ -35,27 +35,47 @@ export function toRead<T>(q: QueryLike<T>): Read<T> {
 export function postgresRead(
   databases: QueryLike<{ items: PostgresDatabase[] }>,
   bindings: QueryLike<{ items: PostgresBinding[] }>[]
-): Read<{ databases: PostgresDatabase[]; bindings: PostgresBinding[] }> {
+): Read<{ databases: PostgresDatabase[]; bindings: PostgresBinding[]; failedBindings: string[] }> {
   if (
     databases.error instanceof ApiError &&
     (databases.error.isForbidden || databases.error.isNotFound)
   ) {
-    return { status: 'ready', data: { databases: [], bindings: [] } };
+    return { status: 'ready', data: { databases: [], bindings: [], failedBindings: [] } };
   }
   const dbs = toRead(databases);
   if (dbs.status !== 'ready') return dbs;
   const reads = bindings.map(toRead);
-  const failed = reads.find((r) => r.status === 'error');
-  if (failed) return failed;
   if (reads.some((r) => r.status === 'loading')) return { status: 'loading' };
+  // One database's unreadable bindings must not hide the others: keep every
+  // database, keep the bindings that did load, and name the ones that did not.
   return {
     status: 'ready',
     data: {
       databases: dbs.data.items,
       bindings: reads.flatMap((r) => (r.status === 'ready' ? r.data.items : [])),
+      failedBindings: dbs.data.items
+        .filter((_, i) => reads[i]?.status === 'error')
+        .map((d) => d.id),
     },
   };
 }
+
+/**
+ * Narrows each `useQueries` result to the fields a read needs. Module-level
+ * on purpose: TanStack re-runs a stable `combine` only when a result changes,
+ * so the array keeps its identity across unrelated re-renders.
+ */
+function pickReads<T>(results: QueryLike<T>[]): QueryLike<T>[] {
+  return results.map(({ data, error, isPending, fetchStatus }) => ({
+    data,
+    error,
+    isPending,
+    fetchStatus,
+  }));
+}
+
+/** Every query family the canvas draws from, for Retry. */
+const FAMILIES = ['apps', 'domains', 'crons', 'object-buckets', 'postgres'] as const;
 
 export function useTopology(): {
   phase: QueryPhase;
@@ -63,6 +83,7 @@ export function useTopology(): {
   topology: Topology;
   retry: () => void;
 } {
+  const qc = useQueryClient();
   const apps = useApps();
   const domains = useDomains();
   const crons = useCrons();
@@ -72,10 +93,31 @@ export function useTopology(): {
   const slugs = useMemo(() => (apps.data ?? []).map((a) => a.slug), [apps.data]);
   // Per-app reads wait for the app list, so none of them is a disabled
   // query masquerading as loading.
-  const buckets = useQueries({ queries: slugs.map((slug) => bucketListOptions(slug)) });
+  const buckets = useQueries({
+    queries: slugs.map((slug) => bucketListOptions(slug)),
+    combine: pickReads,
+  });
   const bindings = useQueries({
     queries: (databases.data?.items ?? []).map((db) => postgresBindingsOptions(db.id)),
+    combine: pickReads,
   });
+
+  // Query results are fresh objects every render; key the reads on the data
+  // and error they carry so the topology, layout and flow keep their identity
+  // until something actually changed. React Flow re-measures every node it
+  // is handed as new.
+  const metricsRead = useMemo(
+    () => toRead({ data: metrics.data, error: metrics.error, isPending: false, fetchStatus: '' }),
+    [metrics.data, metrics.error]
+  );
+  const postgres = useMemo(
+    () =>
+      postgresRead(
+        { data: databases.data, error: databases.error, isPending: false, fetchStatus: '' },
+        bindings
+      ),
+    [databases.data, databases.error, bindings]
+  );
 
   const error = apps.error ?? domains.error ?? crons.error;
   const phase = queryPhase({
@@ -90,17 +132,15 @@ export function useTopology(): {
         apps: apps.data ?? [],
         domains: domains.data ?? [],
         crons: crons.data ?? [],
-        metrics: toRead(metrics),
+        metrics: metricsRead,
         buckets: Object.fromEntries(slugs.map((slug, i) => [slug, toRead(buckets[i])])),
-        postgres: postgresRead(databases, bindings),
+        postgres,
       }),
-    [apps.data, domains.data, crons.data, metrics, slugs, buckets, databases, bindings]
+    [apps.data, domains.data, crons.data, metricsRead, slugs, buckets, postgres]
   );
 
   const retry = () => {
-    void apps.refetch();
-    void domains.refetch();
-    void crons.refetch();
+    for (const family of FAMILIES) void qc.invalidateQueries({ queryKey: [family] });
   };
 
   return { phase, error, topology, retry };

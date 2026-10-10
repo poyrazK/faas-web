@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { appPhase, buildTopology, nodeId, type TopologyInput } from './topology';
+import { appPhase, buildTopology, nodeId, summarizeIssues, type TopologyInput } from './topology';
 import type { App } from '@/lib/api/queries';
 
 const app = (slug: string, extra: Partial<App> = {}) =>
@@ -18,7 +18,7 @@ function input(over: Partial<TopologyInput> = {}): TopologyInput {
     crons: [],
     metrics: { status: 'ready', data: { range: '24h', source: 'prom', as_of: '', apps: {} } },
     buckets: {},
-    postgres: { status: 'ready', data: { databases: [], bindings: [] } },
+    postgres: { status: 'ready', data: { databases: [], bindings: [], failedBindings: [] } },
     ...over,
   };
 }
@@ -240,6 +240,25 @@ describe('buildTopology', () => {
     );
   });
 
+  it('reports a database whose bindings could not be read, and still draws it', () => {
+    const t = buildTopology(
+      input({
+        postgres: {
+          status: 'ready',
+          data: {
+            databases: [{ id: 'db1', name: 'main', state: 'ready' } as never],
+            bindings: [],
+            failedBindings: ['db1'],
+          },
+        },
+      })
+    );
+    expect(t.nodes.some((n) => n.id === nodeId.postgres('db1'))).toBe(true);
+    expect(t.issues).toContainEqual(
+      expect.objectContaining({ kind: 'read_failed', ref: nodeId.postgres('db1') })
+    );
+  });
+
   it('draws buckets and live Postgres bindings, and shares one database node', () => {
     const t = buildTopology(
       input({
@@ -292,6 +311,7 @@ describe('buildTopology', () => {
                 access: 'read_only',
               } as never,
             ],
+            failedBindings: [],
           },
         },
       })
@@ -308,5 +328,25 @@ describe('buildTopology', () => {
     );
     expect(t.nodes.filter((n) => n.id === nodeId.postgres('db1'))).toHaveLength(1);
     expect(t.edges.filter((e) => e.kind === 'database')).toHaveLength(2);
+  });
+});
+
+describe('summarizeIssues', () => {
+  it('says what could not be shown, in plain words, once per kind', () => {
+    expect(
+      summarizeIssues([
+        { kind: 'read_failed', ref: 'postgres', detail: '' },
+        { kind: 'read_failed', ref: 'postgres:db1', detail: '' },
+        { kind: 'read_failed', ref: 'app:a', detail: '' },
+        { kind: 'read_failed', ref: 'app:b', detail: '' },
+        { kind: 'orphan', ref: 'domain:x', detail: '' },
+      ])
+    ).toEqual([
+      'Couldn’t load Postgres.',
+      'Couldn’t load bindings for 1 database.',
+      'Couldn’t load connections for 2 apps.',
+      '1 item points at an app that no longer exists.',
+    ]);
+    expect(summarizeIssues([])).toEqual([]);
   });
 });

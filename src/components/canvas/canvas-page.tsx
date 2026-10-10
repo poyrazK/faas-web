@@ -10,7 +10,7 @@ import { useTopology } from './use-topology';
 import { ConnectMenu } from './connect-menu';
 import type { CreateKind } from './create';
 import type { ConnectSide } from './nodes';
-import type { AppData } from './topology';
+import { summarizeIssues, type AppData } from './topology';
 import { useApps } from '@/lib/api/queries';
 
 /** Canvas page. `data-gregale-canvas` is the build-elimination sentinel (plan Task 1). */
@@ -100,6 +100,7 @@ export default function CanvasPage({ node }: { node?: string }) {
         }
       : flow;
   const selected = topology.nodes.find((n) => n.id === node);
+  const gaps = useMemo(() => summarizeIssues(topology.issues), [topology.issues]);
 
   return (
     <div data-gregale-canvas="" className="relative h-full">
@@ -127,6 +128,21 @@ export default function CanvasPage({ node }: { node?: string }) {
         {phase === 'ready' && (
           <>
             <div className="relative flex-1">
+              {gaps.length > 0 && (
+                <div
+                  role="status"
+                  className="absolute top-3 left-3 z-10 flex max-w-sm items-start gap-3 rounded-[var(--console-surface-radius)] border border-status-warning/40 bg-canvas-glass px-3 py-2 text-xs shadow-elevation-2 backdrop-blur-md"
+                >
+                  <ul className="flex flex-col gap-0.5">
+                    {gaps.map((line) => (
+                      <li key={line}>{line}</li>
+                    ))}
+                  </ul>
+                  <Button size="xs" variant="ghost" onClick={retry}>
+                    Retry
+                  </Button>
+                </div>
+              )}
               <CanvasView
                 nodes={withDraft.nodes}
                 edges={withDraft.edges}

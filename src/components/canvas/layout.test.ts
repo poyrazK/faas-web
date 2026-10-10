@@ -47,7 +47,7 @@ const topo = () =>
       billing: bucketList([]),
       worker: bucketList(['x']),
     },
-    postgres: ready({ databases: [], bindings: [] }),
+    postgres: ready({ databases: [], bindings: [], failedBindings: [] }),
   } satisfies TopologyInput);
 
 const rect = (t: ReturnType<typeof topo>, pos: ReturnType<typeof layout>, id: string) => {

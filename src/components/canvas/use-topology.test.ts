@@ -28,7 +28,7 @@ describe('postgresRead', () => {
       const error = new ApiError({ status, code: 'not_enabled', title: 'nope' });
       expect(postgresRead(q({ error }), [])).toEqual({
         status: 'ready',
-        data: { databases: [], bindings: [] },
+        data: { databases: [], bindings: [], failedBindings: [] },
       });
     }
   });
@@ -45,7 +45,20 @@ describe('postgresRead', () => {
     );
     expect(postgresRead(dbs, [q({ data: { items: [{ id: 'b' } as never] } })])).toEqual({
       status: 'ready',
-      data: { databases: [db], bindings: [{ id: 'b' }] },
+      data: { databases: [db], bindings: [{ id: 'b' }], failedBindings: [] },
+    });
+  });
+
+  it('keeps every database when one database’s bindings fail, and names the failure', () => {
+    const other = { id: 'db2', name: 'analytics', state: 'ready' } as never;
+    const dbs = q({ data: { items: [db, other] } });
+    const read = postgresRead(dbs, [
+      q({ error: new Error('boom') }),
+      q({ data: { items: [{ id: 'b' } as never] } }),
+    ]);
+    expect(read).toEqual({
+      status: 'ready',
+      data: { databases: [db, other], bindings: [{ id: 'b' }], failedBindings: ['db1'] },
     });
   });
 });

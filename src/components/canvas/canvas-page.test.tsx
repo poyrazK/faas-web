@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/lib/api/errors';
 
@@ -49,5 +49,18 @@ describe('CanvasPage', () => {
     state.value = { phase: 'ready', topology: empty, retry: vi.fn() };
     render(<CanvasPage />);
     expect(screen.getByTestId('flow')).toBeInTheDocument();
+  });
+
+  it('says what it could not draw and offers a retry', () => {
+    const retry = vi.fn();
+    state.value = {
+      phase: 'ready',
+      topology: { ...empty, issues: [{ kind: 'read_failed', ref: 'postgres', detail: '' }] },
+      retry,
+    };
+    render(<CanvasPage />);
+    expect(screen.getByRole('status')).toHaveTextContent('Couldn’t load Postgres.');
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(retry).toHaveBeenCalled();
   });
 });
