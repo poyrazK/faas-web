@@ -1,0 +1,299 @@
+import { describe, expect, it } from 'vitest';
+import { appPhase, buildTopology, nodeId, type TopologyInput } from './topology';
+import type { App } from '@/lib/api/queries';
+
+const app = (slug: string, extra: Partial<App> = {}) =>
+  ({
+    id: `id-${slug}`,
+    slug,
+    status: 'active',
+    url: `https://${slug}.gregale.app`,
+    ...extra,
+  }) as App;
+
+function input(over: Partial<TopologyInput> = {}): TopologyInput {
+  return {
+    apps: [app('acme-api'), app('billing')],
+    domains: [],
+    crons: [],
+    metrics: { status: 'ready', data: { range: '24h', source: 'prom', as_of: '', apps: {} } },
+    buckets: {},
+    postgres: { status: 'ready', data: { databases: [], bindings: [] } },
+    ...over,
+  };
+}
+
+const metricsFor = (rows: Record<string, number>) =>
+  ({
+    status: 'ready',
+    data: {
+      range: '24h',
+      source: 'prom',
+      as_of: '',
+      apps: Object.fromEntries(
+        Object.entries(rows).map(([slug, n]) => [slug, { request_count: n, latency_p95_ms: 80 }])
+      ),
+    },
+  }) as TopologyInput['metrics'];
+
+describe('appPhase', () => {
+  it.each([
+    ['active', 'running'],
+    ['evicted_cold', 'parked'],
+    ['parked', 'parked'],
+    ['undeployed', 'undeployed'],
+    ['failed', 'error'],
+    ['deploying', 'deploying'],
+    [undefined, 'idle'],
+  ] as const)('%s → %s', (status, phase) => expect(appPhase(status)).toBe(phase));
+});
+
+describe('buildTopology', () => {
+  it('draws nothing, not even the Internet, for an account without apps', () => {
+    expect(buildTopology(input({ apps: [] })).nodes).toEqual([]);
+  });
+
+  it('orders apps by slug and connects an undomained app straight to the Internet', () => {
+    const t = buildTopology(input({ apps: [app('zeta'), app('alpha')] }));
+    expect(t.nodes.filter((n) => n.data.kind === 'app').map((n) => n.id)).toEqual([
+      nodeId.app('alpha'),
+      nodeId.app('zeta'),
+    ]);
+    expect(t.edges).toContainEqual(
+      expect.objectContaining({
+        source: nodeId.internet,
+        target: nodeId.app('alpha'),
+        kind: 'ingress',
+      })
+    );
+  });
+
+  it('routes a custom domain between the Internet and its app, by app_id', () => {
+    const t = buildTopology(
+      input({
+        domains: [{ domain: 'api.acme.dev', app_id: 'id-acme-api', verified: true }],
+        metrics: metricsFor({ 'acme-api': 1200 }),
+      })
+    );
+    const d = nodeId.domain('api.acme.dev');
+    expect(t.edges).toContainEqual(
+      expect.objectContaining({ source: nodeId.internet, target: d, requests24h: 1200 })
+    );
+    expect(t.edges).toContainEqual(
+      expect.objectContaining({
+        source: d,
+        target: nodeId.app('acme-api'),
+        requests24h: 1200,
+        pending: false,
+      })
+    );
+    expect(
+      t.edges.some((e) => e.source === nodeId.internet && e.target === nodeId.app('acme-api'))
+    ).toBe(false);
+  });
+
+  it('marks an unverified domain as pending', () => {
+    const t = buildTopology(
+      input({
+        domains: [
+          { domain: 'new.acme.dev', app_id: 'id-acme-api', verified: false, txt_record: 'TXT x' },
+        ],
+      })
+    );
+    expect(t.nodes.find((n) => n.id === nodeId.domain('new.acme.dev'))?.data).toMatchObject({
+      verified: false,
+      txtRecord: 'TXT x',
+    });
+    expect(
+      t.edges
+        .filter(
+          (e) =>
+            e.target === nodeId.domain('new.acme.dev') || e.source === nodeId.domain('new.acme.dev')
+        )
+        .every((e) => e.pending)
+    ).toBe(true);
+  });
+
+  it('does not split or duplicate traffic across several domains', () => {
+    const t = buildTopology(
+      input({
+        domains: [
+          { domain: 'a.acme.dev', app_id: 'id-acme-api', verified: true },
+          { domain: 'b.acme.dev', app_id: 'id-acme-api', verified: true },
+        ],
+        metrics: metricsFor({ 'acme-api': 900 }),
+      })
+    );
+    const ingress = t.edges.filter((e) => e.kind === 'ingress' && e.id.includes('acme'));
+    expect(ingress.length).toBe(4);
+    expect(ingress.every((e) => e.requests24h === undefined)).toBe(true);
+    expect(t.nodes.find((n) => n.id === nodeId.app('acme-api'))?.data).toMatchObject({
+      requests24h: 900,
+    });
+  });
+
+  it('drops and reports orphans instead of drawing a dangling edge', () => {
+    const t = buildTopology(
+      input({
+        domains: [{ domain: 'old.acme.dev', app_id: 'id-deleted', verified: true }],
+        crons: [
+          {
+            id: 'c1',
+            app_id: 'id-deleted',
+            schedule: '0 2 * * *',
+            path: '/',
+            enabled: true,
+            timezone: 'UTC',
+            skip_if_running: false,
+            created_at: '',
+          },
+        ],
+      })
+    );
+    expect(t.nodes.some((n) => n.id === nodeId.domain('old.acme.dev'))).toBe(false);
+    expect(t.nodes.some((n) => n.id === nodeId.cron('c1'))).toBe(false);
+    expect(t.issues.map((i) => [i.kind, i.ref])).toEqual([
+      ['orphan', nodeId.domain('old.acme.dev')],
+      ['orphan', nodeId.cron('c1')],
+    ]);
+  });
+
+  it('connects crons into their app', () => {
+    const t = buildTopology(
+      input({
+        crons: [
+          {
+            id: 'c1',
+            app_id: 'id-billing',
+            schedule: '*/15 * * * *',
+            path: '/run',
+            enabled: true,
+            timezone: 'UTC',
+            skip_if_running: false,
+            created_at: '',
+            last_fired_at: null,
+          },
+        ],
+      })
+    );
+    expect(t.edges).toContainEqual(
+      expect.objectContaining({
+        source: nodeId.cron('c1'),
+        target: nodeId.app('billing'),
+        kind: 'schedule',
+      })
+    );
+  });
+
+  it('keeps unknown metrics unknown rather than zero', () => {
+    const failed = buildTopology(input({ metrics: { status: 'error', error: new Error('402') } }));
+    const data = failed.nodes.find((n) => n.id === nodeId.app('acme-api'))?.data;
+    expect(data).toMatchObject({ metrics: 'unavailable' });
+    expect(data && 'requests24h' in data ? data.requests24h : 'absent').toBeUndefined();
+    const degraded = buildTopology(input({ metrics: metricsFor({}) }));
+    expect(degraded.nodes.find((n) => n.id === nodeId.app('acme-api'))?.data).toMatchObject({
+      metrics: 'unavailable',
+    });
+  });
+
+  it('distinguishes a failed bucket read from an app with no buckets', () => {
+    const t = buildTopology(
+      input({
+        buckets: {
+          'acme-api': { status: 'error', error: new Error('boom') },
+          billing: {
+            status: 'ready',
+            data: {
+              items: [],
+              enabled: true,
+              regions: [],
+              default_region: 'eu',
+              max_upload_bytes: 1,
+              max_buckets_per_app: 1,
+            },
+          },
+        },
+      })
+    );
+    expect(t.nodes.find((n) => n.id === nodeId.app('acme-api'))?.data).toMatchObject({
+      connections: 'error',
+    });
+    expect(t.nodes.find((n) => n.id === nodeId.app('billing'))?.data).toMatchObject({
+      connections: 'ready',
+      buckets: { enabled: true, atLimit: false, defaultRegion: 'eu' },
+    });
+    expect(t.issues).toContainEqual(
+      expect.objectContaining({ kind: 'read_failed', ref: nodeId.app('acme-api') })
+    );
+  });
+
+  it('draws buckets and live Postgres bindings, and shares one database node', () => {
+    const t = buildTopology(
+      input({
+        buckets: {
+          'acme-api': {
+            status: 'ready',
+            data: {
+              items: [
+                {
+                  id: 'b1',
+                  name: 'orders',
+                  scope: 'default',
+                  region: 'eu',
+                  state: 'ready',
+                  created_at: '',
+                },
+              ],
+              enabled: true,
+              regions: [],
+              default_region: 'eu',
+              max_upload_bytes: 1,
+              max_buckets_per_app: 1,
+            },
+          },
+        },
+        postgres: {
+          status: 'ready',
+          data: {
+            databases: [{ id: 'db1', name: 'main', state: 'ready' } as never],
+            bindings: [
+              {
+                id: 'x',
+                database_id: 'db1',
+                app_id: 'id-acme-api',
+                state: 'ready',
+                access: 'read_write',
+              } as never,
+              {
+                id: 'y',
+                database_id: 'db1',
+                app_id: 'id-billing',
+                state: 'ready',
+                access: 'read_only',
+              } as never,
+              {
+                id: 'z',
+                database_id: 'db1',
+                app_id: 'id-billing',
+                state: 'deleted',
+                access: 'read_only',
+              } as never,
+            ],
+          },
+        },
+      })
+    );
+    expect(t.nodes.find((n) => n.id === nodeId.app('acme-api'))?.data).toMatchObject({
+      buckets: { atLimit: true },
+    });
+    expect(t.edges).toContainEqual(
+      expect.objectContaining({
+        source: nodeId.app('acme-api'),
+        target: nodeId.bucket('acme-api', 'orders'),
+        kind: 'storage',
+      })
+    );
+    expect(t.nodes.filter((n) => n.id === nodeId.postgres('db1'))).toHaveLength(1);
+    expect(t.edges.filter((e) => e.kind === 'database')).toHaveLength(2);
+  });
+});
