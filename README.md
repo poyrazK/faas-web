@@ -215,6 +215,19 @@ Providers wrap the app in `src/routes/__root.tsx`:
 more; `lib/mock-data.ts` survives only for formatters (`formatRelative`,
 `formatCompact`) and a couple of shared types.
 
+The top bar's **Needs Attention** button, immediately before **New app**, opens
+a notification-style dropdown directly beneath the button from any console
+page rather than an inline Overview panel. It has no backdrop or page scroll
+lock. Checks mount only while the dropdown is open and share existing app, deployment, and usage
+queries. It shows reported app failures, failed deployments created in the last
+24 hours (excluding cancellations), and included compute allowance at 80% used
+or above. Each list shows up to three items with direct investigation links.
+Deployment coverage is limited to the latest 50 records, not complete history.
+Unavailable reads stay explicit and never produce an all-clear message.
+Investigation links close the dropdown and navigate to the exact app logs,
+deployment details, or usage page. Escape and the close control restore focus;
+clicking the trigger again or anywhere outside also dismisses it.
+
 Logs are the one exception to the client above: `/v1/apps/{slug}/logs` is an SSE
 stream, so it uses `EventSource` in `lib/api/logs.ts` rather than
 `openapi-fetch`. There is no single response to cache, so no TanStack Query
