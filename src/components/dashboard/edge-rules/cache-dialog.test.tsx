@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { ReactNode } from 'react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import type { EdgeRule } from '@/lib/api/queries';
 import { ApiError } from '@/lib/api/errors';
@@ -12,6 +13,27 @@ const state = vi.hoisted(() => ({
   update: vi.fn(),
   toast: vi.fn(),
 }));
+const cacheRule: EdgeRule = {
+  id: 'cache-1',
+  account_id: 'account-a',
+  app_id: 'app-1',
+  kind: 'cache',
+  match_host: '*',
+  match_path: '/products/*',
+  match_methods: ['GET'],
+  priority: 10,
+  enabled: true,
+  validate_mode: 'block',
+  action: {
+    max_age_seconds: 60,
+    stale_while_revalidate_seconds: 0,
+    stale_if_error_seconds: 300,
+    methods: ['GET'],
+    vary_on: ['Accept-Language'],
+  },
+  created_at: '2026-10-10T00:00:00Z',
+  updated_at: '2026-10-10T00:00:00Z',
+};
 vi.mock('@/lib/api/queries', () => ({
   useCreateEdgeRule: () => ({ mutateAsync: state.create, isPending: false }),
   useUpdateEdgeRule: () => ({ mutateAsync: state.update, isPending: false }),
@@ -28,6 +50,9 @@ vi.mock('@/lib/api/capabilities', () => ({
   }),
 }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: state.toast }) }));
+vi.mock('@tanstack/react-router', () => ({
+  Link: ({ children }: { children: ReactNode }) => <a href="/dashboard/plans">{children}</a>,
+}));
 
 import { EdgeRuleDialog } from './dialog';
 
@@ -87,35 +112,28 @@ it('disables cache selection after registry failure while keeping other rule kin
   );
 });
 
+it('keeps cache unavailable on Free without blocking an unrelated rule kind', async () => {
+  state.plan = 'free';
+  mount();
+  const cache = screen.getByRole('button', { name: /Response cache/ });
+  expect(cache).toHaveAttribute('aria-disabled', 'true');
+  await userEvent.click(cache);
+  expect(state.create).not.toHaveBeenCalled();
+  expect(screen.getByRole('button', { name: /Route to an app/ })).toHaveAttribute(
+    'aria-disabled',
+    'false'
+  );
+});
+
 it('does not submit an opened cache editor after the account changes', async () => {
-  const rule: EdgeRule = {
-    id: 'cache-1',
-    account_id: 'account-a',
-    app_id: 'app-1',
-    kind: 'cache',
-    match_host: '*',
-    match_path: '/products/*',
-    match_methods: ['GET'],
-    priority: 10,
-    enabled: true,
-    validate_mode: 'block',
-    action: {
-      max_age_seconds: 60,
-      stale_while_revalidate_seconds: 0,
-      stale_if_error_seconds: 300,
-      methods: ['GET'],
-    },
-    created_at: '2026-10-10T00:00:00Z',
-    updated_at: '2026-10-10T00:00:00Z',
-  };
-  const view = mount(rule);
+  const view = mount(cacheRule);
   expect(screen.getByRole('button', { name: 'Save changes' })).toBeEnabled();
   state.accountId = 'account-b';
   view.rerender(
     <EdgeRuleDialog
       open
       onClose={vi.fn()}
-      rule={rule}
+      rule={cacheRule}
       slug="api"
       apps={[{ slug: 'api' }]}
       nextPriority={10}
@@ -123,6 +141,47 @@ it('does not submit an opened cache editor after the account changes', async () 
   );
   expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
   await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+  expect(state.update).not.toHaveBeenCalled();
+});
+
+it('persists an edited cache window without dropping its method or vary choices', async () => {
+  mount(cacheRule);
+  const fresh = screen.getByLabelText(/Fresh for \(seconds\)/);
+  await userEvent.clear(fresh);
+  await userEvent.type(fresh, '90');
+  expect(fresh).toHaveValue(90);
+  await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+  expect(screen.queryAllByRole('alert').map((alert) => alert.textContent)).toEqual([]);
+  await waitFor(() => expect(state.update).toHaveBeenCalledTimes(1));
+  expect(state.update).toHaveBeenCalledWith(
+    expect.objectContaining({
+      id: 'cache-1',
+      match_methods: ['GET'],
+      action: expect.objectContaining({
+        max_age_seconds: 90,
+        stale_while_revalidate_seconds: 0,
+        stale_if_error_seconds: 300,
+        methods: ['GET'],
+        vary_on: ['Accept-Language'],
+      }),
+    })
+  );
+});
+
+it('refuses a CLI-authored cache rule with no match methods until reviewed', async () => {
+  mount({ ...cacheRule, match_methods: [] });
+  await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+  expect(screen.getByRole('alert')).toHaveTextContent('Cache rules must match GET, HEAD');
+  expect(state.update).not.toHaveBeenCalled();
+});
+
+it('refuses unsupported cache methods returned by a stale server rule', async () => {
+  mount({
+    ...cacheRule,
+    action: { ...cacheRule.action, methods: ['POST'] },
+  } as unknown as EdgeRule);
+  await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+  expect(screen.getByRole('alert')).toHaveTextContent('Only GET and HEAD');
   expect(state.update).not.toHaveBeenCalled();
 });
 

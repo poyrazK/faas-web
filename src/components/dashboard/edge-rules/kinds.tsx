@@ -663,6 +663,7 @@ export const KINDS = {
             hint="0 uses the server default of 60; maximum 3600."
             error={errors.max_age_seconds}
             value={value.max_age_seconds}
+            emptyWhenNegative
             onChange={(max_age_seconds) =>
               onChange({ ...value, max_age_seconds: max_age_seconds ?? -1 })
             }
@@ -672,6 +673,7 @@ export const KINDS = {
             hint="0 disables background refresh; maximum 300."
             error={errors.stale_while_revalidate_seconds}
             value={value.stale_while_revalidate_seconds ?? 0}
+            emptyWhenNegative
             onChange={(stale_while_revalidate_seconds) =>
               onChange({
                 ...value,
@@ -684,6 +686,7 @@ export const KINDS = {
             hint="0 disables stale responses on upstream errors; maximum 300."
             error={errors.stale_if_error_seconds}
             value={value.stale_if_error_seconds}
+            emptyWhenNegative
             onChange={(stale_if_error_seconds) =>
               onChange({ ...value, stale_if_error_seconds: stale_if_error_seconds ?? -1 })
             }
