@@ -1131,6 +1131,52 @@ export const usage: S['UsageSummaryResponse'] = {
   cold_boots: 8412,
 };
 
+/**
+ * The trailing 30 UTC days the summary carries as `daily`, oldest first. Days
+ * in the current month are scaled so they sum to `used_gb_hours`, like the
+ * server's rollups would; the previous month's tail is independent, which is
+ * what makes the month-to-date chart drop it rather than sum it in.
+ */
+usage.daily = (() => {
+  // Its own stream: drawing from the shared one would reseed every fixture
+  // generated after this point.
+  const sharedSeed = seed;
+  seed = 0x5eedda11;
+  const today = new Date(NOW);
+  const days = Array.from({ length: 30 }, (_, i) => {
+    const d = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+    d.setUTCDate(d.getUTCDate() - (29 - i));
+    return d.toISOString().slice(0, 10);
+  });
+  const month = usage.month ?? days[days.length - 1].slice(0, 7);
+  const weights = days.map(() => between(0.4, 1.6));
+  const monthWeight = days.reduce(
+    (sum, date, i) => (date.startsWith(`${month}-`) ? sum + weights[i] : sum),
+    0
+  );
+  const perWeight = usage.used_gb_hours / monthWeight;
+  const rows = days.map((date, i) => {
+    const gb = Math.round(weights[i] * perWeight * 100) / 100;
+    const top = apps[i % apps.length];
+    return {
+      date,
+      gb_hours: gb,
+      top_app_slug: top?.slug,
+      top_app_gb_hours: top ? Math.round(gb * between(0.4, 0.8) * 100) / 100 : undefined,
+    };
+  });
+  // Absorb rounding so the month's rows add up to the summary total exactly.
+  let last = rows.length - 1;
+  while (last > 0 && !rows[last].date.startsWith(`${month}-`)) last--;
+  const drift = rows.reduce(
+    (sum, row) => (row.date.startsWith(`${month}-`) ? sum + row.gb_hours : sum),
+    0
+  );
+  rows[last].gb_hours = Math.round((rows[last].gb_hours + usage.used_gb_hours - drift) * 100) / 100;
+  seed = sharedSeed;
+  return rows;
+})();
+
 export const storage: S['StorageUsageResponse'][] = apps.map((a) => ({
   app_id: a.id,
   day: new Date(NOW).toISOString().slice(0, 10),
@@ -1464,6 +1510,7 @@ if (EMPTY) {
     used_egress_gb: 0,
     used_ingress_gb: 0,
     cold_boots: 0,
+    daily: [],
   });
 }
 

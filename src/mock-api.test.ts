@@ -496,3 +496,18 @@ describe('mock API', () => {
     }
   });
 });
+
+describe('usage summary daily rollups', () => {
+  it('returns 30 trailing days, oldest first, whose current-month sum matches the total', async () => {
+    const { response, body } = await get('/v1/usage/summary');
+    expect(response.status).toBe(200);
+    const daily = body.daily as { date: string; gb_hours: number; top_app_slug?: string }[];
+    expect(daily).toHaveLength(30);
+    expect(daily.map((d) => d.date)).toEqual([...daily.map((d) => d.date)].sort());
+    const monthSum = daily
+      .filter((d) => d.date.startsWith(`${body.month}-`))
+      .reduce((sum, d) => sum + d.gb_hours, 0);
+    expect(monthSum).toBeCloseTo(body.used_gb_hours, 1);
+    expect(daily.some((d) => d.top_app_slug)).toBe(true);
+  });
+});

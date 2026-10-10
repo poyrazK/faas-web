@@ -11,7 +11,13 @@ const usage = vi.hoisted(() => ({
 vi.mock('@tanstack/react-router', () => ({ createFileRoute: () => (options: unknown) => options }));
 vi.mock('@/lib/api/queries', () => ({
   useUsageSummary: () => ({
-    data: { month: '2026-08', used_gb_hours: 1, included_gb_hours: 50, overage_gb_hours: 0 },
+    data: {
+      month: '2026-08',
+      used_gb_hours: 1,
+      included_gb_hours: 50,
+      overage_gb_hours: 0,
+      daily: [{ date: '2026-08-01', gb_hours: 1 }],
+    },
     isPending: false,
     error: null,
     refetch: vi.fn(),
@@ -25,6 +31,11 @@ vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { plan: 'hobby', app_c
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }));
 vi.mock('@/components/dashboard/object-storage-usage', () => ({
   ObjectStorageUsagePanel: () => null,
+}));
+vi.mock('@/components/dashboard/usage-trend', () => ({
+  UsageTrendPanel: (props: Record<string, unknown>) => (
+    <div data-testid="usage-trend" data-props={JSON.stringify(props)} />
+  ),
 }));
 
 const { Route } = await import('./dashboard.usage');
@@ -132,5 +143,18 @@ describe('spend-cap validation', () => {
     await userEvent.type(cap, '{Enter}');
     await waitFor(() => expect(setCap).toHaveBeenCalledTimes(2));
     expect(setCap).toHaveBeenLastCalledWith(1250);
+  });
+});
+
+describe('month-to-date trend', () => {
+  it('hands the summary daily rollups and totals to the trend panel', () => {
+    render(<UsagePage />);
+    const props = JSON.parse(screen.getByTestId('usage-trend').getAttribute('data-props') ?? '{}');
+    expect(props).toEqual({
+      daily: [{ date: '2026-08-01', gb_hours: 1 }],
+      month: '2026-08',
+      usedGbHours: 1,
+      includedGbHours: 50,
+    });
   });
 });
