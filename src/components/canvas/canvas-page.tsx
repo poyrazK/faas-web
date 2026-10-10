@@ -51,54 +51,57 @@ export default function CanvasPage({ node }: { node?: string }) {
   const anchor = connect && positions.get(`app:${connect.slug}`);
 
   const draftId = 'draft';
-  const withDraft =
-    connect?.kind && appData && anchor && appId
-      ? {
-          nodes: [
-            ...flow.nodes,
-            {
-              id: draftId,
-              type: 'draft',
-              position: draftPosition(anchor, connect.side),
-              data: {
-                kind: connect.kind,
-                app: {
-                  slug: appData.slug,
-                  id: appId,
-                  defaultRegion: appData.buckets?.defaultRegion,
+  const withDraft = useMemo(
+    () =>
+      connect?.kind && appData && anchor && appId
+        ? {
+            nodes: [
+              ...flow.nodes,
+              {
+                id: draftId,
+                type: 'draft',
+                position: draftPosition(anchor, connect.side),
+                data: {
+                  kind: connect.kind,
+                  app: {
+                    slug: appData.slug,
+                    id: appId,
+                    defaultRegion: appData.buckets?.defaultRegion,
+                  },
+                  onDone: () => setConnect(undefined),
+                  onCancel: () => setConnect(undefined),
                 },
-                onDone: () => setConnect(undefined),
-                onCancel: () => setConnect(undefined),
-              },
-              draggable: false,
-              selectable: false,
-              // The one place the draft's data meets the topology-typed union.
-            } as unknown as (typeof flow.nodes)[number],
-          ],
-          edges: [
-            ...flow.edges,
-            connect.side === 'in'
-              ? {
-                  id: 'draft-edge',
-                  source: draftId,
-                  sourceHandle: 'out',
-                  target: `app:${connect.slug}`,
-                  targetHandle: 'in',
-                  type: 'wind' as const,
-                  data: { draft: true },
-                }
-              : {
-                  id: 'draft-edge',
-                  source: `app:${connect.slug}`,
-                  sourceHandle: 'out',
-                  target: draftId,
-                  targetHandle: 'in',
-                  type: 'wind' as const,
-                  data: { draft: true },
-                },
-          ],
-        }
-      : flow;
+                draggable: false,
+                selectable: false,
+                // The one place the draft's data meets the topology-typed union.
+              } as unknown as (typeof flow.nodes)[number],
+            ],
+            edges: [
+              ...flow.edges,
+              connect.side === 'in'
+                ? {
+                    id: 'draft-edge',
+                    source: draftId,
+                    sourceHandle: 'out',
+                    target: `app:${connect.slug}`,
+                    targetHandle: 'in',
+                    type: 'wind' as const,
+                    data: { draft: true },
+                  }
+                : {
+                    id: 'draft-edge',
+                    source: `app:${connect.slug}`,
+                    sourceHandle: 'out',
+                    target: draftId,
+                    targetHandle: 'in',
+                    type: 'wind' as const,
+                    data: { draft: true },
+                  },
+            ],
+          }
+        : flow,
+    [connect, appData, anchor, appId, flow]
+  );
   const selected = topology.nodes.find((n) => n.id === node);
   const gaps = useMemo(() => summarizeIssues(topology.issues), [topology.issues]);
 
