@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { ErrorState, LoadingState, UnreachableState } from '@/components/dashboard/primitives';
 import { ReactFlowProvider } from '@xyflow/react';
 import { CanvasView } from './canvas';
@@ -8,6 +9,7 @@ import { useCamera } from './camera';
 import { toFlow } from './flow';
 import { Inspector, type InspectorTab } from './inspector';
 import { LaunchTracker } from './launch-tracker';
+import { Morph } from './morph';
 import { useLaunches } from './use-launches';
 import { useCreateAndDeploy } from '@/lib/api/create-and-deploy';
 import { errorMessage } from '@/lib/api/errors';
@@ -62,8 +64,12 @@ function CanvasPageBody({ node, wizard }: { node?: string; wizard?: WizardStep }
   const wizardStep: WizardStep | undefined =
     wizard ?? (phase === 'empty' && !justLaunched ? 'start' : undefined);
   const cardRef = useRef<HTMLDivElement>(null);
+  // The card about to become the new app's node.
+  const [morph, setMorph] = useState<{ from: DOMRect; slug: string }>();
   const onLaunched = useCallback(
     (s: LaunchSeed) => {
+      const from = cardRef.current?.getBoundingClientRect();
+      if (from) setMorph({ from, slug: s.slug });
       seed(s);
       setJustLaunched(true);
       setWizard(undefined);
@@ -226,8 +232,53 @@ function CanvasPageBody({ node, wizard }: { node?: string; wizard?: WizardStep }
   );
   const gaps = useMemo(() => summarizeIssues(topology.issues), [topology.issues]);
 
+  const morphId = morph && `app:${morph.slug}`;
+  const morphArrived = Boolean(morph && appSlugs.has(morph.slug));
+  // The real node waits, invisible, under the box until the box lands on it.
+  const shown = useMemo(
+    () =>
+      morphId
+        ? {
+            ...withDraft,
+            nodes: withDraft.nodes.map((n) =>
+              n.id === morphId ? { ...n, style: { ...n.style, opacity: 0 } } : n
+            ),
+          }
+        : withDraft,
+    [withDraft, morphId]
+  );
+  const morphTo = useCallback(
+    () =>
+      document
+        .querySelector<HTMLElement>(`.react-flow__node[data-id="${morphId}"] .canvas-node`)
+        ?.getBoundingClientRect() ?? null,
+    [morphId]
+  );
+  const endMorph = useCallback(() => setMorph(undefined), []);
+  // A new app lands at the end of the graph: bring it on screen for the box.
+  useEffect(() => {
+    if (!morphArrived || !morphId) return;
+    const id = window.setTimeout(() => camera.ensureVisible([morphId]), 60);
+    return () => window.clearTimeout(id);
+  }, [morphArrived, morphId, camera]);
+  // If the app list never brings the app (a failed refetch), let the card go.
+  useEffect(() => {
+    if (!morph || morphArrived) return;
+    const id = window.setTimeout(endMorph, 8_000);
+    return () => window.clearTimeout(id);
+  }, [morph, morphArrived, endMorph]);
+
   return (
     <div data-gregale-canvas="" className="relative h-full">
+      {morph && (
+        <Morph
+          from={morph.from}
+          to={morphTo}
+          slug={morph.slug}
+          hold={!morphArrived}
+          onDone={endMorph}
+        />
+      )}
       {Object.values(seeds)
         // Only apps the account has: a stale seed for a deleted app is ignored.
         .filter((s) => appSlugs.has(s.slug))
@@ -245,27 +296,16 @@ function CanvasPageBody({ node, wizard }: { node?: string; wizard?: WizardStep }
         {phase === 'loading' && <LoadingState message="Loading canvas…" className="m-6 flex-1" />}
         {phase === 'unreachable' && <UnreachableState onRetry={retry} className="m-6 flex-1" />}
         {phase === 'error' && <ErrorState error={error} onRetry={retry} className="m-6 flex-1" />}
-        {phase === 'empty' && (
-          <div className="canvas-surface relative flex-1">
-            {wizardStep ? (
-              <Wizard
-                step={wizardStep}
-                mode="empty"
-                apps={[]}
-                onStep={setWizard}
-                onLaunched={onLaunched}
-                onPickExisting={() => {}}
-                cardRef={cardRef}
-              />
-            ) : (
-              <LoadingState message="Placing your app…" className="m-6" />
-            )}
-          </div>
-        )}
-        {phase === 'ready' && (
+        {(phase === 'empty' || phase === 'ready') && (
           <>
-            <div className="relative flex-1">
-              {gaps.length > 0 && (
+            {/* One tree for both phases: creating the first app flips the
+                phase mid-wizard, and the wizard must not remount and lose
+                its step's state when it does. */}
+            <div className={cn('relative flex-1', phase === 'empty' && 'canvas-surface')}>
+              {phase === 'empty' && !wizardStep && !morph && (
+                <LoadingState message="Placing your app…" className="m-6" />
+              )}
+              {phase === 'ready' && gaps.length > 0 && (
                 <div
                   role="status"
                   className="absolute top-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-3 rounded-xl border border-status-warning/30 bg-canvas-glass py-1.5 pr-1.5 pl-3 text-[12px] shadow-elevation-2 backdrop-blur-md"
@@ -277,34 +317,36 @@ function CanvasPageBody({ node, wizard }: { node?: string; wizard?: WizardStep }
                   </Button>
                 </div>
               )}
-              <CanvasView
-                nodes={withDraft.nodes}
-                edges={withDraft.edges}
-                selected={node}
-                onSelect={select}
-                settled={settled}
-                onNew={() => setWizard('start')}
-                onPick={(id) => {
-                  select(id);
-                  camera.flyTo(id);
-                }}
-              >
-                <LaneHeaders top={-44} />
-                {connect && appData && anchor && !connect.kind && (
-                  <ConnectMenu
-                    app={appData}
-                    side={connect.side}
-                    at={menuPosition(anchor, connect.side)}
-                    onPick={(kind) => setConnect({ ...connect, kind })}
-                    onClose={() => setConnect(undefined)}
-                    onRetry={() => retryApp(connect.slug)}
-                  />
-                )}
-              </CanvasView>
+              {phase === 'ready' && (
+                <CanvasView
+                  nodes={shown.nodes}
+                  edges={shown.edges}
+                  selected={node}
+                  onSelect={select}
+                  settled={settled}
+                  onNew={() => setWizard('start')}
+                  onPick={(id) => {
+                    select(id);
+                    camera.flyTo(id);
+                  }}
+                >
+                  <LaneHeaders top={-44} />
+                  {connect && appData && anchor && !connect.kind && (
+                    <ConnectMenu
+                      app={appData}
+                      side={connect.side}
+                      at={menuPosition(anchor, connect.side)}
+                      onPick={(kind) => setConnect({ ...connect, kind })}
+                      onClose={() => setConnect(undefined)}
+                      onRetry={() => retryApp(connect.slug)}
+                    />
+                  )}
+                </CanvasView>
+              )}
               {wizardStep && (
                 <Wizard
                   step={wizardStep}
-                  mode="new"
+                  mode={phase === 'empty' ? 'empty' : 'new'}
                   apps={topology.nodes
                     .filter((n) => n.data.kind === 'app')
                     .map((n) => (n.data as AppData).slug)}
@@ -318,7 +360,7 @@ function CanvasPageBody({ node, wizard }: { node?: string; wizard?: WizardStep }
                 />
               )}
             </div>
-            {selected && (
+            {phase === 'ready' && selected && (
               <Inspector
                 key={openOnLogs ? `${selected.id}:${logsFor.n}` : selected.id}
                 node={selected}

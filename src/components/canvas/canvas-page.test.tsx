@@ -1,10 +1,11 @@
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode, type Ref } from 'react';
 import { fireEvent, render as rtlRender, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/lib/api/errors';
 
 const state = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
+const wizardMounts = vi.hoisted(() => ({ count: 0 }));
 vi.mock('./use-topology', () => ({ useTopology: () => state.value }));
 vi.mock('./canvas', () => ({ CanvasView: () => <div data-testid="flow" /> }));
 vi.mock('./inspector', () => ({ Inspector: () => null }));
@@ -13,16 +14,30 @@ vi.mock('./wizard/wizard', () => ({
     step,
     mode,
     onLaunched,
+    cardRef,
   }: {
     step: string;
     mode: string;
     onLaunched: (s: { slug: string; source: 'cli' }) => void;
-  }) => (
+    cardRef?: Ref<HTMLParagraphElement>;
+  }) => {
+    useEffect(() => {
+      wizardMounts.count += 1;
+    }, []);
+    return (
+      <p ref={cardRef}>
+        wizard {mode} {step}
+        <button type="button" onClick={() => onLaunched({ slug: 'api', source: 'cli' })}>
+          launch
+        </button>
+      </p>
+    );
+  },
+}));
+vi.mock('./morph', () => ({
+  Morph: ({ slug, hold }: { slug: string; hold: boolean }) => (
     <p>
-      wizard {mode} {step}
-      <button type="button" onClick={() => onLaunched({ slug: 'api', source: 'cli' })}>
-        launch
-      </button>
+      morph {slug} {hold ? 'holding' : 'flying'}
     </p>
   ),
 }));
@@ -117,6 +132,41 @@ describe('CanvasPage', () => {
     expect(screen.queryByText(/wizard empty/)).not.toBeInTheDocument();
   });
 
+  it('parks the card until the new app is on the canvas, then flies it there', () => {
+    state.value = { phase: 'empty', topology: empty, retry: vi.fn() };
+    const { rerender } = render(<CanvasPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'launch' }));
+    expect(screen.getByText('morph api holding')).toBeInTheDocument();
+    state.value = {
+      phase: 'ready',
+      topology: {
+        nodes: [
+          {
+            id: 'app:api',
+            data: {
+              kind: 'app',
+              slug: 'api',
+              phase: 'undeployed',
+              metrics: 'ready',
+              connections: 'ready',
+            },
+          },
+        ],
+        edges: [],
+        issues: [],
+      },
+      retry: vi.fn(),
+      retryApp: vi.fn(),
+      settled: true,
+    };
+    rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <CanvasPage />
+      </QueryClientProvider>
+    );
+    expect(screen.getByText('morph api flying')).toBeInTheDocument();
+  });
+
   it('a stored launch alone does not hold an empty account', () => {
     sessionStorage.setItem(
       'gregale.canvas.launches',
@@ -157,5 +207,30 @@ describe('CanvasPage', () => {
     render(<CanvasPage />);
     expect(screen.getByText('tracking api')).toBeInTheDocument();
     expect(screen.queryByText('tracking gone')).not.toBeInTheDocument();
+  });
+
+  it('keeps the wizard mounted when creating the first app flips the page to ready', () => {
+    wizardMounts.count = 0;
+    state.value = { phase: 'empty', topology: empty, retry: vi.fn() };
+    const client = new QueryClient();
+    const { rerender } = rtlRender(
+      <QueryClientProvider client={client}>
+        <CanvasPage wizard="cli" />
+      </QueryClientProvider>
+    );
+    state.value = {
+      phase: 'ready',
+      topology: empty,
+      retry: vi.fn(),
+      retryApp: vi.fn(),
+      settled: true,
+    };
+    rerender(
+      <QueryClientProvider client={client}>
+        <CanvasPage wizard="cli" />
+      </QueryClientProvider>
+    );
+    expect(screen.getByText(/wizard new cli/)).toBeInTheDocument();
+    expect(wizardMounts.count).toBe(1);
   });
 });
