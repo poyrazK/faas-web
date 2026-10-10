@@ -30,6 +30,8 @@ The console's `api/openapi.yaml` exposes 370 operations. faas `main` exposes 1,0
 
 Step one of the implementation is `npm run api:pull` in its own commit. That commit fixes whatever stops compiling and passes `npm run check`, `npm run build` and `npm run test` before any canvas code is written. If the drift is too large to absorb in one commit, the canvas ships v1 without service-binding edges and binding-inventory states, and those return after a separate spec-refresh PR. Domains, crons, buckets, Postgres and `getAppsMetrics` are already vendored.
 
+**Decision (2026-10-10, during planning): take the fallback.** A trial `npm run api:pull` grew the spec from 371 to 1,116 operations and produced 83 type errors across 25 files. Several are real contract changes in unrelated features: alert `action`, cron `command_shell`, webhook rotation bodies, and the removed invitation DELETE. That refresh is its own PR. Canvas v1 ships without service-binding edges, binding-inventory states and the health phase, and they return in a follow-up once the refresh lands.
+
 ## Visual language: Wind
 
 Chosen from three mocked directions (Schematic, Console cards, Wind).
