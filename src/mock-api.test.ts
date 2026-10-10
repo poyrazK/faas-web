@@ -496,3 +496,24 @@ describe('mock API', () => {
     }
   });
 });
+
+describe('logout CSRF contract', () => {
+  it('refuses a logout without the auth.logout token, like apid', async () => {
+    const response = await fetch(`${origin}/v1/auth/logout`, { method: 'POST' });
+
+    expect(response.status).toBe(400);
+    expect((await response.json()).code).toBe('csrf_mismatch');
+  });
+
+  it('ends the session when the minted token is posted back', async () => {
+    const { body } = await get('/v1/auth/csrf?action=auth.logout');
+    const response = await fetch(`${origin}/v1/auth/logout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ csrf_token: body.csrf_token }),
+    });
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get('set-cookie')).toContain('faas_sid=;');
+  });
+});
