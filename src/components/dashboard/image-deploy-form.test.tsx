@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { ImageDeployForm } from './image-deploy-form';
+import { ImageDeployForm, ImageDeploymentPanel } from './image-deploy-form';
 import { api } from '@/lib/api/client';
 import { ApiError } from '@/lib/api/errors';
 import { readImageOperation, saveImageOperation, newImageOperation } from '@/lib/image-operation';
@@ -11,6 +11,7 @@ const state = vi.hoisted(() => ({
   availability: 'available',
   terminal: '',
   readPrivate: vi.fn(),
+  readWorker: vi.fn(),
 }));
 vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: state.account }) }));
 vi.mock('@/lib/api/capabilities', () => ({
@@ -21,6 +22,12 @@ vi.mock('@/lib/api/capabilities', () => ({
   }),
 }));
 vi.mock('@/lib/api/bindings', () => ({ readPrivateAppCreateContext: state.readPrivate }));
+vi.mock('@/lib/api/worker-create', () => ({ readWorkerCreateContext: state.readWorker }));
+vi.mock('./worker-release-progress', () => ({
+  WorkerReleaseProgress: ({ deploymentId }: { deploymentId: string }) => (
+    <div>Worker release {deploymentId}</div>
+  ),
+}));
 vi.mock('./deployment-progress', () => ({
   DeploymentProgress: ({
     deploymentId,
@@ -45,11 +52,11 @@ vi.mock('./deployment-progress', () => ({
 }));
 vi.mock('@/lib/use-unsaved-guard', () => ({ useUnsavedGuard: vi.fn() }));
 const reference = `ghcr.io/team/api@sha256:${'a'.repeat(64)}`;
-function mount(slug?: string) {
+function mount(slug?: string, kind: 'http' | 'worker' = 'http') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <ImageDeployForm slug={slug} />
+      <ImageDeployForm slug={slug} kind={kind} />
     </QueryClientProvider>
   );
 }
@@ -61,10 +68,244 @@ beforeEach(() => {
   state.availability = 'available';
   state.terminal = '';
   state.readPrivate.mockReset().mockResolvedValue(undefined);
+  state.readWorker.mockReset().mockResolvedValue(undefined);
   vi.spyOn(api, 'GET').mockImplementation(async (path) =>
     path === '/v1/apps/{slug}'
       ? ok({ id: 'app-1', slug: 'my-api', type: 'app' })
       : ok({ credentials: [], count: 0, quota_max: 0 })
+  );
+});
+it('reviews and submits an OCI worker without HTTP port or health assumptions', async () => {
+  state.account.plan = 'hobby';
+  vi.spyOn(api, 'GET').mockImplementation(async (path) =>
+    path === '/v1/apps/{slug}'
+      ? ok({
+          id: 'app-1',
+          slug: 'my-api',
+          type: 'app',
+          visibility: 'internal',
+          manifest: {
+            execution_mode: 'worker',
+            restart_policy: 'on-failure',
+            startup_deadline_s: 20,
+            max_retries: 0,
+          },
+        })
+      : ok({ credentials: [], count: 0, quota_max: 0 })
+  );
+  const post = vi
+    .spyOn(api, 'POST')
+    .mockImplementation(async (path) =>
+      path === '/v1/apps'
+        ? ok({ id: 'app-1', slug: 'my-api', visibility: 'internal' })
+        : ok({ id: 'dep-worker', app_id: 'app-1', status: 'pending' })
+    );
+  mount(undefined, 'worker');
+  await userEvent.type(screen.getByLabelText('App name'), 'my-api');
+  await userEvent.type(screen.getByLabelText('Image reference'), reference);
+  expect(screen.queryByLabelText('Port override')).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('Health path override')).not.toBeInTheDocument();
+  await userEvent.selectOptions(screen.getByLabelText('Restart policy'), 'on-failure');
+  await userEvent.clear(screen.getByLabelText('Startup deadline (seconds)'));
+  await userEvent.type(screen.getByLabelText('Startup deadline (seconds)'), '20');
+  await userEvent.click(screen.getByRole('button', { name: 'Review worker deployment' }));
+  expect(screen.getByText(/Worker execution/)).toHaveTextContent(/on-failure/);
+  await userEvent.click(screen.getByRole('button', { name: 'Create worker and deploy image' }));
+  await screen.findByText('Worker release dep-worker');
+  expect(state.readWorker).toHaveBeenCalledTimes(2);
+  expect(post.mock.calls[0]?.[1]).toMatchObject({
+    body: {
+      execution_mode: 'worker',
+      restart_policy: 'on-failure',
+      startup_deadline_s: 20,
+      visibility: 'internal',
+    },
+  });
+  expect(post.mock.calls[1]?.[1]).toMatchObject({ body: { image: reference } });
+  expect(
+    (post.mock.calls[1]?.[1] as { body?: { overrides?: unknown } }).body?.overrides
+  ).toBeUndefined();
+  expect(readImageOperation('a', '', 'worker')?.deploymentId).toBe('dep-worker');
+  expect(readImageOperation('a', '')).toBeNull();
+});
+
+it('blocks Free worker creation and rejects a retry cap beyond Hobby', async () => {
+  state.account.plan = 'free';
+  mount(undefined, 'worker');
+  expect(screen.getByRole('button', { name: 'Review worker deployment' })).toBeDisabled();
+  cleanup();
+  state.account.plan = 'hobby';
+  mount(undefined, 'worker');
+  await userEvent.type(screen.getByLabelText('App name'), 'my-api');
+  await userEvent.type(screen.getByLabelText('Image reference'), reference);
+  await userEvent.clear(screen.getByLabelText('Max restart retries'));
+  await userEvent.type(screen.getByLabelText('Max restart retries'), '6');
+  await userEvent.click(screen.getByRole('button', { name: 'Review worker deployment' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent(/5/);
+  expect(readImageOperation('a', '', 'worker')).toBeNull();
+});
+it('keeps a lost worker create frozen across reload and reuses its original key only on request', async () => {
+  state.account.plan = 'hobby';
+  vi.spyOn(api, 'GET').mockImplementation(async (path) =>
+    path === '/v1/apps/{slug}'
+      ? ok({
+          id: 'app-1',
+          slug: 'my-api',
+          type: 'app',
+          visibility: 'internal',
+          manifest: {
+            execution_mode: 'worker',
+            restart_policy: 'always',
+            startup_deadline_s: 0,
+            max_retries: 0,
+          },
+        })
+      : ok({ credentials: [], count: 0, quota_max: 0 })
+  );
+  const post = vi
+    .spyOn(api, 'POST')
+    .mockRejectedValueOnce(new TypeError('connection lost'))
+    .mockImplementation(async (path) =>
+      path === '/v1/apps'
+        ? ok({ id: 'app-1', slug: 'my-api', visibility: 'internal' })
+        : ok({ id: 'dep-worker', app_id: 'app-1', status: 'pending' })
+    );
+  mount(undefined, 'worker');
+  await userEvent.type(screen.getByLabelText('App name'), 'my-api');
+  await userEvent.type(screen.getByLabelText('Image reference'), reference);
+  await userEvent.click(screen.getByRole('button', { name: 'Review worker deployment' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Create worker and deploy image' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent(/Could not reach the API/i);
+  const key = readImageOperation('a', '', 'worker')?.createKey;
+  expect(post).toHaveBeenCalledTimes(1);
+  cleanup();
+  mount(undefined, 'worker');
+  expect(post).toHaveBeenCalledTimes(1);
+  await userEvent.click(screen.getByRole('button', { name: 'Recover app creation' }));
+  await screen.findByText('Worker release dep-worker');
+  expect(post.mock.calls[1]?.[1]).toMatchObject({ headers: { 'Idempotency-Key': key } });
+  expect(post).toHaveBeenCalledTimes(3);
+});
+
+it('freezes an accepted worker app whose execution mode is not confirmed', async () => {
+  state.account.plan = 'hobby';
+  vi.spyOn(api, 'GET').mockImplementation(async (path) =>
+    path === '/v1/apps/{slug}'
+      ? ok({
+          id: 'app-1',
+          slug: 'my-api',
+          type: 'app',
+          visibility: 'internal',
+          manifest: { execution_mode: 'request' },
+        })
+      : ok({ credentials: [], count: 0, quota_max: 0 })
+  );
+  const post = vi
+    .spyOn(api, 'POST')
+    .mockResolvedValue(ok({ id: 'app-1', slug: 'my-api', visibility: 'internal' }));
+  mount(undefined, 'worker');
+  await userEvent.type(screen.getByLabelText('App name'), 'my-api');
+  await userEvent.type(screen.getByLabelText('Image reference'), reference);
+  await userEvent.click(screen.getByRole('button', { name: 'Review worker deployment' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Create worker and deploy image' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent(/execution mode is not confirmed/i);
+  expect(post).toHaveBeenCalledTimes(1);
+  expect(readImageOperation('a', '', 'worker')?.appId).toBe('app-1');
+});
+it('blocks a resumed worker release when lifecycle settings changed before deployment', async () => {
+  state.account.plan = 'hobby';
+  const saved = {
+    ...newImageOperation(
+      'a',
+      {
+        slug: 'my-api',
+        type: 'app',
+        ram_mb: 128,
+        visibility: 'internal',
+        execution_mode: 'worker',
+        restart_policy: 'always',
+        startup_deadline_s: 20,
+        max_retries: 2,
+      },
+      { image: reference },
+      '',
+      'worker'
+    ),
+    appId: 'app-1',
+    stage: 'app-created' as const,
+  };
+  saveImageOperation(saved);
+  vi.spyOn(api, 'GET').mockImplementation(async (path) =>
+    path === '/v1/apps/{slug}'
+      ? ok({
+          id: 'app-1',
+          slug: 'my-api',
+          type: 'app',
+          visibility: 'internal',
+          manifest: {
+            execution_mode: 'worker',
+            restart_policy: 'no',
+            startup_deadline_s: 20,
+            max_retries: 2,
+          },
+        })
+      : ok({ credentials: [], count: 0, quota_max: 0 })
+  );
+  const post = vi
+    .spyOn(api, 'POST')
+    .mockResolvedValue(ok({ id: 'dep-worker', app_id: 'app-1', status: 'pending' }));
+  const put = vi.spyOn(api, 'PUT');
+  mount(undefined, 'worker');
+  await userEvent.click(screen.getByRole('button', { name: 'Submit image deployment' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent(/lifecycle settings changed/i);
+  expect(post).not.toHaveBeenCalled();
+  expect(put).not.toHaveBeenCalled();
+  expect(readImageOperation('a', '', 'worker')?.stage).toBe('app-created');
+  await userEvent.click(screen.getByRole('button', { name: 'Review current worker settings' }));
+  expect(screen.getByRole('button', { name: 'Review worker deployment' })).toBeInTheDocument();
+  expect(screen.getByText(/Continuing with saved app/)).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Review worker deployment' }));
+  expect(screen.getByText(/Review:/)).toHaveTextContent(/no restart/);
+  await userEvent.click(screen.getByRole('button', { name: 'Deploy reviewed image' }));
+  await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+  expect(readImageOperation('a', '', 'worker')?.createRequest.restart_policy).toBe('no');
+});
+
+it('opens the worker image journey from an authoritative worker app page', async () => {
+  state.account.plan = 'hobby';
+  vi.spyOn(api, 'GET').mockImplementation(async (path) =>
+    path === '/v1/apps/{slug}'
+      ? ok({
+          id: 'app-1',
+          slug: 'my-api',
+          type: 'app',
+          visibility: 'internal',
+          ram_mb: 128,
+          manifest: {
+            execution_mode: 'worker',
+            restart_policy: 'on-failure',
+            startup_deadline_s: 20,
+            max_retries: 3,
+          },
+        })
+      : ok({ credentials: [], count: 0, quota_max: 0 })
+  );
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={client}>
+      <ImageDeploymentPanel slug="my-api" />
+    </QueryClientProvider>
+  );
+  await userEvent.click(await screen.findByRole('button', { name: 'Deploy image' }));
+  expect(await screen.findByRole('region', { name: 'OCI worker image' })).toHaveTextContent(
+    /no HTTP listener/
+  );
+  expect(screen.queryByLabelText('Port override')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Review worker deployment' })).toBeInTheDocument();
+  await userEvent.type(screen.getByLabelText('Image reference'), reference);
+  await userEvent.click(screen.getByRole('button', { name: 'Review worker deployment' }));
+  expect(screen.getByText(/Review:/)).toHaveTextContent(
+    /on-failure restart · startup deadline 20 · retry cap 3/
   );
 });
 it('reviews internal image creation, persists visibility and rechecks capability before POST', async () => {

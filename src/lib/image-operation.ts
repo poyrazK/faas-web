@@ -3,10 +3,20 @@ import { imageRequest } from './oci-image';
 type CreateRequest = components['schemas']['CreateAppRequest'];
 export type ImageCreateRequest = Pick<
   CreateRequest,
-  'slug' | 'type' | 'ram_mb' | 'idle_timeout_s' | 'visibility'
+  | 'slug'
+  | 'type'
+  | 'ram_mb'
+  | 'idle_timeout_s'
+  | 'visibility'
+  | 'execution_mode'
+  | 'restart_policy'
+  | 'startup_deadline_s'
+  | 'max_retries'
 >;
+export type ImageWorkloadKind = 'http' | 'worker';
 export interface ImageOperation {
   version: 1;
+  workloadKind?: ImageWorkloadKind;
   accountId: string;
   existingSlug: string;
   createKey: string;
@@ -29,16 +39,18 @@ export interface ImageOperation {
   deploymentId?: string;
   needsCredentials?: boolean;
 }
-const operationKey = (accountId: string, slug: string) =>
-  `gregale.image-operation:${accountId}:${slug || 'new'}`;
+const operationKey = (accountId: string, slug: string, kind: ImageWorkloadKind = 'http') =>
+  `gregale.${kind === 'worker' ? 'worker-image-operation' : 'image-operation'}:${accountId}:${slug || 'new'}`;
 export function newImageOperation(
   accountId: string,
   createRequest: ImageCreateRequest,
   deployRequest: ImageOperation['deployRequest'],
-  existingSlug = ''
+  existingSlug = '',
+  workloadKind: ImageWorkloadKind = 'http'
 ): ImageOperation {
   return {
     version: 1,
+    ...(workloadKind === 'worker' ? { workloadKind } : {}),
     accountId,
     existingSlug,
     createKey: crypto.randomUUID(),
@@ -58,17 +70,29 @@ export function newImageOperation(
 }
 /** Never serialize caller-supplied objects: only this form's non-secret fields. */
 function sanitized(operation: ImageOperation): ImageOperation {
-  const { slug, ram_mb, idle_timeout_s, cpu_millicores, head_wakes, crawler_policy, visibility } =
-    operation.createRequest;
+  const {
+    slug,
+    ram_mb,
+    idle_timeout_s,
+    cpu_millicores,
+    head_wakes,
+    crawler_policy,
+    visibility,
+    execution_mode,
+    restart_policy,
+    startup_deadline_s,
+    max_retries,
+  } = operation.createRequest;
   const overrides = operation.deployRequest.overrides;
   const deployRequest = imageRequest(
     operation.deployRequest.image ?? '',
-    overrides?.port ? String(overrides.port) : '',
-    overrides?.healthcheck?.path ?? '',
+    operation.workloadKind === 'worker' ? '' : overrides?.port ? String(overrides.port) : '',
+    operation.workloadKind === 'worker' ? '' : (overrides?.healthcheck?.path ?? ''),
     operation.deployRequest.full_rootfs_allow_auto === true
   );
   return {
     version: 1,
+    ...(operation.workloadKind === 'worker' ? { workloadKind: 'worker' as const } : {}),
     accountId: operation.accountId,
     existingSlug: operation.existingSlug,
     createKey: operation.createKey,
@@ -84,6 +108,9 @@ function sanitized(operation: ImageOperation): ImageOperation {
       visibility: visibility ?? 'public',
       ...(ram_mb ? { ram_mb } : {}),
       ...(idle_timeout_s !== undefined ? { idle_timeout_s } : {}),
+      ...(operation.workloadKind === 'worker'
+        ? { execution_mode, restart_policy, startup_deadline_s, max_retries }
+        : {}),
     },
     deployRequest,
     stage: operation.stage,
@@ -95,17 +122,22 @@ function sanitized(operation: ImageOperation): ImageOperation {
 }
 export function saveImageOperation(operation: ImageOperation) {
   localStorage.setItem(
-    operationKey(operation.accountId, operation.existingSlug),
+    operationKey(operation.accountId, operation.existingSlug, operation.workloadKind),
     JSON.stringify(sanitized(operation))
   );
 }
-export function readImageOperation(accountId: string, existingSlug: string): ImageOperation | null {
-  const raw = localStorage.getItem(operationKey(accountId, existingSlug));
+export function readImageOperation(
+  accountId: string,
+  existingSlug: string,
+  workloadKind: ImageWorkloadKind = 'http'
+): ImageOperation | null {
+  const raw = localStorage.getItem(operationKey(accountId, existingSlug, workloadKind));
   if (!raw) return null;
   try {
     const operation = JSON.parse(raw) as ImageOperation;
     if (
       operation.version !== 1 ||
+      (operation.workloadKind ?? 'http') !== workloadKind ||
       operation.accountId !== accountId ||
       operation.existingSlug !== existingSlug ||
       !operation.createKey ||
@@ -124,7 +156,15 @@ export function readImageOperation(accountId: string, existingSlug: string): Ima
       ].includes(operation.stage) ||
       !/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(operation.createRequest.slug) ||
       (operation.createRequest.visibility !== undefined &&
-        !['public', 'internal'].includes(operation.createRequest.visibility))
+        !['public', 'internal'].includes(operation.createRequest.visibility)) ||
+      (workloadKind === 'worker' &&
+        (operation.createRequest.execution_mode !== 'worker' ||
+          operation.createRequest.visibility !== 'internal' ||
+          !['always', 'on-failure', 'unless-stopped', 'no'].includes(
+            operation.createRequest.restart_policy ?? ''
+          ) ||
+          !Number.isInteger(operation.createRequest.startup_deadline_s) ||
+          !Number.isInteger(operation.createRequest.max_retries)))
     )
       throw new Error();
     if (!['create-pending', 'create-rejected'].includes(operation.stage) && !operation.appId)
@@ -141,5 +181,7 @@ export function creationReplayAllowed(operation: ImageOperation, now = Date.now(
   return now >= operation.createdAt && now - operation.createdAt < 24 * 60 * 60 * 1000;
 }
 export function clearImageOperation(operation: ImageOperation) {
-  localStorage.removeItem(operationKey(operation.accountId, operation.existingSlug));
+  localStorage.removeItem(
+    operationKey(operation.accountId, operation.existingSlug, operation.workloadKind)
+  );
 }

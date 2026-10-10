@@ -455,12 +455,37 @@ route('GET', '/v1/apps/metrics', ({ query }) => {
 });
 const imageAppReceipts = new Map<string, { body: string; app: db.App; at: number }>();
 const imageDeployReceipts = new Map<string, db.Deployment>();
+const workerImageReads = new Map<string, number>();
 route('POST', '/v1/apps', ({ body, req }) => {
   const key = String(req.headers['idempotency-key'] ?? '');
   const receipt = key && imageAppReceipts.get(key);
   if (receipt && Date.now() - receipt.at < 24 * 60 * 60 * 1000) {
     if (receipt.body !== JSON.stringify(body)) throw new Problem(409, 'idempotency_conflict');
     return status(201, receipt.app);
+  }
+  const worker = body.execution_mode === 'worker';
+  const plan = process.env.MOCK_PLAN ?? db.account.plan;
+  if (worker && plan === 'free') throw new Problem(403, 'plan_worker_pools_not_allowed');
+  const restartPolicy = String(body.restart_policy ?? 'always');
+  if (worker) {
+    const limit =
+      plan === 'hobby'
+        ? { deadline: 30, retries: 5 }
+        : plan === 'pro'
+          ? { deadline: 60, retries: 10 }
+          : { deadline: 120, retries: 20 };
+    const deadline = Number(body.startup_deadline_s ?? 0);
+    const retries = Number(body.max_retries ?? 0);
+    if (
+      !Number.isInteger(deadline) ||
+      deadline < 0 ||
+      deadline > limit.deadline ||
+      !Number.isInteger(retries) ||
+      retries < 0 ||
+      retries > limit.retries ||
+      !['always', 'on-failure', 'unless-stopped', 'no'].includes(restartPolicy)
+    )
+      throw new Problem(422, 'invalid_lifecycle_configuration');
   }
   const slug = String(body.slug ?? '').trim();
   if (!/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(slug))
@@ -476,6 +501,20 @@ route('POST', '/v1/apps', ({ body, req }) => {
     ram_mb: Number(body.ram_mb ?? 256),
     min_instances: 0,
     status: 'pending',
+    ...(worker
+      ? {
+          workload_class: undefined,
+          manifest: {
+            entrypoint: ['/worker'],
+            execution_mode: 'worker' as const,
+            restart_policy: restartPolicy as db.App['manifest']['restart_policy'],
+            startup_deadline_s: Number(body.startup_deadline_s ?? 0),
+            max_retries: Number(body.max_retries ?? 0),
+            head_wakes: false,
+            crawler_policy: 'wake' as const,
+          },
+        }
+      : {}),
     visibility: body.visibility === 'internal' ? 'internal' : 'public',
     url: body.visibility === 'internal' ? '' : `https://${slug}.gregale.app`,
     service_bindings: Array.isArray(body.service_binding_targets)
@@ -3547,6 +3586,19 @@ route('GET', '/v1/deployments/latest-by-app', () => {
 route('GET', '/v1/deployments/{id}', ({ params }) => {
   const d = db.deployments.find((x) => x.id === params.id);
   if (!d) throw new Problem(404, 'deployment_not_found');
+  const workerApp = db.apps.find(
+    (item) => item.id === d.app_id && item.manifest?.execution_mode === 'worker'
+  );
+  if (workerApp && d.kind === 'image' && d.status === 'imaging') {
+    const reads = (workerImageReads.get(d.id) ?? 0) + 1;
+    workerImageReads.set(d.id, reads);
+    // The mock completes characterization after a second status read. A live
+    // release permits binding setup; it is not evidence of consumer liveness.
+    if (reads >= 2) {
+      d.status = 'live';
+      workerApp.workload_class = 'worker';
+    }
+  }
   return d;
 });
 route('GET', '/v1/builds', () => ({ items: db.builds }));

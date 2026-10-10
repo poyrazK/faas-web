@@ -5,6 +5,9 @@ describe('new app Git source validation', () => {
   it('retains a direct container source URL', () => {
     expect(validateNewAppSearch({ source: 'container' }).source).toBe('container');
   });
+  it('retains a direct OCI worker source URL across reload', () => {
+    expect(validateNewAppSearch({ source: 'worker' }).source).toBe('worker');
+  });
   it('accepts API-shaped GitHub owner/repository slugs', () => {
     for (const repo of ['gregale/api', 'one-box/faas_web.git', 'A.B-C/repo_2']) {
       expect(isValidGitHubRepo(repo), repo).toBe(true);

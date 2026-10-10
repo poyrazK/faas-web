@@ -5,11 +5,13 @@ import { Input } from '@/components/ui/input';
 import { useAuth } from '@/lib/auth';
 import { api, unwrap } from '@/lib/api/client';
 import { ApiError, errorMessage } from '@/lib/api/errors';
-import { keys, retryPolicy } from '@/lib/api/queries';
+import { keys, retryPolicy, useApp } from '@/lib/api/queries';
 import { createImageApp, deployImage } from '@/lib/api/image-deployments';
 import { useCapability } from '@/lib/api/capabilities';
 import { readPrivateAppCreateContext } from '@/lib/api/bindings';
+import { readWorkerCreateContext } from '@/lib/api/worker-create';
 import { imageRequest } from '@/lib/oci-image';
+import { workerCreateRequest } from '@/lib/worker-image';
 import {
   clearImageOperation,
   creationReplayAllowed,
@@ -17,11 +19,13 @@ import {
   readImageOperation,
   saveImageOperation,
   type ImageOperation,
+  type ImageWorkloadKind,
 } from '@/lib/image-operation';
 import { useUnsavedGuard } from '@/lib/use-unsaved-guard';
 import { appNameError } from './new-app-validation';
 import { CapabilityNotice } from './capability-notice';
 import { DeploymentProgress } from './deployment-progress';
+import { WorkerReleaseProgress } from './worker-release-progress';
 import type { components } from '@/lib/api/schema';
 
 // A new request's settled admission/validation refusal did not accept a release.
@@ -32,27 +36,40 @@ function definitivelyRejected(error: unknown) {
   );
 }
 
-export function ImageDeployForm({ slug }: { slug?: string }) {
+export function ImageDeployForm({
+  slug,
+  kind = 'http',
+}: {
+  slug?: string;
+  kind?: ImageWorkloadKind;
+}) {
   const { account } = useAuth();
   if (!account) return <p role="status">Verifying your account…</p>;
   return (
     <ImageJourney
-      key={`${account.id}:${slug ?? 'new'}`}
+      key={`${account.id}:${slug ?? 'new'}:${kind}`}
       accountId={account.id}
       plan={account.plan}
       maxMemory={account.limits.ram_mb}
       slug={slug ?? ''}
+      kind={kind}
     />
   );
 }
 export function ImageDeploymentPanel({ slug }: { slug: string }) {
+  const { account } = useAuth();
+  const app = useApp(slug, { enabled: Boolean(account) }, account?.id);
   const [open, setOpen] = useState(false);
+  if (!account || app.isPending) return <p role="status">Verifying app image mode…</p>;
+  if (app.isError) return <p role="alert">App image mode unavailable. Retry the app page.</p>;
+  if (app.data?.type !== 'app') return null;
+  const kind = app.data.manifest?.execution_mode === 'worker' ? 'worker' : 'http';
   return (
     <div className="flex flex-col gap-3">
       <Button variant="outline" aria-expanded={open} onClick={() => setOpen(!open)}>
         Deploy image
       </Button>
-      {open && <ImageDeployForm slug={slug} />}
+      {open && <ImageDeployForm slug={slug} kind={kind} />}
     </div>
   );
 }
@@ -61,15 +78,17 @@ function ImageJourney({
   plan,
   maxMemory,
   slug,
+  kind,
 }: {
   accountId: string;
   plan: components['schemas']['CapabilitiesResponse']['plan'];
   maxMemory: number;
   slug: string;
+  kind: ImageWorkloadKind;
 }) {
   const [recovery] = useState(() => {
     try {
-      return { operation: readImageOperation(accountId, slug), error: null };
+      return { operation: readImageOperation(accountId, slug, kind), error: null };
     } catch (error) {
       return { operation: null, error: errorMessage(error) };
     }
@@ -83,6 +102,11 @@ function ImageJourney({
   const [port, setPort] = useState('');
   const [health, setHealth] = useState('');
   const [memory, setMemory] = useState(128);
+  const [restartPolicy, setRestartPolicy] = useState<
+    'always' | 'on-failure' | 'unless-stopped' | 'no'
+  >('always');
+  const [startupDeadline, setStartupDeadline] = useState(0);
+  const [maxRetries, setMaxRetries] = useState(0);
   const [visibility, setVisibility] = useState<'public' | 'internal'>('public');
   const [allowAuto, setAllowAuto] = useState(false);
   const [privateRegistry, setPrivateRegistry] = useState(false);
@@ -96,20 +120,48 @@ function ImageJourney({
   const [confirmAttempt, setConfirmAttempt] = useState(false);
   const [history, setHistory] = useState<components['schemas']['DeploymentResponse'][]>([]);
   const availability = useCapability('container-deployments');
+  const workerAvailability = useCapability('worker-pools');
   const privateAvailability = useCapability('private-apps');
+  const existingWorker = useApp(
+    slug,
+    { enabled: kind === 'worker' && Boolean(slug) && !editingApp },
+    accountId
+  );
   const cache = useQueryClient();
   const active = useRef(true);
   const lock = useRef(false);
-  const currentAvailability = useRef(availability.state);
+  const currentAvailability = useRef({
+    image: availability.state,
+    worker: workerAvailability.state,
+    private: privateAvailability.state,
+  });
   useEffect(() => {
-    currentAvailability.current = availability.state;
-  }, [availability.state]);
+    currentAvailability.current = {
+      image: availability.state,
+      worker: workerAvailability.state,
+      private: privateAvailability.state,
+    };
+  }, [availability.state, workerAvailability.state, privateAvailability.state]);
   useEffect(() => {
     active.current = true;
     return () => {
       active.current = false;
     };
   }, []);
+  const existingManifest =
+    kind === 'worker' && slug && !editingApp ? existingWorker.data?.manifest : undefined;
+  const reviewedRestartPolicy =
+    existingManifest?.execution_mode === 'worker'
+      ? (existingManifest.restart_policy ?? 'always')
+      : restartPolicy;
+  const reviewedStartupDeadline =
+    existingManifest?.execution_mode === 'worker'
+      ? (existingManifest.startup_deadline_s ?? 0)
+      : startupDeadline;
+  const reviewedMaxRetries =
+    existingManifest?.execution_mode === 'worker'
+      ? (existingManifest.max_retries ?? 0)
+      : maxRetries;
   const registrySlug = operation?.appId ? operation.createRequest.slug : fixedApp;
   const registry = useQuery({
     queryKey: ['account', accountId, 'image-registry', registrySlug],
@@ -126,7 +178,14 @@ function ImageJourney({
   useUnsavedGuard(
     Boolean(operation && operation.stage !== 'accepted') || Boolean(image || password)
   );
-  const permitted = availability.state === 'available' && !busy && !recovery.error;
+  const permitted =
+    availability.state === 'available' &&
+    (kind !== 'worker' ||
+      (plan !== 'free' &&
+        workerAvailability.state === 'available' &&
+        privateAvailability.state === 'available')) &&
+    !busy &&
+    !recovery.error;
   const privateCreateAllowed =
     visibility !== 'internal' ||
     Boolean(fixedApp) ||
@@ -142,7 +201,13 @@ function ImageJourney({
     return next;
   }
   function ensureCanWrite() {
-    if (!active.current || currentAvailability.current !== 'available')
+    if (
+      !active.current ||
+      currentAvailability.current.image !== 'available' ||
+      (kind === 'worker' &&
+        (currentAvailability.current.worker !== 'available' ||
+          currentAvailability.current.private !== 'available'))
+    )
       throw new Error('Availability or account changed. Resume after verifying access.');
   }
   async function verifyApp(current: ImageOperation) {
@@ -151,6 +216,20 @@ function ImageJourney({
     );
     if (app.id !== current.appId || app.type !== 'app')
       throw new Error('The app identity or type has changed. Inspect the app before resuming.');
+    if (kind === 'worker' && app.manifest?.execution_mode !== 'worker')
+      throw new Error(
+        'Worker execution mode is not confirmed on this app. Inspect it before deploying.'
+      );
+    if (
+      kind === 'worker' &&
+      (app.manifest?.restart_policy !== current.createRequest.restart_policy ||
+        (app.manifest?.startup_deadline_s ?? 0) !==
+          (current.createRequest.startup_deadline_s ?? 0) ||
+        (app.manifest?.max_retries ?? 0) !== (current.createRequest.max_retries ?? 0))
+    )
+      throw new Error(
+        'Worker lifecycle settings changed since review. Review the current worker settings before deploying.'
+      );
     if (current.createRequest.visibility === 'internal' && app.visibility !== 'internal')
       throw new Error('Internal visibility is not confirmed. Inspect the app before deploying.');
     ensureCanWrite();
@@ -167,6 +246,10 @@ function ImageJourney({
   }
   async function submitDeployment(current: ImageOperation) {
     ensureCanWrite();
+    if (kind === 'worker') {
+      await readWorkerCreateContext(accountId, plan);
+      ensureCanWrite();
+    }
     current = await verifyApp(current);
     current = persist({ ...current, stage: 'deploy-submitting' });
     try {
@@ -196,6 +279,10 @@ function ImageJourney({
       );
     const registryHost = current.deployRequest.image!.split('/')[0];
     ensureCanWrite();
+    if (kind === 'worker') {
+      await readWorkerCreateContext(accountId, plan);
+      ensureCanWrite();
+    }
     current = await verifyApp(current);
     await unwrap(
       api.PUT('/v1/apps/{slug}/registry-credentials', {
@@ -234,8 +321,9 @@ function ImageJourney({
       throw new Error(
         'The creation outcome is unresolved. Inspect the app; do not create a renamed replacement.'
       );
-    if (current.createRequest.visibility === 'internal') {
-      await readPrivateAppCreateContext(accountId, plan);
+    if (kind === 'worker' || current.createRequest.visibility === 'internal') {
+      if (kind === 'worker') await readWorkerCreateContext(accountId, plan);
+      else await readPrivateAppCreateContext(accountId, plan);
       ensureCanWrite();
     }
     let app;
@@ -271,21 +359,51 @@ function ImageJourney({
     else await submitDeployment(current);
   }
   async function start() {
-    const request = imageRequest(image, port, health, allowAuto);
+    const request = imageRequest(
+      image,
+      kind === 'worker' ? '' : port,
+      kind === 'worker' ? '' : health,
+      allowAuto
+    );
     if (!fixedApp && appNameError(name)) throw new Error(appNameError(name)!);
     if (memory > maxMemory) throw new Error('Memory exceeds this plan’s per-app limit.');
+    const createRequest =
+      kind === 'worker' && !editingApp && !slug
+        ? workerCreateRequest({
+            slug: name,
+            memory,
+            maxMemory,
+            plan,
+            restartPolicy,
+            startupDeadline,
+            maxRetries,
+          })
+        : kind === 'worker' && !editingApp && slug
+          ? {
+              slug,
+              type: 'app' as const,
+              ram_mb: existingWorker.data?.ram_mb,
+              visibility: 'internal' as const,
+              execution_mode: 'worker' as const,
+              restart_policy: reviewedRestartPolicy,
+              startup_deadline_s: reviewedStartupDeadline,
+              max_retries: reviewedMaxRetries,
+            }
+          : undefined;
     const current = persist({
       ...newImageOperation(
         accountId,
-        editingApp?.createRequest ?? {
-          slug: fixedApp || name,
-          type: 'app',
-          ram_mb: memory,
-          idle_timeout_s: 0,
-          visibility,
-        },
+        editingApp?.createRequest ??
+          createRequest ?? {
+            slug: fixedApp || name,
+            type: 'app',
+            ram_mb: memory,
+            idle_timeout_s: 0,
+            visibility,
+          },
         request,
-        editingApp?.existingSlug ?? slug
+        editingApp?.existingSlug ?? slug,
+        kind
       ),
       needsCredentials: privateRegistry,
       ...(editingApp
@@ -319,6 +437,9 @@ function ImageJourney({
       setHealth(current.deployRequest.overrides?.healthcheck?.path ?? '');
       setMemory(current.createRequest.ram_mb ?? 128);
       setAllowAuto(current.deployRequest.full_rootfs_allow_auto === true);
+      setRestartPolicy(current.createRequest.restart_policy ?? 'always');
+      setStartupDeadline(current.createRequest.startup_deadline_s ?? 0);
+      setMaxRetries(current.createRequest.max_retries ?? 0);
       setPrivateRegistry(false);
       setUsername('');
       setPassword('');
@@ -331,7 +452,14 @@ function ImageJourney({
     ensureCanWrite();
     const app = await unwrap(api.GET('/v1/apps/{slug}', { params: { path: { slug } } }));
     if (!app?.id || app.slug !== slug || app.type !== 'app')
-      throw new Error('Deploy image requires an HTTP container app. No app was changed.');
+      throw new Error('Deploy image requires a container app. No app was changed.');
+    if (
+      kind === 'worker' &&
+      (app.manifest?.execution_mode !== 'worker' || app.visibility !== 'internal')
+    )
+      throw new Error('Worker mode and internal visibility must be confirmed before deploying.');
+    if (kind === 'http' && app.manifest?.execution_mode === 'worker')
+      throw new Error('This app is a worker. Return to its app page and review a worker image.');
     current = persist({
       ...current,
       appId: app.id,
@@ -342,6 +470,39 @@ function ImageJourney({
     if (current.needsCredentials)
       await saveCredentialAndDeploy(persist({ ...current, stage: 'credentials' }));
     else await submitDeployment(current);
+  }
+  async function reviewCurrentWorker(current: ImageOperation) {
+    if (!current.appId || busy || lock.current) return;
+    lock.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      const app = await unwrap(
+        api.GET('/v1/apps/{slug}', { params: { path: { slug: current.createRequest.slug } } })
+      );
+      if (
+        app.id !== current.appId ||
+        app.type !== 'app' ||
+        app.manifest?.execution_mode !== 'worker' ||
+        app.visibility !== 'internal'
+      )
+        throw new Error('Worker identity, mode, or visibility changed. Inspect the app.');
+      if (!active.current) return;
+      editRequest({
+        ...current,
+        createRequest: {
+          ...current.createRequest,
+          restart_policy: app.manifest.restart_policy ?? 'always',
+          startup_deadline_s: app.manifest.startup_deadline_s ?? 0,
+          max_retries: app.manifest.max_retries ?? 0,
+        },
+      });
+    } catch (error) {
+      if (active.current) setError(errorMessage(error));
+    } finally {
+      lock.current = false;
+      if (active.current) setBusy(false);
+    }
   }
   async function inspect() {
     if (!operation?.appId || busy || lock.current) return;
@@ -369,7 +530,7 @@ function ImageJourney({
       if (active.current) setBusy(false);
     }
   }
-  const title = slug ? 'Deploy image' : 'Container image';
+  const title = kind === 'worker' ? 'OCI worker image' : slug ? 'Deploy image' : 'Container image';
   return (
     <section
       aria-label={title}
@@ -377,15 +538,32 @@ function ImageJourney({
     >
       <h2 className="text-lg font-medium">{title}</h2>
       <p className="text-sm text-muted-foreground">
-        Linux/amd64 HTTP images, stateless ephemeral disk. Listen on <code>0.0.0.0:$PORT</code>.
-        Host mounts and privileged containers are not supported.
+        {kind === 'worker' ? (
+          <>
+            Linux/amd64 long-lived worker image with no HTTP listener requirement. Worker compute is
+            billed for its lifetime; restarts can replay in-flight work. Use explicit queue bindings
+            after deployment. Host mounts and privileged containers are not supported.
+          </>
+        ) : (
+          <>
+            Linux/amd64 HTTP images, stateless ephemeral disk. Listen on <code>0.0.0.0:$PORT</code>.
+            Host mounts and privileged containers are not supported.
+          </>
+        )}
       </p>
       <CapabilityNotice
         capability={availability.capability}
         state={availability.state}
         onRetry={availability.refresh}
       />
-      {!fixedApp && visibility === 'internal' && (
+      {kind === 'worker' && (
+        <CapabilityNotice
+          capability={workerAvailability.capability}
+          state={workerAvailability.state}
+          onRetry={workerAvailability.refresh}
+        />
+      )}
+      {((kind === 'worker' && !fixedApp) || (!fixedApp && visibility === 'internal')) && (
         <CapabilityNotice
           capability={privateAvailability.capability}
           state={privateAvailability.state}
@@ -403,6 +581,13 @@ function ImageJourney({
             App: <strong>{operation.createRequest.slug}</strong> · Image:{' '}
             <code>{operation.deployRequest.image}</code>
           </p>
+          {kind === 'worker' && (
+            <p className="text-xs text-muted-foreground">
+              Worker mode · {operation.createRequest.restart_policy} restart · startup deadline{' '}
+              {operation.createRequest.startup_deadline_s || 'plan default'} · restart cap{' '}
+              {operation.createRequest.max_retries || 'plan default'}.
+            </p>
+          )}
           <p className="text-xs text-muted-foreground">
             This request is frozen. Recovery keeps its app identity and never creates a renamed
             replacement.
@@ -476,6 +661,17 @@ function ImageJourney({
               </Button>
             </>
           )}
+          {kind === 'worker' &&
+            operation.appId &&
+            (operation.stage === 'app-created' || operation.stage === 'credentials') && (
+              <Button
+                variant="outline"
+                disabled={busy}
+                onClick={() => void reviewCurrentWorker(operation)}
+              >
+                Review current worker settings
+              </Button>
+            )}
           {operation.stage === 'app-created' && (
             <Button
               disabled={!permitted}
@@ -542,31 +738,40 @@ function ImageJourney({
               )}
             </>
           )}
-          {operation.stage === 'accepted' && (
-            <DeploymentProgress
-              appCreated
-              appName={operation.createRequest.slug}
-              deploymentId={operation.deploymentId ?? null}
-              source={{ kind: 'image', reference: operation.deployRequest.image! }}
-              endpoint={
-                operation.createRequest.visibility === 'internal' ? null : operation.endpoint
-              }
-              onLive={(deployment) => {
-                if (
-                  deployment.id === operation.deploymentId &&
-                  deployment.app_id === operation.appId
-                )
-                  clearImageOperation(operation);
-              }}
-              onTerminal={(deployment) => {
-                if (
-                  deployment.id === operation.deploymentId &&
-                  deployment.app_id === operation.appId
-                )
-                  setObservedTerminal(deployment.id);
-              }}
-            />
-          )}
+          {operation.stage === 'accepted' &&
+            (kind === 'worker' ? (
+              <WorkerReleaseProgress
+                slug={operation.createRequest.slug}
+                appId={operation.appId!}
+                deploymentId={operation.deploymentId!}
+                onLive={() => clearImageOperation(operation)}
+                onTerminal={() => setObservedTerminal(operation.deploymentId)}
+              />
+            ) : (
+              <DeploymentProgress
+                appCreated
+                appName={operation.createRequest.slug}
+                deploymentId={operation.deploymentId ?? null}
+                source={{ kind: 'image', reference: operation.deployRequest.image! }}
+                endpoint={
+                  operation.createRequest.visibility === 'internal' ? null : operation.endpoint
+                }
+                onLive={(deployment) => {
+                  if (
+                    deployment.id === operation.deploymentId &&
+                    deployment.app_id === operation.appId
+                  )
+                    clearImageOperation(operation);
+                }}
+                onTerminal={(deployment) => {
+                  if (
+                    deployment.id === operation.deploymentId &&
+                    deployment.app_id === operation.appId
+                  )
+                    setObservedTerminal(deployment.id);
+                }}
+              />
+            ))}
           {operation.stage === 'accepted' && observedTerminal === operation.deploymentId && (
             <>
               <p className="text-xs text-muted-foreground">
@@ -603,7 +808,7 @@ function ImageJourney({
               />
             </label>
           )}
-          {!fixedApp && (
+          {!fixedApp && kind === 'http' && (
             <label className="text-sm">
               App visibility
               <select
@@ -642,30 +847,77 @@ function ImageJourney({
               />
             </label>
           )}
+          {kind === 'worker' && !fixedApp && (
+            <div className="space-y-3 rounded border border-border p-3 text-sm">
+              <p>Worker lifecycle</p>
+              <label className="block space-y-1">
+                <span>Restart policy</span>
+                <select
+                  className="block rounded border border-border bg-background px-2 py-1"
+                  value={restartPolicy}
+                  disabled={reviewing}
+                  onChange={(event) => setRestartPolicy(event.target.value as typeof restartPolicy)}
+                >
+                  <option value="always">Always</option>
+                  <option value="on-failure">On failure</option>
+                  <option value="unless-stopped">Unless stopped</option>
+                  <option value="no">Never</option>
+                </select>
+              </label>
+              <label className="block space-y-1">
+                <span>Startup deadline (seconds)</span>
+                <Input
+                  type="number"
+                  min={0}
+                  value={startupDeadline}
+                  disabled={reviewing}
+                  onChange={(event) => setStartupDeadline(Number(event.target.value))}
+                />
+              </label>
+              <label className="block space-y-1">
+                <span>Max restart retries</span>
+                <Input
+                  type="number"
+                  min={0}
+                  value={maxRetries}
+                  disabled={reviewing}
+                  onChange={(event) => setMaxRetries(Number(event.target.value))}
+                />
+              </label>
+              <p className="text-xs text-muted-foreground">
+                Zero uses the plan default: Hobby 30 seconds / 5 retries, Pro 60 / 10, Scale 120 /
+                20.
+              </p>
+            </div>
+          )}
           <details>
             <summary className="cursor-pointer text-sm">Advanced settings</summary>
             <div className="mt-3 flex flex-col gap-3">
-              <p className="text-xs text-muted-foreground">
-                Omit overrides to use the image defaults. A health path is readiness configuration,
-                not proof that the app is healthy.
-              </p>
-              <label className="text-sm">
-                Port override
-                <Input
-                  disabled={reviewing}
-                  value={port}
-                  onChange={(e) => setPort(e.target.value)}
-                  inputMode="numeric"
-                />
-              </label>
-              <label className="text-sm">
-                Health path override
-                <Input
-                  disabled={reviewing}
-                  value={health}
-                  onChange={(e) => setHealth(e.target.value)}
-                />
-              </label>
+              {kind === 'http' && (
+                <>
+                  <p className="text-xs text-muted-foreground">
+                    Omit overrides to use the image defaults. A health path is readiness
+                    configuration, not proof that the app is healthy.
+                  </p>
+                  <label className="text-sm">
+                    Port override
+                    <Input
+                      disabled={reviewing}
+                      value={port}
+                      onChange={(e) => setPort(e.target.value)}
+                      inputMode="numeric"
+                    />
+                  </label>
+                  <label className="text-sm">
+                    Health path override
+                    <Input
+                      disabled={reviewing}
+                      value={health}
+                      onChange={(e) => setHealth(e.target.value)}
+                    />
+                  </label>
+                </>
+              )}
               <label className="flex gap-2 text-sm">
                 <input
                   type="checkbox"
@@ -701,7 +953,7 @@ function ImageJourney({
             />
             Add registry credentials
           </label>
-          {plan === 'free' && (
+          {plan === 'free' && kind === 'http' && (
             <p className="text-xs text-muted-foreground">
               Free supports public images. Private registry credentials require Hobby or above.
             </p>
@@ -737,13 +989,15 @@ function ImageJourney({
             <>
               <p className="text-sm">
                 Review: {fixedApp || name} · {memory} MB ·{' '}
-                {!fixedApp &&
-                  (visibility === 'internal'
-                    ? 'Internal service only · no public endpoint · '
-                    : 'Public edge · ')}
+                {kind === 'worker'
+                  ? `Worker execution · ${reviewedRestartPolicy} restart · startup deadline ${reviewedStartupDeadline || 'plan default'} · retry cap ${reviewedMaxRetries || 'plan default'} · internal only · no public endpoint · `
+                  : !fixedApp &&
+                    (visibility === 'internal'
+                      ? 'Internal service only · no public endpoint · '
+                      : 'Public edge · ')}
                 {allowAuto ? 'Self-contained fallback allowed' : 'Image defaults'}
-                {port && ` · Port ${port}`}
-                {health && ` · Health path ${health}`}.{' '}
+                {kind === 'http' && port && ` · Port ${port}`}
+                {kind === 'http' && health && ` · Health path ${health}`}.{' '}
                 {privateRegistry
                   ? 'Save this app’s registry credential first.'
                   : 'Use a public image or this app’s saved matching credential.'}
@@ -753,19 +1007,35 @@ function ImageJourney({
                   Edit configuration
                 </Button>
                 <Button
-                  disabled={!permitted || !privateCreateAllowed}
+                  disabled={
+                    !permitted ||
+                    !privateCreateAllowed ||
+                    (kind === 'worker' && Boolean(slug) && !editingApp && !existingWorker.data)
+                  }
                   onClick={() => void run(start)}
                 >
-                  {fixedApp ? 'Deploy reviewed image' : 'Create app and deploy image'}
+                  {fixedApp
+                    ? 'Deploy reviewed image'
+                    : kind === 'worker'
+                      ? 'Create worker and deploy image'
+                      : 'Create app and deploy image'}
                 </Button>
               </div>
             </>
           ) : (
             <Button
-              disabled={!permitted}
+              disabled={
+                !permitted ||
+                (kind === 'worker' && Boolean(slug) && !editingApp && !existingWorker.data)
+              }
               onClick={() => {
                 try {
-                  imageRequest(image, port, health, allowAuto);
+                  imageRequest(
+                    image,
+                    kind === 'worker' ? '' : port,
+                    kind === 'worker' ? '' : health,
+                    allowAuto
+                  );
                   if (!fixedApp && appNameError(name)) throw new Error(appNameError(name)!);
                   if (privateRegistry && (!username || !password))
                     throw new Error('Enter registry credentials before review.');
@@ -773,6 +1043,16 @@ function ImageJourney({
                     throw new Error('Select memory within your plan limit.');
                   if (!privateCreateAllowed)
                     throw new Error('Private app availability must be confirmed before review.');
+                  if (kind === 'worker' && !fixedApp)
+                    workerCreateRequest({
+                      slug: name,
+                      memory,
+                      maxMemory,
+                      plan,
+                      restartPolicy,
+                      startupDeadline,
+                      maxRetries,
+                    });
                   setError(null);
                   setReviewing(true);
                 } catch (error) {
@@ -780,7 +1060,7 @@ function ImageJourney({
                 }
               }}
             >
-              Review image deployment
+              {kind === 'worker' ? 'Review worker deployment' : 'Review image deployment'}
             </Button>
           )}
         </>

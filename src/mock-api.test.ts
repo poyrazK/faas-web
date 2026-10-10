@@ -311,6 +311,43 @@ it('replays app creation and accepts a digest-pinned image without a build ID', 
   });
 });
 
+it('admits a reviewed internal OCI worker on Hobby without HTTP settings', async () => {
+  const slug = `worker-${Date.now()}`;
+  process.env.MOCK_PLAN = 'free';
+  const payload = {
+    slug,
+    type: 'app',
+    ram_mb: 256,
+    visibility: 'internal',
+    execution_mode: 'worker',
+    restart_policy: 'always',
+    startup_deadline_s: 30,
+    max_retries: 5,
+  };
+  const create = () =>
+    fetch(`${origin}/v1/apps`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': `create-${slug}` },
+      body: JSON.stringify(payload),
+    });
+  try {
+    expect((await create()).status).toBe(403);
+    process.env.MOCK_PLAN = 'hobby';
+    const accepted = await create();
+    expect(accepted.status).toBe(201);
+    const worker = await accepted.json();
+    expect(worker).toMatchObject({
+      slug,
+      visibility: 'internal',
+      manifest: { execution_mode: 'worker', restart_policy: 'always' },
+    });
+    expect(worker.manifest.port).toBeUndefined();
+    expect(worker.url).toBe('');
+  } finally {
+    delete process.env.MOCK_PLAN;
+  }
+});
+
 it('reports registry plan denial separately from installation availability', async () => {
   process.env.MOCK_PLAN = 'free';
   const free = await get('/v1/capabilities');
