@@ -11,6 +11,7 @@ import {
 } from '@xyflow/react';
 import { nodeTypes, type FlowNode } from './nodes';
 import { DraftFlowNode } from './draft-node';
+import { mergeNodes } from './merge-nodes';
 import { edgeTypes, type WindFlowEdge } from './wind-edge';
 import { CanvasToolbar } from './canvas-toolbar';
 import { nodeTitle, type CanvasNodeData } from './topology';
@@ -22,10 +23,10 @@ const allNodeTypes = { ...nodeTypes, draft: DraftFlowNode };
  * thing is ours, and only the base stylesheet is imported, never the themed
  * one. Positions are not persisted; a reload returns to the computed layout.
  *
- * Nodes live in React Flow's own state so drags apply. New data is merged in
- * by id: a node keeps its dragged position and, when nothing about it changed,
- * its object identity, so React Flow does not re-measure the whole graph on a
- * click or a refetch. The page owns the `ReactFlowProvider`, so the inspector
+ * Nodes live in React Flow's own state so drags apply. New layout output is
+ * merged in by id (`mergeNodes`): undragged nodes follow it, dragged ones stay
+ * put, and unchanged ones keep their identity so React Flow does not
+ * re-measure the whole graph on a click or a refetch. The page owns the `ReactFlowProvider`, so the inspector
  * and the toolbar can move the camera too.
  */
 export function CanvasView({
@@ -51,16 +52,12 @@ export function CanvasView({
 }) {
   const [flowNodes, setFlowNodes, onNodesChange] = useNodesState<FlowNode>([]);
 
+  // Where the last layout put each node: a node still there was not dragged.
+  const laid = useRef(new Map<string, { x: number; y: number }>());
   useEffect(() => {
-    setFlowNodes((current) => {
-      const byId = new Map(current.map((n) => [n.id, n]));
-      return nodes.map((n) => {
-        const was = byId.get(n.id);
-        const isSelected = n.id === selected;
-        if (was && was.data === n.data && Boolean(was.selected) === isSelected) return was;
-        return { ...n, position: was?.position ?? n.position, selected: isSelected };
-      });
-    });
+    const prev = laid.current;
+    laid.current = new Map(nodes.map((n) => [n.id, n.position]));
+    setFlowNodes((current) => mergeNodes(current, nodes, selected, prev));
   }, [nodes, selected, setFlowNodes]);
 
   return (
