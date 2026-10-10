@@ -1,7 +1,7 @@
 import { MemorySelect } from './memory-select';
 import { RestoreTarget } from '@/components/restore-target';
 import { RESTORE_CONTEXT } from '@/lib/platform-claims';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useUnsavedGuard } from '@/lib/use-unsaved-guard';
 import { RepoPicker } from '@/components/dashboard/repo-picker';
 import { GitHubConnectForm } from '@/components/dashboard/github-connect-form';
@@ -209,7 +209,9 @@ export function NewAppWizard({
   const creationContext = useRef({ accountId: account?.id ?? '', name, visibility, source });
   const createController = useRef<AbortController | null>(null);
   const mounted = useRef(true);
-  creationContext.current = { accountId: account?.id ?? '', name, visibility, source };
+  useLayoutEffect(() => {
+    creationContext.current = { accountId: account?.id ?? '', name, visibility, source };
+  }, [account?.id, name, visibility, source]);
   useEffect(() => {
     mounted.current = true;
     return () => {

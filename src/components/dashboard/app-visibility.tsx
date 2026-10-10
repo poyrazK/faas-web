@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { FIELD } from '@/components/ui/field';
@@ -32,7 +32,9 @@ export function AppVisibility({
   const current = useRef({ accountId, slug, appId: app.id });
   const alive = useRef(true);
   const pending = useRef<AbortController | null>(null);
-  current.current = { accountId, slug, appId: app.id };
+  useLayoutEffect(() => {
+    current.current = { accountId, slug, appId: app.id };
+  }, [accountId, slug, app.id]);
   useEffect(() => {
     alive.current = true;
     return () => {
