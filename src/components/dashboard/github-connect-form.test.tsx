@@ -109,4 +109,10 @@ describe('GitHub browser connection', () => {
     await waitFor(() => expect(submissions).toHaveLength(1));
     expect(submissions[0].body.get('csrf_token')).toBe('settings-proof');
   });
+  it('can return somewhere other than settings', () => {
+    const { container } = render(<GitHubConnectForm returnTo="/dashboard/canvas?wizard=source" />);
+    expect(container.querySelector('input[name="return_to"]')).toHaveValue(
+      '/dashboard/canvas?wizard=source'
+    );
+  });
 });
