@@ -992,7 +992,10 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                   )}
                 >
                   <UnreachableBanner />
-                  <ConsolePageTransition pageKey={pageKey}>
+                  <ConsolePageTransition
+                    pageKey={pageKey}
+                    className={fullBleed ? 'h-full gap-0' : undefined}
+                  >
                     {!fullBleed && <DashboardSecondaryNavigation />}
                     {children}
                   </ConsolePageTransition>
