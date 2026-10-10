@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { draftPosition, layout, NODE_SIZE } from './layout';
+import { menuPosition, layout, NODE_SIZE } from './layout';
 import { buildTopology, nodeId, type TopologyInput } from './topology';
 import type { App } from '@/lib/api/queries';
 
@@ -88,10 +88,10 @@ describe('layout', () => {
   });
 });
 
-describe('draftPosition', () => {
+describe('menuPosition', () => {
   it('opens inbound drafts to the left of the app and outbound ones to the right', () => {
     const app = { x: 420, y: 100 };
-    expect(draftPosition(app, 'in').x).toBeLessThan(app.x);
-    expect(draftPosition(app, 'out').x).toBeGreaterThan(app.x);
+    expect(menuPosition(app, 'in').x).toBeLessThan(app.x);
+    expect(menuPosition(app, 'out').x).toBeGreaterThan(app.x);
   });
 });

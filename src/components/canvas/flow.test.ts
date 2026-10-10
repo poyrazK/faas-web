@@ -61,8 +61,14 @@ describe('toFlow', () => {
 
   it('hands apps a connect callback bound to their slug', () => {
     const onConnect = vi.fn();
-    const app = toFlow(t, pos, onConnect).nodes.find((n) => n.id === 'app:a')!;
+    const app = toFlow(t, pos, { onConnect }).nodes.find((n) => n.id === 'app:a')!;
     (app.data as { onConnect: (s: 'in') => void }).onConnect('in');
     expect(onConnect).toHaveBeenCalledWith('a', 'in');
+  });
+  it('hands apps a retry bound to their slug', () => {
+    const onRetry = vi.fn();
+    const app = toFlow(t, pos, { onRetry }).nodes.find((n) => n.id === 'app:a')!;
+    (app.data as { onRetry: () => void }).onRetry();
+    expect(onRetry).toHaveBeenCalledWith('a');
   });
 });

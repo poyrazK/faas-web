@@ -5,7 +5,7 @@ import { ErrorState, LoadingState, UnreachableState } from '@/components/dashboa
 import { CanvasView } from './canvas';
 import { toFlow } from './flow';
 import { Inspector } from './inspector';
-import { draftPosition, layout } from './layout';
+import { menuPosition, layout } from './layout';
 import { useTopology } from './use-topology';
 import { ConnectMenu } from './connect-menu';
 import type { CreateKind } from './create';
@@ -41,8 +41,12 @@ export default function CanvasPage({ node }: { node?: string }) {
 
   const positions = useMemo(() => layout(topology), [topology]);
   const flow = useMemo(
-    () => toFlow(topology, positions, (slug, side) => setConnect({ slug, side })),
-    [topology, positions]
+    () =>
+      toFlow(topology, positions, {
+        onConnect: (slug, side) => setConnect({ slug, side }),
+        onRetry: () => retry(),
+      }),
+    [topology, positions, retry]
   );
   const connectApp = connect && topology.nodes.find((n) => n.id === `app:${connect.slug}`);
   const appData = connectApp?.data.kind === 'app' ? (connectApp.data as AppData) : undefined;
@@ -60,7 +64,7 @@ export default function CanvasPage({ node }: { node?: string }) {
               {
                 id: draftId,
                 type: 'draft',
-                position: draftPosition(anchor, connect.side),
+                position: menuPosition(anchor, connect.side),
                 data: {
                   kind: connect.kind,
                   app: {
@@ -156,7 +160,7 @@ export default function CanvasPage({ node }: { node?: string }) {
                   <ConnectMenu
                     app={appData}
                     side={connect.side}
-                    at={draftPosition(anchor, connect.side)}
+                    at={menuPosition(anchor, connect.side)}
                     onPick={(kind) => setConnect({ ...connect, kind })}
                     onClose={() => setConnect(undefined)}
                   />

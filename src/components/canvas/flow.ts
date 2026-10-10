@@ -3,24 +3,35 @@ import type { WindFlowEdge } from './wind-edge';
 import type { Point } from './layout';
 import type { Topology } from './topology';
 
+export type FlowOptions = {
+  onConnect?: (slug: string, side: ConnectSide) => void;
+  onRetry?: (slug: string) => void;
+};
+
 export function toFlow(
   t: Topology,
   pos: Map<string, Point>,
-  onConnect?: (slug: string, side: ConnectSide) => void
+  opts: FlowOptions = {}
 ): { nodes: FlowNode[]; edges: WindFlowEdge[] } {
-  const nodes: FlowNode[] = t.nodes.map((n) => ({
-    id: n.id,
-    type: n.data.kind,
-    position: pos.get(n.id) ?? { x: 0, y: 0 },
-    data:
-      n.data.kind === 'app' && onConnect
-        ? {
-            ...n.data,
-            onConnect: (side: ConnectSide) => onConnect((n.data as { slug: string }).slug, side),
-          }
-        : n.data,
-    connectable: false,
-  }));
+  const nodes: FlowNode[] = t.nodes.map((n) => {
+    const data = n.data;
+    return {
+      id: n.id,
+      type: data.kind,
+      position: pos.get(n.id) ?? { x: 0, y: 0 },
+      data:
+        data.kind === 'app'
+          ? {
+              ...data,
+              ...(opts.onConnect && {
+                onConnect: (side: ConnectSide) => opts.onConnect!(data.slug, side),
+              }),
+              ...(opts.onRetry && { onRetry: () => opts.onRetry!(data.slug) }),
+            }
+          : data,
+      connectable: false,
+    };
+  });
   const edges: WindFlowEdge[] = t.edges.map((e) => ({
     id: e.id,
     source: e.source,

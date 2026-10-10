@@ -35,3 +35,11 @@
     stroke-dashoffset: -14;
   }
 }
+.canvas-surface .react-flow__node:focus-visible {
+  outline: none;
+}
+.canvas-surface .react-flow__node:focus-visible .canvas-node {
+  box-shadow:
+    0 0 0 2px var(--background),
+    0 0 0 4px var(--brand);
+}

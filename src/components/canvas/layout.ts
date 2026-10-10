@@ -8,19 +8,19 @@ import { nodeId } from './topology';
  * as React Flow expects.
  */
 export const NODE_SIZE: Record<CanvasNodeKind, { w: number; h: number }> = {
-  internet: { w: 40, h: 40 },
-  domain: { w: 210, h: 48 },
-  app: { w: 230, h: 68 },
-  cron: { w: 210, h: 48 },
-  bucket: { w: 190, h: 48 },
-  postgres: { w: 190, h: 48 },
+  internet: { w: 44, h: 44 },
+  domain: { w: 216, h: 56 },
+  app: { w: 248, h: 76 },
+  cron: { w: 216, h: 56 },
+  bucket: { w: 216, h: 56 },
+  postgres: { w: 216, h: 56 },
 };
 
 export type Point = { x: number; y: number };
 
-const COLUMN = { internet: 0, domain: 120, app: 440, resource: 790 };
-const ROW = 88; // tallest node (68) + 20
-const STACK = 64; // 48 + 16, for crons above an app
+export const COLUMN = { internet: 0, domain: 120, app: 456, resource: 824 };
+const ROW = 96; // tallest node (76) + 20
+const STACK = 72; // 56 + 16, for crons above an app
 const BAND_GAP = 56;
 
 export function layout(t: Topology): Map<string, Point> {
@@ -49,7 +49,7 @@ export function layout(t: Topology): Map<string, Point> {
       .map((e) => e.target)
       .filter((id, i, all) => all.indexOf(id) === i);
 
-    crons.forEach((id, i) => pos.set(id, { x: COLUMN.app + 10, y: cursor + i * STACK }));
+    crons.forEach((id, i) => pos.set(id, { x: COLUMN.app + 16, y: cursor + i * STACK }));
     const top = cursor + crons.length * STACK;
     const rows = Math.max(1, domains.length, resources.length);
     const height = rows * ROW - 20;
@@ -73,8 +73,8 @@ export function layout(t: Topology): Map<string, Point> {
   return pos;
 }
 
-/** Where a draft opens: below the app, on the side its "+" was pressed. */
-export function draftPosition(app: Point, side: 'in' | 'out'): Point {
+/** Where the connect menu opens: below the app, on the side its "+" was pressed. */
+export function menuPosition(app: Point, side: 'in' | 'out'): Point {
   return side === 'in'
     ? { x: app.x - 290, y: app.y + NODE_SIZE.app.h + 24 }
     : { x: app.x + NODE_SIZE.app.w + 60, y: app.y + NODE_SIZE.app.h + 24 };

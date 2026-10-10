@@ -40,14 +40,25 @@ describe('AppNode', () => {
     expect(screen.getByText('84ms')).toBeInTheDocument();
   });
 
-  it('AppNode never prints a number it was not given', () => {
+  it('says why metrics are missing instead of printing a number', () => {
     wrap(
       <AppNode
-        {...props({ ...base, metrics: 'unavailable', requests24h: undefined, p95Ms: undefined })}
+        {...props({
+          ...base,
+          metrics: 'unavailable',
+          metricsWhy: 'plan',
+          requests24h: undefined,
+          p95Ms: undefined,
+        })}
       />
     );
-    expect(screen.queryByText(/req\/24h/)).not.toBeInTheDocument();
+    expect(screen.getByText('Metrics on Hobby')).toBeInTheDocument();
     expect(screen.queryByText(/^0$/)).not.toBeInTheDocument();
+  });
+
+  it('names the kind of error', () => {
+    wrap(<AppNode {...props({ ...base, phase: 'error', errorRatePct: 3.24 })} />);
+    expect(screen.getByText('Error · 3.2% errors')).toBeInTheDocument();
   });
 
   it('breathes when parked, and says so', () => {
@@ -56,9 +67,20 @@ describe('AppNode', () => {
     expect(container.querySelector('[data-breathing]')).not.toBeNull();
   });
 
-  it('says when its connections could not load', () => {
-    wrap(<AppNode {...props({ ...base, connections: 'error' })} />);
-    expect(screen.getByText(/couldn’t load connections/i)).toBeInTheDocument();
+  it('offers a retry on the node whose connections failed', () => {
+    const onRetry = vi.fn();
+    wrap(<AppNode {...props({ ...base, connections: 'error', onRetry })} />);
+    expect(screen.getByText(/connections unavailable/i)).toBeInTheDocument();
+    screen.getByRole('button', { name: 'Retry' }).click();
+    expect(onRetry).toHaveBeenCalled();
+  });
+
+  it('keeps connectors visible while selected, for touch', () => {
+    const onConnect = vi.fn();
+    wrap(<AppNode {...props({ ...base, onConnect })} selected />);
+    for (const b of screen.getAllByRole('button', { name: /api|resource|traffic/i })) {
+      expect(b).toHaveAttribute('data-shown', 'true');
+    }
   });
 
   it('offers both connectors with accessible names', () => {
