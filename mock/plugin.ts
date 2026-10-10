@@ -2538,6 +2538,223 @@ route(
 );
 
 route('GET', '/v1/apps/{slug}/webhooks', ({ params }) => listOf(db.webhooks, params.slug));
+
+// --- Instrumented Issues -----------------------------------------------------
+
+type MockIssue = components['schemas']['Issue'];
+type MockToken = components['schemas']['IssueIngestToken'];
+const mockIssues = new Map<string, MockIssue[]>();
+const mockIssueTokens = new Map<string, MockToken[]>();
+function issuesFor(slug: string) {
+  const selected = app(slug);
+  let items = mockIssues.get(slug);
+  if (!items) {
+    items = [
+      {
+        id: db.id(),
+        app_id: selected.id,
+        environment: 'application',
+        fingerprint: 'payment-error',
+        grouping_version: 1,
+        title: 'PaymentError',
+        state: 'open',
+        first_seen_at: db.iso(48 * 3600_000),
+        last_seen_at: db.iso(3600_000),
+        event_count: 9,
+        regression_count: 2,
+        impact_24h: { identified_customers: 3, observed_events: 4, unattributed_events: 1 },
+      },
+      {
+        id: db.id(),
+        app_id: selected.id,
+        environment: 'application',
+        fingerprint: 'timeout-error',
+        grouping_version: 1,
+        title: 'TimeoutError',
+        state: 'resolved',
+        first_seen_at: db.iso(96 * 3600_000),
+        last_seen_at: db.iso(48 * 3600_000),
+        event_count: 2,
+        regression_count: 0,
+        impact_24h: { identified_customers: 0, observed_events: 0, unattributed_events: 0 },
+      },
+    ];
+    mockIssues.set(slug, items);
+  }
+  return items;
+}
+function issueFor(slug: string, id: string) {
+  const found = issuesFor(slug).find((item) => item.id === id);
+  if (!found) throw new Problem(404, 'issue_not_found');
+  return found;
+}
+route('GET', '/v1/apps/{slug}/issues', ({ params, query }) => {
+  let items = issuesFor(params.slug).filter(
+    (item) => !query.get('state') || item.state === query.get('state')
+  );
+  if (query.get('environment'))
+    items = items.filter((item) => item.environment === query.get('environment'));
+  if (query.get('assignee') === 'me')
+    items = items.filter((item) => item.assignee_account_id === db.ACCOUNT_ID);
+  if (query.get('assignee') === 'unassigned')
+    items = items.filter((item) => !item.assignee_account_id);
+  const minimum = Number(query.get('min_customers') ?? 0);
+  items = items.filter((item) => (item.impact_24h?.identified_customers ?? 0) >= minimum);
+  if (query.get('sort') === 'impact')
+    items = [...items].sort(
+      (a, b) =>
+        (b.impact_24h?.identified_customers ?? 0) - (a.impact_24h?.identified_customers ?? 0)
+    );
+  const filters = query.toString().replace(/(?:^|&)cursor=[^&]*/, '');
+  let offset = 0;
+  if (query.get('cursor')) {
+    try {
+      const decoded = JSON.parse(Buffer.from(query.get('cursor')!, 'base64url').toString()) as {
+        filters: string;
+        offset: number;
+      };
+      if (decoded.filters !== filters) throw new Error('changed');
+      offset = decoded.offset;
+    } catch {
+      throw new Problem(
+        400,
+        'invalid_issue_cursor',
+        'Keep filters and ordering unchanged while paging.'
+      );
+    }
+  }
+  const page = items.slice(offset, offset + 1);
+  return {
+    items: page,
+    next_cursor:
+      offset + 1 < items.length
+        ? Buffer.from(JSON.stringify({ filters, offset: offset + 1 })).toString('base64url')
+        : undefined,
+  };
+});
+route('GET', '/v1/apps/{slug}/issues/{issue_id}', ({ params, query }) => {
+  const issue = issueFor(params.slug, params.issue_id);
+  const deployment = db.deployments.find((item) => item.app_id === issue.app_id);
+  if (!deployment) throw new Problem(404, 'deployment_not_found');
+  const event = (older: boolean) => ({
+    id: older ? 'mock-event-older' : 'mock-event-newer',
+    event_id: db.id(),
+    deployment_id: deployment.id,
+    received_at: db.iso(older ? 3 * 3600_000 : 3600_000),
+    occurred_at: db.iso(older ? 3 * 3600_000 : 3600_000),
+    exception_type: issue.title,
+    message: 'Sanitized mock exception',
+    attribution: older ? 'unattributed' : 'verified',
+  });
+  const olderEvents = query.get('event_cursor') === 'mock-event-next';
+  const olderReleases = query.get('release_cursor') === 'mock-release-next';
+  const olderActivity = query.get('activity_cursor') === 'mock-activity-next';
+  return {
+    issue,
+    impact: {
+      window_start: db.iso(24 * 3600_000),
+      window_end: db.iso(0),
+      identified_customers: issue.impact_24h?.identified_customers ?? 0,
+      observed_events: issue.impact_24h?.observed_events ?? 0,
+      unattributed_events: issue.impact_24h?.unattributed_events ?? 0,
+      coverage: 'retained_verified',
+    },
+    events: [event(olderEvents)],
+    next_event_cursor: olderEvents ? undefined : 'mock-event-next',
+    releases: [
+      {
+        deployment_id: deployment.id,
+        event_count: olderReleases ? 1 : issue.event_count,
+        first_seen_at: db.iso(48 * 3600_000),
+        last_seen_at: db.iso(3600_000),
+      },
+    ],
+    next_release_cursor: olderReleases ? undefined : 'mock-release-next',
+    activity: [
+      {
+        id: olderActivity ? 'mock-action-older' : 'mock-action-newer',
+        action: olderActivity ? 'reopened' : issue.state,
+        created_at: db.iso(3600_000),
+        details: {},
+      },
+    ],
+    next_activity_cursor: olderActivity ? undefined : 'mock-activity-next',
+  };
+});
+route('POST', '/v1/apps/{slug}/issues/{issue_id}/actions', ({ params, body }) => {
+  const issue = issueFor(params.slug, params.issue_id);
+  const action = String(body.action ?? '');
+  if (action === 'assign')
+    issue.assignee_account_id = body.assignee_account_id
+      ? String(body.assignee_account_id)
+      : undefined;
+  else if (action === 'reopen') issue.state = 'open';
+  else if (action === 'ignore') {
+    if (!body.ignored_until || Date.parse(String(body.ignored_until)) <= Date.now())
+      throw new Problem(422, 'invalid_ignore_deadline');
+    issue.state = 'ignored';
+    issue.ignored_until = String(body.ignored_until);
+  } else if (action === 'resolve') {
+    const deployment = db.deployments.find(
+      (item) => item.id === body.fixed_deployment_id && item.app_id === issue.app_id
+    );
+    if (!deployment) throw new Problem(422, 'invalid_fix_deployment');
+    issue.state = 'resolved';
+    issue.fixed_deployment_id = deployment.id;
+  } else throw new Problem(422, 'invalid_issue_action');
+  return issue;
+});
+route('GET', '/v1/apps/{slug}/issue-ingest-tokens', ({ params }) => {
+  app(params.slug);
+  return {
+    items: (mockIssueTokens.get(params.slug) ?? []).map(
+      ({ token: _secret, ...metadata }) => metadata
+    ),
+  };
+});
+route('POST', '/v1/apps/{slug}/issue-ingest-tokens', ({ params, body, res }) => {
+  const selected = app(params.slug);
+  if ((process.env.MOCK_PLAN ?? db.account.plan) === 'free')
+    throw new Problem(403, 'plan_not_entitled');
+  const deployment = db.deployments.find(
+    (item) => item.id === body.deployment_id && item.app_id === selected.id
+  );
+  if (
+    !deployment ||
+    body.environment !== 'application' ||
+    !body.name ||
+    !body.expires_at ||
+    Date.parse(String(body.expires_at)) <= Date.now() ||
+    Date.parse(String(body.expires_at)) > Date.now() + 90 * 24 * 3600_000
+  )
+    throw new Problem(422, 'invalid_issue_token_scope');
+  const tokens = mockIssueTokens.get(params.slug) ?? [];
+  if (
+    tokens.filter((item) => !item.revoked_at && Date.parse(item.expires_at) > Date.now()).length >=
+    5
+  )
+    throw new Problem(409, 'issue_quota_exceeded');
+  const created: MockToken = {
+    id: db.id(),
+    app_id: selected.id,
+    deployment_id: deployment.id,
+    environment: 'application',
+    name: String(body.name),
+    expires_at: String(body.expires_at),
+    token: `g_issue_${randomBytes(24).toString('base64url')}`,
+  };
+  tokens.unshift(created);
+  mockIssueTokens.set(params.slug, tokens);
+  res.setHeader('Cache-Control', 'no-store');
+  return status(201, created);
+});
+route('DELETE', '/v1/apps/{slug}/issue-ingest-tokens/{token_id}', ({ params }) => {
+  app(params.slug);
+  const token = mockIssueTokens.get(params.slug)?.find((item) => item.id === params.token_id);
+  if (!token) throw new Problem(404, 'issue_token_not_found');
+  token.revoked_at = new Date().toISOString();
+  return NO_CONTENT;
+});
 route('POST', '/v1/apps/{slug}/webhooks', ({ params, body }) => {
   const a = app(params.slug);
   const url = String(body.target_url ?? '');
