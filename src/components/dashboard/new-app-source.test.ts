@@ -1,7 +1,37 @@
 import { describe, expect, it } from 'vitest';
-import { isValidGitHubRepo, isValidGitRef } from './new-app-source';
+import { defaultParseSearch } from '@tanstack/react-router';
+import {
+  isValidGitHubRepo,
+  isValidGitRef,
+  validateNewAppSearch,
+  newAppPath,
+} from './new-app-source';
 
 describe('new app Git source validation', () => {
+  it.each(['20261011', 'true', 'null', '1'.repeat(40)])(
+    'preserves the string ref %s through the real router parser',
+    (ref) => {
+      const search = { source: 'git' as const, repo: 'team/api', ref };
+      const query = new URL(newAppPath(search), 'https://gregale.dev').search;
+      expect(validateNewAppSearch(defaultParseSearch(query))).toMatchObject(search);
+    }
+  );
+
+  it('round-trips the repository and ref through deployment and onboarding URLs', () => {
+    const search = { source: 'git' as const, repo: 'team/api', ref: 'feature/start' };
+    expect(newAppPath(search)).toBe(
+      '/dashboard/workflows/new?source=git&repo=team%2Fapi&ref=feature%2Fstart'
+    );
+    expect(newAppPath(search, true)).toBe(
+      '/onboarding?source=git&repo=team%2Fapi&ref=feature%2Fstart'
+    );
+    expect(
+      validateNewAppSearch(
+        Object.fromEntries(new URLSearchParams(newAppPath(search).split('?')[1]))
+      )
+    ).toMatchObject(search);
+  });
+
   it('accepts API-shaped GitHub owner/repository slugs', () => {
     for (const repo of ['gregale/api', 'one-box/faas_web.git', 'A.B-C/repo_2']) {
       expect(isValidGitHubRepo(repo), repo).toBe(true);

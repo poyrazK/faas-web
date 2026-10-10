@@ -44,6 +44,7 @@ import {
   residentInstancesAllowed,
 } from '@/lib/plan';
 import { cn } from '@/lib/utils';
+import { rememberGitHubDeployment } from '@/lib/deployment-handoff';
 
 const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
 const STEPS = ['Source', 'Configure', 'Review'] as const;
@@ -133,7 +134,10 @@ export function NewAppWizard({
   // created even if browser history moves to an earlier source selection.
   const [submittedSearch, setSubmittedSearch] = useState<NewAppSearch | null>(null);
   const search = submittedSearch ?? urlSearch ?? localSearch;
-  const changeSearch = onSearchChange ?? setLocalSearch;
+  const changeSearch = (next: NewAppSearch, options?: { replace?: boolean }) => {
+    if (onSearchChange) onSearchChange(next, options);
+    else setLocalSearch(next);
+  };
   const source = search.source ?? (search.template ? 'template' : undefined);
   const templateSlug = source === 'template' ? search.template : undefined;
   const setSource = (next: AppSource) =>
@@ -168,8 +172,9 @@ export function NewAppWizard({
   // The endpoint the API assigned. Constructing one from the slug would be a
   // guess about the platform's hostname scheme; this is the real value.
   const [createdUrl, setCreatedUrl] = useState<string | null>(null);
-  const [repo, setRepo] = useState('');
-  const [ref, setRef] = useState('main');
+  const repo = search.repo ?? '';
+  const ref = search.ref ?? 'main';
+  const [repoAccessible, setRepoAccessible] = useState(true);
   const [nameDraft, setName] = useState<string | null>(null);
   const [nameTouched, setNameTouched] = useState(false);
   const [configureSubmitted, setConfigureSubmitted] = useState(false);
@@ -199,9 +204,10 @@ export function NewAppWizard({
   // (or nothing was typed) leaving is free. A template's prefilled name is
   // not the user's typing — only their own edits arm the guard.
   useUnsavedGuard(
-    !createdId && Boolean(repo.trim() || (name.trim() && name !== initialName)),
+    !createdId &&
+      Boolean((!onSearchChange && repo.trim()) || (name.trim() && name !== initialName)),
     undefined,
-    '/dashboard/workflows/new'
+    onboarding ? '/onboarding' : '/dashboard/workflows/new'
   );
 
   const nameError = appNameError(name);
@@ -215,7 +221,7 @@ export function NewAppWizard({
     source !== 'import' &&
     (source !== 'template' || picked) &&
     gitSourceValid &&
-    (source !== 'git' || githubConnected);
+    (source !== 'git' || (githubConnected && repoAccessible));
   // Reloaded URLs restore the source; missing in-memory fields return to the
   // earliest incomplete step instead of exposing an invalid review/create.
   const step = !sourceValid ? 0 : search.step === 'review' && nameValid ? 2 : search.step ? 1 : 0;
@@ -252,7 +258,9 @@ export function NewAppWizard({
       slug,
       installationId,
       repo: repo.trim(),
-      branch: normalizedRef,
+      // A checked commit pins the first build; it is not a branch to watch.
+      // Empty lets the existing binding contract select its default branch.
+      branch: /^[a-f0-9]{40}$/i.test(normalizedRef) ? '' : normalizedRef,
     });
     return deployFromRef.mutateAsync({
       slug,
@@ -606,7 +614,21 @@ export function NewAppWizard({
                     exact ref you deploy.
                   </p>
                 </div>
-                <GitHubConnectForm onConnect={onConnectGitHub} />
+                <GitHubConnectForm
+                  onConnect={() => {
+                    rememberGitHubDeployment(search, onboarding);
+                    onConnectGitHub?.();
+                  }}
+                />
+                {repo && (
+                  <p className="w-full break-all text-xs text-muted-foreground">
+                    Continue with{' '}
+                    <span className="font-mono text-foreground">
+                      {repo}@{ref}
+                    </span>{' '}
+                    after connecting.
+                  </p>
+                )}
               </div>
             ) : source === 'git' ? (
               <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
@@ -614,9 +636,12 @@ export function NewAppWizard({
                   <span className={LABEL}>Repository</span>
                   <RepoPicker
                     value={repo}
+                    onAvailabilityChange={setRepoAccessible}
                     onChange={(nextRepo, defaultBranch) => {
-                      setRepo(nextRepo);
-                      if (defaultBranch) setRef(defaultBranch);
+                      changeSearch(
+                        { ...search, repo: nextRepo, ref: defaultBranch ?? ref },
+                        { replace: true }
+                      );
                     }}
                     className={CONTROL}
                   />
@@ -625,7 +650,9 @@ export function NewAppWizard({
                   <span className={LABEL}>Ref</span>
                   <Input
                     value={ref}
-                    onChange={(e) => setRef(e.target.value)}
+                    onChange={(e) =>
+                      changeSearch({ ...search, ref: e.target.value }, { replace: true })
+                    }
                     placeholder="main"
                     maxLength={200}
                     spellCheck={false}

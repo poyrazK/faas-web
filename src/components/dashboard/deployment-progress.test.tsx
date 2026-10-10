@@ -58,6 +58,14 @@ beforeEach(() => {
 });
 
 describe('first deployment progress', () => {
+  it('keeps exactly one response check as a submitted deployment becomes live and updates', () => {
+    const { rerender } = render(<DeploymentProgress {...props} deploymentId={null} />);
+    expect(screen.queryByRole('button', { name: 'Send GET request' })).not.toBeInTheDocument();
+    api.status = 'live';
+    for (let i = 0; i < 3; i++) rerender(<DeploymentProgress {...props} />);
+    expect(screen.getAllByRole('button', { name: 'Send GET request' })).toHaveLength(1);
+  });
+
   it.each([
     ['pending', 'Queued for build'],
     ['building', 'Building your app'],

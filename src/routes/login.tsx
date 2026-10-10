@@ -2,7 +2,14 @@ import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router';
 import { useEffect } from 'react';
 import { AuthLayout } from '@/components/auth/auth-layout';
 import { PasswordFlow } from '@/components/auth/password-flow';
-import { clearOAuthPending, hasOAuthPending, hasOnboarded, readSession, useAuth } from '@/lib/auth';
+import {
+  clearOAuthPending,
+  hasOAuthPending,
+  hasOnboarded,
+  readOAuthReturnTo,
+  readSession,
+  useAuth,
+} from '@/lib/auth';
 import { safeInternalPath } from '@/lib/redirect';
 import { pageHead } from '@/lib/seo';
 
@@ -11,12 +18,13 @@ export const Route = createFileRoute('/login')({
   validateSearch: (search: Record<string, unknown>): { next?: string } => ({
     next: safeInternalPath(search.next),
   }),
-  beforeLoad: () => {
-    if (readSession()) throw redirect({ to: hasOnboarded() ? '/dashboard' : '/onboarding' });
+  beforeLoad: ({ search }) => {
     // OAuth returns through a full-page provider redirect. There is no
-    // localStorage session hint yet, so let AuthProvider verify the HttpOnly
-    // cookie before deciding that this is really a signed-out visit.
+    // reliable session hint yet. Restore the pending destination only after
+    // AuthProvider verifies the cookie, even if an older hint is present.
     if (hasOAuthPending()) return;
+    if (readSession() && search.next) throw redirect({ href: search.next, reloadDocument: true });
+    if (readSession()) throw redirect({ to: hasOnboarded() ? '/dashboard' : '/onboarding' });
   },
   component: LoginPage,
 });
@@ -31,8 +39,13 @@ function LoginPage() {
   // same cookie-to-client handoff as the landing route in that case too.
   useEffect(() => {
     if (loading || !hasOAuthPending()) return;
+    const returnTo = readOAuthReturnTo();
     clearOAuthPending();
     if (!user) return;
+    if (returnTo) {
+      window.location.assign(returnTo);
+      return;
+    }
     void navigate({ to: hasOnboarded() ? '/dashboard' : '/onboarding', replace: true });
   }, [loading, navigate, user]);
 

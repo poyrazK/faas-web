@@ -28,6 +28,27 @@ MFA-enrolled so set-password demands a step-up (any six digits verify), and
 `MOCK_MFA=required` boots with the policy on and nothing enrolled, so it demands
 enrolment first.
 
+### Compatibility to first response
+
+The landing page's **Will it run?** form opens `/will-it-run` for a public GitHub
+repository. A green preflight offers **Deploy this commit**; the canonical
+repository and exact checked SHA travel through signup/sign-in into the app
+wizard (or onboarding for a new account). The check is static analysis, not a
+promise that the application will run. Amber/red results offer a recheck.
+
+Wizard source fields live in the URL. OAuth and GitHub installation round trips
+also use tab-scoped session storage to restore the destination; installation
+handoffs expire after one hour. The connected installation must have access to
+the selected repository. The first build uses the checked SHA, while the binding
+uses the backend's default branch when the ref is a commit.
+
+Once the API reports a live deployment, **Verify your API** lets the user send
+an explicit, credential-free GET to a read-only path on the assigned HTTPS
+endpoint. Only a readable 2xx response is marked successful. Requests time out
+after 20 seconds and previews are bounded to 16 KB. CORS restrictions or redirects
+may prevent browser verification; the public URL and a copyable curl command
+remain available. No request is sent automatically.
+
 ## Scripts
 
 | Command              | What it does                                        |

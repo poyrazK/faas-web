@@ -10,7 +10,8 @@ export const Route = createFileRoute('/signup')({
   validateSearch: (search: Record<string, unknown>): { next?: string } => ({
     next: safeInternalPath(search.next),
   }),
-  beforeLoad: () => {
+  beforeLoad: ({ search }) => {
+    if (readSession() && search.next) throw redirect({ href: search.next, reloadDocument: true });
     if (readSession()) throw redirect({ to: hasOnboarded() ? '/dashboard' : '/onboarding' });
   },
   component: SignupPage,

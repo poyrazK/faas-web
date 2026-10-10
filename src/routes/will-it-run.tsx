@@ -1,11 +1,13 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { api, unwrap } from '@/lib/api/client';
 import { ApiError } from '@/lib/api/errors';
 import type { components } from '@/lib/api/schema';
 import { pageHead } from '@/lib/seo';
 import { DatamoshBand } from '@/components/datamosh/datamosh-band';
+import { Button } from '@/components/ui/button';
+import { isValidGitHubRepo, newAppPath } from '@/components/dashboard/new-app-source';
 
 type Report = components['schemas']['PreflightReport'];
 type Finding = components['schemas']['PreflightFinding'];
@@ -102,6 +104,10 @@ function WillItRun() {
     event.preventDefault();
     const trimmed = draft.trim();
     if (!trimmed) return;
+    if (trimmed === source) {
+      void query.refetch();
+      return;
+    }
     // Navigating rather than holding the value in state is what makes the
     // result addressable: the back button and a pasted link both work.
     void navigate({ search: { source: trimmed, ref: undefined } });
@@ -109,6 +115,12 @@ function WillItRun() {
 
   return (
     <main className="mx-auto w-full max-w-3xl px-4 py-12 sm:py-20">
+      <Link
+        to="/"
+        className="mb-8 inline-flex items-center gap-2 rounded text-sm text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-brand"
+      >
+        <img src="/favicon.png" alt="" className="size-6" /> Gregale
+      </Link>
       <header className="mb-8">
         <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Will it run here?</h1>
         <p className="mt-3 max-w-prose text-muted-foreground">
@@ -142,7 +154,13 @@ function WillItRun() {
 
       {transitioning && <Scanning label={source ?? ''} />}
       {!transitioning && query.isError && <Failure error={query.error} />}
-      {!transitioning && query.data && <Result key={query.data.commit_sha} report={query.data} />}
+      {!transitioning && !query.isError && query.data && (
+        <Result
+          key={query.data.commit_sha}
+          report={query.data}
+          onRecheck={() => void query.refetch()}
+        />
+      )}
 
       {!source && (
         <p className="mt-10 max-w-prose text-sm text-muted-foreground">
@@ -217,13 +235,16 @@ function Arrive({ delay, children }: { delay: number; children: ReactNode }) {
   );
 }
 
-function Result({ report }: { report: Report }) {
+function Result({ report, onRecheck }: { report: Report; onRecheck: () => void }) {
   const level = report.verdict.level;
   const copy = LEVEL_COPY[level];
   const findings = report.verdict.findings ?? [];
   const blockers = findings.filter((finding) => finding.level === 'red');
   const changes = findings.filter((finding) => finding.level === 'amber');
   const notes = findings.filter((finding) => finding.level === 'green');
+  const repo = `${report.source.owner}/${report.source.repo}`;
+  const canDeploy =
+    level === 'green' && isValidGitHubRepo(repo) && /^[a-f0-9]{40}$/i.test(report.commit_sha);
 
   // The verdict leads and everything else follows it in, one step apart. The
   // order is the order you read in, so the stagger reinforces the hierarchy
@@ -248,6 +269,40 @@ function Result({ report }: { report: Report }) {
       <Arrive delay={next()}>
         <Profile report={report} />
       </Arrive>
+
+      <div className="mt-6 rounded-xl border border-border bg-card p-5">
+        {canDeploy ? (
+          <>
+            <h3 className="text-base font-medium">Take this repository to its first response.</h3>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              Continue with this checked commit. Connect GitHub, review your runtime and resources,
+              then deploy. A source check does not guarantee runtime compatibility.
+            </p>
+            <Button asChild variant="cta" className="mt-4">
+              <Link
+                to="/signup"
+                search={{ next: newAppPath({ source: 'git', repo, ref: report.commit_sha }) }}
+              >
+                Deploy this commit
+              </Link>
+            </Button>
+          </>
+        ) : (
+          <>
+            <h3 className="text-base font-medium">Resolve the findings before deploying.</h3>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              Update your repository using the findings below, then check this source again.
+            </p>
+          </>
+        )}
+        <button
+          type="button"
+          onClick={onRecheck}
+          className="mt-4 block rounded text-sm text-brand underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-brand"
+        >
+          Check again
+        </button>
+      </div>
 
       {blockers.length > 0 && (
         <Arrive delay={next()}>
