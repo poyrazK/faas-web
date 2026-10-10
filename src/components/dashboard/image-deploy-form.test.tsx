@@ -10,11 +10,17 @@ const state = vi.hoisted(() => ({
   account: { id: 'a', plan: 'free', limits: { ram_mb: 128 }, app_count: 0 },
   availability: 'available',
   terminal: '',
+  readPrivate: vi.fn(),
 }));
 vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: state.account }) }));
 vi.mock('@/lib/api/capabilities', () => ({
-  useCapability: () => ({ state: state.availability, refresh: vi.fn() }),
+  useCapability: () => ({
+    accountId: state.account.id,
+    state: state.availability,
+    refresh: vi.fn(),
+  }),
 }));
+vi.mock('@/lib/api/bindings', () => ({ readPrivateAppCreateContext: state.readPrivate }));
 vi.mock('./deployment-progress', () => ({
   DeploymentProgress: ({
     deploymentId,
@@ -54,11 +60,56 @@ beforeEach(() => {
   state.account.plan = 'free';
   state.availability = 'available';
   state.terminal = '';
+  state.readPrivate.mockReset().mockResolvedValue(undefined);
   vi.spyOn(api, 'GET').mockImplementation(async (path) =>
     path === '/v1/apps/{slug}'
       ? ok({ id: 'app-1', slug: 'my-api', type: 'app' })
       : ok({ credentials: [], count: 0, quota_max: 0 })
   );
+});
+it('reviews internal image creation, persists visibility and rechecks capability before POST', async () => {
+  vi.spyOn(api, 'GET').mockImplementation(async (path) =>
+    path === '/v1/apps/{slug}'
+      ? ok({ id: 'app-1', slug: 'my-api', type: 'app', visibility: 'internal' })
+      : ok({ credentials: [], count: 0, quota_max: 0 })
+  );
+  const post = vi
+    .spyOn(api, 'POST')
+    .mockImplementation(async (path) =>
+      path === '/v1/apps'
+        ? ok({ id: 'app-1', slug: 'my-api', visibility: 'internal', url: 'https://my-api.example' })
+        : ok({ id: 'dep-1', app_id: 'app-1', status: 'pending' })
+    );
+  mount();
+  await userEvent.type(screen.getByLabelText('App name'), 'my-api');
+  await userEvent.type(screen.getByLabelText('Image reference'), reference);
+  await userEvent.selectOptions(screen.getByLabelText('App visibility'), 'internal');
+  await userEvent.click(screen.getByRole('button', { name: 'Review image deployment' }));
+  expect(screen.getByText(/Review:/)).toHaveTextContent(/internal service only/i);
+  await userEvent.click(screen.getByRole('button', { name: 'Create app and deploy image' }));
+  await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
+  expect(state.readPrivate).toHaveBeenCalledTimes(1);
+  expect(post.mock.calls[0]?.[1]).toMatchObject({ body: { visibility: 'internal' } });
+  expect(readImageOperation('a', '')?.endpoint).toBeUndefined();
+});
+it('freezes an accepted app when internal visibility was not confirmed', async () => {
+  const post = vi
+    .spyOn(api, 'POST')
+    .mockResolvedValue(
+      ok({ id: 'app-1', slug: 'my-api', visibility: 'public', url: 'https://my-api.example' })
+    );
+  mount();
+  await userEvent.type(screen.getByLabelText('App name'), 'my-api');
+  await userEvent.type(screen.getByLabelText('Image reference'), reference);
+  await userEvent.selectOptions(screen.getByLabelText('App visibility'), 'internal');
+  await userEvent.click(screen.getByRole('button', { name: 'Review image deployment' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Create app and deploy image' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    /internal visibility was not confirmed/i
+  );
+  expect(post).toHaveBeenCalledTimes(1);
+  expect(readImageOperation('a', '')?.stage).toBe('app-created');
+  expect(readImageOperation('a', '')?.endpoint).toBeUndefined();
 });
 it.each(['free', 'hobby'])(
   'inherits the %s plan idle timeout rather than sending an inadmissible override',

@@ -169,3 +169,23 @@ export async function readAppVisibilityContext(
     throw new Error('Private app capability is no longer available for this account.');
   return app;
 }
+
+export async function readPrivateAppCreateContext(
+  accountId: string,
+  plan: Plan,
+  signal?: AbortSignal
+) {
+  const [account, registry] = await Promise.all([
+    unwrap(api.GET('/v1/account', { signal })),
+    unwrap(api.GET('/v1/capabilities', { signal })),
+  ]);
+  const capability = registry.capabilities.find((entry) => entry.key === 'private-apps');
+  if (
+    account.id !== accountId ||
+    account.plan !== plan ||
+    registry.plan !== plan ||
+    !capability?.enabled ||
+    !capability.plans.includes(plan)
+  )
+    throw new Error('Private app capability is no longer available for this account.');
+}

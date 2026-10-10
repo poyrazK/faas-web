@@ -1,7 +1,10 @@
 import type { components } from './api/schema';
 import { imageRequest } from './oci-image';
 type CreateRequest = components['schemas']['CreateAppRequest'];
-export type ImageCreateRequest = Pick<CreateRequest, 'slug' | 'type' | 'ram_mb' | 'idle_timeout_s'>;
+export type ImageCreateRequest = Pick<
+  CreateRequest,
+  'slug' | 'type' | 'ram_mb' | 'idle_timeout_s' | 'visibility'
+>;
 export interface ImageOperation {
   version: 1;
   accountId: string;
@@ -46,6 +49,7 @@ export function newImageOperation(
       cpu_millicores: 1000,
       head_wakes: false,
       crawler_policy: 'wake',
+      visibility: createRequest.visibility ?? 'public',
       ...createRequest,
     },
     deployRequest,
@@ -54,7 +58,7 @@ export function newImageOperation(
 }
 /** Never serialize caller-supplied objects: only this form's non-secret fields. */
 function sanitized(operation: ImageOperation): ImageOperation {
-  const { slug, ram_mb, idle_timeout_s, cpu_millicores, head_wakes, crawler_policy } =
+  const { slug, ram_mb, idle_timeout_s, cpu_millicores, head_wakes, crawler_policy, visibility } =
     operation.createRequest;
   const overrides = operation.deployRequest.overrides;
   const deployRequest = imageRequest(
@@ -77,13 +81,14 @@ function sanitized(operation: ImageOperation): ImageOperation {
       cpu_millicores,
       head_wakes,
       crawler_policy,
+      visibility: visibility ?? 'public',
       ...(ram_mb ? { ram_mb } : {}),
       ...(idle_timeout_s !== undefined ? { idle_timeout_s } : {}),
     },
     deployRequest,
     stage: operation.stage,
     appId: operation.appId,
-    endpoint: operation.endpoint,
+    endpoint: visibility === 'internal' ? undefined : operation.endpoint,
     deploymentId: operation.deploymentId,
     needsCredentials: operation.needsCredentials,
   };
@@ -117,7 +122,9 @@ export function readImageOperation(accountId: string, existingSlug: string): Ima
         'deploy-rejected',
         'accepted',
       ].includes(operation.stage) ||
-      !/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(operation.createRequest.slug)
+      !/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(operation.createRequest.slug) ||
+      (operation.createRequest.visibility !== undefined &&
+        !['public', 'internal'].includes(operation.createRequest.visibility))
     )
       throw new Error();
     if (!['create-pending', 'create-rejected'].includes(operation.stage) && !operation.appId)

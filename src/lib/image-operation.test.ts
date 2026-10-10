@@ -21,6 +21,16 @@ it('persists frozen non-secret identity before creating an app', () => {
   expect(creationReplayAllowed(operation, operation.createdAt + 24 * 60 * 60 * 1000)).toBe(false);
   expect(creationReplayAllowed(operation, operation.createdAt + 1000)).toBe(true);
 });
+it('retains reviewed internal visibility in the non-secret recovery record', () => {
+  const operation = newImageOperation(
+    'account-a',
+    { slug: 'private-api', type: 'app', visibility: 'internal' },
+    request
+  );
+  saveImageOperation(operation);
+  expect(readImageOperation('account-a', '')?.createRequest.visibility).toBe('internal');
+  expect(localStorage.getItem('gregale.image-operation:account-a:new')).not.toContain('endpoint');
+});
 it('retains accepted identities and isolates new versus existing app recovery', () => {
   const operation = {
     ...newImageOperation('a', { slug: 'api', type: 'app' }, request),
