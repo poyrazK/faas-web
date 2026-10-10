@@ -75,10 +75,10 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
       liveWrite.current = { identity: writeIdentity, epoch: liveWrite.current.epoch + 1 };
   }, [writeIdentity]);
   const confirm = useConfirm();
-  const accountRules = useEdgeRules(!scoped);
-  const appRules = useAppEdgeRules(scoped ?? '');
+  const accountRules = useEdgeRules(!scoped, accountId);
+  const appRules = useAppEdgeRules(scoped ?? '', accountId);
   const { data, isPending, error, refetch } = scoped ? appRules : accountRules;
-  const { data: apps } = useApps();
+  const { data: apps } = useApps(undefined, accountId);
   const deleteRule = useDeleteEdgeRule();
   const updateRule = useUpdateEdgeRule();
 
