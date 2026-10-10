@@ -148,14 +148,20 @@ function ImageJourney({
       active.current = false;
     };
   }, []);
-  useEffect(() => {
-    if (kind !== 'worker' || !slug || editingApp || operation || reviewing) return;
-    const manifest = existingWorker.data?.manifest;
-    if (manifest?.execution_mode !== 'worker') return;
-    setRestartPolicy(manifest.restart_policy ?? 'always');
-    setStartupDeadline(manifest.startup_deadline_s ?? 0);
-    setMaxRetries(manifest.max_retries ?? 0);
-  }, [kind, slug, editingApp, operation, reviewing, existingWorker.data]);
+  const existingManifest =
+    kind === 'worker' && slug && !editingApp ? existingWorker.data?.manifest : undefined;
+  const reviewedRestartPolicy =
+    existingManifest?.execution_mode === 'worker'
+      ? (existingManifest.restart_policy ?? 'always')
+      : restartPolicy;
+  const reviewedStartupDeadline =
+    existingManifest?.execution_mode === 'worker'
+      ? (existingManifest.startup_deadline_s ?? 0)
+      : startupDeadline;
+  const reviewedMaxRetries =
+    existingManifest?.execution_mode === 'worker'
+      ? (existingManifest.max_retries ?? 0)
+      : maxRetries;
   const registrySlug = operation?.appId ? operation.createRequest.slug : fixedApp;
   const registry = useQuery({
     queryKey: ['account', accountId, 'image-registry', registrySlug],
@@ -379,9 +385,9 @@ function ImageJourney({
               ram_mb: existingWorker.data?.ram_mb,
               visibility: 'internal' as const,
               execution_mode: 'worker' as const,
-              restart_policy: restartPolicy,
-              startup_deadline_s: startupDeadline,
-              max_retries: maxRetries,
+              restart_policy: reviewedRestartPolicy,
+              startup_deadline_s: reviewedStartupDeadline,
+              max_retries: reviewedMaxRetries,
             }
           : undefined;
     const current = persist({
@@ -984,7 +990,7 @@ function ImageJourney({
               <p className="text-sm">
                 Review: {fixedApp || name} · {memory} MB ·{' '}
                 {kind === 'worker'
-                  ? `Worker execution · ${restartPolicy} restart · startup deadline ${startupDeadline || 'plan default'} · retry cap ${maxRetries || 'plan default'} · internal only · no public endpoint · `
+                  ? `Worker execution · ${reviewedRestartPolicy} restart · startup deadline ${reviewedStartupDeadline || 'plan default'} · retry cap ${reviewedMaxRetries || 'plan default'} · internal only · no public endpoint · `
                   : !fixedApp &&
                     (visibility === 'internal'
                       ? 'Internal service only · no public endpoint · '

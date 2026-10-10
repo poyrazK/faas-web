@@ -283,9 +283,9 @@ it('opens the worker image journey from an authoritative worker app page', async
           ram_mb: 128,
           manifest: {
             execution_mode: 'worker',
-            restart_policy: 'always',
-            startup_deadline_s: 0,
-            max_retries: 0,
+            restart_policy: 'on-failure',
+            startup_deadline_s: 20,
+            max_retries: 3,
           },
         })
       : ok({ credentials: [], count: 0, quota_max: 0 })
@@ -302,6 +302,11 @@ it('opens the worker image journey from an authoritative worker app page', async
   );
   expect(screen.queryByLabelText('Port override')).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Review worker deployment' })).toBeInTheDocument();
+  await userEvent.type(screen.getByLabelText('Image reference'), reference);
+  await userEvent.click(screen.getByRole('button', { name: 'Review worker deployment' }));
+  expect(screen.getByText(/Review:/)).toHaveTextContent(
+    /on-failure restart · startup deadline 20 · retry cap 3/
+  );
 });
 it('reviews internal image creation, persists visibility and rechecks capability before POST', async () => {
   vi.spyOn(api, 'GET').mockImplementation(async (path) =>
