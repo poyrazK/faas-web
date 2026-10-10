@@ -71,7 +71,9 @@ export function DraftNode({ kind, app, onDone, onCancel }: DraftProps) {
 
   const keys = (e: KeyboardEvent) => {
     if (e.key === 'Escape') onCancel();
-    if (e.key === 'Enter') {
+    // ↵ submits from a field only. On a button the button's own action wins,
+    // so ↵ on Cancel backs out instead of creating the resource.
+    if (e.key === 'Enter' && e.target instanceof HTMLInputElement) {
       e.preventDefault();
       submit();
     }

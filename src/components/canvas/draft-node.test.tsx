@@ -74,6 +74,17 @@ describe('DraftNode', () => {
     );
   });
 
+  it('backs out when ↵ is pressed on Cancel instead of creating the cron', () => {
+    cron.mutate.mockClear();
+    const onCancel = vi.fn();
+    render(<DraftNode kind="cron" app={app} onDone={vi.fn()} onCancel={onCancel} />);
+    fireEvent.change(screen.getByLabelText('Schedule'), { target: { value: '0 3 * * *' } });
+    const cancel = screen.getByRole('button', { name: 'Cancel' });
+    cancel.focus();
+    fireEvent.keyDown(cancel, { key: 'Enter' });
+    expect(cron.mutate).not.toHaveBeenCalled();
+  });
+
   it('creates a bucket in the app’s default region', () => {
     render(<DraftNode kind="bucket" app={app} onDone={vi.fn()} onCancel={vi.fn()} />);
     const input = screen.getByLabelText('Bucket name');
