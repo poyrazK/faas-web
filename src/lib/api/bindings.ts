@@ -133,11 +133,39 @@ export function patchServicePolicy(slug: string, body: ServicePolicyPatch, signa
   );
 }
 
-export function patchAppVisibility(slug: string, visibility: 'public' | 'internal') {
+export function patchAppVisibility(
+  slug: string,
+  visibility: 'public' | 'internal',
+  signal?: AbortSignal
+) {
   return unwrap(
     api.PATCH('/v1/apps/{slug}', {
       params: { path: { slug } },
       body: { visibility },
+      ...(signal ? { signal } : {}),
     })
   );
+}
+
+export async function readAppVisibilityContext(
+  accountId: string,
+  slug: string,
+  plan: Plan,
+  signal?: AbortSignal
+) {
+  const [account, app, registry] = await Promise.all([
+    unwrap(api.GET('/v1/account', { signal })),
+    unwrap(api.GET('/v1/apps/{slug}', { params: { path: { slug } }, signal })),
+    unwrap(api.GET('/v1/capabilities', { signal })),
+  ]);
+  const capability = registry.capabilities.find((entry) => entry.key === 'private-apps');
+  if (
+    account.id !== accountId ||
+    account.plan !== plan ||
+    registry.plan !== plan ||
+    !capability?.enabled ||
+    !capability.plans.includes(plan)
+  )
+    throw new Error('Private app capability is no longer available for this account.');
+  return app;
 }

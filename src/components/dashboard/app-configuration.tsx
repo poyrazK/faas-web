@@ -26,6 +26,7 @@ import { useAuth } from '@/lib/auth';
 import { MemorySelect } from './memory-select';
 import { configurationEffects } from '@/lib/api/runtime-policy';
 import { PolicyStatus } from './policy-status';
+import { AppVisibility } from './app-visibility';
 import { usePolicyOperation } from './policy-operation';
 
 /**
@@ -725,14 +726,24 @@ export function AppConfiguration({ slug }: { slug: string }) {
 
   return (
     <div className="flex flex-col gap-6">
+      <AppVisibility
+        key={`${account?.id ?? ''}:${data.id}`}
+        accountId={account?.id ?? ''}
+        plan={account?.plan ?? 'free'}
+        slug={slug}
+        app={data}
+      />
       <Panel title="About" padded={false}>
         <dl className="grid gap-x-8 gap-y-0 px-5 sm:grid-cols-3">
           {[
             ['Runtime', data.runtime ?? data.type],
             ['Type', data.type],
-            ['Endpoint', data.url],
+            ['Endpoint', data.visibility === 'internal' ? 'Internal only' : data.url],
           ].map(([label, value]) => {
-            const href = label === 'Endpoint' ? publicAppUrl(value) : undefined;
+            const href =
+              label === 'Endpoint' && data.visibility !== 'internal'
+                ? publicAppUrl(value)
+                : undefined;
             return (
               <div key={label} className="flex flex-col gap-1 py-4">
                 <dt className="label-mono text-muted-foreground">{label}</dt>

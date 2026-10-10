@@ -121,6 +121,10 @@ describe('toWorkflow', () => {
   it('falls back to the app type when there is no runtime', () => {
     expect(toWorkflow(app({ type: 'app', runtime: undefined })).runtime).toBe('app');
   });
+
+  it('preserves internal visibility so app views do not advertise a public endpoint', () => {
+    expect(toWorkflow(app({ visibility: 'internal' })).visibility).toBe('internal');
+  });
 });
 
 describe('toDeployment', () => {

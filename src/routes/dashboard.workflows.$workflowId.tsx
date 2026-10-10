@@ -328,7 +328,13 @@ function FunctionDetailPage() {
         description={
           tab === 'Overview'
             ? undefined
-            : [fn.runtime, `${fn.memoryMb} MB`, fn.url].filter(Boolean).join(' · ')
+            : [
+                fn.runtime,
+                `${fn.memoryMb} MB`,
+                fn.visibility === 'internal' ? 'Internal only' : fn.url,
+              ]
+                .filter(Boolean)
+                .join(' · ')
         }
         actions={
           <>
@@ -445,7 +451,7 @@ function FunctionDetailPage() {
         }
       />
 
-      {tab !== 'Overview' && fn.url && (
+      {tab !== 'Overview' && fn.url && fn.visibility !== 'internal' && (
         <a
           href={fn.url}
           className="inline-flex w-fit items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 font-mono text-xs text-muted-foreground transition-colors hover:border-brand/40 hover:text-foreground"
@@ -748,7 +754,12 @@ function FunctionDetailPage() {
                 }
               />
             )}
-            {tab === 'Routes' && <RoutesBody slug={fn.id} baseUrl={fn.url} />}
+            {tab === 'Routes' && (
+              <RoutesBody
+                slug={fn.id}
+                baseUrl={fn.visibility === 'internal' ? undefined : fn.url}
+              />
+            )}
             {tab === 'Secrets' && <SecretsBody slug={fn.id} />}
             {tab === 'Env vars' && <EnvBody slug={fn.id} />}
             {tab === 'Queues' && <QueuesBody slug={fn.id} />}
