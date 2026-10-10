@@ -294,6 +294,28 @@ security:
   - bearerAuth: []
 
 paths:
+  # Capability registry synchronized from faas 2fcd8f247c963295753417af46697b8d26daa40b.
+  /v1/capabilities:
+    get:
+      tags: [account]
+      operationId: getCapabilities
+      summary: Return feature maturity and plan availability.
+      description: |
+        Returns the canonical, account-scoped capability registry. Maturity is
+        separate from account/runtime availability; enabled is not fleet health.
+      responses:
+        '200':
+          description: Customer-visible capability registry.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CapabilitiesResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '503':
+          description: Capability registry unavailable; retry with backoff.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
   /v1/preflight:
     get:
       tags: [status]
@@ -15342,6 +15364,37 @@ components:
         private: { type: boolean }
 
     # ─── Account ──────────────────────────────────────────────────────────
+
+    CapabilityStatus:
+      description: Account entitlement and runtime availability, not execution health. Internal capabilities are omitted.
+      type: object
+      required: [key, name, category, description, maturity, plans, docs_url, acceptance, enabled]
+      properties:
+        key: { type: string, pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$' }
+        name: { type: string }
+        category: { type: string }
+        description: { type: string }
+        maturity: { type: string, enum: [internal, preview, beta, ga] }
+        plans:
+          type: array
+          items: { type: string, enum: [free, hobby, pro, scale] }
+        docs_url: { type: string, format: uri-reference }
+        acceptance: { type: string }
+        enabled: { type: boolean }
+        unavailable_reason:
+          type: string
+          enum: [plan_not_entitled, runtime_unavailable]
+        unavailable_detail: { type: string }
+
+    CapabilitiesResponse:
+      type: object
+      required: [registry_version, plan, capabilities]
+      properties:
+        registry_version: { type: integer, minimum: 1 }
+        plan: { type: string, enum: [free, hobby, pro, scale] }
+        capabilities:
+          type: array
+          items: { $ref: '#/components/schemas/CapabilityStatus' }
 
     AccountResponse:
       description: "Account profile: id, email verification state, plan, status, limits snapshot, current-month usage, deployed-app count, and developer-environment count."

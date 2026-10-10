@@ -76,6 +76,13 @@ beforeEach(() => {
 });
 
 describe('BucketAccess', () => {
+  it('disables new grants and credentials without blocking revocation when unavailable', () => {
+    render(wrap(<BucketAccess slug="api" bucketId="bucket" provisioningEnabled={false} />));
+    expect(screen.getByRole('button', { name: /^grant$/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /^create$/i })).toBeDisabled();
+    expect(screen.getByLabelText('Permission for ci-deploy')).toBeDisabled();
+    expect(screen.getByRole('button', { name: /revoke grant for ci-deploy/i })).toBeEnabled();
+  });
   it('addresses the bucket by its id, which is what the API path takes', async () => {
     render(wrap(<BucketAccess slug="api" bucketId="b17c0ffee0000000000000000000dead" />));
     await waitFor(() =>

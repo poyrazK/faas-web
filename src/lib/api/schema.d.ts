@@ -4,6 +4,27 @@
  */
 
 export interface paths {
+    "/v1/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return feature maturity and plan availability.
+         * @description Returns the canonical, account-scoped capability registry. Maturity is
+         *     separate from account/runtime availability; enabled is not fleet health.
+         */
+        get: operations["getCapabilities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/preflight": {
         parameters: {
             query?: never;
@@ -9941,6 +9962,29 @@ export interface components {
             default_branch: string;
             private: boolean;
         };
+        /** @description Account entitlement and runtime availability, not execution health. Internal capabilities are omitted. */
+        CapabilityStatus: {
+            key: string;
+            name: string;
+            category: string;
+            description: string;
+            /** @enum {string} */
+            maturity: "internal" | "preview" | "beta" | "ga";
+            plans: ("free" | "hobby" | "pro" | "scale")[];
+            /** Format: uri-reference */
+            docs_url: string;
+            acceptance: string;
+            enabled: boolean;
+            /** @enum {string} */
+            unavailable_reason?: "plan_not_entitled" | "runtime_unavailable";
+            unavailable_detail?: string;
+        };
+        CapabilitiesResponse: {
+            registry_version: number;
+            /** @enum {string} */
+            plan: "free" | "hobby" | "pro" | "scale";
+            capabilities: components["schemas"]["CapabilityStatus"][];
+        };
         /** @description Account profile: id, email verification state, plan, status, limits snapshot, current-month usage, deployed-app count, and developer-environment count. */
         AccountResponse: {
             /** @example 0123456789abcdef0123456789abcdef */
@@ -19357,6 +19401,37 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getCapabilities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Customer-visible capability registry. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CapabilitiesResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            429: components["responses"]["TooManyRequests"];
+            /** @description Capability registry unavailable; retry with backoff. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     getMigrationPreflight: {
         parameters: {
             query: {
