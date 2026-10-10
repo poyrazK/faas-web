@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { useAuth } from '@/lib/auth';
 import { api, unwrap } from '@/lib/api/client';
 import { ApiError, errorMessage } from '@/lib/api/errors';
-import { keys, retryPolicy } from '@/lib/api/queries';
+import { keys, retryPolicy, useApp } from '@/lib/api/queries';
 import { createImageApp, deployImage } from '@/lib/api/image-deployments';
 import { useCapability } from '@/lib/api/capabilities';
 import { readPrivateAppCreateContext } from '@/lib/api/bindings';
@@ -57,13 +57,19 @@ export function ImageDeployForm({
   );
 }
 export function ImageDeploymentPanel({ slug }: { slug: string }) {
+  const { account } = useAuth();
+  const app = useApp(slug, { enabled: Boolean(account) }, account?.id);
   const [open, setOpen] = useState(false);
+  if (!account || app.isPending) return <p role="status">Verifying app image mode…</p>;
+  if (app.isError) return <p role="alert">App image mode unavailable. Retry the app page.</p>;
+  if (app.data?.type !== 'app') return null;
+  const kind = app.data.manifest?.execution_mode === 'worker' ? 'worker' : 'http';
   return (
     <div className="flex flex-col gap-3">
       <Button variant="outline" aria-expanded={open} onClick={() => setOpen(!open)}>
         Deploy image
       </Button>
-      {open && <ImageDeployForm slug={slug} />}
+      {open && <ImageDeployForm slug={slug} kind={kind} />}
     </div>
   );
 }
@@ -116,6 +122,11 @@ function ImageJourney({
   const availability = useCapability('container-deployments');
   const workerAvailability = useCapability('worker-pools');
   const privateAvailability = useCapability('private-apps');
+  const existingWorker = useApp(
+    slug,
+    { enabled: kind === 'worker' && Boolean(slug) && !editingApp },
+    accountId
+  );
   const cache = useQueryClient();
   const active = useRef(true);
   const lock = useRef(false);
@@ -137,6 +148,14 @@ function ImageJourney({
       active.current = false;
     };
   }, []);
+  useEffect(() => {
+    if (kind !== 'worker' || !slug || editingApp || operation || reviewing) return;
+    const manifest = existingWorker.data?.manifest;
+    if (manifest?.execution_mode !== 'worker') return;
+    setRestartPolicy(manifest.restart_policy ?? 'always');
+    setStartupDeadline(manifest.startup_deadline_s ?? 0);
+    setMaxRetries(manifest.max_retries ?? 0);
+  }, [kind, slug, editingApp, operation, reviewing, existingWorker.data]);
   const registrySlug = operation?.appId ? operation.createRequest.slug : fixedApp;
   const registry = useQuery({
     queryKey: ['account', accountId, 'image-registry', registrySlug],
@@ -194,6 +213,16 @@ function ImageJourney({
     if (kind === 'worker' && app.manifest?.execution_mode !== 'worker')
       throw new Error(
         'Worker execution mode is not confirmed on this app. Inspect it before deploying.'
+      );
+    if (
+      kind === 'worker' &&
+      (app.manifest?.restart_policy !== current.createRequest.restart_policy ||
+        (app.manifest?.startup_deadline_s ?? 0) !==
+          (current.createRequest.startup_deadline_s ?? 0) ||
+        (app.manifest?.max_retries ?? 0) !== (current.createRequest.max_retries ?? 0))
+    )
+      throw new Error(
+        'Worker lifecycle settings changed since review. Review the current worker settings before deploying.'
       );
     if (current.createRequest.visibility === 'internal' && app.visibility !== 'internal')
       throw new Error('Internal visibility is not confirmed. Inspect the app before deploying.');
@@ -333,7 +362,7 @@ function ImageJourney({
     if (!fixedApp && appNameError(name)) throw new Error(appNameError(name)!);
     if (memory > maxMemory) throw new Error('Memory exceeds this plan’s per-app limit.');
     const createRequest =
-      kind === 'worker' && !editingApp
+      kind === 'worker' && !editingApp && !slug
         ? workerCreateRequest({
             slug: name,
             memory,
@@ -343,7 +372,18 @@ function ImageJourney({
             startupDeadline,
             maxRetries,
           })
-        : undefined;
+        : kind === 'worker' && !editingApp && slug
+          ? {
+              slug,
+              type: 'app' as const,
+              ram_mb: existingWorker.data?.ram_mb,
+              visibility: 'internal' as const,
+              execution_mode: 'worker' as const,
+              restart_policy: restartPolicy,
+              startup_deadline_s: startupDeadline,
+              max_retries: maxRetries,
+            }
+          : undefined;
     const current = persist({
       ...newImageOperation(
         accountId,
@@ -406,7 +446,14 @@ function ImageJourney({
     ensureCanWrite();
     const app = await unwrap(api.GET('/v1/apps/{slug}', { params: { path: { slug } } }));
     if (!app?.id || app.slug !== slug || app.type !== 'app')
-      throw new Error('Deploy image requires an HTTP container app. No app was changed.');
+      throw new Error('Deploy image requires a container app. No app was changed.');
+    if (
+      kind === 'worker' &&
+      (app.manifest?.execution_mode !== 'worker' || app.visibility !== 'internal')
+    )
+      throw new Error('Worker mode and internal visibility must be confirmed before deploying.');
+    if (kind === 'http' && app.manifest?.execution_mode === 'worker')
+      throw new Error('This app is a worker. Return to its app page and review a worker image.');
     current = persist({
       ...current,
       appId: app.id,
@@ -417,6 +464,39 @@ function ImageJourney({
     if (current.needsCredentials)
       await saveCredentialAndDeploy(persist({ ...current, stage: 'credentials' }));
     else await submitDeployment(current);
+  }
+  async function reviewCurrentWorker(current: ImageOperation) {
+    if (!current.appId || busy || lock.current) return;
+    lock.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      const app = await unwrap(
+        api.GET('/v1/apps/{slug}', { params: { path: { slug: current.createRequest.slug } } })
+      );
+      if (
+        app.id !== current.appId ||
+        app.type !== 'app' ||
+        app.manifest?.execution_mode !== 'worker' ||
+        app.visibility !== 'internal'
+      )
+        throw new Error('Worker identity, mode, or visibility changed. Inspect the app.');
+      if (!active.current) return;
+      editRequest({
+        ...current,
+        createRequest: {
+          ...current.createRequest,
+          restart_policy: app.manifest.restart_policy ?? 'always',
+          startup_deadline_s: app.manifest.startup_deadline_s ?? 0,
+          max_retries: app.manifest.max_retries ?? 0,
+        },
+      });
+    } catch (error) {
+      if (active.current) setError(errorMessage(error));
+    } finally {
+      lock.current = false;
+      if (active.current) setBusy(false);
+    }
   }
   async function inspect() {
     if (!operation?.appId || busy || lock.current) return;
@@ -575,6 +655,17 @@ function ImageJourney({
               </Button>
             </>
           )}
+          {kind === 'worker' &&
+            operation.appId &&
+            (operation.stage === 'app-created' || operation.stage === 'credentials') && (
+              <Button
+                variant="outline"
+                disabled={busy}
+                onClick={() => void reviewCurrentWorker(operation)}
+              >
+                Review current worker settings
+              </Button>
+            )}
           {operation.stage === 'app-created' && (
             <Button
               disabled={!permitted}
@@ -910,7 +1001,11 @@ function ImageJourney({
                   Edit configuration
                 </Button>
                 <Button
-                  disabled={!permitted || !privateCreateAllowed}
+                  disabled={
+                    !permitted ||
+                    !privateCreateAllowed ||
+                    (kind === 'worker' && Boolean(slug) && !editingApp && !existingWorker.data)
+                  }
                   onClick={() => void run(start)}
                 >
                   {fixedApp
@@ -923,7 +1018,10 @@ function ImageJourney({
             </>
           ) : (
             <Button
-              disabled={!permitted}
+              disabled={
+                !permitted ||
+                (kind === 'worker' && Boolean(slug) && !editingApp && !existingWorker.data)
+              }
               onClick={() => {
                 try {
                   imageRequest(
