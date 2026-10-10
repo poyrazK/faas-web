@@ -1,13 +1,35 @@
 import { useCallback } from 'react';
-import { useReactFlow, useStore } from '@xyflow/react';
+import { useReactFlow, useStoreApi } from '@xyflow/react';
+
+type Box = { x: number; y: number; width: number; height: number };
+
+/**
+ * The smallest pan that brings `box` fully into `view` with `pad` to spare,
+ * in flow units. `fits: false` when no pan can: the box is larger than the
+ * view, and only zooming out will do.
+ */
+export function panToShow(
+  box: Box,
+  view: Box,
+  pad: number
+): { fits: boolean; dx: number; dy: number } {
+  const fits = box.width + 2 * pad <= view.width && box.height + 2 * pad <= view.height;
+  const shift = (lo: number, hi: number, vLo: number, vHi: number) =>
+    lo < vLo ? lo - vLo : hi > vHi ? hi - vHi : 0;
+  return {
+    fits,
+    dx: shift(box.x - pad, box.x + box.width + pad, view.x, view.x + view.width),
+    dy: shift(box.y - pad, box.y + box.height + pad, view.y, view.y + view.height),
+  };
+}
 
 /** Camera moves the canvas makes on the user's behalf, always on the console curve. */
 export function useCamera() {
   const flow = useReactFlow();
-  // One primitive per selector: an object selector is a new value on every
-  // store change, which re-renders the caller (the whole canvas page) forever.
-  const width = useStore((s) => s.width);
-  const height = useStore((s) => s.height);
+  // Read at call time, not render time: a delayed call (after a panel opens)
+  // must measure the viewport as it is then. Subscribing would also re-render
+  // the caller, the whole canvas page, on every resize.
+  const store = useStoreApi();
 
   const flyTo = useCallback(
     (id: string) => {
@@ -23,7 +45,7 @@ export function useCamera() {
     [flow]
   );
 
-  /** Pans (never zooms in) so every listed node is fully on screen. */
+  /** Pans the least it can, at the current zoom, so every listed node is fully on screen. Zooms out only when they cannot fit. */
   const ensureVisible = useCallback(
     (ids: string[]) => {
       const nodes = ids
@@ -31,16 +53,25 @@ export function useCamera() {
         .filter((n): n is NonNullable<typeof n> => Boolean(n));
       if (!nodes.length) return;
       const box = flow.getNodesBounds(nodes);
+      const { width, height } = store.getState();
       const { x, y, zoom } = flow.getViewport();
-      const view = { x: -x / zoom, y: -y / zoom, w: width / zoom, h: height / zoom };
-      const inside =
-        box.x >= view.x &&
-        box.y >= view.y &&
-        box.x + box.width <= view.x + view.w &&
-        box.y + box.height <= view.y + view.h;
-      if (!inside) void flow.fitBounds(box, { padding: 0.25, duration: 380 });
+      const view = { x: -x / zoom, y: -y / zoom, width: width / zoom, height: height / zoom };
+      const { fits, dx, dy } = panToShow(box, view, 48 / zoom);
+      if (!fits) {
+        const out = Math.min(zoom, width / (box.width + 96), height / (box.height + 96));
+        void flow.setCenter(box.x + box.width / 2, box.y + box.height / 2, {
+          zoom: out,
+          duration: 380,
+        });
+        return;
+      }
+      if (!dx && !dy) return;
+      void flow.setCenter(view.x + view.width / 2 + dx, view.y + view.height / 2 + dy, {
+        zoom,
+        duration: 380,
+      });
     },
-    [flow, width, height]
+    [flow, store]
   );
 
   return { flyTo, ensureVisible };

@@ -15,6 +15,8 @@ export type LaunchSeed = {
   ref?: string;
   deploymentId?: string;
   submitError?: string;
+  /** Bumped by each retry, so a retry that fails the same way still restarts tracking. */
+  attempt?: number;
 };
 
 const BACK: Record<WizardStep, WizardStep | undefined> = {

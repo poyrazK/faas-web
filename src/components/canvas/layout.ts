@@ -27,6 +27,8 @@ const BAND_GAP = 56;
 
 /** An app mid-first-deploy shows its rail, so it is taller. */
 export const APP_TALL = 96;
+/** A failed first deploy also shows its cause and two actions. */
+export const APP_FAILED = 120;
 export const DRAFT_SIZE: Record<CreateKind, { w: number; h: number }> = {
   domain: { w: 230, h: 104 },
   bucket: { w: 230, h: 104 },
@@ -37,7 +39,7 @@ const DRAFT_GAP = 16;
 
 export function layout(
   t: Topology,
-  opts: { draft?: DraftSlot; tall?: ReadonlySet<string> } = {}
+  opts: { draft?: DraftSlot; heights?: ReadonlyMap<string, number> } = {}
 ): Map<string, Point> {
   const pos = new Map<string, Point>();
   const kindOf = new Map(t.nodes.map((n) => [n.id, n.data.kind]));
@@ -66,7 +68,7 @@ export function layout(
 
     crons.forEach((id, i) => pos.set(id, { x: COLUMN.app + 16, y: cursor + i * STACK }));
     const top = cursor + crons.length * STACK;
-    const appH = opts.tall?.has(app.id) ? APP_TALL : NODE_SIZE.app.h;
+    const appH = opts.heights?.get(app.id) ?? NODE_SIZE.app.h;
     const rows = Math.max(1, domains.length, resources.length);
     const height = Math.max(rows * ROW - 20, appH);
     pos.set(app.id, { x: COLUMN.app, y: top + (height - appH) / 2 });

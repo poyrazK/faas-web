@@ -6,8 +6,12 @@ import { ReactFlowProvider } from '@xyflow/react';
 import { CanvasView } from './canvas';
 import { useCamera } from './camera';
 import { toFlow } from './flow';
-import { Inspector } from './inspector';
-import { menuPosition, layout } from './layout';
+import { Inspector, type InspectorTab } from './inspector';
+import { LaunchTracker } from './launch-tracker';
+import { useLaunches } from './use-launches';
+import { useCreateAndDeploy } from '@/lib/api/create-and-deploy';
+import { errorMessage } from '@/lib/api/errors';
+import { APP_FAILED, APP_TALL, menuPosition, layout } from './layout';
 import { useTopology } from './use-topology';
 import { LaneHeaders } from './lane-headers';
 import { ConnectMenu } from './connect-menu';
@@ -48,14 +52,49 @@ function CanvasPageBody({ node, wizard }: { node?: string; wizard?: WizardStep }
       }),
     [navigate]
   );
+  const { seeds, launches, seed, onChange: onLaunchChange } = useLaunches();
+  // Set by a launch in this visit, never restored: a stored seed for an app
+  // since deleted must not hold an empty account on a spinner.
+  const [justLaunched, setJustLaunched] = useState(false);
   // Empty accounts open on the front door; elsewhere the wizard is on demand.
-  const wizardStep: WizardStep | undefined = wizard ?? (phase === 'empty' ? 'start' : undefined);
+  // Right after a launch the account is still empty until the app list
+  // refetches, and the front door must not flash back in that moment.
+  const wizardStep: WizardStep | undefined =
+    wizard ?? (phase === 'empty' && !justLaunched ? 'start' : undefined);
   const cardRef = useRef<HTMLDivElement>(null);
   const onLaunched = useCallback(
-    (_seed: LaunchSeed) => {
+    (s: LaunchSeed) => {
+      seed(s);
+      setJustLaunched(true);
       setWizard(undefined);
     },
-    [setWizard]
+    [seed, setWizard]
+  );
+
+  const { deployGit } = useCreateAndDeploy();
+  // Opening a launch's logs remounts the inspector on its Logs tab.
+  const [logsFor, setLogsFor] = useState<{ id: string; n: number }>();
+  const onLaunchAction = useCallback(
+    (slug: string, action: 'retry' | 'logs') => {
+      if (action === 'logs') {
+        const id = `app:${slug}`;
+        select(id);
+        setLogsFor((p) => ({ id, n: (p?.n ?? 0) + 1 }));
+        // The inspector takes the right edge; once it has, keep the node in view.
+        window.setTimeout(() => camera.ensureVisible([id]), 260);
+        return;
+      }
+      const s = seeds[slug];
+      // A CLI deploy is retried from the terminal: show the commands again.
+      if (!s?.repo) return setWizard('cli');
+      const attempt = (s.attempt ?? 0) + 1;
+      void deployGit({ slug, repo: s.repo, ref: s.ref ?? 'main' }).then(
+        (dep) => seed({ ...s, attempt, deploymentId: dep.id, submitError: undefined }),
+        (err: unknown) =>
+          seed({ ...s, attempt, deploymentId: undefined, submitError: errorMessage(err) })
+      );
+    },
+    [seeds, deployGit, seed, select, setWizard, camera]
   );
 
   const [connect, setConnect] = useState<{
@@ -84,7 +123,19 @@ function CanvasPageBody({ node, wizard }: { node?: string; wizard?: WizardStep }
         : undefined,
     [slotApp, slotSide, slotKind]
   );
-  const positions = useMemo(() => layout(topology, { draft: slot }), [topology, slot]);
+  const heights = useMemo(
+    () =>
+      new Map(
+        Object.values(launches)
+          .filter((l) => l.stage !== 'live')
+          .map((l) => [`app:${l.slug}`, l.stage === 'failed' ? APP_FAILED : APP_TALL])
+      ),
+    [launches]
+  );
+  const positions = useMemo(
+    () => layout(topology, { draft: slot, heights }),
+    [topology, slot, heights]
+  );
 
   // Once the bands have eased (240ms), make sure the whole draft is on screen.
   useEffect(() => {
@@ -98,8 +149,10 @@ function CanvasPageBody({ node, wizard }: { node?: string; wizard?: WizardStep }
         onConnect: (slug, side) => setConnect({ slug, side }),
         onRetry: retryApp,
         selected: node,
+        launches,
+        onLaunchAction,
       }),
-    [topology, positions, retryApp, node]
+    [topology, positions, retryApp, node, launches, onLaunchAction]
   );
   const connectApp = connect && topology.nodes.find((n) => n.id === `app:${connect.slug}`);
   const appData = connectApp?.data.kind === 'app' ? (connectApp.data as AppData) : undefined;
@@ -160,10 +213,31 @@ function CanvasPageBody({ node, wizard }: { node?: string; wizard?: WizardStep }
     [connect, appData, anchor, appId, flow, positions]
   );
   const selected = topology.nodes.find((n) => n.id === node);
+  const selectedLaunch =
+    selected?.data.kind === 'app' ? launches[(selected.data as AppData).slug] : undefined;
+  const openOnLogs = selected && logsFor?.id === selected.id && selectedLaunch?.stage !== 'live';
+  const inspectorTab: InspectorTab = openOnLogs ? 'logs' : 'overview';
+  const appSlugs = useMemo(
+    () =>
+      new Set(
+        topology.nodes.flatMap((n) => (n.data.kind === 'app' ? [(n.data as AppData).slug] : []))
+      ),
+    [topology.nodes]
+  );
   const gaps = useMemo(() => summarizeIssues(topology.issues), [topology.issues]);
 
   return (
     <div data-gregale-canvas="" className="relative h-full">
+      {Object.values(seeds)
+        // Only apps the account has: a stale seed for a deleted app is ignored.
+        .filter((s) => appSlugs.has(s.slug))
+        .map((s) => (
+          <LaunchTracker
+            key={`${s.slug}:${s.deploymentId ?? ''}:${s.attempt ?? 0}`}
+            seed={s}
+            onChange={onLaunchChange}
+          />
+        ))}
       <p className="m-6 text-sm text-muted-foreground md:hidden">
         The canvas needs a wider screen. Every resource is still on its own page.
       </p>
@@ -173,15 +247,19 @@ function CanvasPageBody({ node, wizard }: { node?: string; wizard?: WizardStep }
         {phase === 'error' && <ErrorState error={error} onRetry={retry} className="m-6 flex-1" />}
         {phase === 'empty' && (
           <div className="canvas-surface relative flex-1">
-            <Wizard
-              step={wizardStep ?? 'start'}
-              mode="empty"
-              apps={[]}
-              onStep={setWizard}
-              onLaunched={onLaunched}
-              onPickExisting={() => {}}
-              cardRef={cardRef}
-            />
+            {wizardStep ? (
+              <Wizard
+                step={wizardStep}
+                mode="empty"
+                apps={[]}
+                onStep={setWizard}
+                onLaunched={onLaunched}
+                onPickExisting={() => {}}
+                cardRef={cardRef}
+              />
+            ) : (
+              <LoadingState message="Placing your app…" className="m-6" />
+            )}
           </div>
         )}
         {phase === 'ready' && (
@@ -242,8 +320,10 @@ function CanvasPageBody({ node, wizard }: { node?: string; wizard?: WizardStep }
             </div>
             {selected && (
               <Inspector
-                key={selected.id}
+                key={openOnLogs ? `${selected.id}:${logsFor.n}` : selected.id}
                 node={selected}
+                launch={selectedLaunch}
+                initialTab={inspectorTab}
                 topology={topology}
                 onClose={() => select(undefined)}
                 onFly={(id) => {

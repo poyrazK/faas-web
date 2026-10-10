@@ -21,7 +21,9 @@
   min-width: 0;
   min-height: 0;
   border: 0;
-  background: var(--border-secondary);
+  /* Ports are for wiring, which the canvas never lets a pointer do: edges
+     meet the node's edge, and an unwired port is only noise. */
+  opacity: 0;
 }
 .canvas-surface .react-flow__attribution {
   background: transparent;

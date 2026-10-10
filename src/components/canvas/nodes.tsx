@@ -13,10 +13,16 @@ import type {
   DomainData,
   PostgresData,
 } from './topology';
+import type { LaunchStage, LaunchState } from './launch';
 
 export type ConnectSide = 'in' | 'out';
 export type FlowNode = Node<
-  CanvasNodeData & { onConnect?: (side: ConnectSide) => void; onRetry?: () => void; dim?: boolean },
+  CanvasNodeData & {
+    onConnect?: (side: ConnectSide) => void;
+    onRetry?: () => void;
+    onLaunchAction?: (a: 'retry' | 'logs') => void;
+    dim?: boolean;
+  },
   CanvasNodeKind
 >;
 
@@ -201,8 +207,114 @@ export const DomainNode = memo(function DomainNode({
 type AppNodeData = AppData & {
   onConnect?: (s: ConnectSide) => void;
   onRetry?: () => void;
+  onLaunchAction?: (a: 'retry' | 'logs') => void;
   dim?: boolean;
 };
+
+const LAUNCH_LABEL: Record<LaunchStage, string> = {
+  waiting: 'Waiting for first deploy',
+  queued: 'Queued',
+  building: 'Building',
+  deploying: 'Deploying',
+  live: 'Serving',
+  failed: 'Build failed',
+};
+
+function LaunchButton({ children, onClick }: { children: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      className="nodrag pressable h-7 rounded-lg border border-border-secondary px-2.5 text-[12px] text-foreground transition-colors duration-[var(--motion-fast)] hover:bg-accent"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+/**
+ * A first deploy, told on the node itself: a four-step rail with the newest
+ * build line while it runs, the real cause and a way forward when it fails.
+ */
+function LaunchBody({
+  launch,
+  onAction,
+}: {
+  launch: LaunchState;
+  onAction?: (a: 'retry' | 'logs') => void;
+}) {
+  // The source fills the line under the rail until the build has output.
+  const where = launch.repo ? `${launch.repo}@${launch.ref ?? 'main'}` : undefined;
+  const detail = launch.logLine ?? where;
+  const color = launch.stage === 'failed' ? 'var(--status-critical)' : 'var(--status-warning)';
+  return (
+    <>
+      <Meta color={color}>
+        <span aria-live="polite">{LAUNCH_LABEL[launch.stage]}</span>
+      </Meta>
+      {launch.stage === 'failed' ? (
+        <>
+          {launch.failure && (
+            <span
+              title={launch.failure}
+              className="mt-1 max-w-[170px] truncate font-mono text-[10.5px] text-status-critical"
+            >
+              {launch.failure}
+            </span>
+          )}
+          {onAction && (
+            <span className="mt-2 flex gap-2">
+              <LaunchButton onClick={() => onAction('logs')}>View logs</LaunchButton>
+              <LaunchButton onClick={() => onAction('retry')}>Retry</LaunchButton>
+            </span>
+          )}
+        </>
+      ) : launch.stage === 'waiting' ? (
+        <span className="mt-1 text-[11.5px] text-muted-foreground">
+          {launch.source === 'cli'
+            ? 'Run gregale deploy to go live'
+            : 'Waiting for the build to start'}
+        </span>
+      ) : (
+        <>
+          <span
+            role="progressbar"
+            aria-label="Deploy progress"
+            aria-valuemin={0}
+            aria-valuemax={4}
+            aria-valuenow={launch.step}
+            className="mt-1.5 flex gap-1.5"
+          >
+            {[1, 2, 3, 4].map((i) => (
+              <span
+                key={i}
+                className={cn(
+                  'h-[3px] w-[34px] rounded-sm transition-colors duration-[var(--motion-base)]',
+                  i < launch.step
+                    ? 'bg-brand'
+                    : i === launch.step
+                      ? 'animate-pulse bg-brand/70'
+                      : 'bg-foreground/[0.12]'
+                )}
+              />
+            ))}
+          </span>
+          {detail && (
+            <span
+              title={detail}
+              className="mt-1 max-w-[170px] truncate font-mono text-[10.5px] text-muted-foreground"
+            >
+              {detail}
+            </span>
+          )}
+        </>
+      )}
+    </>
+  );
+}
 
 function appStatus(data: AppData) {
   const phase = PHASE[data.phase];
@@ -255,6 +367,8 @@ function AppMetricsRow({ data }: { data: AppNodeData }) {
 
 export const AppNode = memo(function AppNode({ data, selected }: NodeProps<Node<AppNodeData>>) {
   const status = appStatus(data);
+  const launch = data.launch && data.launch.stage !== 'live' ? data.launch : undefined;
+  const failed = launch?.stage === 'failed';
   return (
     <div
       className={cn(
@@ -262,7 +376,7 @@ export const AppNode = memo(function AppNode({ data, selected }: NodeProps<Node<
         data.dim && 'opacity-[0.32]'
       )}
     >
-      {data.phase === 'parked' && (
+      {(data.phase === 'parked' || launch?.stage === 'waiting') && (
         <span
           data-breathing=""
           aria-hidden
@@ -271,8 +385,11 @@ export const AppNode = memo(function AppNode({ data, selected }: NodeProps<Node<
       )}
       <Glass
         selected={selected}
-        tone={data.phase === 'error' ? 'critical' : undefined}
-        className="h-[76px] w-[248px] border-t-brand/50"
+        tone={data.phase === 'error' || failed ? 'critical' : undefined}
+        className={cn(
+          'w-[248px] border-t-brand/50',
+          failed ? 'h-[120px] items-start pt-3' : launch ? 'h-24' : 'h-[76px]'
+        )}
       >
         <Handle id="in" type="target" position={Position.Left} isConnectable={false} />
         <Handle id="top" type="target" position={Position.Top} isConnectable={false} />
@@ -281,8 +398,14 @@ export const AppNode = memo(function AppNode({ data, selected }: NodeProps<Node<
         </Glyph>
         <div className="flex min-w-0 flex-col">
           <Title max="max-w-[160px]">{data.slug}</Title>
-          <Meta color={status.color}>{status.label}</Meta>
-          <AppMetricsRow data={data} />
+          {launch ? (
+            <LaunchBody launch={launch} onAction={data.onLaunchAction} />
+          ) : (
+            <>
+              <Meta color={status.color}>{status.label}</Meta>
+              <AppMetricsRow data={data} />
+            </>
+          )}
         </div>
         <Handle id="out" type="source" position={Position.Right} isConnectable={false} />
       </Glass>

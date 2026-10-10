@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router';
 import { Xmark } from 'iconoir-react';
 import { useAppAnalyticsTimeseries, useAppMetrics } from '@/lib/api/queries';
 import { useLogStream } from '@/lib/api/logs';
+import type { LaunchState } from './launch';
 import { ApiError } from '@/lib/api/errors';
 import { describeCronSchedule } from '@/lib/cron-schedule';
 import { DomainDoctor } from '@/components/dashboard/domain-doctor';
@@ -12,6 +13,7 @@ import { cn } from '@/lib/utils';
 import { nodeTitle, type AppData, type CanvasNode, type Topology } from './topology';
 
 const TAB_LABEL = { overview: 'Overview', logs: 'Logs', connections: 'Connections' } as const;
+export type InspectorTab = keyof typeof TAB_LABEL;
 const needsPlan = (e: unknown) => e instanceof ApiError && e.status === 402;
 const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
 const short = (n: number) => compact.format(n).toLowerCase();
@@ -160,11 +162,14 @@ function Connections({
   );
 }
 
-function AppLogs({ slug }: { slug: string }) {
-  const logs = useLogStream({ kind: 'live', slug });
+/** Live request logs, or the build's output while a first deploy runs. */
+function AppLogs({ slug, buildId }: { slug: string; buildId?: string }) {
+  const logs = useLogStream(
+    buildId ? { kind: 'build', deploymentId: buildId, limit: 200 } : { kind: 'live', slug }
+  );
   return (
     <Section
-      title="Live"
+      title={buildId ? 'Build' : 'Live'}
       aside={
         <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-brand">
           {logs.status === 'streaming' ? 'Streaming' : logs.status}
@@ -183,7 +188,9 @@ function AppLogs({ slug }: { slug: string }) {
           </div>
         ))}
         {!logs.lines.length && (
-          <p className="text-muted-foreground">Waiting for the next request…</p>
+          <p className="text-muted-foreground">
+            {buildId ? 'Waiting for build output…' : 'Waiting for the next request…'}
+          </p>
         )}
       </div>
     </Section>
@@ -195,13 +202,19 @@ export function Inspector({
   topology,
   onClose,
   onFly,
+  launch,
+  initialTab = 'overview',
 }: {
   node: CanvasNode;
   topology: Topology;
   onClose: () => void;
   onFly: (id: string) => void;
+  /** The app's first deploy, while the canvas watches it. */
+  launch?: LaunchState;
+  initialTab?: InspectorTab;
 }) {
-  const [tab, setTab] = useState<'overview' | 'logs' | 'connections'>('overview');
+  const [tab, setTab] = useState<InspectorTab>(initialTab);
+  const buildId = launch && launch.stage !== 'live' ? launch.deploymentId : undefined;
   const { copied, copy } = useCopy();
   const d = node.data;
   if (d.kind === 'internet') return null;
@@ -309,7 +322,7 @@ export function Inspector({
       {d.kind === 'app' && tab === 'overview' && (
         <AppOverview data={d} links={links} onFly={onFly} />
       )}
-      {d.kind === 'app' && tab === 'logs' && <AppLogs slug={d.slug} />}
+      {d.kind === 'app' && tab === 'logs' && <AppLogs slug={d.slug} buildId={buildId} />}
       {d.kind === 'app' && tab === 'connections' && (
         <Section last>
           <Connections links={links} onFly={onFly} />

@@ -83,4 +83,28 @@ describe('toFlow', () => {
     const { nodes } = toFlow(t, pos);
     expect(nodes.every((n) => !(n.data as { dim?: boolean }).dim)).toBe(true);
   });
+
+  it('hands a launching app its state and dashes the traffic it cannot serve yet', () => {
+    const onLaunchAction = vi.fn();
+    const { nodes, edges } = toFlow(t, pos, {
+      launches: { a: { slug: 'a', source: 'git', stage: 'building', step: 2 } },
+      onLaunchAction,
+    });
+    const app = nodes.find((n) => n.id === 'app:a')!.data as {
+      launch?: { stage: string };
+      onLaunchAction?: (a: 'retry' | 'logs') => void;
+    };
+    expect(app.launch?.stage).toBe('building');
+    app.onLaunchAction?.('logs');
+    expect(onLaunchAction).toHaveBeenCalledWith('a', 'logs');
+    expect(edges.find((e) => e.id === 'i')!.data!.pending).toBe(true);
+    expect(edges.find((e) => e.id === 's')!.data!.pending).toBeFalsy();
+  });
+
+  it('lights the traffic again once the launch is live', () => {
+    const { edges } = toFlow(t, pos, {
+      launches: { a: { slug: 'a', source: 'git', stage: 'live', step: 4 } },
+    });
+    expect(edges.find((e) => e.id === 'i')!.data!.pending).toBeFalsy();
+  });
 });

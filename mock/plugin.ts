@@ -566,7 +566,9 @@ route('POST', '/v1/apps/{slug}/deployments/source-ref', ({ params, body }) => {
     image_digest: `sha256:${db.id()}${db.id()}`,
     kind: 'github',
     status: 'queued',
-    created_at: db.iso(0),
+    // Wall-clock, not the seeded clock: progress is measured from this, and
+    // the seeded `NOW` is frozen at server start.
+    created_at: new Date().toISOString(),
     traffic_percent: 0,
     rollback_on_5xx: false,
     first_5xx_count: 0,

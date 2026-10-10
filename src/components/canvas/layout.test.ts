@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { menuPosition, layout, NODE_SIZE } from './layout';
+import { APP_TALL, menuPosition, layout, NODE_SIZE } from './layout';
 import { buildTopology, nodeId, type TopologyInput } from './topology';
 import type { App } from '@/lib/api/queries';
 
@@ -138,7 +138,7 @@ describe('layout with a draft', () => {
     const t = topo();
     const base = layout(t);
     // billing has no lanes beside it, so its band is exactly one app tall.
-    const tall = layout(t, { tall: new Set([nodeId.app('billing')]) });
+    const tall = layout(t, { heights: new Map([[nodeId.app('billing'), APP_TALL]]) });
     expect(tall.get(nodeId.app('worker'))!.y).toBe(base.get(nodeId.app('worker'))!.y + 20);
     expect(tall.get(nodeId.app('acme-api'))).toEqual(base.get(nodeId.app('acme-api')));
   });

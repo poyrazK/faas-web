@@ -2,6 +2,7 @@ import type { App, AppsMetrics } from '@/lib/api/queries';
 import type { components } from '@/lib/api/schema';
 import { toRunState } from '@/lib/api/adapters';
 import { ApiError } from '@/lib/api/errors';
+import type { LaunchState } from './launch';
 
 /**
  * The canvas's data model, and the only place an edge is decided.
@@ -49,6 +50,8 @@ export type AppData = {
   errorRatePct?: number;
   runtime?: string;
   url?: string;
+  /** Set while the canvas watches this app's first deploy. */
+  launch?: LaunchState;
 };
 export type CronData = {
   kind: 'cron';

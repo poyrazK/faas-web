@@ -114,3 +114,98 @@ describe('DomainNode', () => {
     expect(screen.getByText('Pending DNS')).toBeInTheDocument();
   });
 });
+
+describe('AppNode · first deploy', () => {
+  it('shows the rail and the latest build line while building', () => {
+    wrap(
+      <AppNode
+        {...props({
+          ...base,
+          launch: {
+            slug: 'acme-api',
+            source: 'git',
+            repo: 'acme/api',
+            ref: 'main',
+            stage: 'building',
+            step: 2,
+            logLine: '→ npm ci',
+          },
+        })}
+      />
+    );
+    expect(screen.getByText('Building')).toBeInTheDocument();
+    expect(screen.getByRole('progressbar', { name: 'Deploy progress' })).toHaveAttribute(
+      'aria-valuenow',
+      '2'
+    );
+    expect(screen.getByText('→ npm ci')).toBeInTheDocument();
+  });
+
+  it('names the source under the rail until the build has output', () => {
+    wrap(
+      <AppNode
+        {...props({
+          ...base,
+          launch: {
+            slug: 'acme-api',
+            source: 'git',
+            repo: 'acme/api',
+            ref: 'main',
+            stage: 'queued',
+            step: 1,
+          },
+        })}
+      />
+    );
+    expect(screen.getByText('acme/api@main')).toBeInTheDocument();
+  });
+
+  it('waits for a CLI deploy, breathing', () => {
+    const { container } = wrap(
+      <AppNode
+        {...props({
+          ...base,
+          launch: { slug: 'acme-api', source: 'cli', stage: 'waiting', step: 0 },
+        })}
+      />
+    );
+    expect(screen.getByText('Waiting for first deploy')).toBeInTheDocument();
+    expect(screen.getByText('Run gregale deploy to go live')).toBeInTheDocument();
+    expect(container.querySelector('[data-breathing]')).not.toBeNull();
+  });
+
+  it('fails in place with the cause, logs and retry', () => {
+    const onLaunchAction = vi.fn();
+    wrap(
+      <AppNode
+        {...props({
+          ...base,
+          onLaunchAction,
+          launch: {
+            slug: 'acme-api',
+            source: 'git',
+            stage: 'failed',
+            step: 0,
+            failure: "Cannot find module './db'",
+          },
+        })}
+      />
+    );
+    expect(screen.getByText("Cannot find module './db'")).toBeInTheDocument();
+    screen.getByRole('button', { name: 'Retry' }).click();
+    screen.getByRole('button', { name: 'View logs' }).click();
+    expect(onLaunchAction.mock.calls).toEqual([['retry'], ['logs']]);
+  });
+
+  it('announces status changes politely', () => {
+    wrap(
+      <AppNode
+        {...props({
+          ...base,
+          launch: { slug: 'acme-api', source: 'git', stage: 'queued', step: 1 },
+        })}
+      />
+    );
+    expect(screen.getByText('Queued')).toHaveAttribute('aria-live', 'polite');
+  });
+});

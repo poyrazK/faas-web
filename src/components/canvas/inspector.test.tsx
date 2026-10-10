@@ -88,6 +88,23 @@ describe('Inspector · app', () => {
     expect(screen.queryByTestId('spark')).not.toBeInTheDocument();
   });
 
+  it('opens on the build output while a first deploy runs', () => {
+    metrics.mockReturnValue(ok(fullMetrics));
+    series.mockReturnValue(ok({ points: [] }));
+    render(
+      <Inspector
+        node={appNode}
+        topology={topo}
+        onClose={vi.fn()}
+        onFly={vi.fn()}
+        initialTab="logs"
+        launch={{ slug: 'acme-api', source: 'git', stage: 'building', step: 2, deploymentId: 'd1' }}
+      />
+    );
+    expect(screen.getByRole('tab', { name: 'Logs' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByText('Build')).toBeInTheDocument();
+  });
+
   it('switches to logs and to connections, and flies to a connection', () => {
     metrics.mockReturnValue(ok(fullMetrics));
     series.mockReturnValue(ok({ points: [] }));

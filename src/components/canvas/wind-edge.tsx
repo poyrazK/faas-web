@@ -118,7 +118,9 @@ export function WindEdge({
           >
             <animateMotion
               dur={`${traffic.durationS}s`}
-              begin={`${((i * traffic.durationS) / traffic.count).toFixed(2)}s`}
+              // Negative: each particle starts mid-path. A positive delay
+              // parks it at the origin, a stray dot, until its turn.
+              begin={`-${((i * traffic.durationS) / traffic.count).toFixed(2)}s`}
               repeatCount="indefinite"
               path={path}
             />
