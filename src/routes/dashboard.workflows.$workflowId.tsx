@@ -63,6 +63,8 @@ import { OpenAPIBody } from './dashboard.openapi';
 import { WebhooksHub } from './dashboard.webhooks';
 import { EdgeRulesBody } from './dashboard.edge-rules';
 import { ErrorsBody } from '@/components/dashboard/errors-body';
+import { IssuesBody } from '@/components/dashboard/issues-body';
+import { validateIssueSearch, type IssueSearch } from '@/components/dashboard/issues-search';
 import { AppConfiguration } from '@/components/dashboard/app-configuration';
 import { InvokePanel, SloPanel } from '@/components/dashboard/app-core-panels';
 import { AppUsagePanel, WakeTimelinePanel } from '@/components/dashboard/app-insights';
@@ -137,6 +139,7 @@ export const Route = createFileRoute('/dashboard/workflows/$workflowId')({
     search: Record<string, unknown>
   ): DebugSearch &
     LogsSearch &
+    IssueSearch &
     ReturnType<typeof automationSearchPatch> & {
       tab?: Tab;
       deployment?: string;
@@ -146,6 +149,7 @@ export const Route = createFileRoute('/dashboard/workflows/$workflowId')({
     ...validateDebugSearch(search),
     ...automationSearchPatch(validateJobsSearch(search)),
     ...logsSearchPatch(validateLogsSearch(search)),
+    ...validateIssueSearch(search),
     tab: TABS.includes(search.tab as Tab) ? (search.tab as Tab) : undefined,
     deployment:
       typeof search.deployment === 'string' && search.deployment ? search.deployment : undefined,
@@ -729,6 +733,20 @@ function FunctionDetailPage() {
               </DeploymentCapability>
             )}
             {tab === 'Errors' && <ErrorsBody slug={fn.id} />}
+            {tab === 'Issues' && (
+              <IssuesBody
+                accountId={account?.id ?? ''}
+                slug={fn.id}
+                search={search}
+                onSearch={(patch) =>
+                  void navigate({
+                    search: (current) => ({ ...current, ...patch }),
+                    hash: true,
+                    resetScroll: false,
+                  })
+                }
+              />
+            )}
             {tab === 'Routes' && <RoutesBody slug={fn.id} baseUrl={fn.url} />}
             {tab === 'Secrets' && <SecretsBody slug={fn.id} />}
             {tab === 'Env vars' && <EnvBody slug={fn.id} />}
