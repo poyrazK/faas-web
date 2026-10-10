@@ -42,6 +42,28 @@ export const issueHistoryKey = (
   ] as const;
 export const issueTokensKey = (accountId: string, slug: string) =>
   ['account', accountId, 'app', slug, 'issue-ingest-tokens'] as const;
+export const issueDeploymentsKey = (accountId: string, slug: string) =>
+  ['account', accountId, 'app', slug, 'issue-deployments'] as const;
+
+export function useIssueDeployments(accountId: string, slug: string) {
+  return useInfiniteQuery({
+    queryKey: issueDeploymentsKey(accountId, slug),
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam, signal }) =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/deployments', {
+          params: {
+            path: { slug },
+            query: { limit: 50, ...(pageParam ? { before: pageParam } : {}) },
+          },
+          signal,
+        })
+      ),
+    getNextPageParam: (page) => page.next_before,
+    enabled: Boolean(accountId && slug),
+    retry: retryPolicy,
+  });
+}
 
 export function useIssues(accountId: string, slug: string, filters: IssueFilters) {
   return useInfiniteQuery({

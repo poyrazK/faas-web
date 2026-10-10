@@ -6,12 +6,14 @@ import { api } from './client';
 import {
   createIssueTokenOnce,
   issueDetailKey,
+  issueDeploymentsKey,
   issueHistoryKey,
   issuesKey,
   issueTokensKey,
   revokeIssueToken,
   actOnIssue,
   useIssueDetail,
+  useIssueDeployments,
   useIssueHistory,
   useIssues,
   useIssueTokens,
@@ -110,6 +112,32 @@ it('keeps detail and its three histories independently keyed to the same impact 
   );
 });
 
+it('reads only this app deployment inventory with an account-scoped key and abortable cursor', async () => {
+  const get = vi
+    .spyOn(api, 'GET')
+    .mockResolvedValueOnce({
+      data: { items: [], next_before: '2026-10-09T00:00:00Z' },
+      response: new Response(),
+    } as never)
+    .mockResolvedValueOnce({ data: { items: [] }, response: new Response() } as never);
+  const { wrapper } = setup();
+  const hook = renderHook(() => useIssueDeployments('account-1', 'app-a'), { wrapper });
+  await waitFor(() => expect(hook.result.current.isSuccess).toBe(true));
+  await act(async () => {
+    await hook.result.current.fetchNextPage();
+  });
+  expect(get).toHaveBeenCalledWith(
+    '/v1/apps/{slug}/deployments',
+    expect.objectContaining({
+      params: { path: { slug: 'app-a' }, query: { limit: 50, before: '2026-10-09T00:00:00Z' } },
+      signal: expect.any(AbortSignal),
+    })
+  );
+  expect(issueDeploymentsKey('account-1', 'app-a')).not.toEqual(
+    issueDeploymentsKey('account-2', 'app-a')
+  );
+});
+
 it('strips unexpected bearer fields from token metadata and keeps creation out of mutation cache', async () => {
   const get = vi.spyOn(api, 'GET').mockResolvedValue({
     data: {
@@ -128,12 +156,10 @@ it('strips unexpected bearer fields from token metadata and keeps creation out o
     },
     response: new Response(),
   } as never);
-  const post = vi
-    .spyOn(api, 'POST')
-    .mockResolvedValue({
-      data: { id: 't2', token: 'g_issue_secret' },
-      response: new Response(null, { status: 201 }),
-    } as never);
+  const post = vi.spyOn(api, 'POST').mockResolvedValue({
+    data: { id: 't2', token: 'g_issue_secret' },
+    response: new Response(null, { status: 201 }),
+  } as never);
   const { client, wrapper } = setup();
   const hook = renderHook(() => useIssueTokens('account-1', 'app-a'), { wrapper });
   await waitFor(() => expect(hook.result.current.isSuccess).toBe(true));
