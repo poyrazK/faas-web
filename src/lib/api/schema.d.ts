@@ -11794,8 +11794,10 @@ export interface components {
              * @example 5
              */
             max_instances?: number;
-            /** @description Per-instance signal the engine watches for the scale-up trigger. Closed metric set: rps | concurrent_requests | p99_latency_ms. Empty/null = engine falls back to the legacy autoscale_target_rps / autoscale_target_cpu_pct columns. Worker-class apps reject concurrent_requests with 422 scaling_target_incompatible_with_workload_class (PR-D carve-out). */
+            /** @description Single-signal form, superseded by targets. Valid metrics include rps, cpu, concurrent_requests, and queue_depth. Mutually exclusive with targets. */
             target?: null | components["schemas"]["ScalingTarget"];
+            /** @description Multi-signal autoscaling. Each metric may appear once; mutually exclusive with target. */
+            targets?: components["schemas"]["ScalingTarget"][];
             /**
              * @description Minimum seconds between two scale-out events. Floor 1 (no 0 traps); ceiling 3600 (1 h). Out-of-range → 422 invalid_cooldown.
              * @example 5
@@ -11806,6 +11808,21 @@ export interface components {
              * @example 60
              */
             scale_in_cooldown_s?: number;
+            /** @enum {string} */
+            concurrency_overflow?: "queue" | "drop";
+            max_queue_wait_ms?: number;
+            max_queue_depth?: number;
+            wake_max_queue_depth?: number;
+            wake_max_queue_wait_seconds?: number;
+            /** @description IANA timezone for scaling schedules; empty means UTC. */
+            timezone?: string;
+            schedules?: components["schemas"]["ScalingSchedule"][];
+        };
+        /** @description Recurring window that raises the warm floor. */
+        ScalingSchedule: {
+            cron: string;
+            duration_s: number;
+            min_instances: number;
         };
         /** @description Per-app public-URL auth write shape (issue #477 / ADR-077 + ADR-118). Sent on PATCH /v1/apps/{slug}; apid seals the basic_user + basic_pass into a single APP_BASIC_AUTH secretbox blob before persistence. The plaintext is never echoed on read (see PublicAuthStatus). For mode='ip_allowlist' (ADR-118), ip_allowlist carries the per-app CIDR allowlist (Pro 16 max, Scale 64 max — Free/Hobby → 403 plan_public_auth_ip_allowlist_not_allowed). */
         PublicAuthBlock: {
@@ -11854,13 +11871,15 @@ export interface components {
              */
             ip_allowlist_entry_count?: number;
         };
-        /** @description (metric, value) pair the engine watches for the scale-up trigger. The metric surface is closed; the unset state (null) is the legacy 'engine falls back to autoscale_target_rps' path. */
+        /** @description (metric, value) pair the scheduler watches for scaling. */
         ScalingTarget: {
             /**
              * @example rps
              * @enum {string}
              */
-            metric?: "rps" | "concurrent_requests" | "p99_latency_ms";
+            metric?: "rps" | "cpu" | "concurrent_requests" | "queue_depth";
+            /** @description Custom metric name, when supported by the backend. */
+            name?: string;
             /**
              * @description Target value (units depend on Metric). Must be >= 0.
              * @example 1
