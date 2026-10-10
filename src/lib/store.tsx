@@ -40,6 +40,7 @@ export interface NewWorkflowInput {
   memoryMb: number;
   /** `function` runs a runtime; `app` runs a container image. */
   type?: 'app' | 'function';
+  visibility?: 'public' | 'internal';
 }
 
 interface DataValue {
@@ -139,6 +140,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           cpu_millicores: 1000,
           head_wakes: false,
           crawler_policy: 'wake',
+          visibility: input.visibility ?? 'public',
         });
         return toWorkflow(app);
       },

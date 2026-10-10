@@ -57,6 +57,7 @@ export interface Workflow {
   /** Optional: this is a one-box platform, so the API reports no region. */
   region?: string;
   url: string;
+  visibility?: 'public' | 'internal';
   invocations24h: number;
   avgDurationMs: number;
   coldStartP50Ms: number;

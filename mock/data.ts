@@ -250,6 +250,7 @@ export const apps: App[] = APP_SEEDS.map((a, i) => ({
   id: id(),
   slug: a.slug,
   type: a.type,
+  visibility: 'public',
   runtime: a.runtime,
   ram_mb: a.ram,
   cpu_millicores: 500,

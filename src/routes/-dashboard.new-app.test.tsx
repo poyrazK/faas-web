@@ -36,6 +36,9 @@ vi.mock('@/lib/auth', () => ({
   }),
 }));
 vi.mock('@/lib/store', () => ({ useData: () => ({ addWorkflow: mocks.create }) }));
+vi.mock('@/lib/api/capabilities', () => ({
+  useCapability: () => ({ accountId: '', state: 'unavailable' }),
+}));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: mocks.toast }) }));
 vi.mock('@/components/dashboard/repo-picker', () => ({
   RepoPicker: ({ value, onChange }: { value: string; onChange: (value: string) => void }) => (
@@ -169,6 +172,7 @@ describe('New App source flow', () => {
       runtime: 'node22',
       memoryMb: 128,
       type: 'function',
+      visibility: 'public',
     });
     expect(mocks.bind).not.toHaveBeenCalled();
     expect(mocks.deploy).not.toHaveBeenCalled();

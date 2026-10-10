@@ -1637,6 +1637,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/apps/{slug}/bindings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Inspect app resource bindings without probing workloads.
+         * @description Read-only best-effort inventory. A partial read returns complete=false and sanitized section issues. State is configured intent; runtime and verification are separate observations. Service, queue and outbound bindings remain app-wide when scope filters database and storage bindings.
+         */
+        get: operations["getAppBindingInventory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/apps": {
         parameters: {
             query?: never;
@@ -11010,6 +11030,76 @@ export interface components {
          * @enum {string}
          */
         ResourceProfile: "micro" | "small" | "medium" | "large" | "xlarge";
+        /** @description Best-effort read-only binding metadata; complete does not mean healthy or verified. */
+        AppBindingInventory: {
+            app: string;
+            scope?: string;
+            /** Format: date-time */
+            generated_at: string;
+            /** Format: uuid */
+            requested_deployment_id?: string;
+            /** Format: uuid */
+            verification_deployment_id?: string;
+            verification_scope?: string;
+            complete: boolean;
+            bindings: components["schemas"]["AppBindingInventoryItem"][];
+            issues?: components["schemas"]["BindingInventoryIssue"][];
+            warnings?: string[];
+        };
+        /** @description Configured resource binding with independent runtime and verification observations. */
+        AppBindingInventoryItem: {
+            /** @enum {string} */
+            type: "service" | "postgres" | "object_storage" | "queue" | "outbound";
+            name: string;
+            binding: string;
+            scope: string;
+            access: string;
+            state: string;
+            runtime_status: string;
+            verification_status: string;
+            verification?: components["schemas"]["BindingVerification"];
+            /** Format: date-time */
+            observed_at?: string;
+            http_url?: string;
+            https_env?: string;
+            https_url?: string;
+            transport?: string;
+        };
+        /** @description Sanitized reason a binding inventory section could not be read. */
+        BindingInventoryIssue: {
+            type: string;
+            code: string;
+            /** @enum {string} */
+            severity: "warning" | "error";
+            message: string;
+        };
+        /** @description Sanitized durable task-guest canary evidence, never an application health guarantee. */
+        BindingVerification: {
+            result: string;
+            reason?: string;
+            source: string;
+            /** Format: uuid */
+            deployment_id: string;
+            scope: string;
+            /** Format: date-time */
+            checked_at?: string;
+            checks?: components["schemas"]["BindingVerificationCheck"][];
+        };
+        BindingVerificationCheck: {
+            name: string;
+            status: string;
+        };
+        AppServiceBinding: {
+            binding: string;
+            service: string;
+        };
+        ServiceCallScope: {
+            methods: string[];
+            path_prefixes: string[];
+        };
+        ServiceCallerScopes: {
+            [key: string]: components["schemas"]["ServiceCallScope"];
+        };
         /** @description An app: slug, type, runtime (for functions), RAM/cpu/idle-timeout config, current state, last-deploy pointer, per-app outbound CIDR allowlist (ADR-031 + ADR-032), and reactive scale-up trigger targets (issue #169 / #172). */
         AppResponse: {
             /** @example 0123456789abcdef0123456789abcdef */
@@ -11021,6 +11111,12 @@ export interface components {
              * @enum {string}
              */
             type: "app" | "function";
+            /**
+             * @description Public edge exposure or authenticated internal service routing only. Available on every plan.
+             * @default public
+             * @enum {string}
+             */
+            visibility: "public" | "internal";
             /**
              * @description Runtime-observed application shape. Repository scanning seeds the value and the first characterization boot may replace it. Distinct from type, which selects the app-vs-function execution contract.
              * @example http
@@ -11065,6 +11161,15 @@ export interface components {
             /** Format: date-time */
             preview_expires_at?: string | null;
             manifest: components["schemas"]["AppManifest"];
+            service_bindings?: components["schemas"]["AppServiceBinding"][];
+            /** @enum {string} */
+            service_binding_policy?: "account" | "declared";
+            /** @enum {string} */
+            service_binding_transport?: "http" | "https";
+            /** @description Omitted allows any same-account caller; explicit [] denies all. */
+            allowed_service_callers?: string[];
+            /** @description When present, callers absent from this map are denied. */
+            allowed_service_call_scopes?: components["schemas"]["ServiceCallerScopes"];
             /** @description Per-app outbound CIDR allowlist (ADR-031 + ADR-032). Each entry is a CIDR string — v4 (`1.2.3.0/24`) or v6 (`2001:db8::/32`). v4-mapped v6 form (`::ffff:1.2.3.0/120`) is silently canonicalised to its v4 form at write time. Empty array means no allowlist rule; the per-netns chain's default-accept policy applies. */
             egress_allowlist?: string[];
             /**
@@ -11210,6 +11315,19 @@ export interface components {
             /** @example hello-world */
             slug: string;
             /**
+             * @description Omit for public edge exposure; internal permits authenticated service routing only.
+             * @enum {string}
+             */
+            visibility?: "public" | "internal";
+            /** @description Omit for same-account access; [] denies all internal callers. */
+            allowed_service_callers?: string[];
+            allowed_service_call_scopes?: components["schemas"]["ServiceCallerScopes"];
+            service_binding_targets?: string[];
+            /** @enum {string} */
+            service_binding_policy?: "account" | "declared";
+            /** @enum {string} */
+            service_binding_transport?: "http" | "https";
+            /**
              * @example app
              * @enum {string}
              */
@@ -11347,6 +11465,27 @@ export interface components {
         };
         /** @description Partial update — every field is optional; omitted fields are unchanged. */
         UpdateAppRequest: {
+            /**
+             * @description Omit for unchanged edge exposure; internal is available on every plan.
+             * @enum {string|null}
+             */
+            visibility?: "public" | "internal" | null;
+            /** @description Omit to keep unchanged, [] to deny all, an array to replace, or null to restore same-account access. Project-managed and preview apps reject this PATCH. */
+            allowed_service_callers?: string[] | null;
+            /** @description Omit to keep unchanged, null to clear, or an object including {} to replace. Project-managed and preview apps reject this PATCH. */
+            allowed_service_call_scopes?: components["schemas"]["ServiceCallerScopes"] | null;
+            /** @description Omit or null to keep unchanged; [] clears every binding. Project-managed and preview apps reject non-null changes. */
+            service_binding_targets?: string[] | null;
+            /**
+             * @description Omit or null to keep unchanged; account restores same-account reachability. Project-managed and preview apps reject non-null changes.
+             * @enum {string|null}
+             */
+            service_binding_policy?: "account" | "declared" | null;
+            /**
+             * @description Omit or null to keep unchanged; http is the legacy endpoint and https selects the private alias. Project-managed and preview apps reject non-null changes.
+             * @enum {string|null}
+             */
+            service_binding_transport?: "http" | "https" | null;
             /** @example 256 */
             ram_mb?: number | null;
             /**
@@ -23484,6 +23623,37 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getAppBindingInventory: {
+        parameters: {
+            query?: {
+                scope?: string;
+                deployment_id?: string;
+            };
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Complete or partial metadata-only binding inventory. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppBindingInventory"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             429: components["responses"]["TooManyRequests"];
         };
     };

@@ -81,6 +81,7 @@ export function toWorkflow(app: App, metrics?: AppsMetrics, latest?: ApiDeployme
     state,
     reportedStatus: app.status,
     url: app.url,
+    visibility: app.visibility,
     // Metrics come from the Prometheus rollup and are absent when it is
     // degraded — zero is the honest reading of "no requests in the window".
     invocations24h: row?.request_count ?? 0,
