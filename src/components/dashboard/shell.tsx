@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipProvider } from '@/components/ui/tooltip';
 import { NewAppButton } from './new-app-button';
+import { NeedsAttentionButton } from './needs-attention';
 import { CommandPalette } from './command-palette';
 import { ConsolePageTransition } from './page-transition';
 import { DISCLOSURE_CLOSE, DISCLOSURE_OPEN, EASE } from './motion';
@@ -964,6 +965,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                 <Breadcrumbs />
 
                 <div className="ml-auto flex items-center gap-1.5">
+                  <NeedsAttentionButton />
                   <NewAppButton />
                   {/* Search lives on the overview as the page's own field;
                       ⌘K still opens the palette from anywhere. */}
