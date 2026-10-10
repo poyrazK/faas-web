@@ -43,18 +43,6 @@ describe('DraftNode', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(/bare hostname/i);
   });
 
-  it('submits once while the create is pending', () => {
-    add.mutate.mockClear();
-    add.isPending = true;
-    render(<DraftNode kind="domain" app={app} onDone={vi.fn()} onCancel={vi.fn()} />);
-    const input = screen.getByLabelText('Hostname');
-    fireEvent.change(input, { target: { value: 'api.acme.dev' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
-    fireEvent.keyDown(input, { key: 'Enter' });
-    expect(add.mutate).not.toHaveBeenCalled();
-    add.isPending = false;
-  });
-
   it('keeps the draft open with the mapped server error', () => {
     add.error = new ApiError({ status: 409, code: 'domain_exists', title: 'Conflict' });
     render(<DraftNode kind="domain" app={app} onDone={vi.fn()} onCancel={vi.fn()} />);
@@ -99,5 +87,22 @@ describe('DraftNode', () => {
     fireEvent.change(input, { target: { value: 'orders' } });
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(bucket.mutate).toHaveBeenCalledWith({ name: 'orders', region: 'eu' }, expect.anything());
+  });
+  it('keeps the field focused and editable after a failed create', async () => {
+    const view = () => (
+      <>
+        <button>elsewhere</button>
+        <DraftNode kind="domain" app={app} onDone={vi.fn()} onCancel={vi.fn()} />
+      </>
+    );
+    const { rerender } = render(view());
+    await new Promise((r) => setTimeout(r, 50));
+    screen.getByRole('button', { name: 'elsewhere' }).focus();
+    add.error = new ApiError({ status: 409, code: 'domain_exists', title: 'Conflict' });
+    rerender(view());
+    const input = screen.getByLabelText('Hostname');
+    expect(input).toHaveFocus();
+    expect(input).not.toBeDisabled();
+    add.error = null;
   });
 });

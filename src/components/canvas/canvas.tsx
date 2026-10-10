@@ -1,6 +1,6 @@
 import '@xyflow/react/dist/base.css';
 import './canvas.css';
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import {
   MiniMap,
   ReactFlow,
@@ -35,6 +35,7 @@ export function CanvasView({
   onSelect,
   onPick,
   onNew,
+  settled = true,
   children,
 }: {
   nodes: FlowNode[];
@@ -44,6 +45,8 @@ export function CanvasView({
   /** A node chosen from the jump finder. */
   onPick: (id: string) => void;
   onNew?: () => void;
+  /** The graph is complete; fit it once. */
+  settled?: boolean;
   children?: ReactNode;
 }) {
   const [flowNodes, setFlowNodes, onNodesChange] = useNodesState<FlowNode>([]);
@@ -96,8 +99,24 @@ export function CanvasView({
           }))}
       />
       <MinimapWhenNeeded />
+      <FitWhenSettled settled={settled} />
     </ReactFlow>
   );
+}
+
+/**
+ * `fitView` on mount sees only what has loaded so far; buckets and Postgres
+ * arrive later. Fit once more, once, when the graph is complete.
+ */
+function FitWhenSettled({ settled }: { settled: boolean }) {
+  const flow = useReactFlow();
+  const done = useRef(false);
+  useEffect(() => {
+    if (!settled || done.current) return;
+    done.current = true;
+    void flow.fitView({ padding: 0.2, maxZoom: 1, duration: 240 });
+  }, [settled, flow]);
+  return null;
 }
 
 /** The minimap earns its corner only when the graph is bigger than the view. */

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useQueries, useQueryClient } from '@tanstack/react-query';
 import {
   postgresBindingsOptions,
@@ -82,6 +82,10 @@ export function useTopology(): {
   error: unknown;
   topology: Topology;
   retry: () => void;
+  /** Re-reads one app's per-app connections. */
+  retryApp: (slug: string) => void;
+  /** Every per-app and Postgres read has answered, so the graph is complete. */
+  settled: boolean;
 } {
   const qc = useQueryClient();
   const apps = useApps();
@@ -139,9 +143,17 @@ export function useTopology(): {
     [apps.data, domains.data, crons.data, metricsRead, slugs, buckets, postgres]
   );
 
-  const retry = () => {
+  const settled =
+    !apps.isPending && buckets.every((b) => !b.isPending) && postgres.status !== 'loading';
+  // Stable identities: these flow into node data, and a new function per
+  // render would rebuild every node and re-trigger React Flow's store sync.
+  const retryApp = useCallback(
+    (slug: string) => void qc.invalidateQueries({ queryKey: ['object-buckets', slug] }),
+    [qc]
+  );
+  const retry = useCallback(() => {
     for (const family of FAMILIES) void qc.invalidateQueries({ queryKey: [family] });
-  };
+  }, [qc]);
 
-  return { phase, error, topology, retry };
+  return { phase, error, topology, retry, retryApp, settled };
 }

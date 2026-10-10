@@ -46,7 +46,13 @@ describe('CanvasPage', () => {
   });
 
   it('draws the flow when ready', () => {
-    state.value = { phase: 'ready', topology: empty, retry: vi.fn() };
+    state.value = {
+      phase: 'ready',
+      topology: empty,
+      retry: vi.fn(),
+      retryApp: vi.fn(),
+      settled: true,
+    };
     render(<CanvasPage />);
     expect(screen.getByTestId('flow')).toBeInTheDocument();
   });
@@ -62,5 +68,17 @@ describe('CanvasPage', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Couldn’t load Postgres.');
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(retry).toHaveBeenCalled();
+  });
+  it('shows load gaps as one bar with a retry', () => {
+    const retry = vi.fn();
+    state.value = {
+      phase: 'ready',
+      topology: { ...empty, issues: [{ kind: 'read_failed', ref: 'postgres', detail: '' }] },
+      retry,
+      retryApp: vi.fn(),
+      settled: true,
+    };
+    render(<CanvasPage />);
+    expect(screen.getByRole('status')).toHaveTextContent('Couldn’t load Postgres.');
   });
 });

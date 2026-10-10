@@ -977,7 +977,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                 id="main"
                 tabIndex={-1}
                 className={cn(
-                  'outline-none',
+                  'relative outline-none',
                   fullBleed ? 'h-[calc(100dvh-3.5rem)] p-0' : 'px-4 py-8 sm:px-6 lg:px-8'
                 )}
               >
@@ -991,7 +991,16 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                     fullBleed ? 'h-full max-w-none gap-0' : 'max-w-[1100px] gap-6'
                   )}
                 >
-                  <UnreachableBanner />
+                  {/* On a full-bleed page the banner floats over the content instead
+                  of pushing it: the canvas is exactly the viewport's height. */}
+                  <div
+                    className={cn(
+                      fullBleed &&
+                        'pointer-events-none absolute inset-x-4 top-3 z-20 [&>*]:pointer-events-auto'
+                    )}
+                  >
+                    <UnreachableBanner />
+                  </div>
                   <ConsolePageTransition
                     pageKey={pageKey}
                     className={fullBleed ? 'h-full gap-0' : undefined}

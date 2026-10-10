@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ConnectMenu } from './connect-menu';
 import type { AppData } from './topology';
@@ -56,5 +56,49 @@ describe('ConnectMenu', () => {
     );
     expect(focus).toHaveBeenCalledWith({ preventScroll: true });
     focus.mockRestore();
+  });
+  it('moves between choices with the arrow keys', () => {
+    render(
+      <ConnectMenu app={app} side="in" at={{ x: 0, y: 0 }} onPick={vi.fn()} onClose={vi.fn()} />
+    );
+    expect(screen.getByRole('menuitem', { name: /domain/i })).toHaveFocus();
+    fireEvent.keyDown(window, { key: 'ArrowDown' });
+    expect(screen.getByRole('menuitem', { name: /cron/i })).toHaveFocus();
+    fireEvent.keyDown(window, { key: 'ArrowUp' });
+    expect(screen.getByRole('menuitem', { name: /domain/i })).toHaveFocus();
+  });
+
+  it('keeps focus where the user put it when the app data refreshes', () => {
+    const { rerender } = render(
+      <ConnectMenu app={app} side="in" at={{ x: 0, y: 0 }} onPick={vi.fn()} onClose={vi.fn()} />
+    );
+    fireEvent.keyDown(window, { key: 'ArrowDown' });
+    rerender(
+      <ConnectMenu
+        app={{ ...app }}
+        side="in"
+        at={{ x: 0, y: 0 }}
+        onPick={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+    expect(screen.getByRole('menuitem', { name: /cron/i })).toHaveFocus();
+  });
+
+  it('says storage is unavailable and offers a retry when the bucket read failed', () => {
+    const onRetry = vi.fn();
+    render(
+      <ConnectMenu
+        app={{ ...app, connections: 'error', buckets: undefined }}
+        side="out"
+        at={{ x: 0, y: 0 }}
+        onPick={vi.fn()}
+        onClose={vi.fn()}
+        onRetry={onRetry}
+      />
+    );
+    expect(screen.getByText('Storage unavailable')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(onRetry).toHaveBeenCalled();
   });
 });

@@ -95,12 +95,15 @@ export function WindEdge({
           transition: 'opacity var(--motion-base) var(--motion-ease)',
         }}
       />
-      {/* A wide invisible hit area: a 1px line is too thin to hover. */}
+      {/* A wide invisible hit area: a 1px line is too thin to hover. React
+          Flow marks non-selectable edges inactive (pointer-events: none), so the
+          hit area opts back in explicitly. */}
       <path
         d={path}
         fill="none"
         stroke="transparent"
         strokeWidth={16}
+        style={{ pointerEvents: 'stroke' }}
         onMouseEnter={() => setHover(true)}
         onMouseLeave={() => setHover(false)}
       />

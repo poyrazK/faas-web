@@ -28,4 +28,8 @@ describe('canvas navigation', () => {
     expect(nav.isFullBleedPath('/dashboard/canvas/')).toBe(true);
     expect(nav.isFullBleedPath('/dashboard/domains')).toBe(false);
   });
+  it('labels the breadcrumb "Canvas" even with the flag off', async () => {
+    const nav = await loadNav(false);
+    expect(nav.SECTION_LABELS.canvas).toBe('Canvas');
+  });
 });

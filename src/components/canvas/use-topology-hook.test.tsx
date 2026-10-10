@@ -67,4 +67,25 @@ describe('useTopology', () => {
       expect.arrayContaining(['apps', 'domains', 'crons', 'object-buckets', 'postgres'])
     );
   });
+  it('reports settled once every per-app and Postgres read has answered', async () => {
+    const { result } = setup();
+    await waitFor(() => expect(result.current.settled).toBe(true));
+  });
+
+  it('retries one app’s reads without touching the rest', async () => {
+    const { result, client } = setup();
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    const invalidate = vi.spyOn(client, 'invalidateQueries');
+    act(() => result.current.retryApp('a'));
+    expect(invalidate.mock.calls.map(([f]) => f?.queryKey)).toEqual([['object-buckets', 'a']]);
+  });
+
+  it('keeps retry callbacks stable across renders, so the flow is not rebuilt', async () => {
+    const { result, rerender } = setup();
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    const first = result.current;
+    rerender();
+    expect(result.current.retryApp).toBe(first.retryApp);
+    expect(result.current.retry).toBe(first.retry);
+  });
 });

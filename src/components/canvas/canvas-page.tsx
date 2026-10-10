@@ -28,7 +28,7 @@ export default function CanvasPage({ node }: { node?: string }) {
 function CanvasPageBody({ node }: { node?: string }) {
   const navigate = useNavigate();
   const camera = useCamera();
-  const { phase, error, topology, retry } = useTopology();
+  const { phase, error, topology, retry, retryApp, settled } = useTopology();
   const select = useCallback(
     (id?: string) =>
       void navigate({ to: '/dashboard/canvas', search: id ? { node: id } : {}, replace: true }),
@@ -73,10 +73,10 @@ function CanvasPageBody({ node }: { node?: string }) {
     () =>
       toFlow(topology, positions, {
         onConnect: (slug, side) => setConnect({ slug, side }),
-        onRetry: () => retry(),
+        onRetry: retryApp,
         selected: node,
       }),
-    [topology, positions, retry, node]
+    [topology, positions, retryApp, node]
   );
   const connectApp = connect && topology.nodes.find((n) => n.id === `app:${connect.slug}`);
   const appData = connectApp?.data.kind === 'app' ? (connectApp.data as AppData) : undefined;
@@ -168,14 +168,11 @@ function CanvasPageBody({ node }: { node?: string }) {
               {gaps.length > 0 && (
                 <div
                   role="status"
-                  className="absolute top-3 left-3 z-10 flex max-w-sm items-start gap-3 rounded-[var(--console-surface-radius)] border border-status-warning/40 bg-canvas-glass px-3 py-2 text-xs shadow-elevation-2 backdrop-blur-md"
+                  className="absolute top-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-3 rounded-xl border border-status-warning/30 bg-canvas-glass py-1.5 pr-1.5 pl-3 text-[12px] shadow-elevation-2 backdrop-blur-md"
                 >
-                  <ul className="flex flex-col gap-0.5">
-                    {gaps.map((line) => (
-                      <li key={line}>{line}</li>
-                    ))}
-                  </ul>
-                  <Button size="xs" variant="ghost" onClick={retry}>
+                  <span aria-hidden className="size-1.5 rounded-full bg-status-warning" />
+                  <span>{gaps.join(' ')}</span>
+                  <Button size="xs" variant="outline" onClick={retry}>
                     Retry
                   </Button>
                 </div>
@@ -185,6 +182,7 @@ function CanvasPageBody({ node }: { node?: string }) {
                 edges={withDraft.edges}
                 selected={node}
                 onSelect={select}
+                settled={settled}
                 onPick={(id) => {
                   select(id);
                   camera.flyTo(id);
@@ -198,6 +196,7 @@ function CanvasPageBody({ node }: { node?: string }) {
                     at={menuPosition(anchor, connect.side)}
                     onPick={(kind) => setConnect({ ...connect, kind })}
                     onClose={() => setConnect(undefined)}
+                    onRetry={() => retryApp(connect.slug)}
                   />
                 )}
               </CanvasView>

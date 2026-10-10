@@ -336,6 +336,7 @@ export const SECTION_LABELS: Record<string, string> = {
       i.label,
     ])
   ),
+  canvas: 'Canvas',
   team: 'Team',
   keys: 'API Keys',
   account: 'Account',

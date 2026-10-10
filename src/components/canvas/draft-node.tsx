@@ -50,6 +50,11 @@ export function DraftNode({ kind, app, onDone, onCancel }: DraftProps) {
     };
   }, []);
 
+  // A failed create hands the field straight back, so ↵ works again at once.
+  useEffect(() => {
+    if (active.error) inputRef.current?.focus({ preventScroll: true });
+  }, [active.error]);
+
   const submit = () => {
     if (active.isPending) return;
     if (kind === 'domain') {
@@ -128,7 +133,7 @@ export function DraftNode({ kind, app, onDone, onCancel }: DraftProps) {
           className={field}
           placeholder={kind === 'domain' ? 'api.example.com' : 'orders'}
           value={value}
-          disabled={active.isPending}
+          readOnly={active.isPending}
           onChange={(e) => setValue(e.target.value)}
         />
       )}

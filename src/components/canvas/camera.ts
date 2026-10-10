@@ -4,7 +4,10 @@ import { useReactFlow, useStore } from '@xyflow/react';
 /** Camera moves the canvas makes on the user's behalf, always on the console curve. */
 export function useCamera() {
   const flow = useReactFlow();
-  const size = useStore((s) => ({ w: s.width, h: s.height }));
+  // One primitive per selector: an object selector is a new value on every
+  // store change, which re-renders the caller (the whole canvas page) forever.
+  const width = useStore((s) => s.width);
+  const height = useStore((s) => s.height);
 
   const flyTo = useCallback(
     (id: string) => {
@@ -29,7 +32,7 @@ export function useCamera() {
       if (!nodes.length) return;
       const box = flow.getNodesBounds(nodes);
       const { x, y, zoom } = flow.getViewport();
-      const view = { x: -x / zoom, y: -y / zoom, w: size.w / zoom, h: size.h / zoom };
+      const view = { x: -x / zoom, y: -y / zoom, w: width / zoom, h: height / zoom };
       const inside =
         box.x >= view.x &&
         box.y >= view.y &&
@@ -37,7 +40,7 @@ export function useCamera() {
         box.y + box.height <= view.y + view.h;
       if (!inside) void flow.fitBounds(box, { padding: 0.25, duration: 380 });
     },
-    [flow, size.w, size.h]
+    [flow, width, height]
   );
 
   return { flyTo, ensureVisible };
