@@ -9706,6 +9706,220 @@ paths:
   # CRUD + audit + manual-retry seam. Secrets are sealed at write
   # time (pgx/secretbox) and never returned in plaintext — the
   # response shape carries the masked constant.
+
+  # ─── Durable inbound webhooks (ADR-212) ───────────────────────────────────
+  /v1/apps/{slug}/inbound-webhooks:
+    parameters:
+      - $ref: '#/components/parameters/Slug'
+    get:
+      tags: [inbound_webhooks]
+      operationId: listInboundWebhookEndpoints
+      summary: List durable inbound webhook endpoints for this app.
+      responses:
+        '200':
+          description: The configured endpoints. Public route tokens are never returned.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/InboundWebhookEndpointResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+    post:
+      tags: [inbound_webhooks]
+      operationId: createInboundWebhookEndpoint
+      summary: Create a provider-verified durable webhook endpoint.
+      description: |
+        Returns the public endpoint_url once. Gregale stores only a SHA-256
+        digest of its opaque token and an age/X25519-sealed provider signing
+        secret. Providers are Stripe and generic timestamped HMAC-SHA256 senders.
+        Generic secrets must contain at least 32 bytes of random material.
+        Hobby, Pro, and Scale plans are supported.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateInboundWebhookEndpointRequest' }
+      responses:
+        '201':
+          description: Endpoint created; copy endpoint_url into the provider now.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InboundWebhookEndpointResponse' }
+        '400': { $ref: '#/components/responses/InboundWebhookInvalid' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '402': { $ref: '#/components/responses/PlanInboundWebhooksNotAllowed' }
+        '403': { $ref: '#/components/responses/PlanInboundWebhookQuota' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InboundWebhookInvalid' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '503': { $ref: '#/components/responses/CapacityUnavailable' }
+
+  /v1/apps/{slug}/inbound-webhooks/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Slug'
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+        description: Inbound webhook endpoint ID.
+    get:
+      tags: [inbound_webhooks]
+      operationId: getInboundWebhookEndpoint
+      summary: Fetch one durable inbound webhook endpoint.
+      responses:
+        '200':
+          description: Endpoint metadata. The route token and signing secret are not returned.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InboundWebhookEndpointResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+    patch:
+      tags: [inbound_webhooks]
+      operationId: updateInboundWebhookEndpoint
+      summary: Change delivery, enabled state, or rotate the provider secret.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateInboundWebhookEndpointRequest' }
+      responses:
+        '200':
+          description: Updated endpoint metadata.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InboundWebhookEndpointResponse' }
+        '400': { $ref: '#/components/responses/InboundWebhookInvalid' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '503': { $ref: '#/components/responses/CapacityUnavailable' }
+    delete:
+      tags: [inbound_webhooks]
+      operationId: deleteInboundWebhookEndpoint
+      summary: Stop future ingress for this endpoint.
+      description: Already accepted invocation rows remain queued and deliverable.
+      responses:
+        '204': { description: Endpoint deleted. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/apps/{slug}/inbound-webhooks/{id}/automation-binding:
+    parameters:
+      - $ref: '#/components/parameters/Slug'
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+        description: Endpoint whose future verified events use this automation binding.
+    put:
+      tags: [inbound_webhooks]
+      operationId: putWebhookAutomationBinding
+      summary: Route a verified Stripe endpoint to a published automation.
+      description: |
+        One binding per endpoint, owned by the same app. expected_version is zero
+        for creation and the returned version for updates. take_over_delivery
+        must be true: bound endpoints start automations instead of app delivery.
+        Callback and managed-operation bindings must be removed first.
+        Event types accept edge wildcards; filters use the existing event language.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        description: Explicit delivery takeover and published automation selection.
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PutWebhookAutomationBindingRequest' }
+      responses:
+        '200':
+          description: Saved binding with its new revision.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebhookAutomationBindingResponse' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '402': { description: 'Plan does not allow workflows.', content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Binding revision or routing mode conflict (webhook_automation_conflict).
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '413': { description: 'Request body exceeds 64 KiB.', content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } } }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '503': { $ref: '#/components/responses/CapacityUnavailable' }
+    get:
+      tags: [inbound_webhooks]
+      operationId: getWebhookAutomationBinding
+      summary: Inspect an endpoint automation binding.
+      description: Returns the current event selection and revision for this endpoint.
+      responses:
+        '200':
+          description: Current binding.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebhookAutomationBindingResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '503': { $ref: '#/components/responses/CapacityUnavailable' }
+    delete:
+      tags: [inbound_webhooks]
+      operationId: deleteWebhookAutomationBinding
+      summary: Restore ordinary delivery for future webhook events.
+      description: Already accepted receipts retain their captured routing decision.
+      parameters:
+        - name: expected_version
+          description: Current binding revision returned by a previous read or update.
+          in: query
+          required: true
+          schema: { type: integer, format: int64, minimum: 1 }
+      responses:
+        '204': { description: Binding removed. }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Binding revision conflict (webhook_automation_conflict).
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '503': { $ref: '#/components/responses/CapacityUnavailable' }
+
+  /v1/apps/{slug}/inbound-webhooks/{id}/automation-receipts/{event_id}:
+    get:
+      tags: [inbound_webhooks]
+      operationId: getWebhookAutomationReceipt
+      summary: Inspect a verified provider event and its automation admission.
+      description: Returns the captured decision and scheduler progress for a retained provider event.
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - name: id
+          description: Endpoint that accepted the provider event being inspected.
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: event_id
+          description: Stripe event ID returned in the verified provider receipt.
+          in: path
+          required: true
+          schema: { type: string, maxLength: 256 }
+      responses:
+        '200':
+          description: Receipt, routing status and admitted run ID when retained.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebhookAutomationReceiptResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '503': { $ref: '#/components/responses/CapacityUnavailable' }
+
   /v1/apps/{slug}/webhooks:
     parameters:
       - $ref: '#/components/parameters/Slug'
@@ -25905,6 +26119,110 @@ components:
         period: { type: string }
       additionalProperties: true
 
+    CreateInboundWebhookEndpointRequest:
+      type: object
+      description: Create a provider-verified endpoint for Stripe or a custom sender using Gregale's timestamped HMAC-SHA256 protocol. Accepted events become durable app invocations or automation starts when bound.
+      required: [name, provider, signing_secret]
+      properties:
+        name:
+          type: string
+          pattern: '^[a-z][a-z0-9-]{0,62}$'
+          maxLength: 63
+        provider: { type: string, enum: [stripe, generic] }
+        signing_secret:
+          type: string
+          minLength: 1
+          maxLength: 256
+          description: Stripe signing secret or custom sender HMAC secret (at least 32 bytes for generic); sealed at rest and never returned.
+        delivery_path:
+          type: string
+          pattern: '^/[^?#]*$'
+          maxLength: 256
+          default: '/'
+        enabled: { type: boolean, default: true }
+      example:
+        name: stripe-primary
+        provider: stripe
+        signing_secret: whsec_example
+        delivery_path: /internal/stripe
+
+    UpdateInboundWebhookEndpointRequest:
+      type: object
+      description: Omitted fields remain unchanged. A signing_secret value rotates the provider secret in place; generic secrets must contain at least 32 bytes.
+      properties:
+        signing_secret: { type: string, minLength: 1, maxLength: 256, description: Generic provider secrets must contain at least 32 bytes. }
+        delivery_path: { type: string, pattern: '^/[^?#]*$', maxLength: 256 }
+        enabled: { type: boolean }
+
+    InboundWebhookEndpointResponse:
+      type: object
+      description: Safe endpoint metadata. endpoint_url is disclosed only by the create response.
+      required: [id, app_id, account_id, name, provider, delivery_path, enabled, signing_secret_masked, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        app_id: { type: string, format: uuid }
+        account_id: { type: string, format: uuid }
+        name: { type: string, maxLength: 63 }
+        provider: { type: string, enum: [stripe, generic] }
+        delivery_path: { type: string, maxLength: 256 }
+        enabled: { type: boolean }
+        signing_secret_masked: { type: string, enum: ['***'] }
+        endpoint_url:
+          type: string
+          format: uri
+          description: One-time-disclosed public provider URL, present only on create.
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    PutWebhookAutomationBindingRequest:
+      description: Bind a verified provider endpoint to a published automation with revision control.
+      type: object
+      additionalProperties: false
+      required: [expected_version, workflow_name, event_type, take_over_delivery]
+      properties:
+        expected_version: { type: integer, format: int64, minimum: 0 }
+        workflow_name: { type: string, minLength: 1, maxLength: 128 }
+        event_type: { type: string, minLength: 1, maxLength: 256 }
+        filter: { type: object, additionalProperties: true }
+        take_over_delivery: { type: boolean, enum: [true] }
+    WebhookAutomationBindingResponse:
+      description: Captured automation name, event selection and current endpoint binding revision.
+      type: object
+      required: [endpoint_id, workflow_name, event_type, filter, version, updated_at]
+      properties:
+        endpoint_id: { type: string, format: uuid }
+        workflow_name: { type: string }
+        event_type: { type: string }
+        filter: { type: object, additionalProperties: true }
+        version: { type: integer, format: int64, minimum: 1 }
+        updated_at: { type: string, format: date-time }
+    WebhookAutomationReceiptResponse:
+      description: Durable provider event routing decision and automation admission progress.
+      type: object
+      required: [receipt_id, endpoint_id, provider_event_id, workflow_name, status, duplicate, accepted_at, event_source, routing_status]
+      properties:
+        receipt_id: { type: string, format: uuid }
+        endpoint_id: { type: string, format: uuid }
+        provider_event_id: { type: string }
+        workflow_name: { type: string }
+        status: { type: string, enum: [accepted, ignored] }
+        ignored_reason: { type: string, enum: [automation_paused, automation_failure_paused, event_filtered, automation_unpublished] }
+        duplicate: { type: boolean }
+        accepted_at: { type: string, format: date-time }
+        event_source: { type: string }
+        routing_status: { type: string, enum: [pending, filtered, enqueued, failed, ignored] }
+        run_id: { type: string, format: uuid }
+
+    InboundWebhookReceiptResponse:
+      type: object
+      description: Returned only after the verified event has a committed durable invocation row.
+      required: [receipt_id, status, duplicate, accepted_at]
+      properties:
+        receipt_id: { type: string, format: uuid }
+        status: { type: string, enum: [accepted] }
+        duplicate: { type: boolean, description: True when this endpoint already accepted the same provider event ID. }
+        accepted_at: { type: string, format: date-time }
+
     AppWebhookResponse:
       description: |
         An outbound webhook subscription. Carries the masked HMAC secret;
@@ -26977,6 +27295,24 @@ components:
 
     RollbackTargetAlreadyLive:
       description: 'code: rollback_target_already_live — the named target_deployment_id exists but has status != superseded (typically status=live). Rolling back to the already-current deployment is rejected.'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+    InboundWebhookInvalid:
+      description: 'code: inbound_webhook_invalid for malformed endpoint configuration/body or a missing Stripe event id; code: inbound_webhook_bad_signature when Stripe-Signature does not verify.'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+    PlanInboundWebhooksNotAllowed:
+      description: 'code: plan_inbound_webhooks_not_allowed — the plan excludes durable inbound webhook ingress.'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+    PlanInboundWebhookQuota:
+      description: 'code: plan_inbound_webhook_quota — the app or account endpoint cap is reached.'
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
