@@ -462,6 +462,30 @@ route('POST', '/v1/apps', ({ body, req }) => {
     if (receipt.body !== JSON.stringify(body)) throw new Problem(409, 'idempotency_conflict');
     return status(201, receipt.app);
   }
+  const worker = body.execution_mode === 'worker';
+  const plan = process.env.MOCK_PLAN ?? db.account.plan;
+  if (worker && plan === 'free') throw new Problem(403, 'plan_worker_pools_not_allowed');
+  const restartPolicy = String(body.restart_policy ?? 'always');
+  if (worker) {
+    const limit =
+      plan === 'hobby'
+        ? { deadline: 30, retries: 5 }
+        : plan === 'pro'
+          ? { deadline: 60, retries: 10 }
+          : { deadline: 120, retries: 20 };
+    const deadline = Number(body.startup_deadline_s ?? 0);
+    const retries = Number(body.max_retries ?? 0);
+    if (
+      !Number.isInteger(deadline) ||
+      deadline < 0 ||
+      deadline > limit.deadline ||
+      !Number.isInteger(retries) ||
+      retries < 0 ||
+      retries > limit.retries ||
+      !['always', 'on-failure', 'unless-stopped', 'no'].includes(restartPolicy)
+    )
+      throw new Problem(422, 'invalid_lifecycle_configuration');
+  }
   const slug = String(body.slug ?? '').trim();
   if (!/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(slug))
     throw new Problem(400, 'invalid_slug', 'Slugs are lowercase letters, digits, and dashes.');
@@ -476,6 +500,20 @@ route('POST', '/v1/apps', ({ body, req }) => {
     ram_mb: Number(body.ram_mb ?? 256),
     min_instances: 0,
     status: 'pending',
+    ...(worker
+      ? {
+          workload_class: undefined,
+          manifest: {
+            entrypoint: ['/worker'],
+            execution_mode: 'worker' as const,
+            restart_policy: restartPolicy as db.App['manifest']['restart_policy'],
+            startup_deadline_s: Number(body.startup_deadline_s ?? 0),
+            max_retries: Number(body.max_retries ?? 0),
+            head_wakes: false,
+            crawler_policy: 'wake' as const,
+          },
+        }
+      : {}),
     visibility: body.visibility === 'internal' ? 'internal' : 'public',
     url: body.visibility === 'internal' ? '' : `https://${slug}.gregale.app`,
     service_bindings: Array.isArray(body.service_binding_targets)
