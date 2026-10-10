@@ -250,6 +250,7 @@ export const apps: App[] = APP_SEEDS.map((a, i) => ({
   id: id(),
   slug: a.slug,
   type: a.type,
+  ...(a.slug === 'search-indexer' ? { workload_class: 'worker' as const } : {}),
   visibility: 'public',
   runtime: a.runtime,
   ram_mb: a.ram,
@@ -279,12 +280,15 @@ export const apps: App[] = APP_SEEDS.map((a, i) => ({
   status: a.status,
   url: `https://${a.slug}.gregale.app`,
   manifest: {
-    entrypoint: a.runtime.startsWith('node')
-      ? ['node', 'server.js']
-      : a.runtime.startsWith('python')
-        ? ['python', '-m', 'app']
-        : ['/app/bin/server'],
-    port: 8080,
+    entrypoint:
+      a.slug === 'search-indexer'
+        ? ['node', 'worker.js']
+        : a.runtime.startsWith('node')
+          ? ['node', 'server.js']
+          : a.runtime.startsWith('python')
+            ? ['python', '-m', 'app']
+            : ['/app/bin/server'],
+    ...(a.slug === 'search-indexer' ? { execution_mode: 'worker' as const } : { port: 8080 }),
     head_wakes: false,
     crawler_policy: 'wake',
     healthz: '/healthz',

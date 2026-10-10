@@ -44,6 +44,58 @@ async function get(path: string) {
   const response = await fetch(`${origin}${path}`);
   return { response, body: await response.json() };
 }
+it('serves worker consumer state and reviewed default push replacement without stage selectors', async () => {
+  const slug = 'search-indexer';
+  const list = await get(`/v1/apps/${slug}/queue-bindings`);
+  expect(list.response.status).toBe(200);
+  expect(list.body).toEqual(
+    expect.arrayContaining([expect.objectContaining({ name: 'default', mode: 'push' })])
+  );
+  const defaultBinding = list.body.find((row: { name: string }) => row.name === 'default');
+  const status = await get(`/v1/apps/${slug}/queue-bindings/${defaultBinding.id}/status`);
+  expect(status.body).toMatchObject({ consumer_state: 'active', consumer_liveness: 'stale' });
+  const conflict = await fetch(`${origin}/v1/apps/${slug}/queue-workload`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      queue_name: 'replacement',
+      workload_class: 'worker',
+      max_concurrency: 2,
+      target_depth: 10,
+      force: false,
+    }),
+  });
+  expect(conflict.status).toBe(409);
+  const replace = await fetch(`${origin}/v1/apps/${slug}/queue-workload`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      queue_name: 'replacement',
+      workload_class: 'worker',
+      max_concurrency: 2,
+      target_depth: 10,
+      force: true,
+    }),
+  });
+  expect(replace.status).toBe(200);
+  expect(await replace.json()).toMatchObject({
+    binding: { name: 'default', queue_name: 'replacement', mode: 'push' },
+  });
+  process.env.MOCK_PLAN = 'free';
+  const denied = await fetch(`${origin}/v1/apps/${slug}/queue-bindings`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: 'denied',
+      queue_name: 'denied',
+      mode: 'pull',
+      workload_class: 'worker',
+      enabled: true,
+      max_concurrency: 1,
+    }),
+  });
+  expect(denied.status).toBe(403);
+});
 it('serves internal app visibility and binding policy with distinct null and empty meanings', async () => {
   const slug = `private-${Date.now()}`;
   const target = (await get('/v1/apps')).body[0].slug;
