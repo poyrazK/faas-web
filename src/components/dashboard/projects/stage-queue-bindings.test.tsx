@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { ApiError } from '@/lib/api/errors';
@@ -67,11 +67,24 @@ const selection = {
 };
 function mount(protectedStage = false) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  let currentPlan: 'hobby' | 'free' = 'hobby';
+  const content = (nextProtected: boolean) => (
     <QueryClientProvider client={client}>
-      <StageQueueBindings selection={selection} protectedStage={protectedStage} />
+      <StageQueueBindings
+        selection={{ ...selection, plan: currentPlan }}
+        protectedStage={nextProtected}
+      />
     </QueryClientProvider>
   );
+  const view = render(content(protectedStage));
+  return {
+    ...view,
+    updateProtected: (next: boolean) => view.rerender(content(next)),
+    updatePlan: (next: 'hobby' | 'free') => {
+      currentPlan = next;
+      view.rerender(content(protectedStage));
+    },
+  };
 }
 beforeEach(() => {
   state.uninitialized = false;
@@ -184,4 +197,36 @@ it('blocks a changed workload head before sending a reviewed replacement', async
   expect(
     screen.queryByRole('button', { name: 'Refresh and inspect stage' })
   ).not.toBeInTheDocument();
+});
+
+it('stops a delayed reviewed save when the selected stage becomes protected', async () => {
+  let resolve!: (value: typeof state.snapshot) => void;
+  const delayed = new Promise<typeof state.snapshot>((done) => {
+    resolve = done;
+  });
+  state.readContext.mockResolvedValueOnce(state.snapshot).mockReturnValueOnce(delayed);
+  const view = mount();
+  await userEvent.click(screen.getByRole('button', { name: 'Review complete stage replacement' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Save stage definitions' }));
+  await waitFor(() => expect(state.readContext).toHaveBeenCalledTimes(2));
+  view.updateProtected(true);
+  await act(async () => resolve(state.snapshot));
+  expect(state.replace).not.toHaveBeenCalled();
+  expect(screen.getByText(/Protected stage/)).toBeInTheDocument();
+});
+
+it('stops a delayed reviewed save after the account drops to Free', async () => {
+  let resolve!: (value: typeof state.snapshot) => void;
+  const delayed = new Promise<typeof state.snapshot>((done) => {
+    resolve = done;
+  });
+  state.readContext.mockResolvedValueOnce(state.snapshot).mockReturnValueOnce(delayed);
+  const view = mount();
+  await userEvent.click(screen.getByRole('button', { name: 'Review complete stage replacement' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Save stage definitions' }));
+  await waitFor(() => expect(state.readContext).toHaveBeenCalledTimes(2));
+  view.updatePlan('free');
+  await act(async () => resolve(state.snapshot));
+  expect(state.replace).not.toHaveBeenCalled();
+  expect(screen.getByText(/availability must be confirmed/)).toBeInTheDocument();
 });

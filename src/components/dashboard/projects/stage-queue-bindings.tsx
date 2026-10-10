@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { useCapability } from '@/lib/api/capabilities';
@@ -137,6 +137,7 @@ function Editor({
   const [review, setReview] = useState<{
     fingerprint: string;
     body: ReturnType<typeof stageQueuePayload>;
+    writeEpoch: number;
   } | null>(null);
   const [emptyAcknowledged, setEmptyAcknowledged] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -156,6 +157,36 @@ function Editor({
     capability.accountId === selection.accountId &&
     capability.state === 'available' &&
     selection.plan !== 'free';
+  const writeIdentity = JSON.stringify([
+    selection.accountId,
+    selection.plan,
+    selection.project,
+    selection.projectId,
+    selection.environment,
+    selection.environmentId,
+    selection.workload,
+    selection.appId,
+  ]);
+  const writeContext = useRef({ identity: writeIdentity, allowed: canWrite, epoch: 0 });
+  useLayoutEffect(() => {
+    const current = writeContext.current;
+    if (current.identity !== writeIdentity || current.allowed !== canWrite) {
+      writeContext.current = {
+        identity: writeIdentity,
+        allowed: canWrite,
+        epoch: current.epoch + 1,
+      };
+      pending.current?.abort();
+    }
+  }, [writeIdentity, canWrite]);
+  function stillAllowed(epoch: number, controller: AbortController) {
+    return (
+      active.current &&
+      !controller.signal.aborted &&
+      writeContext.current.allowed &&
+      writeContext.current.epoch === epoch
+    );
+  }
   const original = snapshot.kind === 'ready' ? snapshot.data.bindings : [];
   const revision =
     snapshot.kind === 'ready' ? snapshot.data.workload_revision : snapshot.workloadRevision;
@@ -164,6 +195,7 @@ function Editor({
   }
   async function verifyAndReview() {
     if (!canWrite || busy || uncertain) return;
+    const writeEpoch = writeContext.current.epoch;
     setBusy(true);
     setMessage('');
     const controller = new AbortController();
@@ -171,15 +203,15 @@ function Editor({
     try {
       const body = stageQueuePayload(snapshot, draft);
       const fresh = await readStageQueueWriteContext(selection, controller.signal);
-      if (!active.current || controller.signal.aborted) return;
+      if (!stillAllowed(writeEpoch, controller)) return;
       if (stageQueueFingerprint(fresh) !== stageQueueFingerprint(snapshot)) {
         refresh();
         throw new Error('Stage workload settings changed. Refresh and review again.');
       }
-      setReview({ fingerprint: stageQueueFingerprint(fresh), body });
+      setReview({ fingerprint: stageQueueFingerprint(fresh), body, writeEpoch });
       setEmptyAcknowledged(false);
     } catch (error) {
-      if (active.current) setMessage(errorMessage(error));
+      if (stillAllowed(writeEpoch, controller)) setMessage(errorMessage(error));
     } finally {
       if (pending.current === controller) pending.current = null;
       if (active.current) setBusy(false);
@@ -188,6 +220,12 @@ function Editor({
   async function save() {
     if (!review || !canWrite || busy || (review.body.bindings.length === 0 && !emptyAcknowledged))
       return;
+    const writeEpoch = writeContext.current.epoch;
+    if (review.writeEpoch !== writeEpoch) {
+      setReview(null);
+      setMessage('Write availability changed. Review the stage definitions again.');
+      return;
+    }
     setBusy(true);
     setMessage('');
     const controller = new AbortController();
@@ -195,7 +233,7 @@ function Editor({
     let submitted = false;
     try {
       const fresh = await readStageQueueWriteContext(selection, controller.signal);
-      if (!active.current || controller.signal.aborted) return;
+      if (!stillAllowed(writeEpoch, controller)) return;
       if (stageQueueFingerprint(fresh) !== review.fingerprint) {
         setReview(null);
         refresh();
@@ -209,7 +247,7 @@ function Editor({
         review.body,
         controller.signal
       );
-      if (!active.current || controller.signal.aborted) return;
+      if (!stillAllowed(writeEpoch, controller)) return;
       if (
         result.environment !== selection.environment ||
         result.workload !== selection.workload ||
@@ -232,7 +270,7 @@ function Editor({
       });
       refresh();
     } catch (error) {
-      if (!active.current || controller.signal.aborted) return;
+      if (!stillAllowed(writeEpoch, controller)) return;
       setReview(null);
       if (error instanceof ApiError && error.status === 409) {
         setMessage('Stage workload settings changed. Refresh and review again.');
