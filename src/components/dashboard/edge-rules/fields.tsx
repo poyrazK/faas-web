@@ -194,6 +194,7 @@ export function ChipSet<T extends string>({
             <button
               key={opt}
               type="button"
+              aria-label={opt}
               aria-pressed={on}
               onClick={() => onChange(on ? value.filter((x) => x !== opt) : [...value, opt])}
               className={cn(

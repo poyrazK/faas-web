@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import type { components } from '@/lib/api/schema';
+import { validateCacheAction } from '@/lib/cache-policy';
 import { CorsPresetPicker } from '../cors-presets';
 import {
   ChipSet,
@@ -46,6 +47,7 @@ export interface ActionMap {
   geo: S['EdgeRuleGeoAction'];
   throttle: S['EdgeRuleThrottleAction'];
   budget: S['EdgeRuleBudgetAction'];
+  cache: S['EdgeRuleCacheAction'];
 }
 
 export type Kind = keyof ActionMap;
@@ -78,6 +80,8 @@ function def<K extends Kind>(d: KindDef<K>): KindDef<K> {
 }
 
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as const;
+const CACHE_METHODS = ['GET', 'HEAD'] as const;
+const CACHE_VARY = ['Accept-Language', 'Accept-Encoding'] as const;
 const ALGORITHMS = [
   'RS256',
   'RS384',
@@ -634,6 +638,77 @@ export const KINDS = {
           onChange={(allow_override_header) => onChange({ ...value, allow_override_header })}
           placeholder="X-Budget-Ms"
         />
+      </div>
+    ),
+  }),
+  cache: def<'cache'>({
+    label: 'Response cache',
+    desc: 'Serve repeat GET and HEAD requests from the edge within a reviewed freshness window.',
+    paid: true,
+    empty: () => ({
+      max_age_seconds: 60,
+      stale_while_revalidate_seconds: 0,
+      stale_if_error_seconds: 300,
+      methods: ['GET', 'HEAD'],
+      vary_on: [],
+    }),
+    summary: (a) =>
+      `fresh ${a.max_age_seconds} s · revalidate ${a.stale_while_revalidate_seconds ?? 0} s · error ${a.stale_if_error_seconds} s`,
+    validate: validateCacheAction,
+    Form: ({ value, onChange, errors }) => (
+      <div className="flex flex-col gap-4">
+        <div className="grid gap-4 sm:grid-cols-3">
+          <NumberField
+            label="Fresh for (seconds)"
+            hint="0 uses the server default of 60; maximum 3600."
+            error={errors.max_age_seconds}
+            value={value.max_age_seconds}
+            onChange={(max_age_seconds) =>
+              onChange({ ...value, max_age_seconds: max_age_seconds ?? -1 })
+            }
+          />
+          <NumberField
+            label="Stale while revalidate (seconds)"
+            hint="0 disables background refresh; maximum 300."
+            error={errors.stale_while_revalidate_seconds}
+            value={value.stale_while_revalidate_seconds ?? 0}
+            onChange={(stale_while_revalidate_seconds) =>
+              onChange({
+                ...value,
+                stale_while_revalidate_seconds: stale_while_revalidate_seconds ?? -1,
+              })
+            }
+          />
+          <NumberField
+            label="Stale if error (seconds)"
+            hint="0 disables stale responses on upstream errors; maximum 300."
+            error={errors.stale_if_error_seconds}
+            value={value.stale_if_error_seconds}
+            onChange={(stale_if_error_seconds) =>
+              onChange({ ...value, stale_if_error_seconds: stale_if_error_seconds ?? -1 })
+            }
+          />
+        </div>
+        <ChipSet
+          label="Cache methods"
+          hint="Only GET and HEAD responses may be cached."
+          error={errors.methods}
+          options={CACHE_METHODS}
+          value={value.methods ?? []}
+          onChange={(methods) => onChange({ ...value, methods })}
+        />
+        <ChipSet
+          label="Vary on"
+          hint="Only these non-credential request headers can split cache entries."
+          error={errors.vary_on}
+          options={CACHE_VARY}
+          value={value.vary_on ?? []}
+          onChange={(vary_on) => onChange({ ...value, vary_on })}
+        />
+        <p className="text-xs text-muted-foreground">
+          Requests with Authorization or Cookie bypass the cache. Responses with Set-Cookie,
+          Cache-Control: private, or no-store are never stored.
+        </p>
       </div>
     ),
   }),
