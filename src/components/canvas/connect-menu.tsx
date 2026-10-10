@@ -37,7 +37,9 @@ export function ConnectMenu({
   const options = CREATE_OPTIONS[side];
 
   useEffect(() => {
-    ref.current?.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')?.focus();
+    ref.current
+      ?.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')
+      ?.focus({ preventScroll: true });
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') return onClose();
       const hit = options.find(

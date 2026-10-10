@@ -48,4 +48,13 @@ describe('ConnectMenu', () => {
     );
     expect(screen.getByRole('menuitem', { name: /bucket/i })).toBeDisabled();
   });
+
+  it('focuses its first choice without scrolling the canvas under it', () => {
+    const focus = vi.spyOn(HTMLButtonElement.prototype, 'focus');
+    render(
+      <ConnectMenu app={app} side="in" at={{ x: 0, y: 0 }} onPick={vi.fn()} onClose={vi.fn()} />
+    );
+    expect(focus).toHaveBeenCalledWith({ preventScroll: true });
+    focus.mockRestore();
+  });
 });
