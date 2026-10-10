@@ -3288,13 +3288,13 @@ export function useDebugRequestEvidence(slug: string, reqId: string) {
   });
 }
 
-/** Purge the edge response cache, optionally under one path glob. */
+/** Request an all, path, or tag purge. The API accepts one selector at most. */
 export function usePurgeAppCache(slug: string) {
   return useMutation({
-    mutationFn: (path?: string) =>
+    mutationFn: (selection: { path?: string; tag?: string }) =>
       unwrap(
         api.DELETE('/v1/apps/{slug}/cache', {
-          params: { path: { slug }, query: path ? { path } : {} },
+          params: { path: { slug }, query: selection },
         })
       ),
   });
