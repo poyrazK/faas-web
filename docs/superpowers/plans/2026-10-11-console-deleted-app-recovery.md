@@ -42,7 +42,7 @@
 
 **Files:** backend `pkg/api/deleted_apps.go`, `cmd/apid/handlers_deleted_apps.go`, corresponding tests, `server.go`, `handlers_ext.go`, `api/openapi.yaml`, mirrored `pkg/apid/openapi.yaml`, `docs/apps.md` if present.
 
-**Interfaces:** GET `/v1/apps/deleted?limit=25&cursor=...` returns `{apps,next_cursor,evaluated_at}`; GET `/v1/apps/deleted/{id}` returns safe summary. Each summary has `id`, `slug`, `deleted_at`, `delete_grace_until`, `restore_eligible`, `restore_blocker`, `evaluated_at`. Existing POST restore accepts optional `{expected_app_id}`.
+**Interfaces:** GET `/v1/deleted-apps?limit=25&cursor=...` returns `{apps,next_cursor,evaluated_at}`; GET `/v1/deleted-apps/{id}` returns safe summary. The separate collection avoids shadowing an existing app with slug `deleted`. Each summary has `id`, `slug`, `deleted_at`, `delete_grace_until`, `restore_eligible`, `restore_blocker`, `evaluated_at`. Existing POST restore accepts optional `{expected_app_id}`.
 
 - [ ] Write handler RED tests: empty/owned inventory, foreign app 404, default/max limit, malformed/account-mismatched cursor, expiry/purge state, scope/MFA denial and stale identity 409. A replacement must remain deleted after `POST restore` with the old ID.
 - [ ] Implement routes behind read scope/MFA; encode a bounded account-bound cursor with timestamp/UUID and reject malformed input. Compute lifecycle blockers from server time and purge claim; document quota/capacity recheck.
