@@ -42,7 +42,7 @@ export function DraftNode({ kind, app, onDone, onCancel }: DraftProps) {
   useEffect(() => {
     let inner = 0;
     const outer = requestAnimationFrame(() => {
-      inner = requestAnimationFrame(() => inputRef.current?.focus());
+      inner = requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
     });
     return () => {
       cancelAnimationFrame(outer);

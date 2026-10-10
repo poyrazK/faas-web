@@ -85,6 +85,14 @@ describe('DraftNode', () => {
     expect(cron.mutate).not.toHaveBeenCalled();
   });
 
+  it('takes focus without scrolling the canvas under it', async () => {
+    const focus = vi.spyOn(HTMLInputElement.prototype, 'focus');
+    render(<DraftNode kind="domain" app={app} onDone={vi.fn()} onCancel={vi.fn()} />);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(focus).toHaveBeenCalledWith({ preventScroll: true });
+    focus.mockRestore();
+  });
+
   it('creates a bucket in the app’s default region', () => {
     render(<DraftNode kind="bucket" app={app} onDone={vi.fn()} onCancel={vi.fn()} />);
     const input = screen.getByLabelText('Bucket name');
