@@ -455,6 +455,7 @@ route('GET', '/v1/apps/metrics', ({ query }) => {
 });
 const imageAppReceipts = new Map<string, { body: string; app: db.App; at: number }>();
 const imageDeployReceipts = new Map<string, db.Deployment>();
+const workerImageReads = new Map<string, number>();
 route('POST', '/v1/apps', ({ body, req }) => {
   const key = String(req.headers['idempotency-key'] ?? '');
   const receipt = key && imageAppReceipts.get(key);
@@ -3585,6 +3586,19 @@ route('GET', '/v1/deployments/latest-by-app', () => {
 route('GET', '/v1/deployments/{id}', ({ params }) => {
   const d = db.deployments.find((x) => x.id === params.id);
   if (!d) throw new Problem(404, 'deployment_not_found');
+  const workerApp = db.apps.find(
+    (item) => item.id === d.app_id && item.manifest?.execution_mode === 'worker'
+  );
+  if (workerApp && d.kind === 'image' && d.status === 'imaging') {
+    const reads = (workerImageReads.get(d.id) ?? 0) + 1;
+    workerImageReads.set(d.id, reads);
+    // The mock completes characterization after a second status read. A live
+    // release permits binding setup; it is not evidence of consumer liveness.
+    if (reads >= 2) {
+      d.status = 'live';
+      workerApp.workload_class = 'worker';
+    }
+  }
   return d;
 });
 route('GET', '/v1/builds', () => ({ items: db.builds }));
