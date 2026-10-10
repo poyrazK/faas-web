@@ -7,6 +7,7 @@ import {
   createQueueBinding,
   queueBindingsKey,
   queueBindingStatusKey,
+  readQueueBinding,
   readQueueBindingContext,
   stageQueueBindingsKey,
   useQueueBindingStatus,
@@ -117,4 +118,14 @@ it('rejects stale account or capability context before a queue mutation review',
     /account/i
   );
   expect(get).not.toHaveBeenCalledWith('/v1/apps/{slug}/queue-bindings', expect.anything());
+});
+
+it('reads the affected production binding by ID with an abort signal before writes', async () => {
+  const get = vi.spyOn(api, 'GET').mockResolvedValue(ok({ id: 'binding-1', name: 'orders' }));
+  const signal = new AbortController().signal;
+  await readQueueBinding('worker-1', 'binding-1', signal);
+  expect(get).toHaveBeenCalledWith('/v1/apps/{slug}/queue-bindings/{id}', {
+    params: { path: { slug: 'worker-1', id: 'binding-1' } },
+    signal,
+  });
 });

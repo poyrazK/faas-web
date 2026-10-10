@@ -134,6 +134,15 @@ export function createQueueBinding(
   );
 }
 
+export function readQueueBinding(slug: string, id: string, signal: AbortSignal) {
+  return unwrap(
+    api.GET('/v1/apps/{slug}/queue-bindings/{id}', {
+      params: { path: { slug, id } },
+      signal,
+    })
+  );
+}
+
 export function updateQueueBinding(
   slug: string,
   id: string,

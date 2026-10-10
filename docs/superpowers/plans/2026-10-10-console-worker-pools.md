@@ -16,12 +16,12 @@
 
 ## Task 1: Contract and safe client
 
-- [ ] Add failing OpenAPI contract tests for production profile, queue-binding CRUD/status and stage desired-binding GET/PUT. Sync exact pinned API slices into `api/openapi.yaml`, regenerate types, and make typecheck GREEN.
-- [ ] Add account/app-scoped abortable read queries for bindings/status and project/environment/workload-scoped stage reads. Add explicit production mutations with no stage query selector. Test keys, cancellation and exact wire shapes RED→GREEN; commit contract and client separately.
+- [x] Add failing OpenAPI contract tests for production profile, queue-binding CRUD/status and stage desired-binding GET/PUT. Sync exact pinned API slices into `api/openapi.yaml`, regenerate types, and make typecheck GREEN.
+- [x] Add account/app-scoped abortable read queries for bindings/status and project/environment/workload-scoped stage reads. Add explicit production mutations with no stage query selector. Test keys, cancellation and exact wire shapes RED→GREEN; commit contract and client separately.
 
 ## Task 2: Production consumer journey
 
-- [ ] Add App Automate → Queues → Consumers and an entry from global Queues. Show durable binding mode/class/enabled, consumer state, liveness, poll age, lag, queue depth/in-flight/dead-letter separately. Test active+stale, active+not_observed, paused, external pull and read failure before UI.
+- [x] Add App Automate → Queues → Consumers and an entry from global Queues. Show durable binding mode/class/enabled, consumer state, liveness, poll age, lag, queue depth/in-flight/dead-letter separately. Test active+stale, active+not_observed, paused, external pull and read failure before UI.
 - [ ] Add reviewed production create/edit/pause/delete. Explicitly select pull versus push. Re-read app, capability, account, bindings and the affected binding before writes; keep operation identity for idempotent create and reconcile ambiguous responses via read before a new attempt. Do not claim queue delivery from accepted configuration. Test Free denial, conflicts, context changes, 409, ambiguous creation and status recovery.
 - [ ] Offer the simple profile only when a characterized worker/job supports it and the user explicitly selects platform push; review the current default binding, queue, scaling target and `force` replacement. Test conflicting default, no force by default and replacement consent. Commit bounded consumer behavior.
 

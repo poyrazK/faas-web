@@ -8,15 +8,21 @@ import {
 import { Button } from '@/components/ui/button';
 import { Panel } from './primitives';
 import { QueueConsumerControls } from './queue-consumer-controls';
+import { QueueBindingEditor } from './queue-binding-editor';
+import { QueueBindingOrphan } from './queue-binding-orphan';
+import { listQueueBindingWrites } from '@/lib/queue-binding-write';
+import type { components } from '@/lib/api/schema';
 
 function ConsumerStatus({
   accountId,
   slug,
   binding,
+  plan,
 }: {
   accountId: string;
   slug: string;
   binding: QueueBinding;
+  plan?: components['schemas']['CapabilitiesResponse']['plan'];
 }) {
   const status = useQueueBindingStatus(accountId, slug, binding.id);
   const evidence = status.data;
@@ -54,6 +60,13 @@ function ConsumerStatus({
             Depth {evidence.depth} · In flight {evidence.in_flight} · Dead letter{' '}
             {evidence.dead_letter}
           </p>
+          {evidence.lag_messages != null && (
+            <p>
+              Lag {evidence.lag_messages} messages
+              {evidence.lag_age_seconds != null &&
+                ` · Oldest lag ${evidence.lag_age_seconds} seconds`}
+            </p>
+          )}
           <p>Observed at {evidence.generated_at}</p>
           <Button variant="outline" onClick={() => void status.refetch()}>
             Refresh status
@@ -61,6 +74,9 @@ function ConsumerStatus({
         </div>
       ) : (
         <p role="status">Consumer status was not returned.</p>
+      )}
+      {plan && (
+        <QueueBindingEditor accountId={accountId} plan={plan} slug={slug} binding={binding} />
       )}
     </li>
   );
@@ -71,6 +87,12 @@ export function QueueConsumers({ slug }: { slug: string }) {
   const accountId = account?.id ?? '';
   const capability = useCapability('worker-pools');
   const list = useQueueBindings(accountId, slug);
+  const orphanWrites =
+    list.isPending || list.error
+      ? []
+      : listQueueBindingWrites(accountId, slug).filter(
+          (write) => !list.data?.some((binding) => binding.id === write.bindingId)
+        );
   return (
     <Panel
       title="Queue consumers"
@@ -97,6 +119,11 @@ export function QueueConsumers({ slug }: { slug: string }) {
                 accountId={accountId}
                 slug={slug}
                 binding={binding}
+                plan={
+                  capability.accountId === accountId && capability.state === 'available'
+                    ? account?.plan
+                    : undefined
+                }
               />
             ))}
           </ul>
@@ -115,6 +142,12 @@ export function QueueConsumers({ slug }: { slug: string }) {
               bindings={list.data ?? []}
             />
           )}
+        {capability.accountId === accountId &&
+          capability.state === 'available' &&
+          account?.plan &&
+          orphanWrites.map((write) => (
+            <QueueBindingOrphan key={write.bindingId} write={write} plan={account.plan} />
+          ))}
         <p className="text-xs text-muted-foreground">
           Pull workers poll and acknowledge externally. Push delivery invokes the configured
           handler; accepted configuration does not prove that it is processing messages. Each

@@ -31,6 +31,12 @@ vi.mock('@/lib/api/queue-bindings', () => ({
 vi.mock('./queue-consumer-controls', () => ({
   QueueConsumerControls: () => null,
 }));
+vi.mock('./queue-binding-editor', () => ({
+  QueueBindingEditor: () => null,
+}));
+vi.mock('./queue-binding-orphan', () => ({
+  QueueBindingOrphan: () => null,
+}));
 const { QueueConsumers } = await import('./queue-consumers');
 
 beforeEach(() => {
@@ -63,6 +69,8 @@ beforeEach(() => {
       consumer_state: 'active',
       consumer_liveness: 'stale',
       last_poll_at: '2026-10-10T12:00:00Z',
+      lag_messages: 4,
+      lag_age_seconds: 19,
       depth: 5,
       in_flight: 2,
       dead_letter: 1,
@@ -89,6 +97,7 @@ it('keeps configured state separate from stale push liveness and external pull o
   expect(screen.getByText(/exports · pull worker/)).toBeInTheDocument();
   expect(screen.getByText(/External pull consumers are not observed/)).toBeVisible();
   expect(screen.getByText(/Depth 5 · In flight 2 · Dead letter 1/)).toBeVisible();
+  expect(screen.getByText(/Lag 4 messages · Oldest lag 19 seconds/)).toBeVisible();
 });
 
 it('shows a paused consumer without claiming a live handler', () => {
