@@ -329,6 +329,13 @@ export function EdgeRuleDialog({
               Account or app selection changed. Close and reopen this rule before saving.
             </p>
           )}
+          {kind === 'cache' && contextCurrent && !canCache && (
+            <CapabilityNotice
+              capability={cacheCapability.capability}
+              state={cacheCapability.state}
+              onRetry={cacheCapability.refresh}
+            />
+          )}
           {editing && (
             <p className="text-xs text-muted-foreground">
               Kind is <span className="font-mono text-foreground">{kind}</span> and cannot be

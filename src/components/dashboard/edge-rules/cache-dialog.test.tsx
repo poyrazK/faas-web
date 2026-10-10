@@ -144,6 +144,24 @@ it('does not submit an opened cache editor after the account changes', async () 
   expect(state.update).not.toHaveBeenCalled();
 });
 
+it('explains a disabled save when cache availability fails in an open editor', async () => {
+  const view = mount(cacheRule);
+  state.capability = 'registry-error';
+  view.rerender(
+    <EdgeRuleDialog
+      open
+      onClose={vi.fn()}
+      rule={cacheRule}
+      slug="api"
+      apps={[{ slug: 'api' }]}
+      nextPriority={10}
+    />
+  );
+  expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
+  await waitFor(() => expect(screen.getByText('Availability could not be checked')).toBeVisible());
+  expect(screen.getByRole('button', { name: 'Retry capabilities' })).toBeInTheDocument();
+});
+
 it('persists an edited cache window without dropping its method or vary choices', async () => {
   mount(cacheRule);
   const fresh = screen.getByLabelText(/Fresh for \(seconds\)/);
