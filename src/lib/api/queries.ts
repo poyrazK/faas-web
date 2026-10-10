@@ -3446,9 +3446,9 @@ export function useRestorePostgresDatabase() {
   });
 }
 
-export function usePostgresBindings(id: string) {
-  return useQuery({
-    queryKey: [...postgresKey, id, 'bindings'],
+export function postgresBindingsOptions(id: string) {
+  return queryOptions({
+    queryKey: [...postgresKey, id, 'bindings'] as const,
     queryFn: () =>
       unwrap(api.GET('/v1/postgres/databases/{id}/bindings', { params: { path: { id } } })),
     enabled: Boolean(id),
@@ -3459,6 +3459,10 @@ export function usePostgresBindings(id: string) {
         ? 5_000
         : false,
   });
+}
+
+export function usePostgresBindings(id: string) {
+  return useQuery(postgresBindingsOptions(id));
 }
 
 export function usePostgresBinding(id: string) {

@@ -2023,6 +2023,44 @@ function s3For(slug: string, bucket: string) {
   return bucketS3.get(key)!;
 }
 
+route('GET', '/v1/apps/{slug}/buckets', ({ params }) => {
+  const a = app(params.slug);
+  return {
+    items: db.buckets.get(a.slug) ?? [],
+    enabled: process.env.MOCK_BUCKETS !== 'off',
+    regions: ['eu-central'],
+    default_region: 'eu-central',
+    max_upload_bytes: 5 * 1024 ** 3,
+    max_buckets_per_app: db.BUCKETS_PER_APP,
+  };
+});
+route('POST', '/v1/apps/{slug}/buckets', ({ params, body }) => {
+  const a = app(params.slug);
+  if (process.env.MOCK_BUCKETS === 'off')
+    throw new Problem(403, 'object_storage_unavailable', 'Object storage is not enabled.');
+  const name = String(body.name ?? '');
+  if (!/^[a-z][a-z0-9-]{0,62}$/.test(name))
+    throw new Problem(
+      400,
+      'object_storage_invalid',
+      'Bucket names are lowercase letters, digits and dashes.'
+    );
+  const list = db.buckets.get(a.slug) ?? [];
+  if (list.some((b) => b.name === name))
+    throw new Problem(409, 'object_storage_conflict', `A bucket named "${name}" already exists.`);
+  if (list.length >= db.BUCKETS_PER_APP)
+    throw new Problem(409, 'object_storage_conflict', 'This app has reached its bucket limit.');
+  const created = {
+    id: db.id(),
+    name,
+    scope: String(body.scope ?? 'default'),
+    region: String(body.region ?? 'eu-central'),
+    state: 'ready' as const,
+    created_at: new Date().toISOString(),
+  };
+  db.buckets.set(a.slug, [...list, created]);
+  return status(201, created);
+});
 route('GET', '/v1/apps/{slug}/buckets/{bucket}/access-grants', ({ params }) => ({
   items: grantsFor(app(params.slug).slug, params.bucket),
 }));
@@ -2889,7 +2927,9 @@ route('POST', '/v1/domains', ({ body }) => {
     .trim();
   if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(domain)) throw new Problem(400, 'invalid_domain');
   if (db.domains.some((d) => d.domain === domain)) throw new Problem(409, 'domain_exists');
-  const a = db.appBySlug(String(body.app_slug ?? '')) ?? db.apps[0];
+  // The real contract is `{domain, app_id}`; an unknown app is a 404, not the first app.
+  const a = db.apps.find((x) => x.id === body.app_id);
+  if (!a) throw new Problem(404, 'app_not_found', 'No app with that id.');
   const created = {
     domain,
     app_id: a.id,
