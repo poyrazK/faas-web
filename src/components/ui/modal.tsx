@@ -104,9 +104,9 @@ export function Modal({
                   }
             }
             transition={{ duration: reduce ? 0 : 0.18, ease: EASE }}
-            className={`relative w-full ${width} overflow-hidden rounded-xl border border-border bg-popover shadow-elevation-3 outline-none`}
+            className={`relative flex max-h-[calc(100dvh-2rem)] w-full ${width} flex-col overflow-hidden rounded-xl border border-border bg-popover shadow-elevation-3 outline-none`}
           >
-            <header className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
+            <header className="flex shrink-0 items-start justify-between gap-4 border-b border-border px-5 py-4">
               <div>
                 <h2 className="text-sm font-semibold tracking-tight">{title}</h2>
                 {description && (
@@ -128,10 +128,10 @@ export function Modal({
               </button>
             </header>
 
-            {children && <div className="px-5 py-4">{children}</div>}
+            {children && <div className="min-h-0 overflow-y-auto px-5 py-4">{children}</div>}
 
             {footer && (
-              <footer className="flex justify-end gap-2 border-t border-border px-5 py-3.5">
+              <footer className="flex shrink-0 justify-end gap-2 border-t border-border px-5 py-3.5">
                 {footer}
               </footer>
             )}

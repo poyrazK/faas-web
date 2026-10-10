@@ -253,6 +253,15 @@ it('separates purge acceptance from the cache revision applying in the mock runt
   expect(pending.body.response_cache.state).toBe('pending');
   expect((await get(`/v1/apps/${slug}/policy/status`)).body.response_cache.state).toBe('active');
 });
+it('keeps mock cache purges exclusive and validates cache tags', async () => {
+  const apps = await get('/v1/apps');
+  const slug = apps.body[0].slug;
+  const send = (query: string) =>
+    fetch(`${origin}/v1/apps/${slug}/cache${query}`, { method: 'DELETE' });
+  expect((await send('?tag=Product%3A42')).status).toBe(204);
+  expect((await send('?path=%2Fproducts%2F*&tag=Product%3A42')).status).toBe(422);
+  expect((await send('?tag=bad%20tag')).status).toBe(422);
+});
 it('serves durable project inventory/detail and hides unknown project identities', async () => {
   const inventory = await get('/v1/projects');
   expect(inventory.response.status).toBe(200);

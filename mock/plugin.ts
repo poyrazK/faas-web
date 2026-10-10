@@ -2049,8 +2049,15 @@ route('GET', '/v1/apps/{slug}/debug/requests/{req_id}/evidence', ({ params }) =>
 route('DELETE', '/v1/apps/{slug}/cache', ({ params, query }) => {
   const a = app(params.slug);
   const path = query.get('path');
-  if (path !== null && !path.startsWith('/'))
+  const tag = query.get('tag');
+  if (path !== null && tag !== null)
+    throw new Problem(422, 'validation_failed', 'Path and tag are mutually exclusive.');
+  if (path !== null && path !== '*' && !path.startsWith('/'))
     throw new Problem(422, 'validation_failed', 'a path glob starts with "/".');
+  if (path !== null && new TextEncoder().encode(path).length > 1024)
+    throw new Problem(422, 'validation_failed', 'a path glob is at most 1024 bytes.');
+  if (tag !== null && (tag.length > 128 || !/^[A-Za-z0-9._:/-]+$/.test(tag)))
+    throw new Problem(422, 'validation_failed', 'a cache tag is invalid.');
   advancePolicy(a.id, ['response_cache']);
   return NO_CONTENT;
 });
@@ -4633,7 +4640,7 @@ route('GET', '/v1/apps/{slug}/edge-rules', ({ params }) => {
 });
 
 /** jwt and ip are paid; geo is allowed on free with a tighter quota. */
-const PAID_KINDS = new Set(['jwt', 'ip']);
+const PAID_KINDS = new Set(['jwt', 'ip', 'cache']);
 const QUOTA_PER_APP = 12;
 const FREE_GEO_QUOTA = 2;
 

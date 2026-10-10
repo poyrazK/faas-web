@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { useToast } from '@/components/ui/toast';
 import { ApiError, errorMessage } from '@/lib/api/errors';
+import { useCapability } from '@/lib/api/capabilities';
+import { CapabilityNotice } from '../capability-notice';
 import { InlinePhase, queryPhase } from '../primitives';
 import {
   useCreateEdgeRule,
@@ -31,6 +33,7 @@ import { KINDS, KIND_ORDER, type ActionMap, type Kind } from './kinds';
  */
 
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as const;
+const CACHE_METHODS = ['GET', 'HEAD'] as const;
 
 /**
  * The match grammar, as the spec documents it: host is a glob where `*` is
@@ -41,7 +44,7 @@ const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as 
  */
 const HOST_GLOB = /^(\*|(\*\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*)$/i;
 
-function validateMatch(m: Match): Record<string, string> {
+function validateMatch(m: Match, kind: Kind): Record<string, string> {
   const errors: Record<string, string> = {};
   const host = m.match_host.trim();
   const path = m.match_path.trim();
@@ -53,6 +56,12 @@ function validateMatch(m: Match): Record<string, string> {
   else if (path.length > 2048) errors.match_path = 'Paths are at most 2048 characters.';
   else if (path.includes('*') && !path.endsWith('*'))
     errors.match_path = 'Only a trailing * is allowed — it matches everything beneath.';
+  if (
+    kind === 'cache' &&
+    (!m.match_methods.length ||
+      m.match_methods.some((method) => method !== 'GET' && method !== 'HEAD'))
+  )
+    errors.match_methods = 'Cache rules must match GET, HEAD, or both.';
   return errors;
 }
 
@@ -86,6 +95,17 @@ export function EdgeRuleDialog({
 }: EdgeRuleDialogProps) {
   const { toast } = useToast();
   const { account } = useAuth();
+  const contextIdentity = `${account?.id ?? ''}:${slug}:${rule?.id ?? 'new'}`;
+  const [openedFor] = useState(contextIdentity);
+  const contextCurrent =
+    openedFor === contextIdentity && (!rule || rule.account_id === account?.id);
+  const cacheCapability = useCapability('declarative-response-caching');
+  const canCache =
+    contextCurrent &&
+    Boolean(account?.id) &&
+    cacheCapability.accountId === account?.id &&
+    cacheCapability.state === 'available' &&
+    account?.plan !== 'free';
   const create = useCreateEdgeRule();
   const update = useUpdateEdgeRule();
   const editing = rule !== null;
@@ -136,20 +156,24 @@ export function EdgeRuleDialog({
   }
 
   const def = kind ? KINDS[kind] : null;
-  const planAllows = (k: Kind) => !KINDS[k].paid || (account?.plan ?? 'free') !== 'free';
+  const planAllows = (k: Kind) =>
+    k === 'cache' ? canCache : !KINDS[k].paid || (account?.plan ?? 'free') !== 'free';
 
   const pick = (next: Kind) => {
     setKind(next);
     setAction(KINDS[next].empty() as ActionMap[Kind]);
+    if (next === 'cache') setMatch((current) => ({ ...current, match_methods: ['GET', 'HEAD'] }));
     setFieldErrors({});
     setProblem(null);
   };
 
   const submit = () => {
     if (!kind || !def || !action) return;
+    if (!contextCurrent) return;
+    if (kind === 'cache' && !canCache) return;
     // The match block and then the kind's own rules; the server is the
     // backstop, not the plan.
-    const local = { ...validateMatch(match), ...def.validate(action as never) };
+    const local = { ...validateMatch(match, kind), ...def.validate(action as never) };
     if (Object.keys(local).length) {
       setFieldErrors(local);
       return;
@@ -233,7 +257,11 @@ export function EdgeRuleDialog({
             <Button variant="ghost" size="sm" onClick={onClose}>
               Cancel
             </Button>
-            <Button size="sm" onClick={submit} disabled={pending}>
+            <Button
+              size="sm"
+              onClick={submit}
+              disabled={pending || !contextCurrent || (kind === 'cache' && !canCache)}
+            >
               {pending ? 'Saving…' : editing ? 'Save changes' : 'Create rule'}
             </Button>
           </>
@@ -267,7 +295,11 @@ export function EdgeRuleDialog({
                   )}
                 </span>
                 <span className="text-xs leading-relaxed text-muted-foreground">
-                  {allowed ? KINDS[k].desc : 'Not on the free plan.'}
+                  {allowed
+                    ? KINDS[k].desc
+                    : k === 'cache'
+                      ? 'Requires confirmed response-cache availability.'
+                      : 'Not on the free plan.'}
                 </span>
               </button>
             );
@@ -280,9 +312,30 @@ export function EdgeRuleDialog({
               </Link>
             </p>
           )}
+          {!canCache && (
+            <div className="sm:col-span-2">
+              <CapabilityNotice
+                capability={cacheCapability.capability}
+                state={cacheCapability.state}
+                onRetry={cacheCapability.refresh}
+              />
+            </div>
+          )}
         </div>
       ) : (
         <div className="flex flex-col gap-5">
+          {!contextCurrent && (
+            <p role="status" className="text-xs text-muted-foreground">
+              Account or app selection changed. Close and reopen this rule before saving.
+            </p>
+          )}
+          {kind === 'cache' && contextCurrent && !canCache && (
+            <CapabilityNotice
+              capability={cacheCapability.capability}
+              state={cacheCapability.state}
+              onRetry={cacheCapability.refresh}
+            />
+          )}
           {editing && (
             <p className="text-xs text-muted-foreground">
               Kind is <span className="font-mono text-foreground">{kind}</span> and cannot be
@@ -313,6 +366,11 @@ export function EdgeRuleDialog({
               {problem.message} Try a different priority or a narrower path.
             </div>
           )}
+          {problem && problem.status !== 402 && problem.code !== 'edge_rule_conflict' && (
+            <p role="alert" className="text-xs text-[color:var(--status-critical)]">
+              {errorMessage(problem)}
+            </p>
+          )}
 
           <section className="flex flex-col gap-4">
             <p className="label-mono text-muted-foreground">Match</p>
@@ -336,8 +394,13 @@ export function EdgeRuleDialog({
             </div>
             <ChipSet
               label="Methods"
-              hint="None selected matches every method."
-              options={METHODS}
+              hint={
+                kind === 'cache'
+                  ? 'Cache rules match GET, HEAD, or both.'
+                  : 'None selected matches every method.'
+              }
+              error={fieldErrors.match_methods}
+              options={kind === 'cache' ? CACHE_METHODS : METHODS}
               value={match.match_methods as (typeof METHODS)[number][]}
               onChange={(match_methods) => setMatch({ ...match, match_methods })}
             />

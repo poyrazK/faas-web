@@ -36,6 +36,22 @@ it('does not mark a 204 purge applied when cache convergence is pending', () => 
   expect(screen.getByText('Pending')).toBeVisible();
   expect(screen.queryByText('Applied')).not.toBeInTheDocument();
 });
+it('marks a purge unverified when its runtime status read fails', () => {
+  render(
+    <PolicyStatusView
+      receipt={{
+        ...receipt,
+        action: 'purge',
+        components: ['response_cache'],
+        baseline: { response_cache: 4 },
+      }}
+      error={new Error('Status unavailable')}
+    />
+  );
+  expect(screen.getByText('Unverified')).toBeVisible();
+  expect(screen.getByText(/Could not verify runtime state/i)).toBeVisible();
+  expect(screen.queryByText('Applied')).not.toBeInTheDocument();
+});
 it('requires a newer revision than the pre-save read, and never treats missing baseline as applied', () => {
   const view = render(
     <PolicyStatusView
