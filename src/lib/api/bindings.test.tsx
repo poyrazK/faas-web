@@ -3,7 +3,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { api } from './client';
-import { bindingInventoryKey, patchServicePolicy, useBindingInventory } from './bindings';
+import {
+  bindingInventoryKey,
+  patchServicePolicy,
+  policyOwnershipKey,
+  useAppPolicyOwnership,
+  useBindingInventory,
+} from './bindings';
 
 afterEach(() => vi.restoreAllMocks());
 function setup() {
@@ -86,4 +92,36 @@ it('preserves caller null, empty and omitted PATCH meanings without a generic ad
     params: { path: { slug: 'app-a' } },
     body: { service_binding_targets: [], service_binding_policy: 'declared' },
   });
+});
+
+it('blocks standalone edits when an authoritative project workload owns this app', async () => {
+  const get = vi
+    .spyOn(api, 'GET')
+    .mockResolvedValueOnce({
+      data: [
+        { id: 'p0', slug: 'empty', workload_count: 0 },
+        { id: 'p1', slug: 'shop', workload_count: 2 },
+      ],
+      response: new Response(),
+    } as never)
+    .mockResolvedValueOnce({
+      data: { workloads: [{ slug: 'app-a' }] },
+      response: new Response(),
+    } as never);
+  const { wrapper } = setup();
+  const hook = renderHook(() => useAppPolicyOwnership('account-1', 'app-a'), { wrapper });
+  await waitFor(() => expect(hook.result.current.isSuccess).toBe(true));
+  expect(hook.result.current.data).toEqual({ kind: 'project', projectSlug: 'shop' });
+  expect(get).toHaveBeenCalledTimes(2);
+  expect(get).toHaveBeenCalledWith(
+    '/v1/projects',
+    expect.objectContaining({ signal: expect.any(AbortSignal) })
+  );
+  expect(get).toHaveBeenCalledWith(
+    '/v1/projects/{slug}',
+    expect.objectContaining({ params: { path: { slug: 'shop' } }, signal: expect.any(AbortSignal) })
+  );
+  expect(policyOwnershipKey('account-1', 'app-a')).not.toEqual(
+    policyOwnershipKey('account-2', 'app-a')
+  );
 });

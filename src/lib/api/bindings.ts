@@ -24,6 +24,35 @@ export const bindingInventoryKey = (
   deploymentId?: string
 ) => ['account', accountId, 'app', slug, 'bindings', scope ?? null, deploymentId ?? null] as const;
 
+export const policyOwnershipKey = (accountId: string, slug: string) =>
+  ['account', accountId, 'app', slug, 'service-policy-ownership'] as const;
+
+/** The app DTO omits project identity, so verify against account-owned workload lists. */
+export function useAppPolicyOwnership(accountId: string, slug: string) {
+  return useQuery({
+    queryKey: policyOwnershipKey(accountId, slug),
+    queryFn: async ({ signal }) => {
+      const projects = await unwrap(api.GET('/v1/projects', { signal }));
+      const candidates = projects.filter((project) => project.workload_count > 0);
+      if (candidates.length > 100) return { kind: 'unverified' as const };
+      for (const project of candidates) {
+        const detail = await unwrap(
+          api.GET('/v1/projects/{slug}', {
+            params: { path: { slug: project.slug } },
+            signal,
+          })
+        );
+        if (detail.workloads.some((workload) => workload.slug === slug))
+          return { kind: 'project' as const, projectSlug: project.slug };
+      }
+      return { kind: 'standalone' as const };
+    },
+    enabled: Boolean(accountId && slug),
+    retry: retryPolicy,
+    staleTime: 30_000,
+  });
+}
+
 export function useBindingInventory(
   accountId: string,
   slug: string,
