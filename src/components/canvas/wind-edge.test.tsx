@@ -1,7 +1,7 @@
 import { render } from '@testing-library/react';
-import { Position, ReactFlowProvider } from '@xyflow/react';
+import { Position, ReactFlowProvider, type EdgeProps } from '@xyflow/react';
 import { describe, expect, it } from 'vitest';
-import { WindEdge } from './wind-edge';
+import { WindEdge, type WindFlowEdge } from './wind-edge';
 
 const props = {
   id: 'e',
@@ -14,7 +14,7 @@ const props = {
   sourcePosition: Position.Right,
   targetPosition: Position.Left,
   data: { requests24h: 1200 },
-} as never;
+} as unknown as EdgeProps<WindFlowEdge>;
 
 describe('WindEdge', () => {
   it('keeps a hoverable hit area even though React Flow marks the edge inactive', () => {

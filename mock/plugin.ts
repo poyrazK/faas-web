@@ -73,6 +73,55 @@ const status = (code: number, body: unknown) => ({ __status: code, body });
 
 const latency = () => Number(process.env.MOCK_LATENCY ?? 180) + Math.random() * 160;
 
+// --- Canvas wizard support -----------------------------------------------------
+/** `MOCK_CANVAS_EMPTY=1`: seed apps stay hidden until the session creates one. */
+const CANVAS_EMPTY = process.env.MOCK_CANVAS_EMPTY === '1';
+const sessionApps = new Set<string>();
+const visibleApp = (id: string) => !CANVAS_EMPTY || sessionApps.has(id);
+
+type Progressing = {
+  status: string;
+  created_at: string;
+  repo?: string;
+  error_why?: string;
+  error_code?: string;
+  error?: string;
+};
+
+/** Elapsed-time progression for source-ref deployments, so the canvas can watch a real-shaped build. */
+export function advanceDeployment<T extends Progressing>(dep: T, now = Date.now()): T {
+  const ms = now - Date.parse(dep.created_at);
+  const broken = (dep.repo ?? '').includes('broken');
+  if (broken && ms >= 7_000) {
+    return {
+      ...dep,
+      status: 'failed',
+      error: 'build failed',
+      error_why: "Cannot find module './db'",
+      error_code: 'build_failed',
+    };
+  }
+  const status =
+    ms < 2_000 ? 'queued' : ms < 7_000 ? 'building' : ms < 10_000 ? 'deploying' : 'active';
+  return { ...dep, status };
+}
+const progressing = new Map<string, string>(); // deployment id → repo
+function progress(d: db.Deployment): db.Deployment {
+  const repo = progressing.get(d.id);
+  if (repo === undefined) return d;
+  const next = advanceDeployment({
+    ...(d as unknown as Progressing),
+    repo,
+  }) as unknown as db.Deployment;
+  Object.assign(d, next);
+  const a = db.apps.find((x) => x.id === d.app_id);
+  if (a)
+    a.status =
+      next.status === 'active' ? 'active' : next.status === 'failed' ? 'error' : 'deploying';
+  if (next.status === 'active' || next.status === 'failed') progressing.delete(d.id);
+  return d;
+}
+
 // --- Public status -----------------------------------------------------------
 
 route('GET', '/v1/status', ({ res }) => {
@@ -339,7 +388,10 @@ route('POST', '/v1/auth/logout', ({ res }) => {
   return NO_CONTENT;
 });
 
-route('GET', '/v1/account', () => ({ ...db.account, app_count: db.apps.length }));
+route('GET', '/v1/account', () => ({
+  ...db.account,
+  app_count: db.apps.filter((a) => visibleApp(a.id)).length,
+}));
 const SLO_WINDOWS = new Set(['1h', '24h', '7d']);
 // Keep analytics screenshots stable without aging unrelated lifecycle fixtures.
 const ANALYTICS_NOW = Date.parse('2026-09-05T13:00:00.123Z');
@@ -426,7 +478,7 @@ function app(slug: string) {
   return found;
 }
 
-route('GET', '/v1/apps', () => db.apps);
+route('GET', '/v1/apps', () => db.apps.filter((a) => visibleApp(a.id)));
 route('GET', '/v1/apps/metrics', ({ query }) => {
   const range = query.get('range') ?? '24h';
   return {
@@ -454,6 +506,7 @@ route('POST', '/v1/apps', ({ body }) => {
     url: `https://${slug}.gregale.app`,
   };
   db.apps.push(created);
+  sessionApps.add(created.id);
   return status(201, created);
 });
 route('GET', '/v1/apps/{slug}', ({ params }) => app(params.slug));
@@ -512,7 +565,7 @@ route('POST', '/v1/apps/{slug}/deployments/source-ref', ({ params, body }) => {
     build_id: db.id(),
     image_digest: `sha256:${db.id()}${db.id()}`,
     kind: 'github',
-    status: 'building',
+    status: 'queued',
     created_at: db.iso(0),
     traffic_percent: 0,
     rollback_on_5xx: false,
@@ -520,6 +573,7 @@ route('POST', '/v1/apps/{slug}/deployments/source-ref', ({ params, body }) => {
     scan: null,
   };
   db.deployments.unshift(dep);
+  progressing.set(dep.id, String(body.repo));
   a.status = 'deploying';
   return status(202, dep);
 });
@@ -2753,6 +2807,7 @@ route('GET', '/v1/apps/{slug}/deployments', ({ params, query }) => {
         deployment.app_id === selected.id &&
         (!before || Date.parse(deployment.created_at) < Date.parse(before))
     )
+    .map(progress)
     .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
   const items = ordered.slice(0, limit);
   return { items, next_before: ordered.length > limit ? items.at(-1)!.created_at : null };
@@ -2778,7 +2833,7 @@ route('GET', '/v1/deployments/latest-by-app', () => {
 route('GET', '/v1/deployments/{id}', ({ params }) => {
   const d = db.deployments.find((x) => x.id === params.id);
   if (!d) throw new Problem(404, 'deployment_not_found');
-  return d;
+  return progress(d);
 });
 route('GET', '/v1/builds', () => ({ items: db.builds }));
 route('GET', '/v1/builds/{id}', ({ params }) => {
@@ -2787,8 +2842,9 @@ route('GET', '/v1/builds/{id}', ({ params }) => {
   return b;
 });
 route('GET', '/v1/deployments/{id}/logs', ({ params, query, req, res }) => {
-  const dep = db.deployments.find((d) => d.id === params.id);
-  if (!dep) throw new Problem(404, 'deployment_not_found');
+  const found = db.deployments.find((d) => d.id === params.id);
+  if (!found) throw new Problem(404, 'deployment_not_found');
+  const dep = progress(found);
   const build = db.builds.find((b) => b.deployment_id === dep.id);
   const app = db.apps.find((a) => a.id === dep.app_id);
 
@@ -2812,7 +2868,10 @@ route('GET', '/v1/deployments/{id}/logs', ({ params, query, req, res }) => {
 
   // A finished build has nothing more to say; a running one keeps going and
   // ends when it lands, exactly like the real stream.
-  if ((build?.status ?? dep.status) !== 'running' && dep.status !== 'building') {
+  if (
+    (build?.status ?? dep.status) !== 'running' &&
+    !['queued', 'building', 'deploying'].includes(dep.status)
+  ) {
     send('end', '');
     res.end();
     return undefined;
@@ -2920,7 +2979,7 @@ route('GET', '/v1/deployments/{id}/scan', ({ params }) => {
   };
 });
 
-route('GET', '/v1/domains', () => db.domains);
+route('GET', '/v1/domains', () => db.domains.filter((d) => visibleApp(d.app_id)));
 route('POST', '/v1/domains', ({ body }) => {
   const domain = String(body.domain ?? '')
     .toLowerCase()
@@ -3709,7 +3768,7 @@ route('POST', '/v1/triggers/{id}/records/{rid}/retry', ({ params }) => {
 
 route('POST', '/v1/triggers/{id}/records/{rid}/drop', () => NO_CONTENT);
 
-route('GET', '/v1/crons', () => db.crons);
+route('GET', '/v1/crons', () => db.crons.filter((c) => visibleApp(c.app_id)));
 route('POST', '/v1/crons', ({ body }) => {
   const a = db.apps.find((x) => x.id === body.app_id);
   if (!a) throw new Problem(404, 'app_not_found', 'No app with that id.');
