@@ -6709,6 +6709,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/apps/{slug}/queue-workload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Configure the simple queue workload profile.
+         * @description Idempotently creates or updates the app's default push queue
+         *     binding, consumer projection, and queue-depth scaling policy.
+         *     Zero-valued request fields use platform defaults; advanced
+         *     resources remain available through the individual APIs.
+         */
+        put: operations["configureQueueWorkload"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/queue-bindings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List first-class queue bindings for an app.
+         * @description Returns the durable mappings between logical queues and worker/job
+         *     workloads. Bindings are the configuration source for push consumers
+         *     and queue-depth autoscaling; queue messages remain under /queues/*.
+         *     Active bindings are returned by default. Set include_retired=true to
+         *     retrieve retained identities and retirement timestamps for reviewed recovery.
+         */
+        get: operations["listQueueBindings"];
+        put?: never;
+        /** Create a first-class queue binding. */
+        post: operations["createQueueBinding"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/queue-bindings/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        /** Get one queue binding. */
+        get: operations["getQueueBinding"];
+        put?: never;
+        post?: never;
+        /** Delete one queue binding. */
+        delete: operations["deleteQueueBinding"];
+        options?: never;
+        head?: never;
+        /** Update one queue binding. */
+        patch: operations["updateQueueBinding"];
+        trace?: never;
+    };
+    "/v1/apps/{slug}/queue-bindings/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read queue binding consumer state and queue counters.
+         * @description Returns the durable push-consumer projection and binding-scoped
+         *     queue counters. `consumer_state` is control-plane state
+         *     (`active`, `paused`, `not_configured`, or `external`), while
+         *     `consumer_liveness` and the poll timestamps expose the scheduler's
+         *     last-known health. A push snapshot is stale after 30 seconds without
+         *     a completed poll; pull bindings report `external` liveness.
+         */
+        get: operations["getQueueBindingStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/apps/{slug}/queues/receive": {
         parameters: {
             query?: never;
@@ -9023,6 +9125,47 @@ export interface paths {
          */
         get: operations["getProjectEnvironmentState"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{slug}/environments/{environment}/workloads/{workload}/queue-bindings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project containing the workload and stage. */
+                slug: string;
+                /** @description Registered stage. Production is managed through the app queue-bindings API. */
+                environment: string;
+                /** @description Workload application slug belonging to this project. */
+                workload: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read a stage workload's complete desired queue configuration.
+         * @description Returns logical definitions and the current workload revision. A missing
+         *     collection returns 409 environment_queue_collection_unavailable and never
+         *     inherits production queues. X-Gregale-Workload-Revision identifies the
+         *     head to use when initializing or replacing the collection.
+         *     Consumer activation is currently unavailable; saved definitions do not
+         *     activate delivery or qualify the stage for promotion.
+         */
+        get: operations["getProjectEnvironmentQueueBindings"];
+        /**
+         * Replace a stage workload's complete desired queue configuration.
+         * @description Requires expected_revision to match the complete workload settings head,
+         *     with zero for an uninitialized workload. An explicit empty bindings list
+         *     removes all stage definitions. Stale revisions and protected stages
+         *     return 409, including protected no-op writes. Definitions have logical
+         *     names and no production consumer IDs. Existing deployments retain their
+         *     pinned definitions. Consumer activation is currently unavailable.
+         */
+        put: operations["replaceProjectEnvironmentQueueBindings"];
         post?: never;
         delete?: never;
         options?: never;
@@ -17916,6 +18059,146 @@ export interface components {
             /** @description ADR-134 PR-B. Retention horizon in seconds. NULL/0 means 'use plan default' (Limits.MaxAsyncResultRetentionSeconds). */
             retention_seconds?: number | null;
         };
+        /**
+         * @description Declarative setup for the common queue worker profile. The server
+         *     reconciles the default push binding, consumer projection, and
+         *     queue-depth scaling policy as one idempotent operation.
+         */
+        QueueWorkloadProfileRequest: {
+            /** @default default */
+            queue_name: string;
+            /**
+             * @description Defaults to the app workload class.
+             * @enum {string}
+             */
+            workload_class?: "worker" | "job";
+            /** @default 1 */
+            max_concurrency: number;
+            /** @default 10 */
+            target_depth: number;
+            /** @description Optional per-binding retry curve. */
+            retry_policy?: components["schemas"]["RetryPolicyDTO"];
+            /**
+             * @description Replace an existing default binding that points at another queue.
+             * @default false
+             */
+            force: boolean;
+        };
+        /** @description The converged queue binding and queue-depth scaling policy. */
+        QueueWorkloadProfileResponse: {
+            app: components["schemas"]["AppResponse"];
+            binding: components["schemas"]["QueueBindingResponse"];
+            scaling_policy: components["schemas"]["ScalingPolicy"];
+            /** @description True when the default binding was created by this request. */
+            created: boolean;
+        };
+        /** @description Durable queue mapping. HTTP functions may use push mode; pull mode remains for worker/job workloads. */
+        CreateQueueBindingRequest: {
+            /** @description Immutable registered project environment. The binding captures its catalog UUID; omitted creates a shared legacy binding. */
+            environment?: string;
+            name: string;
+            queue_name: string;
+            /**
+             * @default pull
+             * @enum {string}
+             */
+            mode: "pull" | "push";
+            /**
+             * @default worker
+             * @enum {string}
+             */
+            workload_class: "worker" | "job" | "http";
+            /** @default true */
+            enabled: boolean;
+            /** @default 1 */
+            max_concurrency: number;
+            /** @description Optional per-binding retry curve; zero values use platform defaults. */
+            retry_policy?: components["schemas"]["RetryPolicyDTO"];
+        };
+        /** @description Partial queue-binding update; omitted fields are unchanged. */
+        UpdateQueueBindingRequest: {
+            queue_name?: string;
+            /** @enum {string} */
+            mode?: "pull" | "push";
+            /** @enum {string} */
+            workload_class?: "worker" | "job" | "http";
+            enabled?: boolean;
+            max_concurrency?: number;
+            retry_policy?: components["schemas"]["RetryPolicyDTO"];
+        };
+        /** @description Durable queue-to-workload binding. */
+        QueueBindingResponse: {
+            /** @description Immutable project environment slug; omitted for a shared legacy binding. */
+            environment?: string;
+            /**
+             * Format: uuid
+             * @description Original catalog environment identity; omitted for a shared legacy binding.
+             */
+            environment_id?: string;
+            id: string;
+            app_id: string;
+            /** Format: uuid */
+            account_id: string;
+            name: string;
+            queue_name: string;
+            /** @enum {string} */
+            mode: "pull" | "push";
+            /** @enum {string} */
+            workload_class: "worker" | "job" | "http";
+            enabled: boolean;
+            max_concurrency: number;
+            retry_policy?: components["schemas"]["RetryPolicyDTO"];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /**
+             * Format: date-time
+             * @description Retirement hold timestamp; present only for a retained retired binding.
+             */
+            retired_at?: string;
+        };
+        /** @description Read-only queue binding consumer projection and queue counters. */
+        QueueBindingStatusResponse: {
+            /** @description Captured environment slug of the observed consumer; absent for legacy shared consumers. */
+            environment?: string;
+            /**
+             * Format: uuid
+             * @description Original environment catalog UUID of this consumer status; absent for a shared legacy consumer.
+             */
+            environment_id?: string;
+            binding_id: string;
+            name: string;
+            queue_name: string;
+            /** @enum {string} */
+            mode: "pull" | "push";
+            /** @enum {string} */
+            workload_class: "worker" | "job" | "http";
+            enabled: boolean;
+            /** @enum {string} */
+            consumer_state: "active" | "paused" | "not_configured" | "external";
+            consumer_state_reason?: string;
+            /** @enum {string} */
+            consumer_liveness: "healthy" | "degraded" | "stale" | "not_observed" | "external";
+            trigger_id?: string;
+            /** Format: date-time */
+            last_poll_at?: string | null;
+            /** Format: date-time */
+            last_success_at?: string | null;
+            /** Format: date-time */
+            last_error_at?: string | null;
+            last_error?: string;
+            lag_messages?: number | null;
+            lag_age_seconds?: number | null;
+            depth: number;
+            in_flight: number;
+            dead_letter: number;
+            /** Format: date-time */
+            oldest_pending_at?: string | null;
+            oldest_pending_age_seconds?: number | null;
+            /** Format: date-time */
+            generated_at: string;
+        };
         /** @description Body for POST /v1/apps/{slug}/queues/send. Cap-checked against MaxQueueDepth. */
         QueueSendRequest: {
             payload?: {
@@ -17923,12 +18206,16 @@ export interface components {
             };
         };
         /**
-         * @description ADR-134 PR-B. Wire shape for dispatch.RetryPolicy. The handler
-         *     decodes this DTO into a dispatch.RetryPolicy before persisting
-         *     to invocations.retry_policy JSONB. Lives in pkg/api so the SDK
-         *     can type the override without importing pkg/dispatch directly.
+         * @description ADR-134 PR-B. Wire shape for dispatch.RetryPolicy. max_attempts
+         *     is a requested total-attempt count; zero inherits the applicable
+         *     account plan and never means unlimited. Durable invocation
+         *     producers materialize the effective plan-capped value, and the
+         *     scheduler re-clamps it at dispatch time to account for later plan
+         *     downgrades. Lives in pkg/api so the SDK can type the policy
+         *     without importing pkg/dispatch directly.
          */
         RetryPolicyDTO: {
+            /** @description Total delivery attempts including the original. 0 inherits the current plan cap; it never means unlimited. */
             max_attempts?: number;
             base_seconds?: number;
             max_seconds?: number;
@@ -19685,6 +19972,43 @@ export interface components {
             domains: components["schemas"]["ProjectEnvironmentDomainResponse"][];
             routes: components["schemas"]["ProjectEnvironmentRoutePolicyResponse"];
             policies: components["schemas"]["ProjectEnvironmentEdgePolicyResponse"];
+        };
+        /** @description Desired logical queue binding without runtime consumer identity or messages. HTTP consumers require push mode and a function workload. */
+        ProjectEnvironmentQueueBinding: {
+            name: string;
+            queue_name: string;
+            /** @enum {string} */
+            mode: "pull" | "push";
+            /** @enum {string} */
+            workload_class: "worker" | "job" | "http";
+            enabled: boolean;
+            max_concurrency: number;
+            retry_policy?: components["schemas"]["RetryPolicyDTO"];
+        };
+        /** @description Complete stage queue replacement fenced by the workload revision, not the queue collection clock. */
+        ReplaceProjectEnvironmentQueueBindingsRequest: {
+            /** Format: int64 */
+            expected_revision: number;
+            bindings: components["schemas"]["ProjectEnvironmentQueueBinding"][];
+        };
+        /** @description Desired stage queue definitions. Consumer activation is currently unavailable and these definitions do not enable delivery or qualify promotion. */
+        ProjectEnvironmentQueueBindingsResponse: {
+            environment: string;
+            workload: string;
+            /**
+             * Format: int64
+             * @description Queue collection clock.
+             */
+            revision: number;
+            /**
+             * Format: int64
+             * @description Complete workload revision to use as expected_revision on replacement.
+             */
+            workload_revision: number;
+            config_hash: string;
+            /** @enum {string} */
+            activation_state: "unavailable";
+            bindings: components["schemas"]["ProjectEnvironmentQueueBinding"][];
         };
         /** @description Application-scoped resource that is shared by all environments. */
         ProjectEnvironmentSharedResourceResponse: {
@@ -32370,6 +32694,235 @@ export interface operations {
             429: components["responses"]["TooManyRequests"];
         };
     };
+    configureQueueWorkload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["QueueWorkloadProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description Existing profile converged. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueueWorkloadProfileResponse"];
+                };
+            };
+            /** @description New profile created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueueWorkloadProfileResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    listQueueBindings: {
+        parameters: {
+            query?: {
+                /** @description Include retained retired bindings belonging to this app. */
+                include_retired?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Queue bindings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueueBindingResponse"][];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    createQueueBinding: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description Idempotency key for the POST. Stored for 24h. On replay the server
+                 *     returns the original response with `Idempotent-Replayed: true`.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateQueueBindingRequest"];
+            };
+        };
+        responses: {
+            /** @description Created queue binding. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueueBindingResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getQueueBinding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Queue binding. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueueBindingResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    deleteQueueBinding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Queue binding deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    updateQueueBinding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateQueueBindingRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated queue binding. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueueBindingResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getQueueBindingStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Queue binding status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueueBindingStatusResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
     queueReceive: {
         parameters: {
             query?: never;
@@ -36679,6 +37232,75 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getProjectEnvironmentQueueBindings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project containing the workload and stage. */
+                slug: string;
+                /** @description Registered stage. Production is managed through the app queue-bindings API. */
+                environment: string;
+                /** @description Workload application slug belonging to this project. */
+                workload: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Complete stage-owned desired queue collection. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectEnvironmentQueueBindingsResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    replaceProjectEnvironmentQueueBindings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project containing the workload and stage. */
+                slug: string;
+                /** @description Registered stage. Production is managed through the app queue-bindings API. */
+                environment: string;
+                /** @description Workload application slug belonging to this project. */
+                workload: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReplaceProjectEnvironmentQueueBindingsRequest"];
+            };
+        };
+        responses: {
+            /** @description Stored desired queue definitions and their workload revision. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectEnvironmentQueueBindingsResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             429: components["responses"]["TooManyRequests"];
         };
     };

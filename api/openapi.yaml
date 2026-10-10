@@ -10543,6 +10543,173 @@ paths:
         '413': { $ref: '#/components/responses/PlanSourceBytes' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
 
+  /v1/apps/{slug}/queue-workload:
+    description: Production queue workload profile. Stage environment or scope queries are rejected before changing production resources; stage definitions use the project environment workload queue-bindings endpoint.
+    put:
+      tags: [queues]
+      operationId: configureQueueWorkload
+      summary: Configure the simple queue workload profile.
+      description: |
+        Idempotently creates or updates the app's default push queue
+        binding, consumer projection, and queue-depth scaling policy.
+        Zero-valued request fields use platform defaults; advanced
+        resources remain available through the individual APIs.
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/QueueWorkloadProfileRequest' }
+      responses:
+        '200':
+          description: Existing profile converged.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QueueWorkloadProfileResponse' }
+        '201':
+          description: New profile created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QueueWorkloadProfileResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '402': { $ref: '#/components/responses/PlanFeatureGated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/apps/{slug}/queue-bindings:
+    description: Production queue bindings. Stage environment or scope queries are rejected before production access or idempotent replay. Stage definitions use the project environment workload queue-bindings endpoint.
+    get:
+      tags: [queues]
+      operationId: listQueueBindings
+      summary: List first-class queue bindings for an app.
+      description: |
+        Returns the durable mappings between logical queues and worker/job
+        workloads. Bindings are the configuration source for push consumers
+        and queue-depth autoscaling; queue messages remain under /queues/*.
+        Active bindings are returned by default. Set include_retired=true to
+        retrieve retained identities and retirement timestamps for reviewed recovery.
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - name: include_retired
+          in: query
+          required: false
+          description: Include retained retired bindings belonging to this app.
+          schema: { type: boolean, default: false }
+      responses:
+        '200':
+          description: Queue bindings.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/QueueBindingResponse' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+    post:
+      tags: [queues]
+      operationId: createQueueBinding
+      summary: Create a first-class queue binding.
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateQueueBindingRequest' }
+      responses:
+        '201':
+          description: Created queue binding.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QueueBindingResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/apps/{slug}/queue-bindings/{id}:
+    description: Production queue binding identity. Stage environment or scope queries are rejected; stage definitions use logical names in the project environment workload queue-bindings endpoint.
+    parameters:
+      - $ref: '#/components/parameters/Slug'
+      - $ref: '#/components/parameters/Id32'
+    get:
+      tags: [queues]
+      operationId: getQueueBinding
+      summary: Get one queue binding.
+      responses:
+        '200':
+          description: Queue binding.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QueueBindingResponse' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+    patch:
+      tags: [queues]
+      operationId: updateQueueBinding
+      summary: Update one queue binding.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateQueueBindingRequest' }
+      responses:
+        '200':
+          description: Updated queue binding.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QueueBindingResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+    delete:
+      tags: [queues]
+      operationId: deleteQueueBinding
+      summary: Delete one queue binding.
+      responses:
+        '204': { description: Queue binding deleted. }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/apps/{slug}/queue-bindings/{id}/status:
+    description: Production consumer status. Stage environment or scope queries are rejected before reading production counters.
+    parameters:
+      - $ref: '#/components/parameters/Slug'
+      - $ref: '#/components/parameters/Id32'
+    get:
+      tags: [queues]
+      operationId: getQueueBindingStatus
+      summary: Read queue binding consumer state and queue counters.
+      description: |
+        Returns the durable push-consumer projection and binding-scoped
+        queue counters. `consumer_state` is control-plane state
+        (`active`, `paused`, `not_configured`, or `external`), while
+        `consumer_liveness` and the poll timestamps expose the scheduler's
+        last-known health. A push snapshot is stale after 30 seconds without
+        a completed poll; pull bindings report `external` liveness.
+      responses:
+        '200':
+          description: Queue binding status.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QueueBindingStatusResponse' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
   /v1/apps/{slug}/queues/receive:
     post:
       tags: [queues]
@@ -14304,6 +14471,73 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
 
+  /v1/projects/{slug}/environments/{environment}/workloads/{workload}/queue-bindings:
+    parameters:
+      - name: slug
+        in: path
+        required: true
+        description: Project containing the workload and stage.
+        schema: { type: string }
+      - name: environment
+        in: path
+        required: true
+        description: Registered stage. Production is managed through the app queue-bindings API.
+        schema: { type: string }
+      - name: workload
+        in: path
+        required: true
+        description: Workload application slug belonging to this project.
+        schema: { type: string }
+    get:
+      tags: [projects]
+      operationId: getProjectEnvironmentQueueBindings
+      summary: Read a stage workload's complete desired queue configuration.
+      description: |
+        Returns logical definitions and the current workload revision. A missing
+        collection returns 409 environment_queue_collection_unavailable and never
+        inherits production queues. X-Gregale-Workload-Revision identifies the
+        head to use when initializing or replacing the collection.
+        Consumer activation is currently unavailable; saved definitions do not
+        activate delivery or qualify the stage for promotion.
+      responses:
+        '200':
+          description: Complete stage-owned desired queue collection.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectEnvironmentQueueBindingsResponse' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+    put:
+      tags: [projects]
+      operationId: replaceProjectEnvironmentQueueBindings
+      summary: Replace a stage workload's complete desired queue configuration.
+      description: |
+        Requires expected_revision to match the complete workload settings head,
+        with zero for an uninitialized workload. An explicit empty bindings list
+        removes all stage definitions. Stale revisions and protected stages
+        return 409, including protected no-op writes. Definitions have logical
+        names and no production consumer IDs. Existing deployments retain their
+        pinned definitions. Consumer activation is currently unavailable.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReplaceProjectEnvironmentQueueBindingsRequest' }
+      responses:
+        '200':
+          description: Stored desired queue definitions and their workload revision.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectEnvironmentQueueBindingsResponse' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '402': { $ref: '#/components/responses/PlanFeatureGated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
   /v1/projects/{slug}/environments/{environment}/diff:
     parameters:
       - name: slug
@@ -25281,6 +25515,114 @@ components:
         retention_seconds:
           { type: [integer, "null"], description: "ADR-134 PR-B. Retention horizon in seconds. NULL/0 means 'use plan default' (Limits.MaxAsyncResultRetentionSeconds)." }
 
+    QueueWorkloadProfileRequest:
+      description: |
+        Declarative setup for the common queue worker profile. The server
+        reconciles the default push binding, consumer projection, and
+        queue-depth scaling policy as one idempotent operation.
+      type: object
+      properties:
+        queue_name: { type: string, pattern: '^[a-z][a-z0-9-]{0,62}$', default: default }
+        workload_class: { type: string, enum: [worker, job], description: Defaults to the app workload class. }
+        max_concurrency: { type: integer, minimum: 1, maximum: 10000, default: 1 }
+        target_depth: { type: number, exclusiveMinimum: 0, default: 10 }
+        retry_policy:
+          allOf:
+            - $ref: '#/components/schemas/RetryPolicyDTO'
+          description: Optional per-binding retry curve.
+        force: { type: boolean, default: false, description: Replace an existing default binding that points at another queue. }
+
+    QueueWorkloadProfileResponse:
+      description: The converged queue binding and queue-depth scaling policy.
+      type: object
+      required: [app, binding, scaling_policy, created]
+      properties:
+        app: { $ref: '#/components/schemas/AppResponse' }
+        binding: { $ref: '#/components/schemas/QueueBindingResponse' }
+        scaling_policy: { $ref: '#/components/schemas/ScalingPolicy' }
+        created: { type: boolean, description: True when the default binding was created by this request. }
+
+    CreateQueueBindingRequest:
+      description: Durable queue mapping. HTTP functions may use push mode; pull mode remains for worker/job workloads.
+      type: object
+      required: [name, queue_name]
+      properties:
+        environment: { type: string, pattern: '^[a-z0-9]([a-z0-9-]{0,31}[a-z0-9])?$', description: "Immutable registered project environment. The binding captures its catalog UUID; omitted creates a shared legacy binding." }
+        name: { type: string, pattern: '^[a-z][a-z0-9-]{0,62}$' }
+        queue_name: { type: string, pattern: '^[a-z][a-z0-9-]{0,62}$' }
+        mode: { type: string, enum: [pull, push], default: pull }
+        workload_class: { type: string, enum: [worker, job, http], default: worker }
+        enabled: { type: boolean, default: true }
+        max_concurrency: { type: integer, minimum: 1, maximum: 10000, default: 1 }
+        retry_policy:
+          allOf:
+            - $ref: '#/components/schemas/RetryPolicyDTO'
+          description: Optional per-binding retry curve; zero values use platform defaults.
+
+    UpdateQueueBindingRequest:
+      description: Partial queue-binding update; omitted fields are unchanged.
+      type: object
+      properties:
+        queue_name: { type: string, pattern: '^[a-z][a-z0-9-]{0,62}$' }
+        mode: { type: string, enum: [pull, push] }
+        workload_class: { type: string, enum: [worker, job, http] }
+        enabled: { type: boolean }
+        max_concurrency: { type: integer, minimum: 1, maximum: 10000 }
+        retry_policy:
+          allOf:
+            - $ref: '#/components/schemas/RetryPolicyDTO'
+
+    QueueBindingResponse:
+      description: Durable queue-to-workload binding.
+      type: object
+      required: [id, app_id, account_id, name, queue_name, mode, workload_class, enabled, max_concurrency, created_at, updated_at]
+      properties:
+        environment: { type: string, pattern: '^[a-z0-9]([a-z0-9-]{0,31}[a-z0-9])?$', description: "Immutable project environment slug; omitted for a shared legacy binding." }
+        environment_id: { type: string, format: uuid, description: "Original catalog environment identity; omitted for a shared legacy binding." }
+        id: { type: string, pattern: '^[0-9a-f]{32}$' }
+        app_id: { type: string, pattern: '^[0-9a-f]{32}$' }
+        account_id: { type: string, format: uuid }
+        name: { type: string, pattern: '^[a-z][a-z0-9-]{0,62}$' }
+        queue_name: { type: string, pattern: '^[a-z][a-z0-9-]{0,62}$' }
+        mode: { type: string, enum: [pull, push] }
+        workload_class: { type: string, enum: [worker, job, http] }
+        enabled: { type: boolean }
+        max_concurrency: { type: integer, minimum: 1, maximum: 10000 }
+        retry_policy: { $ref: '#/components/schemas/RetryPolicyDTO' }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        retired_at: { type: string, format: date-time, description: "Retirement hold timestamp; present only for a retained retired binding." }
+
+    QueueBindingStatusResponse:
+      description: Read-only queue binding consumer projection and queue counters.
+      type: object
+      required: [binding_id, name, queue_name, mode, workload_class, enabled,
+                 consumer_state, consumer_liveness, depth, in_flight, dead_letter, generated_at]
+      properties:
+        environment: { type: string, pattern: '^[a-z0-9]([a-z0-9-]{0,31}[a-z0-9])?$', description: "Captured environment slug of the observed consumer; absent for legacy shared consumers." }
+        environment_id: { type: string, format: uuid, description: "Original environment catalog UUID of this consumer status; absent for a shared legacy consumer." }
+        binding_id: { type: string }
+        name: { type: string, pattern: '^[a-z][a-z0-9-]{0,62}$' }
+        queue_name: { type: string, pattern: '^[a-z][a-z0-9-]{0,62}$' }
+        mode: { type: string, enum: [pull, push] }
+        workload_class: { type: string, enum: [worker, job, http] }
+        enabled: { type: boolean }
+        consumer_state: { type: string, enum: [active, paused, not_configured, external] }
+        consumer_state_reason: { type: string }
+        consumer_liveness: { type: string, enum: [healthy, degraded, stale, not_observed, external] }
+        trigger_id: { type: string }
+        last_poll_at: { type: [string, "null"], format: date-time }
+        last_success_at: { type: [string, "null"], format: date-time }
+        last_error_at: { type: [string, "null"], format: date-time }
+        last_error: { type: string }
+        lag_messages: { type: [integer, "null"], minimum: 0 }
+        lag_age_seconds: { type: [number, "null"], minimum: 0 }
+        depth: { type: integer, minimum: 0 }
+        in_flight: { type: integer, minimum: 0 }
+        dead_letter: { type: integer, minimum: 0 }
+        oldest_pending_at: { type: [string, "null"], format: date-time }
+        oldest_pending_age_seconds: { type: [integer, "null"], minimum: 0 }
+        generated_at: { type: string, format: date-time }
     QueueSendRequest:
       description: "Body for POST /v1/apps/{slug}/queues/send. Cap-checked against MaxQueueDepth."
       type: object
@@ -25289,13 +25631,16 @@ components:
 
     RetryPolicyDTO:
       description: |
-        ADR-134 PR-B. Wire shape for dispatch.RetryPolicy. The handler
-        decodes this DTO into a dispatch.RetryPolicy before persisting
-        to invocations.retry_policy JSONB. Lives in pkg/api so the SDK
-        can type the override without importing pkg/dispatch directly.
+        ADR-134 PR-B. Wire shape for dispatch.RetryPolicy. max_attempts
+        is a requested total-attempt count; zero inherits the applicable
+        account plan and never means unlimited. Durable invocation
+        producers materialize the effective plan-capped value, and the
+        scheduler re-clamps it at dispatch time to account for later plan
+        downgrades. Lives in pkg/api so the SDK can type the policy
+        without importing pkg/dispatch directly.
       type: object
       properties:
-        max_attempts:    { type: integer }
+        max_attempts:    { type: integer, minimum: 0, maximum: 25, description: "Total delivery attempts including the original. 0 inherits the current plan cap; it never means unlimited." }
         base_seconds:    { type: number }
         max_seconds:     { type: number }
         jitter_seconds:  { type: number, description: "Fraction (0..1) added to the backoff delay. 0.2 means ±20% jitter on top of the exponential curve." }
@@ -27277,6 +27622,45 @@ components:
         routes: { $ref: '#/components/schemas/ProjectEnvironmentRoutePolicyResponse' }
         policies: { $ref: '#/components/schemas/ProjectEnvironmentEdgePolicyResponse' }
 
+    ProjectEnvironmentQueueBinding:
+      description: Desired logical queue binding without runtime consumer identity or messages. HTTP consumers require push mode and a function workload.
+      type: object
+      required: [name, queue_name, mode, workload_class, enabled, max_concurrency]
+      additionalProperties: false
+      properties:
+        name: { type: string, pattern: '^[a-z][a-z0-9-]{0,62}$' }
+        queue_name: { type: string, pattern: '^[a-z][a-z0-9-]{0,62}$' }
+        mode: { type: string, enum: [pull, push] }
+        workload_class: { type: string, enum: [worker, job, http] }
+        enabled: { type: boolean }
+        max_concurrency: { type: integer, minimum: 1, maximum: 10000 }
+        retry_policy: { $ref: '#/components/schemas/RetryPolicyDTO' }
+
+    ReplaceProjectEnvironmentQueueBindingsRequest:
+      description: Complete stage queue replacement fenced by the workload revision, not the queue collection clock.
+      type: object
+      required: [expected_revision, bindings]
+      additionalProperties: false
+      properties:
+        expected_revision: { type: integer, format: int64, minimum: 0 }
+        bindings:
+          type: array
+          items: { $ref: '#/components/schemas/ProjectEnvironmentQueueBinding' }
+
+    ProjectEnvironmentQueueBindingsResponse:
+      description: Desired stage queue definitions. Consumer activation is currently unavailable and these definitions do not enable delivery or qualify promotion.
+      type: object
+      required: [environment, workload, revision, workload_revision, config_hash, activation_state, bindings]
+      properties:
+        environment: { type: string }
+        workload: { type: string }
+        revision: { type: integer, format: int64, minimum: 1, description: Queue collection clock. }
+        workload_revision: { type: integer, format: int64, minimum: 1, description: Complete workload revision to use as expected_revision on replacement. }
+        config_hash: { type: string, pattern: '^[a-f0-9]{64}$' }
+        activation_state: { type: string, enum: [unavailable] }
+        bindings:
+          type: array
+          items: { $ref: '#/components/schemas/ProjectEnvironmentQueueBinding' }
     ProjectEnvironmentSharedResourceResponse:
       description: Application-scoped resource that is shared by all environments.
       type: object
