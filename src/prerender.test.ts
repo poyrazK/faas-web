@@ -18,6 +18,11 @@ const PAGES = [
   },
   { route: '/login', file: 'dist/login/index.html', title: 'Sign in · Gregale' },
   { route: '/signup', file: 'dist/signup/index.html', title: 'Create account · Gregale' },
+  {
+    route: '/operators-contact',
+    file: 'dist/operators-contact/index.html',
+    title: 'Operators &amp; Contact · Gregale',
+  },
   { route: '/status', file: 'dist/status/index.html', title: 'Status · Gregale' },
   {
     route: '/status/incidents/:id',
@@ -30,6 +35,22 @@ const built = existsSync('dist/index.html');
 const describeBuilt = built ? describe : describe.skip;
 
 describeBuilt('prerendered pages', () => {
+  it('publishes the operator contact page for direct visits and discovery without JavaScript', () => {
+    const file = 'dist/operators-contact/index.html';
+    expect(existsSync(file)).toBe(true);
+    const html = readFileSync(file, 'utf8');
+
+    expect(html).toContain('Hüseyin Poyraz Küçükarslan');
+    expect(html).toContain('Bahadır Koşapınar');
+    expect(html).toContain('href="mailto:support@gregale.dev"');
+    expect(html).toContain('rel="canonical" href="https://gregale.dev/operators-contact"');
+    expect(html).not.toContain('name="robots" content="noindex');
+    expect(readFileSync('dist/sitemap.xml', 'utf8')).toContain(
+      '<loc>https://gregale.dev/operators-contact</loc>'
+    );
+    expect(readFileSync('dist/index.html', 'utf8')).toContain('href="/operators-contact"');
+  });
+
   for (const page of PAGES) {
     describe(page.route, () => {
       const html = built ? readFileSync(page.file, 'utf8') : '';
