@@ -14,6 +14,7 @@ import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as DocsRouteImport } from './routes/docs'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
+import { Route as OperatorsContactRouteImport } from './routes/operators-contact'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as StatusRouteImport } from './routes/status'
 import { Route as WillItRunRouteImport } from './routes/will-it-run'
@@ -88,6 +89,11 @@ const LoginRoute = LoginRouteImport.update({
 const OnboardingRoute = OnboardingRouteImport.update({
   id: '/onboarding',
   path: '/onboarding',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OperatorsContactRoute = OperatorsContactRouteImport.update({
+  id: '/operators-contact',
+  path: '/operators-contact',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SignupRoute = SignupRouteImport.update({
@@ -349,6 +355,7 @@ export interface FileRoutesByFullPath {
   '/docs': typeof DocsRouteWithChildren
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
+  '/operators-contact': typeof OperatorsContactRoute
   '/signup': typeof SignupRoute
   '/status': typeof StatusRouteWithChildren
   '/will-it-run': typeof WillItRunRoute
@@ -404,6 +411,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
+  '/operators-contact': typeof OperatorsContactRoute
   '/signup': typeof SignupRoute
   '/will-it-run': typeof WillItRunRoute
   '/dashboard/account': typeof DashboardAccountRoute
@@ -461,6 +469,7 @@ export interface FileRoutesById {
   '/docs': typeof DocsRouteWithChildren
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
+  '/operators-contact': typeof OperatorsContactRoute
   '/signup': typeof SignupRoute
   '/status': typeof StatusRouteWithChildren
   '/will-it-run': typeof WillItRunRoute
@@ -520,6 +529,7 @@ export interface FileRouteTypes {
     | '/docs'
     | '/login'
     | '/onboarding'
+    | '/operators-contact'
     | '/signup'
     | '/status'
     | '/will-it-run'
@@ -575,6 +585,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/onboarding'
+    | '/operators-contact'
     | '/signup'
     | '/will-it-run'
     | '/dashboard/account'
@@ -631,6 +642,7 @@ export interface FileRouteTypes {
     | '/docs'
     | '/login'
     | '/onboarding'
+    | '/operators-contact'
     | '/signup'
     | '/status'
     | '/will-it-run'
@@ -689,6 +701,7 @@ export interface RootRouteChildren {
   DocsRoute: typeof DocsRouteWithChildren
   LoginRoute: typeof LoginRoute
   OnboardingRoute: typeof OnboardingRoute
+  OperatorsContactRoute: typeof OperatorsContactRoute
   SignupRoute: typeof SignupRoute
   StatusRoute: typeof StatusRouteWithChildren
   WillItRunRoute: typeof WillItRunRoute
@@ -730,6 +743,13 @@ declare module '@tanstack/react-router' {
       path: '/onboarding'
       fullPath: '/onboarding'
       preLoaderRoute: typeof OnboardingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/operators-contact': {
+      id: '/operators-contact'
+      path: '/operators-contact'
+      fullPath: '/operators-contact'
+      preLoaderRoute: typeof OperatorsContactRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/signup': {
@@ -1219,6 +1239,7 @@ const rootRouteChildren: RootRouteChildren = {
   DocsRoute: DocsRouteWithChildren,
   LoginRoute: LoginRoute,
   OnboardingRoute: OnboardingRoute,
+  OperatorsContactRoute: OperatorsContactRoute,
   SignupRoute: SignupRoute,
   StatusRoute: StatusRouteWithChildren,
   WillItRunRoute: WillItRunRoute,
