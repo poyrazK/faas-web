@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
 import { ErrorState, LoadingState, UnreachableState } from '@/components/dashboard/primitives';
 import { ReactFlowProvider } from '@xyflow/react';
@@ -15,24 +15,47 @@ import type { CreateKind } from './create';
 import type { ConnectSide } from './nodes';
 import { summarizeIssues, type AppData } from './topology';
 import { useApps } from '@/lib/api/queries';
+import { Wizard, type LaunchSeed, type WizardStep } from './wizard/wizard';
 
 /** Canvas page. `data-gregale-canvas` is the build-elimination sentinel (plan Task 1). */
-export default function CanvasPage({ node }: { node?: string }) {
+export default function CanvasPage({ node, wizard }: { node?: string; wizard?: WizardStep }) {
   return (
     <ReactFlowProvider>
-      <CanvasPageBody node={node} />
+      <CanvasPageBody node={node} wizard={wizard} />
     </ReactFlowProvider>
   );
 }
 
-function CanvasPageBody({ node }: { node?: string }) {
+function CanvasPageBody({ node, wizard }: { node?: string; wizard?: WizardStep }) {
   const navigate = useNavigate();
   const camera = useCamera();
   const { phase, error, topology, retry, retryApp, settled } = useTopology();
   const select = useCallback(
     (id?: string) =>
-      void navigate({ to: '/dashboard/canvas', search: id ? { node: id } : {}, replace: true }),
+      void navigate({
+        to: '/dashboard/canvas',
+        search: (s: Record<string, unknown>) => ({ ...s, node: id }),
+        replace: true,
+      }),
     [navigate]
+  );
+  const setWizard = useCallback(
+    (step?: WizardStep) =>
+      void navigate({
+        to: '/dashboard/canvas',
+        search: (s: Record<string, unknown>) => ({ ...s, wizard: step }),
+        replace: true,
+      }),
+    [navigate]
+  );
+  // Empty accounts open on the front door; elsewhere the wizard is on demand.
+  const wizardStep: WizardStep | undefined = wizard ?? (phase === 'empty' ? 'start' : undefined);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const onLaunched = useCallback(
+    (_seed: LaunchSeed) => {
+      setWizard(undefined);
+    },
+    [setWizard]
   );
 
   const [connect, setConnect] = useState<{
@@ -149,17 +172,16 @@ function CanvasPageBody({ node }: { node?: string }) {
         {phase === 'unreachable' && <UnreachableState onRetry={retry} className="m-6 flex-1" />}
         {phase === 'error' && <ErrorState error={error} onRetry={retry} className="m-6 flex-1" />}
         {phase === 'empty' && (
-          <div className="canvas-surface relative grid flex-1 place-items-center">
-            <div className="relative w-80 rounded-[var(--console-surface-radius)] border border-canvas-glass-border bg-canvas-glass p-5 shadow-elevation-3 backdrop-blur-md">
-              <p className="label-mono text-[11px] text-muted-foreground">Canvas</p>
-              <p className="mt-1 text-sm font-semibold">Nothing to draw yet</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Domains, crons and buckets all hang off an app. Deploy one and it appears here.
-              </p>
-              <Button asChild className="mt-4 w-full">
-                <Link to="/dashboard/workflows/new">Deploy an app</Link>
-              </Button>
-            </div>
+          <div className="canvas-surface relative flex-1">
+            <Wizard
+              step={wizardStep ?? 'start'}
+              mode="empty"
+              apps={[]}
+              onStep={setWizard}
+              onLaunched={onLaunched}
+              onPickExisting={() => {}}
+              cardRef={cardRef}
+            />
           </div>
         )}
         {phase === 'ready' && (
@@ -183,6 +205,7 @@ function CanvasPageBody({ node }: { node?: string }) {
                 selected={node}
                 onSelect={select}
                 settled={settled}
+                onNew={() => setWizard('start')}
                 onPick={(id) => {
                   select(id);
                   camera.flyTo(id);
@@ -200,6 +223,22 @@ function CanvasPageBody({ node }: { node?: string }) {
                   />
                 )}
               </CanvasView>
+              {wizardStep && (
+                <Wizard
+                  step={wizardStep}
+                  mode="new"
+                  apps={topology.nodes
+                    .filter((n) => n.data.kind === 'app')
+                    .map((n) => (n.data as AppData).slug)}
+                  onStep={setWizard}
+                  onLaunched={onLaunched}
+                  onPickExisting={(slug, kind) => {
+                    setWizard(undefined);
+                    setConnect({ slug, side: kind === 'bucket' ? 'out' : 'in', kind });
+                  }}
+                  cardRef={cardRef}
+                />
+              )}
             </div>
             {selected && (
               <Inspector

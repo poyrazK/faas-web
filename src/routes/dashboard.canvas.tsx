@@ -13,12 +13,18 @@ const CanvasPage = featureFlags.canvas
   ? lazy(() => import('@/components/canvas/canvas-page'))
   : null;
 
-type CanvasSearch = { node?: string };
+const WIZARD_STEPS = ['start', 'source', 'git', 'cli'] as const;
+type WizardStep = (typeof WIZARD_STEPS)[number];
+type CanvasSearch = { node?: string; wizard?: WizardStep };
 
 export const Route = createFileRoute('/dashboard/canvas')({
   head: () => consoleHead('canvas'),
-  validateSearch: (search: Record<string, unknown>): CanvasSearch =>
-    typeof search.node === 'string' && search.node ? { node: search.node } : {},
+  validateSearch: (search: Record<string, unknown>): CanvasSearch => ({
+    ...(typeof search.node === 'string' && search.node ? { node: search.node } : {}),
+    ...(WIZARD_STEPS.includes(search.wizard as WizardStep)
+      ? { wizard: search.wizard as WizardStep }
+      : {}),
+  }),
   beforeLoad: () => {
     if (!featureFlags.canvas) throw redirect({ to: '/dashboard', replace: true });
   },
@@ -26,11 +32,11 @@ export const Route = createFileRoute('/dashboard/canvas')({
 });
 
 function CanvasRoute() {
-  const { node } = Route.useSearch();
+  const { node, wizard } = Route.useSearch();
   if (!CanvasPage) return null;
   return (
     <Suspense fallback={<LoadingState message="Loading canvas…" className="m-6" />}>
-      <CanvasPage node={node} />
+      <CanvasPage node={node} wizard={wizard} />
     </Suspense>
   );
 }

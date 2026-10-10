@@ -7,6 +7,13 @@ const state = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
 vi.mock('./use-topology', () => ({ useTopology: () => state.value }));
 vi.mock('./canvas', () => ({ CanvasView: () => <div data-testid="flow" /> }));
 vi.mock('./inspector', () => ({ Inspector: () => null }));
+vi.mock('./wizard/wizard', () => ({
+  Wizard: ({ step, mode }: { step: string; mode: string }) => (
+    <p>
+      wizard {mode} {step}
+    </p>
+  ),
+}));
 vi.mock('@/lib/api/queries', () => ({ useApps: () => ({ data: [] }) }));
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => vi.fn(),
@@ -23,11 +30,10 @@ describe('CanvasPage', () => {
     expect(screen.getByRole('status')).toHaveTextContent(/loading/i);
   });
 
-  it('offers to deploy an app on an empty account', () => {
+  it('opens the wizard front door on an empty account', () => {
     state.value = { phase: 'empty', topology: empty, retry: vi.fn() };
     render(<CanvasPage />);
-    expect(screen.getByText(/nothing to draw yet/i)).toBeInTheDocument();
-    expect(screen.getByText(/deploy an app/i)).toBeInTheDocument();
+    expect(screen.getByText('wizard empty start')).toBeInTheDocument();
   });
 
   it('separates unreachable from a failed read', () => {
