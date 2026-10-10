@@ -154,10 +154,20 @@ function ImageJourney({
     if (current.createRequest.visibility === 'internal' && app.visibility !== 'internal')
       throw new Error('Internal visibility is not confirmed. Inspect the app before deploying.');
     ensureCanWrite();
+    if (app.visibility === 'internal' || app.visibility === 'public') {
+      const endpoint = app.visibility === 'internal' ? undefined : app.url;
+      if (current.createRequest.visibility !== app.visibility || current.endpoint !== endpoint)
+        return persist({
+          ...current,
+          createRequest: { ...current.createRequest, visibility: app.visibility },
+          endpoint,
+        });
+    }
+    return current;
   }
   async function submitDeployment(current: ImageOperation) {
     ensureCanWrite();
-    await verifyApp(current);
+    current = await verifyApp(current);
     current = persist({ ...current, stage: 'deploy-submitting' });
     try {
       const deployment = await deployImage(
@@ -186,7 +196,7 @@ function ImageJourney({
       );
     const registryHost = current.deployRequest.image!.split('/')[0];
     ensureCanWrite();
-    await verifyApp(current);
+    current = await verifyApp(current);
     await unwrap(
       api.PUT('/v1/apps/{slug}/registry-credentials', {
         params: { path: { slug: current.createRequest.slug } },

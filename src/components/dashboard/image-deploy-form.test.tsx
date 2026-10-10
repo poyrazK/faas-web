@@ -409,3 +409,24 @@ it('recovers an existing app setup by read without creating another app', async 
   expect(post).toHaveBeenCalledTimes(1);
   expect(post.mock.calls[0]?.[0]).toBe('/v1/apps/{slug}/deployments');
 });
+it('removes a stale public endpoint when a recovered app is now internal', async () => {
+  const op = newImageOperation('a', { slug: 'my-api', type: 'app' }, { image: reference });
+  saveImageOperation({
+    ...op,
+    stage: 'app-created',
+    appId: 'app-1',
+    endpoint: 'https://my-api.example',
+  });
+  vi.spyOn(api, 'GET').mockImplementation(async (path) =>
+    path === '/v1/apps/{slug}'
+      ? ok({ id: 'app-1', slug: 'my-api', type: 'app', visibility: 'internal', url: '' })
+      : ok({ credentials: [], count: 0, quota_max: 0 })
+  );
+  vi.spyOn(api, 'POST').mockResolvedValue(ok({ id: 'dep-1', app_id: 'app-1' }));
+  mount();
+  await userEvent.click(screen.getByRole('button', { name: 'Submit image deployment' }));
+  await screen.findByText('Release dep-1');
+  expect(readImageOperation('a', '')?.createRequest.visibility).toBe('internal');
+  expect(readImageOperation('a', '')?.endpoint).toBeUndefined();
+  expect(screen.queryByRole('link', { name: /Open app/i })).not.toBeInTheDocument();
+});
