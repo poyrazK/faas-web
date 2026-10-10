@@ -43,6 +43,33 @@ function fingerprint(app: App, bindings: QueueBinding[]) {
   ]);
 }
 
+function profilePolicyChanges(app: App, targetDepth: number): string[] {
+  const policy = app.scaling_policy;
+  const changes: string[] = [];
+  const floor = app.min_instances ?? policy?.min_instances ?? 0;
+  if (floor > 0) changes.push(`This changes the warm floor from ${floor} to 0 (scale to zero).`);
+  if (
+    policy?.target &&
+    (policy.target.metric !== 'queue_depth' || policy.target.value !== targetDepth)
+  )
+    changes.push(
+      `This replaces the current ${policy.target.metric ?? 'unnamed'} target ${policy.target.value ?? 0} with queue_depth ${targetDepth}.`
+    );
+  if (policy?.targets?.length)
+    changes.push(
+      `This will remove ${policy.targets.length} multi-signal target${policy.targets.length === 1 ? '' : 's'}: ${policy.targets.map((target) => `${target.metric ?? 'unnamed'} ${target.value ?? 0}`).join(', ')}.`
+    );
+  if (policy?.schedules?.length)
+    changes.push(
+      `This will remove ${policy.schedules.length} scheduled capacity window${policy.schedules.length === 1 ? '' : 's'}: ${policy.schedules.map((schedule) => `${schedule.cron}, ${schedule.duration_s}s, floor ${schedule.min_instances}`).join('; ')}.`
+    );
+  if (policy?.timezone)
+    changes.push(
+      `This clears scaling timezone ${policy.timezone}; the scheduled windows are removed.`
+    );
+  return changes;
+}
+
 export function QueueWorkloadProfile(props: Props) {
   const app = useApp(props.slug, { enabled: Boolean(props.accountId) }, props.accountId).data;
   return <Profile key={`${props.accountId}:${props.slug}:${app?.id ?? ''}`} {...props} app={app} />;
@@ -67,8 +94,10 @@ function Profile({ accountId, plan, slug, bindings, app }: Props & { app?: App }
     request: ProfileRequest;
     priorQueue?: string;
     requiresConsent: boolean;
+    policyChanges: string[];
   } | null>(null);
   const [consent, setConsent] = useState(false);
+  const [policyConsent, setPolicyConsent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [attempt, setAttempt] = useState<QueueWorkloadAttempt | null>(() =>
@@ -97,6 +126,11 @@ function Profile({ accountId, plan, slug, bindings, app }: Props & { app?: App }
     start.appId === context.current.appId;
   const supported = app?.workload_class === 'worker' || app?.workload_class === 'job';
   const defaultBindings = bindings.filter((binding) => binding.name === 'default');
+  const refreshAppAndBindings = () =>
+    Promise.all([
+      cache.invalidateQueries({ queryKey: queueBindingsKey(accountId, slug) }),
+      cache.invalidateQueries({ queryKey: ['apps', 'account', accountId, slug] }),
+    ]);
 
   async function prepare() {
     if (!app || !supported || busy || attempt) return;
@@ -123,7 +157,7 @@ function Profile({ accountId, plan, slug, bindings, app }: Props & { app?: App }
       if (!stillHere(start)) return;
       if (fingerprint(fresh.app, fresh.bindings) !== fingerprint(app, bindings)) {
         setMessage('The app or bindings changed since this page loaded. Refresh and review again.');
-        await cache.invalidateQueries({ queryKey: queueBindingsKey(accountId, slug) });
+        await refreshAppAndBindings();
         return;
       }
       const defaults = fresh.bindings.filter((binding) => binding.name === 'default');
@@ -135,6 +169,7 @@ function Profile({ accountId, plan, slug, bindings, app }: Props & { app?: App }
       }
       const priorQueue = defaults[0]?.queue_name;
       setConsent(false);
+      setPolicyConsent(false);
       setReview({
         fingerprint: fingerprint(fresh.app, fresh.bindings),
         request: {
@@ -146,6 +181,7 @@ function Profile({ accountId, plan, slug, bindings, app }: Props & { app?: App }
         },
         priorQueue,
         requiresConsent: Boolean(defaults[0]),
+        policyChanges: profilePolicyChanges(fresh.app, targetDepth),
       });
     } catch (error) {
       if (stillHere(start) && !controller.signal.aborted) setMessage(errorMessage(error));
@@ -156,7 +192,15 @@ function Profile({ accountId, plan, slug, bindings, app }: Props & { app?: App }
   }
 
   async function apply() {
-    if (!app || !review || busy || attempt || (review.requiresConsent && !consent)) return;
+    if (
+      !app ||
+      !review ||
+      busy ||
+      attempt ||
+      (review.requiresConsent && !consent) ||
+      (review.policyChanges.length > 0 && !policyConsent)
+    )
+      return;
     const start = { ...context.current };
     const controller = new AbortController();
     pending.current = controller;
@@ -168,7 +212,7 @@ function Profile({ accountId, plan, slug, bindings, app }: Props & { app?: App }
       if (fingerprint(fresh.app, fresh.bindings) !== review.fingerprint) {
         setReview(null);
         setMessage('The default binding or scaling policy changed since review. Review again.');
-        await cache.invalidateQueries({ queryKey: queueBindingsKey(accountId, slug) });
+        await refreshAppAndBindings();
         return;
       }
       const intent: QueueWorkloadAttempt = {
@@ -197,10 +241,7 @@ function Profile({ accountId, plan, slug, bindings, app }: Props & { app?: App }
       setMessage(
         `Push profile accepted for binding ${result.binding.id}. Check consumer liveness separately.`
       );
-      await Promise.all([
-        cache.invalidateQueries({ queryKey: queueBindingsKey(accountId, slug) }),
-        cache.invalidateQueries({ queryKey: ['apps', 'account', accountId, slug] }),
-      ]);
+      await refreshAppAndBindings();
     } catch (error) {
       if (stillHere(start)) {
         setReview(null);
@@ -245,7 +286,7 @@ function Profile({ accountId, plan, slug, bindings, app }: Props & { app?: App }
         `Current default ${defaults.length === 1 ? `binding ${defaults[0].id} points to ${defaults[0].queue_name}` : defaults.length ? 'has multiple bindings' : 'binding is absent'}. Current scaling target: ${fresh.app.scaling_policy?.target?.metric ?? 'unset'} ${fresh.app.scaling_policy?.target?.value ?? ''}. These observations do not prove which request changed them.`
       );
       setInspected(true);
-      await cache.invalidateQueries({ queryKey: queueBindingsKey(accountId, slug) });
+      await refreshAppAndBindings();
     } catch (error) {
       if (stillHere(start) && !controller.signal.aborted) setInspection(errorMessage(error));
     } finally {
@@ -328,7 +369,11 @@ function Profile({ accountId, plan, slug, bindings, app }: Props & { app?: App }
               : defaultBindings.length
                 ? 'Multiple defaults'
                 : 'None'}
-            . Current scaling target: {app?.scaling_policy?.target?.metric ?? 'Not set'}{' '}
+            . Current scaling target:{' '}
+            {app?.scaling_policy?.target?.metric ??
+              (app?.scaling_policy?.targets?.length
+                ? `${app.scaling_policy.targets.length} multi-signal targets`
+                : 'Not set')}{' '}
             {app?.scaling_policy?.target?.value ?? ''}.
           </p>
           <label className="block space-y-1">
@@ -370,6 +415,28 @@ function Profile({ accountId, plan, slug, bindings, app }: Props & { app?: App }
                 Platform push to {review.request.queue_name}, max concurrency{' '}
                 {review.request.max_concurrency}, queue-depth target {review.request.target_depth}.
               </p>
+              <p>
+                The profile sets the warm floor to 0 and uses one queue-depth scaling target.
+                Existing positive cooldowns and queue admission limits are preserved; missing
+                cooldowns become 5 seconds out and 60 seconds in.
+              </p>
+              {review.policyChanges.length > 0 && (
+                <>
+                  <ul className="list-disc space-y-1 pl-5">
+                    {review.policyChanges.map((change) => (
+                      <li key={change}>{change}</li>
+                    ))}
+                  </ul>
+                  <label className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      checked={policyConsent}
+                      onChange={(event) => setPolicyConsent(event.target.checked)}
+                    />
+                    <span>I approve these scaling policy changes.</span>
+                  </label>
+                </>
+              )}
               {review.requiresConsent && (
                 <>
                   {review.request.force ? (
@@ -396,7 +463,11 @@ function Profile({ accountId, plan, slug, bindings, app }: Props & { app?: App }
                 </>
               )}
               <Button
-                disabled={busy || (review.requiresConsent && !consent)}
+                disabled={
+                  busy ||
+                  (review.requiresConsent && !consent) ||
+                  (review.policyChanges.length > 0 && !policyConsent)
+                }
                 onClick={() => void apply()}
               >
                 Apply push profile

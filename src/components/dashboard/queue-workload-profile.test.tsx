@@ -22,11 +22,24 @@ const binding = {
   created_at: '2026-10-10T00:00:00Z',
   updated_at: '2026-10-10T00:00:00Z',
 };
-const state = vi.hoisted(() => ({ context: vi.fn(), configure: vi.fn() }));
-vi.mock('@/lib/api/queries', () => ({
-  useApp: () => ({ data: app, isPending: false, error: null }),
-  keys: { apps: ['apps'] },
+const state = vi.hoisted(() => ({
+  context: vi.fn(),
+  configure: vi.fn(),
+  initialApp: null as unknown,
+  remoteApp: null as unknown,
 }));
+vi.mock('@/lib/api/queries', async () => {
+  const { useQuery } = await import('@tanstack/react-query');
+  return {
+    useApp: () =>
+      useQuery({
+        queryKey: ['apps', 'account', 'account-1', 'worker-1'],
+        queryFn: async () => state.remoteApp,
+        initialData: state.initialApp,
+      }),
+    keys: { apps: ['apps'] },
+  };
+});
 vi.mock('@/lib/api/queue-bindings', () => ({
   readQueueBindingContext: state.context,
   configureQueueWorkload: state.configure,
@@ -50,6 +63,8 @@ function mount(bindings = [binding]) {
 
 beforeEach(() => {
   sessionStorage.clear();
+  state.initialApp = app;
+  state.remoteApp = app;
   state.context.mockReset().mockResolvedValue({ app, bindings: [binding] });
   state.configure.mockReset().mockResolvedValue({
     app,
@@ -115,4 +130,54 @@ it('keeps a lost profile response frozen after reload until inspection', async (
   mount([]);
   expect(screen.getByRole('button', { name: 'Inspect profile outcome' })).toBeVisible();
   expect(state.configure).toHaveBeenCalledTimes(1);
+});
+
+it('refreshes app policy after inspecting a lost accepted profile before another review', async () => {
+  const user = userEvent.setup();
+  state.context.mockResolvedValue({ app, bindings: [] });
+  state.configure.mockRejectedValueOnce(new TypeError('connection lost'));
+  mount([]);
+  await user.click(screen.getByRole('button', { name: 'Configure platform push profile' }));
+  await user.click(screen.getByRole('button', { name: 'Review push profile' }));
+  await user.click(await screen.findByRole('button', { name: 'Apply push profile' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent(/unconfirmed/i);
+  const changed = {
+    ...app,
+    scaling_policy: { target: { metric: 'queue_depth', value: 20 } },
+  };
+  state.remoteApp = changed;
+  state.context.mockResolvedValue({ app: changed, bindings: [] });
+  await user.click(screen.getByRole('button', { name: 'Inspect profile outcome' }));
+  expect(await screen.findByText(/Current scaling target: queue_depth 20/)).toBeVisible();
+  await user.click(screen.getByLabelText(/I inspected the default binding/));
+  await user.click(screen.getByRole('button', { name: 'Start a new reviewed profile' }));
+  await user.click(screen.getByRole('button', { name: 'Configure platform push profile' }));
+  await user.click(screen.getByRole('button', { name: 'Review push profile' }));
+  expect(await screen.findByRole('button', { name: 'Apply push profile' })).toBeVisible();
+});
+
+it('requires review of warm-floor and advanced scaling removal', async () => {
+  const user = userEvent.setup();
+  const advanced = {
+    ...app,
+    scaling_policy: {
+      min_instances: 2,
+      targets: [{ metric: 'cpu', value: 70 }],
+      timezone: 'Europe/Istanbul',
+      schedules: [{ cron: '0 8 * * 1-5', duration_s: 3600, min_instances: 2 }],
+    },
+  };
+  state.initialApp = advanced;
+  state.remoteApp = advanced;
+  state.context.mockResolvedValue({ app: advanced, bindings: [] });
+  mount([]);
+  await user.click(screen.getByRole('button', { name: 'Configure platform push profile' }));
+  await user.click(screen.getByRole('button', { name: 'Review push profile' }));
+  expect(await screen.findByText(/warm floor from 2 to 0/i)).toBeVisible();
+  expect(screen.getByText(/remove 1 multi-signal target/i)).toBeVisible();
+  expect(screen.getByText(/remove 1 scheduled capacity window/i)).toBeVisible();
+  expect(screen.getByText(/timezone Europe\/Istanbul/i)).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Apply push profile' })).toBeDisabled();
+  await user.click(screen.getByLabelText(/I approve these scaling policy changes/));
+  expect(screen.getByRole('button', { name: 'Apply push profile' })).toBeEnabled();
 });

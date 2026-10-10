@@ -56,6 +56,7 @@ function mount(bindings = [binding]) {
 
 beforeEach(() => {
   sessionStorage.clear();
+  state.app = app;
   state.read.mockReset().mockResolvedValue({ app, bindings: [binding] });
   state.create.mockReset().mockResolvedValue({ id: 'new-binding' });
   state.update.mockReset().mockResolvedValue({ ...binding, enabled: false });
@@ -154,6 +155,31 @@ it('requires explicit acknowledgement after inspecting an unconfirmed create', a
   await user.click(screen.getByRole('button', { name: 'Start a new reviewed attempt' }));
   expect(readQueueBindingOperation('account-1', 'worker-1')).toBeNull();
   expect(state.create).toHaveBeenCalledTimes(1);
+});
+
+it('does not clear a pending creation after inspecting a different app behind the slug', async () => {
+  const user = userEvent.setup();
+  state.create.mockRejectedValueOnce(new TypeError('connection lost'));
+  mount();
+  await user.click(screen.getByRole('button', { name: 'New binding' }));
+  await user.type(screen.getByLabelText('Binding name'), 'exports');
+  await user.type(screen.getByLabelText('Queue name'), 'exports');
+  await user.click(screen.getByRole('button', { name: 'Review binding' }));
+  await user.click(await screen.findByRole('button', { name: 'Create binding' }));
+  await screen.findByRole('alert');
+  state.read.mockResolvedValueOnce({ app: { ...app, id: 'replacement' }, bindings: [] });
+  await user.click(screen.getByRole('button', { name: 'Inspect binding outcome' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent(/different app/i);
+  expect(
+    screen.queryByRole('button', { name: 'Start a new reviewed attempt' })
+  ).not.toBeInTheDocument();
+  expect(readQueueBindingOperation('account-1', 'worker-1')).not.toBeNull();
+});
+
+it('disables consumer creation for ordinary HTTP apps', () => {
+  state.app = { ...app, workload_class: 'http' };
+  mount();
+  expect(screen.getByRole('button', { name: 'New binding' })).toBeDisabled();
 });
 
 it('does not reveal a delayed review after switching accounts', async () => {

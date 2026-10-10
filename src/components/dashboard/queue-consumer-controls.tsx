@@ -104,7 +104,9 @@ function QueueConsumerControlsInner({
     start.appId === context.current.appId;
   const workloadClass = app?.workload_class;
   const canCreate =
-    workloadClass === 'worker' || workloadClass === 'job' || workloadClass === 'http';
+    workloadClass === 'worker' ||
+    workloadClass === 'job' ||
+    (workloadClass === 'http' && app?.type === 'function');
 
   async function reviewCreate() {
     if (!app || !canCreate || operation || busy) return;
@@ -237,6 +239,13 @@ function QueueConsumerControlsInner({
     try {
       const fresh = await readQueueBindingContext(accountId, slug, plan, controller.signal);
       if (!stillHere(start)) return;
+      if (fresh.app.id !== operation.appId) {
+        setMessage(
+          'This slug now resolves to a different app. The pending request cannot be cleared here.'
+        );
+        await cache.invalidateQueries({ queryKey: ['apps', 'account', accountId, slug] });
+        return;
+      }
       const matches = fresh.bindings.filter(
         (binding) =>
           binding.name === operation.request.name &&
