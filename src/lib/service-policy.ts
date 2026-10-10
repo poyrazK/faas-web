@@ -12,7 +12,7 @@ export interface ServicePolicyDraft {
   allowForwardTargets: boolean;
 }
 
-const SLUG = /^[a-z][a-z0-9-]{0,62}$/;
+const SLUG = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const METHOD = /^(?:[A-Z]+|\*)$/;
 
 function parseSlugs(input: string): string[] {
@@ -59,7 +59,7 @@ export function buildServicePolicyPatch(
   const known = new Set(ownedApps);
   const callers = parseSlugs(draft.callers);
   const targets = parseSlugs(draft.targets);
-  for (const slug of [...callers, ...targets]) {
+  for (const slug of [...(draft.callerMode === 'allow' ? callers : []), ...targets]) {
     if (!SLUG.test(slug) || slug.endsWith('-'))
       return { forwardTargets: [], error: `Invalid app slug: ${slug}` };
   }

@@ -652,8 +652,9 @@ route('PATCH', '/v1/apps/{slug}', ({ params, body }) => {
     'service_binding_transport',
   ];
   if (
-    policyFields.some((key) => key in body) &&
-    projects.some((project) => project.workloads.some((workload) => workload.slug === a.slug))
+    policyFields.some((key) => key in body && body[key] !== null) &&
+    (Boolean(a.preview_of_slug) ||
+      projects.some((project) => project.workloads.some((workload) => workload.slug === a.slug)))
   )
     throw new Problem(
       409,

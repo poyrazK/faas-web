@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { FIELD } from '@/components/ui/field';
@@ -7,7 +7,6 @@ import {
   accountAppChoicesKey,
   bindingInventoryKey,
   patchServicePolicy,
-  policyOwnershipKey,
   readServicePolicyContext,
   useAccountAppChoices,
 } from '@/lib/api/bindings';
@@ -54,7 +53,9 @@ export function ServicePolicyEditor({
   const context = useRef({ accountId, slug, appId: app.id });
   const alive = useRef(true);
   const pending = useRef<AbortController | null>(null);
-  context.current = { accountId, slug, appId: app.id };
+  useLayoutEffect(() => {
+    context.current = { accountId, slug, appId: app.id };
+  }, [accountId, slug, app.id]);
   useEffect(() => {
     alive.current = true;
     return () => {
@@ -159,7 +160,6 @@ export function ServicePolicyEditor({
         queryClient.invalidateQueries({ queryKey: keys.apps }),
         queryClient.invalidateQueries({ queryKey: bindingInventoryKey(accountId, slug) }),
         queryClient.invalidateQueries({ queryKey: accountAppChoicesKey(accountId) }),
-        queryClient.invalidateQueries({ queryKey: policyOwnershipKey(accountId, slug) }),
       ]);
     } catch (error) {
       if (stillHere(original) && !controller.signal.aborted) {
@@ -194,6 +194,7 @@ export function ServicePolicyEditor({
           <select
             aria-label="Allowed callers"
             className={FIELD}
+            disabled={busy}
             value={draft.callerMode}
             onChange={(event) =>
               set('callerMode', event.target.value as ServicePolicyDraft['callerMode'])
@@ -209,6 +210,7 @@ export function ServicePolicyEditor({
             <span>Caller app slugs, one per line</span>
             <textarea
               className={FIELD}
+              disabled={busy}
               value={draft.callers}
               onChange={(event) => set('callers', event.target.value)}
             />
@@ -219,6 +221,7 @@ export function ServicePolicyEditor({
           <select
             aria-label="Method and path grants"
             className={FIELD}
+            disabled={busy}
             value={draft.scopeMode}
             onChange={(event) =>
               set('scopeMode', event.target.value as ServicePolicyDraft['scopeMode'])
@@ -234,6 +237,7 @@ export function ServicePolicyEditor({
             <span>Caller scopes JSON</span>
             <textarea
               className={FIELD}
+              disabled={busy}
               rows={5}
               value={draft.scopesJson}
               onChange={(event) => set('scopesJson', event.target.value)}
@@ -248,6 +252,7 @@ export function ServicePolicyEditor({
           <textarea
             aria-label="Outbound target app slugs"
             className={FIELD}
+            disabled={busy}
             value={draft.targets}
             onChange={(event) => set('targets', event.target.value)}
           />
@@ -255,6 +260,7 @@ export function ServicePolicyEditor({
         <label className="flex items-start gap-2">
           <input
             type="checkbox"
+            disabled={busy}
             checked={draft.allowForwardTargets}
             onChange={(event) => set('allowForwardTargets', event.target.checked)}
           />
@@ -264,6 +270,7 @@ export function ServicePolicyEditor({
           <span>Outbound reachability</span>
           <select
             className={FIELD}
+            disabled={busy}
             value={draft.policy}
             onChange={(event) => set('policy', event.target.value as ServicePolicyDraft['policy'])}
           >
@@ -275,6 +282,7 @@ export function ServicePolicyEditor({
           <span>Canonical binding transport</span>
           <select
             className={FIELD}
+            disabled={busy}
             value={draft.transport}
             onChange={(event) =>
               set('transport', event.target.value as ServicePolicyDraft['transport'])

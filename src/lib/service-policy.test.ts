@@ -39,6 +39,21 @@ it('requires known callers and explicit forward target review', () => {
   ).toEqual(['future']);
 });
 
+it('accepts numeric-leading app slugs and ignores hidden caller text outside named-caller mode', () => {
+  expect(
+    buildServicePolicyPatch(
+      { ...base, callerMode: 'allow', callers: '1frontend', targets: '2identity' },
+      ['1frontend', '2identity']
+    ).patch
+  ).toMatchObject({
+    allowed_service_callers: ['1frontend'],
+    service_binding_targets: ['2identity'],
+  });
+  expect(
+    buildServicePolicyPatch({ ...base, callerMode: 'deny', callers: 'invalid/hidden' }, []).patch
+  ).toMatchObject({ allowed_service_callers: [] });
+});
+
 it('validates scoped method and path grants before review', () => {
   const draft: ServicePolicyDraft = {
     ...base,

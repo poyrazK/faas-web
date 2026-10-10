@@ -91,3 +91,31 @@ it('rejects a stale review when policy changes before submit', async () => {
   expect(await screen.findByRole('alert')).toHaveTextContent(/changed since review/i);
   expect(patch).not.toHaveBeenCalled();
 });
+
+it('freezes the reviewed form while the final context read is pending', async () => {
+  const user = userEvent.setup();
+  render(
+    <ServicePolicyEditor
+      accountId="account-1"
+      plan="free"
+      slug="billing"
+      app={app as never}
+      inventoryComplete
+    />
+  );
+  await user.selectOptions(screen.getByLabelText('Allowed callers'), 'deny');
+  await user.click(screen.getByRole('button', { name: 'Review service policy' }));
+  await screen.findByRole('button', { name: 'Save service policy' });
+  let resolve!: (value: { app: typeof app; choices: string[] }) => void;
+  readContext.mockImplementationOnce(
+    () =>
+      new Promise((done) => {
+        resolve = done;
+      })
+  );
+  await user.click(screen.getByRole('button', { name: 'Save service policy' }));
+  expect(screen.getByLabelText('Allowed callers')).toBeDisabled();
+  resolve({ app: { ...app }, choices: ['billing', 'frontend', 'identity'] });
+  await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
+  expect(patch.mock.calls[0][1]).toMatchObject({ allowed_service_callers: [] });
+});
