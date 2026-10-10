@@ -3134,6 +3134,245 @@ route('POST', '/v1/apps/{slug}/deployments/clear-obsolete', ({ params, body }) =
   return { app_slug: a.slug, count, older_than: olderThan };
 });
 
+type MockQueueBinding = components['schemas']['QueueBindingResponse'];
+const queueBindings = new Map<string, MockQueueBinding[]>();
+const queueBindingReceipts = new Map<string, { body: string; binding: MockQueueBinding }>();
+const queueNow = () => new Date().toISOString();
+
+function workerBindings(a: db.App): MockQueueBinding[] {
+  let rows = queueBindings.get(a.id);
+  if (rows) return rows;
+  rows =
+    a.slug === 'search-indexer'
+      ? [
+          {
+            id: db.id(),
+            app_id: a.id,
+            account_id: db.account.id,
+            name: 'default',
+            queue_name: 'orders',
+            mode: 'push',
+            workload_class: 'worker',
+            enabled: true,
+            max_concurrency: 2,
+            created_at: db.iso(2 * 3_600_000),
+            updated_at: db.iso(2 * 3_600_000),
+          },
+          {
+            id: db.id(),
+            app_id: a.id,
+            account_id: db.account.id,
+            name: 'exports',
+            queue_name: 'exports',
+            mode: 'pull',
+            workload_class: 'worker',
+            enabled: true,
+            max_concurrency: 1,
+            created_at: db.iso(3_600_000),
+            updated_at: db.iso(3_600_000),
+          },
+          {
+            id: db.id(),
+            app_id: a.id,
+            account_id: db.account.id,
+            name: 'paused',
+            queue_name: 'paused',
+            mode: 'push',
+            workload_class: 'worker',
+            enabled: false,
+            max_concurrency: 1,
+            created_at: db.iso(3_600_000),
+            updated_at: db.iso(3_600_000),
+          },
+        ]
+      : [];
+  queueBindings.set(a.id, rows);
+  return rows;
+}
+
+function gateWorkerWrite(a: db.App) {
+  if ((process.env.MOCK_PLAN ?? db.account.plan) === 'free')
+    throw new Problem(
+      403,
+      'plan_worker_pools_not_allowed',
+      'Worker pools require Hobby or higher.'
+    );
+  if (!['worker', 'job', 'http'].includes(a.workload_class ?? ''))
+    throw new Problem(
+      422,
+      'workload_class_uncharacterized',
+      'Deploy and characterize the workload first.'
+    );
+}
+
+function mockBinding(a: db.App, id: string) {
+  const found = workerBindings(a).find((row) => row.id === id);
+  if (!found) throw new Problem(404, 'not_found', 'Queue binding not found.');
+  return found;
+}
+
+route('GET', '/v1/apps/{slug}/queue-bindings', ({ params, query }) => {
+  const a = app(params.slug);
+  if (query.has('stage') || query.has('scope')) throw new Problem(400, 'invalid_scope');
+  return workerBindings(a);
+});
+route('GET', '/v1/apps/{slug}/queue-bindings/{id}', ({ params }) =>
+  mockBinding(app(params.slug), params.id)
+);
+route('GET', '/v1/apps/{slug}/queue-bindings/{id}/status', ({ params }) => {
+  const row = mockBinding(app(params.slug), params.id);
+  const pull = row.mode === 'pull';
+  return {
+    binding_id: row.id,
+    name: row.name,
+    queue_name: row.queue_name,
+    mode: row.mode,
+    workload_class: row.workload_class,
+    enabled: row.enabled,
+    consumer_state: pull ? 'external' : row.enabled ? 'active' : 'paused',
+    consumer_liveness: pull ? 'external' : row.enabled ? 'stale' : 'not_observed',
+    ...(pull ? {} : { last_poll_at: db.iso(2 * 60_000) }),
+    lag_messages: pull ? null : row.enabled ? 4 : null,
+    lag_age_seconds: pull ? null : row.enabled ? 90 : null,
+    depth: row.name === 'default' ? 5 : 0,
+    in_flight: row.name === 'default' ? 2 : 0,
+    dead_letter: row.name === 'default' ? 1 : 0,
+    generated_at: queueNow(),
+  };
+});
+route('POST', '/v1/apps/{slug}/queue-bindings', ({ params, query, body, req }) => {
+  const a = app(params.slug);
+  if (query.has('stage') || query.has('scope')) throw new Problem(400, 'invalid_scope');
+  gateWorkerWrite(a);
+  const key = String(req.headers['idempotency-key'] ?? '');
+  const receiptKey = `${a.id}:${key}`;
+  const prior = key ? queueBindingReceipts.get(receiptKey) : undefined;
+  if (prior) {
+    if (prior.body !== JSON.stringify(body)) throw new Problem(409, 'idempotency_conflict');
+    return status(201, prior.binding);
+  }
+  const name = String(body.name ?? '');
+  const queueName = String(body.queue_name ?? '');
+  const mode = body.mode;
+  const workloadClass = body.workload_class;
+  const maxConcurrency = Number(body.max_concurrency);
+  if (
+    !/^[a-z][a-z0-9-]{0,62}$/.test(name) ||
+    !/^[a-z][a-z0-9-]{0,62}$/.test(queueName) ||
+    !['pull', 'push'].includes(String(mode)) ||
+    workloadClass !== a.workload_class ||
+    (workloadClass === 'http' && mode === 'pull') ||
+    !Number.isInteger(maxConcurrency) ||
+    maxConcurrency < 1 ||
+    maxConcurrency > 10000
+  )
+    throw new Problem(422, 'validation_failed', 'Invalid queue binding.');
+  if (workerBindings(a).some((row) => row.name === name))
+    throw new Problem(409, 'binding_conflict', 'Binding name already exists.');
+  const row: MockQueueBinding = {
+    id: db.id(),
+    app_id: a.id,
+    account_id: db.account.id,
+    name,
+    queue_name: queueName,
+    mode: mode as MockQueueBinding['mode'],
+    workload_class: workloadClass as MockQueueBinding['workload_class'],
+    enabled: body.enabled !== false,
+    max_concurrency: maxConcurrency,
+    created_at: queueNow(),
+    updated_at: queueNow(),
+  };
+  workerBindings(a).push(row);
+  if (key) queueBindingReceipts.set(receiptKey, { body: JSON.stringify(body), binding: row });
+  return status(201, row);
+});
+route('PATCH', '/v1/apps/{slug}/queue-bindings/{id}', ({ params, body }) => {
+  const a = app(params.slug);
+  gateWorkerWrite(a);
+  const row = mockBinding(a, params.id);
+  if (body.queue_name !== undefined) {
+    const queueName = String(body.queue_name);
+    if (!/^[a-z][a-z0-9-]{0,62}$/.test(queueName)) throw new Problem(422, 'validation_failed');
+    row.queue_name = queueName;
+  }
+  if (body.mode !== undefined) {
+    if (body.mode !== 'pull' && body.mode !== 'push') throw new Problem(422, 'validation_failed');
+    row.mode = body.mode;
+  }
+  if (body.max_concurrency !== undefined) {
+    const max = Number(body.max_concurrency);
+    if (!Number.isInteger(max) || max < 1 || max > 10000)
+      throw new Problem(422, 'validation_failed');
+    row.max_concurrency = max;
+  }
+  if (body.enabled !== undefined) row.enabled = body.enabled === true;
+  row.updated_at = queueNow();
+  return row;
+});
+route('DELETE', '/v1/apps/{slug}/queue-bindings/{id}', ({ params }) => {
+  const a = app(params.slug);
+  gateWorkerWrite(a);
+  const rows = workerBindings(a);
+  const index = rows.findIndex((row) => row.id === params.id);
+  if (index < 0) throw new Problem(404, 'not_found');
+  rows.splice(index, 1);
+  return NO_CONTENT;
+});
+route('PUT', '/v1/apps/{slug}/queue-workload', ({ params, body, query }) => {
+  const a = app(params.slug);
+  if (query.has('stage') || query.has('scope')) throw new Problem(400, 'invalid_scope');
+  gateWorkerWrite(a);
+  if (a.workload_class !== 'worker' && a.workload_class !== 'job')
+    throw new Problem(422, 'workload_class_incompatible');
+  const queueName = String(body.queue_name || 'default');
+  const maxConcurrency = Number(body.max_concurrency || 1);
+  const targetDepth = Number(body.target_depth || 10);
+  if (
+    !/^[a-z][a-z0-9-]{0,62}$/.test(queueName) ||
+    !Number.isInteger(maxConcurrency) ||
+    maxConcurrency < 1 ||
+    maxConcurrency > 10000 ||
+    !Number.isFinite(targetDepth) ||
+    targetDepth <= 0
+  )
+    throw new Problem(422, 'validation_failed');
+  const rows = workerBindings(a);
+  const defaults = rows.filter((row) => row.name === 'default');
+  if (defaults.length > 1) throw new Problem(409, 'binding_conflict');
+  if (defaults[0] && defaults[0].queue_name !== queueName && body.force !== true)
+    throw new Problem(409, 'binding_conflict', 'Default binding points at another queue.');
+  const created = defaults.length === 0;
+  const row: MockQueueBinding = defaults[0] ?? {
+    id: db.id(),
+    app_id: a.id,
+    account_id: db.account.id,
+    name: 'default',
+    queue_name: queueName,
+    mode: 'push',
+    workload_class: a.workload_class,
+    enabled: true,
+    max_concurrency: maxConcurrency,
+    created_at: queueNow(),
+    updated_at: queueNow(),
+  };
+  row.queue_name = queueName;
+  row.mode = 'push';
+  row.enabled = true;
+  row.max_concurrency = maxConcurrency;
+  row.updated_at = queueNow();
+  if (created) rows.push(row);
+  a.scaling_policy = {
+    min_instances: 0,
+    target: { metric: 'queue_depth', value: targetDepth } as never,
+  };
+  return status(created ? 201 : 200, {
+    app: a,
+    binding: row,
+    scaling_policy: a.scaling_policy,
+    created,
+  });
+});
+
 route('GET', '/v1/apps/{slug}/queues/state', ({ params }) => db.queueState(app(params.slug)));
 route('GET', '/v1/apps/{slug}/queues/peek', ({ params }) => db.queuePeek(app(params.slug)));
 route('GET', '/v1/apps/{slug}/queues/dead_letter', ({ params }) =>

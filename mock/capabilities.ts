@@ -115,6 +115,17 @@ const entries: Capability[] = [
     acceptance: 'mock-only',
     enabled: true,
   },
+  {
+    key: 'worker-pools',
+    name: 'Worker pools',
+    category: 'async',
+    description: 'Long-lived OCI workers and durable queue consumers.',
+    maturity: 'preview',
+    plans: PAID,
+    docs_url: '/docs/faas_openapi_spec',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
 ];
 export function mockCapabilities(
   plan: Plan,
