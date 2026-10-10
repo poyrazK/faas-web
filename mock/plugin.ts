@@ -476,7 +476,27 @@ route('POST', '/v1/apps', ({ body, req }) => {
     ram_mb: Number(body.ram_mb ?? 256),
     min_instances: 0,
     status: 'pending',
-    url: `https://${slug}.gregale.app`,
+    visibility: body.visibility === 'internal' ? 'internal' : 'public',
+    url: body.visibility === 'internal' ? '' : `https://${slug}.gregale.app`,
+    service_bindings: Array.isArray(body.service_binding_targets)
+      ? body.service_binding_targets
+          .filter((value): value is string => typeof value === 'string')
+          .map((service) => ({
+            service,
+            binding: `GREGALE_SERVICE_${service.toUpperCase().replace(/-/g, '_')}_URL`,
+          }))
+      : [],
+    service_binding_policy: body.service_binding_policy === 'declared' ? 'declared' : 'account',
+    service_binding_transport: body.service_binding_transport === 'https' ? 'https' : 'http',
+    ...(Array.isArray(body.allowed_service_callers)
+      ? { allowed_service_callers: body.allowed_service_callers as string[] }
+      : {}),
+    ...(body.allowed_service_call_scopes && typeof body.allowed_service_call_scopes === 'object'
+      ? {
+          allowed_service_call_scopes:
+            body.allowed_service_call_scopes as db.App['allowed_service_call_scopes'],
+        }
+      : {}),
   };
   db.apps.push(created);
   if (key) imageAppReceipts.set(key, { body: JSON.stringify(body), app: created, at: Date.now() });
@@ -554,6 +574,41 @@ route('PUT', '/v1/apps/{slug}/registry-credentials', ({ params, body }) => {
   return metadata;
 });
 route('GET', '/v1/apps/{slug}', ({ params }) => app(params.slug));
+route('GET', '/v1/apps/{slug}/bindings', ({ params, query }) => {
+  const a = app(params.slug);
+  const partial = a.slug === 'billing-recon';
+  return {
+    app: a.slug,
+    ...(query.get('scope') ? { scope: query.get('scope') } : {}),
+    generated_at: new Date().toISOString(),
+    complete: !partial,
+    bindings: (a.service_bindings ?? []).map((binding) => ({
+      type: 'service',
+      name: binding.service,
+      binding: binding.binding,
+      scope: 'app',
+      access: a.service_binding_policy ?? 'account',
+      state: 'configured',
+      runtime_status: 'not_observed',
+      verification_status: 'unknown',
+      http_url: `http://${binding.service}.svc.gregale:10081`,
+      https_url: `https://${binding.service}.internal`,
+      transport: a.service_binding_transport ?? 'http',
+    })),
+    ...(partial
+      ? {
+          issues: [
+            {
+              type: 'postgres',
+              code: 'partial_read',
+              severity: 'warning',
+              message: 'Managed PostgreSQL inventory could not be read.',
+            },
+          ],
+        }
+      : {}),
+  };
+});
 route('GET', '/v1/apps/{slug}/policy/status', ({ params }) =>
   mockRuntimePolicy(app(params.slug).id)
 );
@@ -589,8 +644,53 @@ const PATCHABLE = [
 ] as const;
 route('PATCH', '/v1/apps/{slug}', ({ params, body }) => {
   const a = app(params.slug);
+  const policyFields = [
+    'allowed_service_callers',
+    'allowed_service_call_scopes',
+    'service_binding_targets',
+    'service_binding_policy',
+    'service_binding_transport',
+  ];
+  if (
+    policyFields.some((key) => key in body) &&
+    projects.some((project) => project.workloads.some((workload) => workload.slug === a.slug))
+  )
+    throw new Problem(
+      409,
+      'service_policy_source_managed',
+      'Edit this service policy in the project source.'
+    );
   for (const k of PATCHABLE)
     if (k in body && body[k] !== null) (a as Record<string, unknown>)[k] = body[k];
+  if (body.visibility === 'internal' || body.visibility === 'public') {
+    a.visibility = body.visibility;
+    a.url = body.visibility === 'internal' ? '' : `https://${a.slug}.gregale.app`;
+  }
+  if ('allowed_service_callers' in body) {
+    if (body.allowed_service_callers === null) delete a.allowed_service_callers;
+    else if (Array.isArray(body.allowed_service_callers))
+      a.allowed_service_callers = body.allowed_service_callers as string[];
+  }
+  if ('allowed_service_call_scopes' in body) {
+    if (body.allowed_service_call_scopes === null) delete a.allowed_service_call_scopes;
+    else if (
+      body.allowed_service_call_scopes &&
+      typeof body.allowed_service_call_scopes === 'object'
+    )
+      a.allowed_service_call_scopes =
+        body.allowed_service_call_scopes as db.App['allowed_service_call_scopes'];
+  }
+  if (Array.isArray(body.service_binding_targets))
+    a.service_bindings = body.service_binding_targets
+      .filter((value): value is string => typeof value === 'string')
+      .map((service) => ({
+        service,
+        binding: `GREGALE_SERVICE_${service.toUpperCase().replace(/-/g, '_')}_URL`,
+      }));
+  if (body.service_binding_policy === 'account' || body.service_binding_policy === 'declared')
+    a.service_binding_policy = body.service_binding_policy;
+  if (body.service_binding_transport === 'http' || body.service_binding_transport === 'https')
+    a.service_binding_transport = body.service_binding_transport;
   // Deliberately mixed evidence in the dev fixture; mutation acceptance is not convergence.
   advancePolicy(a.id, ['request_policy', 'egress_allowlist', 'cpu_limit', 'scheduler_scaling']);
   return a;
