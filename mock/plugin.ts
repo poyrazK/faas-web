@@ -5,6 +5,7 @@ import type { components } from '../src/lib/api/schema';
 import * as db from './data';
 import * as automationMock from './automations';
 import { mockCapabilities } from './capabilities';
+import { mockOpenAPIPreview } from './openapi-preview';
 import { isDigestPinnedImage } from '../src/lib/oci-image';
 import { advancePolicy, mockRuntimePolicy } from './runtime-policy';
 import { projects, projectSummaries } from './projects';
@@ -1426,6 +1427,15 @@ route('GET', '/v1/apps/{slug}/openapi', ({ params, query, res }) => {
   res.setHeader('X-Faas-Cache', 'miss');
   res.setHeader('X-OpenAPI-Doc-Annotations-Count', String(rules.length));
   return merged;
+});
+route('GET', '/v1/apps/{slug}/openapi/preview', ({ params }) => {
+  const a = app(params.slug);
+  return mockOpenAPIPreview(
+    a.id,
+    db.appOpenAPIDocs.get(a.slug),
+    db.routesFor(a).routes,
+    db.edgeRules.filter((rule) => rule.app_id === a.id)
+  );
 });
 route('POST', '/v1/apps/{slug}/openapi', ({ params, body }) => {
   const a = app(params.slug);
