@@ -5647,6 +5647,134 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{slug}/environments/{environment}/promotion-preview": {
+        parameters: {
+            query: {
+                /** @description Source environment whose live releases are compared with the target. */
+                from: string;
+                /** @description Opt in to copying the source's non-secret configuration atomically with the target release graph. */
+                sync_config?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description Project slug owning the environment promotion preview. */
+                slug: string;
+                /** @description Target environment receiving the promotion preview. */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Preview promotion of live workloads between project environments.
+         * @description Read-only comparison of the source and target environment. The
+         *     response includes non-secret configuration changes, live deployment
+         *     identities, target protection state, and an opaque promotion token
+         *     bound to those identities. It does not create deployments or audit
+         *     mutations. Configuration remains target-scoped by default;
+         *     `sync_config=true` opts into applying the source's non-secret
+         *     configuration snapshot with the release graph, and is blocked unless
+         *     the target already has an active release graph for atomic cutover.
+         *     Protected-target promotions from an active source release set also
+         *     require the latest passing health and smoke qualification, which is
+         *     bound to that immutable release-set ID and expires after 24 hours.
+         */
+        get: operations["getProjectEnvironmentPromotionPreview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{slug}/environments/{environment}/promotions": {
+        parameters: {
+            query?: {
+                /** @description Opaque cursor returned as next_before. */
+                before?: string;
+                /** @description Page size, capped at 100. */
+                limit?: number;
+                /** @description Restrict history to promotions from this source environment. */
+                from?: string;
+                /** @description Restrict history to a promotion lifecycle status. */
+                status?: "running" | "succeeded" | "failed";
+            };
+            header?: never;
+            path: {
+                /** @description Project slug owning the promotion history. */
+                slug: string;
+                /** @description Target environment whose promotion history is requested. */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * List project environment promotion history.
+         * @description Returns newest-first compact promotion history. Use the promotion status endpoint for per-workload checkpoints.
+         */
+        get: operations["listProjectEnvironmentPromotions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{slug}/environments/{environment}/promotions/{promotion}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project slug owning the promotion status operation. */
+                slug: string;
+                /** @description Target environment associated with the promotion status operation. */
+                environment: string;
+                /** @description Durable promotion operation identifier. */
+                promotion: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Get durable project environment promotion status.
+         * @description Returns the operation status, post-cutover verification result, and non-secret per-workload checkpoints for a promotion.
+         */
+        get: operations["getProjectEnvironmentPromotionStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{slug}/environments/{environment}/approvals/{approval}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project slug owning the approval lookup. */
+                slug: string;
+                /** @description Protected environment slug containing the approval. */
+                environment: string;
+                /** @description Durable approval identifier returned when the approval is created. */
+                approval: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Get the lifecycle status of a project environment approval.
+         * @description The raw approval token is never returned by this endpoint.
+         */
+        get: operations["getProjectEnvironmentApprovalStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{slug}": {
         parameters: {
             query?: never;
@@ -11449,6 +11577,214 @@ export interface components {
             deployment_status?: string;
             rollout_state?: string;
             build_status?: string;
+        };
+        /** @description Durable, non-secret lifecycle status for one environment approval. */
+        ProjectEnvironmentApprovalStatusResponse: {
+            /** Format: uuid */
+            approval_id: string;
+            environment: string;
+            /** @enum {string} */
+            token_kind: "plan" | "promotion";
+            /** @enum {string} */
+            status: "pending" | "expired" | "consumed";
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: date-time */
+            consumed_at?: string;
+        };
+        /** @description Cursor-paginated project environment promotion history. */
+        ProjectEnvironmentPromotionListResponse: {
+            items: components["schemas"]["ProjectEnvironmentPromotionSummaryResponse"][];
+            /** @description Opaque cursor for the next older page. */
+            next_before?: string;
+        };
+        /** @description Read-only promotion preview between two registered project environments. */
+        ProjectEnvironmentPromotionPreviewResponse: {
+            project_slug: string;
+            from_environment: string;
+            to_environment: string;
+            /** @description Whether this exact promotion will copy the source's non-secret configuration to the target. */
+            sync_config?: boolean;
+            to_environment_protected: boolean;
+            approval_required: boolean;
+            can_promote: boolean;
+            blocking_reasons?: string[];
+            config_diff: components["schemas"]["ProjectEnvironmentConfigDiffResponse"];
+            changes: components["schemas"]["ProjectEnvironmentPromotionChange"][];
+            /** @description Immutable active release graph snapshot for the source environment, when present. */
+            from_release_set?: components["schemas"]["ProjectReleaseSetResponse"];
+            /** @description Immutable active release graph snapshot for the target environment, when present. */
+            to_release_set?: components["schemas"]["ProjectReleaseSetResponse"];
+            /** @description True when promotion stages deployments dark and atomically activates a project release graph. */
+            release_graph_mode: boolean;
+            /** @description Compatibility window used by the promoted release graph. */
+            release_ttl_seconds?: number;
+            /** @description True when a protected-target promotion requires a fresh source qualification. */
+            qualification_required?: boolean;
+            /** @description Latest qualification for the active source release set, including failed or expired receipts. */
+            qualification?: components["schemas"]["ProjectEnvironmentQualificationResponse"];
+            promotion_hash: string;
+            promotion_token: string;
+        };
+        /** @description One workload's live release identity in a source and target environment. */
+        ProjectEnvironmentPromotionChange: {
+            source_workload_config_hash?: string;
+            target_workload_config_hash?: string;
+            promoted_workload_config_hash?: string;
+            workload_slug: string;
+            workload_name: string;
+            /** @enum {string} */
+            kind: "source_missing" | "create" | "update" | "unchanged";
+            source_deployment_id?: string;
+            target_deployment_id?: string;
+            source_build_id?: string;
+            target_build_id?: string;
+            source_revision?: string;
+            target_revision?: string;
+            /** @enum {string} */
+            source_revision_kind?: "source_sha256" | "image_digest" | "commit_sha" | "deployment_id";
+            /** @enum {string} */
+            target_revision_kind?: "source_sha256" | "image_digest" | "commit_sha" | "deployment_id";
+        };
+        /** @description Durable status for a project environment promotion operation. */
+        ProjectEnvironmentPromotionStatusResponse: {
+            promotion_id: string;
+            project_slug: string;
+            from_environment: string;
+            to_environment: string;
+            /** @description Config sync was enabled for this promotion. */
+            sync_config?: boolean;
+            promotion_hash: string;
+            /** @enum {string} */
+            status: "running" | "succeeded" | "failed";
+            error?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: date-time */
+            completed_at?: string;
+            /** @enum {string} */
+            rollback_status?: "rolling_back" | "rolled_back" | "rollback_failed";
+            rollback_error?: string;
+            /** Format: date-time */
+            rollback_started_at?: string;
+            /** Format: date-time */
+            rollback_completed_at?: string;
+            /** @enum {string} */
+            verification_status?: "pending" | "verifying" | "verified" | "failed";
+            verification_error?: string;
+            /** Format: date-time */
+            verification_started_at?: string;
+            /** Format: date-time */
+            verification_completed_at?: string;
+            release_graph?: components["schemas"]["ProjectEnvironmentPromotionReleaseGraphResponse"];
+            workloads: components["schemas"]["ProjectEnvironmentPromotionStatusWorkloadResponse"][];
+        };
+        /** @description Immutable graph identities involved in a graph-aware promotion and rollback. */
+        ProjectEnvironmentPromotionReleaseGraphResponse: {
+            /** Format: uuid */
+            source_release_set_id?: string;
+            /** Format: uuid */
+            previous_target_release_set_id?: string;
+            /** Format: uuid */
+            target_release_set_id?: string;
+            /** Format: uuid */
+            restored_target_release_set_id?: string;
+            ttl_seconds: number;
+        };
+        /** @description Durable checkpoint for one workload in an environment promotion. */
+        ProjectEnvironmentPromotionStatusWorkloadResponse: {
+            workload_slug: string;
+            workload_name: string;
+            /** @enum {string} */
+            status: "pending" | "promoted" | "unchanged" | "failed";
+            source_deployment_id?: string;
+            previous_target_deployment_id?: string;
+            target_deployment_id?: string;
+            error?: string;
+            /** @enum {string} */
+            rollback_status?: "pending" | "restored" | "cleared" | "unchanged" | "skipped" | "failed";
+            restored_target_deployment_id?: string;
+            rollback_error?: string;
+            /** @enum {string} */
+            verification_status?: "pending" | "verified" | "failed";
+            verification_error?: string;
+        };
+        /** @description Compact non-secret summary of one project environment promotion. */
+        ProjectEnvironmentPromotionSummaryResponse: {
+            promotion_id: string;
+            project_slug: string;
+            from_environment: string;
+            to_environment: string;
+            /** @description Whether the operation copied non-secret source config to its target. */
+            sync_config?: boolean;
+            promotion_hash: string;
+            /** @enum {string} */
+            status: "running" | "succeeded" | "failed";
+            error?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: date-time */
+            completed_at?: string;
+            /** @enum {string} */
+            rollback_status?: "rolling_back" | "rolled_back" | "rollback_failed";
+            rollback_error?: string;
+            /** @enum {string} */
+            verification_status?: "pending" | "verifying" | "verified" | "failed";
+            verification_error?: string;
+            /** Format: date-time */
+            verification_completed_at?: string;
+        };
+        /** @description Non-secret, 24-hour qualification receipt for an immutable release set and the exact source configuration and per-workload secret revision snapshots probed. */
+        ProjectEnvironmentQualificationResponse: {
+            /** @description Immutable per-workload fingerprints bound to this qualification receipt. */
+            workload_config_hashes?: {
+                [key: string]: string;
+            };
+            /** Format: uuid */
+            id: string;
+            environment: string;
+            /** Format: uuid */
+            release_set_id: string;
+            /** @description Version tested; -1 marks a legacy receipt that predates configuration binding and cannot qualify for promotion. */
+            configuration_version: number;
+            /** @description SHA-256 of canonical non-secret environment configuration; empty only for a legacy receipt that cannot qualify for promotion. */
+            configuration_hash: string;
+            /** @description Opaque per-workload fingerprints of secret keys, version metadata, and managed credential generations; no secret values or value hashes are included. Empty only for a legacy receipt that cannot qualify for promotion. */
+            secret_revision_hashes: {
+                [key: string]: string;
+            };
+            /** @enum {string} */
+            status: "passed" | "failed";
+            checks: components["schemas"]["ProjectEnvironmentQualificationCheck"][];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
+        /** @description Aggregate result plus one exact-deployment probe outcome per workload. */
+        ProjectEnvironmentQualificationCheck: {
+            /** @enum {string} */
+            name: "health" | "smoke";
+            /** @enum {string} */
+            status: "passed" | "failed";
+            results: components["schemas"]["ProjectEnvironmentQualificationResult"][];
+        };
+        /** @description Non-secret GET probe result tied to one workload deployment in the active release set. */
+        ProjectEnvironmentQualificationResult: {
+            workload_slug: string;
+            /** Format: uuid */
+            deployment_id: string;
+            /** @enum {string} */
+            status: "passed" | "failed";
+            http_status?: number;
+            /** @enum {string} */
+            error_code?: "preview_unavailable" | "request_failed" | "unexpected_status";
         };
         /** @description Project metadata with its workloads, exclusions, and latest reconciliation state. */
         ProjectResponse: components["schemas"]["ProjectSummaryResponse"] & {
@@ -30652,6 +30988,138 @@ export interface operations {
             403: components["responses"]["PlanLimit"];
             409: components["responses"]["ValidationFailed"];
             413: components["responses"]["SourceTooLarge"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getProjectEnvironmentPromotionPreview: {
+        parameters: {
+            query: {
+                /** @description Source environment whose live releases are compared with the target. */
+                from: string;
+                /** @description Opt in to copying the source's non-secret configuration atomically with the target release graph. */
+                sync_config?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description Project slug owning the environment promotion preview. */
+                slug: string;
+                /** @description Target environment receiving the promotion preview. */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Promotion preview and immutable promotion identity. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectEnvironmentPromotionPreviewResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    listProjectEnvironmentPromotions: {
+        parameters: {
+            query?: {
+                /** @description Opaque cursor returned as next_before. */
+                before?: string;
+                /** @description Page size, capped at 100. */
+                limit?: number;
+                /** @description Restrict history to promotions from this source environment. */
+                from?: string;
+                /** @description Restrict history to a promotion lifecycle status. */
+                status?: "running" | "succeeded" | "failed";
+            };
+            header?: never;
+            path: {
+                /** @description Project slug owning the promotion history. */
+                slug: string;
+                /** @description Target environment whose promotion history is requested. */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cursor-paginated promotion history. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectEnvironmentPromotionListResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getProjectEnvironmentPromotionStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project slug owning the promotion status operation. */
+                slug: string;
+                /** @description Target environment associated with the promotion status operation. */
+                environment: string;
+                /** @description Durable promotion operation identifier. */
+                promotion: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Durable promotion status, including post-cutover verification and any automatic rollback. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectEnvironmentPromotionStatusResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getProjectEnvironmentApprovalStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project slug owning the approval lookup. */
+                slug: string;
+                /** @description Protected environment slug containing the approval. */
+                environment: string;
+                /** @description Durable approval identifier returned when the approval is created. */
+                approval: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Durable approval lifecycle status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectEnvironmentApprovalStatusResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
             429: components["responses"]["TooManyRequests"];
         };
     };
