@@ -1,7 +1,7 @@
 import type { App, AppsMetrics } from '@/lib/api/queries';
 import type { components } from '@/lib/api/schema';
 import { toRunState } from '@/lib/api/adapters';
-import { ApiError } from '@/lib/api/errors';
+import { isPlanGate } from '@/components/dashboard/plan-gated';
 import type { LaunchState } from './launch';
 
 /**
@@ -148,10 +148,8 @@ export function buildTopology(input: TopologyInput): Topology {
   const slugById = new Map(apps.map((a) => [a.id, a.slug]));
   const rows = input.metrics.status === 'ready' ? input.metrics.data.apps : null;
   const metricsLoading = input.metrics.status === 'loading';
-  const metricsPlanGated =
-    input.metrics.status === 'error' &&
-    input.metrics.error instanceof ApiError &&
-    input.metrics.error.status === 402;
+  // Branch on the code, not the status: the house rule (CLAUDE.md).
+  const metricsPlanGated = input.metrics.status === 'error' && isPlanGate(input.metrics.error);
 
   const domainsBySlug = new Map<string, Domain[]>();
   for (const d of [...input.domains].sort((a, b) => a.domain.localeCompare(b.domain))) {

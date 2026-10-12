@@ -2,9 +2,12 @@ import { render, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 const deployment = vi.hoisted(() => ({ value: undefined as Record<string, unknown> | undefined }));
-const latest = vi.hoisted(() => ({ value: [] as { id: string; status: string }[] }));
+const latest = vi.hoisted(() => ({
+  value: [] as { id: string; status: string; created_at?: string }[],
+}));
+const readError = vi.hoisted(() => ({ value: null as Error | null }));
 vi.mock('@/lib/api/queries', () => ({
-  useDeployment: () => ({ data: deployment.value }),
+  useDeployment: () => ({ data: deployment.value, error: readError.value }),
   useAppDeployments: () => ({ data: { pages: [{ items: latest.value }] } }),
 }));
 vi.mock('@/lib/api/logs', () => ({
@@ -82,6 +85,60 @@ describe('LaunchTracker', () => {
     await waitFor(() =>
       expect(onChange).toHaveBeenLastCalledWith(
         expect.objectContaining({ deploymentId: 'd7', stage: 'deploying', step: 3 })
+      )
+    );
+    latest.value = [];
+  });
+
+  it('says the status is unavailable when the deployment cannot be read', async () => {
+    deployment.value = undefined;
+    readError.value = new Error('Not found');
+    const onChange = vi.fn();
+    render(
+      <LaunchTracker
+        seed={{ slug: 'api', source: 'git', deploymentId: 'd1' }}
+        onChange={onChange}
+      />
+    );
+    await waitFor(() =>
+      expect(onChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ stage: 'unavailable', failure: 'Not found' })
+      )
+    );
+    readError.value = null;
+  });
+
+  it('follows a newer deployment that overtook a failed one', async () => {
+    deployment.value = { id: 'd1', status: 'failed', created_at: '2026-10-11T10:00:00Z' };
+    latest.value = [{ id: 'd2', status: 'building', created_at: '2026-10-11T10:05:00Z' }];
+    const onChange = vi.fn();
+    render(
+      <LaunchTracker
+        seed={{ slug: 'api', source: 'git', deploymentId: 'd1' }}
+        onChange={onChange}
+      />
+    );
+    await waitFor(() =>
+      expect(onChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ deploymentId: 'd2', stage: 'building', failure: undefined })
+      )
+    );
+    latest.value = [];
+  });
+
+  it('keeps its own deployment when the latest one is older', async () => {
+    deployment.value = { id: 'd2', status: 'failed', created_at: '2026-10-11T10:05:00Z' };
+    latest.value = [{ id: 'd1', status: 'failed', created_at: '2026-10-11T10:00:00Z' }];
+    const onChange = vi.fn();
+    render(
+      <LaunchTracker
+        seed={{ slug: 'api', source: 'git', deploymentId: 'd2' }}
+        onChange={onChange}
+      />
+    );
+    await waitFor(() =>
+      expect(onChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ deploymentId: 'd2', stage: 'failed' })
       )
     );
     latest.value = [];

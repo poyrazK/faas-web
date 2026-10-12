@@ -40,6 +40,8 @@ export function Wizard({
   onLaunched,
   onPickExisting,
   cardRef,
+  cliApp,
+  onCliCreated,
 }: {
   step: WizardStep;
   mode: 'empty' | 'new';
@@ -48,6 +50,9 @@ export function Wizard({
   onLaunched: (launch: LaunchSeed) => void;
   onPickExisting: (slug: string, kind: CreateKind) => void;
   cardRef?: Ref<HTMLDivElement>;
+  /** The app the CLI step already created, if any. */
+  cliApp?: string;
+  onCliCreated: (slug: string) => void;
 }) {
   const reduce = useReducedMotion();
   const latest = useRef({ step, mode, onStep });
@@ -78,7 +83,7 @@ export function Wizard({
     ),
     source: <StepSource onPick={(s) => onStep(s)} />,
     git: <StepGit onLaunched={onLaunched} />,
-    cli: <StepCli onLaunched={onLaunched} />,
+    cli: <StepCli created={cliApp} onCreated={onCliCreated} onLaunched={onLaunched} />,
   };
 
   return (

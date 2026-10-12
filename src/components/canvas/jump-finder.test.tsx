@@ -39,4 +39,28 @@ describe('JumpFinder', () => {
     fireEvent.keyDown(input, { key: 'Escape' });
     expect(onClose).toHaveBeenCalled();
   });
+
+  it('keeps Esc to itself, so the page and wizard do not also act on it', () => {
+    const onWindowKey = vi.fn();
+    window.addEventListener('keydown', onWindowKey);
+    render(<JumpFinder items={items} onPick={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.keyDown(screen.getByRole('combobox', { name: 'Jump to a node' }), { key: 'Escape' });
+    window.removeEventListener('keydown', onWindowKey);
+    expect(onWindowKey).not.toHaveBeenCalled();
+  });
+
+  it('announces the highlighted option as the arrows move', () => {
+    render(<JumpFinder items={items} onPick={vi.fn()} onClose={vi.fn()} />);
+    const input = screen.getByRole('combobox', { name: 'Jump to a node' });
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    const id = input.getAttribute('aria-activedescendant');
+    expect(document.getElementById(id!)).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('closes when focus goes elsewhere', () => {
+    const onClose = vi.fn();
+    render(<JumpFinder items={items} onPick={vi.fn()} onClose={onClose} />);
+    fireEvent.blur(screen.getByRole('combobox', { name: 'Jump to a node' }));
+    expect(onClose).toHaveBeenCalled();
+  });
 });

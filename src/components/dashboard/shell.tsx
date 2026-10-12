@@ -992,15 +992,16 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                   )}
                 >
                   {/* On a full-bleed page the banner floats over the content instead
-                  of pushing it: the canvas is exactly the viewport's height. */}
-                  <div
-                    className={cn(
-                      fullBleed &&
-                        'pointer-events-none absolute inset-x-4 top-3 z-20 [&>*]:pointer-events-auto'
-                    )}
-                  >
+                  of pushing it: the canvas is exactly the viewport's height.
+                  Elsewhere it stays a direct child, so when it renders nothing
+                  the column's gap does not open above the page. */}
+                  {fullBleed ? (
+                    <div className="pointer-events-none absolute inset-x-4 top-3 z-20 [&>*]:pointer-events-auto">
+                      <UnreachableBanner />
+                    </div>
+                  ) : (
                     <UnreachableBanner />
-                  </div>
+                  )}
                   <ConsolePageTransition
                     pageKey={pageKey}
                     className={fullBleed ? 'h-full gap-0' : undefined}

@@ -219,13 +219,23 @@ const LAUNCH_LABEL: Record<LaunchStage, string> = {
   deploying: 'Deploying',
   live: 'Serving',
   failed: 'Build failed',
+  unavailable: 'Status unavailable',
 };
 
-function LaunchButton({ children, onClick }: { children: string; onClick: () => void }) {
+function LaunchButton({
+  children,
+  onClick,
+  disabled,
+}: {
+  children: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
   return (
     <button
       type="button"
-      className="nodrag pressable h-7 rounded-lg border border-border-secondary px-2.5 text-[12px] text-foreground transition-colors duration-[var(--motion-fast)] hover:bg-accent"
+      disabled={disabled}
+      className="nodrag pressable h-7 rounded-lg border border-border-secondary px-2.5 text-[12px] text-foreground transition-colors duration-[var(--motion-fast)] hover:bg-accent disabled:pointer-events-none disabled:opacity-60"
       onClick={(e) => {
         e.stopPropagation();
         onClick();
@@ -250,26 +260,36 @@ function LaunchBody({
   // The source fills the line under the rail until the build has output.
   const where = launch.repo ? `${launch.repo}@${launch.ref ?? 'main'}` : undefined;
   const detail = launch.logLine ?? where;
+  const stopped = launch.stage === 'failed' || launch.stage === 'unavailable';
   const color = launch.stage === 'failed' ? 'var(--status-critical)' : 'var(--status-warning)';
   return (
     <>
       <Meta color={color}>
         <span aria-live="polite">{LAUNCH_LABEL[launch.stage]}</span>
       </Meta>
-      {launch.stage === 'failed' ? (
+      {stopped ? (
         <>
           {launch.failure && (
             <span
               title={launch.failure}
-              className="mt-1 max-w-[170px] truncate font-mono text-[10.5px] text-status-critical"
+              className={cn(
+                'mt-1 max-w-[170px] truncate font-mono text-[10.5px]',
+                launch.stage === 'failed' ? 'text-status-critical' : 'text-muted-foreground'
+              )}
             >
               {launch.failure}
             </span>
           )}
           {onAction && (
             <span className="mt-2 flex gap-2">
-              <LaunchButton onClick={() => onAction('logs')}>View logs</LaunchButton>
-              <LaunchButton onClick={() => onAction('retry')}>Retry</LaunchButton>
+              {/* Only a build that ran has output: not an unreadable status,
+                  and not a submission the API refused. */}
+              {launch.stage === 'failed' && launch.deploymentId && (
+                <LaunchButton onClick={() => onAction('logs')}>View logs</LaunchButton>
+              )}
+              <LaunchButton disabled={launch.retrying} onClick={() => onAction('retry')}>
+                {launch.retrying ? 'Retrying…' : 'Retry'}
+              </LaunchButton>
             </span>
           )}
         </>
@@ -369,7 +389,7 @@ function AppMetricsRow({ data }: { data: AppNodeData }) {
 export const AppNode = memo(function AppNode({ data, selected }: NodeProps<Node<AppNodeData>>) {
   const status = appStatus(data);
   const launch = data.launch && data.launch.stage !== 'live' ? data.launch : undefined;
-  const failed = launch?.stage === 'failed';
+  const failed = launch?.stage === 'failed' || launch?.stage === 'unavailable';
   return (
     <div
       className={cn(

@@ -32,7 +32,10 @@ export function StepGit({ onLaunched }: { onLaunched: (l: LaunchSeed) => void })
       .replace(/[^a-z0-9-]/g, '-') ?? '';
   const slug = touched ? name : derived;
   const nameError = slug ? appNameError(slug) : undefined;
-  const over = appQuotaExceeded(account as never) || !memoryAllowed(account as never, MEMORY);
+  const quotaFull = appQuotaExceeded(account ?? null);
+  const memoryOver = !memoryAllowed(account ?? null, MEMORY);
+  const over = quotaFull || memoryOver;
+  const plan = account ? (PLAN[account.plan] ?? account.plan) : '';
   const ready =
     Boolean(repo) && Boolean(slug) && !nameError && isValidGitRef(ref) && !over && !busy;
 
@@ -103,9 +106,15 @@ export function StepGit({ onLaunched }: { onLaunched: (l: LaunchSeed) => void })
         <div className="mt-4 flex gap-3 rounded-[10px] border border-status-warning/25 bg-status-warning/[0.07] p-3 text-[12.5px]">
           <span aria-hidden className="mt-1.5 size-1.5 shrink-0 rounded-full bg-status-warning" />
           <div>
-            <p className="font-semibold">{`You're using ${String(account.app_count)} of ${String((account.limits as { deployed_apps: number }).deployed_apps)} apps on ${PLAN[String(account.plan)] ?? String(account.plan)}`}</p>
+            <p className="font-semibold">
+              {quotaFull
+                ? `You're using ${account.app_count} of ${account.limits.deployed_apps} apps on ${plan}`
+                : `${plan} allows up to ${account.limits.ram_mb} MB per app; this needs ${MEMORY} MB`}
+            </p>
             <p className="mt-0.5 text-muted-foreground">
-              Upgrade for more apps, or remove one you no longer need.
+              {quotaFull
+                ? 'Upgrade for more apps, or remove one you no longer need.'
+                : 'Upgrade for more memory per app.'}
             </p>
           </div>
         </div>

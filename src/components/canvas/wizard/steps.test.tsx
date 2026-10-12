@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -31,8 +32,13 @@ vi.mock('@/components/dashboard/repo-picker', () => ({
   ),
 }));
 const deployments = vi.hoisted(() => ({ value: [] as { id: string }[] }));
+const deploymentsError = vi.hoisted(() => ({ value: null as Error | null, refetch: vi.fn() }));
 vi.mock('@/lib/api/queries', () => ({
-  useAppDeployments: () => ({ data: { pages: [{ items: deployments.value }] } }),
+  useAppDeployments: () => ({
+    data: { pages: [{ items: deployments.value }] },
+    error: deploymentsError.value,
+    refetch: deploymentsError.refetch,
+  }),
 }));
 
 const { StepGit } = await import('./step-git');
@@ -101,17 +107,23 @@ describe('StepGit', () => {
   });
 });
 
+/** Holds what the page would keep in the URL. */
+function Cli({ onLaunched }: { onLaunched: (l: unknown) => void }) {
+  const [created, setCreated] = useState<string>();
+  return <StepCli created={created} onCreated={setCreated} onLaunched={onLaunched} />;
+}
+
 describe('StepCli', () => {
   it('shows the verified commands once the app exists, and launches when the first deploy lands', async () => {
     createApp.mockResolvedValue({ id: 'acme-api' });
     const onLaunched = vi.fn();
-    const { rerender } = render(<StepCli onLaunched={onLaunched} />);
+    const { rerender } = render(<Cli onLaunched={onLaunched} />);
     fireEvent.change(screen.getByLabelText('App name'), { target: { value: 'acme-api' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create acme-api' }));
     expect(await screen.findByText(/gregale deploy --name acme-api/)).toBeInTheDocument();
     expect(screen.getByText(/curl -fsSL https:\/\/get\.gregale\.dev \| sh/)).toBeInTheDocument();
     deployments.value = [{ id: 'dep9' }];
-    rerender(<StepCli onLaunched={onLaunched} />);
+    rerender(<Cli onLaunched={onLaunched} />);
     await waitFor(() =>
       expect(onLaunched).toHaveBeenCalledWith({
         slug: 'acme-api',
@@ -125,10 +137,35 @@ describe('StepCli', () => {
   it('lets you do it later', async () => {
     createApp.mockResolvedValue({ id: 'acme-api' });
     const onLaunched = vi.fn();
-    render(<StepCli onLaunched={onLaunched} />);
+    render(<Cli onLaunched={onLaunched} />);
     fireEvent.change(screen.getByLabelText('App name'), { target: { value: 'acme-api' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create acme-api' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Do it later' }));
     expect(onLaunched).toHaveBeenCalledWith({ slug: 'acme-api', source: 'cli' });
+  });
+
+  it('returns to the commands for an app it already created', () => {
+    const onCreated = vi.fn();
+    render(<StepCli created="acme-api" onCreated={onCreated} onLaunched={vi.fn()} />);
+    expect(screen.getByText(/gregale deploy --name acme-api/)).toBeInTheDocument();
+    expect(screen.queryByLabelText('App name')).not.toBeInTheDocument();
+  });
+
+  it('hands the created app up instead of keeping it', async () => {
+    createApp.mockResolvedValue({ id: 'acme-api' });
+    const onCreated = vi.fn();
+    render(<StepCli onCreated={onCreated} onLaunched={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('App name'), { target: { value: 'acme-api' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create acme-api' }));
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith('acme-api'));
+  });
+
+  it('says when it could not check for a deploy, and checks again on request', () => {
+    deploymentsError.value = new Error('offline');
+    render(<StepCli created="acme-api" onCreated={vi.fn()} onLaunched={vi.fn()} />);
+    expect(screen.getByText(/Couldn’t check for a deploy/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Check again' }));
+    expect(deploymentsError.refetch).toHaveBeenCalled();
+    deploymentsError.value = null;
   });
 });

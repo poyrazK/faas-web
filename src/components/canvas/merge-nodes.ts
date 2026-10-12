@@ -1,5 +1,11 @@
 type XY = { x: number; y: number };
-type Mergeable = { id: string; position: XY; data: unknown; selected?: boolean };
+type Mergeable = {
+  id: string;
+  position: XY;
+  data: unknown;
+  selected?: boolean;
+  style?: unknown;
+};
 
 const same = (a: XY, b: XY) => a.x === b.x && a.y === b.y;
 
@@ -26,6 +32,7 @@ export function mergeNodes<T extends Mergeable>(
     if (
       was &&
       was.data === n.data &&
+      was.style === n.style &&
       Boolean(was.selected) === isSelected &&
       same(was.position, position)
     )

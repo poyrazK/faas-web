@@ -14,13 +14,29 @@ vi.mock('@/components/dashboard/github-connect-form', () => ({
   ),
 }));
 vi.mock('@tanstack/react-router', () => ({
-  Link: ({ children }: { children: ReactNode }) => <a>{children}</a>,
+  Link: ({
+    children,
+    to,
+    params,
+  }: {
+    children: ReactNode;
+    to: string;
+    params?: { slug?: string };
+  }) => <a href={to.replace('$slug', params?.slug ?? '')}>{children}</a>,
 }));
 
 const { Wizard } = await import('./wizard');
-const base = { apps: [], onLaunched: vi.fn(), onPickExisting: vi.fn() };
+const base = { apps: [], onLaunched: vi.fn(), onPickExisting: vi.fn(), onCliCreated: vi.fn() };
 
 describe('Wizard', () => {
+  it('points newcomers at a docs page that exists', async () => {
+    const { findDoc } = await import('@/lib/docs-manifest');
+    render(<Wizard {...base} mode="empty" step="start" onStep={vi.fn()} />);
+    const href = screen.getByRole('link', { name: /getting started/i }).getAttribute('href');
+    expect(href).toBe('/docs/getting-started');
+    expect(findDoc('getting-started')).toBeDefined();
+  });
+
   it('opens on one decision for an empty account', () => {
     const onStep = vi.fn();
     render(<Wizard {...base} mode="empty" step="start" onStep={onStep} />);
@@ -39,11 +55,21 @@ describe('Wizard', () => {
     expect(onStep).toHaveBeenCalledWith(undefined);
   });
 
-  it('esc steps back and keeps what was typed', () => {
+  it('esc steps back one step', () => {
     const onStep = vi.fn();
     render(<Wizard {...base} mode="empty" step="source" onStep={onStep} />);
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(onStep).toHaveBeenCalledWith('start');
+  });
+
+  it('leaves Enter on a focused button to that button', () => {
+    const onStep = vi.fn();
+    render(<Wizard {...base} mode="empty" step="source" onStep={onStep} />);
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+    const back = screen.getByRole('button', { name: /Build your backend/ });
+    fireEvent.keyDown(back, { key: 'Enter' });
+    expect(onStep).not.toHaveBeenCalledWith('git');
+    expect(onStep).not.toHaveBeenCalledWith('cli');
   });
 
   it('chooses a source with the arrow keys and enter', () => {

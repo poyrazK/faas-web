@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { keys } from '@/lib/api/queries';
 import type { LaunchState } from './launch';
@@ -36,6 +36,9 @@ export function useLaunches() {
   const [seeds, setSeeds] = useState(read);
   const [launches, setLaunches] = useState<Record<string, LaunchState>>({});
   const qc = useQueryClient();
+  // The stage each launch last reported, so a finish refreshes once, not on
+  // every later report (a late log line on a failed build).
+  const stages = useRef(new Map<string, LaunchState['stage']>());
 
   useEffect(() => write(seeds), [seeds]);
 
@@ -43,9 +46,11 @@ export function useLaunches() {
   const onChange = useCallback(
     (state: LaunchState) => {
       setLaunches((m) => ({ ...m, [state.slug]: state }));
+      const was = stages.current.get(state.slug);
+      stages.current.set(state.slug, state.stage);
       // A finished deploy changed the app's status: reread it, or the
       // inspector and the node fall back to one read mid-build.
-      if (state.stage === 'live' || state.stage === 'failed')
+      if (state.stage !== was && (state.stage === 'live' || state.stage === 'failed'))
         void qc.invalidateQueries({ queryKey: keys.apps });
       if (state.stage !== 'live') return;
       setSeeds((m) => {

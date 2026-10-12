@@ -48,7 +48,6 @@ export function useCamera() {
     [flow]
   );
 
-  /** Pans the least it can, at the current zoom, so every listed node is fully on screen. Zooms out only when they cannot fit. */
   /** Like `ensureVisible`, for a box in flow units: room for nodes not drawn yet. */
   const showBox = useCallback(
     (box: Box) => {
@@ -77,6 +76,11 @@ export function useCamera() {
     [flow, store]
   );
 
+  /**
+   * Pans the least it can, at the current zoom, so every listed node is fully
+   * on screen (the strip under the toolbar does not count). Zooms out only
+   * when they cannot fit.
+   */
   const ensureVisible = useCallback(
     (ids: string[]) => {
       const nodes = ids

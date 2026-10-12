@@ -50,8 +50,25 @@ function Waiting({ slug, onLaunched }: { slug: string; onLaunched: (l: LaunchSee
         className="mt-4 flex items-center gap-2.5 text-[12.5px] text-muted-foreground"
         role="status"
       >
-        <span aria-hidden className="size-2 animate-pulse rounded-full bg-brand" />
-        Waiting for your first deploy…
+        {deployments.error ? (
+          <>
+            {/* A failed check stops polling; say so rather than wait forever. */}
+            <span aria-hidden className="size-2 rounded-full bg-status-warning" />
+            Couldn’t check for a deploy.
+            <button
+              type="button"
+              onClick={() => void deployments.refetch()}
+              className="h-8 rounded-lg px-2 font-semibold text-foreground underline underline-offset-2"
+            >
+              Check again
+            </button>
+          </>
+        ) : (
+          <>
+            <span aria-hidden className="size-2 animate-pulse rounded-full bg-brand" />
+            Waiting for your first deploy…
+          </>
+        )}
         <button
           type="button"
           onClick={() => onLaunched({ slug, source: 'cli' })}
@@ -64,10 +81,22 @@ function Waiting({ slug, onLaunched }: { slug: string; onLaunched: (l: LaunchSee
   );
 }
 
-export function StepCli({ onLaunched }: { onLaunched: (l: LaunchSeed) => void }) {
+/**
+ * `created` is the app this step already made, kept by the page in the URL,
+ * so a reload, a step back or a retry returns to its commands instead of
+ * asking for a name that is now taken.
+ */
+export function StepCli({
+  created,
+  onCreated,
+  onLaunched,
+}: {
+  created?: string;
+  onCreated: (slug: string) => void;
+  onLaunched: (l: LaunchSeed) => void;
+}) {
   const { createApp } = useCreateAndDeploy();
   const [name, setName] = useState('');
-  const [created, setCreated] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const nameError = name ? appNameError(name) : undefined;
@@ -83,7 +112,7 @@ export function StepCli({ onLaunched }: { onLaunched: (l: LaunchSeed) => void })
         setError(undefined);
         try {
           await createApp({ name });
-          setCreated(name);
+          onCreated(name);
         } catch (err) {
           setError(errorMessage(err));
         } finally {

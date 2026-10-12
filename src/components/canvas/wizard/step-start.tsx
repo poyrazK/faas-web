@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from '@tanstack/react-router';
 import { Globe, HardDrive, Timer, Cube } from 'iconoir-react';
 import { Select } from '@/components/ui/field';
 import { FrostedMark } from './frosted-mark';
@@ -68,9 +69,13 @@ export function StepStart({
             ↵
           </kbd>
         </button>
-        <a href="/docs/quickstart" className="mt-4 inline-block text-[12px] text-muted-foreground">
-          New here? <span className="text-brand">Read the quickstart ↗</span>
-        </a>
+        <Link
+          to="/docs/$slug"
+          params={{ slug: 'getting-started' }}
+          className="mt-4 inline-block text-[12px] text-muted-foreground hover:text-foreground"
+        >
+          New here? <span className="text-brand">Read getting started</span>
+        </Link>
       </div>
     );
   }

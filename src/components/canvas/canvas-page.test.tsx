@@ -1,20 +1,26 @@
 import { useEffect, type ReactNode, type Ref } from 'react';
-import { fireEvent, render as rtlRender, screen } from '@testing-library/react';
+import { act, fireEvent, render as rtlRender, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/lib/api/errors';
 
 const state = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
 const wizardMounts = vi.hoisted(() => ({ count: 0 }));
+const flowNodes = vi.hoisted(() => ({ value: [] as { id: string; data: unknown }[] }));
+const deployGit = vi.hoisted(() => vi.fn());
+const navigate = vi.hoisted(() => vi.fn());
 vi.mock('./use-topology', () => ({ useTopology: () => state.value }));
 vi.mock('./canvas', () => ({
-  CanvasView: ({ nodes }: { nodes: { id: string }[] }) => (
-    <div data-testid="flow">
-      {nodes.map((n) => (
-        <i key={n.id}>{n.id}</i>
-      ))}
-    </div>
-  ),
+  CanvasView: ({ nodes }: { nodes: { id: string; data: unknown }[] }) => {
+    flowNodes.value = nodes;
+    return (
+      <div data-testid="flow">
+        {nodes.map((n) => (
+          <i key={n.id}>{n.id}</i>
+        ))}
+      </div>
+    );
+  },
 }));
 vi.mock('./inspector', () => ({ Inspector: () => null }));
 vi.mock('./wizard/wizard', () => ({
@@ -65,11 +71,11 @@ vi.mock('./launch-tracker', () => ({
   },
 }));
 vi.mock('@/lib/api/create-and-deploy', () => ({
-  useCreateAndDeploy: () => ({ createApp: vi.fn(), deployGit: vi.fn() }),
+  useCreateAndDeploy: () => ({ createApp: vi.fn(), deployGit }),
 }));
 vi.mock('@/lib/api/queries', () => ({ keys: { apps: ['apps'] }, useApps: () => ({ data: [] }) }));
 vi.mock('@tanstack/react-router', () => ({
-  useNavigate: () => vi.fn(),
+  useNavigate: () => navigate,
   Link: ({ children }: { children: ReactNode }) => <a>{children}</a>,
 }));
 
@@ -79,6 +85,8 @@ const render = (ui: ReactNode) =>
   rtlRender(<QueryClientProvider client={new QueryClient()}>{ui}</QueryClientProvider>);
 
 beforeEach(() => {
+  deployGit.mockReset();
+  navigate.mockReset();
   sessionStorage.clear();
   localStorage.clear();
   trackerStage.value = 'building';
@@ -320,5 +328,56 @@ describe('CanvasPage', () => {
     state.value = readyWith(oneApp);
     render(<CanvasPage />);
     expect(screen.queryByText('ghost:domain')).not.toBeInTheDocument();
+  });
+
+  const launchAction = (slug: string, action: 'retry' | 'logs') =>
+    act(() => {
+      const app = flowNodes.value.find((n) => n.id === `app:${slug}`)!;
+      (app.data as { onLaunchAction: (a: string) => void }).onLaunchAction(action);
+    });
+
+  it('retries a failed Git launch once, however often Retry is pressed', () => {
+    trackerStage.value = 'failed';
+    deployGit.mockReturnValue(new Promise(() => {}));
+    sessionStorage.setItem(
+      'gregale.canvas.launches',
+      JSON.stringify({
+        api: { slug: 'api', source: 'git', repo: 'acme/api', ref: 'main', deploymentId: 'd1' },
+      })
+    );
+    state.value = readyWith(oneApp);
+    render(<CanvasPage />);
+    launchAction('api', 'retry');
+    launchAction('api', 'retry');
+    expect(deployGit).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries a CLI launch by showing that app’s commands', () => {
+    trackerStage.value = 'failed';
+    sessionStorage.setItem(
+      'gregale.canvas.launches',
+      JSON.stringify({ api: { slug: 'api', source: 'cli' } })
+    );
+    state.value = readyWith(oneApp);
+    render(<CanvasPage />);
+    launchAction('api', 'retry');
+    const search = navigate.mock.calls.at(-1)![0].search as (s: object) => object;
+    expect(search({})).toMatchObject({ wizard: 'cli', app: 'api' });
+    expect(deployGit).not.toHaveBeenCalled();
+  });
+
+  it('reads an unreadable status again instead of redeploying', () => {
+    trackerStage.value = 'unavailable';
+    sessionStorage.setItem(
+      'gregale.canvas.launches',
+      JSON.stringify({
+        api: { slug: 'api', source: 'git', repo: 'acme/api', ref: 'main', deploymentId: 'd1' },
+      })
+    );
+    state.value = readyWith(oneApp);
+    render(<CanvasPage />);
+    launchAction('api', 'retry');
+    expect(deployGit).not.toHaveBeenCalled();
+    expect(JSON.parse(sessionStorage.getItem('gregale.canvas.launches')!).api.attempt).toBe(1);
   });
 });

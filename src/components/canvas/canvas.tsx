@@ -24,9 +24,10 @@ const allNodeTypes = { ...nodeTypes, draft: DraftFlowNode };
  * one. Positions are not persisted; a reload returns to the computed layout.
  *
  * Nodes live in React Flow's own state so drags apply. New layout output is
- * merged in by id (`mergeNodes`): undragged nodes follow it, dragged ones stay
- * put, and unchanged ones keep their identity so React Flow does not
- * re-measure the whole graph on a click or a refetch. The page owns the `ReactFlowProvider`, so the inspector
+ * merged in by id (`mergeNodes`): undragged nodes follow it and dragged ones
+ * stay put. A node whose data object is reused keeps its identity; `toFlow`
+ * builds fresh data today, so that is a guard for callers that memoise, not a
+ * saving every render gets. The page owns the `ReactFlowProvider`, so the inspector
  * and the toolbar can move the camera too.
  */
 export function CanvasView({
@@ -36,6 +37,7 @@ export function CanvasView({
   onSelect,
   onPick,
   onNew,
+  shortcuts,
   settled = true,
   onHover,
   children,
@@ -47,6 +49,8 @@ export function CanvasView({
   /** A node chosen from the jump finder. */
   onPick: (id: string) => void;
   onNew?: () => void;
+  /** Toolbar keys (`n`, `/`); off while something else owns the keyboard. */
+  shortcuts?: boolean;
   /** The graph is complete; fit it once. */
   settled?: boolean;
   /** The node under the pointer, or none. */
@@ -89,6 +93,7 @@ export function CanvasView({
       <ViewportPortal>{children}</ViewportPortal>
       <CanvasToolbar
         onNew={onNew}
+        shortcuts={shortcuts}
         onPick={onPick}
         items={flowNodes
           .filter((n) => {

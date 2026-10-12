@@ -3,8 +3,8 @@ import { Link } from '@tanstack/react-router';
 import { Xmark } from 'iconoir-react';
 import { useAppAnalyticsTimeseries, useAppMetrics } from '@/lib/api/queries';
 import { useLogStream } from '@/lib/api/logs';
+import { isPlanGate } from '@/components/dashboard/plan-gated';
 import type { LaunchState } from './launch';
-import { ApiError } from '@/lib/api/errors';
 import { describeCronSchedule } from '@/lib/cron-schedule';
 import { DomainDoctor } from '@/components/dashboard/domain-doctor';
 import { Sparkline } from '@/components/dither-kit';
@@ -14,7 +14,7 @@ import { nodeTitle, type AppData, type CanvasNode, type Topology } from './topol
 
 const TAB_LABEL = { overview: 'Overview', logs: 'Logs', connections: 'Connections' } as const;
 export type InspectorTab = keyof typeof TAB_LABEL;
-const needsPlan = (e: unknown) => e instanceof ApiError && e.status === 402;
+const needsPlan = isPlanGate;
 const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
 const short = (n: number) => compact.format(n).toLowerCase();
 const label = 'font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground';

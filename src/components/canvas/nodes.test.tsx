@@ -186,6 +186,7 @@ describe('AppNode · first deploy', () => {
             source: 'git',
             stage: 'failed',
             step: 0,
+            deploymentId: 'd1',
             failure: "Cannot find module './db'",
           },
         })}
@@ -195,6 +196,62 @@ describe('AppNode · first deploy', () => {
     screen.getByRole('button', { name: 'Retry' }).click();
     screen.getByRole('button', { name: 'View logs' }).click();
     expect(onLaunchAction.mock.calls).toEqual([['retry'], ['logs']]);
+  });
+
+  it('offers no logs for a build that was never submitted', () => {
+    wrap(
+      <AppNode
+        {...props({
+          ...base,
+          onLaunchAction: vi.fn(),
+          launch: {
+            slug: 'acme-api',
+            source: 'git',
+            stage: 'failed',
+            step: 0,
+            failure: 'Build was not submitted: Connect GitHub first.',
+          },
+        })}
+      />
+    );
+    expect(screen.queryByRole('button', { name: 'View logs' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+  });
+
+  it('says when status cannot be read, offering only a re-read', () => {
+    const onLaunchAction = vi.fn();
+    wrap(
+      <AppNode
+        {...props({
+          ...base,
+          onLaunchAction,
+          launch: {
+            slug: 'acme-api',
+            source: 'git',
+            stage: 'unavailable',
+            step: 0,
+            failure: 'Not found',
+          },
+        })}
+      />
+    );
+    expect(screen.getByText('Status unavailable')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'View logs' })).not.toBeInTheDocument();
+    screen.getByRole('button', { name: 'Retry' }).click();
+    expect(onLaunchAction).toHaveBeenCalledWith('retry');
+  });
+
+  it('offers no second retry while one is in flight', () => {
+    wrap(
+      <AppNode
+        {...props({
+          ...base,
+          onLaunchAction: vi.fn(),
+          launch: { slug: 'acme-api', source: 'git', stage: 'failed', step: 0, retrying: true },
+        })}
+      />
+    );
+    expect(screen.getByRole('button', { name: 'Retrying…' })).toBeDisabled();
   });
 
   it('announces status changes politely', () => {

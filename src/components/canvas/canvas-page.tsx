@@ -40,15 +40,22 @@ function ghostsRetired(slug: string) {
 }
 
 /** Canvas page. `data-gregale-canvas` is the build-elimination sentinel (plan Task 1). */
-export default function CanvasPage({ node, wizard }: { node?: string; wizard?: WizardStep }) {
+type CanvasPageProps = {
+  node?: string;
+  wizard?: WizardStep;
+  /** The app the CLI step created (`?wizard=cli&app=`). */
+  app?: string;
+};
+
+export default function CanvasPage(props: CanvasPageProps) {
   return (
     <ReactFlowProvider>
-      <CanvasPageBody node={node} wizard={wizard} />
+      <CanvasPageBody {...props} />
     </ReactFlowProvider>
   );
 }
 
-function CanvasPageBody({ node, wizard }: { node?: string; wizard?: WizardStep }) {
+function CanvasPageBody({ node, wizard, app }: CanvasPageProps) {
   const navigate = useNavigate();
   const camera = useCamera();
   const { phase, error, topology, retry, retryApp, settled } = useTopology();
@@ -62,10 +69,14 @@ function CanvasPageBody({ node, wizard }: { node?: string; wizard?: WizardStep }
     [navigate]
   );
   const setWizard = useCallback(
-    (step?: WizardStep) =>
+    (step?: WizardStep, cliApp?: string) =>
       void navigate({
         to: '/dashboard/canvas',
-        search: (s: Record<string, unknown>) => ({ ...s, wizard: step }),
+        search: (s: Record<string, unknown>) => ({
+          ...s,
+          wizard: step,
+          app: step === 'cli' ? cliApp : undefined,
+        }),
         replace: true,
       }),
     [navigate]
@@ -93,7 +104,30 @@ function CanvasPageBody({ node, wizard }: { node?: string; wizard?: WizardStep }
     [seed, setWizard]
   );
 
+  // A CLI app is tracked the moment it exists, waiting for its first deploy,
+  // so leaving the wizard never loses it.
+  const onCliCreated = useCallback(
+    (slug: string) => {
+      seed({ slug, source: 'cli' });
+      setWizard('cli', slug);
+    },
+    [seed, setWizard]
+  );
   const { deployGit } = useCreateAndDeploy();
+  // Apps whose Retry is in flight: one at a time, or two deploys race.
+  const [retrying, setRetrying] = useState<ReadonlySet<string>>(new Set());
+  const shownLaunches = useMemo(
+    () =>
+      retrying.size
+        ? Object.fromEntries(
+            Object.entries(launches).map(([k, l]) => [
+              k,
+              retrying.has(k) ? { ...l, retrying: true } : l,
+            ])
+          )
+        : launches,
+    [launches, retrying]
+  );
   // Opening a launch's logs remounts the inspector on its Logs tab.
   const [logsFor, setLogsFor] = useState<{ id: string; n: number }>();
   const onLaunchAction = useCallback(
@@ -107,16 +141,28 @@ function CanvasPageBody({ node, wizard }: { node?: string; wizard?: WizardStep }
         return;
       }
       const s = seeds[slug];
-      // A CLI deploy is retried from the terminal: show the commands again.
-      if (!s?.repo) return setWizard('cli');
+      if (!s || retrying.has(slug)) return;
       const attempt = (s.attempt ?? 0) + 1;
-      void deployGit({ slug, repo: s.repo, ref: s.ref ?? 'main' }).then(
-        (dep) => seed({ ...s, attempt, deploymentId: dep.id, submitError: undefined }),
-        (err: unknown) =>
-          seed({ ...s, attempt, deploymentId: undefined, submitError: errorMessage(err) })
-      );
+      // Status that could not be read is read again, not redeployed.
+      if (launches[slug]?.stage === 'unavailable') return seed({ ...s, attempt });
+      // A CLI deploy is retried from the terminal: show its commands again.
+      if (!s.repo) return setWizard('cli', slug);
+      setRetrying((r) => new Set(r).add(slug));
+      void deployGit({ slug, repo: s.repo, ref: s.ref ?? 'main' })
+        .then(
+          (dep) => seed({ ...s, attempt, deploymentId: dep.id, submitError: undefined }),
+          (err: unknown) =>
+            seed({ ...s, attempt, deploymentId: undefined, submitError: errorMessage(err) })
+        )
+        .finally(() =>
+          setRetrying((r) => {
+            const next = new Set(r);
+            next.delete(slug);
+            return next;
+          })
+        );
     },
-    [seeds, deployGit, seed, select, setWizard, camera]
+    [seeds, launches, retrying, deployGit, seed, select, setWizard, camera]
   );
 
   const [connect, setConnect] = useState<{
@@ -127,13 +173,14 @@ function CanvasPageBody({ node, wizard }: { node?: string; wizard?: WizardStep }
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
+      // The wizard takes Esc as "back"; it must not also clear the selection.
+      if (e.key !== 'Escape' || wizardStep) return;
       if (connect) setConnect(undefined);
       else if (node) select(undefined);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [connect, node, select]);
+  }, [connect, node, select, wizardStep]);
 
   const slotKind = connect?.kind;
   const slotSide = connect?.side;
@@ -150,7 +197,10 @@ function CanvasPageBody({ node, wizard }: { node?: string; wizard?: WizardStep }
       new Map(
         Object.values(launches)
           .filter((l) => l.stage !== 'live')
-          .map((l) => [`app:${l.slug}`, l.stage === 'failed' ? APP_FAILED : APP_TALL])
+          .map((l) => [
+            `app:${l.slug}`,
+            l.stage === 'failed' || l.stage === 'unavailable' ? APP_FAILED : APP_TALL,
+          ])
       ),
     [launches]
   );
@@ -238,13 +288,13 @@ function CanvasPageBody({ node, wizard }: { node?: string; wizard?: WizardStep }
         onConnect: (slug, side) => setConnect({ slug, side }),
         onRetry: retryApp,
         selected: node,
-        launches,
+        launches: shownLaunches,
         onLaunchAction,
         ghosts,
         onGhost: (slug, kind) => setConnect({ slug, side: kind === 'bucket' ? 'out' : 'in', kind }),
         onDismissGhosts: () => ghostApp && retire(ghostApp),
       }),
-    [topology, positions, retryApp, node, launches, onLaunchAction, ghosts, ghostApp, retire]
+    [topology, positions, retryApp, node, shownLaunches, onLaunchAction, ghosts, ghostApp, retire]
   );
   const connectApp = connect && topology.nodes.find((n) => n.id === `app:${connect.slug}`);
   const appData = connectApp?.data.kind === 'app' ? (connectApp.data as AppData) : undefined;
@@ -415,6 +465,7 @@ function CanvasPageBody({ node, wizard }: { node?: string; wizard?: WizardStep }
                   onSelect={select}
                   settled={settled}
                   onHover={onHover}
+                  shortcuts={!wizardStep && !connect}
                   onNew={() => setWizard('start')}
                   onPick={(id) => {
                     select(id);
@@ -448,6 +499,8 @@ function CanvasPageBody({ node, wizard }: { node?: string; wizard?: WizardStep }
                     setConnect({ slug, side: kind === 'bucket' ? 'out' : 'in', kind });
                   }}
                   cardRef={cardRef}
+                  cliApp={app}
+                  onCliCreated={onCliCreated}
                 />
               )}
             </div>

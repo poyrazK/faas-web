@@ -19,6 +19,9 @@ export function StepSource({ onPick }: { onPick: (source: 'git' | 'cli') => void
       if (e.key === 'ArrowRight') setActive('cli');
       if (e.key === 'ArrowLeft') setActive('git');
       if (e.key === 'Enter') {
+        // A focused button or link acts on its own Enter; acting here too
+        // fired both (the back link stepped back and forward at once).
+        if (e.target instanceof HTMLButtonElement || e.target instanceof HTMLAnchorElement) return;
         const { active, connected, onPick } = latest.current;
         if (active === 'cli' || connected) onPick(active);
       }

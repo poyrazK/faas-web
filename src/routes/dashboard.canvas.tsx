@@ -15,7 +15,7 @@ const CanvasPage = featureFlags.canvas
 
 const WIZARD_STEPS = ['start', 'source', 'git', 'cli'] as const;
 type WizardStep = (typeof WIZARD_STEPS)[number];
-type CanvasSearch = { node?: string; wizard?: WizardStep };
+type CanvasSearch = { node?: string; wizard?: WizardStep; app?: string };
 
 export const Route = createFileRoute('/dashboard/canvas')({
   head: () => consoleHead('canvas'),
@@ -23,6 +23,10 @@ export const Route = createFileRoute('/dashboard/canvas')({
     ...(typeof search.node === 'string' && search.node ? { node: search.node } : {}),
     ...(WIZARD_STEPS.includes(search.wizard as WizardStep)
       ? { wizard: search.wizard as WizardStep }
+      : {}),
+    // The app the CLI step created, so the step can return to its commands.
+    ...(search.wizard === 'cli' && typeof search.app === 'string' && search.app
+      ? { app: search.app }
       : {}),
   }),
   beforeLoad: () => {
@@ -32,11 +36,11 @@ export const Route = createFileRoute('/dashboard/canvas')({
 });
 
 function CanvasRoute() {
-  const { node, wizard } = Route.useSearch();
+  const { node, wizard, app } = Route.useSearch();
   if (!CanvasPage) return null;
   return (
     <Suspense fallback={<LoadingState message="Loading canvas…" className="m-6" />}>
-      <CanvasPage node={node} wizard={wizard} />
+      <CanvasPage node={node} wizard={wizard} app={app} />
     </Suspense>
   );
 }

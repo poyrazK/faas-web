@@ -41,7 +41,11 @@ export function JumpFinder({
   );
 
   const key = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') return onClose();
+    if (e.key === 'Escape') {
+      // Esc here closes the finder only: not the selection, not the wizard.
+      e.stopPropagation();
+      return onClose();
+    }
     if (e.key === 'ArrowDown')
       return void (e.preventDefault(), setActive((i) => Math.min(i + 1, results.length - 1)));
     if (e.key === 'ArrowUp') return void (e.preventDefault(), setActive((i) => Math.max(i - 1, 0)));
@@ -59,12 +63,17 @@ export function JumpFinder({
         aria-label="Jump to a node"
         aria-expanded
         aria-controls="canvas-jump-results"
+        aria-activedescendant={results[active] ? `canvas-jump-option-${active}` : undefined}
+        aria-autocomplete="list"
         value={query}
         onChange={(e) => {
           setQuery(e.target.value);
           setActive(0);
         }}
         onKeyDown={key}
+        // Options keep focus on press (mousedown is prevented), so a blur is
+        // a click or tab somewhere else.
+        onBlur={onClose}
         placeholder="Jump to a node…"
         className="h-9 w-full rounded-lg bg-transparent px-2.5 text-[13px] outline-none placeholder:text-muted-foreground"
       />
@@ -75,6 +84,7 @@ export function JumpFinder({
         {results.map((r, i) => (
           <li
             key={r.id}
+            id={`canvas-jump-option-${i}`}
             role="option"
             aria-selected={i === active}
             onMouseEnter={() => setActive(i)}

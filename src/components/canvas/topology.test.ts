@@ -355,12 +355,16 @@ import { ApiError } from '@/lib/api/errors';
 import { nodeTitle } from './topology';
 
 describe('v2 app fields', () => {
-  it('says metrics are plan-gated on 402 and unavailable otherwise', () => {
+  it('says metrics are plan-gated on a plan-gate code and unavailable otherwise', () => {
     const plan = buildTopology(
       input({
         metrics: {
           status: 'error',
-          error: new ApiError({ status: 402, code: 'plan', title: 'x' }),
+          error: new ApiError({
+            status: 402,
+            code: 'plan_app_usage_summary_not_allowed',
+            title: 'x',
+          }),
         },
       })
     );

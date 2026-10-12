@@ -39,6 +39,20 @@ describe('useLaunches', () => {
     expect(result.current.seeds.api).toBeDefined();
   });
 
+  it('refreshes once per finish, not on every later report', () => {
+    const invalidate = vi.spyOn(qc, 'invalidateQueries').mockClear();
+    const { result } = renderHook(() => useLaunches());
+    const failed = {
+      slug: 'api',
+      source: 'cli' as const,
+      stage: 'failed' as const,
+      step: 0 as const,
+    };
+    act(() => result.current.onChange(failed));
+    act(() => result.current.onChange({ ...failed, logLine: 'late line' }));
+    expect(invalidate).toHaveBeenCalledTimes(1);
+  });
+
   it('refreshes the app list once a launch is live', () => {
     const invalidate = vi.spyOn(qc, 'invalidateQueries').mockClear();
     const { result } = renderHook(() => useLaunches());

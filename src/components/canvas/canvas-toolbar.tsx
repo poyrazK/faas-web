@@ -15,10 +15,13 @@ export function CanvasToolbar({
   items,
   onPick,
   onNew,
+  shortcuts = true,
 }: {
   items: JumpItem[];
   onPick: (id: string) => void;
   onNew?: () => void;
+  /** Off while the wizard, a menu or a draft owns the keyboard. */
+  shortcuts?: boolean;
 }) {
   const flow = useReactFlow();
   const zoom = useStore((s) => s.transform[2]);
@@ -26,7 +29,7 @@ export function CanvasToolbar({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (typing(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (!shortcuts || typing(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === '/') {
         e.preventDefault();
         setFinding(true);
@@ -37,7 +40,7 @@ export function CanvasToolbar({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onNew]);
+  }, [onNew, shortcuts]);
 
   return (
     <Panel position="bottom-center" className="!mb-4">

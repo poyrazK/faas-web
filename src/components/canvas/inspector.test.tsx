@@ -79,8 +79,12 @@ describe('Inspector · app', () => {
     expect(screen.getByTestId('spark')).toBeInTheDocument();
   });
 
-  it('says metrics need Hobby on 402, and never prints a number', () => {
-    const error = new ApiError({ status: 402, code: 'plan', title: 'Upgrade' });
+  it('says metrics need Hobby on a plan gate, and never prints a number', () => {
+    const error = new ApiError({
+      status: 402,
+      code: 'plan_per_app_metrics_not_allowed',
+      title: 'Upgrade',
+    });
     metrics.mockReturnValue({ data: undefined, error, isPending: false });
     series.mockReturnValue({ data: undefined, error, isPending: false });
     render(<Inspector node={appNode} topology={topo} onClose={vi.fn()} onFly={vi.fn()} />);
