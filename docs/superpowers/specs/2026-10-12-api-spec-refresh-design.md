@@ -14,13 +14,20 @@ The refresh was trial-run on a throwaway worktree off `main`:
 - `npm run api:pull` with today's generator settings produces **99** type errors: 42 in the dev mock, 26 in tests, 31 in production code.
 - Most "newly required" request fields are not required. They carry a `default` and are absent from the schema's `required` list (for example, cron `command_shell: { type: boolean, default: false }`). openapi-typescript's `defaultNonNullable`, on by default in v7.13, types them as required anyway. With `--default-non-nullable=false`, production errors drop to **22** and nothing new breaks (90 errors in total).
 
-### Live bug
+### Live bugs
 
-**Rotating an alert's or a webhook's secret fails in production.**
+**1. Rotating an alert's or a webhook's secret fails in production.**
 
 - **What apid does now:** both rotate handlers decode a request body and require `webhook_secret`. `rotateAppWebhookSecret` "seals a caller-supplied replacement". The alert handler answers "webhook_secret is required" when the body lacks it.
 - **What the console sends:** `useRotateAlertSecret` and `useRotateWebhookSecret` POST with no body.
 - **What the user sees:** both "Rotate secret" buttons return 400. The confirm dialogs also still say a new secret "is minted server-side", which is no longer true.
+
+**2. Exporting environment variables has never worked against apid.**
+
+- **How it happened:** `POST /v1/apps/{slug}/env-export` was added by hand to faas-web's vendored spec on 2026-10-01 (8ff3025, "feat(env): add explicit export requests and partial import reporting"). It has never existed in `poyrazK/faas`: the server has no route, the faas history has no trace of it, and the upstream spec does not have it.
+- **What the user sees:** the Export action in "Import and export environment variables" calls a path apid does not serve.
+- **Why it can't be rebuilt in the browser:** `GET /v1/apps/{slug}/env` never returns plaintext values ("value NEVER appears in the response").
+- **Decision:** pending Poyraz (see "Questions for Poyraz"). Until he answers, the pull cannot compile `fetchEnvExport`, so this PR does not merge before that answer.
 
 ### Checked and not bugs
 
@@ -66,7 +73,7 @@ A shared `RotateSecretDialog`, used by `dashboard.alerts.tsx` and `dashboard.web
 | `edge-rules/kinds.tsx`                   | JWT `algorithms` include HS*         | Reads display every algorithm. The form keeps offering only RS*/ES*, because HS* needs a shared-secret field the form does not have; a comment says so. Optional `schema` and `missing_key_policy` defaults are handled without assuming presence. |
 | `dashboard.webhooks.tsx`                 | event enum stale upstream            | A typed local `EVENTS` list matches apid's vocabulary, cast once at the API boundary, with a comment naming the upstream spec bug.                                                                                                                 |
 | `queries.ts`                             | `useRevokeInvitation`                | Removed, since nothing uses it. Its test reference goes too.                                                                                                                                                                                       |
-| `env-transfer.ts`                        | generic exceeds TS depth             | An explicit response type for the one call.                                                                                                                                                                                                        |
+| `env-transfer.ts`                        | `env-export` path gone (live bug 2)  | Decided by Poyraz's answer: Export is removed from the panel (Import stays), or the call moves to the endpoint apid adds. Never re-added to the vendored spec by hand.                                                                             |
 
 Anything else the pull surfaces is fixed the same way: behaviour first, types honest, no `as never` or `any`.
 
@@ -88,11 +95,20 @@ Anything else the pull surfaces is fixed the same way: behaviour first, types ho
   - a successful rotation sends `{ webhook_secret }`.
 - **Real API:** one rotation, against a scratch alert or webhook, with the owner present and confirming the write. The PR says plainly whether this was done.
 
+## Questions for Poyraz
+
+These go in the PR description. Questions 1 and 2 block the merge; the rest shape the code but do not block it.
+
+1. **Env export.** faas-web's spec had `POST /v1/apps/{slug}/env-export`, but apid has never served it. It was added on the console side only, on Oct 1. Is an env export endpoint planned? If yes, what shape and roughly when? If no, the console removes its Export action and keeps Import.
+2. **Secret rotation contract.** `rotate-secret` for alerts and app webhooks now requires a caller-supplied `webhook_secret`, and the console's buttons broke when that changed. Is "the client generates and sends the new secret" the intended contract going forward? Should apid enforce a minimum length or entropy? Today it only caps at 256 bytes. The console will generate 32 random bytes (base64url) and let the person paste their own.
+3. **Webhook event enum.** In `api/openapi.yaml`, the app-webhook `event_filter` enum is narrower than `state.AllAppWebhookEvents`; for example, `app.created` is missing. Which is the source of truth? Can the spec enum be generated from the Go list, so the two cannot drift?
+4. **Defaults on omitted fields.** The console is switching its generator to treat fields that have a `default` as optional, and will omit them. Does apid apply the documented default when such a field is omitted? This covers cron `command_shell`, rate-limit `missing_key_policy`, alert `action`, rollout `profile_gate_rollback`, and app-create defaults.
+5. **Invitation revoke.** The route moved from `{token}` to `{invitation_id}`. The console has no revoke UI today. Is revoking by id the long-term contract, so a future revoke button can rely on it?
+6. **Spec drift.** faas-web was 845 operations behind. Could a faas release, or CI, flag when `api/openapi.yaml` changes, so the console pulls promptly instead of finding out in production?
+7. **For canvas v3 (not this PR).** Does a failed deployment say which phase failed (build or deploy)? If not, would a `failed_phase` field be acceptable, so the console never has to guess?
+
 ## Out of scope
 
 - No behaviour changes beyond matching the API, and no new features from the 845 new operations.
 - **Canvas:** `feat/canvas` (PR #170) is rebased onto this once it lands, as a separate follow-up.
-- **For Poyraz,** in the PR description:
-  - faas's spec has a stale app-webhook event enum;
-  - the apid rotation change broke the console's rotate buttons;
-  - the invitation revoke path parameter changed.
+- **For Poyraz:** see "Questions for Poyraz" above. They go in the PR description.
