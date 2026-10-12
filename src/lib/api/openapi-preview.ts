@@ -14,7 +14,7 @@ export type OpenAPIPreview = Omit<WirePreview, 'routes' | 'suggestions'> & {
 };
 
 export const openAPIPreviewKey = (accountId: string, slug: string) =>
-  ['account', accountId, 'app', slug, 'openapi-policy-preview'] as const;
+  ['apps', slug, 'openapi', 'policy-preview', 'account', accountId] as const;
 
 /** Policy actions can contain header credentials. Cache only match metadata. */
 function safePreview(value: WirePreview): OpenAPIPreview {
@@ -39,7 +39,7 @@ function safePreview(value: WirePreview): OpenAPIPreview {
         id: rule.id,
         match_host: rule.match_host,
         match_path: rule.match_path,
-        match_methods: rule.match_methods,
+        match_methods: rule.match_methods ?? [],
         priority: rule.priority,
         enabled: rule.enabled,
         kind: rule.kind,

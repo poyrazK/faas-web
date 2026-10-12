@@ -111,6 +111,34 @@ it('does not read without account identity and isolates a delayed old app respon
   expect(hook.result.current.data?.routes).toEqual([]);
 });
 
+it('accepts the actual null wire method list for an all-methods policy', async () => {
+  const get = mockReads();
+  get.mockImplementation(
+    async (path) =>
+      ({
+        data:
+          path === '/v1/account'
+            ? { id: 'account-1' }
+            : path === '/v1/apps/{slug}'
+              ? { id: 'app-1' }
+              : {
+                  ...preview,
+                  routes: [
+                    {
+                      ...preview.routes[0],
+                      rules: [{ ...preview.routes[0].rules[0], match_methods: null }],
+                    },
+                  ],
+                },
+        response: new Response(),
+      }) as never
+  );
+  const { wrapper } = setup();
+  const hook = renderHook(() => useOpenAPIPreview('account-1', 'app-a'), { wrapper });
+  await waitFor(() => expect(hook.result.current.isSuccess).toBe(true));
+  expect(hook.result.current.data?.routes[0].rules[0].match_methods).toEqual([]);
+});
+
 it('rejects unexpected account or app identity rather than caching another context', async () => {
   const get = mockReads();
   get.mockImplementation(
