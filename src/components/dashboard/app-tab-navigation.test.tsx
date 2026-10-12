@@ -36,5 +36,7 @@ it('opens Services in Connect and keeps neighboring tabs keyboard accessible', a
   expect(services).toHaveAttribute('aria-selected', 'true');
   services.focus();
   await userEvent.keyboard('{ArrowRight}');
+  expect(screen.getByRole('tab', { name: 'MCP' })).toHaveFocus();
+  await userEvent.keyboard('{ArrowRight}');
   expect(screen.getByRole('tab', { name: 'Edge rules' })).toHaveFocus();
 });

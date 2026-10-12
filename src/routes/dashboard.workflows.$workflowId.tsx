@@ -65,6 +65,7 @@ import { EdgeRulesBody } from './dashboard.edge-rules';
 import { ErrorsBody } from '@/components/dashboard/errors-body';
 import { IssuesBody } from '@/components/dashboard/issues-body';
 import { ServiceBindings } from '@/components/dashboard/service-bindings';
+import { McpGuidance } from '@/components/dashboard/mcp-guidance';
 import { validateIssueSearch, type IssueSearch } from '@/components/dashboard/issues-search';
 import { AppConfiguration } from '@/components/dashboard/app-configuration';
 import { InvokePanel, SloPanel } from '@/components/dashboard/app-core-panels';
@@ -765,6 +766,7 @@ function FunctionDetailPage() {
             {tab === 'Queues' && <QueuesBody slug={fn.id} />}
             {tab === 'Upstreams' && <UpstreamsBody slug={fn.id} />}
             {tab === 'Services' && <ServiceBindings slug={fn.id} />}
+            {tab === 'MCP' && <McpGuidance key={workflowId} slug={workflowId} />}
             {tab === 'Alerts' && <AlertsBody slug={fn.id} />}
             {tab === 'Webhooks' && (
               <WebhooksHub

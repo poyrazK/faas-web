@@ -11,6 +11,7 @@ export const APP_TAB_GROUPS = [
       'Routes',
       'Upstreams',
       'Services',
+      'MCP',
       'Edge rules',
       'Mirrors',
       'Tenant surfaces',
