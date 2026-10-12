@@ -3591,6 +3591,40 @@ route('GET', '/v1/deployments/latest-by-app', () => {
     });
   return { items } satisfies components['schemas']['LatestDeploymentsByAppResponse'];
 });
+route('GET', '/v1/deployments/{id}/companions', ({ params, query }) => {
+  if (query.size)
+    throw new Problem(
+      400,
+      'validation_failed',
+      'Select an exact deployment; query scope is unsupported.'
+    );
+  const deployment = db.deployments.find((row) => row.id === params.id);
+  const owner = db.apps.find((row) => row.id === deployment?.app_id);
+  if (!deployment || !owner) throw new Problem(404, 'not_found');
+  const declaration = {
+    name: 'metrics',
+    type: 'sidecar' as const,
+    image: `registry.example.test/metrics@sha256:${'a'.repeat(64)}`,
+    preset: 'opentelemetry' as const,
+    ram_mb: 128,
+    cpu_millicores: 0,
+    scratch_mb: 0,
+    port: 9090,
+    primary_ingress: false,
+    essential: true,
+    depends_on: [{ name: 'main', condition: 'started' as const }],
+    environment_keys: ['OTEL_EXPORTER_OTLP_ENDPOINT', 'TOKEN'],
+  };
+  return {
+    account_id: db.account.id,
+    app_id: owner.id,
+    app_slug: owner.slug,
+    deployment_id: deployment.id,
+    scope: 'default',
+    state: 'available',
+    companions: owner.slug === 'api-gateway' ? [declaration] : [],
+  } satisfies components['schemas']['DeploymentCompanionsResponse'];
+});
 route('GET', '/v1/deployments/{id}', ({ params }) => {
   const d = db.deployments.find((x) => x.id === params.id);
   if (!d) throw new Problem(404, 'deployment_not_found');
