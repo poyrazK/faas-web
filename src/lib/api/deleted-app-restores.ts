@@ -1,11 +1,17 @@
 import { api, unwrap } from './client';
 import { ApiError } from './errors';
-import { readDeletedApp, RestoreReviewError } from './deleted-apps';
+import {
+  readDeletedApp,
+  RestoreReviewError,
+  verifyRestoreAccount,
+  type DeletedApp,
+} from './deleted-apps';
 import {
   beginRestoreAttempt,
   clearRestoreAttempt,
   updateRestoreAttempt,
   type RestoreIdentity,
+  type RestoreAttempt,
 } from '../restore-attempt';
 
 export type RestoreIntent = RestoreIdentity & {
@@ -16,6 +22,45 @@ export type RestoreAcknowledgment = { id: string; slug: string; status: string }
 
 export function restoreAcknowledgment(raw: RestoreAcknowledgment): RestoreAcknowledgment {
   return { id: raw.id, slug: raw.slug, status: raw.status };
+}
+
+export type RestoreInspection =
+  | { kind: 'restored'; status: string }
+  | { kind: 'retained'; record: DeletedApp }
+  | { kind: 'unverified'; reason: string };
+
+export async function inspectRestore(
+  attempt: RestoreAttempt,
+  signal?: AbortSignal
+): Promise<RestoreInspection> {
+  let retained: DeletedApp | null = null;
+  try {
+    retained = await readDeletedApp(attempt.accountId, attempt.appId, signal);
+  } catch (error) {
+    if (!(error instanceof ApiError && error.status === 404)) throw error;
+  }
+  const result = await api.GET('/v1/apps/{slug}', {
+    params: { path: { slug: attempt.slug } },
+    signal,
+  });
+  const current = result.response.status === 404 ? null : await unwrap(Promise.resolve(result));
+  await verifyRestoreAccount(attempt.accountId, signal);
+  signal?.throwIfAborted();
+  if (
+    !retained &&
+    current?.id === attempt.appId &&
+    current.slug === attempt.slug &&
+    current.status !== 'deleted'
+  )
+    return { kind: 'restored', status: current.status };
+  if (retained && !current) return { kind: 'retained', record: retained };
+  return {
+    kind: 'unverified',
+    reason:
+      current && current.id !== attempt.appId
+        ? 'The slug now identifies another app. Inspect this exact retained ID before any new action.'
+        : 'The reads do not confirm a restored app. They may be missing or conflicting; refresh both inventories.',
+  };
 }
 function checkContext(intent: RestoreIntent) {
   intent.signal?.throwIfAborted();
