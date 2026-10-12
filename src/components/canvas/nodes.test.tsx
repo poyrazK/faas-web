@@ -224,4 +224,13 @@ describe('GhostNode', () => {
     expect(onPick).toHaveBeenCalled();
     expect(onDismiss).toHaveBeenCalled();
   });
+
+  it('opts out of pane panning, so a press is a click and not a pan', () => {
+    const { container } = wrap(
+      <GhostNode
+        {...props({ kind: 'cron', label: '+ Schedule a cron', next: false, onPick: vi.fn() })}
+      />
+    );
+    expect(container.querySelector('.nopan')).not.toBeNull();
+  });
 });

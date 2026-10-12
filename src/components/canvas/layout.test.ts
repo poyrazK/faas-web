@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { APP_TALL, COLUMN, ghostPositions, menuPosition, layout, NODE_SIZE } from './layout';
+import {
+  APP_TALL,
+  COLUMN,
+  GHOST_SIZE,
+  ghostPositions,
+  menuPosition,
+  layout,
+  NODE_SIZE,
+} from './layout';
 import { buildTopology, nodeId, type TopologyInput } from './topology';
 import type { App } from '@/lib/api/queries';
 
@@ -167,5 +175,20 @@ describe('ghost room', () => {
         .map(([id, p]) => p.y + (id.startsWith('app:') ? NODE_SIZE.app.h : 56))
     );
     expect(ghostPositions(worker).cron.y).toBeGreaterThanOrEqual(above);
+  });
+});
+
+describe('domain ghost and the ingress edge', () => {
+  const app = { x: 456, y: 200 };
+  const centre = app.y + NODE_SIZE.app.h / 2;
+
+  it('sits below the line when the Internet is level with or above the app', () => {
+    expect(ghostPositions(app, centre).domain.y).toBeGreaterThan(centre);
+    expect(ghostPositions(app, 0).domain.y).toBeGreaterThan(centre);
+  });
+
+  it('sits above the line when the Internet is below the app', () => {
+    const g = ghostPositions(app, centre + 300);
+    expect(g.domain.y + GHOST_SIZE.h).toBeLessThan(centre);
   });
 });

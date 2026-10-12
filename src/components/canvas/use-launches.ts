@@ -29,8 +29,8 @@ function write(seeds: Record<string, LaunchSeed>) {
  * session storage so a reload mid-build keeps the rail; the tracker recovers
  * the deployment itself from the app's latest one. A seed is dropped once its
  * launch is live, and its last state stays so the node settles rather than
- * blinks. Going live also refreshes the app list, or the node would fall back
- * to an app status read before the deploy finished.
+ * blinks. Finishing, live or failed, also refreshes the app list.
+ * A failed launch keeps its seed, so a reload still shows the failure.
  */
 export function useLaunches() {
   const [seeds, setSeeds] = useState(read);
@@ -43,8 +43,11 @@ export function useLaunches() {
   const onChange = useCallback(
     (state: LaunchState) => {
       setLaunches((m) => ({ ...m, [state.slug]: state }));
+      // A finished deploy changed the app's status: reread it, or the
+      // inspector and the node fall back to one read mid-build.
+      if (state.stage === 'live' || state.stage === 'failed')
+        void qc.invalidateQueries({ queryKey: keys.apps });
       if (state.stage !== 'live') return;
-      void qc.invalidateQueries({ queryKey: keys.apps });
       setSeeds((m) => {
         if (!(state.slug in m)) return m;
         const rest = { ...m };

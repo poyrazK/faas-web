@@ -4214,6 +4214,8 @@ route('POST', '/v1/install/repos/list', () => [
   { id: 1002, full_name: 'acme-corp/checkout', default_branch: 'main', private: true },
   { id: 1003, full_name: 'acme-corp/webhook-router', default_branch: 'master', private: false },
   { id: 1004, full_name: 'acme-corp/nightly-etl', default_branch: 'main', private: true },
+  // Fails its build in the canvas launch flow (see advanceDeployment).
+  { id: 1005, full_name: 'acme-corp/broken-api', default_branch: 'main', private: true },
 ]);
 route('POST', '/v1/apps/{slug}/install/bind', async ({ body }) => ({
   binding_id: hex(32),

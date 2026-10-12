@@ -137,4 +137,9 @@ describe('toFlow', () => {
     expect(app(false).onConnect).toBeDefined();
     expect(app(true).onConnect).toBeUndefined();
   });
+
+  it('keeps ghosts out of node focus: their buttons are the tab stops', () => {
+    const { nodes } = toFlow(t, pos, { ghosts: { slug: 'a', all: true }, onGhost: vi.fn() });
+    for (const n of nodes.filter((n) => n.id.startsWith('ghost:'))) expect(n.focusable).toBe(false);
+  });
 });

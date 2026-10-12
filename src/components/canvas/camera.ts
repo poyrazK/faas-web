@@ -49,13 +49,9 @@ export function useCamera() {
   );
 
   /** Pans the least it can, at the current zoom, so every listed node is fully on screen. Zooms out only when they cannot fit. */
-  const ensureVisible = useCallback(
-    (ids: string[]) => {
-      const nodes = ids
-        .map((id) => flow.getNode(id))
-        .filter((n): n is NonNullable<typeof n> => Boolean(n));
-      if (!nodes.length) return;
-      const box = flow.getNodesBounds(nodes);
+  /** Like `ensureVisible`, for a box in flow units: room for nodes not drawn yet. */
+  const showBox = useCallback(
+    (box: Box) => {
       const { width, height } = store.getState();
       const { x, y, zoom } = flow.getViewport();
       const seen = Math.max(0, height - TOOLBAR_CLEARANCE);
@@ -81,5 +77,15 @@ export function useCamera() {
     [flow, store]
   );
 
-  return { flyTo, ensureVisible };
+  const ensureVisible = useCallback(
+    (ids: string[]) => {
+      const nodes = ids
+        .map((id) => flow.getNode(id))
+        .filter((n): n is NonNullable<typeof n> => Boolean(n));
+      if (nodes.length) showBox(flow.getNodesBounds(nodes));
+    },
+    [flow, showBox]
+  );
+
+  return { flyTo, ensureVisible, showBox };
 }

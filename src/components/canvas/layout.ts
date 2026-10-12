@@ -40,12 +40,19 @@ export const GHOST_SIZE = { w: 180, h: 44 };
 /**
  * Where each next-step suggestion sits around an app: in the lane its real
  * node would use. The cron one takes the slot a first cron would, which
- * `layout(t, { ghostRoom })` keeps free above the app.
+ * `layout(t, { ghostRoom })` keeps free above the app. The domain one sits on
+ * the far side of the app's centre line from the Internet node, so the
+ * ingress edge crossing the domain lane does not run through it.
  */
-export function ghostPositions(app: Point): Record<CreateKind, Point> {
+export function ghostPositions(app: Point, internetCentreY?: number): Record<CreateKind, Point> {
   const across = (NODE_SIZE.app.h - GHOST_SIZE.h) / 2;
+  const centre = app.y + NODE_SIZE.app.h / 2;
+  const fromAbove = internetCentreY === undefined || internetCentreY <= centre;
   return {
-    domain: { x: COLUMN.domain, y: app.y + across },
+    domain: {
+      x: COLUMN.domain,
+      y: fromAbove ? centre + 10 : centre - 10 - GHOST_SIZE.h,
+    },
     cron: {
       x: COLUMN.app + (NODE_SIZE.app.w - GHOST_SIZE.w) / 2,
       y: app.y - STACK + (STACK - 16 - GHOST_SIZE.h) / 2,

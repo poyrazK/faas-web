@@ -498,7 +498,10 @@ export const GhostNode = memo(function GhostNode({
   }>
 >) {
   return (
-    <div className="group/ghost relative flex h-11 w-[180px] animate-item-enter items-center rounded-xl border border-dashed border-brand/45 bg-brand/[0.04] transition-colors duration-[var(--motion-fast)] hover:border-brand/70 hover:bg-brand/[0.08]">
+    // `nopan`: React Flow marks only draggable nodes so. Without it a press
+    // here starts a pane pan that captures the pointer, and the click lands
+    // on the pane instead of the button.
+    <div className="nopan group/ghost relative flex h-11 w-[180px] animate-item-enter items-center rounded-xl border border-dashed border-brand/45 bg-brand/[0.04] transition-colors duration-[var(--motion-fast)] hover:border-brand/70 hover:bg-brand/[0.08]">
       <Handle id="in" type="target" position={Position.Left} isConnectable={false} />
       <button
         type="button"

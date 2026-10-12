@@ -30,8 +30,17 @@ describe('useLaunches', () => {
     expect(renderHook(() => useLaunches()).result.current.seeds).toEqual({});
   });
 
+  it('refreshes the app list once a launch fails, keeping the seed', () => {
+    const invalidate = vi.spyOn(qc, 'invalidateQueries').mockClear();
+    const { result } = renderHook(() => useLaunches());
+    act(() => result.current.seed({ slug: 'api', source: 'cli' }));
+    act(() => result.current.onChange({ slug: 'api', source: 'cli', stage: 'failed', step: 0 }));
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['apps'] });
+    expect(result.current.seeds.api).toBeDefined();
+  });
+
   it('refreshes the app list once a launch is live', () => {
-    const invalidate = vi.spyOn(qc, 'invalidateQueries');
+    const invalidate = vi.spyOn(qc, 'invalidateQueries').mockClear();
     const { result } = renderHook(() => useLaunches());
     act(() => result.current.onChange({ slug: 'api', source: 'cli', stage: 'building', step: 2 }));
     expect(invalidate).not.toHaveBeenCalled();

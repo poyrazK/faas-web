@@ -13,7 +13,15 @@ import { Morph } from './morph';
 import { useLaunches } from './use-launches';
 import { useCreateAndDeploy } from '@/lib/api/create-and-deploy';
 import { errorMessage } from '@/lib/api/errors';
-import { APP_FAILED, APP_TALL, menuPosition, layout } from './layout';
+import {
+  APP_FAILED,
+  APP_TALL,
+  GHOST_SIZE,
+  ghostPositions,
+  layout,
+  menuPosition,
+  NODE_SIZE,
+} from './layout';
 import { useTopology } from './use-topology';
 import { LaneHeaders } from './lane-headers';
 import { ConnectMenu } from './connect-menu';
@@ -189,10 +197,34 @@ function CanvasPageBody({ node, wizard }: { node?: string; wizard?: WizardStep }
   );
 
   const ghostRoom = ghostApp && `app:${ghostApp}`;
+  // Once, when the ghosts arrive: frame the app with all three ghost slots,
+  // so hovering it never reveals a suggestion off the edge of the screen.
+  const framedGhosts = useRef<string>(undefined);
   const positions = useMemo(
     () => layout(topology, { draft: slot, heights, ghostRoom }),
     [topology, slot, heights, ghostRoom]
   );
+  useEffect(() => {
+    if (!ghostRoom || framedGhosts.current === ghostRoom) return;
+    const at = positions.get(ghostRoom);
+    if (!at) return;
+    const internet = positions.get('internet');
+    const g = Object.values(ghostPositions(at, internet && internet.y + NODE_SIZE.internet.h / 2));
+    const xs = [at.x, at.x + NODE_SIZE.app.w, ...g.flatMap((p) => [p.x, p.x + GHOST_SIZE.w])];
+    const ys = [at.y, at.y + NODE_SIZE.app.h, ...g.flatMap((p) => [p.y, p.y + GHOST_SIZE.h])];
+    const box = {
+      x: Math.min(...xs),
+      y: Math.min(...ys),
+      width: Math.max(...xs) - Math.min(...xs),
+      height: Math.max(...ys) - Math.min(...ys),
+    };
+    // After the band has eased into its ghost room.
+    const id = window.setTimeout(() => {
+      framedGhosts.current = ghostRoom;
+      camera.showBox(box);
+    }, 280);
+    return () => window.clearTimeout(id);
+  }, [ghostRoom, positions, camera]);
 
   // Once the bands have eased (240ms), make sure the whole draft is on screen.
   useEffect(() => {

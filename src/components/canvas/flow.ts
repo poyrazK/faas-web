@@ -1,6 +1,6 @@
 import type { FlowNode, ConnectSide } from './nodes';
 import type { WindFlowEdge } from './wind-edge';
-import { ghostPositions, type Point } from './layout';
+import { ghostPositions, NODE_SIZE, type Point } from './layout';
 import type { CreateKind } from './create';
 import type { Topology } from './topology';
 import type { LaunchState } from './launch';
@@ -88,7 +88,8 @@ export function toFlow(
   if (opts.ghosts && at) {
     const { slug, all } = opts.ghosts;
     const appId = `app:${slug}`;
-    const g = ghostPositions(at);
+    const internet = pos.get('internet');
+    const g = ghostPositions(at, internet && internet.y + NODE_SIZE.internet.h / 2);
     const kinds: CreateKind[] = all ? ['domain', 'cron', 'bucket'] : ['domain'];
     for (const kind of kinds) {
       nodes.push({
@@ -106,6 +107,8 @@ export function toFlow(
         draggable: false,
         selectable: false,
         connectable: false,
+        // Its buttons take focus; the wrapper would be a second, empty tab stop.
+        focusable: false,
       });
       edges.push({
         id: `ghost-edge:${kind}`,
