@@ -474,7 +474,9 @@ function restoreDeleted(record: DeletedRecord & { app: db.App }) {
     throw new Problem(402, 'quota_exceeded', 'App quota reached.');
   if (process.env.MOCK_RESTORE_FAILURE === 'temporary')
     throw new Problem(503, 'temporarily_unavailable', 'Restore capacity unavailable.');
-  record.app.status = 'undeployed';
+  record.app.status = db.deployments.some((deployment) => deployment.app_id === record.app.id)
+    ? 'active'
+    : 'undeployed';
   db.apps.push(record.app);
   deletedApps.delete(record.app.slug);
   return record.app;

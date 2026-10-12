@@ -668,7 +668,8 @@ describe('mock API', () => {
       expect(active.some((app) => app.slug === slug)).toBe(false);
       const restored = await fetch(`${base}/v1/apps/${slug}/restore`, { method: 'POST' });
       expect(restored.status).toBe(200);
-      expect(await restored.json()).toMatchObject({ id: original.id, slug, status: 'active' });
+      // The fixture has no deployment. Restored metadata alone is not execution evidence.
+      expect(await restored.json()).toMatchObject({ id: original.id, slug, status: 'undeployed' });
       expect((await fetch(`${base}/v1/apps/${slug}/restore`, { method: 'POST' })).status).toBe(409);
       expect((await fetch(`${base}/v1/apps/${slug}`, { method: 'DELETE' })).status).toBe(204);
       clock.mockReturnValue(now + 8 * 86400e3);

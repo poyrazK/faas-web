@@ -150,10 +150,11 @@ function Inventory({ accountId, cursor, onNext, onRestart }: Props) {
   const sequence = useRef(0);
   const pending = useRef<AbortController | null>(null);
   useEffect(() => {
+    const tickets = sequence;
     alive.current = true;
     return () => {
       alive.current = false;
-      sequence.current++;
+      tickets.current++;
       pending.current?.abort();
     };
   }, []);

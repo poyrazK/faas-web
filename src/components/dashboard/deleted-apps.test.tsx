@@ -179,12 +179,10 @@ it('shows denied reads with no stale restore control', async () => {
 it.each([402, 409, 503])(
   'keeps a %s restore failure visible without automatically repeating the write',
   async (status) => {
-    const post = vi
-      .spyOn(api, 'POST')
-      .mockResolvedValue({
-        error: { status, code: 'restore_failed', title: `Fixture restore ${status}` },
-        response: new Response(null, { status }),
-      } as never);
+    const post = vi.spyOn(api, 'POST').mockResolvedValue({
+      error: { status, code: 'restore_failed', title: `Fixture restore ${status}` },
+      response: new Response(null, { status }),
+    } as never);
     setup();
     await userEvent.click(
       await screen.findByRole('button', { name: /Review restore.*retained-app/ })
