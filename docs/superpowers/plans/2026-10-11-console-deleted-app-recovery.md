@@ -40,21 +40,21 @@
 
 ## Task 2: Backend API and restore fence
 
-**Files:** backend `pkg/api/deleted_apps.go`, `cmd/apid/handlers_deleted_apps.go`, corresponding tests, `server.go`, `handlers_ext.go`, `api/openapi.yaml`, mirrored `pkg/apid/openapi.yaml`, `docs/apps.md` if present.
+**Files:** backend `pkg/api/deleted_apps.go`, `pkg/apid/apidserver/handlers_deleted_apps.go`, corresponding tests, `server.go`, `handlers_ext.go`, `api/openapi.yaml`, mirrored `pkg/apid/openapi.yaml`, `docs/apps.md` if present. Backend main refactored handlers into `pkg/apid/apidserver` at refreshed pin `e9527df9e5eb03b1963dab424498afd76ad5beeb`; rebase the unpublished store branch after its verified atomic commit.
 
-**Interfaces:** GET `/v1/deleted-apps?limit=25&cursor=...` returns `{apps,next_cursor,evaluated_at}`; GET `/v1/deleted-apps/{id}` returns safe summary. The separate collection avoids shadowing an existing app with slug `deleted`. Each summary has `id`, `slug`, `deleted_at`, `delete_grace_until`, `restore_eligible`, `restore_blocker`, `evaluated_at`. Existing POST restore accepts optional `{expected_app_id}`.
+**Interfaces:** GET `/v1/deleted-apps?limit=25&cursor=...` returns `{apps,next_cursor,evaluated_at}`; GET `/v1/deleted-apps/{id}` returns safe summary. The separate collection avoids shadowing an existing app with slug `deleted`. Each summary has `id`, `slug`, `deleted_at`, `delete_grace_until`, `restore_eligible`, `restore_blocker`, `evaluated_at`. Add POST `/v1/deleted-apps/{id}/restore` for console restoration; old servers reject this dedicated route. Existing slug POST may accept optional `{expected_app_id}` for compatibility, but the console never falls back to it: old handlers ignore bodies and cannot enforce that fence in mixed-version fleets.
 
 - [ ] Write handler RED tests: empty/owned inventory, foreign app 404, default/max limit, malformed/account-mismatched cursor, expiry/purge state, scope/MFA denial and stale identity 409. A replacement must remain deleted after `POST restore` with the old ID.
 - [ ] Implement routes behind read scope/MFA; encode a bounded account-bound cursor with timestamp/UUID and reject malformed input. Compute lifecycle blockers from server time and purge claim; document quota/capacity recheck.
-- [ ] Decode optional restore request strictly and compare ID before mutation. Preserve existing bodyless API compatibility and deploy-write/MFA/origin middleware.
+- [ ] Restore by the owned exact ID on the dedicated route. Decode an optional legacy restore request strictly and compare ID before mutation. Preserve existing bodyless API compatibility and deploy-write/MFA/origin middleware; unknown dedicated routes fail closed on old servers.
 - [ ] Add OpenAPI types and sync embedded copy. Run focused handler/store tests, relevant existing restore/security tests, sqlc/OpenAPI checks and Go build/vet; commit API/tests/contracts separately. One final reviewer; bounded backend PR based on main, push and attach.
 
 ## Task 3: Frontend contract and recovery client
 
 **Files:** `api/openapi.yaml`, `schema.d.ts`, `src/lib/api/deleted-apps.ts` and tests, `queries.ts` restore hook.
 
-- [ ] Behavioral client tests RED: account/cursor-keyed abortable list, exact-ID fresh read, verified account identity before restore, expected_app_id payload, inventory/app/project/deployment invalidation, no automatic POST retry.
-- [ ] Pin the new backend slices and regenerate schema. Build whitelisted metadata reads through `api/unwrap`. Extend `useRestoreApp` with explicit ID and complete invalidation while preserving existing slug callers.
+- [ ] Behavioral client tests RED: account/cursor-keyed abortable list, exact-ID fresh read, verified account identity before restore, dedicated restore-by-ID route without legacy fallback, inventory/app/project/deployment invalidation, no automatic POST retry.
+- [ ] Pin the new backend slices and regenerate schema. Build whitelisted metadata reads through `api/unwrap`. Extend `useRestoreApp` with the explicit-ID route and complete invalidation while preserving existing slug callers.
 - [ ] Keep non-secret pending restore identity before POST in account-scoped session storage. On ambiguity inspect exact app ID and deleted record; accepted intent stays distinct from observed restoration. Definitive denial permits fresh review; no automatic replay.
 - [ ] Run focused tests/typecheck; commit contract/client and recovery behavior separately.
 
