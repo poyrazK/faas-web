@@ -2898,6 +2898,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/apps/{slug}/openapi/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Preview declared routes, observed routes, and matching edge policies.
+         * @description Read-only route-policy preview for API-hosting roadmap item 11.
+         *     Joins the persisted OpenAPI declaration with gatewayd's observed
+         *     route labels and the app's edge rules. Each route is classified as
+         *     `matched`, `declared_only`, or `observed_only`; `covered` is true
+         *     when at least one enabled edge rule matches the path and method.
+         *     Observed routes come from the fleet-wide Prometheus aggregate. A
+         *     partial scrape returns the available union with
+         *     `source=degraded: routes_partial`; a total bridge failure sets
+         *     `observed_available` to false and reports
+         *     `source=degraded: routes_unavailable`. Collector counts distinguish
+         *     both states from a healthy fleet that has not received traffic. No
+         *     policy or document writes occur on this endpoint.
+         */
+        get: operations["previewAppOpenAPIPolicy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/apps/{slug}/openapi/dry-run": {
         parameters: {
             query?: never;
@@ -16850,6 +16884,64 @@ export interface components {
             endpoint_count: number;
         };
         /**
+         * @description Read-only declared-vs-observed route and edge-policy preview
+         *     (API-hosting roadmap item 11 / ADR-126 follow-up). The response
+         *     never writes an OpenAPI document or edge rule.
+         */
+        AppOpenAPIPolicyPreviewResponse: {
+            /** Format: uuid */
+            app_id: string;
+            /** @description preview, empty: no_import, degraded: routes_partial, or degraded: routes_unavailable. */
+            source: string;
+            /** @description Whether current route telemetry or a persisted discovered-route inventory is available. */
+            observed_available: boolean;
+            /**
+             * @description Completeness of the current fleet-wide telemetry input; persisted inventory availability is reported separately.
+             * @enum {string}
+             */
+            observed_source: "live" | "partial" | "unavailable";
+            /** @description Whether durable, opt-in discovered routes contributed to the observed route set. */
+            observed_inventory_available: boolean;
+            /** @description Whether the live route snapshot or durable discovered-route inventory reached its route cap. */
+            observed_cap_hit: boolean;
+            /** @description Number of registry compute gateways expected to contribute route observations. */
+            collectors_expected: number;
+            /** @description Expected compute route collectors currently healthy in Prometheus. */
+            collectors_healthy: number;
+            /** @description OpenAPI version from the persisted declaration, when present. */
+            openapi_version?: string;
+            routes: components["schemas"]["AppOpenAPIPolicyPreviewRoute"][];
+            suggestions?: components["schemas"]["EdgeRuleSuggestion"][];
+        };
+        /** @description One declared/observed path-method row with policy coverage and drift status. */
+        AppOpenAPIPolicyPreviewRoute: {
+            path: string;
+            /** @enum {string} */
+            method: "get" | "put" | "post" | "delete" | "options" | "head" | "patch" | "trace";
+            /** @enum {string} */
+            status: "matched" | "declared_only" | "observed_only";
+            declared: boolean;
+            observed: boolean;
+            /** @description True when at least one enabled edge rule matches this path and method. */
+            covered: boolean;
+            rules?: components["schemas"]["AppOpenAPIPolicyPreviewRule"][];
+        };
+        /** @description Read-only edge-rule subset explaining why a preview route is covered. */
+        AppOpenAPIPolicyPreviewRule: {
+            /** Format: uuid */
+            id: string;
+            match_host: string;
+            match_path: string;
+            match_methods: string[];
+            priority: number;
+            enabled: boolean;
+            kind: string;
+            validate_mode?: string;
+            action: {
+                [key: string]: unknown;
+            };
+        };
+        /**
          * @description Per-route label snapshot (ADR-093). The bounded route label
          *     set the gatewayd-internal control listener emits for the app.
          *     Each item is `"<METHOD> <PATH>"` (pre-edge-rule-rewrite) for
@@ -26151,6 +26243,31 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    previewAppOpenAPIPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Declared-vs-observed route and policy preview. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppOpenAPIPolicyPreviewResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
         };
     };
     dryRunAppOpenAPI: {
