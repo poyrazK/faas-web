@@ -4082,6 +4082,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/deployments/{id}/companions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Inspect owned deployment companion declarations.
+         * @description Returns bounded declared configuration from this exact deployment.
+         *     The deployment identifies its environment scope; query scope is not
+         *     supported. Empty declarations are distinct from unavailable retained
+         *     metadata. No environment values, ciphertext, secret references or
+         *     commands are returned. No workload is probed and no execution health
+         *     is inferred; absent telemetry is Unverified. Managed preset availability
+         *     requires separate runtime qualification and does not imply that all
+         *     custom helpers are unavailable. Requires deployment-read scope and MFA.
+         */
+        get: operations["getDeploymentCompanions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/deployments/{id}": {
         parameters: {
             query?: never;
@@ -12062,6 +12092,50 @@ export interface components {
             /** Format: date-time */
             expires_at: string;
             deployment_id?: string | null;
+        };
+        /** @description Declared companion configuration only; no commands, environment values or observed health. */
+        CompanionDeclaration: {
+            name: string;
+            /** @description Declared immutable OCI reference, when returned. */
+            image?: string;
+            /** @enum {string} */
+            preset?: "opentelemetry" | "sentry" | "datadog-dogstatsd";
+            /** @enum {string} */
+            type: "init" | "sidecar";
+            /** @description Declared memory ceiling. Zero inherits the platform default; not observed effective usage. */
+            ram_mb: number;
+            /** @description Declared CPU ceiling. Zero inherits the platform default. */
+            cpu_millicores: number;
+            /** @description Declared scratch ceiling. Zero derives the runtime default. */
+            scratch_mb: number;
+            /** @enum {string} */
+            disk_io_profile?: "low" | "standard" | "high";
+            /** @description Declared port. Zero is not an observed listener. */
+            port: number;
+            primary_ingress: boolean;
+            /** @description Declared essential policy. Omitted uses the default true; not runtime health. */
+            essential?: boolean;
+            depends_on: components["schemas"]["WorkloadDependency"][];
+            /** @description Sorted unique names only, including explicit secret-binding environment names. Values and secret references are never returned. */
+            environment_keys: string[];
+        };
+        /** @description Account-owned declarations for one exact deployment; metadata availability is separate from execution health. */
+        DeploymentCompanionsResponse: {
+            account_id: string;
+            app_id: string;
+            app_slug: string;
+            deployment_id: string;
+            /** @description Returned deployment scope; not inferred from a query parameter. */
+            scope: string;
+            /**
+             * @description Declaration metadata availability only, never execution health.
+             * @enum {string}
+             */
+            state: "available" | "unavailable";
+            /** @enum {string} */
+            reason?: "declaration_metadata_unavailable";
+            /** @description Known empty is an available empty array. Unavailable metadata is explicitly labelled and must not be presented as no configured helpers. */
+            companions: components["schemas"]["CompanionDeclaration"][];
         };
         /** @description One deployment: id, app, source ref, build status, commit SHA, and lifecycle timestamps. The optional `has_overrides` and `override_*` fields are the persisted echo of the create-time overrides object (issue #460 / ADR-053); they round-trip via `GET /v1/apps/{slug}/deployments/{id}` so a customer can audit what their last deploy pinned. Env values are NEVER echoed — only the keys (`override_env_keys`); env_secrets refs ARE echoed because the ref shape is non-secret by design. */
         DeploymentResponse: {
@@ -28122,6 +28196,35 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getDeploymentCompanions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Owned declaration metadata, including known empty or unavailable. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentCompanionsResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["CapacityUnavailable"];
         };
     };
     getDeployment: {
