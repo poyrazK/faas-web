@@ -1,3 +1,4 @@
+import { cn } from '@/lib/utils';
 import { useLayoutEffect, useRef, type ReactNode } from 'react';
 import { EASE } from './motion';
 
@@ -5,9 +6,12 @@ import { EASE } from './motion';
 export function ConsolePageTransition({
   children,
   pageKey,
+  className,
 }: {
   children: ReactNode;
   pageKey: string;
+  /** Overrides the column rhythm; full-bleed pages pass `h-full gap-0`. */
+  className?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -37,7 +41,7 @@ export function ConsolePageTransition({
   }, [pageKey]);
 
   return (
-    <div ref={ref} className="console-page flex flex-col gap-6">
+    <div ref={ref} className={cn('console-page flex flex-col gap-6', className)}>
       {children}
     </div>
   );

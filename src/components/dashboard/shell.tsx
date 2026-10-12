@@ -35,6 +35,7 @@ import { DISCLOSURE_CLOSE, DISCLOSURE_OPEN, EASE } from './motion';
 import {
   findNavHub,
   isDisclosureHub,
+  isFullBleedPath,
   matchesNavPath,
   NAV_GROUPS,
   type NavHub,
@@ -779,6 +780,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   const pageKey = useRouterState({
     select: (s) => (s.resolvedLocation?.pathname ?? s.location.pathname).replace(/\/$/, ''),
   });
+  const fullBleed = isFullBleedPath(pageKey);
 
   // Toasts render at the root, outside this tree, so the dark palette has to
   // reach them too: mirror `console` onto <html> while the shell is mounted.
@@ -973,14 +975,40 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                 </div>
               </header>
 
-              <main id="main" tabIndex={-1} className="px-4 py-8 outline-none sm:px-6 lg:px-8">
+              <main
+                id="main"
+                tabIndex={-1}
+                className={cn(
+                  'relative outline-none',
+                  fullBleed ? 'h-[calc(100dvh-3.5rem)] p-0' : 'px-4 py-8 sm:px-6 lg:px-8'
+                )}
+              >
                 {/* A measure, not the full viewport: past ~1100px a form row or a
                 label/value pair stops scanning as a pair. Tables set their own
-                min-width and scroll inside it. */}
-                <div className="mx-auto flex max-w-[1100px] flex-col gap-6">
-                  <UnreachableBanner />
-                  <ConsolePageTransition pageKey={pageKey}>
-                    <DashboardSecondaryNavigation />
+                min-width and scroll inside it. Full-bleed pages (the canvas)
+                own the viewport instead. */}
+                <div
+                  className={cn(
+                    'mx-auto flex flex-col',
+                    fullBleed ? 'h-full max-w-none gap-0' : 'max-w-[1100px] gap-6'
+                  )}
+                >
+                  {/* On a full-bleed page the banner floats over the content instead
+                  of pushing it: the canvas is exactly the viewport's height.
+                  Elsewhere it stays a direct child, so when it renders nothing
+                  the column's gap does not open above the page. */}
+                  {fullBleed ? (
+                    <div className="pointer-events-none absolute inset-x-4 top-3 z-20 [&>*]:pointer-events-auto">
+                      <UnreachableBanner />
+                    </div>
+                  ) : (
+                    <UnreachableBanner />
+                  )}
+                  <ConsolePageTransition
+                    pageKey={pageKey}
+                    className={fullBleed ? 'h-full gap-0' : undefined}
+                  >
+                    {!fullBleed && <DashboardSecondaryNavigation />}
                     {children}
                   </ConsolePageTransition>
                 </div>

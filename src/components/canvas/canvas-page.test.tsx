@@ -1,0 +1,383 @@
+import { useEffect, type ReactNode, type Ref } from 'react';
+import { act, fireEvent, render as rtlRender, screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from '@/lib/api/errors';
+
+const state = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
+const wizardMounts = vi.hoisted(() => ({ count: 0 }));
+const flowNodes = vi.hoisted(() => ({ value: [] as { id: string; data: unknown }[] }));
+const deployGit = vi.hoisted(() => vi.fn());
+const navigate = vi.hoisted(() => vi.fn());
+vi.mock('./use-topology', () => ({ useTopology: () => state.value }));
+vi.mock('./canvas', () => ({
+  CanvasView: ({ nodes }: { nodes: { id: string; data: unknown }[] }) => {
+    flowNodes.value = nodes;
+    return (
+      <div data-testid="flow">
+        {nodes.map((n) => (
+          <i key={n.id}>{n.id}</i>
+        ))}
+      </div>
+    );
+  },
+}));
+vi.mock('./inspector', () => ({ Inspector: () => null }));
+vi.mock('./wizard/wizard', () => ({
+  Wizard: ({
+    step,
+    mode,
+    onLaunched,
+    cardRef,
+  }: {
+    step: string;
+    mode: string;
+    onLaunched: (s: { slug: string; source: 'cli' }) => void;
+    cardRef?: Ref<HTMLParagraphElement>;
+  }) => {
+    useEffect(() => {
+      wizardMounts.count += 1;
+    }, []);
+    return (
+      <p ref={cardRef}>
+        wizard {mode} {step}
+        <button type="button" onClick={() => onLaunched({ slug: 'api', source: 'cli' })}>
+          launch
+        </button>
+      </p>
+    );
+  },
+}));
+vi.mock('./morph', () => ({
+  Morph: ({ slug, hold }: { slug: string; hold: boolean }) => (
+    <p>
+      morph {slug} {hold ? 'holding' : 'flying'}
+    </p>
+  ),
+}));
+const trackerStage = vi.hoisted(() => ({ value: 'building' }));
+vi.mock('./launch-tracker', () => ({
+  LaunchTracker: ({
+    seed,
+    onChange,
+  }: {
+    seed: { slug: string; source: string };
+    onChange: (s: object) => void;
+  }) => {
+    useEffect(() => {
+      onChange({ slug: seed.slug, source: seed.source, stage: trackerStage.value, step: 4 });
+    }, [seed, onChange]);
+    return <p>tracking {seed.slug}</p>;
+  },
+}));
+vi.mock('@/lib/api/create-and-deploy', () => ({
+  useCreateAndDeploy: () => ({ createApp: vi.fn(), deployGit }),
+}));
+vi.mock('@/lib/api/queries', () => ({ keys: { apps: ['apps'] }, useApps: () => ({ data: [] }) }));
+vi.mock('@tanstack/react-router', () => ({
+  useNavigate: () => navigate,
+  Link: ({ children }: { children: ReactNode }) => <a>{children}</a>,
+}));
+
+const { default: CanvasPage } = await import('./canvas-page');
+const empty = { nodes: [], edges: [], issues: [] };
+const render = (ui: ReactNode) =>
+  rtlRender(<QueryClientProvider client={new QueryClient()}>{ui}</QueryClientProvider>);
+
+beforeEach(() => {
+  deployGit.mockReset();
+  navigate.mockReset();
+  sessionStorage.clear();
+  localStorage.clear();
+  trackerStage.value = 'building';
+});
+
+const oneApp = {
+  nodes: [
+    {
+      id: 'app:api',
+      data: { kind: 'app', slug: 'api', phase: 'running', metrics: 'ready', connections: 'ready' },
+    },
+  ],
+  edges: [],
+  issues: [],
+};
+const readyWith = (topology: object) => ({
+  phase: 'ready',
+  topology,
+  retry: vi.fn(),
+  retryApp: vi.fn(),
+  settled: true,
+});
+
+describe('CanvasPage', () => {
+  it('holds the space while loading', () => {
+    state.value = { phase: 'loading', topology: empty, retry: vi.fn() };
+    render(<CanvasPage />);
+    expect(screen.getByRole('status')).toHaveTextContent(/loading/i);
+  });
+
+  it('opens the wizard front door on an empty account', () => {
+    state.value = { phase: 'empty', topology: empty, retry: vi.fn() };
+    render(<CanvasPage />);
+    expect(screen.getByText('wizard empty start')).toBeInTheDocument();
+  });
+
+  it('separates unreachable from a failed read', () => {
+    state.value = { phase: 'unreachable', topology: empty, retry: vi.fn() };
+    const { unmount } = render(<CanvasPage />);
+    expect(screen.getByRole('status')).toBeInTheDocument();
+    unmount();
+    state.value = {
+      phase: 'error',
+      error: new ApiError({ status: 500, code: 'internal', title: 'boom' }),
+      topology: empty,
+      retry: vi.fn(),
+    };
+    render(<CanvasPage />);
+    expect(screen.getByText(/boom/i)).toBeInTheDocument();
+  });
+
+  it('draws the flow when ready', () => {
+    state.value = {
+      phase: 'ready',
+      topology: empty,
+      retry: vi.fn(),
+      retryApp: vi.fn(),
+      settled: true,
+    };
+    render(<CanvasPage />);
+    expect(screen.getByTestId('flow')).toBeInTheDocument();
+  });
+
+  it('says what it could not draw and offers a retry', () => {
+    const retry = vi.fn();
+    state.value = {
+      phase: 'ready',
+      topology: { ...empty, issues: [{ kind: 'read_failed', ref: 'postgres', detail: '' }] },
+      retry,
+    };
+    render(<CanvasPage />);
+    expect(screen.getByRole('status')).toHaveTextContent('Couldn’t load Postgres.');
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(retry).toHaveBeenCalled();
+  });
+  it('shows load gaps as one bar with a retry', () => {
+    const retry = vi.fn();
+    state.value = {
+      phase: 'ready',
+      topology: { ...empty, issues: [{ kind: 'read_failed', ref: 'postgres', detail: '' }] },
+      retry,
+      retryApp: vi.fn(),
+      settled: true,
+    };
+    render(<CanvasPage />);
+    expect(screen.getByRole('status')).toHaveTextContent('Couldn’t load Postgres.');
+  });
+
+  it('does not flash the front door back while a new app is still loading', () => {
+    state.value = { phase: 'empty', topology: empty, retry: vi.fn() };
+    render(<CanvasPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'launch' }));
+    expect(screen.queryByText(/wizard empty/)).not.toBeInTheDocument();
+  });
+
+  it('parks the card until the new app is on the canvas, then flies it there', () => {
+    state.value = { phase: 'empty', topology: empty, retry: vi.fn() };
+    const { rerender } = render(<CanvasPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'launch' }));
+    expect(screen.getByText('morph api holding')).toBeInTheDocument();
+    state.value = {
+      phase: 'ready',
+      topology: {
+        nodes: [
+          {
+            id: 'app:api',
+            data: {
+              kind: 'app',
+              slug: 'api',
+              phase: 'undeployed',
+              metrics: 'ready',
+              connections: 'ready',
+            },
+          },
+        ],
+        edges: [],
+        issues: [],
+      },
+      retry: vi.fn(),
+      retryApp: vi.fn(),
+      settled: true,
+    };
+    rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <CanvasPage />
+      </QueryClientProvider>
+    );
+    expect(screen.getByText('morph api flying')).toBeInTheDocument();
+  });
+
+  it('a stored launch alone does not hold an empty account', () => {
+    sessionStorage.setItem(
+      'gregale.canvas.launches',
+      JSON.stringify({ gone: { slug: 'gone', source: 'cli' } })
+    );
+    state.value = { phase: 'empty', topology: empty, retry: vi.fn() };
+    render(<CanvasPage />);
+    expect(screen.getByText(/wizard empty start/)).toBeInTheDocument();
+  });
+
+  it('picks a first deploy back up after a reload', () => {
+    sessionStorage.setItem(
+      'gregale.canvas.launches',
+      JSON.stringify({ api: { slug: 'api', source: 'cli' }, gone: { slug: 'gone', source: 'cli' } })
+    );
+    state.value = {
+      phase: 'ready',
+      topology: {
+        nodes: [
+          {
+            id: 'app:api',
+            data: {
+              kind: 'app',
+              slug: 'api',
+              phase: 'undeployed',
+              metrics: 'ready',
+              connections: 'ready',
+            },
+          },
+        ],
+        edges: [],
+        issues: [],
+      },
+      retry: vi.fn(),
+      retryApp: vi.fn(),
+      settled: true,
+    };
+    render(<CanvasPage />);
+    expect(screen.getByText('tracking api')).toBeInTheDocument();
+    expect(screen.queryByText('tracking gone')).not.toBeInTheDocument();
+  });
+
+  it('keeps the wizard mounted when creating the first app flips the page to ready', () => {
+    wizardMounts.count = 0;
+    state.value = { phase: 'empty', topology: empty, retry: vi.fn() };
+    const client = new QueryClient();
+    const { rerender } = rtlRender(
+      <QueryClientProvider client={client}>
+        <CanvasPage wizard="cli" />
+      </QueryClientProvider>
+    );
+    state.value = {
+      phase: 'ready',
+      topology: empty,
+      retry: vi.fn(),
+      retryApp: vi.fn(),
+      settled: true,
+    };
+    rerender(
+      <QueryClientProvider client={client}>
+        <CanvasPage wizard="cli" />
+      </QueryClientProvider>
+    );
+    expect(screen.getByText(/wizard new cli/)).toBeInTheDocument();
+    expect(wizardMounts.count).toBe(1);
+  });
+
+  it('offers one next step once a first deploy is live', () => {
+    trackerStage.value = 'live';
+    sessionStorage.setItem(
+      'gregale.canvas.launches',
+      JSON.stringify({ api: { slug: 'api', source: 'cli' } })
+    );
+    state.value = readyWith(oneApp);
+    render(<CanvasPage />);
+    expect(screen.getByText('ghost:domain')).toBeInTheDocument();
+    expect(screen.queryByText('ghost:cron')).not.toBeInTheDocument();
+  });
+
+  it('shows all three next steps while the app is selected', () => {
+    trackerStage.value = 'live';
+    sessionStorage.setItem(
+      'gregale.canvas.launches',
+      JSON.stringify({ api: { slug: 'api', source: 'cli' } })
+    );
+    state.value = readyWith(oneApp);
+    render(<CanvasPage node="app:api" />);
+    expect(screen.getByText('ghost:cron')).toBeInTheDocument();
+    expect(screen.getByText('ghost:bucket')).toBeInTheDocument();
+  });
+
+  it('offers nothing for an app whose ghosts were waved off', () => {
+    trackerStage.value = 'live';
+    localStorage.setItem('gregale.canvas.ghosts.api', 'done');
+    sessionStorage.setItem(
+      'gregale.canvas.launches',
+      JSON.stringify({ api: { slug: 'api', source: 'cli' } })
+    );
+    state.value = readyWith(oneApp);
+    render(<CanvasPage />);
+    expect(screen.queryByText('ghost:domain')).not.toBeInTheDocument();
+  });
+
+  it('offers nothing while the first deploy is still building', () => {
+    sessionStorage.setItem(
+      'gregale.canvas.launches',
+      JSON.stringify({ api: { slug: 'api', source: 'cli' } })
+    );
+    state.value = readyWith(oneApp);
+    render(<CanvasPage />);
+    expect(screen.queryByText('ghost:domain')).not.toBeInTheDocument();
+  });
+
+  const launchAction = (slug: string, action: 'retry' | 'logs') =>
+    act(() => {
+      const app = flowNodes.value.find((n) => n.id === `app:${slug}`)!;
+      (app.data as { onLaunchAction: (a: string) => void }).onLaunchAction(action);
+    });
+
+  it('retries a failed Git launch once, however often Retry is pressed', () => {
+    trackerStage.value = 'failed';
+    deployGit.mockReturnValue(new Promise(() => {}));
+    sessionStorage.setItem(
+      'gregale.canvas.launches',
+      JSON.stringify({
+        api: { slug: 'api', source: 'git', repo: 'acme/api', ref: 'main', deploymentId: 'd1' },
+      })
+    );
+    state.value = readyWith(oneApp);
+    render(<CanvasPage />);
+    launchAction('api', 'retry');
+    launchAction('api', 'retry');
+    expect(deployGit).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries a CLI launch by showing that app’s commands', () => {
+    trackerStage.value = 'failed';
+    sessionStorage.setItem(
+      'gregale.canvas.launches',
+      JSON.stringify({ api: { slug: 'api', source: 'cli' } })
+    );
+    state.value = readyWith(oneApp);
+    render(<CanvasPage />);
+    launchAction('api', 'retry');
+    const search = navigate.mock.calls.at(-1)![0].search as (s: object) => object;
+    expect(search({})).toMatchObject({ wizard: 'cli', app: 'api' });
+    expect(deployGit).not.toHaveBeenCalled();
+  });
+
+  it('reads an unreadable status again instead of redeploying', () => {
+    trackerStage.value = 'unavailable';
+    sessionStorage.setItem(
+      'gregale.canvas.launches',
+      JSON.stringify({
+        api: { slug: 'api', source: 'git', repo: 'acme/api', ref: 'main', deploymentId: 'd1' },
+      })
+    );
+    state.value = readyWith(oneApp);
+    render(<CanvasPage />);
+    launchAction('api', 'retry');
+    expect(deployGit).not.toHaveBeenCalled();
+    expect(JSON.parse(sessionStorage.getItem('gregale.canvas.launches')!).api.attempt).toBe(1);
+  });
+});

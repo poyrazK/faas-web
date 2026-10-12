@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
  * the sanctioned escape hatch for dynamic values.
  */
 
-const SCOPES = ['src/components/dashboard', 'src/routes'];
+const SCOPES = ['src/components/dashboard', 'src/components/canvas', 'src/routes'];
 
 function walk(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {

@@ -24,6 +24,7 @@ import { Route as DashboardAnalyticsRouteImport } from './routes/dashboard.analy
 import { Route as DashboardApisRouteImport } from './routes/dashboard.apis'
 import { Route as DashboardAuditRouteImport } from './routes/dashboard.audit'
 import { Route as DashboardBuildsRouteImport } from './routes/dashboard.builds'
+import { Route as DashboardCanvasRouteImport } from './routes/dashboard.canvas'
 import { Route as DashboardCronsRouteImport } from './routes/dashboard.crons'
 import { Route as DashboardDatabasesRouteImport } from './routes/dashboard.databases'
 import { Route as DashboardDebugRouteImport } from './routes/dashboard.debug'
@@ -138,6 +139,11 @@ const DashboardAuditRoute = DashboardAuditRouteImport.update({
 const DashboardBuildsRoute = DashboardBuildsRouteImport.update({
   id: '/builds',
   path: '/builds',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardCanvasRoute = DashboardCanvasRouteImport.update({
+  id: '/canvas',
+  path: '/canvas',
   getParentRoute: () => DashboardRoute,
 } as any)
 const DashboardCronsRoute = DashboardCronsRouteImport.update({
@@ -358,6 +364,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/apis': typeof DashboardApisRoute
   '/dashboard/audit': typeof DashboardAuditRoute
   '/dashboard/builds': typeof DashboardBuildsRoute
+  '/dashboard/canvas': typeof DashboardCanvasRoute
   '/dashboard/crons': typeof DashboardCronsRoute
   '/dashboard/databases': typeof DashboardDatabasesRoute
   '/dashboard/debug': typeof DashboardDebugRoute
@@ -412,6 +419,7 @@ export interface FileRoutesByTo {
   '/dashboard/apis': typeof DashboardApisRoute
   '/dashboard/audit': typeof DashboardAuditRoute
   '/dashboard/builds': typeof DashboardBuildsRoute
+  '/dashboard/canvas': typeof DashboardCanvasRoute
   '/dashboard/crons': typeof DashboardCronsRoute
   '/dashboard/databases': typeof DashboardDatabasesRoute
   '/dashboard/debug': typeof DashboardDebugRoute
@@ -470,6 +478,7 @@ export interface FileRoutesById {
   '/dashboard/apis': typeof DashboardApisRoute
   '/dashboard/audit': typeof DashboardAuditRoute
   '/dashboard/builds': typeof DashboardBuildsRoute
+  '/dashboard/canvas': typeof DashboardCanvasRoute
   '/dashboard/crons': typeof DashboardCronsRoute
   '/dashboard/databases': typeof DashboardDatabasesRoute
   '/dashboard/debug': typeof DashboardDebugRoute
@@ -529,6 +538,7 @@ export interface FileRouteTypes {
     | '/dashboard/apis'
     | '/dashboard/audit'
     | '/dashboard/builds'
+    | '/dashboard/canvas'
     | '/dashboard/crons'
     | '/dashboard/databases'
     | '/dashboard/debug'
@@ -583,6 +593,7 @@ export interface FileRouteTypes {
     | '/dashboard/apis'
     | '/dashboard/audit'
     | '/dashboard/builds'
+    | '/dashboard/canvas'
     | '/dashboard/crons'
     | '/dashboard/databases'
     | '/dashboard/debug'
@@ -640,6 +651,7 @@ export interface FileRouteTypes {
     | '/dashboard/apis'
     | '/dashboard/audit'
     | '/dashboard/builds'
+    | '/dashboard/canvas'
     | '/dashboard/crons'
     | '/dashboard/databases'
     | '/dashboard/debug'
@@ -800,6 +812,13 @@ declare module '@tanstack/react-router' {
       path: '/builds'
       fullPath: '/dashboard/builds'
       preLoaderRoute: typeof DashboardBuildsRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/canvas': {
+      id: '/dashboard/canvas'
+      path: '/canvas'
+      fullPath: '/dashboard/canvas'
+      preLoaderRoute: typeof DashboardCanvasRouteImport
       parentRoute: typeof DashboardRoute
     }
     '/dashboard/crons': {
@@ -1105,6 +1124,7 @@ interface DashboardRouteChildren {
   DashboardApisRoute: typeof DashboardApisRoute
   DashboardAuditRoute: typeof DashboardAuditRoute
   DashboardBuildsRoute: typeof DashboardBuildsRoute
+  DashboardCanvasRoute: typeof DashboardCanvasRoute
   DashboardCronsRoute: typeof DashboardCronsRoute
   DashboardDatabasesRoute: typeof DashboardDatabasesRoute
   DashboardDebugRoute: typeof DashboardDebugRoute
@@ -1148,6 +1168,7 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardApisRoute: DashboardApisRoute,
   DashboardAuditRoute: DashboardAuditRoute,
   DashboardBuildsRoute: DashboardBuildsRoute,
+  DashboardCanvasRoute: DashboardCanvasRoute,
   DashboardCronsRoute: DashboardCronsRoute,
   DashboardDatabasesRoute: DashboardDatabasesRoute,
   DashboardDebugRoute: DashboardDebugRoute,

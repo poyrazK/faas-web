@@ -7,9 +7,12 @@ import { errorMessage } from '@/lib/api/errors';
 export function GitHubConnectForm({
   disabled = false,
   onConnect,
+  returnTo = '/dashboard/settings?section=integrations',
 }: {
   disabled?: boolean;
   onConnect?: () => void;
+  /** Where GitHub sends the user back to; apid accepts any `/dashboard/...` path. */
+  returnTo?: string;
 }) {
   const tokenInput = useRef<HTMLInputElement>(null);
   const submitting = useRef(false);
@@ -47,7 +50,7 @@ export function GitHubConnectForm({
       className="flex flex-col items-start gap-2"
     >
       <input ref={tokenInput} type="hidden" name="csrf_token" defaultValue="" />
-      <input type="hidden" name="return_to" value="/dashboard/settings?section=integrations" />
+      <input type="hidden" name="return_to" value={returnTo} />
       <Button
         type="submit"
         size="sm"

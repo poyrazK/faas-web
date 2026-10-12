@@ -30,13 +30,9 @@ import { templateBySlug } from '@/lib/templates';
 import { type Runtime } from '@/lib/mock-data';
 import { errorMessage } from '@/lib/api/errors';
 import { useData } from '@/lib/store';
-import {
-  useBindRepoFor,
-  useDeployFromRefFor,
-  useTemplates,
-  useUpdateAppFor,
-} from '@/lib/api/queries';
+import { useTemplates, useUpdateAppFor } from '@/lib/api/queries';
 import { useAuth } from '@/lib/auth';
+import { useCreateAndDeploy } from '@/lib/api/create-and-deploy';
 import {
   appQuotaExceeded,
   appQuotaRemaining,
@@ -175,8 +171,7 @@ export function NewAppWizard({
   const [configureSubmitted, setConfigureSubmitted] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const name = nameDraft ?? initialName;
-  const bindRepo = useBindRepoFor();
-  const deployFromRef = useDeployFromRefFor();
+  const { deployGit } = useCreateAndDeploy();
   const updateApp = useUpdateAppFor();
   const [appType, setAppType] = useState<'function' | 'app'>('function');
   const [runtimeDraft, setRuntime] = useState<Runtime | null>(null);
@@ -243,23 +238,8 @@ export function NewAppWizard({
   const deployBlocked = limitsLoading || quotaExceeded || !memoryAllowed(account, selectedMemoryMb);
 
   async function submitGitSource(slug: string) {
-    const installationId = Number(account?.github_install_id);
-    if (!Number.isSafeInteger(installationId) || installationId <= 0) {
-      throw new Error('Connect GitHub before deploying from a repository.');
-    }
-
-    await bindRepo.mutateAsync({
-      slug,
-      installationId,
-      repo: repo.trim(),
-      branch: normalizedRef,
-    });
-    return deployFromRef.mutateAsync({
-      slug,
-      repo: repo.trim(),
-      ref: normalizedRef,
-      format: 'tarball',
-    });
+    // One create-and-deploy path for this page and the canvas wizard.
+    return deployGit({ slug, repo: repo.trim(), ref: normalizedRef });
   }
 
   async function retrySourceDeploy() {

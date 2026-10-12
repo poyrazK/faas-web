@@ -1,0 +1,145 @@
+import { describe, expect, it, vi } from 'vitest';
+import { toFlow } from './flow';
+import type { Topology } from './topology';
+
+const t: Topology = {
+  nodes: [
+    { id: 'internet', data: { kind: 'internet' } },
+    {
+      id: 'app:a',
+      data: { kind: 'app', slug: 'a', phase: 'running', metrics: 'ready', connections: 'ready' },
+    },
+    {
+      id: 'cron:c',
+      data: {
+        kind: 'cron',
+        id: 'c',
+        schedule: '* * * * *',
+        path: '/',
+        timezone: 'UTC',
+        enabled: true,
+        lastFiredAt: null,
+        appSlug: 'a',
+      },
+    },
+  ],
+  edges: [
+    { id: 'i', source: 'internet', target: 'app:a', kind: 'ingress', requests24h: 10 },
+    { id: 's', source: 'cron:c', target: 'app:a', kind: 'schedule' },
+  ],
+  issues: [],
+};
+const pos = new Map([
+  ['internet', { x: 0, y: 0 }],
+  ['app:a', { x: 400, y: 0 }],
+  ['cron:c', { x: 400, y: -80 }],
+]);
+
+describe('toFlow', () => {
+  it('types each node by kind and places it', () => {
+    const { nodes } = toFlow(t, pos);
+    expect(nodes.map((n) => [n.id, n.type, n.position])).toEqual([
+      ['internet', 'internet', { x: 0, y: 0 }],
+      ['app:a', 'app', { x: 400, y: 0 }],
+      ['cron:c', 'cron', { x: 400, y: -80 }],
+    ]);
+  });
+
+  it('wires schedules into the top of the app and everything else left to right', () => {
+    const { edges } = toFlow(t, pos);
+    expect(edges.find((e) => e.id === 's')).toMatchObject({
+      type: 'wind',
+      sourceHandle: 'out',
+      targetHandle: 'top',
+    });
+    expect(edges.find((e) => e.id === 'i')).toMatchObject({
+      sourceHandle: 'out',
+      targetHandle: 'in',
+      data: { requests24h: 10 },
+    });
+  });
+
+  it('hands apps a connect callback bound to their slug', () => {
+    const onConnect = vi.fn();
+    const app = toFlow(t, pos, { onConnect }).nodes.find((n) => n.id === 'app:a')!;
+    (app.data as { onConnect: (s: 'in') => void }).onConnect('in');
+    expect(onConnect).toHaveBeenCalledWith('a', 'in');
+  });
+  it('hands apps a retry bound to their slug', () => {
+    const onRetry = vi.fn();
+    const app = toFlow(t, pos, { onRetry }).nodes.find((n) => n.id === 'app:a')!;
+    (app.data as { onRetry: () => void }).onRetry();
+    expect(onRetry).toHaveBeenCalledWith('a');
+  });
+  it('dims everything outside the selection and lights its edges', () => {
+    const { nodes, edges } = toFlow(t, pos, { selected: 'cron:c' });
+    expect(nodes.find((n) => n.id === 'internet')!.data).toMatchObject({ dim: true });
+    expect(nodes.find((n) => n.id === 'app:a')!.data).toMatchObject({ dim: false });
+    expect(edges.find((e) => e.id === 's')!.data).toMatchObject({ highlight: true, dim: false });
+    expect(edges.find((e) => e.id === 'i')!.data).toMatchObject({ highlight: false, dim: true });
+  });
+
+  it('dims nothing without a selection', () => {
+    const { nodes } = toFlow(t, pos);
+    expect(nodes.every((n) => !(n.data as { dim?: boolean }).dim)).toBe(true);
+  });
+
+  it('hands a launching app its state and dashes the traffic it cannot serve yet', () => {
+    const onLaunchAction = vi.fn();
+    const { nodes, edges } = toFlow(t, pos, {
+      launches: { a: { slug: 'a', source: 'git', stage: 'building', step: 2 } },
+      onLaunchAction,
+    });
+    const app = nodes.find((n) => n.id === 'app:a')!.data as {
+      launch?: { stage: string };
+      onLaunchAction?: (a: 'retry' | 'logs') => void;
+    };
+    expect(app.launch?.stage).toBe('building');
+    app.onLaunchAction?.('logs');
+    expect(onLaunchAction).toHaveBeenCalledWith('a', 'logs');
+    expect(edges.find((e) => e.id === 'i')!.data!.pending).toBe(true);
+    expect(edges.find((e) => e.id === 's')!.data!.pending).toBeFalsy();
+  });
+
+  it('lights the traffic again once the launch is live', () => {
+    const { edges } = toFlow(t, pos, {
+      launches: { a: { slug: 'a', source: 'git', stage: 'live', step: 4 } },
+    });
+    expect(edges.find((e) => e.id === 'i')!.data!.pending).toBeFalsy();
+  });
+
+  it('adds only the domain ghost until the app is hovered', () => {
+    const one = toFlow(t, pos, { ghosts: { slug: 'a', all: false }, onGhost: vi.fn() });
+    expect(one.nodes.filter((n) => (n.type as string) === 'ghost').map((n) => n.id)).toEqual([
+      'ghost:domain',
+    ]);
+    const all = toFlow(t, pos, { ghosts: { slug: 'a', all: true }, onGhost: vi.fn() });
+    expect(all.nodes.filter((n) => (n.type as string) === 'ghost').map((n) => n.id)).toEqual([
+      'ghost:domain',
+      'ghost:cron',
+      'ghost:bucket',
+    ]);
+  });
+
+  it('turns a ghost click into the matching draft', () => {
+    const onGhost = vi.fn();
+    const { nodes } = toFlow(t, pos, { ghosts: { slug: 'a', all: true }, onGhost });
+    (nodes.find((n) => n.id === 'ghost:cron')!.data as unknown as { onPick: () => void }).onPick();
+    expect(onGhost).toHaveBeenCalledWith('a', 'cron');
+  });
+
+  it('lets the ghosts stand in for the plus buttons while they are all out', () => {
+    const onConnect = vi.fn();
+    const app = (all: boolean) =>
+      toFlow(t, pos, { ghosts: { slug: 'a', all }, onGhost: vi.fn(), onConnect }).nodes.find(
+        (n) => n.id === 'app:a'
+      )!.data as { onConnect?: unknown };
+    expect(app(false).onConnect).toBeDefined();
+    expect(app(true).onConnect).toBeUndefined();
+  });
+
+  it('keeps ghosts out of node focus: their buttons are the tab stops', () => {
+    const { nodes } = toFlow(t, pos, { ghosts: { slug: 'a', all: true }, onGhost: vi.fn() });
+    for (const n of nodes.filter((n) => n.id.startsWith('ghost:'))) expect(n.focusable).toBe(false);
+  });
+});

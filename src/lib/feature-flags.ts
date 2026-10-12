@@ -49,6 +49,8 @@ export function enabled(value: string | undefined): boolean {
 export const featureFlags = {
   /** Reference flag. Gates nothing; proves the wiring and shows the shape. */
   example: enabled(import.meta.env.VITE_FEATURE_EXAMPLE),
+  /** Infrastructure canvas at `/dashboard/canvas`. Owner-local; never set on Vercel. */
+  canvas: enabled(import.meta.env.VITE_FEATURE_CANVAS),
 } as const;
 
 export type FeatureFlags = typeof featureFlags;
