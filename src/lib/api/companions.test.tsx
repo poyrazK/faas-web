@@ -27,7 +27,7 @@ it.each([404, 501])(
     await waitFor(() => expect(hook.result.current.isError).toBe(true));
     expect(hook.result.current.data).toBeUndefined();
     expect(
-      get.mock.calls.filter(([path]) => path === '/v1/deployments/{id}/companions')
+      get.mock.calls.filter((args: unknown[]) => args[0] === '/v1/deployments/{id}/companions')
     ).toHaveLength(1);
   }
 );
