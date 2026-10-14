@@ -8,6 +8,16 @@ function Navigation({ initial }: { initial: AppTab }) {
   const [tab, select] = useState(initial);
   return <AppTabNavigation tab={tab} onSelect={select} panelId="panel" />;
 }
+it('opens Companions in Configure and reaches it with the keyboard', async () => {
+  render(<Navigation initial="Configuration" />);
+  screen.getByRole('tab', { name: 'Configuration' }).focus();
+  await userEvent.keyboard('{ArrowRight}');
+  expect(screen.getByRole('tab', { name: 'Companions' })).toHaveFocus();
+  expect(screen.getByRole('button', { name: 'Configure app section' })).toHaveAttribute(
+    'aria-pressed',
+    'true'
+  );
+});
 it('opens the right group from a deep linked tab and supports keyboard navigation', async () => {
   render(<Navigation initial="Edge rules" />);
   expect(screen.getByRole('button', { name: 'Connect app section' })).toHaveAttribute(
@@ -35,6 +45,8 @@ it('opens Services in Connect and keeps neighboring tabs keyboard accessible', a
   const services = screen.getByRole('tab', { name: 'Services' });
   expect(services).toHaveAttribute('aria-selected', 'true');
   services.focus();
+  await userEvent.keyboard('{ArrowRight}');
+  expect(screen.getByRole('tab', { name: 'MCP' })).toHaveFocus();
   await userEvent.keyboard('{ArrowRight}');
   expect(screen.getByRole('tab', { name: 'Edge rules' })).toHaveFocus();
 });

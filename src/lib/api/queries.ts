@@ -12,6 +12,11 @@ import {
 import { api, issueCSRF, unwrap } from './client';
 import { ApiError } from './errors';
 import { isDeploymentTerminal } from '../deployment-status';
+import {
+  restoreAcknowledgment,
+  restoreReviewedApp,
+  type RestoreIntent,
+} from './deleted-app-restores';
 import type { components, paths } from './schema';
 
 /**
@@ -3322,9 +3327,24 @@ export function useRestartApp(slug: string) {
 export function useRestoreApp() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (slug: string) =>
-      unwrap(api.POST('/v1/apps/{slug}/restore', { params: { path: { slug } } })),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.apps }),
+    retry: false,
+    mutationFn: async (intent: string | RestoreIntent) =>
+      typeof intent === 'string'
+        ? restoreAcknowledgment(
+            await unwrap(
+              api.POST('/v1/apps/{slug}/restore', { params: { path: { slug: intent } } })
+            )
+          )
+        : restoreReviewedApp(intent),
+    onSuccess: (_result, intent) => {
+      void qc.invalidateQueries({ queryKey: keys.apps });
+      void qc.invalidateQueries({ queryKey: keys.deployments });
+      void qc.invalidateQueries({ queryKey: ['projects'] });
+      void qc.invalidateQueries({
+        queryKey:
+          typeof intent === 'string' ? keys.account : ['account', intent.accountId, 'deleted-apps'],
+      });
+    },
   });
 }
 
