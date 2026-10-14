@@ -16,6 +16,8 @@ import type { Workflow } from '@/lib/mock-data';
 import { OverviewSearch } from './overview-search';
 import { validateSettingsSearch } from './settings-search';
 import type { ReactNode } from 'react';
+import { keys, type App } from '@/lib/api/queries';
+import type { components } from '@/lib/api/schema';
 
 const app: Workflow = {
   id: 'api',
@@ -55,7 +57,11 @@ function Page() {
   return <p data-testid="page">{pathname}</p>;
 }
 
-async function renderShell(initialEntry = '/dashboard', content?: ReactNode) {
+async function renderShell(
+  initialEntry = '/dashboard',
+  content?: ReactNode,
+  queryClient?: QueryClient
+) {
   const root = createRootRoute({ component: Outlet });
   const dashboard = createRoute({
     getParentRoute: () => root,
@@ -79,7 +85,7 @@ async function renderShell(initialEntry = '/dashboard', content?: ReactNode) {
     routeTree: root.addChildren([dashboard.addChildren([index, settings, page])]),
     history: createMemoryHistory({ initialEntries: [initialEntry] }),
   });
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = queryClient ?? new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
       <RouterProvider router={router as never} />
@@ -88,6 +94,135 @@ async function renderShell(initialEntry = '/dashboard', content?: ReactNode) {
   await screen.findByTestId('page');
   return router;
 }
+
+function attentionClient() {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+  });
+  client.setQueryData<App[]>(keys.apps, [
+    {
+      id: 'app-api',
+      slug: 'api',
+      status: 'failed',
+      type: 'app',
+      ram_mb: 256,
+      cpu_millicores: 250,
+      configured_resources: { memory_mb: 256, cpu_millicores: 250 },
+      max_concurrency: 1,
+      concurrency_per_vm: 80,
+      min_instances: 0,
+      effective_limits: {
+        memory_limit_mb: 256,
+        plan_memory_max_mb: 256,
+        ephemeral_disk_max_mb: 1024,
+        guest_vcpus: 1,
+        cpu_limit_millicores: 250,
+        plan_cpu_max_millicores: 250,
+        cpu_weight: 100,
+        max_instances: 1,
+        concurrency_per_instance: 80,
+        app_request_rate_rps: 10,
+        app_request_burst: 20,
+        account_request_rate_rpm: 100,
+        request_budget_ms: 30000,
+        request_budget_max_ms: 30000,
+        response_write_timeout_s: 30,
+      },
+      url: 'https://api.example.test',
+      manifest: { entrypoint: ['node', 'server.js'], head_wakes: false, crawler_policy: 'wake' },
+      autoscale_target_rps: 0,
+      autoscale_target_cpu_pct: 0,
+    },
+  ]);
+  client.setQueryData([...keys.deployments, 50], { items: [] });
+  client.setQueryData<components['schemas']['UsageSummaryResponse']>(keys.usageSummary, {
+    month: '2026-10',
+    used_gb_hours: 45,
+    included_gb_hours: 50,
+    overage_gb_hours: 0,
+    overage_cents: 0,
+  });
+  return client;
+}
+
+describe('global Needs Attention dropdown', () => {
+  it('opens live attention checks from a non-overview page and restores focus on Escape', async () => {
+    const user = userEvent.setup();
+    await renderShell('/dashboard/usage', undefined, attentionClient());
+    expect(screen.queryByRole('region', { name: 'Needs attention' })).not.toBeInTheDocument();
+    const trigger = screen.getByRole('button', { name: 'Needs Attention' });
+    await user.click(trigger);
+    const dialog = screen.getByRole('dialog', { name: 'Needs Attention' });
+    expect(dialog).not.toHaveAttribute('aria-modal', 'true');
+    expect(document.body.style.overflow).not.toBe('hidden');
+    expect(screen.queryByRole('button', { name: 'Close dialog' })).not.toBeInTheDocument();
+    expect(within(dialog).getByRole('link', { name: 'View logs for api' })).toHaveAttribute(
+      'href',
+      '/dashboard/workflows/api?tab=Logs'
+    );
+    expect(within(dialog).getByRole('link', { name: 'Review usage' })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Needs Attention' })).not.toBeInTheDocument()
+    );
+    expect(trigger).toHaveFocus();
+  });
+
+  it('dismisses the dropdown when an investigation link navigates to app logs', async () => {
+    const user = userEvent.setup();
+    const router = await renderShell('/dashboard', undefined, attentionClient());
+    await user.click(screen.getByRole('button', { name: 'Needs Attention' }));
+    await user.click(screen.getByRole('link', { name: 'View logs for api' }));
+    await waitFor(() =>
+      expect(router.state.location.href).toBe('/dashboard/workflows/api?tab=Logs')
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Needs Attention' })).not.toBeInTheDocument()
+    );
+  });
+
+  it('can close and reopen checks using the dropdown close button', async () => {
+    const user = userEvent.setup();
+    await renderShell('/dashboard', undefined, attentionClient());
+    const trigger = screen.getByRole('button', { name: 'Needs Attention' });
+    await user.click(trigger);
+    await user.click(
+      within(screen.getByRole('dialog', { name: 'Needs Attention' })).getByRole('button', {
+        name: 'Close',
+      })
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Needs Attention' })).not.toBeInTheDocument()
+    );
+    await user.click(trigger);
+    expect(screen.getByRole('dialog', { name: 'Needs Attention' })).toBeInTheDocument();
+  });
+
+  it('toggles the dropdown closed on a second click of the Needs Attention button', async () => {
+    const user = userEvent.setup();
+    await renderShell('/dashboard', undefined, attentionClient());
+    const trigger = screen.getByRole('button', { name: 'Needs Attention' });
+    await user.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    await user.click(trigger);
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Needs Attention' })).not.toBeInTheDocument()
+    );
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('dismisses on an outside click without blocking the underlying page', async () => {
+    const user = userEvent.setup();
+    await renderShell('/dashboard', <button type="button">Page action</button>, attentionClient());
+    await user.click(screen.getByRole('button', { name: 'Needs Attention' }));
+    const action = screen.getByRole('button', { name: 'Page action' });
+    await user.click(action);
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Needs Attention' })).not.toBeInTheDocument()
+    );
+    expect(action).toHaveFocus();
+  });
+});
 
 /**
  * Every rail row, in order — hubs and the sections nested under them.
