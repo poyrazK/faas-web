@@ -70,5 +70,8 @@ describe('DashboardShell', () => {
       'href',
       '/dashboard/workflows/new'
     );
+    const attention = screen.getByRole('button', { name: 'Needs Attention' });
+    expect(attention.nextElementSibling).toBe(screen.getByRole('link', { name: 'New app' }));
+    expect(attention).toHaveAttribute('aria-haspopup', 'dialog');
   });
 });

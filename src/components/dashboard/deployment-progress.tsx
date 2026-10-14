@@ -32,6 +32,7 @@ export function DeploymentProgress({
   sourceRef,
   submissionError,
   endpoint,
+  hideRetryOptions = false,
 }: {
   appCreated: boolean;
   appName: string;
@@ -40,6 +41,7 @@ export function DeploymentProgress({
   sourceRef: string;
   submissionError?: string | null;
   endpoint?: string | null;
+  hideRetryOptions?: boolean;
 }) {
   const navigate = useNavigate();
   const outputRef = useRef<HTMLDetailsElement>(null);
@@ -94,7 +96,9 @@ export function DeploymentProgress({
                 : failed
                   ? [
                       'Deployment failed',
-                      'Your app is saved. Review the cause below, then open the deployment to inspect it and retry.',
+                      hideRetryOptions
+                        ? 'Your app is saved. Review the cause below, then retry the original deployment or deploy a fix.'
+                        : 'Your app is saved. Review the cause below, then open the deployment to inspect it and retry.',
                     ]
                   : status
                     ? (ACTIVE_STATES[status] ?? [
@@ -147,7 +151,7 @@ export function DeploymentProgress({
                 outputRef.current.scrollIntoView({ block: 'nearest' });
               }}
               onRetryOptions={
-                deployment.status === 'failed'
+                deployment.status === 'failed' && !hideRetryOptions
                   ? () => {
                       void navigate({
                         to: '/dashboard/deployments',
