@@ -10,6 +10,7 @@ import { ErrorState, LoadingState, Panel } from '../primitives';
 import { EnvironmentStateView } from './environment-state';
 import { EnvironmentDiffView } from './environment-diff';
 import { StageQueueOverview } from './stage-queue-bindings';
+import { EnvironmentReadiness, type ReadinessSearch } from './environment-readiness';
 import type { components } from '@/lib/api/schema';
 const selectClass =
   'h-9 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring';
@@ -23,6 +24,8 @@ type Props = {
   queueWorkload?: string;
   onChange: (next: { environment?: string; compare?: string }) => void;
   onSelectQueueWorkload: (slug?: string) => void;
+  readinessSearch?: ReadinessSearch;
+  onReadinessSearch?: (patch: ReadinessSearch) => void;
 };
 function SelectedEnvironment({
   accountId,
@@ -33,6 +36,8 @@ function SelectedEnvironment({
   compare,
   queueWorkload,
   onSelectQueueWorkload,
+  readinessSearch,
+  onReadinessSearch,
 }: Props & { environment: string }) {
   const detail = useProjectEnvironment(accountId, slug, environment);
   const state = useEnvironmentState(accountId, slug, environment);
@@ -104,6 +109,18 @@ function SelectedEnvironment({
         />
       )}
       {compare && diff.data && <EnvironmentDiffView data={diff.data} />}
+      {onReadinessSearch && (
+        <EnvironmentReadiness
+          key={`readiness:${accountId}:${projectId}:${environment}:${compare ?? ''}`}
+          identity={{ accountId, projectId, project: slug, target: environment }}
+          source={compare}
+          operation={readinessSearch?.promotion}
+          approval={readinessSearch?.approval}
+          before={readinessSearch?.promotionBefore}
+          status={readinessSearch?.promotionStatus}
+          onSearch={onReadinessSearch}
+        />
+      )}
     </>
   );
 }

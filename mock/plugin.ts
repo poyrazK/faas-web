@@ -8,6 +8,12 @@ import { mockCapabilities } from './capabilities';
 import { isDigestPinnedImage } from '../src/lib/oci-image';
 import { advancePolicy, mockRuntimePolicy } from './runtime-policy';
 import { projects, projectSummaries } from './projects';
+import {
+  mockPromotionPreview,
+  mockPromotionHistory,
+  mockPromotionReceipt,
+  mockApprovalId,
+} from './environment-readiness';
 import { getStageQueueRecord, putStageQueueRecord } from './stage-queues';
 import {
   environmentInventory,
@@ -3574,6 +3580,72 @@ route('GET', '/v1/apps/{slug}/deployments', ({ params, query }) => {
   return { items, next_before: ordered.length > limit ? items.at(-1)!.created_at : null };
 });
 
+route(
+  'GET',
+  '/v1/projects/{slug}/environments/{environment}/promotion-preview',
+  ({ params, query }) => {
+    const view = mockPromotionPreview(params.slug, params.environment, query.get('from') ?? '');
+    if (!view)
+      throw new Problem(
+        404,
+        'not_found',
+        'Registered source and target environments are required.'
+      );
+    if (query.get('sync_config') && query.get('sync_config') !== 'false')
+      throw new Problem(
+        400,
+        'validation_failed',
+        'This fixture supports read-only target-scoped previews.'
+      );
+    return view;
+  }
+);
+route('GET', '/v1/projects/{slug}/environments/{environment}/promotions', ({ params, query }) => {
+  const rows = mockPromotionHistory(params.slug, params.environment);
+  if (!rows) throw new Problem(404, 'not_found');
+  if (query.get('before'))
+    throw new Problem(400, 'validation_failed', 'No further fixture page exists.');
+  const limit = Number(query.get('limit') ?? 50);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100)
+    throw new Problem(400, 'validation_failed');
+  return {
+    items: rows
+      .filter(
+        (row) =>
+          (!query.get('from') || row.from_environment === query.get('from')) &&
+          (!query.get('status') || row.status === query.get('status'))
+      )
+      .slice(0, limit),
+  };
+});
+route(
+  'GET',
+  '/v1/projects/{slug}/environments/{environment}/promotions/{promotion}',
+  ({ params }) => {
+    const view = mockPromotionReceipt(params.slug, params.environment, params.promotion);
+    if (!view) throw new Problem(404, 'not_found');
+    return view;
+  }
+);
+route(
+  'GET',
+  '/v1/projects/{slug}/environments/{environment}/approvals/{approval}',
+  ({ params }) => {
+    if (
+      params.approval !== mockApprovalId ||
+      !environmentInventory(params.slug)?.some((row) => row.slug === params.environment)
+    )
+      throw new Problem(404, 'not_found');
+    return {
+      approval_id: mockApprovalId,
+      environment: params.environment,
+      token_kind: 'promotion',
+      status: 'expired',
+      created_at: db.iso(30 * 60 * 60 * 1000),
+      expires_at: db.iso(6 * 60 * 60 * 1000),
+    } satisfies components['schemas']['ProjectEnvironmentApprovalStatusResponse'];
+  }
+);
 route('GET', '/v1/deployments', ({ query }) => ({
   items: db.deployments.slice(0, Number(query.get('limit') ?? 50)),
   next_before: null,
