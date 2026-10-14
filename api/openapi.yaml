@@ -2725,6 +2725,98 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
 
+  /v1/deleted-apps:
+    get:
+      tags: [apps]
+      operationId: listDeletedApps
+      summary: List account-owned retained deleted apps.
+      description: |
+        Bounded lifecycle inventory; never includes another account's tombstones.
+        Eligibility does not reserve quota or capacity. Use the returned deadline
+        and evaluation time, not a deadline inferred from the browser clock.
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum records in this account-owned page.
+          schema: { type: integer, minimum: 1, maximum: 50, default: 25 }
+        - name: cursor
+          in: query
+          description: Opaque cursor from this account and inventory order. Restart when rejected.
+          schema: { type: string, maxLength: 1024 }
+      responses:
+        '200':
+          description: One bounded account-owned page.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeletedAppListResponse' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
+  /v1/deleted-apps/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Exact deleted-app ID returned by this account's inventory.
+        schema: { type: string, format: uuid }
+    get:
+      tags: [apps]
+      operationId: getDeletedApp
+      summary: Read one account-owned deleted app before restore review.
+      description: Returns current lifecycle evidence for the exact owned retained ID; foreign and restored IDs are absent.
+      responses:
+        '200':
+          description: Current lifecycle evidence; active or foreign apps return 404.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeletedAppSummary' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
+  /v1/deleted-apps/{id}/restore:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Exact account-owned deleted-app ID; never resolved to a replacement slug.
+        schema: { type: string, format: uuid }
+    post:
+      tags: [apps]
+      operationId: restoreDeletedApp
+      summary: Restore an identified app within its retained deletion window.
+      description: |
+        Requires deploy-write, MFA completion and trusted browser origin for cookie
+        authentication. Rechecks identity, deadline, purge claim, quota and capacity.
+        This operation has no idempotent replay receipt. After an uncertain response,
+        reconcile exact-ID reads; never automatically retry or fall back to slug restore.
+        Success acknowledges restoration, not execution health.
+      requestBody:
+        description: Optional empty object; no dry-run or other fields are accepted.
+        required: false
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, maxProperties: 0 }
+      responses:
+        '200':
+          description: The restored exact app.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AppResponse' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
   /v1/apps/{slug}/restore:
     parameters:
       - $ref: '#/components/parameters/Slug'
@@ -4690,6 +4782,36 @@ paths:
         '204': { description: Deleted (row gone from app_openapi_docs). }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
+  /v1/apps/{slug}/openapi/preview:
+    parameters:
+      - $ref: '#/components/parameters/Slug'
+    get:
+      tags: [openapi_import]
+      operationId: previewAppOpenAPIPolicy
+      summary: Preview declared routes, observed routes, and matching edge policies.
+      description: |
+        Read-only route-policy preview for API-hosting roadmap item 11.
+        Joins the persisted OpenAPI declaration with gatewayd's observed
+        route labels and the app's edge rules. Each route is classified as
+        `matched`, `declared_only`, or `observed_only`; `covered` is true
+        when at least one enabled edge rule matches the path and method.
+        Observed routes come from the fleet-wide Prometheus aggregate. A
+        partial scrape returns the available union with
+        `source=degraded: routes_partial`; a total bridge failure sets
+        `observed_available` to false and reports
+        `source=degraded: routes_unavailable`. Collector counts distinguish
+        both states from a healthy fleet that has not received traffic. No
+        policy or document writes occur on this endpoint.
+      responses:
+        '200':
+          description: Declared-vs-observed route and policy preview.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppOpenAPIPolicyPreviewResponse'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /v1/apps/{slug}/openapi/dry-run:
     parameters:
       - $ref: '#/components/parameters/Slug'
@@ -6428,6 +6550,35 @@ paths:
               example: {"items":[]}
         '401': { $ref: '#/components/responses/Unauthorized' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/deployments/{id}/companions:
+    parameters:
+      - $ref: '#/components/parameters/Id32'
+    get:
+      tags: [deployments]
+      operationId: getDeploymentCompanions
+      summary: Inspect owned deployment companion declarations.
+      description: |
+        Returns bounded declared configuration from this exact deployment.
+        The deployment identifies its environment scope; query scope is not
+        supported. Empty declarations are distinct from unavailable retained
+        metadata. No environment values, ciphertext, secret references or
+        commands are returned. No workload is probed and no execution health
+        is inferred; absent telemetry is Unverified. Managed preset availability
+        requires separate runtime qualification and does not imply that all
+        custom helpers are unavailable. Requires deployment-read scope and MFA.
+      responses:
+        '200':
+          description: Owned declaration metadata, including known empty or unavailable.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeploymentCompanionsResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '503': { $ref: '#/components/responses/CapacityUnavailable' }
 
   /v1/deployments/{id}:
     parameters:
@@ -17213,6 +17364,29 @@ components:
       maxProperties: 100
       additionalProperties: { $ref: '#/components/schemas/ServiceCallScope' }
 
+    DeletedAppSummary:
+      type: object
+      description: Account-owned retained lifecycle metadata. Eligibility never reserves quota or proves execution health.
+      required: [account_id, id, slug, deleted_at, delete_grace_until, restore_eligible, restore_blocker, evaluated_at]
+      properties:
+        account_id: { type: string, format: uuid }
+        id: { type: string, format: uuid }
+        slug: { type: string }
+        deleted_at: { type: [string, "null"], format: date-time }
+        delete_grace_until: { type: [string, "null"], format: date-time }
+        restore_eligible: { type: boolean }
+        restore_blocker: { type: string, enum: ['', grace_expired, purge_started, metadata_unavailable] }
+        evaluated_at: { type: string, format: date-time }
+    DeletedAppListResponse:
+      type: object
+      description: Bounded account-owned tombstone inventory and its opaque cursor.
+      required: [account_id, apps, evaluated_at]
+      properties:
+        account_id: { type: string, format: uuid }
+        apps: { type: array, maxItems: 50, items: { $ref: '#/components/schemas/DeletedAppSummary' } }
+        next_cursor: { type: string, maxLength: 1024 }
+        evaluated_at: { type: string, format: date-time }
+
     AppResponse:
       description: "An app: slug, type, runtime (for functions), RAM/cpu/idle-timeout config, current state, last-deploy pointer, per-app outbound CIDR allowlist (ADR-031 + ADR-032), and reactive scale-up trigger targets (issue #169 / #172)."
       type: object
@@ -18737,6 +18911,51 @@ components:
         status: { type: string, enum: [open, committed, cancelled, expired] }
         expires_at: { type: string, format: date-time }
         deployment_id: { type: [string, "null"] }
+
+    CompanionDeclaration:
+      type: object
+      additionalProperties: false
+      description: Declared companion configuration only; no commands, environment values or observed health.
+      required: [name, type, ram_mb, cpu_millicores, scratch_mb, port, primary_ingress, depends_on, environment_keys]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 63, pattern: '^[a-z0-9][a-z0-9-]{0,62}$' }
+        image: { type: string, description: 'Declared immutable OCI reference, when returned.' }
+        preset: { type: string, enum: [opentelemetry, sentry, datadog-dogstatsd] }
+        type: { type: string, enum: [init, sidecar] }
+        ram_mb: { type: integer, minimum: 0, description: 'Declared memory ceiling. Zero inherits the platform default; not observed effective usage.' }
+        cpu_millicores: { type: integer, minimum: 0, description: 'Declared CPU ceiling. Zero inherits the platform default.' }
+        scratch_mb: { type: integer, minimum: 0, description: 'Declared scratch ceiling. Zero derives the runtime default.' }
+        disk_io_profile: { type: string, enum: [low, standard, high] }
+        port: { type: integer, minimum: 0, maximum: 65535, description: 'Declared port. Zero is not an observed listener.' }
+        primary_ingress: { type: boolean }
+        essential: { type: boolean, description: 'Declared essential policy. Omitted uses the default true; not runtime health.' }
+        depends_on:
+          type: array
+          maxItems: 6
+          items: { $ref: '#/components/schemas/WorkloadDependency' }
+        environment_keys:
+          type: array
+          description: Sorted unique names only, including explicit secret-binding environment names. Values and secret references are never returned.
+          items: { type: string, pattern: '^[A-Z][A-Z0-9_]*$' }
+
+    DeploymentCompanionsResponse:
+      type: object
+      description: Account-owned declarations for one exact deployment; metadata availability is separate from execution health.
+      additionalProperties: false
+      required: [account_id, app_id, app_slug, deployment_id, scope, state, companions]
+      properties:
+        account_id: { type: string }
+        app_id: { type: string }
+        app_slug: { type: string }
+        deployment_id: { type: string }
+        scope: { type: string, description: 'Returned deployment scope; not inferred from a query parameter.' }
+        state: { type: string, enum: [available, unavailable], description: 'Declaration metadata availability only, never execution health.' }
+        reason: { type: string, enum: [declaration_metadata_unavailable] }
+        companions:
+          type: array
+          maxItems: 5
+          description: Known empty is an available empty array. Unavailable metadata is explicitly labelled and must not be presented as no configured helpers.
+          items: { $ref: '#/components/schemas/CompanionDeclaration' }
 
     DeploymentResponse:
       description: "One deployment: id, app, source ref, build status, commit SHA, and lifecycle timestamps. The optional `has_overrides` and `override_*` fields are the persisted echo of the create-time overrides object (issue #460 / ADR-053); they round-trip via `GET /v1/apps/{slug}/deployments/{id}` so a customer can audit what their last deploy pinned. Env values are NEVER echoed — only the keys (`override_env_keys`); env_secrets refs ARE echoed because the ref shape is non-secret by design."
@@ -24657,6 +24876,91 @@ components:
           description: "Number of operations in the dry-run doc."
           x-since: "2026-08"
           x-issue: "975"
+
+    AppOpenAPIPolicyPreviewResponse:
+      description: |
+        Read-only declared-vs-observed route and edge-policy preview
+        (API-hosting roadmap item 11 / ADR-126 follow-up). The response
+        never writes an OpenAPI document or edge rule.
+      type: object
+      required: [app_id, source, observed_available, observed_source, observed_inventory_available, observed_cap_hit, collectors_expected, collectors_healthy, routes]
+      properties:
+        app_id:
+          type: string
+          format: uuid
+        source:
+          type: string
+          description: "preview, empty: no_import, degraded: routes_partial, or degraded: routes_unavailable."
+        observed_available:
+          type: boolean
+          description: "Whether current route telemetry or a persisted discovered-route inventory is available."
+        observed_source:
+          type: string
+          enum: [live, partial, unavailable]
+          description: "Completeness of the current fleet-wide telemetry input; persisted inventory availability is reported separately."
+        observed_inventory_available:
+          type: boolean
+          description: "Whether durable, opt-in discovered routes contributed to the observed route set."
+        observed_cap_hit:
+          type: boolean
+          description: "Whether the live route snapshot or durable discovered-route inventory reached its route cap."
+        collectors_expected:
+          type: integer
+          minimum: 0
+          description: "Number of registry compute gateways expected to contribute route observations."
+        collectors_healthy:
+          type: integer
+          minimum: 0
+          description: "Expected compute route collectors currently healthy in Prometheus."
+        openapi_version:
+          type: string
+          description: "OpenAPI version from the persisted declaration, when present."
+        routes:
+          type: array
+          items: { $ref: '#/components/schemas/AppOpenAPIPolicyPreviewRoute' }
+        suggestions:
+          type: array
+          items: { $ref: '#/components/schemas/EdgeRuleSuggestion' }
+
+    AppOpenAPIPolicyPreviewRoute:
+      description: "One declared/observed path-method row with policy coverage and drift status."
+      type: object
+      required: [path, method, status, declared, observed, covered]
+      properties:
+        path: { type: string }
+        method:
+          type: string
+          enum: [get, put, post, delete, options, head, patch, trace]
+        status:
+          type: string
+          enum: [matched, declared_only, observed_only]
+        declared: { type: boolean }
+        observed: { type: boolean }
+        covered:
+          type: boolean
+          description: "True when at least one enabled edge rule matches this path and method."
+        rules:
+          type: array
+          items: { $ref: '#/components/schemas/AppOpenAPIPolicyPreviewRule' }
+
+    AppOpenAPIPolicyPreviewRule:
+      description: "Read-only edge-rule subset explaining why a preview route is covered."
+      type: object
+      required: [id, match_host, match_path, match_methods, priority, enabled, kind, action]
+      properties:
+        id: { type: string, format: uuid }
+        match_host: { type: string }
+        match_path: { type: string }
+        match_methods:
+          type: array
+          items: { type: string }
+        priority: { type: integer }
+        enabled: { type: boolean }
+        kind: { type: string }
+        validate_mode: { type: string }
+        action:
+          type: object
+          additionalProperties: true
 
     AppRoutesResponse:
       description: |

@@ -12,6 +12,11 @@ import {
 import { api, issueCSRF, unwrap } from './client';
 import { ApiError } from './errors';
 import { isDeploymentTerminal } from '../deployment-status';
+import {
+  restoreAcknowledgment,
+  restoreReviewedApp,
+  type RestoreIntent,
+} from './deleted-app-restores';
 import type { components, paths } from './schema';
 
 /**
@@ -2324,6 +2329,9 @@ export type OpenAPIDocument =
 export type EdgeRuleSuggestion = components['schemas']['EdgeRuleSuggestion'];
 
 const appOpenAPIKey = (slug: string) => ['apps', slug, 'openapi'] as const;
+const openAPIFilters: QueryFilters = {
+  predicate: (query) => query.queryKey[0] === 'apps' && query.queryKey[2] === 'openapi',
+};
 
 /**
  * `manual_import` is the customer's own document verbatim and 404s with
@@ -2508,7 +2516,8 @@ export function useDeleteEdgeRule() {
     onMutate: (id) =>
       applyOptimistic<EdgeRule[]>(qc, edgeRuleFilters, (old) => old.filter((r) => r.id !== id)),
     onError: (_err, _id, rollback) => rollback?.(),
-    onSettled: () => qc.invalidateQueries(edgeRuleFilters),
+    onSettled: () =>
+      Promise.all([qc.invalidateQueries(edgeRuleFilters), qc.invalidateQueries(openAPIFilters)]),
   });
 }
 
@@ -3069,6 +3078,7 @@ export function useCreateEdgeRule() {
     onSuccess: (_rule, { slug }) => {
       void qc.invalidateQueries({ queryKey: ['edge-rules'] });
       void qc.invalidateQueries({ queryKey: ['apps', slug, 'edge-rules'] });
+      void qc.invalidateQueries({ queryKey: appOpenAPIKey(slug) });
     },
   });
 }
@@ -3088,7 +3098,8 @@ export function useUpdateEdgeRule() {
         old.map((r) => (r.id === id ? ({ ...r, ...patch } as EdgeRule) : r))
       ),
     onError: (_err, _vars, rollback) => rollback?.(),
-    onSettled: () => qc.invalidateQueries(edgeRuleFilters),
+    onSettled: () =>
+      Promise.all([qc.invalidateQueries(edgeRuleFilters), qc.invalidateQueries(openAPIFilters)]),
   });
 }
 
@@ -3316,9 +3327,24 @@ export function useRestartApp(slug: string) {
 export function useRestoreApp() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (slug: string) =>
-      unwrap(api.POST('/v1/apps/{slug}/restore', { params: { path: { slug } } })),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.apps }),
+    retry: false,
+    mutationFn: async (intent: string | RestoreIntent) =>
+      typeof intent === 'string'
+        ? restoreAcknowledgment(
+            await unwrap(
+              api.POST('/v1/apps/{slug}/restore', { params: { path: { slug: intent } } })
+            )
+          )
+        : restoreReviewedApp(intent),
+    onSuccess: (_result, intent) => {
+      void qc.invalidateQueries({ queryKey: keys.apps });
+      void qc.invalidateQueries({ queryKey: keys.deployments });
+      void qc.invalidateQueries({ queryKey: ['projects'] });
+      void qc.invalidateQueries({
+        queryKey:
+          typeof intent === 'string' ? keys.account : ['account', intent.accountId, 'deleted-apps'],
+      });
+    },
   });
 }
 

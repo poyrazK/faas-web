@@ -1697,6 +1697,78 @@ export interface paths {
         patch: operations["updateApp"];
         trace?: never;
     };
+    "/v1/deleted-apps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List account-owned retained deleted apps.
+         * @description Bounded lifecycle inventory; never includes another account's tombstones.
+         *     Eligibility does not reserve quota or capacity. Use the returned deadline
+         *     and evaluation time, not a deadline inferred from the browser clock.
+         */
+        get: operations["listDeletedApps"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/deleted-apps/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Exact deleted-app ID returned by this account's inventory. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read one account-owned deleted app before restore review.
+         * @description Returns current lifecycle evidence for the exact owned retained ID; foreign and restored IDs are absent.
+         */
+        get: operations["getDeletedApp"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/deleted-apps/{id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Exact account-owned deleted-app ID; never resolved to a replacement slug. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore an identified app within its retained deletion window.
+         * @description Requires deploy-write, MFA completion and trusted browser origin for cookie
+         *     authentication. Rechecks identity, deadline, purge claim, quota and capacity.
+         *     This operation has no idempotent replay receipt. After an uncertain response,
+         *     reconcile exact-ID reads; never automatically retry or fall back to slug restore.
+         *     Success acknowledges restoration, not execution health.
+         */
+        post: operations["restoreDeletedApp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/apps/{slug}/restore": {
         parameters: {
             query?: never;
@@ -2898,6 +2970,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/apps/{slug}/openapi/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Preview declared routes, observed routes, and matching edge policies.
+         * @description Read-only route-policy preview for API-hosting roadmap item 11.
+         *     Joins the persisted OpenAPI declaration with gatewayd's observed
+         *     route labels and the app's edge rules. Each route is classified as
+         *     `matched`, `declared_only`, or `observed_only`; `covered` is true
+         *     when at least one enabled edge rule matches the path and method.
+         *     Observed routes come from the fleet-wide Prometheus aggregate. A
+         *     partial scrape returns the available union with
+         *     `source=degraded: routes_partial`; a total bridge failure sets
+         *     `observed_available` to false and reports
+         *     `source=degraded: routes_unavailable`. Collector counts distinguish
+         *     both states from a healthy fleet that has not received traffic. No
+         *     policy or document writes occur on this endpoint.
+         */
+        get: operations["previewAppOpenAPIPolicy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/apps/{slug}/openapi/dry-run": {
         parameters: {
             query?: never;
@@ -4074,6 +4180,36 @@ export interface paths {
          *     with deployment ID as the stable tie-breaker.
          */
         get: operations["listLatestDeploymentsByApp"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/deployments/{id}/companions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Inspect owned deployment companion declarations.
+         * @description Returns bounded declared configuration from this exact deployment.
+         *     The deployment identifies its environment scope; query scope is not
+         *     supported. Empty declarations are distinct from unavailable retained
+         *     metadata. No environment values, ciphertext, secret references or
+         *     commands are returned. No workload is probed and no execution health
+         *     is inferred; absent telemetry is Unverified. Managed preset availability
+         *     requires separate runtime qualification and does not imply that all
+         *     custom helpers are unavailable. Requires deployment-read scope and MFA.
+         */
+        get: operations["getDeploymentCompanions"];
         put?: never;
         post?: never;
         delete?: never;
@@ -11375,6 +11511,32 @@ export interface components {
         ServiceCallerScopes: {
             [key: string]: components["schemas"]["ServiceCallScope"];
         };
+        /** @description Account-owned retained lifecycle metadata. Eligibility never reserves quota or proves execution health. */
+        DeletedAppSummary: {
+            /** Format: uuid */
+            account_id: string;
+            /** Format: uuid */
+            id: string;
+            slug: string;
+            /** Format: date-time */
+            deleted_at: string | null;
+            /** Format: date-time */
+            delete_grace_until: string | null;
+            restore_eligible: boolean;
+            /** @enum {string} */
+            restore_blocker: "" | "grace_expired" | "purge_started" | "metadata_unavailable";
+            /** Format: date-time */
+            evaluated_at: string;
+        };
+        /** @description Bounded account-owned tombstone inventory and its opaque cursor. */
+        DeletedAppListResponse: {
+            /** Format: uuid */
+            account_id: string;
+            apps: components["schemas"]["DeletedAppSummary"][];
+            next_cursor?: string;
+            /** Format: date-time */
+            evaluated_at: string;
+        };
         /** @description An app: slug, type, runtime (for functions), RAM/cpu/idle-timeout config, current state, last-deploy pointer, per-app outbound CIDR allowlist (ADR-031 + ADR-032), and reactive scale-up trigger targets (issue #169 / #172). */
         AppResponse: {
             /** @example 0123456789abcdef0123456789abcdef */
@@ -12398,6 +12560,50 @@ export interface components {
             /** Format: date-time */
             expires_at: string;
             deployment_id?: string | null;
+        };
+        /** @description Declared companion configuration only; no commands, environment values or observed health. */
+        CompanionDeclaration: {
+            name: string;
+            /** @description Declared immutable OCI reference, when returned. */
+            image?: string;
+            /** @enum {string} */
+            preset?: "opentelemetry" | "sentry" | "datadog-dogstatsd";
+            /** @enum {string} */
+            type: "init" | "sidecar";
+            /** @description Declared memory ceiling. Zero inherits the platform default; not observed effective usage. */
+            ram_mb: number;
+            /** @description Declared CPU ceiling. Zero inherits the platform default. */
+            cpu_millicores: number;
+            /** @description Declared scratch ceiling. Zero derives the runtime default. */
+            scratch_mb: number;
+            /** @enum {string} */
+            disk_io_profile?: "low" | "standard" | "high";
+            /** @description Declared port. Zero is not an observed listener. */
+            port: number;
+            primary_ingress: boolean;
+            /** @description Declared essential policy. Omitted uses the default true; not runtime health. */
+            essential?: boolean;
+            depends_on: components["schemas"]["WorkloadDependency"][];
+            /** @description Sorted unique names only, including explicit secret-binding environment names. Values and secret references are never returned. */
+            environment_keys: string[];
+        };
+        /** @description Account-owned declarations for one exact deployment; metadata availability is separate from execution health. */
+        DeploymentCompanionsResponse: {
+            account_id: string;
+            app_id: string;
+            app_slug: string;
+            deployment_id: string;
+            /** @description Returned deployment scope; not inferred from a query parameter. */
+            scope: string;
+            /**
+             * @description Declaration metadata availability only, never execution health.
+             * @enum {string}
+             */
+            state: "available" | "unavailable";
+            /** @enum {string} */
+            reason?: "declaration_metadata_unavailable";
+            /** @description Known empty is an available empty array. Unavailable metadata is explicitly labelled and must not be presented as no configured helpers. */
+            companions: components["schemas"]["CompanionDeclaration"][];
         };
         /** @description One deployment: id, app, source ref, build status, commit SHA, and lifecycle timestamps. The optional `has_overrides` and `override_*` fields are the persisted echo of the create-time overrides object (issue #460 / ADR-053); they round-trip via `GET /v1/apps/{slug}/deployments/{id}` so a customer can audit what their last deploy pinned. Env values are NEVER echoed — only the keys (`override_env_keys`); env_secrets refs ARE echoed because the ref shape is non-secret by design. */
         DeploymentResponse: {
@@ -17184,6 +17390,64 @@ export interface components {
             openapi_version: string;
             /** @description Number of operations in the dry-run doc. */
             endpoint_count: number;
+        };
+        /**
+         * @description Read-only declared-vs-observed route and edge-policy preview
+         *     (API-hosting roadmap item 11 / ADR-126 follow-up). The response
+         *     never writes an OpenAPI document or edge rule.
+         */
+        AppOpenAPIPolicyPreviewResponse: {
+            /** Format: uuid */
+            app_id: string;
+            /** @description preview, empty: no_import, degraded: routes_partial, or degraded: routes_unavailable. */
+            source: string;
+            /** @description Whether current route telemetry or a persisted discovered-route inventory is available. */
+            observed_available: boolean;
+            /**
+             * @description Completeness of the current fleet-wide telemetry input; persisted inventory availability is reported separately.
+             * @enum {string}
+             */
+            observed_source: "live" | "partial" | "unavailable";
+            /** @description Whether durable, opt-in discovered routes contributed to the observed route set. */
+            observed_inventory_available: boolean;
+            /** @description Whether the live route snapshot or durable discovered-route inventory reached its route cap. */
+            observed_cap_hit: boolean;
+            /** @description Number of registry compute gateways expected to contribute route observations. */
+            collectors_expected: number;
+            /** @description Expected compute route collectors currently healthy in Prometheus. */
+            collectors_healthy: number;
+            /** @description OpenAPI version from the persisted declaration, when present. */
+            openapi_version?: string;
+            routes: components["schemas"]["AppOpenAPIPolicyPreviewRoute"][];
+            suggestions?: components["schemas"]["EdgeRuleSuggestion"][];
+        };
+        /** @description One declared/observed path-method row with policy coverage and drift status. */
+        AppOpenAPIPolicyPreviewRoute: {
+            path: string;
+            /** @enum {string} */
+            method: "get" | "put" | "post" | "delete" | "options" | "head" | "patch" | "trace";
+            /** @enum {string} */
+            status: "matched" | "declared_only" | "observed_only";
+            declared: boolean;
+            observed: boolean;
+            /** @description True when at least one enabled edge rule matches this path and method. */
+            covered: boolean;
+            rules?: components["schemas"]["AppOpenAPIPolicyPreviewRule"][];
+        };
+        /** @description Read-only edge-rule subset explaining why a preview route is covered. */
+        AppOpenAPIPolicyPreviewRule: {
+            /** Format: uuid */
+            id: string;
+            match_host: string;
+            match_path: string;
+            match_methods: string[];
+            priority: number;
+            enabled: boolean;
+            kind: string;
+            validate_mode?: string;
+            action: {
+                [key: string]: unknown;
+            };
         };
         /**
          * @description Per-route label snapshot (ADR-093). The bounded route label
@@ -24517,6 +24781,100 @@ export interface operations {
             429: components["responses"]["TooManyRequests"];
         };
     };
+    listDeletedApps: {
+        parameters: {
+            query?: {
+                /** @description Maximum records in this account-owned page. */
+                limit?: number;
+                /** @description Opaque cursor from this account and inventory order. Restart when rejected. */
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One bounded account-owned page. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeletedAppListResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getDeletedApp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Exact deleted-app ID returned by this account's inventory. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current lifecycle evidence; active or foreign apps return 404. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeletedAppSummary"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    restoreDeletedApp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Exact account-owned deleted-app ID; never resolved to a replacement slug. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** @description Optional empty object; no dry-run or other fields are accepted. */
+        requestBody?: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description The restored exact app. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
     restoreApp: {
         parameters: {
             query?: never;
@@ -26489,6 +26847,31 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
         };
     };
+    previewAppOpenAPIPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Declared-vs-observed route and policy preview. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppOpenAPIPolicyPreviewResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     dryRunAppOpenAPI: {
         parameters: {
             query?: never;
@@ -28458,6 +28841,35 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getDeploymentCompanions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Owned declaration metadata, including known empty or unavailable. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentCompanionsResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["CapacityUnavailable"];
         };
     };
     getDeployment: {

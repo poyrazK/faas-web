@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Route as Apps } from './dashboard.workflows.index';
 
 let empty = true;
+vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { id: 'account-a' } }) }));
 vi.mock('@/lib/store', () => ({
   useData: () => ({
     workflows: empty
