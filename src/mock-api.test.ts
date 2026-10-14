@@ -44,6 +44,30 @@ async function get(path: string) {
   const response = await fetch(`${origin}${path}`);
   return { response, body: await response.json() };
 }
+it('serves companion declaration identity and known empty metadata without health or secrets', async () => {
+  const list = await get('/v1/apps/api-gateway/deployments?limit=25');
+  const id = list.body.items[0].id;
+  const view = await get(`/v1/deployments/${id}/companions`);
+  expect(view.response.status).toBe(200);
+  expect(view.body).toMatchObject({
+    app_slug: 'api-gateway',
+    deployment_id: id,
+    scope: 'default',
+    state: 'available',
+    companions: [
+      expect.objectContaining({
+        name: 'metrics',
+        environment_keys: ['OTEL_EXPORTER_OTLP_ENDPOINT', 'TOKEN'],
+      }),
+    ],
+  });
+  expect(view.body.companions[0]).not.toHaveProperty('env');
+  expect(view.body.companions[0]).not.toHaveProperty('health');
+  expect((await get(`/v1/deployments/${id}/companions?environment=staging`)).response.status).toBe(
+    400
+  );
+  expect((await get('/v1/deployments/missing/companions')).response.status).toBe(404);
+});
 it('serves worker consumer state and reviewed default push replacement without stage selectors', async () => {
   const slug = 'search-indexer';
   const list = await get(`/v1/apps/${slug}/queue-bindings`);
@@ -668,7 +692,8 @@ describe('mock API', () => {
       expect(active.some((app) => app.slug === slug)).toBe(false);
       const restored = await fetch(`${base}/v1/apps/${slug}/restore`, { method: 'POST' });
       expect(restored.status).toBe(200);
-      expect(await restored.json()).toMatchObject({ id: original.id, slug, status: 'active' });
+      // The fixture has no deployment. Restored metadata alone is not execution evidence.
+      expect(await restored.json()).toMatchObject({ id: original.id, slug, status: 'undeployed' });
       expect((await fetch(`${base}/v1/apps/${slug}/restore`, { method: 'POST' })).status).toBe(409);
       expect((await fetch(`${base}/v1/apps/${slug}`, { method: 'DELETE' })).status).toBe(204);
       clock.mockReturnValue(now + 8 * 86400e3);

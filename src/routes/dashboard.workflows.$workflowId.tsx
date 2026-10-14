@@ -68,6 +68,7 @@ import { ServiceBindings } from '@/components/dashboard/service-bindings';
 import { McpGuidance } from '@/components/dashboard/mcp-guidance';
 import { validateIssueSearch, type IssueSearch } from '@/components/dashboard/issues-search';
 import { AppConfiguration } from '@/components/dashboard/app-configuration';
+import { CompanionsSummary } from '@/components/dashboard/companions-summary';
 import { InvokePanel, SloPanel } from '@/components/dashboard/app-core-panels';
 import { AppUsagePanel, WakeTimelinePanel } from '@/components/dashboard/app-insights';
 import { AppAnalyticsPanel } from '@/components/dashboard/app-analytics';
@@ -147,6 +148,7 @@ export const Route = createFileRoute('/dashboard/workflows/$workflowId')({
       deployment?: string;
       releaseSection?: ReleaseSection;
       webhookDirection?: 'inbound' | 'outbound';
+      companionBefore?: string;
     } => ({
     ...validateDebugSearch(search),
     ...automationSearchPatch(validateJobsSearch(search)),
@@ -157,6 +159,11 @@ export const Route = createFileRoute('/dashboard/workflows/$workflowId')({
       typeof search.deployment === 'string' && search.deployment ? search.deployment : undefined,
     releaseSection: validateReleasesSearch({ ...search, build: undefined }).releaseSection,
     webhookDirection: search.webhookDirection === 'inbound' ? 'inbound' : undefined,
+    companionBefore:
+      typeof search.companionBefore === 'string' &&
+      Number.isFinite(Date.parse(search.companionBefore))
+        ? search.companionBefore
+        : undefined,
   }),
   component: FunctionDetailPage,
 });
@@ -803,6 +810,21 @@ function FunctionDetailPage() {
             {tab === 'OpenAPI' && <OpenAPIBody slug={fn.id} />}
 
             {tab === 'Configuration' && <AppConfiguration slug={fn.id} />}
+            {tab === 'Companions' && (
+              <CompanionsSummary
+                key={`${account?.id ?? ''}:${fn.id}`}
+                slug={fn.id}
+                selectedId={selectedDeploymentId}
+                before={search.companionBefore}
+                onSelect={(id, before) =>
+                  void navigate({
+                    search: (current) => ({ ...current, deployment: id, companionBefore: before }),
+                    hash: true,
+                    resetScroll: false,
+                  })
+                }
+              />
+            )}
           </div>
         </Swap>
       </div>

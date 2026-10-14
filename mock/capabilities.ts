@@ -28,6 +28,17 @@ const entries: Capability[] = [
     enabled: true,
   },
   {
+    key: 'companions',
+    name: 'Application companions',
+    category: 'runtime',
+    description: 'Declared helper workloads sharing an app lifecycle.',
+    maturity: 'preview',
+    plans: ALL,
+    docs_url: '/docs/companions',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
+  {
     key: 'container-deployments',
     name: 'Container deployments',
     category: 'delivery',
