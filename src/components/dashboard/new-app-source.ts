@@ -1,3 +1,39 @@
+import { resourceId } from '@/lib/resource-id';
+
+export interface DeploymentRecoveryContext {
+  app: string;
+  repo: string;
+  ref: string;
+  deployment?: string;
+  phase?: 'submitting' | 'rejected' | 'unknown';
+}
+
+export function validateRecovery(value: unknown): DeploymentRecoveryContext | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const raw = value as Record<string, unknown>;
+  if (
+    typeof raw.app !== 'string' ||
+    !/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(raw.app) ||
+    typeof raw.repo !== 'string' ||
+    raw.repo.length > 512 ||
+    !isValidGitHubRepo(raw.repo) ||
+    typeof raw.ref !== 'string' ||
+    !isValidGitRef(raw.ref) ||
+    (raw.deployment !== undefined && !resourceId(raw.deployment))
+  )
+    return undefined;
+  return {
+    app: raw.app,
+    repo: raw.repo.trim(),
+    ref: raw.ref.trim(),
+    deployment: resourceId(raw.deployment),
+    phase:
+      raw.phase === 'submitting' || raw.phase === 'rejected' || raw.phase === 'unknown'
+        ? raw.phase
+        : undefined,
+  };
+}
+
 export type AppSource = 'git' | 'container' | 'empty' | 'template' | 'import';
 export interface NewAppSearch {
   source?: AppSource;
@@ -5,6 +41,7 @@ export interface NewAppSearch {
   step?: 'configure' | 'review';
   slug?: string;
   branch?: string;
+  recovery?: DeploymentRecoveryContext;
 }
 
 export function validateNewAppSearch(search: Record<string, unknown>): NewAppSearch {
@@ -21,6 +58,7 @@ export function validateNewAppSearch(search: Record<string, unknown>): NewAppSea
     step: search.step === 'configure' || search.step === 'review' ? search.step : undefined,
     slug: typeof search.slug === 'string' ? search.slug : undefined,
     branch: typeof search.branch === 'string' ? search.branch : undefined,
+    recovery: validateRecovery(search.recovery),
   };
 }
 const GITHUB_REPO = /^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/;
