@@ -6,6 +6,31 @@ import { api } from './client';
 import { readCompanionChoices, readCompanions, useCompanions } from './companions';
 
 afterEach(() => vi.restoreAllMocks());
+
+it.each([404, 501])(
+  'does not cache an empty declaration when an older server returns HTTP %s',
+  async (status) => {
+    const get = vi.spyOn(api, 'GET').mockImplementation(async (path) => {
+      if (path === '/v1/account') return { data: { id: 'a' }, response: new Response() } as never;
+      if (path === '/v1/apps/{slug}')
+        return { data: { id: 'app', slug: 'api' }, response: new Response() } as never;
+      return {
+        error: 'Not available',
+        response: new Response('Not available', { status }),
+      } as never;
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+    const hook = renderHook(() => useCompanions('a', 'api', 'dep'), { wrapper });
+    await waitFor(() => expect(hook.result.current.isError).toBe(true));
+    expect(hook.result.current.data).toBeUndefined();
+    expect(
+      get.mock.calls.filter(([path]) => path === '/v1/deployments/{id}/companions')
+    ).toHaveLength(1);
+  }
+);
 const helper = {
   name: 'metrics',
   type: 'sidecar',
