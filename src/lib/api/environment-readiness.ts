@@ -322,23 +322,26 @@ export async function readApprovalReceipt(
   id: string,
   signal?: AbortSignal
 ) {
-  text(id);
+  const approvalId = canonicalApprovalId(id);
+  if (!approvalId) invalid();
   await context(identity, signal);
   const raw = await unwrap(
     api.GET('/v1/projects/{slug}/environments/{environment}/approvals/{approval}', {
-      params: { path: { slug: identity.project, environment: identity.target, approval: id } },
+      params: {
+        path: { slug: identity.project, environment: identity.target, approval: approvalId },
+      },
       signal,
     })
   );
   await context(identity, signal);
   if (
-    raw.approval_id !== id ||
+    canonicalApprovalId(text(raw.approval_id)) !== approvalId ||
     raw.environment !== identity.target ||
     !['pending', 'expired', 'consumed'].includes(raw.status)
   )
     invalid();
   return {
-    approval_id: id,
+    approval_id: approvalId,
     environment: identity.target,
     token_kind: text(raw.token_kind),
     status: raw.status,
@@ -346,6 +349,23 @@ export async function readApprovalReceipt(
     expires_at: text(raw.expires_at),
     ...optionalFields(raw, ['consumed_at'] as const),
   };
+}
+export function canonicalApprovalId(value: string): string | undefined {
+  if (
+    !/^(?:[a-f0-9]{32}|[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$/i.test(value)
+  )
+    return;
+  const hex = value.replaceAll('-', '').toLowerCase();
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+// unwrap still runs session/MFA hooks. Its raw Problem must not survive in
+// React Query's error state, including failures in the context fences.
+async function safeRead<T>(read: () => Promise<T>): Promise<T> {
+  try {
+    return await read();
+  } catch {
+    throw new Error('Environment evidence could not be read. Refresh the current context.');
+  }
 }
 const key = (identity: EnvironmentIdentity) =>
   [
@@ -368,7 +388,7 @@ const enabled = (identity: EnvironmentIdentity) =>
 export function usePromotionPreview(identity: EnvironmentIdentity, source: string) {
   return useQuery({
     queryKey: [...key(identity), 'preview', source],
-    queryFn: ({ signal }) => readPromotionPreview(identity, source, signal),
+    queryFn: ({ signal }) => safeRead(() => readPromotionPreview(identity, source, signal)),
     enabled: enabled(identity) && validEnvironment(source) && source !== identity.target,
     retry: false,
     staleTime: 0,
@@ -383,7 +403,7 @@ export function usePromotionHistory(identity: EnvironmentIdentity, filters: Prom
       filters.status ?? null,
       filters.before ?? null,
     ],
-    queryFn: ({ signal }) => readPromotionHistory(identity, filters, signal),
+    queryFn: ({ signal }) => safeRead(() => readPromotionHistory(identity, filters, signal)),
     enabled: enabled(identity),
     retry: false,
     staleTime: 0,
@@ -392,17 +412,19 @@ export function usePromotionHistory(identity: EnvironmentIdentity, filters: Prom
 export function usePromotionReceipt(identity: EnvironmentIdentity, id: string) {
   return useQuery({
     queryKey: [...key(identity), 'operation', id],
-    queryFn: ({ signal }) => readPromotionReceipt(identity, id, signal),
+    queryFn: ({ signal }) => safeRead(() => readPromotionReceipt(identity, id, signal)),
     enabled: enabled(identity) && Boolean(id),
     retry: false,
     staleTime: 0,
   });
 }
 export function useApprovalReceipt(identity: EnvironmentIdentity, id: string) {
+  const approvalId = canonicalApprovalId(id);
   return useQuery({
-    queryKey: [...key(identity), 'approval', id],
-    queryFn: ({ signal }) => readApprovalReceipt(identity, id, signal),
-    enabled: enabled(identity) && Boolean(id),
+    queryKey: [...key(identity), 'approval', approvalId ?? null],
+    queryFn: ({ signal }) =>
+      safeRead(() => readApprovalReceipt(identity, approvalId ?? '', signal)),
+    enabled: enabled(identity) && Boolean(approvalId),
     retry: false,
     staleTime: 0,
   });

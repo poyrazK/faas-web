@@ -9,6 +9,9 @@ import {
   readPromotionReceipt,
   readApprovalReceipt,
   usePromotionPreview,
+  usePromotionHistory,
+  usePromotionReceipt,
+  useApprovalReceipt,
 } from './environment-readiness';
 afterEach(() => vi.restoreAllMocks());
 const identity = { accountId: 'a', projectId: 'p', project: 'shop', target: 'production' };
@@ -39,7 +42,7 @@ const preview = {
     {
       workload_slug: 'api',
       workload_name: 'api',
-      kind: 'changed',
+      kind: 'update',
       source_revision: 'exact-source',
       target_revision: 'exact-target',
       source_workload_config_hash: hash,
@@ -62,20 +65,18 @@ const preview = {
   },
 };
 function mock(result: unknown) {
-  return vi
-    .spyOn(api, 'GET')
-    .mockImplementation(
-      async (path) =>
-        ({
-          data:
-            path === '/v1/account'
-              ? { id: 'a' }
-              : path === '/v1/projects/{slug}'
-                ? { id: 'p', slug: 'shop' }
-                : result,
-          response: new Response(),
-        }) as never
-    );
+  return vi.spyOn(api, 'GET').mockImplementation(
+    async (path) =>
+      ({
+        data:
+          path === '/v1/account'
+            ? { id: 'a' }
+            : path === '/v1/projects/{slug}'
+              ? { id: 'p', slug: 'shop' }
+              : result,
+        response: new Response(),
+      }) as never
+  );
 }
 it('caches only safe source/target/qualification/config identities, excluding tokens and config values', async () => {
   mock(preview);
@@ -132,16 +133,16 @@ const receipt = {
   created_at: '2026-10-10T00:00:00Z',
   updated_at: '2026-10-10T01:00:00Z',
   verification_status: 'failed',
-  rollback_status: 'blocked',
+  rollback_status: 'rollback_failed',
   error: 'never-retain',
   workloads: [
     {
       workload_slug: 'api',
       workload_name: 'api',
-      status: 'applied',
+      status: 'promoted',
       target_deployment_id: 'target',
       verification_status: 'failed',
-      rollback_status: 'blocked',
+      rollback_status: 'failed',
       env: { TOKEN: 'never-retain' },
       error: 'never-retain',
     },
@@ -171,9 +172,9 @@ it('preserves durable partial/verification/rollback facts without inventing exec
   mock(receipt);
   const result = await readPromotionReceipt(identity, 'operation');
   expect(result.status).toBe('failed');
-  expect(result.workloads[0].status).toBe('applied');
+  expect(result.workloads[0].status).toBe('promoted');
   expect(result.verification_status).toBe('failed');
-  expect(result.rollback_status).toBe('blocked');
+  expect(result.rollback_status).toBe('rollback_failed');
   expect(JSON.stringify(result)).not.toContain('never-retain');
 });
 it('rejects foreign operation identity and object IDs before retaining them', async () => {
@@ -185,7 +186,7 @@ it('rejects foreign operation identity and object IDs before retaining them', as
 });
 it('uses returned approval expiry/consumption and never caches a raw token', async () => {
   mock({
-    approval_id: 'approval',
+    approval_id: '00000000-0000-4000-8000-000000000010',
     environment: 'production',
     token_kind: 'promotion',
     status: 'expired',
@@ -193,8 +194,73 @@ it('uses returned approval expiry/consumption and never caches a raw token', asy
     expires_at: '2026-10-11T00:00:00Z',
     approval_token: 'never-retain',
   });
-  const result = await readApprovalReceipt(identity, 'approval');
+  const result = await readApprovalReceipt(identity, '00000000-0000-4000-8000-000000000010');
   expect(result.status).toBe('expired');
-  expect(result.approval_id).toBe('approval');
+  expect(result.approval_id).toBe('00000000-0000-4000-8000-000000000010');
   expect(JSON.stringify(result)).not.toContain('never-retain');
 });
+function usePreviewFailure() {
+  return usePromotionPreview(identity, 'staging').isError;
+}
+function useHistoryFailure() {
+  return usePromotionHistory(identity, {}).isError;
+}
+function useOperationFailure() {
+  return usePromotionReceipt(identity, 'operation').isError;
+}
+function useApprovalFailure() {
+  return useApprovalReceipt(identity, '00000000-0000-4000-8000-000000000010').isError;
+}
+it.each(['preview', 'history', 'operation', 'approval'] as const)(
+  'excludes raw Problem details and unexpected credentials from the %s error cache',
+  async (kind) => {
+    vi.spyOn(api, 'GET').mockResolvedValue({
+      error: {
+        status: 403,
+        code: 'forbidden',
+        title: 'Denied',
+        detail: 'must-not-retain',
+        approval_token: 'must-not-retain',
+        errors: [{ got: 'must-not-retain' }],
+      },
+      response: new Response('', { status: 403 }),
+    } as never);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+    const useFailure =
+      kind === 'preview'
+        ? usePreviewFailure
+        : kind === 'history'
+          ? useHistoryFailure
+          : kind === 'operation'
+            ? useOperationFailure
+            : useApprovalFailure;
+    const hook = renderHook(useFailure, { wrapper });
+    await waitFor(() => expect(hook.result.current).toBe(true));
+    expect(
+      JSON.stringify(
+        client
+          .getQueryCache()
+          .getAll()
+          .map((q) => q.state.error)
+      )
+    ).not.toContain('must-not-retain');
+  }
+);
+it.each(['AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', 'AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA'])(
+  'inspects a canonical approval receipt from accepted spelling %s',
+  async (id) => {
+    const canonical = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+    mock({
+      approval_id: canonical,
+      environment: 'production',
+      token_kind: 'promotion',
+      status: 'expired',
+      created_at: '2026-10-10T00:00:00Z',
+      expires_at: '2026-10-11T00:00:00Z',
+    });
+    expect((await readApprovalReceipt(identity, id)).approval_id).toBe(canonical);
+  }
+);
