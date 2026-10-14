@@ -206,3 +206,40 @@ it('shows an empty account inventory without offering restore', async () => {
   await screen.findByText('No retained deleted apps were returned for this account.');
   expect(screen.queryByRole('button', { name: /Review restore/ })).not.toBeInTheDocument();
 });
+
+it.each([404, 501])(
+  'keeps an older server with inventory HTTP %s unavailable without restore controls',
+  async (status) => {
+    const post = vi.spyOn(api, 'POST');
+    vi.mocked(api.GET).mockImplementation(async (path) =>
+      path === '/v1/account'
+        ? ({ data: { id: 'account-a' }, response: new Response() } as never)
+        : ({ error: 'Not available', response: new Response('Not available', { status }) } as never)
+    );
+    setup();
+    await screen.findByText(
+      'The account-owned deleted-app inventory is unavailable on this server.'
+    );
+    expect(screen.queryByRole('button', { name: /Review restore/ })).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('No retained deleted apps were returned for this account.')
+    ).not.toBeInTheDocument();
+    expect(post).not.toHaveBeenCalled();
+  }
+);
+
+it('does not restore when an older server cannot perform the exact-ID review', async () => {
+  const post = vi.spyOn(api, 'POST');
+  setup();
+  const review = await screen.findByRole('button', { name: /Review restore.*retained-app/ });
+  vi.mocked(api.GET)
+    .mockResolvedValueOnce({ data: { id: 'account-a' }, response: new Response() } as never)
+    .mockResolvedValueOnce({
+      error: 'Not found',
+      response: new Response('Not found', { status: 404 }),
+    } as never);
+  await userEvent.click(review);
+  await screen.findByRole('status');
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  expect(post).not.toHaveBeenCalled();
+});
