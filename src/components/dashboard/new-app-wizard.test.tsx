@@ -140,7 +140,7 @@ describe('NewAppWizard Git submission', () => {
         }}
       />
     );
-    expect(screen.queryByRole('link', { name: 'Open app', exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Open app' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Copy app endpoint' })).not.toBeInTheDocument();
   });
   it('reviews internal-only creation and rechecks private-app capability before POST', async () => {
