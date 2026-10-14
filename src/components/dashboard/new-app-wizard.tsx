@@ -22,6 +22,7 @@ import {
   isValidGitRef,
   type AppSource,
   type NewAppSearch,
+  type DeploymentRecoveryContext,
 } from '@/components/dashboard/new-app-source';
 import { TemplateCatalog } from '@/components/dashboard/template-catalog';
 import { ProjectImport } from '@/components/dashboard/project-import';
@@ -30,7 +31,7 @@ import { ImageDeployForm } from './image-deploy-form';
 import { CopyIconButton } from '@/components/ui/copy-button';
 import { templateBySlug } from '@/lib/templates';
 import { type Runtime } from '@/lib/mock-data';
-import { errorMessage } from '@/lib/api/errors';
+import { ApiError, errorMessage } from '@/lib/api/errors';
 import { useData } from '@/lib/store';
 import {
   useBindRepoFor,
@@ -46,6 +47,7 @@ import {
   residentInstancesAllowed,
 } from '@/lib/plan';
 import { cn } from '@/lib/utils';
+import { FirstDeploymentRecovery } from './first-deployment-recovery';
 
 const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
 const STEPS = ['Source', 'Configure', 'Review'] as const;
@@ -116,16 +118,37 @@ interface NewAppWizardProps {
   onboarding?: boolean;
   /** Called after the first source-ref deployment has been accepted. */
   onDeploymentAccepted?: () => void;
+  /** A saved app can be managed even when the first source submission fails. */
+  onAppCreated?: () => void;
   /** Allows onboarding to make a deliberate hand-off to the account connection screen. */
   onConnectGitHub?: () => void;
 }
 
-export function NewAppWizard({
+export function NewAppWizard(props: NewAppWizardProps) {
+  // Only restoration bypasses creation. An in-flight create keeps its owner
+  // mounted while it writes the durable pointer and submits the first build.
+  const [restored, setRestored] = useState(props.search?.recovery);
+  if (restored)
+    return (
+      <FirstDeploymentRecovery
+        recovery={props.onSearchChange ? (props.search?.recovery ?? restored) : restored}
+        onChange={(recovery) => {
+          setRestored(recovery);
+          props.onSearchChange?.({ ...props.search, recovery }, { replace: true });
+          if (recovery.deployment) props.onDeploymentAccepted?.();
+        }}
+      />
+    );
+  return <CreateAppWizard {...props} />;
+}
+
+function CreateAppWizard({
   templateSlug: initialTemplateSlug,
   search: urlSearch,
   onSearchChange,
   onboarding = false,
   onDeploymentAccepted,
+  onAppCreated,
   onConnectGitHub,
 }: NewAppWizardProps) {
   const navigate = useNavigate();
@@ -201,7 +224,12 @@ export function NewAppWizard({
   const [deploying, setDeploying] = useState(false);
   const [deploymentId, setDeploymentId] = useState<string | null>(null);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
-  const [retrying, setRetrying] = useState(false);
+  const [recovery, setRecovery] = useState<DeploymentRecoveryContext>();
+  const sourceRequested = useRef(false);
+  function saveRecovery(next: DeploymentRecoveryContext) {
+    setRecovery(next);
+    onSearchChange?.({ ...search, recovery: next }, { replace: true });
+  }
 
   // A half-filled wizard asks before it is discarded. Once the app exists
   // (or nothing was typed) leaving is free. A template's prefilled name is
@@ -209,7 +237,7 @@ export function NewAppWizard({
   useUnsavedGuard(
     !createdId && Boolean(repo.trim() || (name.trim() && name !== initialName)),
     undefined,
-    '/dashboard/workflows/new'
+    onboarding ? '/onboarding' : '/dashboard/workflows/new'
   );
 
   const nameError = appNameError(name);
@@ -251,6 +279,7 @@ export function NewAppWizard({
   const deployBlocked = limitsLoading || quotaExceeded || !memoryAllowed(account, selectedMemoryMb);
 
   async function submitGitSource(slug: string) {
+    sourceRequested.current = false;
     const installationId = Number(account?.github_install_id);
     if (!Number.isSafeInteger(installationId) || installationId <= 0) {
       throw new Error('Connect GitHub before deploying from a repository.');
@@ -262,32 +291,13 @@ export function NewAppWizard({
       repo: repo.trim(),
       branch: normalizedRef,
     });
+    sourceRequested.current = true;
     return deployFromRef.mutateAsync({
       slug,
       repo: repo.trim(),
       ref: normalizedRef,
       format: 'tarball',
     });
-  }
-
-  async function retrySourceDeploy() {
-    if (!createdId || source !== 'git' || !gitSourceValid || retrying) return;
-    setRetrying(true);
-    setSubmissionError(null);
-    try {
-      const deployment = await submitGitSource(createdId);
-      setDeploymentId(deployment.id);
-      onDeploymentAccepted?.();
-      toast({
-        kind: 'success',
-        title: 'Build accepted',
-        description: `${repo.trim()}@${normalizedRef} is queued for build.`,
-      });
-    } catch (err) {
-      setSubmissionError(errorMessage(err));
-    } finally {
-      setRetrying(false);
-    }
   }
 
   async function createFunction() {
@@ -308,6 +318,14 @@ export function NewAppWizard({
       });
       setCreatedId(created.id);
       setCreatedUrl(created.url);
+      onAppCreated?.();
+      const pointer: DeploymentRecoveryContext = {
+        app: created.id,
+        repo: repo.trim(),
+        ref: normalizedRef,
+        phase: 'submitting',
+      };
+      if (source === 'git') saveRecovery(pointer);
 
       const scalePromise: Promise<unknown> = !effectiveScaleToZero
         ? updateApp.mutateAsync({ slug: created.id, min_instances: 1 })
@@ -330,6 +348,7 @@ export function NewAppWizard({
 
       if (deploymentResult.status === 'fulfilled' && deploymentResult.value) {
         setDeploymentId(deploymentResult.value.id);
+        saveRecovery({ ...pointer, deployment: deploymentResult.value.id, phase: undefined });
         onDeploymentAccepted?.();
         toast({
           kind: 'success',
@@ -338,6 +357,14 @@ export function NewAppWizard({
         });
       } else if (deploymentResult.status === 'rejected') {
         setSubmissionError(errorMessage(deploymentResult.reason));
+        const err: unknown = deploymentResult.reason;
+        saveRecovery({
+          ...pointer,
+          phase:
+            sourceRequested.current && (!(err instanceof ApiError) || err.status >= 500)
+              ? 'unknown'
+              : 'rejected',
+        });
         toast({
           kind: 'error',
           title: 'App created, but build was not submitted',
@@ -362,6 +389,21 @@ export function NewAppWizard({
   }
 
   function renderCompletion() {
+    if (source === 'git' && recovery)
+      return (
+        <FirstDeploymentRecovery
+          recovery={recovery}
+          submitting={recovery.phase === 'submitting'}
+          submissionError={submissionError}
+          onChange={(next) => {
+            saveRecovery(next);
+            if (next.deployment) {
+              setDeploymentId(next.deployment);
+              onDeploymentAccepted?.();
+            }
+          }}
+        />
+      );
     return (
       <div className="mx-auto flex max-w-2xl flex-col gap-6">
         <PageHeader
@@ -436,22 +478,6 @@ export function NewAppWizard({
               gregale deploy --app {name}
             </code>
           </Panel>
-        )}
-
-        {submissionError && (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[color:var(--status-critical)]/35 bg-card p-4">
-            <p className="text-xs text-muted-foreground">
-              The app exists, so you can retry the source deployment without creating a second app.
-            </p>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={retrying}
-              onClick={() => void retrySourceDeploy()}
-            >
-              {retrying ? 'Retrying…' : 'Try again'}
-            </Button>
-          </div>
         )}
 
         {createdId && (
