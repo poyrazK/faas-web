@@ -101,6 +101,17 @@ describe('first deployment progress', () => {
     );
     expect(screen.queryByRole('button', { name: 'View build output' })).not.toBeInTheDocument();
   });
+  it('keeps the recovery instructions inline when its owner supplies retry actions', () => {
+    api.status = 'failed';
+    render(<DeploymentProgress {...props} hideRetryOptions />);
+    expect(
+      screen.getByText(
+        'Your app is saved. Review the cause below, then retry the original deployment or deploy a fix.'
+      )
+    ).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Retry options' })).not.toBeInTheDocument();
+  });
+
   it.each([
     ['pending', 'Queued for build'],
     ['building', 'Building your app'],

@@ -37,6 +37,7 @@ export function DeploymentProgress({
   endpoint,
   onLive,
   onTerminal,
+  hideRetryOptions = false,
 }: {
   appCreated: boolean;
   appName: string;
@@ -48,6 +49,7 @@ export function DeploymentProgress({
   endpoint?: string | null;
   onLive?: (deployment: Deployment) => void;
   onTerminal?: (deployment: Deployment) => void;
+  hideRetryOptions?: boolean;
 }) {
   const navigate = useNavigate();
   const outputRef = useRef<HTMLDetailsElement>(null);
@@ -114,7 +116,9 @@ export function DeploymentProgress({
                 : failed
                   ? [
                       'Deployment failed',
-                      'Your app is saved. Review the cause below, then open the deployment to inspect it and retry.',
+                      hideRetryOptions
+                        ? 'Your app is saved. Review the cause below, then retry the original deployment or deploy a fix.'
+                        : 'Your app is saved. Review the cause below, then open the deployment to inspect it and retry.',
                     ]
                   : image && ['pending', 'queued', 'building'].includes(status ?? '')
                     ? [
@@ -176,7 +180,7 @@ export function DeploymentProgress({
                     }
               }
               onRetryOptions={
-                deployment.status === 'failed'
+                deployment.status === 'failed' && !hideRetryOptions
                   ? () => {
                       void navigate({
                         to: '/dashboard/deployments',
