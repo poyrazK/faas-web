@@ -1,8 +1,10 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
+import type { NewAppSearch } from './new-app-source';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NewAppWizard } from './new-app-wizard';
+import { ApiError } from '@/lib/api/errors';
 
 const mocks = vi.hoisted(() => ({
   addWorkflow: vi.fn(),
@@ -13,6 +15,10 @@ const mocks = vi.hoisted(() => ({
   issueCSRF: vi.fn(),
   readPrivate: vi.fn(),
   deploymentStatus: 'building',
+  appVisibility: 'public' as 'public' | 'internal',
+  deploymentApp: 'app-1',
+  retry: vi.fn(),
+  confirm: vi.fn(),
   account: {
     id: 'account-1',
     plan: 'hobby' as 'free' | 'hobby' | 'pro' | 'scale',
@@ -44,6 +50,7 @@ vi.mock('@/components/dashboard/repo-picker', () => ({
 vi.mock('@/components/ui/toast', () => ({
   useToast: () => ({ toast: mocks.toast }),
 }));
+vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => mocks.confirm }));
 vi.mock('@/lib/store', () => ({
   useData: () => ({ addWorkflow: mocks.addWorkflow }),
 }));
@@ -55,10 +62,25 @@ vi.mock('@/lib/api/capabilities', () => ({
 }));
 vi.mock('@/lib/api/bindings', () => ({ readPrivateAppCreateContext: mocks.readPrivate }));
 vi.mock('@/lib/api/queries', () => ({
-  useDeployment: () => ({
+  useApp: () => ({
     data: {
-      id: 'deployment-1',
-      app_id: 'app-1',
+      id: 'app-1',
+      slug: 'demo-app',
+      visibility: mocks.appVisibility,
+      url: 'https://demo-app.example',
+      runtime: 'node22',
+      ram_mb: 128,
+    },
+    isPending: false,
+    isError: false,
+  }),
+  useApps: () => ({ data: [{ id: 'app-1', slug: 'demo-app' }] }),
+  useRetryDeployment: () => ({ mutateAsync: mocks.retry, isPending: false }),
+  useCancelDeployment: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useDeployment: (id: string) => ({
+    data: {
+      id,
+      app_id: mocks.deploymentApp,
       image_digest: '',
       kind: 'tarball',
       created_at: '2026-09-12T00:00:00Z',
@@ -93,6 +115,10 @@ beforeEach(() => {
   mocks.account.github_install_id = '42';
   mocks.account.limits = { ram_mb: 512, deployed_apps: 10 };
   mocks.deploymentStatus = 'building';
+  mocks.appVisibility = 'public';
+  mocks.deploymentApp = 'app-1';
+  mocks.confirm.mockResolvedValue(true);
+  mocks.retry.mockResolvedValue({ id: 'b'.repeat(32), app_id: 'app-1' });
   mocks.addWorkflow.mockResolvedValue({ id: 'demo-app', url: 'https://demo-app.example' });
   mocks.bindRepo.mockResolvedValue({ binding_id: 'bind-1' });
   mocks.deployFromRef.mockResolvedValue({ id: 'deployment-1' });
@@ -104,6 +130,19 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('NewAppWizard Git submission', () => {
+  it('keeps a restored internal deployment endpoint non-clickable after it becomes live', () => {
+    mocks.appVisibility = 'internal';
+    mocks.deploymentStatus = 'live';
+    render(
+      <NewAppWizard
+        search={{
+          recovery: { app: 'demo-app', repo: 'team/api', ref: 'main', deployment: 'a'.repeat(32) },
+        }}
+      />
+    );
+    expect(screen.queryByRole('link', { name: 'Open app', exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Copy app endpoint' })).not.toBeInTheDocument();
+  });
   it('reviews internal-only creation and rechecks private-app capability before POST', async () => {
     const user = userEvent.setup();
     render(<NewAppWizard onboarding />);
@@ -159,6 +198,276 @@ describe('NewAppWizard Git submission', () => {
     expect(await screen.findByText('HTTP image setup')).toBeInTheDocument();
     expect(screen.queryByText('Connect GitHub first')).not.toBeInTheDocument();
   });
+  it.each(['submitting', 'unknown'] as const)(
+    'restores %s without automatically resending a deployment',
+    (phase) => {
+      mocks.deploymentStatus = 'failed';
+      render(
+        <NewAppWizard
+          onboarding
+          search={{
+            recovery: {
+              app: 'demo-app',
+              repo: 'team/api',
+              ref: 'main',
+              deployment: 'a'.repeat(32),
+              phase,
+            },
+          }}
+        />
+      );
+      expect(screen.getByText(/outcome is unknown/i)).toBeVisible();
+      expect(
+        screen.queryByRole('button', { name: 'Retry original deployment' })
+      ).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Deploy a fix' })).not.toBeInTheDocument();
+      expect(mocks.retry).not.toHaveBeenCalled();
+      expect(mocks.deployFromRef).not.toHaveBeenCalled();
+      expect(mocks.addWorkflow).not.toHaveBeenCalled();
+    }
+  );
+
+  it('follows the new ID after an accepted original retry', async () => {
+    mocks.deploymentStatus = 'failed';
+    const onSearchChange = vi.fn();
+    render(
+      <NewAppWizard
+        onboarding
+        search={{
+          recovery: { app: 'demo-app', repo: 'team/api', ref: 'main', deployment: 'a'.repeat(32) },
+        }}
+        onSearchChange={onSearchChange}
+      />
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Retry original deployment' }));
+    await waitFor(() =>
+      expect(onSearchChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          recovery: {
+            app: 'demo-app',
+            repo: 'team/api',
+            ref: 'main',
+            deployment: 'b'.repeat(32),
+            phase: undefined,
+          },
+        }),
+        { replace: true }
+      )
+    );
+    expect(mocks.retry).toHaveBeenCalledWith({ id: 'a'.repeat(32), from_stage: 'source_download' });
+    expect(mocks.addWorkflow).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { id: 'not-an-id', app_id: 'app-1' },
+    { id: 'a'.repeat(32), app_id: 'app-1' },
+    { id: 'b'.repeat(32), app_id: 'other-app' },
+  ])('does not follow an invalid fixed-ref response %j', async (response) => {
+    mocks.deploymentStatus = 'failed';
+    mocks.deployFromRef.mockResolvedValueOnce(response);
+    render(
+      <NewAppWizard
+        onboarding
+        search={{
+          recovery: { app: 'demo-app', repo: 'team/api', ref: 'main', deployment: 'a'.repeat(32) },
+        }}
+      />
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Deploy a fix' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Deploy fixed ref' }));
+    expect(await screen.findByText(/outcome is unknown/i)).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Deploy fixed ref' })).toBeDisabled();
+    expect(mocks.deployFromRef).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the original attempt source when a proposed fixed ref is rejected', async () => {
+    mocks.deploymentStatus = 'failed';
+    mocks.deployFromRef.mockRejectedValueOnce(
+      new ApiError({ status: 422, code: 'source_invalid', title: 'Ref not found' })
+    );
+    const onSearchChange = vi.fn();
+    render(
+      <NewAppWizard
+        onboarding
+        search={{
+          recovery: { app: 'demo-app', repo: 'team/api', ref: 'main', deployment: 'a'.repeat(32) },
+        }}
+        onSearchChange={onSearchChange}
+      />
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Deploy a fix' }));
+    await userEvent.clear(screen.getByLabelText('Branch, tag, or commit'));
+    await userEvent.type(screen.getByLabelText('Branch, tag, or commit'), 'missing-fix');
+    await userEvent.click(screen.getByRole('button', { name: 'Deploy fixed ref' }));
+    await waitFor(() =>
+      expect(onSearchChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          recovery: expect.objectContaining({
+            deployment: 'a'.repeat(32),
+            ref: 'main',
+            phase: 'rejected',
+          }),
+        }),
+        { replace: true }
+      )
+    );
+  });
+
+  it('keeps correction available when the server explicitly rejects an original retry', async () => {
+    mocks.deploymentStatus = 'failed';
+    mocks.retry.mockRejectedValueOnce(
+      new ApiError({ status: 409, code: 'source_invalid', title: 'Source expired' })
+    );
+    render(
+      <NewAppWizard
+        onboarding
+        search={{
+          recovery: { app: 'demo-app', repo: 'team/api', ref: 'main', deployment: 'a'.repeat(32) },
+        }}
+      />
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Retry original deployment' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Deploy a fix' })).toBeEnabled());
+    expect(screen.queryByText(/outcome is unknown/i)).not.toBeInTheDocument();
+  });
+
+  it('deploys an explicitly chosen fixed ref into the saved app, without replaying the checked SHA', async () => {
+    mocks.deploymentStatus = 'failed';
+    mocks.deployFromRef.mockResolvedValueOnce({ id: 'c'.repeat(32), app_id: 'app-1' });
+    const onSearchChange = vi.fn();
+    render(
+      <NewAppWizard
+        onboarding
+        search={{
+          recovery: {
+            app: 'demo-app',
+            repo: 'team/api',
+            ref: 'a'.repeat(40),
+            deployment: 'a'.repeat(32),
+          },
+        }}
+        onSearchChange={onSearchChange}
+      />
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Deploy a fix' }));
+    expect(screen.getByLabelText('Repository')).toHaveValue('team/api');
+    expect(screen.getByLabelText('Branch, tag, or commit')).toHaveValue('');
+    await user.type(screen.getByLabelText('Branch, tag, or commit'), 'feature/fix');
+    await user.click(screen.getByRole('button', { name: 'Deploy fixed ref' }));
+    await waitFor(() =>
+      expect(mocks.deployFromRef).toHaveBeenCalledWith({
+        slug: 'demo-app',
+        repo: 'team/api',
+        ref: 'feature/fix',
+        format: 'tarball',
+      })
+    );
+    expect(onSearchChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        recovery: expect.objectContaining({
+          app: 'demo-app',
+          deployment: 'c'.repeat(32),
+          ref: 'feature/fix',
+        }),
+      }),
+      { replace: true }
+    );
+    expect(mocks.addWorkflow).not.toHaveBeenCalled();
+    expect(mocks.bindRepo).not.toHaveBeenCalled();
+  });
+
+  it('does not resubmit after an ambiguous fixed-ref response', async () => {
+    mocks.deploymentStatus = 'failed';
+    mocks.deployFromRef.mockRejectedValueOnce(new TypeError('Network connection lost'));
+    render(
+      <NewAppWizard
+        onboarding
+        search={{
+          recovery: { app: 'demo-app', repo: 'team/api', ref: 'main', deployment: 'a'.repeat(32) },
+        }}
+      />
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Deploy a fix' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Deploy fixed ref' }));
+    expect(await screen.findByText(/outcome is unknown/i)).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: 'Retry original deployment' })
+    ).not.toBeInTheDocument();
+    expect(mocks.deployFromRef).toHaveBeenCalledTimes(1);
+  });
+
+  it('saves the existing app pointer even when initial source submission is rejected', async () => {
+    mocks.deployFromRef.mockRejectedValueOnce(
+      new ApiError({ status: 422, code: 'source_invalid', title: 'Invalid source' })
+    );
+    const onSearchChange = vi.fn();
+    const onAppCreated = vi.fn();
+    const user = userEvent.setup();
+    function Journey() {
+      const [search, setSearch] = useState<NewAppSearch>({ source: 'git' });
+      return (
+        <NewAppWizard
+          onboarding
+          search={search}
+          onAppCreated={onAppCreated}
+          onSearchChange={(next, options) => {
+            onSearchChange(next, options);
+            setSearch(next);
+          }}
+        />
+      );
+    }
+    render(<Journey />);
+    await user.type(screen.getByLabelText(/repository/i), 'gregale/demo');
+    await user.click(screen.getByRole('button', { name: /continue/i }));
+    await user.type(await screen.findByLabelText(/app name/i), 'demo-app');
+    await user.click(screen.getByRole('button', { name: /review/i }));
+    await user.click(await screen.findByRole('button', { name: /deploy app/i }));
+    await waitFor(() =>
+      expect(onSearchChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          recovery: { app: 'demo-app', repo: 'gregale/demo', ref: 'main', phase: 'rejected' },
+        }),
+        { replace: true }
+      )
+    );
+    expect(mocks.addWorkflow).toHaveBeenCalledTimes(1);
+    expect(onAppCreated).toHaveBeenCalledTimes(1);
+  });
+
+  it('resumes the failed attempt from a recovery URL without creating another app', () => {
+    mocks.deploymentStatus = 'failed';
+    render(
+      <NewAppWizard
+        onboarding
+        search={{
+          recovery: { app: 'demo-app', repo: 'team/api', ref: 'main', deployment: 'a'.repeat(32) },
+        }}
+      />
+    );
+    expect(screen.getByRole('heading', { name: 'Deployment failed' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Retry original deployment' })).toBeVisible();
+    expect(mocks.addWorkflow).not.toHaveBeenCalled();
+  });
+
+  it('does not offer recovery actions for an attempt belonging to another app', () => {
+    mocks.deploymentStatus = 'failed';
+    mocks.deploymentApp = 'different-app';
+    render(
+      <NewAppWizard
+        onboarding
+        search={{
+          recovery: { app: 'demo-app', repo: 'team/api', ref: 'main', deployment: 'a'.repeat(32) },
+        }}
+      />
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent(/does not belong to this app/i);
+    expect(
+      screen.queryByRole('button', { name: 'Retry original deployment' })
+    ).not.toBeInTheDocument();
+  });
+
   it('connects GitHub with proof and preserves the onboarding return marker', async () => {
     mocks.account.github_install_id = '';
     const onConnectGitHub = vi.fn();
@@ -349,16 +658,19 @@ describe('NewAppWizard Git submission', () => {
 
   it('completes onboarding when retry later receives a deployment id', async () => {
     mocks.deployFromRef
-      .mockRejectedValueOnce(new Error('temporary failure'))
-      .mockResolvedValueOnce({ id: 'deployment-2' });
+      .mockRejectedValueOnce(
+        new ApiError({ status: 422, code: 'source_invalid', title: 'Source unavailable' })
+      )
+      .mockResolvedValueOnce({ id: 'b'.repeat(32), app_id: 'app-1' });
     const { onDeploymentAccepted } = await submitGitApp();
 
-    const retry = await screen.findByRole('button', { name: /try again/i });
+    const retry = await screen.findByRole('button', { name: 'Deploy a fix' });
     expect(onDeploymentAccepted).not.toHaveBeenCalled();
     await userEvent.setup().click(retry);
+    await userEvent.click(screen.getByRole('button', { name: 'Deploy fixed ref' }));
 
     await waitFor(() => expect(onDeploymentAccepted).toHaveBeenCalledTimes(1));
-    expect(mocks.bindRepo).toHaveBeenCalledTimes(2);
+    expect(mocks.bindRepo).toHaveBeenCalledTimes(1);
     expect(mocks.deployFromRef).toHaveBeenCalledTimes(2);
     expect(mocks.addWorkflow).toHaveBeenCalledTimes(1);
   });

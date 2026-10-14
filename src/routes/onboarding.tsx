@@ -2,19 +2,24 @@ import { createFileRoute, redirect } from '@tanstack/react-router';
 import { useSweepNavigate } from '@/components/sweep-link';
 import { NewAppWizard } from '@/components/dashboard/new-app-wizard';
 import { Button } from '@/components/ui/button';
+import { ConfirmProvider } from '@/components/ui/confirm';
 import { PixelBeams } from '@/components/landing/shaders/pixel-beams';
 import { beginOnboardingGitHubConnect, markOnboarded, readSession, useAuth } from '@/lib/auth';
 import { pageHead } from '@/lib/seo';
+import { validateNewAppSearch } from '@/components/dashboard/new-app-source';
 
 export const Route = createFileRoute('/onboarding')({
   head: () => pageHead({ title: 'Get started' }),
-  beforeLoad: () => {
-    if (!readSession()) throw redirect({ to: '/login' });
+  validateSearch: validateNewAppSearch,
+  beforeLoad: ({ location }) => {
+    if (!readSession()) throw redirect({ to: '/login', search: { next: location.href } });
   },
   component: OnboardingPage,
 });
 
 function OnboardingPage() {
+  const search = Route.useSearch();
+  const navigate = Route.useNavigate();
   const sweepNavigate = useSweepNavigate();
   const { user } = useAuth();
 
@@ -50,11 +55,16 @@ function OnboardingPage() {
       </header>
 
       <main className="relative px-5 py-10 sm:py-14">
-        <NewAppWizard
-          onboarding
-          onDeploymentAccepted={finishDeployment}
-          onConnectGitHub={beginOnboardingGitHubConnect}
-        />
+        <ConfirmProvider>
+          <NewAppWizard
+            onboarding
+            search={{ ...search, source: 'git' }}
+            onSearchChange={(next, options) => void navigate({ search: next, ...options })}
+            onDeploymentAccepted={finishDeployment}
+            onAppCreated={markOnboarded}
+            onConnectGitHub={beginOnboardingGitHubConnect}
+          />
+        </ConfirmProvider>
       </main>
     </div>
   );
