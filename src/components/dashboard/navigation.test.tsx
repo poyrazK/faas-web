@@ -103,6 +103,7 @@ function attentionClient() {
     {
       id: 'app-api',
       slug: 'api',
+      visibility: 'public',
       status: 'failed',
       type: 'app',
       ram_mb: 256,
