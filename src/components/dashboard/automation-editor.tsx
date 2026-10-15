@@ -381,6 +381,54 @@ function StepFields({
   );
 }
 
+export type SaveOutcome = { published?: boolean; error?: string };
+
+/** Says exactly which writes a publish will make, and what they change. */
+function publishConfirmation({
+  name,
+  isNew,
+  saving,
+  takeOver,
+  version,
+  trigger,
+}: {
+  name: string;
+  isNew: boolean;
+  saving: boolean;
+  takeOver: boolean;
+  version: number;
+  trigger?: string;
+}) {
+  const effect = `It becomes the definition for future runs; runs that already started keep their captured definition.${
+    trigger === 'schedule'
+      ? ' Scheduled starts use it while automatic starts are enabled.'
+      : trigger === 'event'
+        ? ' Matching events start it while automatic starts are enabled.'
+        : ''
+  }`;
+  if (isNew)
+    return {
+      title: `Create and publish ${name}?`,
+      description: `This saves ${name} as a new draft, then publishes that draft. ${effect}`,
+      confirmLabel: 'Create and publish',
+    };
+  const what = saving
+    ? `Your unsaved edits are saved as a new draft over revision ${version}, then published.`
+    : `Saved draft revision ${version} is published.`;
+  return {
+    title: saving ? `Save and publish ${name}?` : `Publish ${name}?`,
+    description: takeOver
+      ? `This takes ownership from the app manifest. Future deployments will preserve this API publication. ${what}`
+      : `${what} ${effect}`,
+    confirmLabel: takeOver
+      ? 'Take over and publish'
+      : saving
+        ? 'Save and publish'
+        : 'Publish draft',
+    typeToConfirm: takeOver ? name : undefined,
+  };
+}
+
 export function AutomationEditor({
   account,
   slug,
@@ -392,7 +440,8 @@ export function AutomationEditor({
   account: string;
   slug: string;
   automation?: Automation;
-  onSaved: (automation: Automation) => void;
+  /** `outcome` reports a publication, or a saved draft whose publication failed. */
+  onSaved: (automation: Automation, outcome?: SaveOutcome) => void;
   onReload: () => void;
   /** New definitions can be authored in a dialog; existing drafts stay inline. */
   onClose?: () => void;
@@ -427,7 +476,13 @@ export function AutomationEditor({
     () => ({ list: routeList, observed: observedRoutes(appRoutes.data?.routes) }),
     [routeList, appRoutes.data?.routes]
   );
-  const busy = write.isPending || validate.isPending || simulate.isPending;
+  const [progress, setProgress] = useState<{
+    step: 'saving' | 'publishing';
+    publish: boolean;
+    /** Whether a publish was preceded by a save in the same action. */
+    twoStep?: boolean;
+  }>();
+  const busy = write.isPending || validate.isPending || simulate.isPending || Boolean(progress);
   const inDialog = Boolean(onClose);
   const dirty = JSON.stringify(draft) !== baseline || rawOpen;
   const discardEdits = () =>
@@ -473,20 +528,29 @@ export function AutomationEditor({
     setMessage('');
     setError('');
   };
-  const failure = (err: unknown) => {
+  /**
+   * `saved` is set when a save-then-publish saved the draft but the publish
+   * did not succeed, so the message says what did happen.
+   */
+  const failure = (err: unknown, saved?: Automation) => {
     const conflict = err instanceof ApiError && err.code === 'automation_version_conflict';
     // A lost write response needs a fresh read before sending another publication.
     const uncertain = !(err instanceof ApiError) || err.isRetryable;
     setReloadRequired(conflict || uncertain);
-    setError(
-      conflict
-        ? 'Another editor changed this automation. Reload the saved definition before writing again.'
-        : uncertain
-          ? 'The write outcome is unknown. Reload the saved definition before writing again.'
-          : errorMessage(err)
-    );
+    const text = conflict
+      ? 'Another editor changed this automation. Reload the saved definition before writing again.'
+      : uncertain
+        ? `The ${saved ? 'publish' : 'write'} outcome is unknown. Reload the saved definition before writing again.`
+        : errorMessage(err);
+    const message = !saved
+      ? text
+      : uncertain && !conflict
+        ? `Draft revision ${saved.version} was saved. ${text}`
+        : `Draft revision ${saved.version} was saved but not published. ${text}`;
+    setError(message);
+    return message;
   };
-  const accept = (next: Automation) => {
+  const adopt = (next: Automation) => {
     const model = definitionDraft(next.draft);
     bypassGuard.current = true;
     setDraft(model);
@@ -497,7 +561,10 @@ export function AutomationEditor({
     setError('');
     setValidation(undefined);
     setSimulation(undefined);
-    onSaved(next);
+  };
+  const accept = (next: Automation, outcome?: SaveOutcome) => {
+    adopt(next);
+    onSaved(next, outcome);
   };
   const candidate = () => {
     if (rawOpen) throw new Error('Apply or cancel your Advanced JSON edits first.');
@@ -507,16 +574,20 @@ export function AutomationEditor({
       throw new Error('An existing automation cannot be renamed.');
     return definition;
   };
-  const save = async () => {
+  /** Clears old feedback and builds the definition, or reports why it cannot. */
+  const prepare = (): Definition | undefined => {
     setError('');
     setMessage('');
-    let definition: Definition;
     try {
-      definition = candidate();
+      return candidate();
     } catch (err) {
       setError(errorMessage(err));
-      return;
     }
+  };
+  const save = async () => {
+    const definition = prepare();
+    if (!definition) return;
+    setProgress({ step: 'saving', publish: false });
     try {
       accept(
         await write.mutateAsync({
@@ -528,34 +599,75 @@ export function AutomationEditor({
       setMessage('Draft saved. Publish it to change future runs.');
     } catch (err) {
       failure(err);
+    } finally {
+      setProgress(undefined);
     }
   };
+  /**
+   * Publish in one action: unsaved edits (or a definition that does not exist
+   * yet) are saved first against the observed version, then the revision that
+   * save returned is published. Nothing is written before confirmation.
+   */
   const publish = async () => {
+    const saving = dirty || !savedName;
+    const definition = saving ? prepare() : undefined;
+    if (saving && !definition) return;
+    if (!saving) {
+      setError('');
+      setMessage('');
+    }
+    const name = savedName || definition!.name;
     const takeOver = automation?.source === 'manifest';
     if (
-      !(await confirm({
-        title: `Publish ${savedName}?`,
-        description: takeOver
-          ? `This takes ownership from the app manifest. Future deployments will preserve this API publication. Publish saved draft revision ${version}?`
-          : `Saved draft revision ${version} will become the definition for future runs. Existing runs keep their captured definition.`,
-        confirmLabel: takeOver ? 'Take over and publish' : 'Publish draft',
-        typeToConfirm: takeOver ? savedName : undefined,
-      }))
+      !(await confirm(
+        publishConfirmation({
+          name,
+          isNew: !savedName,
+          saving,
+          takeOver,
+          version,
+          trigger: (definition ?? draft.spec).trigger?.type,
+        })
+      ))
     )
       return;
-    setError('');
-    setMessage('');
+    let expected = version;
+    let saved: Automation | undefined;
+    if (definition) {
+      setProgress({ step: 'saving', publish: true, twoStep: true });
+      try {
+        saved = await write.mutateAsync({
+          kind: 'save',
+          name,
+          body: { expected_version: version, definition },
+        });
+      } catch (err) {
+        setProgress(undefined);
+        failure(err);
+        return;
+      }
+      adopt(saved);
+      expected = saved.version;
+    }
+    setProgress({ step: 'publishing', publish: true, twoStep: Boolean(saved) });
     try {
       accept(
         await write.mutateAsync({
           kind: 'publish',
-          name: savedName,
-          body: { expected_version: version, take_over_manifest: takeOver },
-        })
+          name,
+          body: { expected_version: expected, take_over_manifest: takeOver },
+        }),
+        { published: true }
       );
-      setMessage('Draft published for future runs.');
+      setMessage(
+        saved ? 'Saved and published for future runs.' : 'Draft published for future runs.'
+      );
     } catch (err) {
-      failure(err);
+      const message = failure(err, saved);
+      // The draft exists now; a new-automation dialog hands over to its workspace.
+      if (saved) onSaved(saved, { error: message });
+    } finally {
+      setProgress(undefined);
     }
   };
   const reload = async () => {
@@ -856,18 +968,24 @@ export function AutomationEditor({
               <>
                 <Button
                   size="sm"
+                  variant="outline"
                   disabled={reloadRequired || (!dirty && Boolean(savedName))}
                   onClick={() => void save()}
                 >
-                  Save draft
+                  {progress && !progress.publish ? 'Saving…' : 'Save draft'}
                 </Button>
                 <Button
                   size="sm"
-                  variant="outline"
-                  disabled={!savedName || dirty || reloadRequired}
+                  disabled={!savedName || reloadRequired}
                   onClick={() => void publish()}
                 >
-                  Publish draft
+                  {progress?.publish
+                    ? progress.step === 'saving'
+                      ? 'Saving draft…'
+                      : 'Publishing…'
+                    : dirty
+                      ? 'Save and publish'
+                      : 'Publish draft'}
                 </Button>
               </>
             )}
@@ -906,6 +1024,15 @@ export function AutomationEditor({
               </Button>
             </div>
           </div>
+        )}
+        {progress?.publish && (
+          <p role="status" className="mt-4 text-sm text-muted-foreground">
+            {progress.step === 'saving'
+              ? 'Step 1 of 2: saving the draft…'
+              : progress.twoStep
+                ? 'Step 2 of 2: publishing…'
+                : 'Publishing the saved draft…'}
+          </p>
         )}
         {error && (
           <p
@@ -1057,7 +1184,7 @@ export function AutomationEditor({
       open
       onClose={() => void close()}
       title="New automation"
-      description={`App: ${slug} · Create a draft, then publish it when you're ready.`}
+      description={`App: ${slug} · Publish now, or save a draft to publish later.`}
       width="max-w-3xl"
       footer={
         <>
@@ -1066,10 +1193,22 @@ export function AutomationEditor({
           </Button>
           <Button
             size="sm"
+            variant="outline"
             disabled={busy || reloadRequired || rawOpen}
             onClick={() => void save()}
           >
-            {write.isPending ? 'Creating…' : 'Create draft'}
+            {progress && !progress.publish ? 'Saving…' : 'Save as draft'}
+          </Button>
+          <Button
+            size="sm"
+            disabled={busy || reloadRequired || rawOpen}
+            onClick={() => void publish()}
+          >
+            {progress?.publish
+              ? progress.step === 'saving'
+                ? 'Saving draft…'
+                : 'Publishing…'
+              : 'Create and publish'}
           </Button>
         </>
       }

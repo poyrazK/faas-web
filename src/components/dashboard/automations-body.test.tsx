@@ -9,6 +9,7 @@ const state = vi.hoisted(() => ({
   read: vi.fn(),
   runtime: false,
   empty: false,
+  toast: vi.fn(),
 }));
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children }: { children: ReactNode }) => <a>{children}</a>,
@@ -18,14 +19,29 @@ vi.mock('@/lib/api/queries', () => ({
   useApps: () => ({ data: state.apps, isPending: false, error: null, refetch: vi.fn() }),
 }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn() }));
-vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
+vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: state.toast }) }));
 vi.mock('./automation-editor', async () => {
   const { Modal } = await import('@/components/ui/modal');
   return {
-    AutomationEditor: ({ onClose }: { onClose?: () => void }) =>
+    AutomationEditor: ({
+      onClose,
+      onSaved,
+    }: {
+      onClose?: () => void;
+      onSaved: (next: { name: string }, outcome?: { published?: boolean; error?: string }) => void;
+    }) =>
       onClose ? (
         <Modal open title="New automation" onClose={onClose}>
           <div>Draft editor</div>
+          <button type="button" onClick={() => onSaved({ name: 'reports' }, { published: true })}>
+            Finish publish
+          </button>
+          <button
+            type="button"
+            onClick={() => onSaved({ name: 'reports' }, { error: 'Draft revision 1 was saved.' })}
+          >
+            Finish partially
+          </button>
         </Modal>
       ) : (
         <div>Draft editor</div>
@@ -85,6 +101,7 @@ beforeEach(() => {
   state.runtime = false;
   state.empty = false;
   state.read.mockClear();
+  state.toast.mockClear();
 });
 it('keeps authoring discoverable while runtime execution is disabled', () => {
   render(<AutomationsBody search={{ app: 'alpha', automation: 'orders' }} onSelection={vi.fn()} />);
@@ -137,5 +154,28 @@ it('offers an app-scoped first-automation action without an empty search', async
     automationView: undefined,
     automationRun: undefined,
     automationNew: true,
+  });
+});
+
+it('opens the new automation and reports a create-and-publish outcome', async () => {
+  const onSelection = vi.fn();
+  render(
+    <AutomationsBody search={{ app: 'alpha', automationNew: true }} onSelection={onSelection} />
+  );
+  await userEvent.click(screen.getByRole('button', { name: 'Finish publish' }));
+  expect(state.toast).toHaveBeenLastCalledWith(
+    expect.objectContaining({ kind: 'success', title: 'reports published' })
+  );
+  expect(onSelection).toHaveBeenLastCalledWith({
+    automation: 'reports',
+    automationView: undefined,
+    automationRun: undefined,
+    automationNew: undefined,
+  });
+  await userEvent.click(screen.getByRole('button', { name: 'Finish partially' }));
+  expect(state.toast).toHaveBeenLastCalledWith({
+    kind: 'error',
+    title: 'reports: draft saved',
+    description: 'Draft revision 1 was saved.',
   });
 });

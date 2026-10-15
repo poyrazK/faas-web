@@ -123,6 +123,7 @@ function AppAutomations({
   onSelection,
 }: JobsSelectionProps & { account: string; slug: string; appId: string }) {
   const q = useAutomations(account, slug);
+  const { toast } = useToast();
   const [reloadKey, setReloadKey] = useState(0);
   const phase = queryPhase({ loading: q.isPending, error: q.error });
   const rows = (q.data?.automations ?? []).map((automation) => ({
@@ -264,7 +265,21 @@ function AppAutomations({
           account={account}
           slug={slug}
           onClose={() => onSelection({ automationNew: undefined })}
-          onSaved={(next) => select(next.name)}
+          onSaved={(next, outcome) => {
+            if (outcome?.error)
+              toast({
+                kind: 'error',
+                title: `${next.name}: draft saved`,
+                description: outcome.error,
+              });
+            else if (outcome?.published)
+              toast({
+                kind: 'success',
+                title: `${next.name} published`,
+                description: 'Future runs use this definition.',
+              });
+            select(next.name);
+          }}
           onReload={() => {
             setReloadKey((key) => key + 1);
           }}

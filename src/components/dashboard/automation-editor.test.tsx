@@ -80,8 +80,8 @@ function CreationDialog() {
         <AutomationEditor
           account="account-1"
           slug="app-1"
-          onSaved={(next) => {
-            mocks.saved(next);
+          onSaved={(...args) => {
+            mocks.saved(...args);
             setOpen(false);
           }}
           onClose={() => {
@@ -107,7 +107,7 @@ describe('new automation dialog', () => {
     await userEvent.type(screen.getByLabelText('Timeout'), '45s');
     await userEvent.click(screen.getByText('Advanced step settings'));
     await userEvent.type(screen.getByLabelText('Automation name'), 'orders');
-    await userEvent.click(screen.getByRole('button', { name: 'Create draft' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Save as draft' }));
     await waitFor(() =>
       expect(mocks.write).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -128,7 +128,7 @@ describe('new automation dialog', () => {
     expect(screen.getByLabelText('HTTP method')).toHaveValue('GET');
     expect(mocks.write).not.toHaveBeenCalled();
     await userEvent.type(screen.getByLabelText('Automation name'), 'hourly-report');
-    await userEvent.click(screen.getByRole('button', { name: 'Create draft' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Save as draft' }));
     await waitFor(() =>
       expect(mocks.write).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -184,7 +184,7 @@ describe('new automation dialog', () => {
     await userEvent.click(confirmation.getByRole('button', { name: 'Use template' }));
     expect(screen.getByLabelText('Automation name')).toHaveValue('orders');
     expect(screen.getAllByLabelText('Handler path')).toHaveLength(2);
-    await userEvent.click(screen.getByRole('button', { name: 'Create draft' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Save as draft' }));
     await waitFor(() =>
       expect(mocks.write).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -235,7 +235,7 @@ describe('new automation dialog', () => {
   it('creates revision zero as a draft and closes after saving without publishing', async () => {
     render(<CreationDialog />);
     await userEvent.type(screen.getByLabelText('Automation name'), 'orders');
-    await userEvent.click(screen.getByRole('button', { name: 'Create draft' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Save as draft' }));
     await waitFor(() => expect(mocks.saved).toHaveBeenCalledOnce());
     expect(mocks.write).toHaveBeenCalledExactlyOnceWith({
       kind: 'save',
@@ -244,6 +244,73 @@ describe('new automation dialog', () => {
     });
     expect(screen.queryByRole('dialog', { name: 'New automation' })).not.toBeInTheDocument();
     expect(mocks.close).not.toHaveBeenCalled();
+  });
+
+  it('creates and publishes in one action after an honest confirmation', async () => {
+    const saved = { ...automation, version: 1, published_version: undefined, published: undefined };
+    const published = { ...automation, version: 2, published_version: 2 };
+    mocks.write.mockResolvedValueOnce(saved).mockResolvedValueOnce(published);
+    render(<CreationDialog />);
+    await userEvent.click(screen.getByRole('button', { name: /Run on a schedule/ }));
+    await userEvent.type(screen.getByLabelText('Automation name'), 'orders');
+    await userEvent.click(screen.getByRole('button', { name: 'Create and publish' }));
+    const confirmation = screen.getByRole('dialog', { name: 'Create and publish orders?' });
+    expect(confirmation).toHaveTextContent(
+      /saves orders as a new draft, then publishes that draft/
+    );
+    expect(confirmation).toHaveTextContent(/Scheduled starts use it while automatic starts/);
+    expect(mocks.write).not.toHaveBeenCalled();
+    await userEvent.click(within(confirmation).getByRole('button', { name: 'Create and publish' }));
+    await waitFor(() => expect(mocks.saved).toHaveBeenCalledOnce());
+    expect(mocks.write).toHaveBeenNthCalledWith(1, {
+      kind: 'save',
+      name: 'orders',
+      body: expect.objectContaining({
+        expected_version: 0,
+        definition: expect.objectContaining({ name: 'orders' }),
+      }),
+    });
+    expect(mocks.write).toHaveBeenNthCalledWith(2, {
+      kind: 'publish',
+      name: 'orders',
+      body: { expected_version: 1, take_over_manifest: false },
+    });
+    expect(mocks.saved).toHaveBeenCalledWith(published, { published: true });
+    expect(mocks.close).not.toHaveBeenCalled();
+  });
+
+  it('writes nothing when create-and-publish is not confirmed', async () => {
+    render(<CreationDialog />);
+    await userEvent.type(screen.getByLabelText('Automation name'), 'orders');
+    await userEvent.click(screen.getByRole('button', { name: 'Create and publish' }));
+    const confirmation = screen.getByRole('dialog', { name: 'Create and publish orders?' });
+    await userEvent.click(within(confirmation).getByRole('button', { name: 'Cancel' }));
+    expect(mocks.write).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog', { name: 'New automation' })).toBeInTheDocument();
+  });
+
+  it('hands a saved draft to its workspace when publishing it fails', async () => {
+    const saved = { ...automation, version: 1, published_version: undefined, published: undefined };
+    mocks.write
+      .mockResolvedValueOnce(saved)
+      .mockRejectedValueOnce(
+        new ApiError({ status: 422, code: 'automation_invalid', title: 'Definition is invalid.' })
+      );
+    render(<CreationDialog />);
+    await userEvent.type(screen.getByLabelText('Automation name'), 'orders');
+    await userEvent.click(screen.getByRole('button', { name: 'Create and publish' }));
+    await userEvent.click(
+      within(screen.getByRole('dialog', { name: 'Create and publish orders?' })).getByRole(
+        'button',
+        { name: 'Create and publish' }
+      )
+    );
+    await waitFor(() =>
+      expect(mocks.saved).toHaveBeenCalledWith(saved, {
+        error: 'Draft revision 1 was saved but not published. Definition is invalid.',
+      })
+    );
+    expect(mocks.write).toHaveBeenCalledTimes(2);
   });
 
   it('keeps a failed draft open for correction', async () => {
@@ -256,7 +323,7 @@ describe('new automation dialog', () => {
     );
     render(<CreationDialog />);
     await userEvent.type(screen.getByLabelText('Automation name'), 'orders');
-    await userEvent.click(screen.getByRole('button', { name: 'Create draft' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Save as draft' }));
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Invalid definition'));
     expect(screen.getByLabelText('Automation name')).toHaveValue('orders');
     expect(screen.getByRole('dialog', { name: 'New automation' })).toBeInTheDocument();
@@ -268,10 +335,10 @@ describe('new automation dialog', () => {
     await userEvent.type(screen.getByLabelText('Automation name'), 'orders');
     let finish!: (record: Automation) => void;
     mocks.write.mockReturnValue(new Promise<Automation>((resolve) => (finish = resolve)));
-    await userEvent.click(screen.getByRole('button', { name: 'Create draft' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Save as draft' }));
     mocks.pending = true;
     view.rerender(<CreationDialog />);
-    expect(screen.getByRole('button', { name: 'Creating…' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Saving…' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
     expect(screen.getByLabelText('Automation name')).toBeDisabled();
     await userEvent.keyboard('{Escape}');
@@ -284,18 +351,18 @@ describe('new automation dialog', () => {
     expect(await ask()).toBe(false);
     expect(mocks.write).toHaveBeenCalledOnce();
     await act(async () => finish(automation));
-    expect(mocks.saved).toHaveBeenCalledWith(automation);
+    expect(mocks.saved).toHaveBeenCalledWith(automation, undefined);
     // A successful save may navigate before the mutation's pending flag clears.
     expect(await ask()).toBe(true);
   });
 });
 
 describe('automation editor write boundaries', () => {
-  it('saves against the observed revision and keeps publish separate', async () => {
+  it('saves a draft against the observed revision without publishing it', async () => {
     mount();
     await userEvent.clear(screen.getByLabelText('Handler path'));
     await userEvent.type(screen.getByLabelText('Handler path'), '/changed');
-    expect(screen.getByRole('button', { name: 'Publish draft' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Save and publish' })).toBeEnabled();
     await userEvent.click(screen.getByRole('button', { name: 'Save draft' }));
     await waitFor(() =>
       expect(mocks.write).toHaveBeenCalledWith(
@@ -313,6 +380,98 @@ describe('automation editor write boundaries', () => {
     );
     expect(mocks.write).toHaveBeenCalledTimes(1);
     expect(screen.getByText(/Draft saved/)).toBeInTheDocument();
+  });
+  it('saves unsaved edits and publishes the saved revision in one action', async () => {
+    let finishSave!: (record: Automation) => void;
+    const saved = {
+      ...automation,
+      version: 13,
+      draft: {
+        ...automation.draft,
+        steps: [{ name: 'process', path: '/changed', method: 'POST' as const }],
+      },
+    };
+    mocks.write
+      .mockReturnValueOnce(new Promise<Automation>((resolve) => (finishSave = resolve)))
+      .mockResolvedValueOnce({ ...saved, version: 14, published_version: 14 });
+    mount();
+    await userEvent.clear(screen.getByLabelText('Handler path'));
+    await userEvent.type(screen.getByLabelText('Handler path'), '/changed');
+    await userEvent.click(screen.getByRole('button', { name: 'Save and publish' }));
+    const confirmation = screen.getByRole('dialog', { name: 'Save and publish orders?' });
+    expect(confirmation).toHaveTextContent(
+      /unsaved edits are saved as a new draft over revision 12, then published/
+    );
+    await userEvent.click(within(confirmation).getByRole('button', { name: 'Save and publish' }));
+    expect(await screen.findByText('Step 1 of 2: saving the draft…')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Saving draft…' })).toBeDisabled();
+    await act(async () => finishSave(saved));
+    await waitFor(() => expect(screen.getByText(/Saved and published/)).toBeInTheDocument());
+    expect(mocks.write).toHaveBeenNthCalledWith(1, {
+      kind: 'save',
+      name: 'orders',
+      body: expect.objectContaining({
+        expected_version: 12,
+        definition: expect.objectContaining({
+          steps: [expect.objectContaining({ path: '/changed' })],
+        }),
+      }),
+    });
+    expect(mocks.write).toHaveBeenNthCalledWith(2, {
+      kind: 'publish',
+      name: 'orders',
+      body: { expected_version: 13, take_over_manifest: false },
+    });
+    expect(screen.getByRole('button', { name: 'Publish draft' })).toBeEnabled();
+  });
+  it('keeps the saved draft and blocks writes when the publish outcome is unknown', async () => {
+    const saved = {
+      ...automation,
+      version: 13,
+      draft: {
+        ...automation.draft,
+        steps: [{ name: 'process', path: '/changed', method: 'POST' as const }],
+      },
+    };
+    mocks.write
+      .mockResolvedValueOnce(saved)
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    mount();
+    await userEvent.clear(screen.getByLabelText('Handler path'));
+    await userEvent.type(screen.getByLabelText('Handler path'), '/changed');
+    await userEvent.click(screen.getByRole('button', { name: 'Save and publish' }));
+    await userEvent.click(
+      within(screen.getByRole('dialog', { name: 'Save and publish orders?' })).getByRole('button', {
+        name: 'Save and publish',
+      })
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Draft revision 13 was saved. The publish outcome is unknown. Reload the saved definition'
+      )
+    );
+    expect(screen.getByLabelText('Handler path')).toHaveValue('/changed');
+    expect(screen.getByRole('button', { name: 'Publish draft' })).toBeDisabled();
+    expect(mocks.write).toHaveBeenCalledTimes(2);
+  });
+  it('saves edits before a manifest takeover only after typed confirmation', async () => {
+    mocks.write
+      .mockResolvedValueOnce({ ...automation, source: 'manifest', version: 13 })
+      .mockResolvedValueOnce({ ...automation, version: 14, published_version: 14 });
+    mount({ ...automation, source: 'manifest' });
+    await userEvent.type(screen.getByLabelText('Handler path'), '-v2');
+    await userEvent.click(screen.getByRole('button', { name: 'Save and publish' }));
+    expect(screen.getByRole('dialog')).toHaveTextContent(/takes ownership from the app manifest/);
+    expect(screen.getByRole('button', { name: 'Take over and publish' })).toBeDisabled();
+    await userEvent.type(screen.getByRole('textbox', { name: /Type/ }), 'orders');
+    await userEvent.click(screen.getByRole('button', { name: 'Take over and publish' }));
+    await waitFor(() =>
+      expect(mocks.write).toHaveBeenNthCalledWith(2, {
+        kind: 'publish',
+        name: 'orders',
+        body: { expected_version: 13, take_over_manifest: true },
+      })
+    );
   });
   it('requires explicit manifest takeover before publication', async () => {
     mount({ ...automation, source: 'manifest' });
@@ -339,7 +498,7 @@ describe('automation editor write boundaries', () => {
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/Another editor/));
     expect(screen.getByLabelText('Handler path')).toHaveValue('/process-changed');
     expect(screen.getByRole('button', { name: 'Save draft' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Publish draft' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Save and publish' })).toBeDisabled();
   });
   it('validates and simulates without saving, publishing, or starting a run', async () => {
     mount();
