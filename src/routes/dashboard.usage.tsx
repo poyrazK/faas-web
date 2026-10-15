@@ -18,6 +18,7 @@ import { consoleHead } from '@/lib/seo';
 import { formatUsageBytes, formatUsageNumber } from '@/lib/usage-format';
 import { SpendCap } from '@/components/dashboard/spend-cap';
 import { ObjectStorageUsagePanel } from '@/components/dashboard/object-storage-usage';
+import { UsageTrendPanel } from '@/components/dashboard/usage-trend';
 
 export const Route = createFileRoute('/dashboard/usage')({
   component: UsagePage,
@@ -318,6 +319,12 @@ function UsagePage() {
           </div>
 
           <ForecastPanel used={used} included={included} month={data?.month} />
+          <UsageTrendPanel
+            daily={data?.daily}
+            month={data?.month}
+            usedGbHours={used}
+            includedGbHours={included}
+          />
           <PerAppUsagePanel />
 
           {account?.limits && (
