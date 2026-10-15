@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils';
 export const APP_TAB_GROUPS = [
   { label: 'Overview', tabs: ['Overview', 'Metrics', 'Invoke'] },
   { label: 'Delivery', tabs: ['Deployments', 'Activity'] },
-  { label: 'Observe', tabs: ['Logs', 'Errors', 'Alerts', 'Debugger'] },
+  { label: 'Observe', tabs: ['Logs', 'Errors', 'Issues', 'Alerts', 'Debugger'] },
   {
     label: 'Connect',
     tabs: ['Routes', 'Upstreams', 'Edge rules', 'Mirrors', 'Tenant surfaces', 'OpenAPI'],

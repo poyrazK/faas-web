@@ -44,6 +44,51 @@ async function get(path: string) {
   const response = await fetch(`${origin}${path}`);
   return { response, body: await response.json() };
 }
+it('serves bounded instrumented Issues and one-time deployment-bound reporting credentials', async () => {
+  const apps = await get('/v1/apps');
+  const slug = apps.body[0].slug;
+  const deployments = await get(`/v1/apps/${slug}/deployments`);
+  const deploymentId = deployments.body.items[0].id;
+  const list = await get(`/v1/apps/${slug}/issues?state=open&sort=impact&min_customers=1`);
+  expect(list.response.status).toBe(200);
+  expect(list.body.items[0]).toMatchObject({ state: 'open', impact_24h: expect.any(Object) });
+  const id = list.body.items[0].id;
+  const detail = await get(`/v1/apps/${slug}/issues/${id}`);
+  expect(detail.body).toMatchObject({ issue: { id }, impact: expect.any(Object) });
+  expect(detail.body.next_event_cursor).toBeTruthy();
+  const older = await get(
+    `/v1/apps/${slug}/issues/${id}?event_cursor=${encodeURIComponent(detail.body.next_event_cursor)}`
+  );
+  expect(older.body.events[0].id).not.toBe(detail.body.events[0].id);
+  const created = await fetch(`${origin}/v1/apps/${slug}/issue-ingest-tokens`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      deployment_id: deploymentId,
+      environment: 'application',
+      name: `test-${Date.now()}`,
+      expires_at: new Date(Date.now() + 3600_000).toISOString(),
+    }),
+  });
+  expect(created.status).toBe(201);
+  const credential = await created.json();
+  expect(credential.token).toMatch(/^g_issue_/);
+  const metadata = await get(`/v1/apps/${slug}/issue-ingest-tokens`);
+  expect(
+    metadata.body.items.find((item: { id: string }) => item.id === credential.id)
+  ).not.toHaveProperty('token');
+  const invalid = await fetch(`${origin}/v1/apps/${slug}/issue-ingest-tokens`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      deployment_id: 'wrong-deployment',
+      environment: 'application',
+      name: 'invalid',
+      expires_at: new Date(Date.now() + 3600_000).toISOString(),
+    }),
+  });
+  expect(invalid.status).toBe(422);
+});
 it('separates one-time Stripe URL from metadata and looks up only a known receipt', async () => {
   const apps = await get('/v1/apps');
   const slug = apps.body[0].slug;

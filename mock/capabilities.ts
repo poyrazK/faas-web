@@ -82,6 +82,17 @@ const entries: Capability[] = [
     acceptance: 'mock-only',
     enabled: true,
   },
+  {
+    key: 'issues',
+    name: 'Instrumented Issues',
+    category: 'observability',
+    description: 'Deployment-bound exception reporting and retained issue triage.',
+    maturity: 'preview',
+    plans: PAID,
+    docs_url: '/docs/faas_openapi_spec',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
 ];
 export function mockCapabilities(
   plan: Plan,
