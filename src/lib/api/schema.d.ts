@@ -6194,6 +6194,118 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/apps/{slug}/inbound-webhooks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /** List durable inbound webhook endpoints for this app. */
+        get: operations["listInboundWebhookEndpoints"];
+        put?: never;
+        /**
+         * Create a provider-verified durable webhook endpoint.
+         * @description Returns the public endpoint_url once. Gregale stores only a SHA-256
+         *     digest of its opaque token and an age/X25519-sealed provider signing
+         *     secret. Providers are Stripe and generic timestamped HMAC-SHA256 senders.
+         *     Generic secrets must contain at least 32 bytes of random material.
+         *     Hobby, Pro, and Scale plans are supported.
+         */
+        post: operations["createInboundWebhookEndpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/inbound-webhooks/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Inbound webhook endpoint ID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** Fetch one durable inbound webhook endpoint. */
+        get: operations["getInboundWebhookEndpoint"];
+        put?: never;
+        post?: never;
+        /**
+         * Stop future ingress for this endpoint.
+         * @description Already accepted invocation rows remain queued and deliverable.
+         */
+        delete: operations["deleteInboundWebhookEndpoint"];
+        options?: never;
+        head?: never;
+        /** Change delivery, enabled state, or rotate the provider secret. */
+        patch: operations["updateInboundWebhookEndpoint"];
+        trace?: never;
+    };
+    "/v1/apps/{slug}/inbound-webhooks/{id}/automation-binding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Endpoint whose future verified events use this automation binding. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Inspect an endpoint automation binding.
+         * @description Returns the current event selection and revision for this endpoint.
+         */
+        get: operations["getWebhookAutomationBinding"];
+        /**
+         * Route a verified Stripe endpoint to a published automation.
+         * @description One binding per endpoint, owned by the same app. expected_version is zero
+         *     for creation and the returned version for updates. take_over_delivery
+         *     must be true: bound endpoints start automations instead of app delivery.
+         *     Callback and managed-operation bindings must be removed first.
+         *     Event types accept edge wildcards; filters use the existing event language.
+         */
+        put: operations["putWebhookAutomationBinding"];
+        post?: never;
+        /**
+         * Restore ordinary delivery for future webhook events.
+         * @description Already accepted receipts retain their captured routing decision.
+         */
+        delete: operations["deleteWebhookAutomationBinding"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/inbound-webhooks/{id}/automation-receipts/{event_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Inspect a verified provider event and its automation admission.
+         * @description Returns the captured decision and scheduler progress for a retained provider event.
+         */
+        get: operations["getWebhookAutomationReceipt"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/apps/{slug}/webhooks": {
         parameters: {
             query?: never;
@@ -18571,6 +18683,116 @@ export interface components {
             [key: string]: unknown;
         };
         /**
+         * @description Create a provider-verified endpoint for Stripe or a custom sender using Gregale's timestamped HMAC-SHA256 protocol. Accepted events become durable app invocations or automation starts when bound.
+         * @example {
+         *       "name": "stripe-primary",
+         *       "provider": "stripe",
+         *       "signing_secret": "whsec_example",
+         *       "delivery_path": "/internal/stripe"
+         *     }
+         */
+        CreateInboundWebhookEndpointRequest: {
+            name: string;
+            /** @enum {string} */
+            provider: "stripe" | "generic";
+            /** @description Stripe signing secret or custom sender HMAC secret (at least 32 bytes for generic); sealed at rest and never returned. */
+            signing_secret: string;
+            /** @default / */
+            delivery_path: string;
+            /** @default true */
+            enabled: boolean;
+        };
+        /** @description Omitted fields remain unchanged. A signing_secret value rotates the provider secret in place; generic secrets must contain at least 32 bytes. */
+        UpdateInboundWebhookEndpointRequest: {
+            /** @description Generic provider secrets must contain at least 32 bytes. */
+            signing_secret?: string;
+            delivery_path?: string;
+            enabled?: boolean;
+        };
+        /** @description Safe endpoint metadata. endpoint_url is disclosed only by the create response. */
+        InboundWebhookEndpointResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            app_id: string;
+            /** Format: uuid */
+            account_id: string;
+            name: string;
+            /** @enum {string} */
+            provider: "stripe" | "generic";
+            delivery_path: string;
+            enabled: boolean;
+            /** @enum {string} */
+            signing_secret_masked: "***";
+            /**
+             * Format: uri
+             * @description One-time-disclosed public provider URL, present only on create.
+             */
+            endpoint_url?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /** @description Bind a verified provider endpoint to a published automation with revision control. */
+        PutWebhookAutomationBindingRequest: {
+            /** Format: int64 */
+            expected_version: number;
+            workflow_name: string;
+            event_type: string;
+            filter?: {
+                [key: string]: unknown;
+            };
+            /** @enum {boolean} */
+            take_over_delivery: true;
+        };
+        /** @description Captured automation name, event selection and current endpoint binding revision. */
+        WebhookAutomationBindingResponse: {
+            /** Format: uuid */
+            endpoint_id: string;
+            workflow_name: string;
+            event_type: string;
+            filter: {
+                [key: string]: unknown;
+            };
+            /** Format: int64 */
+            version: number;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /** @description Durable provider event routing decision and automation admission progress. */
+        WebhookAutomationReceiptResponse: {
+            /** Format: uuid */
+            receipt_id: string;
+            /** Format: uuid */
+            endpoint_id: string;
+            provider_event_id: string;
+            workflow_name: string;
+            /** @enum {string} */
+            status: "accepted" | "ignored";
+            /** @enum {string} */
+            ignored_reason?: "automation_paused" | "automation_failure_paused" | "event_filtered" | "automation_unpublished";
+            duplicate: boolean;
+            /** Format: date-time */
+            accepted_at: string;
+            event_source: string;
+            /** @enum {string} */
+            routing_status: "pending" | "filtered" | "enqueued" | "failed" | "ignored";
+            /** Format: uuid */
+            run_id?: string;
+        };
+        /** @description Returned only after the verified event has a committed durable invocation row. */
+        InboundWebhookReceiptResponse: {
+            /** Format: uuid */
+            receipt_id: string;
+            /** @enum {string} */
+            status: "accepted";
+            /** @description True when this endpoint already accepted the same provider event ID. */
+            duplicate: boolean;
+            /** Format: date-time */
+            accepted_at: string;
+        };
+        /**
          * @description An outbound webhook subscription. Carries the masked HMAC secret;
          *     the sealed ciphertext is server-side only.
          * @example {
@@ -19620,6 +19842,33 @@ export interface components {
         };
         /** @description code: rollback_target_already_live — the named target_deployment_id exists but has status != superseded (typically status=live). Rolling back to the already-current deployment is rejected. */
         RollbackTargetAlreadyLive: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description code: inbound_webhook_invalid for malformed endpoint configuration/body or a missing Stripe event id; code: inbound_webhook_bad_signature when Stripe-Signature does not verify. */
+        InboundWebhookInvalid: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description code: plan_inbound_webhooks_not_allowed — the plan excludes durable inbound webhook ingress. */
+        PlanInboundWebhooksNotAllowed: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description code: plan_inbound_webhook_quota — the app or account endpoint cap is reached. */
+        PlanInboundWebhookQuota: {
             headers: {
                 [name: string]: unknown;
             };
@@ -30592,6 +30841,323 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
             429: components["responses"]["TooManyRequests"];
+        };
+    };
+    listInboundWebhookEndpoints: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The configured endpoints. Public route tokens are never returned. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InboundWebhookEndpointResponse"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    createInboundWebhookEndpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateInboundWebhookEndpointRequest"];
+            };
+        };
+        responses: {
+            /** @description Endpoint created; copy endpoint_url into the provider now. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InboundWebhookEndpointResponse"];
+                };
+            };
+            400: components["responses"]["InboundWebhookInvalid"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanInboundWebhooksNotAllowed"];
+            403: components["responses"]["PlanInboundWebhookQuota"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["InboundWebhookInvalid"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    getInboundWebhookEndpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Inbound webhook endpoint ID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Endpoint metadata. The route token and signing secret are not returned. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InboundWebhookEndpointResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    deleteInboundWebhookEndpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Inbound webhook endpoint ID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Endpoint deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    updateInboundWebhookEndpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Inbound webhook endpoint ID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateInboundWebhookEndpointRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated endpoint metadata. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InboundWebhookEndpointResponse"];
+                };
+            };
+            400: components["responses"]["InboundWebhookInvalid"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    getWebhookAutomationBinding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Endpoint whose future verified events use this automation binding. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current binding. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookAutomationBindingResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    putWebhookAutomationBinding: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description Idempotency key for the POST. Stored for 24h. On replay the server
+                 *     returns the original response with `Idempotent-Replayed: true`.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Endpoint whose future verified events use this automation binding. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** @description Explicit delivery takeover and published automation selection. */
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutWebhookAutomationBindingRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved binding with its new revision. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookAutomationBindingResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            /** @description Plan does not allow workflows. */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description Binding revision or routing mode conflict (webhook_automation_conflict). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request body exceeds 64 KiB. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    deleteWebhookAutomationBinding: {
+        parameters: {
+            query: {
+                /** @description Current binding revision returned by a previous read or update. */
+                expected_version: number;
+            };
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Endpoint whose future verified events use this automation binding. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Binding removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description Binding revision conflict (webhook_automation_conflict). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    getWebhookAutomationReceipt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Endpoint that accepted the provider event being inspected. */
+                id: string;
+                /** @description Stripe event ID returned in the verified provider receipt. */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Receipt, routing status and admitted run ID when retained. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookAutomationReceiptResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["CapacityUnavailable"];
         };
     };
     listAppWebhooks: {

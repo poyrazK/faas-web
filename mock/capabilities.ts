@@ -71,6 +71,17 @@ const entries: Capability[] = [
     acceptance: 'mock-only',
     enabled: true,
   },
+  {
+    key: 'durable-inbound-webhooks',
+    name: 'Durable inbound webhooks',
+    category: 'integration',
+    description: 'Verified Stripe ingress with durable app or automation delivery.',
+    maturity: 'preview',
+    plans: PAID,
+    docs_url: '/docs/faas_openapi_spec',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
 ];
 export function mockCapabilities(
   plan: Plan,
