@@ -129,6 +129,12 @@ export function JsonField({
  * definition that match no step stay listed (checked) so saving never drops
  * them silently; unchecking removes them.
  */
+/** The runtime's IANA zones, when it can list them; free text works either way. */
+const timeZones: readonly string[] =
+  typeof Intl.supportedValuesOf === 'function'
+    ? ['UTC', ...Intl.supportedValuesOf('timeZone').filter((zone) => zone !== 'UTC')]
+    : [];
+
 function DependencyPicker({
   index,
   value,
@@ -415,6 +421,7 @@ export function AutomationEditor({
   const validate = useValidateAutomation(slug);
   const simulate = useSimulateAutomation(slug);
   const appRoutes = useAppRoutes(slug);
+  const timeZoneList = useId();
   const routeList = useId();
   const routes = useMemo(
     () => ({ list: routeList, observed: observedRoutes(appRoutes.data?.routes) }),
@@ -652,38 +659,37 @@ export function AutomationEditor({
             </label>
             {draft.spec.trigger?.type === 'schedule' && (
               <>
-                {(draft.spec.trigger.timezone ?? 'UTC') === 'UTC' ? (
-                  <ScheduleField
-                    value={draft.spec.trigger.schedule ?? ''}
-                    onChange={(schedule) =>
-                      edit({
-                        ...draft,
-                        spec: { ...draft.spec, trigger: { ...draft.spec.trigger!, schedule } },
-                      })
-                    }
-                  />
-                ) : (
-                  <TextField
-                    label="Cron expression"
-                    value={draft.spec.trigger.schedule ?? ''}
-                    onChange={(schedule) =>
-                      edit({
-                        ...draft,
-                        spec: { ...draft.spec, trigger: { ...draft.spec.trigger!, schedule } },
-                      })
-                    }
-                  />
-                )}
-                <TextField
-                  label="Timezone"
-                  value={draft.spec.trigger.timezone ?? 'UTC'}
-                  onChange={(timezone) =>
+                <ScheduleField
+                  value={draft.spec.trigger.schedule ?? ''}
+                  timezone={draft.spec.trigger.timezone ?? 'UTC'}
+                  onChange={(schedule) =>
                     edit({
                       ...draft,
-                      spec: { ...draft.spec, trigger: { ...draft.spec.trigger!, timezone } },
+                      spec: { ...draft.spec, trigger: { ...draft.spec.trigger!, schedule } },
                     })
                   }
                 />
+                <div className="flex flex-col gap-1.5">
+                  <TextField
+                    label="Timezone"
+                    value={draft.spec.trigger.timezone ?? 'UTC'}
+                    list={timeZones.length ? timeZoneList : undefined}
+                    hint="IANA name, such as Europe/Istanbul. The schedule runs in this zone."
+                    onChange={(timezone) =>
+                      edit({
+                        ...draft,
+                        spec: { ...draft.spec, trigger: { ...draft.spec.trigger!, timezone } },
+                      })
+                    }
+                  />
+                  {timeZones.length > 0 && (
+                    <datalist id={timeZoneList}>
+                      {timeZones.map((zone) => (
+                        <option key={zone} value={zone} />
+                      ))}
+                    </datalist>
+                  )}
+                </div>
                 <details
                   className="rounded-md border border-border p-3 sm:col-span-2"
                   open={!inDialog}

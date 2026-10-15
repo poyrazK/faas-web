@@ -149,6 +149,28 @@ describe('new automation dialog', () => {
     expect(mocks.write).toHaveBeenCalledOnce();
   });
 
+  it('previews the schedule live and keeps presets for any timezone', async () => {
+    render(<CreationDialog />);
+    await userEvent.click(screen.getByRole('button', { name: /Run on a schedule/ }));
+    expect(screen.getByLabelText('Upcoming scheduled runs')).toHaveTextContent('Every hour');
+    await userEvent.selectOptions(screen.getByLabelText('Schedule preset'), '0 9 * * *');
+    expect(screen.getByLabelText('Upcoming scheduled runs')).toHaveTextContent(
+      'Daily at 09:00 UTC'
+    );
+    const zone = screen.getByLabelText('Timezone');
+    await userEvent.clear(zone);
+    await userEvent.type(zone, 'Europe/Istanbul');
+    expect(screen.getByLabelText('Schedule preset')).toHaveValue('0 9 * * *');
+    expect(
+      screen.getByRole('option', { name: 'Daily at 09:00 Europe/Istanbul' })
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText('Upcoming scheduled runs')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Schedule summary')).toHaveTextContent(
+      /Daily at 09:00 Europe\/Istanbul.*Validate to get the next start in Europe\/Istanbul/
+    );
+    expect(mocks.validate).not.toHaveBeenCalled();
+  });
+
   it('keeps customized steps when replacement is cancelled and preserves the name on acceptance', async () => {
     render(<CreationDialog />);
     await userEvent.type(screen.getByLabelText('Automation name'), 'orders');
