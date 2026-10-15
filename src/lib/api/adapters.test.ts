@@ -49,6 +49,11 @@ describe('toRunState', () => {
     expect(toRunState('stopped')).toBe('idle');
   });
 
+  it("reads apid's current statuses: evicted_cold is parked, undeployed is undeployed", () => {
+    expect(toRunState('evicted_cold')).toBe('idle');
+    expect(toRunState('undeployed')).toBe('undeployed');
+  });
+
   it('maps the failure vocabulary onto error', () => {
     expect(toRunState('failed')).toBe('error');
     expect(toRunState('crashed')).toBe('error');

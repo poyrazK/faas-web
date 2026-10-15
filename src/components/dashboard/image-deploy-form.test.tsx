@@ -3,9 +3,9 @@ import { render, screen, waitFor, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { ImageDeployForm, ImageDeploymentPanel } from './image-deploy-form';
-import { api } from '@/lib/api/client';
 import { ApiError } from '@/lib/api/errors';
 import { readImageOperation, saveImageOperation, newImageOperation } from '@/lib/image-operation';
+import { spyApi } from '@/test/api';
 const state = vi.hoisted(() => ({
   account: { id: 'a', plan: 'free', limits: { ram_mb: 128 }, app_count: 0 },
   availability: 'available',
@@ -69,7 +69,7 @@ beforeEach(() => {
   state.terminal = '';
   state.readPrivate.mockReset().mockResolvedValue(undefined);
   state.readWorker.mockReset().mockResolvedValue(undefined);
-  vi.spyOn(api, 'GET').mockImplementation(async (path) =>
+  spyApi('GET').mockImplementation(async (path) =>
     path === '/v1/apps/{slug}'
       ? ok({ id: 'app-1', slug: 'my-api', type: 'app' })
       : ok({ credentials: [], count: 0, quota_max: 0 })
@@ -77,7 +77,7 @@ beforeEach(() => {
 });
 it('reviews and submits an OCI worker without HTTP port or health assumptions', async () => {
   state.account.plan = 'hobby';
-  vi.spyOn(api, 'GET').mockImplementation(async (path) =>
+  spyApi('GET').mockImplementation(async (path) =>
     path === '/v1/apps/{slug}'
       ? ok({
           id: 'app-1',
@@ -93,13 +93,11 @@ it('reviews and submits an OCI worker without HTTP port or health assumptions', 
         })
       : ok({ credentials: [], count: 0, quota_max: 0 })
   );
-  const post = vi
-    .spyOn(api, 'POST')
-    .mockImplementation(async (path) =>
-      path === '/v1/apps'
-        ? ok({ id: 'app-1', slug: 'my-api', visibility: 'internal' })
-        : ok({ id: 'dep-worker', app_id: 'app-1', status: 'pending' })
-    );
+  const post = spyApi('POST').mockImplementation(async (path) =>
+    path === '/v1/apps'
+      ? ok({ id: 'app-1', slug: 'my-api', visibility: 'internal' })
+      : ok({ id: 'dep-worker', app_id: 'app-1', status: 'pending' })
+  );
   mount(undefined, 'worker');
   await userEvent.type(screen.getByLabelText('App name'), 'my-api');
   await userEvent.type(screen.getByLabelText('Image reference'), reference);
@@ -146,7 +144,7 @@ it('blocks Free worker creation and rejects a retry cap beyond Hobby', async () 
 });
 it('keeps a lost worker create frozen across reload and reuses its original key only on request', async () => {
   state.account.plan = 'hobby';
-  vi.spyOn(api, 'GET').mockImplementation(async (path) =>
+  spyApi('GET').mockImplementation(async (path) =>
     path === '/v1/apps/{slug}'
       ? ok({
           id: 'app-1',
@@ -162,8 +160,7 @@ it('keeps a lost worker create frozen across reload and reuses its original key 
         })
       : ok({ credentials: [], count: 0, quota_max: 0 })
   );
-  const post = vi
-    .spyOn(api, 'POST')
+  const post = spyApi('POST')
     .mockRejectedValueOnce(new TypeError('connection lost'))
     .mockImplementation(async (path) =>
       path === '/v1/apps'
@@ -189,7 +186,7 @@ it('keeps a lost worker create frozen across reload and reuses its original key 
 
 it('freezes an accepted worker app whose execution mode is not confirmed', async () => {
   state.account.plan = 'hobby';
-  vi.spyOn(api, 'GET').mockImplementation(async (path) =>
+  spyApi('GET').mockImplementation(async (path) =>
     path === '/v1/apps/{slug}'
       ? ok({
           id: 'app-1',
@@ -200,9 +197,9 @@ it('freezes an accepted worker app whose execution mode is not confirmed', async
         })
       : ok({ credentials: [], count: 0, quota_max: 0 })
   );
-  const post = vi
-    .spyOn(api, 'POST')
-    .mockResolvedValue(ok({ id: 'app-1', slug: 'my-api', visibility: 'internal' }));
+  const post = spyApi('POST').mockResolvedValue(
+    ok({ id: 'app-1', slug: 'my-api', visibility: 'internal' })
+  );
   mount(undefined, 'worker');
   await userEvent.type(screen.getByLabelText('App name'), 'my-api');
   await userEvent.type(screen.getByLabelText('Image reference'), reference);
@@ -235,7 +232,7 @@ it('blocks a resumed worker release when lifecycle settings changed before deplo
     stage: 'app-created' as const,
   };
   saveImageOperation(saved);
-  vi.spyOn(api, 'GET').mockImplementation(async (path) =>
+  spyApi('GET').mockImplementation(async (path) =>
     path === '/v1/apps/{slug}'
       ? ok({
           id: 'app-1',
@@ -251,10 +248,10 @@ it('blocks a resumed worker release when lifecycle settings changed before deplo
         })
       : ok({ credentials: [], count: 0, quota_max: 0 })
   );
-  const post = vi
-    .spyOn(api, 'POST')
-    .mockResolvedValue(ok({ id: 'dep-worker', app_id: 'app-1', status: 'pending' }));
-  const put = vi.spyOn(api, 'PUT');
+  const post = spyApi('POST').mockResolvedValue(
+    ok({ id: 'dep-worker', app_id: 'app-1', status: 'pending' })
+  );
+  const put = spyApi('PUT');
   mount(undefined, 'worker');
   await userEvent.click(screen.getByRole('button', { name: 'Submit image deployment' }));
   expect(await screen.findByRole('alert')).toHaveTextContent(/lifecycle settings changed/i);
@@ -273,7 +270,7 @@ it('blocks a resumed worker release when lifecycle settings changed before deplo
 
 it('opens the worker image journey from an authoritative worker app page', async () => {
   state.account.plan = 'hobby';
-  vi.spyOn(api, 'GET').mockImplementation(async (path) =>
+  spyApi('GET').mockImplementation(async (path) =>
     path === '/v1/apps/{slug}'
       ? ok({
           id: 'app-1',
@@ -309,18 +306,16 @@ it('opens the worker image journey from an authoritative worker app page', async
   );
 });
 it('reviews internal image creation, persists visibility and rechecks capability before POST', async () => {
-  vi.spyOn(api, 'GET').mockImplementation(async (path) =>
+  spyApi('GET').mockImplementation(async (path) =>
     path === '/v1/apps/{slug}'
       ? ok({ id: 'app-1', slug: 'my-api', type: 'app', visibility: 'internal' })
       : ok({ credentials: [], count: 0, quota_max: 0 })
   );
-  const post = vi
-    .spyOn(api, 'POST')
-    .mockImplementation(async (path) =>
-      path === '/v1/apps'
-        ? ok({ id: 'app-1', slug: 'my-api', visibility: 'internal', url: 'https://my-api.example' })
-        : ok({ id: 'dep-1', app_id: 'app-1', status: 'pending' })
-    );
+  const post = spyApi('POST').mockImplementation(async (path) =>
+    path === '/v1/apps'
+      ? ok({ id: 'app-1', slug: 'my-api', visibility: 'internal', url: 'https://my-api.example' })
+      : ok({ id: 'dep-1', app_id: 'app-1', status: 'pending' })
+  );
   mount();
   await userEvent.type(screen.getByLabelText('App name'), 'my-api');
   await userEvent.type(screen.getByLabelText('Image reference'), reference);
@@ -334,11 +329,9 @@ it('reviews internal image creation, persists visibility and rechecks capability
   expect(readImageOperation('a', '')?.endpoint).toBeUndefined();
 });
 it('freezes an accepted app when internal visibility was not confirmed', async () => {
-  const post = vi
-    .spyOn(api, 'POST')
-    .mockResolvedValue(
-      ok({ id: 'app-1', slug: 'my-api', visibility: 'public', url: 'https://my-api.example' })
-    );
+  const post = spyApi('POST').mockResolvedValue(
+    ok({ id: 'app-1', slug: 'my-api', visibility: 'public', url: 'https://my-api.example' })
+  );
   mount();
   await userEvent.type(screen.getByLabelText('App name'), 'my-api');
   await userEvent.type(screen.getByLabelText('Image reference'), reference);
@@ -356,7 +349,7 @@ it.each(['free', 'hobby'])(
   'inherits the %s plan idle timeout rather than sending an inadmissible override',
   async (plan) => {
     state.account.plan = plan;
-    vi.spyOn(api, 'POST').mockImplementation(async (path, options) => {
+    spyApi('POST').mockImplementation(async (path, options) => {
       if (path === '/v1/apps') {
         const timeout =
           (options as { body?: { idle_timeout_s?: number } } | undefined)?.body?.idle_timeout_s ??
@@ -379,8 +372,7 @@ it.each(['free', 'hobby'])(
 it.each([422, 409])(
   'corrects a definitive initial %s slug rejection after reload using a new creation key',
   async (rejection) => {
-    const post = vi
-      .spyOn(api, 'POST')
+    const post = spyApi('POST')
       .mockRejectedValueOnce(
         new ApiError({ status: rejection, code: 'validation_failed', title: 'Reserved slug' })
       )
@@ -407,8 +399,7 @@ it.each([422, 409])(
   }
 );
 it('corrects a definitively rejected image payload without recreating its accepted app', async () => {
-  const post = vi
-    .spyOn(api, 'POST')
+  const post = spyApi('POST')
     .mockResolvedValueOnce(ok({ id: 'app-1', slug: 'my-api' }))
     .mockRejectedValueOnce(
       new ApiError({ status: 422, code: 'validation_failed', title: 'Image override rejected' })
@@ -446,7 +437,7 @@ it.each(['failed', 'cancelled', 'superseded'])(
     );
     saveImageOperation({ ...op, stage: 'accepted', appId: 'app-1', deploymentId: 'dep-old' });
     state.terminal = status;
-    const post = vi.spyOn(api, 'POST').mockResolvedValue(ok({ id: 'dep-new' }));
+    const post = spyApi('POST').mockResolvedValue(ok({ id: 'dep-new' }));
     mount('my-api');
     expect(screen.queryByRole('button', { name: 'Choose another image' })).not.toBeInTheDocument();
     expect(post).not.toHaveBeenCalled();
@@ -475,7 +466,7 @@ async function review() {
   await userEvent.click(screen.getByRole('button', { name: 'Review image deployment' }));
 }
 it('deploys a public image without GitHub, persists before POST, and stores the accepted release', async () => {
-  const post = vi.spyOn(api, 'POST').mockImplementation(async (path) => {
+  const post = spyApi('POST').mockImplementation(async (path) => {
     const record = readImageOperation('a', '');
     expect(record).not.toBeNull();
     return path === '/v1/apps'
@@ -491,8 +482,7 @@ it('deploys a public image without GitHub, persists before POST, and stores the 
   expect(readImageOperation('a', '')?.deploymentId).toBe('dep-1');
 });
 it('replays lost creation with the frozen original key after reload, without adopting a slug match', async () => {
-  const post = vi
-    .spyOn(api, 'POST')
+  const post = spyApi('POST')
     .mockRejectedValueOnce(new TypeError('lost'))
     .mockResolvedValueOnce(ok({ id: 'app-1', slug: 'my-api' }))
     .mockResolvedValueOnce(ok({ id: 'dep-1' }));
@@ -511,11 +501,10 @@ it('replays lost creation with the frozen original key after reload, without ado
 it.each(['failed', 'cancelled', 'superseded', 'deploying'])(
   'never resubmits automatically after an ambiguous %s deployment',
   async (status) => {
-    const post = vi
-      .spyOn(api, 'POST')
+    const post = spyApi('POST')
       .mockResolvedValueOnce(ok({ id: 'app-1', slug: 'my-api' }))
       .mockRejectedValue(new TypeError('lost deployment'));
-    const get = vi.spyOn(api, 'GET').mockImplementation(async (path) =>
+    const get = spyApi('GET').mockImplementation(async (path) =>
       path === '/v1/apps/{slug}'
         ? ok({ id: 'app-1', slug: 'my-api', type: 'app' })
         : ok({
@@ -546,8 +535,8 @@ it.each(['failed', 'cancelled', 'superseded', 'deploying'])(
 );
 it('retains an app after credential failure and never persists the password', async () => {
   state.account.plan = 'scale';
-  const post = vi.spyOn(api, 'POST').mockResolvedValue(ok({ id: 'app-1', slug: 'my-api' }));
-  const put = vi.spyOn(api, 'PUT').mockRejectedValue(new Error('credential rejected'));
+  const post = spyApi('POST').mockResolvedValue(ok({ id: 'app-1', slug: 'my-api' }));
+  const put = spyApi('PUT').mockRejectedValue(new Error('credential rejected'));
   mount();
   await userEvent.click(screen.getByLabelText('Add registry credentials'));
   await userEvent.type(screen.getByLabelText('Registry username'), 'alice');
@@ -563,7 +552,7 @@ it('retains an app after credential failure and never persists the password', as
 it('stops creation recovery after expiry or conflict', async () => {
   const op = newImageOperation('a', { slug: 'my-api', type: 'app' }, { image: reference });
   saveImageOperation({ ...op, createdAt: Date.now() - 24 * 60 * 60 * 1000 });
-  const post = vi.spyOn(api, 'POST');
+  const post = spyApi('POST');
   mount();
   expect(screen.getByRole('button', { name: 'Recover app creation' })).toBeDisabled();
   expect(screen.getByText(/receipt window has expired/)).toBeInTheDocument();
@@ -571,7 +560,7 @@ it('stops creation recovery after expiry or conflict', async () => {
 });
 it('blocks image submission when registry verification is unavailable', async () => {
   state.availability = 'registry-error';
-  const post = vi.spyOn(api, 'POST');
+  const post = spyApi('POST');
   mount();
   expect(screen.getByRole('button', { name: 'Review image deployment' })).toBeDisabled();
   expect(post).not.toHaveBeenCalled();
@@ -579,14 +568,14 @@ it('blocks image submission when registry verification is unavailable', async ()
 it('recovers an accepted release by reads only and does not repeat a POST', () => {
   const op = newImageOperation('a', { slug: 'my-api', type: 'app' }, { image: reference });
   saveImageOperation({ ...op, stage: 'accepted', appId: 'app-1', deploymentId: 'dep-1' });
-  const post = vi.spyOn(api, 'POST');
+  const post = spyApi('POST');
   mount();
   expect(screen.getByText('Release dep-1')).toBeInTheDocument();
   expect(post).not.toHaveBeenCalled();
 });
 it('does not continue another account’s delayed creation into deployment', async () => {
   let finish!: (value: never) => void;
-  const post = vi.spyOn(api, 'POST').mockReturnValue(
+  const post = spyApi('POST').mockReturnValue(
     new Promise((resolve) => {
       finish = resolve;
     })
@@ -609,9 +598,9 @@ it('does not continue another account’s delayed creation into deployment', asy
 it.each([403, 422, 429])(
   'preserves frozen recovery after a %s rejection without automatic retry',
   async (status) => {
-    const post = vi
-      .spyOn(api, 'POST')
-      .mockRejectedValue(new ApiError({ status, code: 'denied', title: 'Submission rejected' }));
+    const post = spyApi('POST').mockRejectedValue(
+      new ApiError({ status, code: 'denied', title: 'Submission rejected' })
+    );
     mount();
     await review();
     await userEvent.click(screen.getByRole('button', { name: 'Create app and deploy image' }));
@@ -622,11 +611,9 @@ it.each([403, 422, 429])(
   }
 );
 it('sends Free self-contained fallback only after explicit opt-in', async () => {
-  const post = vi
-    .spyOn(api, 'POST')
-    .mockImplementation(async (path) =>
-      path === '/v1/apps' ? ok({ id: 'app-1', slug: 'my-api' }) : ok({ id: 'dep-1' })
-    );
+  const post = spyApi('POST').mockImplementation(async (path) =>
+    path === '/v1/apps' ? ok({ id: 'app-1', slug: 'my-api' }) : ok({ id: 'dep-1' })
+  );
   mount();
   await userEvent.click(screen.getByText('Advanced settings'));
   await userEvent.click(screen.getByLabelText('Allow self-contained image fallback'));
@@ -643,7 +630,7 @@ it('recovers an existing app setup by read without creating another app', async 
     'my-api'
   );
   saveImageOperation(op);
-  const post = vi.spyOn(api, 'POST').mockResolvedValue(ok({ id: 'dep-1' }));
+  const post = spyApi('POST').mockResolvedValue(ok({ id: 'dep-1' }));
   mount('my-api');
   await userEvent.click(screen.getByRole('button', { name: 'Resume existing app deployment' }));
   await screen.findByText('Release dep-1');
@@ -658,12 +645,12 @@ it('removes a stale public endpoint when a recovered app is now internal', async
     appId: 'app-1',
     endpoint: 'https://my-api.example',
   });
-  vi.spyOn(api, 'GET').mockImplementation(async (path) =>
+  spyApi('GET').mockImplementation(async (path) =>
     path === '/v1/apps/{slug}'
       ? ok({ id: 'app-1', slug: 'my-api', type: 'app', visibility: 'internal', url: '' })
       : ok({ credentials: [], count: 0, quota_max: 0 })
   );
-  vi.spyOn(api, 'POST').mockResolvedValue(ok({ id: 'dep-1', app_id: 'app-1' }));
+  spyApi('POST').mockResolvedValue(ok({ id: 'dep-1', app_id: 'app-1' }));
   mount();
   await userEvent.click(screen.getByRole('button', { name: 'Submit image deployment' }));
   await screen.findByText('Release dep-1');

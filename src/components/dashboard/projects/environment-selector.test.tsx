@@ -2,7 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, expect, it, vi } from 'vitest';
 import { ProjectEnvironments } from './environment-selector';
-import { api } from '@/lib/api/client';
+import { spyApi } from '@/test/api';
 afterEach(() => vi.restoreAllMocks());
 const ok = (data: unknown) => ({ data, response: new Response() }) as never;
 const environments = ['production', 'staging'].map((slug) => ({
@@ -31,7 +31,7 @@ function mount(environment?: string) {
   );
 }
 it('never maps an explicitly invalid or deleted environment to production', async () => {
-  const get = vi.spyOn(api, 'GET').mockResolvedValue(ok(environments));
+  const get = spyApi('GET').mockResolvedValue(ok(environments));
   mount('deleted');
   expect(await screen.findByText('Selected environment is unavailable.')).toBeInTheDocument();
   expect(
@@ -41,7 +41,7 @@ it('never maps an explicitly invalid or deleted environment to production', asyn
   ).toBe(true);
 });
 it('selects production only when registered, and reads its exact state', async () => {
-  const get = vi.spyOn(api, 'GET').mockImplementation(async (path) => {
+  const get = spyApi('GET').mockImplementation(async (path) => {
     if (path === '/v1/projects/{slug}/environments') return ok(environments);
     if (path === '/v1/projects/{slug}/environments/{environment}') return ok(environments[0]);
     return ok({
@@ -69,7 +69,7 @@ it('selects production only when registered, and reads its exact state', async (
   );
 });
 it('does not invent a named environment for an empty registry', async () => {
-  const get = vi.spyOn(api, 'GET').mockResolvedValue(ok([]));
+  const get = spyApi('GET').mockResolvedValue(ok([]));
   mount();
   expect(await screen.findByText('No environments')).toBeInTheDocument();
   expect(get).toHaveBeenCalledTimes(1);

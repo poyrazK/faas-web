@@ -2,7 +2,6 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
-import { api } from './client';
 import {
   createInboundEndpointOnce,
   deleteInboundEndpoint,
@@ -20,6 +19,7 @@ import {
   webhookBindingKey,
   webhookReceiptKey,
 } from './inbound-webhooks';
+import { spyApi } from '@/test/api';
 
 const rawEndpoint = {
   id: 'endpoint-1',
@@ -47,7 +47,7 @@ function setup() {
 }
 
 it('whitelists endpoint metadata before a list enters the account and app query cache', async () => {
-  const get = vi.spyOn(api, 'GET').mockResolvedValue({
+  const get = spyApi('GET').mockResolvedValue({
     data: [rawEndpoint],
     response: new Response(),
   } as never);
@@ -69,8 +69,7 @@ it('whitelists endpoint metadata before a list enters the account and app query 
 
 it('does not read without an account and keeps delayed app results isolated', async () => {
   let finish!: (value: never) => void;
-  const get = vi
-    .spyOn(api, 'GET')
+  const get = spyApi('GET')
     .mockReturnValueOnce(new Promise((resolve) => (finish = resolve)))
     .mockResolvedValue({ data: [], response: new Response() } as never);
   const { client, wrapper } = setup();
@@ -88,7 +87,7 @@ it('does not read without an account and keeps delayed app results isolated', as
 });
 
 it('keeps a one-time create result outside TanStack mutation storage and never replays a failure', async () => {
-  const post = vi.spyOn(api, 'POST').mockResolvedValue({
+  const post = spyApi('POST').mockResolvedValue({
     data: rawEndpoint,
     response: new Response(null, { status: 201 }),
   } as never);
@@ -120,12 +119,13 @@ it('drops unexpected token-like fields from a metadata object', () => {
 });
 
 it('keeps endpoint management responses sanitized and uses the exact endpoint identity', async () => {
-  const patch = vi
-    .spyOn(api, 'PATCH')
-    .mockResolvedValue({ data: rawEndpoint, response: new Response() } as never);
-  const remove = vi
-    .spyOn(api, 'DELETE')
-    .mockResolvedValue({ response: new Response(null, { status: 204 }) } as never);
+  const patch = spyApi('PATCH').mockResolvedValue({
+    data: rawEndpoint,
+    response: new Response(),
+  } as never);
+  const remove = spyApi('DELETE').mockResolvedValue({
+    response: new Response(null, { status: 204 }),
+  } as never);
   expect(JSON.stringify(await setInboundEndpointEnabled('app-a', 'e1', false))).not.toContain(
     'secret-token'
   );
@@ -159,13 +159,11 @@ it('reads a binding in the endpoint scope and sends a versioned takeover without
     updated_at: '2026-10-10T00:00:00Z',
     endpoint_url: 'secret-token',
   };
-  const get = vi
-    .spyOn(api, 'GET')
-    .mockResolvedValue({ data: binding, response: new Response() } as never);
-  const put = vi.spyOn(api, 'PUT').mockRejectedValue(new Error('409 conflict'));
-  const remove = vi
-    .spyOn(api, 'DELETE')
-    .mockResolvedValue({ response: new Response(null, { status: 204 }) } as never);
+  const get = spyApi('GET').mockResolvedValue({ data: binding, response: new Response() } as never);
+  const put = spyApi('PUT').mockRejectedValue(new Error('409 conflict'));
+  const remove = spyApi('DELETE').mockResolvedValue({
+    response: new Response(null, { status: 204 }),
+  } as never);
   const { client, wrapper } = setup();
   const hook = renderHook(() => useWebhookBinding('account-1', 'app-a', 'e1'), { wrapper });
   await waitFor(() => expect(hook.result.current.isSuccess).toBe(true));
@@ -200,7 +198,7 @@ it('reads a binding in the endpoint scope and sends a versioned takeover without
 });
 
 it('replaces retained binding data with explicit absence after a 404 refresh', async () => {
-  const get = vi.spyOn(api, 'GET');
+  const get = spyApi('GET');
   get.mockResolvedValueOnce({
     data: {
       endpoint_id: 'e1',
@@ -241,9 +239,7 @@ it('looks up only a known event, scopes it to account/app/endpoint and strips un
     routing_status: 'pending',
     endpoint_url: 'secret-token',
   };
-  const get = vi
-    .spyOn(api, 'GET')
-    .mockResolvedValue({ data: receipt, response: new Response() } as never);
+  const get = spyApi('GET').mockResolvedValue({ data: receipt, response: new Response() } as never);
   const { client, wrapper } = setup();
   const hook = renderHook(
     ({ account, slug, event }) => useWebhookReceipt(account, slug, 'e1', event),
@@ -273,7 +269,7 @@ it('looks up only a known event, scopes it to account/app/endpoint and strips un
 });
 
 it('clears a retained receipt when a later known-event lookup returns 404', async () => {
-  const get = vi.spyOn(api, 'GET');
+  const get = spyApi('GET');
   get.mockResolvedValueOnce({
     data: {
       receipt_id: 'r1',

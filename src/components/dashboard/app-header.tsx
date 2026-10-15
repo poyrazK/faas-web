@@ -11,6 +11,9 @@ type Read<T> = { data?: T; isPending: boolean; error: unknown };
 const APP_STATES: Record<string, { label: string; tone: string }> = {
   active: { label: 'Running', tone: 'var(--status-good)' },
   running: { label: 'Running', tone: 'var(--status-good)' },
+  // apid's word for a parked app: its VM is snapshotted and released.
+  evicted_cold: { label: 'Idle', tone: 'var(--muted-foreground)' },
+  undeployed: { label: 'Not deployed', tone: 'var(--muted-foreground)' },
   parked: { label: 'Idle', tone: 'var(--muted-foreground)' },
   stopped: { label: 'Stopped', tone: 'var(--muted-foreground)' },
   idle: { label: 'Idle', tone: 'var(--muted-foreground)' },

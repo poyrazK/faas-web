@@ -25,7 +25,8 @@ import { formatRelative } from '@/lib/mock-data';
  * Members and invitations of an organisation.
  *
  * Invitation tokens are returned once and never stored for later row actions.
- * The list's opaque ID cannot be used with the token-based revoke endpoint.
+ * Revoke now takes the list's invitation id (`useRevokeInvitation`); a revoke
+ * row action has not been built yet.
  */
 
 interface MemberRow {

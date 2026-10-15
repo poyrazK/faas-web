@@ -2,6 +2,7 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, it, vi } from 'vitest';
 import type { EdgeRule } from '@/lib/api/queries';
+import { cacheEdgeRule } from '@/test/edge-rules';
 
 const state = vi.hoisted(() => ({
   capability: 'available',
@@ -32,7 +33,7 @@ vi.mock('@/components/dashboard/edge-rules/dialog', () => ({ EdgeRuleDialog: () 
 
 import { EdgeRulesBody } from './dashboard.edge-rules';
 
-const cacheRule: EdgeRule = {
+const cacheRule: EdgeRule = cacheEdgeRule({
   id: 'cache-1',
   account_id: 'account-a',
   app_id: 'app-1',
@@ -40,6 +41,7 @@ const cacheRule: EdgeRule = {
   match_host: '*',
   match_path: '/products/*',
   match_methods: ['GET', 'HEAD'],
+  match_headers: {},
   priority: 10,
   enabled: true,
   validate_mode: 'block',
@@ -51,7 +53,7 @@ const cacheRule: EdgeRule = {
   },
   created_at: '2026-10-10T00:00:00Z',
   updated_at: '2026-10-10T00:00:00Z',
-};
+});
 const routeRule: EdgeRule = {
   ...cacheRule,
   id: 'route-1',

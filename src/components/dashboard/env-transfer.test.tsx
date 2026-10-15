@@ -4,11 +4,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EnvTransferPanel } from './env-transfer';
 import { api } from '@/lib/api/client';
-import { applyEnvImport, fetchEnvExport } from '@/lib/api/env-transfer';
+import { applyEnvImport } from '@/lib/api/env-transfer';
+import { mockedApi, spyApi } from '@/test/api';
 const mocks = vi.hoisted(() => ({ confirm: vi.fn(), accountId: 'account-1' }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => mocks.confirm }));
 vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { id: mocks.accountId } }) }));
-vi.mock('@/lib/api/env-transfer', () => ({ applyEnvImport: vi.fn(), fetchEnvExport: vi.fn() }));
+vi.mock('@/lib/api/env-transfer', () => ({ applyEnvImport: vi.fn() }));
 const metadata = {
   env: [{ key: 'A', scope: 'default', updated_at: '2026-09-28', created_at: '2026-09-28' }],
   count: 1,
@@ -45,10 +46,9 @@ async function pasteAndReview(text: string) {
 beforeEach(() => {
   vi.restoreAllMocks();
   vi.mocked(applyEnvImport).mockReset();
-  vi.mocked(fetchEnvExport).mockReset();
   mocks.accountId = 'account-1';
   mocks.confirm.mockReset().mockResolvedValue(true);
-  vi.spyOn(api, 'GET').mockResolvedValue({ data: metadata, response: new Response() } as never);
+  spyApi('GET').mockResolvedValue({ data: metadata, response: new Response() } as never);
   vi.mocked(applyEnvImport).mockResolvedValue({ saved: ['A'], failed: [] });
   vi.stubGlobal(
     'URL',
@@ -135,7 +135,7 @@ describe('environment transfer review', () => {
     expect(mocks.confirm).toHaveBeenCalledTimes(2);
   });
   it('uses the selected scope and blocks invalid/all-scope input or quota overflow', async () => {
-    vi.mocked(api.GET).mockResolvedValue({
+    mockedApi('GET').mockResolvedValue({
       data: { ...metadata, quota_max: 1 },
       response: new Response(),
     } as never);
@@ -144,7 +144,9 @@ describe('environment transfer review', () => {
     expect(screen.getByRole('button', { name: 'Apply valid updates' })).toBeDisabled();
     expect(screen.getByRole('alert')).toHaveTextContent('exceed the app quota');
     fireEvent.change(screen.getByLabelText('Transfer scope'), { target: { value: '__all__' } });
-    expect(screen.getByRole('button', { name: 'Export .env' })).toBeDisabled();
+    expect(screen.getByText(/Use a scope of 3–40 lowercase letters/)).toBeInTheDocument();
+    // apid has never served an env export; the panel offers import only.
+    expect(screen.queryByRole('button', { name: 'Export .env' })).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Transfer scope'), { target: { value: 'staging' } });
     await waitFor(() =>
       expect(api.GET).toHaveBeenCalledWith(
@@ -169,47 +171,6 @@ describe('environment transfer review', () => {
       'A — Overwrite'
     );
   });
-  it('requires a sensitive-values confirmation before an explicit download and releases its blob', async () => {
-    vi.mocked(fetchEnvExport).mockResolvedValue('A="private-export"\n');
-    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
-    const { client } = mount();
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Export .env' })).not.toBeDisabled()
-    );
-    expect(fetchEnvExport).not.toHaveBeenCalled();
-    await userEvent.click(screen.getByRole('button', { name: 'Export .env' }));
-    await waitFor(() => expect(click).toHaveBeenCalledOnce());
-    expect(mocks.confirm).toHaveBeenCalledWith(
-      expect.objectContaining({
-        description: expect.stringContaining('may be sensitive'),
-        confirmLabel: 'Download .env',
-      })
-    );
-    expect(fetchEnvExport).toHaveBeenCalledWith('alpha', 'default', expect.any(AbortSignal));
-    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:test');
-    expect(
-      JSON.stringify(
-        client
-          .getQueryCache()
-          .getAll()
-          .map((q) => q.state.data)
-      )
-    ).not.toContain('private-export');
-  });
-  it('does not download after cancellation or a denied export', async () => {
-    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
-    mocks.confirm.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
-    vi.mocked(fetchEnvExport).mockRejectedValue(new Error('Export denied'));
-    mount();
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Export .env' })).not.toBeDisabled()
-    );
-    await userEvent.click(screen.getByRole('button', { name: 'Export .env' }));
-    expect(fetchEnvExport).not.toHaveBeenCalled();
-    await userEvent.click(screen.getByRole('button', { name: 'Export .env' }));
-    expect(await screen.findByText('Export denied')).toBeInTheDocument();
-    expect(click).not.toHaveBeenCalled();
-  });
   it('discards staged values when the app or account changes', async () => {
     const view = mount();
     await pasteAndReview('A=private-staged');
@@ -222,7 +183,7 @@ describe('environment transfer review', () => {
     expect(applyEnvImport).not.toHaveBeenCalled();
   });
   it('keeps writes disabled when existing metadata is denied', async () => {
-    vi.mocked(api.GET).mockResolvedValue({
+    mockedApi('GET').mockResolvedValue({
       error: { status: 403, code: 'forbidden', title: 'Names denied' },
       response: new Response(null, { status: 403 }),
     } as never);

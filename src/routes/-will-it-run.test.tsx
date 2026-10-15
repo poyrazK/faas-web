@@ -9,9 +9,9 @@ import {
 } from '@tanstack/react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api } from '@/lib/api/client';
 import type { components } from '@/lib/api/schema';
 import { MIN_TRANSITION_MS, Route as WillItRun } from './will-it-run';
+import { spyApi } from '@/test/api';
 
 type Report = components['schemas']['PreflightReport'];
 
@@ -70,14 +70,14 @@ async function renderPage(search: string) {
 }
 
 function mockReport(report: Report) {
-  vi.spyOn(api, 'GET').mockImplementation(
+  spyApi('GET').mockImplementation(
     async () => ({ data: report, response: new Response(null, { status: 200 }) }) as never
   );
 }
 
 function mockProblem(code: string, status: number) {
   const body = { type: 'about:blank', title: 'Problem', status, code };
-  vi.spyOn(api, 'GET').mockImplementation(
+  spyApi('GET').mockImplementation(
     async () =>
       ({
         error: body,

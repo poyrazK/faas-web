@@ -2,7 +2,6 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
-import { api } from './client';
 import {
   componentState,
   configurationEffects,
@@ -12,9 +11,10 @@ import {
 } from './runtime-policy';
 import { gateway, status } from '@/test/runtime-policy';
 import { useApp } from './queries';
+import { spyApi } from '@/test/api';
 it('does not reuse a previous account’s configuration read for the same slug', async () => {
   let finish!: (data: never) => void;
-  vi.spyOn(api, 'GET')
+  spyApi('GET')
     .mockReturnValueOnce(
       new Promise((resolve) => {
         finish = resolve;
@@ -84,7 +84,7 @@ it('separates hot request/CPU/scaling effects from replacement settings', () => 
   });
 });
 it('bounds optional wait and sends only a read request', async () => {
-  const get = vi.spyOn(api, 'GET').mockResolvedValue(ok(status));
+  const get = spyApi('GET').mockResolvedValue(ok(status));
   await readRuntimePolicy('api', 10);
   expect(get).toHaveBeenCalledWith(
     '/v1/apps/{slug}/policy/status',
@@ -95,7 +95,7 @@ it('bounds optional wait and sends only a read request', async () => {
 });
 it('fences a delayed prior save from the latest accepted operation', async () => {
   let finish!: (data: never) => void;
-  vi.spyOn(api, 'GET')
+  spyApi('GET')
     .mockReturnValueOnce(
       new Promise((resolve) => {
         finish = resolve;
@@ -132,7 +132,7 @@ it('fences a delayed prior save from the latest accepted operation', async () =>
 });
 it('stops bounded polling without converting pending into applied', async () => {
   vi.useFakeTimers();
-  const get = vi.spyOn(api, 'GET').mockResolvedValue(ok(status));
+  const get = spyApi('GET').mockResolvedValue(ok(status));
   const receipt: PolicyReceipt = {
     id: 'purge',
     appId: 'app-1',
