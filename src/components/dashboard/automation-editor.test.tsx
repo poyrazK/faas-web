@@ -323,6 +323,45 @@ describe('automation editor write boundaries', () => {
     );
     expect(mocks.write).not.toHaveBeenCalled();
   });
+  it('picks dependencies from other steps and keeps names that match no step', async () => {
+    mount({
+      ...automation,
+      draft: {
+        ...automation.draft,
+        steps: [
+          { name: 'process', path: '/process', method: 'POST' },
+          { name: 'notify', path: '/notify', method: 'POST', depends_on: ['process', 'legacy'] },
+        ],
+      },
+    });
+    const picker = within(screen.getByRole('group', { name: 'Runs after (step 2)' }));
+    expect(picker.getByRole('checkbox', { name: 'process' })).toBeChecked();
+    expect(picker.getByRole('checkbox', { name: /legacy/ })).toBeChecked();
+    expect(picker.getByText('not a step in this definition')).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('group', { name: 'Runs after (step 1)' })).getByRole('checkbox', {
+        name: 'notify',
+      })
+    ).not.toBeChecked();
+    await userEvent.type(screen.getAllByLabelText('Step name')[0], '-order');
+    expect(picker.getByRole('checkbox', { name: 'process-order' })).toBeChecked();
+    await userEvent.click(picker.getByRole('checkbox', { name: 'process-order' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+    await waitFor(() =>
+      expect(mocks.write).toHaveBeenCalledWith(
+        expect.objectContaining({
+          body: expect.objectContaining({
+            definition: expect.objectContaining({
+              steps: [
+                expect.objectContaining({ name: 'process-order', depends_on: [] }),
+                expect.objectContaining({ name: 'notify', depends_on: ['legacy'] }),
+              ],
+            }),
+          }),
+        })
+      )
+    );
+  });
   it('rejects invalid JSON locally and preserves the text for correction', async () => {
     mount();
     await userEvent.clear(screen.getByLabelText('Input mapping (JSON)'));

@@ -27,6 +27,7 @@ import {
   jsonValue,
   stepKind,
   changeStepKind,
+  renameStep,
   AUTOMATION_TEMPLATES,
   type AutomationTemplate,
   type DefinitionDraft,
@@ -102,17 +103,82 @@ export function JsonField({
   );
 }
 
+/**
+ * "Runs after" as a checkbox list over the other steps. Names already in the
+ * definition that match no step stay listed (checked) so saving never drops
+ * them silently; unchecking removes them.
+ */
+function DependencyPicker({
+  index,
+  value,
+  others,
+  onChange,
+}: {
+  index: number;
+  value: string[];
+  others: string[];
+  onChange: (value: string[]) => void;
+}) {
+  const unknown = value.filter((name) => !others.includes(name));
+  const options = [...new Set(others)];
+  if (options.length === 0 && unknown.length === 0) return null;
+  const toggle = (name: string, checked: boolean) =>
+    onChange(checked ? [...value, name] : value.filter((current) => current !== name));
+  return (
+    <fieldset className="flex flex-col gap-2 sm:col-span-2">
+      <legend className="label-mono mb-1.5 text-muted-foreground">
+        Runs after (step {index + 1})
+      </legend>
+      <div className="flex flex-wrap gap-2">
+        {options.map((name) => (
+          <label
+            key={name}
+            className="flex items-center gap-2 rounded-md border border-border px-2.5 py-1.5 text-sm has-checked:border-brand/50 has-checked:bg-brand/5"
+          >
+            <input
+              type="checkbox"
+              checked={value.includes(name)}
+              onChange={(event) => toggle(name, event.target.checked)}
+            />
+            <span className="font-mono">{name}</span>
+          </label>
+        ))}
+        {unknown.map((name) => (
+          <label
+            key={`unknown-${name}`}
+            className="flex items-center gap-2 rounded-md border border-dashed border-border px-2.5 py-1.5 text-sm"
+          >
+            <input type="checkbox" checked onChange={() => toggle(name, false)} />
+            <span className="font-mono">{name}</span>
+            <span className="text-xs text-muted-foreground">not a step in this definition</span>
+          </label>
+        ))}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {value.length === 0
+          ? 'No dependencies: this step can start as soon as the run starts.'
+          : 'This step starts after every checked step succeeds.'}
+      </p>
+    </fieldset>
+  );
+}
+
 function StepFields({
   step,
   index,
   onChange,
+  onRename,
   onRemove,
+  others,
   compact,
 }: {
   step: StepDraft;
   index: number;
   onChange: (step: StepDraft) => void;
+  onRename: (name: string) => void;
   onRemove: () => void;
+  /** Names of the other steps, for the dependency picker. */
+  others: string[];
   compact: boolean;
 }) {
   const kind = stepKind(step.spec);
@@ -134,7 +200,7 @@ function StepFields({
         </Button>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
-        <TextField label="Step name" value={step.spec.name} onChange={(name) => patch({ name })} />
+        <TextField label="Step name" value={step.spec.name} onChange={onRename} />
         <label className="flex flex-col gap-1.5">
           <span className="label-mono text-muted-foreground">Action</span>
           <Select
@@ -192,24 +258,21 @@ function StepFields({
             onChange={(wait_for_event) => patch({ wait_for_event })}
           />
         )}
+        <DependencyPicker
+          index={index}
+          value={step.dependencies}
+          others={others}
+          onChange={(dependencies) => onChange({ ...step, dependencies })}
+        />
       </div>
       <details
         className="mt-4 rounded-md border border-border p-3"
-        open={
-          !compact ||
-          Boolean(step.dependencies || step.input || step.spec.timeout || step.spec.retry)
-        }
+        open={!compact || Boolean(step.input || step.spec.timeout || step.spec.retry)}
       >
         <summary className="cursor-pointer text-sm text-muted-foreground">
           Advanced step settings
         </summary>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <TextField
-            label="Dependencies (comma separated)"
-            value={step.dependencies}
-            onChange={(dependencies) => onChange({ ...step, dependencies })}
-            placeholder="lookup, charge"
-          />
           {kind !== 'duration' && (
             <TextField
               label="Timeout"
@@ -671,7 +734,7 @@ export function AutomationEditor({
                   ...draft,
                   steps: [
                     ...draft.steps,
-                    { spec: { name, path: '/', method: 'POST' }, input: '', dependencies: '' },
+                    { spec: { name, path: '/', method: 'POST' }, input: '', dependencies: [] },
                   ],
                 });
               }}
@@ -689,6 +752,11 @@ export function AutomationEditor({
               step={step}
               index={index}
               compact={inDialog}
+              others={draft.steps
+                .filter((_, i) => i !== index)
+                .map((other) => other.spec.name)
+                .filter(Boolean)}
+              onRename={(name) => edit({ ...draft, steps: renameStep(draft.steps, index, name) })}
               onChange={(next) =>
                 edit({
                   ...draft,
