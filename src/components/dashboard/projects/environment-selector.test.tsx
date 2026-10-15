@@ -20,10 +20,12 @@ function mount(environment?: string) {
     >
       <ProjectEnvironments
         accountId="a"
+        plan="pro"
         projectId="p"
         slug="shop"
         environment={environment}
         onChange={vi.fn()}
+        onSelectQueueWorkload={vi.fn()}
       />
     </QueryClientProvider>
   );

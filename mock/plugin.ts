@@ -8,6 +8,7 @@ import { mockCapabilities } from './capabilities';
 import { isDigestPinnedImage } from '../src/lib/oci-image';
 import { advancePolicy, mockRuntimePolicy } from './runtime-policy';
 import { projects, projectSummaries } from './projects';
+import { getStageQueueRecord, putStageQueueRecord } from './stage-queues';
 import {
   environmentInventory,
   environmentState,
@@ -5648,6 +5649,68 @@ route('GET', '/v1/projects/{slug}/environments/{environment}/state', ({ params }
   if (!item) throw new Problem(404, 'not_found', 'Environment not found.');
   return item;
 });
+function stageQueueTarget(params: Record<string, string>) {
+  const environment = environmentInventory(params.slug)?.find(
+    (item) => item.slug === params.environment
+  );
+  const project = projects.find((item) => item.slug === params.slug);
+  if (
+    !environment ||
+    !project?.workloads.some((item) => item.slug === params.workload) ||
+    !db.apps.some((item) => item.slug === params.workload)
+  )
+    throw new Problem(404, 'not_found', 'Stage workload not found in this project.');
+  if (params.environment === 'production')
+    throw new Problem(400, 'validation_failed', 'Use the app queue-bindings API for production.');
+  return environment;
+}
+route(
+  'GET',
+  '/v1/projects/{slug}/environments/{environment}/workloads/{workload}/queue-bindings',
+  ({ params, res }) => {
+    stageQueueTarget(params);
+    const record = getStageQueueRecord({
+      project: params.slug,
+      environment: params.environment,
+      workload: params.workload,
+    });
+    if (record) return record;
+    res.setHeader('X-Gregale-Workload-Revision', '0');
+    throw new Problem(
+      409,
+      'environment_queue_collection_unavailable',
+      'Initialize a complete stage binding list using workload revision 0.'
+    );
+  }
+);
+route(
+  'PUT',
+  '/v1/projects/{slug}/environments/{environment}/workloads/{workload}/queue-bindings',
+  ({ params, body }) => {
+    const environment = stageQueueTarget(params);
+    if (environment.protected)
+      throw new Problem(409, 'conflict', 'Protected stage settings require a project plan.');
+    if (!Number.isSafeInteger(body.expected_revision) || !Array.isArray(body.bindings))
+      throw new Problem(
+        400,
+        'validation_failed',
+        'Expected revision and a complete bindings list are required.'
+      );
+    try {
+      return putStageQueueRecord(
+        { project: params.slug, environment: params.environment, workload: params.workload },
+        body as components['schemas']['ReplaceProjectEnvironmentQueueBindingsRequest']
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Invalid stage binding list.';
+      throw new Problem(
+        message.includes('revision') ? 409 : 400,
+        message.includes('revision') ? 'conflict' : 'validation_failed',
+        message
+      );
+    }
+  }
+);
 route('GET', '/v1/projects/{slug}/environments/{environment}/diff', ({ params, query }) => {
   const source = query.get('from') ?? '';
   if (source === params.environment)

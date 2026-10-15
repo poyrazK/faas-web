@@ -9,6 +9,8 @@ import {
   queueBindingStatusKey,
   readQueueBinding,
   readQueueBindingContext,
+  readStageQueueSnapshot,
+  readStageQueueWriteContext,
   stageQueueBindingsKey,
   useQueueBindingStatus,
   useQueueBindings,
@@ -128,4 +130,79 @@ it('reads the affected production binding by ID with an abort signal before writ
     params: { path: { slug: 'worker-1', id: 'binding-1' } },
     signal,
   });
+});
+
+it('reads an uninitialized stage collection revision from its explicit 409 header', async () => {
+  const get = vi.spyOn(api, 'GET').mockResolvedValue({
+    error: { status: 409, code: 'environment_queue_collection_unavailable', title: 'Unavailable' },
+    response: new Response(null, { status: 409, headers: { 'X-Gregale-Workload-Revision': '0' } }),
+  } as never);
+  const signal = new AbortController().signal;
+  expect(await readStageQueueSnapshot('shop', 'staging', 'worker-1', signal)).toEqual({
+    kind: 'uninitialized',
+    workloadRevision: 0,
+  });
+  expect(get).toHaveBeenCalledWith(
+    '/v1/projects/{slug}/environments/{environment}/workloads/{workload}/queue-bindings',
+    { params: { path: { slug: 'shop', environment: 'staging', workload: 'worker-1' } }, signal }
+  );
+});
+
+it('never treats a missing stage revision or production path as an initializable collection', async () => {
+  vi.spyOn(api, 'GET').mockResolvedValue({
+    error: { status: 409, code: 'environment_queue_collection_unavailable', title: 'Unavailable' },
+    response: new Response(null, { status: 409 }),
+  } as never);
+  await expect(readStageQueueSnapshot('shop', 'staging', 'worker-1')).rejects.toThrow();
+  await expect(readStageQueueSnapshot('shop', 'production', 'worker-1')).rejects.toThrow(
+    /production/i
+  );
+});
+
+it('fences a stage write by account, registered environment and exact project workload', async () => {
+  const get = vi.spyOn(api, 'GET').mockImplementation(async (path) => {
+    if (path === '/v1/account') return ok({ id: 'account-1', plan: 'hobby' });
+    if (path === '/v1/capabilities')
+      return ok({
+        plan: 'hobby',
+        capabilities: [{ key: 'worker-pools', enabled: true, plans: ['hobby'] }],
+      });
+    if (path === '/v1/projects/{slug}')
+      return ok({ id: 'p', slug: 'shop', workloads: [{ slug: 'worker-1' }] });
+    if (path === '/v1/projects/{slug}/environments/{environment}')
+      return ok({ id: 'e', project_id: 'p', slug: 'staging', protected: false });
+    if (path === '/v1/projects/{slug}/environments/{environment}/state')
+      return ok({
+        project_slug: 'shop',
+        environment: 'staging',
+        workloads: [{ workload_slug: 'worker-1', app_id: 'app-1', workload_config_revision: 4 }],
+      });
+    return ok({
+      environment: 'staging',
+      workload: 'worker-1',
+      workload_revision: 4,
+      revision: 2,
+      config_hash: 'a'.repeat(64),
+      activation_state: 'unavailable',
+      bindings: [],
+    });
+  });
+  const selection = {
+    accountId: 'account-1',
+    plan: 'hobby' as const,
+    project: 'shop',
+    projectId: 'p',
+    environment: 'staging',
+    environmentId: 'e',
+    workload: 'worker-1',
+    appId: 'app-1',
+  };
+  expect((await readStageQueueWriteContext(selection)).kind).toBe('ready');
+  expect(get).toHaveBeenCalledWith(
+    '/v1/projects/{slug}/environments/{environment}/state',
+    expect.objectContaining({ params: { path: { slug: 'shop', environment: 'staging' } } })
+  );
+  await expect(readStageQueueWriteContext({ ...selection, appId: 'foreign' })).rejects.toThrow(
+    /selection/i
+  );
 });
