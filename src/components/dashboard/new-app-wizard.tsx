@@ -26,6 +26,7 @@ import {
 } from '@/components/dashboard/new-app-source';
 import { TemplateCatalog } from '@/components/dashboard/template-catalog';
 import { ProjectImport } from '@/components/dashboard/project-import';
+import { NewAppCapabilities } from './new-app-capabilities';
 import { CopyIconButton } from '@/components/ui/copy-button';
 import { templateBySlug } from '@/lib/templates';
 import { type Runtime } from '@/lib/mock-data';
@@ -620,6 +621,7 @@ function CreateAppWizard({
               )}
             </div>
 
+            {!onboarding && <NewAppCapabilities />}
             {source === 'git' && !githubConnected ? (
               <div
                 role="status"

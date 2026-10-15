@@ -259,8 +259,10 @@ describe('canonical Settings', () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument();
     expect(
-      within(screen.getByRole('navigation', { name: 'Settings sections' })).getAllByRole('link')
-    ).toHaveLength(8);
+      within(screen.getByRole('navigation', { name: 'Settings sections' })).getByRole('link', {
+        name: 'Platform capabilities',
+      })
+    ).toHaveAttribute('href', '/dashboard/settings?section=platform-capabilities');
   });
 
   it('restores sections, organization and key scopes through history and copied URLs', async () => {

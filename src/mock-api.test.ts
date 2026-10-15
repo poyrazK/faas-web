@@ -45,6 +45,39 @@ async function get(path: string) {
   return { response, body: await response.json() };
 }
 
+it('reports registry plan denial separately from installation availability', async () => {
+  process.env.MOCK_PLAN = 'free';
+  const free = await get('/v1/capabilities');
+  expect(free.response.status).toBe(200);
+  expect(free.body.capabilities).toContainEqual(
+    expect.objectContaining({
+      key: 'object-storage',
+      enabled: false,
+      unavailable_reason: 'plan_not_entitled',
+    })
+  );
+  process.env.MOCK_PLAN = 'scale';
+  process.env.MOCK_UNAVAILABLE_CAPABILITIES = 'object-storage';
+  try {
+    const scale = await get('/v1/capabilities');
+    expect(scale.body.capabilities).toContainEqual(
+      expect.objectContaining({
+        key: 'object-storage',
+        enabled: false,
+        unavailable_reason: 'runtime_unavailable',
+      })
+    );
+    expect(scale.body.capabilities).toContainEqual(
+      expect.objectContaining({ key: 'container-deployments', enabled: true, maturity: 'beta' })
+    );
+    expect(
+      scale.body.capabilities.some((item: { maturity: string }) => item.maturity === 'internal')
+    ).toBe(false);
+  } finally {
+    delete process.env.MOCK_UNAVAILABLE_CAPABILITIES;
+  }
+});
+
 it('issues GitHub connect proof with the dedicated cookie', async () => {
   const { response, body } = await get('/v1/auth/csrf?action=connect_github');
   expect(response.status).toBe(200);

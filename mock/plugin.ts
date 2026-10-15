@@ -4,6 +4,7 @@ import type { Plugin } from 'vite';
 import type { components } from '../src/lib/api/schema';
 import * as db from './data';
 import * as automationMock from './automations';
+import { mockCapabilities } from './capabilities';
 import {
   FREE_TRIGGER_ERROR_CODE,
   KAFKA_SASL_MECHANISMS,
@@ -72,6 +73,13 @@ const NO_CONTENT = Symbol('no-content');
 const status = (code: number, body: unknown) => ({ __status: code, body });
 
 const latency = () => Number(process.env.MOCK_LATENCY ?? 180) + Math.random() * 160;
+
+route('GET', '/v1/capabilities', ({ res }) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const raw = process.env.MOCK_PLAN ?? db.account.plan;
+  const plan = raw === 'free' || raw === 'hobby' || raw === 'pro' || raw === 'scale' ? raw : 'pro';
+  return mockCapabilities(plan, (process.env.MOCK_UNAVAILABLE_CAPABILITIES ?? '').split(','));
+});
 
 // --- Public status -----------------------------------------------------------
 
