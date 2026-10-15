@@ -5288,14 +5288,89 @@ route('POST', '/dashboard/account/set-password', ({ body, res }) => {
 });
 
 // --- Billing & account controls ---
-let overageCapCents: number | null = null;
+let overageCapCents: number | null = 2000;
+// apid audits every cap change (old/new cents, "null" for no cap) and, at most
+// once a day, the cap being reached (pkg/sched/overage.go).
+const overageEvents: components['schemas']['AuditEventResponse'][] = [
+  {
+    id: '2001',
+    at: new Date(Date.now() - 9 * 86400e3).toISOString(),
+    actor: 'design@gregale.dev',
+    kind: 'overage.cap_changed',
+    subject: db.account.id,
+    severity: 'info',
+    data: { old_cents: 'null', new_cents: 2000, actor: 'self' },
+  },
+];
 route('GET', '/v1/account/overage-cap', () => ({ overage_cap_cents: overageCapCents }));
 route('POST', '/v1/account/overage-cap', ({ body }) => {
   const cap = body.overage_cap_cents ?? null;
   if (cap !== null && (typeof cap !== 'number' || !Number.isSafeInteger(cap) || cap < 0))
     throw new Problem(400, 'validation_failed', 'Cap must be non-negative integer cents or null.');
+  overageEvents.unshift({
+    id: String(2002 + overageEvents.length),
+    at: new Date().toISOString(),
+    actor: 'design@gregale.dev',
+    kind: 'overage.cap_changed',
+    subject: db.account.id,
+    severity: 'info',
+    data: { old_cents: overageCapCents ?? 'null', new_cents: cap ?? 'null', actor: 'self' },
+  });
   overageCapCents = cap;
   return { ...db.account, app_count: db.apps.length };
+});
+route('GET', '/v1/billing/forecast', () => {
+  const now = new Date();
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  const meter = (name: string, projected?: number, reason?: string) => ({
+    meter: name,
+    coverage: {
+      complete: !reason,
+      fresh: true,
+      expected_minutes: 1440,
+      complete_minutes: reason ? 900 : 1440,
+      unpriced_quantity: 0,
+      non_billable_quantity: 0,
+      reasons: reason ? [reason] : [],
+    },
+    accrued: {
+      meter: name,
+      quantity: 0,
+      included_quantity: 0,
+      net_millicents: 0,
+      allowance_method: 'monthly',
+      contracts: [],
+    },
+    forecast: {
+      method: 'linear_daily',
+      available: projected !== undefined,
+      ...(reason ? { reason } : {}),
+      account_id: db.account.id,
+      period_start: start.toISOString(),
+      period_end: end.toISOString(),
+      complete_through: now.toISOString(),
+      price_version: 'v1',
+      meter: name,
+      currency: 'EUR',
+      ...(projected !== undefined
+        ? { projected_quantity: 0, projected_net_millicents: projected }
+        : {}),
+    },
+    price_contracts: [],
+  });
+  return {
+    period_start: start.toISOString(),
+    period_end: end.toISOString(),
+    as_of: now.toISOString(),
+    currency: 'EUR',
+    meters: [
+      meter('gb_hours', 1_480_000),
+      meter('egress_gb', undefined, 'egress has less than 7 days of complete history'),
+    ],
+    bill_estimate_available: false,
+    missing_bill_components: ['egress_gb', 'tax'],
+  };
 });
 route('POST', '/v1/billing/cancel', () => ({
   cancel_scheduled: true,
@@ -5662,7 +5737,15 @@ const AUTH_EVENTS = [
     data: { attempts: 3, locked: false },
   },
 ];
-route('GET', '/v1/audit-events', () => ({ events: AUTH_EVENTS, limit: 50 }));
+route('GET', '/v1/audit-events', ({ query }) => {
+  const prefix = query.get('kind_prefix') ?? '';
+  const limit = Math.min(100, Math.max(1, Number(query.get('limit') ?? 50)));
+  const events = [...overageEvents, ...AUTH_EVENTS]
+    .filter((event) => event.kind.startsWith(prefix))
+    .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
+    .slice(0, limit);
+  return { events, limit };
+});
 route('GET', '/v1/audit-events/{id}', ({ params }) => {
   if (!/^[0-9]+$/.test(params.id))
     throw new Problem(400, 'validation_failed', 'id must be a positive integer.');

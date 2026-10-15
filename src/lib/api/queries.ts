@@ -292,7 +292,33 @@ export function useSetOverageCap() {
   return useMutation({
     mutationFn: (capCents: number | null) =>
       unwrap(api.POST('/v1/account/overage-cap', { body: { overage_cap_cents: capCents } })),
+    // keys.account prefixes the cap, its history and the forecast.
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.account }),
+  });
+}
+
+/**
+ * Projected charges for the current period, per meter. `available` and
+ * `reason` are per meter; a forecast that cannot be made says why.
+ */
+export function useBillingForecast() {
+  return useQuery({
+    queryKey: [...keys.account, 'billing-forecast'],
+    queryFn: () => unwrap(api.GET('/v1/billing/forecast', {})),
+    retry: retryPolicy,
+    staleTime: 60_000,
+  });
+}
+
+/** Spend cap changes and cap-reached notices, newest first, from the audit log. */
+export function useSpendCapHistory() {
+  return useQuery({
+    queryKey: [...keys.account, 'overage-history'],
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/audit-events', { params: { query: { kind_prefix: 'overage.', limit: 20 } } })
+      ),
+    retry: retryPolicy,
   });
 }
 

@@ -3,7 +3,7 @@ import { Link } from '@tanstack/react-router';
 import { Popover as PopoverPrimitive } from 'radix-ui';
 import { CheckCircle, WarningTriangle, Xmark } from 'iconoir-react';
 import type { App, Deployment } from '@/lib/api/queries';
-import { useApps, useDeployments, useUsageSummary } from '@/lib/api/queries';
+import { useApps, useDeployments, useOverageCap, useUsageSummary } from '@/lib/api/queries';
 import { Tooltip } from '@/components/ui/tooltip';
 import type { components } from '@/lib/api/schema';
 import { formatUsageNumber } from '@/lib/usage-format';
@@ -32,9 +32,11 @@ export interface NeedsAttentionProps {
   usage: ReadResult<
     Pick<
       components['schemas']['UsageSummaryResponse'],
-      'month' | 'used_gb_hours' | 'included_gb_hours'
+      'month' | 'used_gb_hours' | 'included_gb_hours' | 'overage_cents'
     >
   >;
+  /** The monthly spend cap. Optional so callers without it keep their checks. */
+  spendCap?: ReadResult<{ overage_cap_cents: number | null }>;
 }
 
 function readPhase(result: ReadResult<unknown>, invalid = false): QueryPhase {
@@ -104,6 +106,7 @@ export function NeedsAttentionContent({
   apps,
   deployments,
   usage,
+  spendCap,
   onNavigate,
 }: NeedsAttentionProps) {
   const [now, setNow] = useState(Date.now);
@@ -145,6 +148,17 @@ export function NeedsAttentionContent({
     allowance && allowance.used_gb_hours >= allowance.included_gb_hours * 0.8
   );
   const exhausted = Boolean(allowance && allowance.used_gb_hours >= allowance.included_gb_hours);
+  // A reached cap parks running apps and refuses new wakes (ADR-1162), so it
+  // outranks a low allowance. €0 is reached as soon as the allowance is gone.
+  const capPhase = spendCap ? readPhase(spendCap) : 'ready';
+  const capCents = capPhase === 'ready' ? spendCap?.data?.overage_cap_cents : undefined;
+  const overageCents = allowance?.overage_cents ?? 0;
+  const capReached = Boolean(
+    allowance &&
+    typeof capCents === 'number' &&
+    overageCents >= capCents &&
+    (capCents > 0 || exhausted)
+  );
   // apid reports no failed state for an app (its statuses are active,
   // evicted_cold, deleted and undeployed), so failures are read from
   // deployments. The app list only names them.
@@ -152,16 +166,18 @@ export function NeedsAttentionContent({
     deploymentsPhase === 'ready' &&
     usagePhase === 'ready' &&
     failedDeployments.length === 0 &&
-    !lowAllowance;
+    !lowAllowance &&
+    capPhase === 'ready' &&
+    !capReached;
   // Resolve names only from a successful accessible app inventory. A deleted
   // app's historical release still has a safe, exact deployment detail link.
   const appNames = new Map(
     appsPhase === 'ready' ? (apps.data ?? []).map((app) => [app.id, app.slug]) : []
   );
-  const issueCount = failedDeployments.length + Number(lowAllowance);
+  const issueCount = failedDeployments.length + Number(lowAllowance) + Number(capReached);
   const SummaryIcon = noIssues ? CheckCircle : WarningTriangle;
   const summaryColor = noIssues ? 'var(--status-good)' : 'var(--status-warning)';
-  const checksUnavailable = [deploymentsPhase, usagePhase].some(
+  const checksUnavailable = [deploymentsPhase, usagePhase, capPhase].some(
     (phase) => phase === 'error' || phase === 'unreachable'
   );
 
@@ -289,6 +305,26 @@ export function NeedsAttentionContent({
             )}
           </section>
         )}
+        {spendCap && (capPhase !== 'ready' || capReached) && (
+          <section aria-label="Spend cap">
+            <h3 className="mb-3 text-xs font-medium text-muted-foreground">Spend cap</h3>
+            {capPhase !== 'ready' ? (
+              <ReadNotice label="Spend cap" phase={capPhase} retry={spendCap.refetch} />
+            ) : (
+              <ul>
+                <AttentionRow
+                  title="Spend cap reached"
+                  tone="critical"
+                  detail={`New wakes beyond the allowance are refused and running apps park until the cap is raised or ${allowance?.month ?? 'the period'} ends.`}
+                >
+                  <Link onClick={onNavigate} to="/dashboard/usage" className={ACTION_CLASS}>
+                    Review spend cap
+                  </Link>
+                </AttentionRow>
+              </ul>
+            )}
+          </section>
+        )}
         <p className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border pt-3 text-xs text-muted-foreground">
           <span>
             Deployment checks cover at most the latest 50 deployments, not the full history.
@@ -306,11 +342,13 @@ function LiveAttention({ onNavigate }: { onNavigate: () => void }) {
   const apps = useApps({ refetchInterval: 15_000 });
   const deployments = useDeployments(50, { refetchInterval: 10_000 });
   const usage = useUsageSummary();
+  const spendCap = useOverageCap();
   return (
     <NeedsAttentionContent
       apps={apps}
       deployments={deployments}
       usage={usage}
+      spendCap={spendCap}
       onNavigate={onNavigate}
     />
   );
