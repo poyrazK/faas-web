@@ -22,6 +22,8 @@ import { RolloutRecovery } from './rollout-recovery';
 import { LogView } from './log-view';
 import { failureSummary } from './failure-summary';
 import { FailurePanel } from './failure-panel';
+import { ReleaseProcess } from './release-process';
+import { releaseProcess } from '@/lib/release-process';
 
 function relativeTime(value?: string): string {
   if (!value) return '—';
@@ -194,6 +196,9 @@ export function ReleaseDetailPanel({
                         <DeploymentPreviewUrl deploymentId={deployment.id} />
                       </span>
                     </div>
+                    <section aria-label="Process" className="rounded-lg border border-border p-4">
+                      <ReleaseProcess phases={releaseProcess(deployment)} />
+                    </section>
                     <EvidenceFields
                       values={[
                         ['Deployment ID', deployment.id],

@@ -11,6 +11,7 @@ import {
 import { Pill } from './resource-table';
 import { useAppDeployments } from '@/lib/api/queries';
 import { formatRelative } from '@/lib/mock-data';
+import { releaseProcess, releaseProcessSummary } from '@/lib/release-process';
 
 const STATUS_COLOR: Record<string, string> = {
   active: 'var(--status-good)',
@@ -97,7 +98,8 @@ export function DeploymentHistoryPanel({
                     image {shortDigest(deployment.image_digest) || '—'}
                   </span>
                   <span className="min-w-0 flex-1 truncate text-sm">
-                    {deployment.error || deployment.kind || 'Deployment'}
+                    {/* Where this release is in its process; a button holds only phrasing content. */}
+                    {releaseProcessSummary(releaseProcess(deployment))}
                   </span>
                   <span className="w-20 text-right text-xs text-muted-foreground [font-variant-numeric:tabular-nums]">
                     {timing?.durationSeconds == null

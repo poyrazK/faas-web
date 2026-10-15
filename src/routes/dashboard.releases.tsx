@@ -20,6 +20,8 @@ import {
 } from '@/components/dashboard/releases-search';
 import { consoleHead } from '@/lib/seo';
 import { ReleaseStatusLabel } from '@/components/dashboard/release-status-label';
+import { ReleaseProcess } from '@/components/dashboard/release-process';
+import { releaseProcess, type ReleasePhase } from '@/lib/release-process';
 
 export const Route = createFileRoute('/dashboard/releases')({
   component: DeploymentsPage,
@@ -42,6 +44,8 @@ interface ReleaseRow {
   sourceBytes?: number;
   duration?: number;
   createdAt: string;
+  /** Present for releases: the deployment's build-to-serve process. */
+  process?: ReleasePhase[];
 }
 
 export function DeploymentsPage() {
@@ -110,6 +114,7 @@ export function DeploymentsPage() {
       sourceBytes: build?.source_bytes,
       duration: build?.duration_seconds,
       createdAt: deployment?.created_at ?? build!.enqueued_at,
+      process: deployment ? releaseProcess(deployment) : undefined,
     });
     const result =
       view === 'builds'
@@ -158,9 +163,14 @@ export function DeploymentsPage() {
     },
     {
       key: 'status',
-      label: view === 'builds' ? 'Build status' : 'Deployment state',
+      label: view === 'builds' ? 'Build status' : 'Process',
       width: 'w-[48%] md:w-[21%]',
-      render: (r) => <ReleaseStatusLabel status={r.status} />,
+      render: (r) => (
+        <span className="flex min-w-0 flex-col gap-1.5 py-1">
+          <ReleaseStatusLabel status={r.status} />
+          {view === 'releases' && r.process && <ReleaseProcess phases={r.process} compact />}
+        </span>
+      ),
     },
     {
       key: view === 'builds' ? 'source' : 'buildStatus',
