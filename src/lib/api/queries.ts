@@ -2866,10 +2866,12 @@ export function useUpdateAlert(slug: string) {
 export function useRotateAlertSecret(slug: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
+    // The caller supplies the replacement; apid seals it and never returns it.
+    mutationFn: ({ id, webhookSecret }: { id: string; webhookSecret: string }) =>
       unwrap(
         api.POST('/v1/apps/{slug}/alerts/{id}/rotate-secret', {
           params: { path: { slug, id } },
+          body: { webhook_secret: webhookSecret },
         })
       ),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.appAlerts(slug) }),
@@ -2911,10 +2913,12 @@ export function useDeleteWebhook(slug: string) {
 export function useRotateWebhookSecret(slug: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
+    // The caller supplies the replacement; apid seals it and never returns it.
+    mutationFn: ({ id, webhookSecret }: { id: string; webhookSecret: string }) =>
       unwrap(
         api.POST('/v1/apps/{slug}/webhooks/{id}/rotate-secret', {
           params: { path: { slug, id } },
+          body: { webhook_secret: webhookSecret },
         })
       ),
     onSuccess: () => qc.invalidateQueries({ queryKey: webhookKey(slug) }),
