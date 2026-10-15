@@ -358,6 +358,25 @@ describe('new automation dialog', () => {
 });
 
 describe('automation editor write boundaries', () => {
+  it('opens on the essentials with secondary tools collapsed', () => {
+    mount({
+      ...automation,
+      draft: {
+        ...automation.draft,
+        trigger: { type: 'schedule', schedule: '0 * * * *', timezone: 'UTC', overlap: 'skip' },
+      },
+    });
+    for (const summary of [
+      'Advanced trigger settings',
+      'Advanced step settings',
+      'Simulate with sample data',
+    ])
+      expect(screen.getByText(summary).closest('details')).not.toHaveAttribute('open');
+    expect(screen.getByLabelText('Schedule preset')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Publish draft' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Advanced JSON' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Full definition (JSON)')).not.toBeInTheDocument();
+  });
   it('saves a draft against the observed revision without publishing it', async () => {
     mount();
     await userEvent.clear(screen.getByLabelText('Handler path'));

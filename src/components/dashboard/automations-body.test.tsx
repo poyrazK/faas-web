@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { AutomationsBody } from './automations-body';
@@ -84,7 +84,7 @@ vi.mock('@/lib/api/automations', () => ({
   },
   useAutomationHealth: () => ({
     data: {
-      run_count: 0,
+      run_count: 4,
       completed_run_count: 0,
       success_rate: 0,
       active_run_count: 0,
@@ -95,6 +95,7 @@ vi.mock('@/lib/api/automations', () => ({
     error: null,
   }),
   useWriteAutomation: () => ({ isPending: false }),
+  useStartAutomationRun: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 beforeEach(() => {
   state.apps = [{ id: 'app-1', slug: 'alpha' }];
@@ -178,4 +179,40 @@ it('opens the new automation and reports a create-and-publish outcome', async ()
     title: 'reports: draft saved',
     description: 'Draft revision 1 was saved.',
   });
+});
+
+it('keeps the workspace to a summary and view tabs, with run input collapsed', async () => {
+  state.runtime = true;
+  const onSelection = vi.fn();
+  render(
+    <AutomationsBody search={{ app: 'alpha', automation: 'orders' }} onSelection={onSelection} />
+  );
+  expect(screen.getByText('4 runs in the last 7 days')).toBeInTheDocument();
+  expect(screen.queryByText('Runs · last 7 days')).not.toBeInTheDocument();
+  const tabs = screen.getByRole('tablist', { name: 'Automation views' });
+  expect(within(tabs).getByRole('tab', { name: 'Definition' })).toHaveAttribute(
+    'aria-selected',
+    'true'
+  );
+  expect(screen.getByRole('tabpanel', { name: 'Definition' })).toHaveTextContent('Draft editor');
+  await userEvent.click(within(tabs).getByRole('tab', { name: 'Run history' }));
+  expect(onSelection).toHaveBeenLastCalledWith({ automationView: 'runs' });
+
+  await userEvent.click(screen.getByRole('button', { name: 'Run now' }));
+  const dialog = screen.getByRole('dialog', { name: 'Run orders' });
+  const input = within(dialog)
+    .getByText(/Run input · empty object/)
+    .closest('details')!;
+  expect(input).not.toHaveAttribute('open');
+});
+
+it('shows health tiles with the run history', () => {
+  render(
+    <AutomationsBody
+      search={{ app: 'alpha', automation: 'orders', automationView: 'runs' }}
+      onSelection={vi.fn()}
+    />
+  );
+  expect(screen.getByText('Runs · last 7 days')).toBeInTheDocument();
+  expect(screen.getByRole('tab', { name: 'Run history' })).toHaveAttribute('aria-selected', 'true');
 });

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Pause, Play, Plus, WarningTriangle } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
@@ -6,6 +6,7 @@ import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
 import { AppScope, AppSelect, useSelectedApp } from './app-select';
 import { InlinePhase, Panel, queryPhase, StatTile } from './primitives';
+import { Tabs, tabId } from './tabs';
 import { ResourceTable, type Column } from './resource-table';
 import { AutomationEditor, JsonField, JsonReadout } from './automation-editor';
 import { AutomationStatus, Pagination } from './automation-primitives';
@@ -339,6 +340,7 @@ function AutomationWorkspace({
   const health = useAutomationHealth(account, slug, automation.name);
   const [runOpen, setRunOpen] = useState(false);
   const view = search.automationView ?? 'editor';
+  const panelId = useId();
   const trigger = automation.published?.trigger?.type ?? 'manual';
   const toggle = async () => {
     if (
@@ -396,89 +398,52 @@ function AutomationWorkspace({
           </>
         }
       >
-        <InlinePhase
-          phase={queryPhase({ error: health.error, loading: health.isPending })}
-          error={health.error}
-          loadingMessage="Loading automation health…"
-          onRetry={() => void health.refetch()}
+        <HealthSummary health={health} />
+        <Tabs
+          label="Automation views"
+          className="mt-5"
+          value={view}
+          panelId={panelId}
+          options={VIEWS}
+          onChange={(next) => onSelection({ automationView: next })}
         />
-        {health.data && !health.error && (
-          <>
-            <div className="grid gap-3 sm:grid-cols-4">
-              <StatTile label="Runs · last 7 days" value={health.data.run_count} />
-              <StatTile
-                label="Success rate"
-                value={
-                  health.data.completed_run_count
-                    ? `${(health.data.success_rate * 100).toFixed(1)}%`
-                    : 'No completed runs'
-                }
-              />
-              <StatTile label="Active now" value={health.data.active_run_count} />
-              <StatTile label="Queued now" value={health.data.queued_run_count} />
-            </div>
-            {health.data.failed_steps.length > 0 && (
-              <p className="mt-3 text-xs text-muted-foreground">
-                Frequently failed steps:{' '}
-                {health.data.failed_steps
-                  .map((step) => `${step.step_name} (${step.failed_run_count})`)
-                  .join(', ')}
-              </p>
-            )}
-          </>
-        )}
-        <nav
-          aria-label="Automation views"
-          className="mt-5 flex flex-wrap gap-2 border-t border-border pt-4"
-        >
-          {(['editor', 'runs', 'revisions'] as const).map((next) => (
-            <Button
-              key={next}
-              size="sm"
-              variant={view === next ? 'secondary' : 'ghost'}
-              aria-current={view === next ? 'page' : undefined}
-              onClick={() => onSelection({ automationView: next })}
-            >
-              {next === 'editor'
-                ? 'Definition'
-                : next === 'runs'
-                  ? 'Run history'
-                  : 'Published revisions'}
-            </Button>
-          ))}
-        </nav>
       </Panel>
-      {view === 'editor' && (
-        <AutomationEditor
-          key={`${automation.name}-${reloadKey}`}
-          account={account}
-          slug={slug}
-          automation={automation}
-          onSaved={() => {}}
-          onReload={onReload}
-        />
-      )}
-      {view === 'runs' && (
-        <AutomationRuns
-          account={account}
-          slug={slug}
-          appId={appId}
-          name={automation.name}
-          selectedId={search.automationRun}
-          onSelect={(automationRun) => onSelection({ automationRun })}
-        />
-      )}
-      {view === 'revisions' && (
-        <RevisionHistory
-          account={account}
-          slug={slug}
-          automation={automation}
-          onRestored={() => {
-            onReload();
-            onSelection({ automationView: 'editor' });
-          }}
-        />
-      )}
+      <div role="tabpanel" id={panelId} aria-labelledby={tabId(panelId, view)}>
+        {view === 'editor' && (
+          <AutomationEditor
+            key={`${automation.name}-${reloadKey}`}
+            account={account}
+            slug={slug}
+            automation={automation}
+            onSaved={() => {}}
+            onReload={onReload}
+          />
+        )}
+        {view === 'runs' && (
+          <div className="flex flex-col gap-5">
+            <HealthDetails health={health} />
+            <AutomationRuns
+              account={account}
+              slug={slug}
+              appId={appId}
+              name={automation.name}
+              selectedId={search.automationRun}
+              onSelect={(automationRun) => onSelection({ automationRun })}
+            />
+          </div>
+        )}
+        {view === 'revisions' && (
+          <RevisionHistory
+            account={account}
+            slug={slug}
+            automation={automation}
+            onRestored={() => {
+              onReload();
+              onSelection({ automationView: 'editor' });
+            }}
+          />
+        )}
+      </div>
       {runOpen && (
         <RunAutomationDialog
           account={account}
@@ -492,6 +457,78 @@ function AutomationWorkspace({
         />
       )}
     </>
+  );
+}
+
+const VIEWS = [
+  { key: 'editor', label: 'Definition' },
+  { key: 'runs', label: 'Run history' },
+  { key: 'revisions', label: 'Published revisions' },
+] as const;
+
+type Health = ReturnType<typeof useAutomationHealth>;
+
+/** One line of health in the header; the tiles live with the run history. */
+function HealthSummary({ health }: { health: Health }) {
+  if (health.isPending)
+    return <p className="text-xs text-muted-foreground">Loading automation health…</p>;
+  if (health.error)
+    return (
+      <button
+        type="button"
+        className="text-xs text-muted-foreground underline"
+        title={errorMessage(health.error)}
+        onClick={() => void health.refetch()}
+      >
+        Health unavailable · retry
+      </button>
+    );
+  const data = health.data!;
+  return (
+    <p className="text-xs text-muted-foreground">
+      {data.run_count} {data.run_count === 1 ? 'run' : 'runs'} in the last 7 days
+      {data.completed_run_count ? ` · ${(data.success_rate * 100).toFixed(1)}% succeeded` : ''}
+      {data.active_run_count ? ` · ${data.active_run_count} active` : ''}
+      {data.queued_run_count ? ` · ${data.queued_run_count} queued` : ''}
+    </p>
+  );
+}
+
+function HealthDetails({ health }: { health: Health }) {
+  return (
+    <Panel title="Health">
+      <InlinePhase
+        phase={queryPhase({ error: health.error, loading: health.isPending })}
+        error={health.error}
+        loadingMessage="Loading automation health…"
+        onRetry={() => void health.refetch()}
+      />
+      {health.data && !health.error && (
+        <>
+          <div className="grid gap-3 sm:grid-cols-4">
+            <StatTile label="Runs · last 7 days" value={health.data.run_count} />
+            <StatTile
+              label="Success rate"
+              value={
+                health.data.completed_run_count
+                  ? `${(health.data.success_rate * 100).toFixed(1)}%`
+                  : 'No completed runs'
+              }
+            />
+            <StatTile label="Active now" value={health.data.active_run_count} />
+            <StatTile label="Queued now" value={health.data.queued_run_count} />
+          </div>
+          {health.data.failed_steps.length > 0 && (
+            <p className="mt-3 text-xs text-muted-foreground">
+              Frequently failed steps:{' '}
+              {health.data.failed_steps
+                .map((step) => `${step.step_name} (${step.failed_run_count})`)
+                .join(', ')}
+            </p>
+          )}
+        </>
+      )}
+    </Panel>
   );
 }
 
@@ -646,15 +683,22 @@ function RunAutomationDialog({
         </>
       }
     >
-      <JsonField
-        label="Run input (JSON)"
-        value={input}
-        onChange={(value) => {
-          setInput(value);
-          setKey(crypto.randomUUID());
-          setError('');
-        }}
-      />
+      <details className="rounded-md border border-border p-3" open={input !== '{}'}>
+        <summary className="cursor-pointer text-sm text-muted-foreground">
+          Run input {input.trim() === '{}' ? '· empty object' : '· custom'}
+        </summary>
+        <div className="mt-3">
+          <JsonField
+            label="Run input (JSON)"
+            value={input}
+            onChange={(value) => {
+              setInput(value);
+              setKey(crypto.randomUUID());
+              setError('');
+            }}
+          />
+        </div>
+      </details>
       {error && (
         <p role="alert" className="mt-3 text-sm" style={{ color: 'var(--status-critical)' }}>
           {error}

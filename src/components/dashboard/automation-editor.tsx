@@ -198,7 +198,6 @@ function StepFields({
   onRemove,
   others,
   routes,
-  compact,
 }: {
   step: StepDraft;
   index: number;
@@ -209,7 +208,6 @@ function StepFields({
   others: string[];
   /** Observed app routes and the `<datalist>` that offers them. */
   routes: { list: string; observed: ObservedRoute[] };
-  compact: boolean;
 }) {
   const kind = stepKind(step.spec);
   const observed = routes.observed.find((route) => route.path === step.spec.path);
@@ -306,7 +304,7 @@ function StepFields({
       </div>
       <details
         className="mt-4 rounded-md border border-border p-3"
-        open={!compact || Boolean(step.input || step.spec.timeout || step.spec.retry)}
+        open={Boolean(step.input || step.spec.timeout || step.spec.retry)}
       >
         <summary className="cursor-pointer text-sm text-muted-foreground">
           Advanced step settings
@@ -804,7 +802,7 @@ export function AutomationEditor({
                 </div>
                 <details
                   className="rounded-md border border-border p-3 sm:col-span-2"
-                  open={!inDialog}
+                  open={draft.spec.trigger.overlap === 'allow' || draft.scheduledInput !== 'null'}
                 >
                   <summary className="cursor-pointer text-sm text-muted-foreground">
                     Advanced trigger settings
@@ -864,7 +862,7 @@ export function AutomationEditor({
                 />
                 <details
                   className="rounded-md border border-border p-3 sm:col-span-2"
-                  open={!inDialog || draft.eventFilter !== '{}'}
+                  open={draft.eventFilter !== '{}'}
                 >
                   <summary className="cursor-pointer text-sm text-muted-foreground">
                     Advanced event filter
@@ -908,7 +906,6 @@ export function AutomationEditor({
               key={index}
               step={step}
               index={index}
-              compact={inDialog}
               others={draft.steps
                 .filter((_, i) => i !== index)
                 .map((other) => other.spec.name)
@@ -933,47 +930,9 @@ export function AutomationEditor({
               ))}
             </datalist>
           )}
-          <div className="flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={async () => {
-                setError('');
-                setMessage('');
-                try {
-                  setValidation(await validate.mutateAsync(candidate()));
-                } catch (err) {
-                  setError(errorMessage(err));
-                }
-              }}
-            >
-              Validate definition
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                try {
-                  bypassGuard.current = false;
-                  setRaw(jsonText(candidate()));
-                  setRawOpen(true);
-                } catch (err) {
-                  setError(errorMessage(err));
-                }
-              }}
-            >
-              Advanced JSON
-            </Button>
+          <div className="flex flex-wrap items-center gap-2">
             {!onClose && (
               <>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={reloadRequired || (!dirty && Boolean(savedName))}
-                  onClick={() => void save()}
-                >
-                  {progress && !progress.publish ? 'Saving…' : 'Save draft'}
-                </Button>
                 <Button
                   size="sm"
                   disabled={!savedName || reloadRequired}
@@ -987,8 +946,48 @@ export function AutomationEditor({
                       ? 'Save and publish'
                       : 'Publish draft'}
                 </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={reloadRequired || (!dirty && Boolean(savedName))}
+                  onClick={() => void save()}
+                >
+                  {progress && !progress.publish ? 'Saving…' : 'Save draft'}
+                </Button>
               </>
             )}
+            <div className="flex flex-wrap gap-2 sm:ml-auto">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={async () => {
+                  setError('');
+                  setMessage('');
+                  try {
+                    setValidation(await validate.mutateAsync(candidate()));
+                  } catch (err) {
+                    setError(errorMessage(err));
+                  }
+                }}
+              >
+                Validate definition
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  try {
+                    bypassGuard.current = false;
+                    setRaw(jsonText(candidate()));
+                    setRawOpen(true);
+                  } catch (err) {
+                    setError(errorMessage(err));
+                  }
+                }}
+              >
+                Advanced JSON
+              </Button>
+            </div>
           </div>
         </fieldset>
         {rawOpen && (
@@ -1090,13 +1089,10 @@ export function AutomationEditor({
           </div>
         )}
       </Panel>
-      <details open={!inDialog} className="rounded-lg border border-border p-4">
+      <details className="rounded-lg border border-border p-4">
         <summary className="cursor-pointer text-sm font-medium">Simulate with sample data</summary>
         <div className="mt-4">
-          <Panel
-            title={inDialog ? undefined : 'Simulate with sample data'}
-            description="Test data flow with hypothetical handler outputs. Simulation does not invoke the app or create a run."
-          >
+          <Panel description="Test data flow with hypothetical handler outputs. Simulation does not invoke the app or create a run.">
             <div className="grid gap-4 sm:grid-cols-2">
               <JsonField
                 disabled={busy}
