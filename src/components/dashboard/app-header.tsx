@@ -67,23 +67,37 @@ export function appEndpoint(app: Workflow, releases: Read<Deployment[]>) {
 export function AppHeader({
   app,
   releases,
+  project,
   actions,
 }: {
   app: Workflow;
   releases: Read<Deployment[]>;
+  /** The project this app belongs to, when known; standalone apps have none. */
+  project?: string;
   actions: ReactNode;
 }) {
   const status = appStatus(app, releases);
   const endpoint = appEndpoint(app, releases);
   return (
     <div className="flex flex-col gap-4">
-      <Link
-        to="/dashboard/apps"
-        className="inline-flex w-fit items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
-      >
-        <ArrowLeft className="h-3 w-3" />
-        All apps
-      </Link>
+      {project ? (
+        <Link
+          to="/dashboard/projects/$projectSlug"
+          params={{ projectSlug: project }}
+          className="inline-flex w-fit items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <ArrowLeft className="h-3 w-3" />
+          Project {project}
+        </Link>
+      ) : (
+        <Link
+          to="/dashboard/projects"
+          className="inline-flex w-fit items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <ArrowLeft className="h-3 w-3" />
+          Projects
+        </Link>
+      )}
       <div className="animate-item-enter flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">

@@ -2,7 +2,6 @@ import { createFileRoute, Link, useNavigate, useRouterState } from '@tanstack/re
 import { PageHeader } from '@/components/dashboard/primitives';
 import { SegmentGroup, segmentClassName } from '@/components/dashboard/tabs';
 import { SettingsPanels } from '@/components/dashboard/settings-panels';
-import { PlatformCapabilities } from '@/components/dashboard/platform-capabilities';
 import { IntegrationSettings } from '@/components/dashboard/integration-settings';
 import { SecuritySettings } from '@/components/dashboard/security-settings';
 import { PersonalKeysBody } from '@/components/dashboard/personal-keys';
@@ -18,6 +17,7 @@ import {
 } from '@/components/dashboard/settings-search';
 import { useOrgMembers, useOrgs } from '@/lib/api/queries';
 import { useAuth } from '@/lib/auth';
+import { setActiveOrg, useActiveOrg } from '@/lib/workspace';
 import { errorMessage } from '@/lib/api/errors';
 import { Button } from '@/components/ui/button';
 import { consoleHead } from '@/lib/seo';
@@ -40,7 +40,14 @@ function OrganizationScope({
   const available = (orgs.data?.orgs ?? [])
     .filter((org) => org.status !== 'deleted_pending')
     .sort((a, b) => a.slug.localeCompare(b.slug));
-  const active = available.find((org) => org.slug === search.org) ?? available[0];
+  // An explicit `?org=` link wins; otherwise the workspace chosen in the
+  // switcher, then the personal organization.
+  const activeOrg = useActiveOrg();
+  const active =
+    available.find((org) => org.slug === search.org) ??
+    available.find((org) => org.slug === activeOrg) ??
+    available.find((org) => org.personal) ??
+    available[0];
   const members = useOrgMembers(active?.slug ?? '');
   const role = members.error
     ? undefined
@@ -53,7 +60,11 @@ function OrganizationScope({
         <select
           className="h-9 rounded-md border border-border bg-card px-2.5 text-sm"
           value={active?.slug ?? ''}
-          onChange={(event) => onSelection({ org: event.target.value })}
+          onChange={(event) => {
+            const org = available.find((item) => item.slug === event.target.value);
+            setActiveOrg(org && !org.personal ? org.slug : null);
+            onSelection({ org: event.target.value });
+          }}
         >
           {!available.length && <option value="">No organizations</option>}
           {available.map((org) => (
@@ -131,7 +142,6 @@ function SettingsPage() {
         description="Account preferences, organization access and security."
       />
       <SettingsPanels section={section} />
-      {section === 'platform-capabilities' && <PlatformCapabilities />}
       {(section === 'organization' || section === 'members') && (
         <OrganizationScope search={{ ...search, section }} onSelection={onSelection} />
       )}

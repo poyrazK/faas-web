@@ -4,15 +4,12 @@ import {
   clearWorkspace,
   clearOAuthPending,
   consumeOnboardingGitHubReturn,
-  DEFAULT_WORKSPACE,
   hasOnboarded,
   hasOAuthPending,
   isValidEmail,
   markOAuthPending,
   markOnboarded,
   readSession,
-  readWorkspace,
-  saveWorkspace,
 } from './auth';
 
 describe('isValidEmail', () => {
@@ -76,15 +73,12 @@ describe('onboarding flag', () => {
   });
 });
 
-describe('workspace', () => {
-  it('falls back to the default when unset', () => {
-    expect(readWorkspace()).toBe(DEFAULT_WORKSPACE);
-  });
-
-  it('round-trips a saved slug and returns to the default when cleared', () => {
-    saveWorkspace('my-team');
-    expect(readWorkspace()).toBe('my-team');
+describe('clearWorkspace', () => {
+  it('forgets the onboarding hint and the legacy workspace label', () => {
+    window.localStorage.setItem('gregale.workspace', 'acme-corp');
+    markOnboarded();
     clearWorkspace();
-    expect(readWorkspace()).toBe(DEFAULT_WORKSPACE);
+    expect(window.localStorage.getItem('gregale.workspace')).toBeNull();
+    expect(hasOnboarded()).toBe(false);
   });
 });

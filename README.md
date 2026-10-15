@@ -314,15 +314,17 @@ does, rather than being kept honest-looking with invented data:
 | Metrics   | Line charts from a seeded PRNG | Scalar aggregates per window                      |
 | Plans     | Invented dollar prices         | Real quotas; pricing links to the portal          |
 
-Two concepts were removed entirely rather than faked: **projects** (apps are
-flat per account; the real grouping is orgs, on the Team page) and **regions**
-(it is one box).
+**Regions** were removed rather than faked (it is one box). **Projects** came
+back once the API had them: the Projects page is the console's way in, listing
+each imported repository with its apps and a group of standalone apps that
+belong to no project.
 
-**There are no charts in the console any more.** `/v1/apps/{slug}/metrics`
-returns scalar aggregates over a window, not a time series — one p50, one error
-rate. The charts that used to be here were drawn from a seeded PRNG. Plotting a
-curve between two real numbers would be inventing the shape of an outage, so the
-figures are shown as figures. `dither-kit` is still used by the landing page.
+**Charts are drawn only from real series.** The early console's charts came
+from a seeded PRNG and were removed. `/v1/apps/{slug}/analytics/timeseries`
+now returns zero-filled hourly buckets, and Analytics charts those.
+`/v1/apps/{slug}/metrics`, `/slo` and `/usage` still return scalar aggregates
+over a window — one p50, one error rate — so they are shown as figures:
+plotting a curve between two real numbers would invent the shape of an outage.
 
 ## Documentation
 
