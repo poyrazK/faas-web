@@ -6,6 +6,17 @@ const PAID: Plan[] = ['hobby', 'pro', 'scale'];
 /** Synthetic account availability, not evidence of runtime qualification. */
 const entries: Capability[] = [
   {
+    key: 'companions',
+    name: 'Application companions',
+    category: 'runtime',
+    description: 'Declared helper workloads sharing an app lifecycle.',
+    maturity: 'preview',
+    plans: ALL,
+    docs_url: '/docs/companions',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
+  {
     key: 'container-deployments',
     name: 'Container deployments',
     category: 'delivery',
