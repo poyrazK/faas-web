@@ -667,10 +667,10 @@ export function useProjectScan() {
     mutationFn: (input: { file: File; slug?: string; branch?: string }) =>
       unwrap(
         api.POST('/v1/projects/scan', {
-          // The typed body is JSON-shaped; the endpoint takes multipart. The
-          // serializer override is openapi-fetch's sanctioned escape hatch.
-          body: undefined as never,
-          bodySerializer: () => projectForm(input),
+          // The generated body is an object shape, but this operation uses
+          // multipart. A real FormData lets fetch set its boundary; undefined
+          // skips serialization entirely in openapi-fetch.
+          body: projectForm(input) as never,
         })
       ),
   });
@@ -685,11 +685,11 @@ export function useProjectApply() {
       unwrap(
         api.POST('/v1/projects', {
           params: { query: { plan_token: input.planToken } },
-          body: undefined as never,
-          bodySerializer: () => projectForm(input),
+          body: projectForm(input) as never,
         })
       ),
     onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['projects'] });
       void qc.invalidateQueries({ queryKey: keys.apps });
       void qc.invalidateQueries({ queryKey: keys.deployments });
       void qc.invalidateQueries({ queryKey: keys.crons });

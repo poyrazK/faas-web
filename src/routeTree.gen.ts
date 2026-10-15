@@ -41,6 +41,7 @@ import { Route as DashboardMirrorsRouteImport } from './routes/dashboard.mirrors
 import { Route as DashboardOpenapiRouteImport } from './routes/dashboard.openapi'
 import { Route as DashboardPlansRouteImport } from './routes/dashboard.plans'
 import { Route as DashboardPostgresRouteImport } from './routes/dashboard.postgres'
+import { Route as DashboardProjectsRouteImport } from './routes/dashboard.projects'
 import { Route as DashboardQueuesRouteImport } from './routes/dashboard.queues'
 import { Route as DashboardSecretsRouteImport } from './routes/dashboard.secrets'
 import { Route as DashboardSecurityRouteImport } from './routes/dashboard.security'
@@ -58,6 +59,8 @@ import { Route as DocsIndexRouteImport } from './routes/docs.index'
 import { Route as DocsSlugRouteImport } from './routes/docs.$slug'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as StatusIndexRouteImport } from './routes/status.index'
+import { Route as DashboardProjectsIndexRouteImport } from './routes/dashboard.projects.index'
+import { Route as DashboardProjectsProjectSlugRouteImport } from './routes/dashboard.projects.$projectSlug'
 import { Route as DashboardTriggersTriggerIdRouteImport } from './routes/dashboard.triggers.$triggerId'
 import { Route as DashboardTriggersNewRouteImport } from './routes/dashboard.triggers.new'
 import { Route as DashboardWorkflowsIndexRouteImport } from './routes/dashboard.workflows.index'
@@ -225,6 +228,11 @@ const DashboardPostgresRoute = DashboardPostgresRouteImport.update({
   path: '/postgres',
   getParentRoute: () => DashboardRoute,
 } as any)
+const DashboardProjectsRoute = DashboardProjectsRouteImport.update({
+  id: '/projects',
+  path: '/projects',
+  getParentRoute: () => DashboardRoute,
+} as any)
 const DashboardQueuesRoute = DashboardQueuesRouteImport.update({
   id: '/queues',
   path: '/queues',
@@ -310,6 +318,17 @@ const StatusIndexRoute = StatusIndexRouteImport.update({
   path: '/',
   getParentRoute: () => StatusRoute,
 } as any)
+const DashboardProjectsIndexRoute = DashboardProjectsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => DashboardProjectsRoute,
+} as any)
+const DashboardProjectsProjectSlugRoute =
+  DashboardProjectsProjectSlugRouteImport.update({
+    id: '/$projectSlug',
+    path: '/$projectSlug',
+    getParentRoute: () => DashboardProjectsRoute,
+  } as any)
 const DashboardTriggersTriggerIdRoute =
   DashboardTriggersTriggerIdRouteImport.update({
     id: '/$triggerId',
@@ -375,6 +394,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/openapi': typeof DashboardOpenapiRoute
   '/dashboard/plans': typeof DashboardPlansRoute
   '/dashboard/postgres': typeof DashboardPostgresRoute
+  '/dashboard/projects': typeof DashboardProjectsRouteWithChildren
   '/dashboard/queues': typeof DashboardQueuesRoute
   '/dashboard/secrets': typeof DashboardSecretsRoute
   '/dashboard/security': typeof DashboardSecurityRoute
@@ -393,11 +413,13 @@ export interface FileRoutesByFullPath {
   '/dashboard/': typeof DashboardIndexRoute
   '/docs/': typeof DocsIndexRoute
   '/status/': typeof StatusIndexRoute
+  '/dashboard/projects/$projectSlug': typeof DashboardProjectsProjectSlugRoute
   '/dashboard/triggers/$triggerId': typeof DashboardTriggersTriggerIdRoute
   '/dashboard/triggers/new': typeof DashboardTriggersNewRoute
   '/dashboard/workflows/$workflowId': typeof DashboardWorkflowsWorkflowIdRoute
   '/dashboard/workflows/new': typeof DashboardWorkflowsNewRoute
   '/status/incidents/$id': typeof StatusIncidentsIdRoute
+  '/dashboard/projects/': typeof DashboardProjectsIndexRoute
   '/dashboard/workflows/': typeof DashboardWorkflowsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -447,11 +469,13 @@ export interface FileRoutesByTo {
   '/dashboard': typeof DashboardIndexRoute
   '/docs': typeof DocsIndexRoute
   '/status': typeof StatusIndexRoute
+  '/dashboard/projects/$projectSlug': typeof DashboardProjectsProjectSlugRoute
   '/dashboard/triggers/$triggerId': typeof DashboardTriggersTriggerIdRoute
   '/dashboard/triggers/new': typeof DashboardTriggersNewRoute
   '/dashboard/workflows/$workflowId': typeof DashboardWorkflowsWorkflowIdRoute
   '/dashboard/workflows/new': typeof DashboardWorkflowsNewRoute
   '/status/incidents/$id': typeof StatusIncidentsIdRoute
+  '/dashboard/projects': typeof DashboardProjectsIndexRoute
   '/dashboard/workflows': typeof DashboardWorkflowsIndexRoute
 }
 export interface FileRoutesById {
@@ -487,6 +511,7 @@ export interface FileRoutesById {
   '/dashboard/openapi': typeof DashboardOpenapiRoute
   '/dashboard/plans': typeof DashboardPlansRoute
   '/dashboard/postgres': typeof DashboardPostgresRoute
+  '/dashboard/projects': typeof DashboardProjectsRouteWithChildren
   '/dashboard/queues': typeof DashboardQueuesRoute
   '/dashboard/secrets': typeof DashboardSecretsRoute
   '/dashboard/security': typeof DashboardSecurityRoute
@@ -505,11 +530,13 @@ export interface FileRoutesById {
   '/dashboard/': typeof DashboardIndexRoute
   '/docs/': typeof DocsIndexRoute
   '/status/': typeof StatusIndexRoute
+  '/dashboard/projects/$projectSlug': typeof DashboardProjectsProjectSlugRoute
   '/dashboard/triggers/$triggerId': typeof DashboardTriggersTriggerIdRoute
   '/dashboard/triggers/new': typeof DashboardTriggersNewRoute
   '/dashboard/workflows/$workflowId': typeof DashboardWorkflowsWorkflowIdRoute
   '/dashboard/workflows/new': typeof DashboardWorkflowsNewRoute
   '/status/incidents/$id': typeof StatusIncidentsIdRoute
+  '/dashboard/projects/': typeof DashboardProjectsIndexRoute
   '/dashboard/workflows/': typeof DashboardWorkflowsIndexRoute
 }
 export interface FileRouteTypes {
@@ -546,6 +573,7 @@ export interface FileRouteTypes {
     | '/dashboard/openapi'
     | '/dashboard/plans'
     | '/dashboard/postgres'
+    | '/dashboard/projects'
     | '/dashboard/queues'
     | '/dashboard/secrets'
     | '/dashboard/security'
@@ -564,11 +592,13 @@ export interface FileRouteTypes {
     | '/dashboard/'
     | '/docs/'
     | '/status/'
+    | '/dashboard/projects/$projectSlug'
     | '/dashboard/triggers/$triggerId'
     | '/dashboard/triggers/new'
     | '/dashboard/workflows/$workflowId'
     | '/dashboard/workflows/new'
     | '/status/incidents/$id'
+    | '/dashboard/projects/'
     | '/dashboard/workflows/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -618,11 +648,13 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/docs'
     | '/status'
+    | '/dashboard/projects/$projectSlug'
     | '/dashboard/triggers/$triggerId'
     | '/dashboard/triggers/new'
     | '/dashboard/workflows/$workflowId'
     | '/dashboard/workflows/new'
     | '/status/incidents/$id'
+    | '/dashboard/projects'
     | '/dashboard/workflows'
   id:
     | '__root__'
@@ -657,6 +689,7 @@ export interface FileRouteTypes {
     | '/dashboard/openapi'
     | '/dashboard/plans'
     | '/dashboard/postgres'
+    | '/dashboard/projects'
     | '/dashboard/queues'
     | '/dashboard/secrets'
     | '/dashboard/security'
@@ -675,11 +708,13 @@ export interface FileRouteTypes {
     | '/dashboard/'
     | '/docs/'
     | '/status/'
+    | '/dashboard/projects/$projectSlug'
     | '/dashboard/triggers/$triggerId'
     | '/dashboard/triggers/new'
     | '/dashboard/workflows/$workflowId'
     | '/dashboard/workflows/new'
     | '/status/incidents/$id'
+    | '/dashboard/projects/'
     | '/dashboard/workflows/'
   fileRoutesById: FileRoutesById
 }
@@ -921,6 +956,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardPostgresRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/dashboard/projects': {
+      id: '/dashboard/projects'
+      path: '/projects'
+      fullPath: '/dashboard/projects'
+      preLoaderRoute: typeof DashboardProjectsRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/dashboard/queues': {
       id: '/dashboard/queues'
       path: '/queues'
@@ -1040,6 +1082,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StatusIndexRouteImport
       parentRoute: typeof StatusRoute
     }
+    '/dashboard/projects/': {
+      id: '/dashboard/projects/'
+      path: '/'
+      fullPath: '/dashboard/projects/'
+      preLoaderRoute: typeof DashboardProjectsIndexRouteImport
+      parentRoute: typeof DashboardProjectsRoute
+    }
+    '/dashboard/projects/$projectSlug': {
+      id: '/dashboard/projects/$projectSlug'
+      path: '/$projectSlug'
+      fullPath: '/dashboard/projects/$projectSlug'
+      preLoaderRoute: typeof DashboardProjectsProjectSlugRouteImport
+      parentRoute: typeof DashboardProjectsRoute
+    }
     '/dashboard/triggers/$triggerId': {
       id: '/dashboard/triggers/$triggerId'
       path: '/$triggerId'
@@ -1085,6 +1141,19 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface DashboardProjectsRouteChildren {
+  DashboardProjectsProjectSlugRoute: typeof DashboardProjectsProjectSlugRoute
+  DashboardProjectsIndexRoute: typeof DashboardProjectsIndexRoute
+}
+
+const DashboardProjectsRouteChildren: DashboardProjectsRouteChildren = {
+  DashboardProjectsProjectSlugRoute: DashboardProjectsProjectSlugRoute,
+  DashboardProjectsIndexRoute: DashboardProjectsIndexRoute,
+}
+
+const DashboardProjectsRouteWithChildren =
+  DashboardProjectsRoute._addFileChildren(DashboardProjectsRouteChildren)
+
 interface DashboardTriggersRouteChildren {
   DashboardTriggersTriggerIdRoute: typeof DashboardTriggersTriggerIdRoute
   DashboardTriggersNewRoute: typeof DashboardTriggersNewRoute
@@ -1122,6 +1191,7 @@ interface DashboardRouteChildren {
   DashboardOpenapiRoute: typeof DashboardOpenapiRoute
   DashboardPlansRoute: typeof DashboardPlansRoute
   DashboardPostgresRoute: typeof DashboardPostgresRoute
+  DashboardProjectsRoute: typeof DashboardProjectsRouteWithChildren
   DashboardQueuesRoute: typeof DashboardQueuesRoute
   DashboardSecretsRoute: typeof DashboardSecretsRoute
   DashboardSecurityRoute: typeof DashboardSecurityRoute
@@ -1165,6 +1235,7 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardOpenapiRoute: DashboardOpenapiRoute,
   DashboardPlansRoute: DashboardPlansRoute,
   DashboardPostgresRoute: DashboardPostgresRoute,
+  DashboardProjectsRoute: DashboardProjectsRouteWithChildren,
   DashboardQueuesRoute: DashboardQueuesRoute,
   DashboardSecretsRoute: DashboardSecretsRoute,
   DashboardSecurityRoute: DashboardSecurityRoute,

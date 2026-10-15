@@ -60,7 +60,10 @@ export function ProjectImport({
     slug: string;
     branch: string;
   } | null>(null);
-  const [applied, setApplied] = useState<{ slug: string; id: string }[] | null>(null);
+  const [applied, setApplied] = useState<{
+    apps: { slug: string; id: string }[];
+    projectSlug?: string;
+  } | null>(null);
   // A token is applicable only to the inputs that produced it, including
   // when an earlier scan resolves after the user has edited those inputs.
   const plan =
@@ -91,7 +94,10 @@ export function ProjectImport({
     void apply
       .mutateAsync({ file, slug, branch, planToken: plan.plan_token })
       .then((result) => {
-        setApplied(result.apps ?? []);
+        setApplied({
+          apps: result.apps ?? [],
+          projectSlug: result.project_id ? plan.project_slug : undefined,
+        });
         toast({
           kind: 'success',
           title: 'Project applied',
@@ -303,8 +309,17 @@ export function ProjectImport({
           title="Applied"
           description="Builds are enqueued; each app goes live as its build lands."
         >
+          {applied.projectSlug && (
+            <Link
+              to="/dashboard/projects/$projectSlug"
+              params={{ projectSlug: applied.projectSlug }}
+              className="mb-4 inline-flex text-sm text-brand hover:underline"
+            >
+              View project {applied.projectSlug}
+            </Link>
+          )}
           <ul className="flex flex-col gap-1.5">
-            {applied.map((a) => (
+            {applied.apps.map((a) => (
               <li key={a.id}>
                 <Link
                   to="/dashboard/workflows/$workflowId"

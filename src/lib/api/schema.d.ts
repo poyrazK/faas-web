@@ -5492,7 +5492,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** List durable projects owned by the current account. */
+        get: operations["listProjects"];
         put?: never;
         /**
          * Apply a deploy plan in one transaction.
@@ -5509,6 +5510,26 @@ export interface paths {
          *     pass; the quota check ran inside ApplyProjectPlan's Tx.
          */
         post: operations["applyProject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project slug in the authenticated account. */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        /** Inspect a project, its workloads, exclusions, and latest status. */
+        get: operations["getProject"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -10759,6 +10780,35 @@ export interface components {
              * @description Wake id stamped on the replacement instance and wake timeline.
              */
             wake_id: string;
+        };
+        /** @description Stable account-scoped project list item. */
+        ProjectSummaryResponse: {
+            id: string;
+            slug: string;
+            repo_full_name?: string;
+            production_branch?: string;
+            scan_source: string;
+            workload_count: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /** @description Live app attached to a durable project and its latest release state. */
+        ProjectWorkloadResponse: {
+            slug: string;
+            workload_name: string;
+            status: string;
+            deployment_status?: string;
+            rollout_state?: string;
+            build_status?: string;
+        };
+        /** @description Project metadata with its workloads, exclusions, and latest reconciliation state. */
+        ProjectResponse: components["schemas"]["ProjectSummaryResponse"] & {
+            workloads: components["schemas"]["ProjectWorkloadResponse"][];
+            exclusions: string[];
+            last_reconciliation_status?: string;
+            last_build_status?: string;
         };
         /** @description App creation payload: slug, type (app|function), runtime (only for function), RAM MB, max concurrency, idle timeout, and optional manifest. */
         CreateAppRequest: {
@@ -28578,6 +28628,28 @@ export interface operations {
             429: components["responses"]["TooManyRequests"];
         };
     };
+    listProjects: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Account-scoped project summaries. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectSummaryResponse"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
     applyProject: {
         parameters: {
             query?: {
@@ -28650,6 +28722,32 @@ export interface operations {
             403: components["responses"]["PlanLimit"];
             409: components["responses"]["ValidationFailed"];
             413: components["responses"]["SourceTooLarge"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project slug in the authenticated account. */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Project recovery and workload state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
             429: components["responses"]["TooManyRequests"];
         };
     };
