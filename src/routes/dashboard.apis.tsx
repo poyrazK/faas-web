@@ -134,7 +134,14 @@ function ApisPage() {
       />
 
       <AppScope state={appState} resource="routes">
-        <RoutesBody slug={slug} baseUrl={apps.find((app) => app.slug === slug)?.url} />
+        <RoutesBody
+          slug={slug}
+          baseUrl={
+            apps.find((app) => app.slug === slug)?.visibility === 'internal'
+              ? undefined
+              : apps.find((app) => app.slug === slug)?.url
+          }
+        />
       </AppScope>
     </div>
   );

@@ -44,6 +44,54 @@ async function get(path: string) {
   const response = await fetch(`${origin}${path}`);
   return { response, body: await response.json() };
 }
+it('serves internal app visibility and binding policy with distinct null and empty meanings', async () => {
+  const slug = `private-${Date.now()}`;
+  const target = (await get('/v1/apps')).body[0].slug;
+  const create = await fetch(`${origin}/v1/apps`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slug, type: 'app', visibility: 'internal', ram_mb: 128 }),
+  });
+  expect(create.status).toBe(201);
+  expect(await create.json()).toMatchObject({ visibility: 'internal', url: '' });
+  const empty = await get(`/v1/apps/${slug}/bindings`);
+  expect(empty.response.status).toBe(200);
+  expect(empty.body).toMatchObject({ app: slug, complete: true, bindings: [] });
+  const policy = await fetch(`${origin}/v1/apps/${slug}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      allowed_service_callers: [],
+      allowed_service_call_scopes: {},
+      service_binding_targets: [target],
+      service_binding_policy: 'declared',
+    }),
+  });
+  expect(policy.status).toBe(200);
+  expect(await policy.json()).toMatchObject({
+    allowed_service_callers: [],
+    allowed_service_call_scopes: {},
+    service_binding_policy: 'declared',
+  });
+  const inventory = await get(`/v1/apps/${slug}/bindings`);
+  expect(inventory.body.bindings).toEqual([
+    expect.objectContaining({ type: 'service', name: target, verification_status: 'unknown' }),
+  ]);
+  const inherit = await fetch(`${origin}/v1/apps/${slug}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ allowed_service_callers: null, allowed_service_call_scopes: null }),
+  });
+  const inherited = await inherit.json();
+  expect(inherited).not.toHaveProperty('allowed_service_callers');
+  expect(inherited).not.toHaveProperty('allowed_service_call_scopes');
+  const sourceManaged = await fetch(`${origin}/v1/apps/${target}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ allowed_service_callers: [] }),
+  });
+  expect(sourceManaged.status).toBe(409);
+});
 it('serves bounded instrumented Issues and one-time deployment-bound reporting credentials', async () => {
   const apps = await get('/v1/apps');
   const slug = apps.body[0].slug;

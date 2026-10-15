@@ -31,6 +31,8 @@ const TARGETS: Record<string, Entrypoint> = {
   },
   'pr-previews': { href: '/dashboard/deployments', label: 'Open releases' },
   issues: { href: '/dashboard/workflows', label: 'Choose an app, then open Issues' },
+  'private-apps': { href: '/dashboard/workflows/new', label: 'Create an app' },
+  'internal-services': { href: '/dashboard/workflows', label: 'Choose an app, then open Services' },
 };
 export function capabilityEntrypoint(key: string): Entrypoint {
   return (

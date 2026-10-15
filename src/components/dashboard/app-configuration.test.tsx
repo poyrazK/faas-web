@@ -22,10 +22,14 @@ vi.mock('@/lib/auth', () => ({
   }),
 }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: mocks.toast }) }));
+vi.mock('@/lib/api/capabilities', () => ({
+  useCapability: () => ({ accountId: 'account', state: 'unavailable' }),
+}));
 vi.mock('./app-core-panels', () => ({ RegistryCredentialsPanel: () => null }));
 vi.mock('./supply-chain-panel', () => ({ SupplyChainPanel: () => null }));
 vi.mock('./app-insights', () => ({ StaticEgressIP: () => null, StreamingCapNote: () => null }));
 vi.mock('./app-lifecycle', () => ({ PurgeCacheControl: () => null }));
+vi.mock('./app-visibility', () => ({ AppVisibility: () => null }));
 vi.mock('@/lib/api/queries', () => ({
   retryPolicy: () => false,
   useApp: () => ({

@@ -93,6 +93,28 @@ const entries: Capability[] = [
     acceptance: 'mock-only',
     enabled: true,
   },
+  {
+    key: 'private-apps',
+    name: 'Private apps',
+    category: 'networking',
+    description: 'Internal-only app visibility and controlled service access.',
+    maturity: 'preview',
+    plans: ALL,
+    docs_url: '/docs/faas_openapi_spec',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
+  {
+    key: 'internal-services',
+    name: 'Internal services',
+    category: 'networking',
+    description: 'Declared service bindings and caller policy.',
+    maturity: 'preview',
+    plans: ALL,
+    docs_url: '/docs/faas_openapi_spec',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
 ];
 export function mockCapabilities(
   plan: Plan,

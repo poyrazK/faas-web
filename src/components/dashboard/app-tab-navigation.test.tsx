@@ -25,3 +25,16 @@ it('opens the right group from a deep linked tab and supports keyboard navigatio
   await userEvent.click(screen.getByRole('button', { name: 'Connect app section' }));
   expect(screen.getByRole('tab', { name: 'Mirrors' })).toHaveAttribute('aria-selected', 'true');
 });
+
+it('opens Services in Connect and keeps neighboring tabs keyboard accessible', async () => {
+  render(<Navigation initial="Services" />);
+  expect(screen.getByRole('button', { name: 'Connect app section' })).toHaveAttribute(
+    'aria-pressed',
+    'true'
+  );
+  const services = screen.getByRole('tab', { name: 'Services' });
+  expect(services).toHaveAttribute('aria-selected', 'true');
+  services.focus();
+  await userEvent.keyboard('{ArrowRight}');
+  expect(screen.getByRole('tab', { name: 'Edge rules' })).toHaveFocus();
+});

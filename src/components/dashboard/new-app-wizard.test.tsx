@@ -13,11 +13,14 @@ const mocks = vi.hoisted(() => ({
   updateApp: vi.fn(),
   toast: vi.fn(),
   issueCSRF: vi.fn(),
+  readPrivate: vi.fn(),
   deploymentStatus: 'building',
+  appVisibility: 'public' as 'public' | 'internal',
   deploymentApp: 'app-1',
   retry: vi.fn(),
   confirm: vi.fn(),
   account: {
+    id: 'account-1',
     plan: 'hobby' as 'free' | 'hobby' | 'pro' | 'scale',
     app_count: 0,
     github_install_id: '42',
@@ -54,11 +57,16 @@ vi.mock('@/lib/store', () => ({
 vi.mock('@/lib/auth', () => ({
   useAuth: () => ({ loading: false, account: mocks.account }),
 }));
+vi.mock('@/lib/api/capabilities', () => ({
+  useCapability: () => ({ accountId: mocks.account.id, state: 'available', refresh: vi.fn() }),
+}));
+vi.mock('@/lib/api/bindings', () => ({ readPrivateAppCreateContext: mocks.readPrivate }));
 vi.mock('@/lib/api/queries', () => ({
   useApp: () => ({
     data: {
       id: 'app-1',
       slug: 'demo-app',
+      visibility: mocks.appVisibility,
       url: 'https://demo-app.example',
       runtime: 'node22',
       ram_mb: 128,
@@ -101,11 +109,13 @@ async function submitGitApp(onDeploymentAccepted = vi.fn()) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.account.id = 'account-1';
   mocks.account.plan = 'hobby';
   mocks.account.app_count = 0;
   mocks.account.github_install_id = '42';
   mocks.account.limits = { ram_mb: 512, deployed_apps: 10 };
   mocks.deploymentStatus = 'building';
+  mocks.appVisibility = 'public';
   mocks.deploymentApp = 'app-1';
   mocks.confirm.mockResolvedValue(true);
   mocks.retry.mockResolvedValue({ id: 'b'.repeat(32), app_id: 'app-1' });
@@ -114,11 +124,71 @@ beforeEach(() => {
   mocks.deployFromRef.mockResolvedValue({ id: 'deployment-1' });
   mocks.updateApp.mockResolvedValue({});
   mocks.issueCSRF.mockResolvedValue('wizard-proof');
+  mocks.readPrivate.mockResolvedValue(undefined);
 });
 
 afterEach(() => vi.restoreAllMocks());
 
 describe('NewAppWizard Git submission', () => {
+  it('keeps a restored internal deployment endpoint non-clickable after it becomes live', () => {
+    mocks.appVisibility = 'internal';
+    mocks.deploymentStatus = 'live';
+    render(
+      <NewAppWizard
+        search={{
+          recovery: { app: 'demo-app', repo: 'team/api', ref: 'main', deployment: 'a'.repeat(32) },
+        }}
+      />
+    );
+    expect(screen.queryByRole('link', { name: 'Open app' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Copy app endpoint' })).not.toBeInTheDocument();
+  });
+  it('reviews internal-only creation and rechecks private-app capability before POST', async () => {
+    const user = userEvent.setup();
+    render(<NewAppWizard onboarding />);
+    await user.type(screen.getByLabelText(/repository/i), 'gregale/demo');
+    await user.click(screen.getByRole('button', { name: /continue/i }));
+    await user.type(await screen.findByLabelText('App name'), 'demo-app');
+    await user.selectOptions(screen.getByLabelText('App visibility'), 'internal');
+    await user.click(screen.getByRole('button', { name: 'Review' }));
+    const deploy = await screen.findByRole('button', { name: 'Deploy app' });
+    expect(screen.getByText('No public endpoint')).toBeInTheDocument();
+    await user.click(deploy);
+    await waitFor(() => expect(mocks.readPrivate).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(mocks.addWorkflow).toHaveBeenCalledWith(
+        expect.objectContaining({ visibility: 'internal' })
+      )
+    );
+    expect(screen.queryByRole('link', { name: 'Open app' })).not.toBeInTheDocument();
+  });
+  it('does not create an internal app after account context changes during capability recheck', async () => {
+    let release!: () => void;
+    mocks.readPrivate.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        })
+    );
+    const user = userEvent.setup();
+    const view = render(<NewAppWizard onboarding />);
+    await user.type(screen.getByLabelText(/repository/i), 'gregale/demo');
+    await user.click(screen.getByRole('button', { name: /continue/i }));
+    await user.type(await screen.findByLabelText('App name'), 'demo-app');
+    await user.selectOptions(screen.getByLabelText('App visibility'), 'internal');
+    await user.click(screen.getByRole('button', { name: 'Review' }));
+    await user.click(await screen.findByRole('button', { name: 'Deploy app' }));
+    await waitFor(() => expect(mocks.readPrivate).toHaveBeenCalledTimes(1));
+    mocks.account.id = 'account-2';
+    view.rerender(<NewAppWizard onboarding />);
+    release();
+    await waitFor(() =>
+      expect(mocks.toast).toHaveBeenCalledWith(
+        expect.objectContaining({ description: expect.stringMatching(/Creation choices changed/i) })
+      )
+    );
+    expect(mocks.addWorkflow).not.toHaveBeenCalled();
+  });
   it('offers container setup without a GitHub installation', async () => {
     mocks.account.github_install_id = '';
     render(<NewAppWizard />);

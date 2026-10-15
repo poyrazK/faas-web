@@ -7,7 +7,15 @@ export const APP_TAB_GROUPS = [
   { label: 'Observe', tabs: ['Logs', 'Errors', 'Issues', 'Alerts', 'Debugger'] },
   {
     label: 'Connect',
-    tabs: ['Routes', 'Upstreams', 'Edge rules', 'Mirrors', 'Tenant surfaces', 'OpenAPI'],
+    tabs: [
+      'Routes',
+      'Upstreams',
+      'Services',
+      'Edge rules',
+      'Mirrors',
+      'Tenant surfaces',
+      'OpenAPI',
+    ],
   },
   { label: 'Automate', tabs: ['Automations', 'Queues', 'Webhooks'] },
   { label: 'Configure', tabs: ['Secrets', 'Env vars', 'Configuration'] },

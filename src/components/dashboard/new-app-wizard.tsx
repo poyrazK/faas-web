@@ -1,7 +1,7 @@
 import { MemorySelect } from './memory-select';
 import { RestoreTarget } from '@/components/restore-target';
 import { RESTORE_CONTEXT } from '@/lib/platform-claims';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useUnsavedGuard } from '@/lib/use-unsaved-guard';
 import { RepoPicker } from '@/components/dashboard/repo-picker';
 import { GitHubConnectForm } from '@/components/dashboard/github-connect-form';
@@ -40,6 +40,8 @@ import {
   useUpdateAppFor,
 } from '@/lib/api/queries';
 import { useAuth } from '@/lib/auth';
+import { useCapability } from '@/lib/api/capabilities';
+import { readPrivateAppCreateContext } from '@/lib/api/bindings';
 import {
   appQuotaExceeded,
   appQuotaRemaining,
@@ -155,6 +157,7 @@ function CreateAppWizard({
   const { toast } = useToast();
   const { addWorkflow } = useData();
   const { account, loading: authLoading } = useAuth();
+  const privateCapability = useCapability('private-apps');
   const reduce = useReducedMotion();
   const [localSearch, setLocalSearch] = useState<NewAppSearch>({
     source: onboarding ? 'git' : undefined,
@@ -210,6 +213,7 @@ function CreateAppWizard({
   const deployFromRef = useDeployFromRefFor();
   const updateApp = useUpdateAppFor();
   const [appType, setAppType] = useState<'function' | 'app'>('function');
+  const [visibility, setVisibility] = useState<'public' | 'internal'>('public');
   const [runtimeDraft, setRuntime] = useState<Runtime | null>(null);
   const runtime = runtimeDraft ?? template?.runtime ?? (picked ? catalogRuntime : null) ?? 'node22';
   // Start at the platform floor. The previous 512 MB default guaranteed a
@@ -224,6 +228,21 @@ function CreateAppWizard({
   const [deploying, setDeploying] = useState(false);
   const [deploymentId, setDeploymentId] = useState<string | null>(null);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
+  const creationContext = useRef({ accountId: account?.id ?? '', name, visibility, source });
+  const createController = useRef<AbortController | null>(null);
+  const mounted = useRef(true);
+  useLayoutEffect(() => {
+    creationContext.current = { accountId: account?.id ?? '', name, visibility, source };
+  }, [account?.id, name, visibility, source]);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      createController.current?.abort();
+    };
+  }, []);
+  const privateAvailable =
+    privateCapability.accountId === account?.id && privateCapability.state === 'available';
   const [recovery, setRecovery] = useState<DeploymentRecoveryContext>();
   const sourceRequested = useRef(false);
   function saveRecovery(next: DeploymentRecoveryContext) {
@@ -276,7 +295,11 @@ function CreateAppWizard({
   const quotaRemaining = appQuotaRemaining(account);
   const quotaExceeded = appQuotaExceeded(account);
   const limitsLoading = authLoading && !account;
-  const deployBlocked = limitsLoading || quotaExceeded || !memoryAllowed(account, selectedMemoryMb);
+  const deployBlocked =
+    limitsLoading ||
+    quotaExceeded ||
+    !memoryAllowed(account, selectedMemoryMb) ||
+    (visibility === 'internal' && !privateAvailable);
 
   async function submitGitSource(slug: string) {
     sourceRequested.current = false;
@@ -308,6 +331,17 @@ function CreateAppWizard({
     setSubmittedSearch(search);
     setSubmissionError(null);
     try {
+      if (visibility === 'internal') {
+        if (!account?.id) throw new Error('Account access could not be confirmed.');
+        const before = { ...creationContext.current };
+        const controller = new AbortController();
+        createController.current = controller;
+        await readPrivateAppCreateContext(account.id, account.plan, controller.signal);
+        createController.current = null;
+        if (!mounted.current) return;
+        if (JSON.stringify(before) !== JSON.stringify(creationContext.current))
+          throw new Error('Creation choices changed during access check. Review again.');
+      }
       // App creation is the durable first step. The UI only advances to build
       // status after the API returns the actual deployment id.
       const created = await addWorkflow({
@@ -315,9 +349,10 @@ function CreateAppWizard({
         runtime,
         memoryMb: selectedMemoryMb,
         type: appType,
+        visibility,
       });
       setCreatedId(created.id);
-      setCreatedUrl(created.url);
+      setCreatedUrl(visibility === 'internal' ? null : created.url);
       onAppCreated?.();
       const pointer: DeploymentRecoveryContext = {
         app: created.id,
@@ -378,6 +413,8 @@ function CreateAppWizard({
         });
       }
     } catch (err) {
+      createController.current = null;
+      if (!mounted.current) return;
       setDeploying(false);
       setSubmittedSearch(null);
       toast({
@@ -419,7 +456,7 @@ function CreateAppWizard({
             repo={repo}
             sourceRef={ref}
             submissionError={submissionError}
-            endpoint={createdUrl}
+            endpoint={visibility === 'internal' ? null : createdUrl}
           />
         ) : !createdId ? (
           <Panel title="Creating app">
@@ -490,10 +527,14 @@ function CreateAppWizard({
             {source !== 'git' && (
               <div className="min-w-0">
                 <p className="text-xs text-muted-foreground">
-                  App endpoint · available after deployment
+                  {visibility === 'internal'
+                    ? 'Internal service only'
+                    : 'App endpoint · available after deployment'}
                 </p>
                 <p className="break-all font-mono text-xs text-muted-foreground">
-                  {createdUrl ?? 'Waiting for the endpoint…'}
+                  {visibility === 'internal'
+                    ? 'No public endpoint'
+                    : (createdUrl ?? 'Waiting for the endpoint…')}
                 </p>
               </div>
             )}
@@ -803,6 +844,26 @@ function CreateAppWizard({
                   </Select>
                 </label>
 
+                <label className="flex flex-col gap-1.5">
+                  <span className={LABEL}>App visibility</span>
+                  <Select
+                    aria-label="App visibility"
+                    value={visibility}
+                    onChange={(event) => setVisibility(event.target.value as 'public' | 'internal')}
+                    className={CONTROL}
+                  >
+                    <option value="public">Public edge and internal service</option>
+                    <option value="internal">Internal service only</option>
+                  </Select>
+                  <span className="text-[13px] leading-5 text-muted-foreground">
+                    Internal apps have no public platform URL or custom-domain route. Authenticated
+                    same-account service calls remain subject to caller policy.
+                    {visibility === 'internal' && !privateAvailable
+                      ? ' Checking private-app availability before creation.'
+                      : ''}
+                  </span>
+                </label>
+
                 {/* No region picker: this is a one-box platform and the API
                     exposes no region to choose. */}
               </div>
@@ -897,13 +958,22 @@ function CreateAppWizard({
                       : 'Later, from the CLI',
                   ],
                   ['Runtime', runtime],
+                  [
+                    'Visibility',
+                    visibility === 'internal' ? 'Internal service only' : 'Public edge',
+                  ],
                   ['Memory', `${selectedMemoryMb} MB`],
                   [
                     'Scale to zero',
                     effectiveScaleToZero ? 'Parks when idle' : 'One instance kept resident',
                   ],
                   // Assigned by the API on create, so it is not known until then.
-                  ['Endpoint', createdUrl ?? 'Assigned on create'],
+                  [
+                    'Endpoint',
+                    visibility === 'internal'
+                      ? 'No public endpoint'
+                      : (createdUrl ?? 'Assigned on create'),
+                  ],
                 ].map(([label, value]) => (
                   <div key={label} className="flex flex-col gap-1 border-b border-border pb-3">
                     <dt className={cn(LABEL, 'text-muted-foreground')}>{label}</dt>

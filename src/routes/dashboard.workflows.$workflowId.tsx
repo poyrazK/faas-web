@@ -64,6 +64,7 @@ import { WebhooksHub } from './dashboard.webhooks';
 import { EdgeRulesBody } from './dashboard.edge-rules';
 import { ErrorsBody } from '@/components/dashboard/errors-body';
 import { IssuesBody } from '@/components/dashboard/issues-body';
+import { ServiceBindings } from '@/components/dashboard/service-bindings';
 import { validateIssueSearch, type IssueSearch } from '@/components/dashboard/issues-search';
 import { AppConfiguration } from '@/components/dashboard/app-configuration';
 import { InvokePanel, SloPanel } from '@/components/dashboard/app-core-panels';
@@ -327,7 +328,13 @@ function FunctionDetailPage() {
         description={
           tab === 'Overview'
             ? undefined
-            : [fn.runtime, `${fn.memoryMb} MB`, fn.url].filter(Boolean).join(' · ')
+            : [
+                fn.runtime,
+                `${fn.memoryMb} MB`,
+                fn.visibility === 'internal' ? 'Internal only' : fn.url,
+              ]
+                .filter(Boolean)
+                .join(' · ')
         }
         actions={
           <>
@@ -444,7 +451,7 @@ function FunctionDetailPage() {
         }
       />
 
-      {tab !== 'Overview' && fn.url && (
+      {tab !== 'Overview' && fn.url && fn.visibility !== 'internal' && (
         <a
           href={fn.url}
           className="inline-flex w-fit items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 font-mono text-xs text-muted-foreground transition-colors hover:border-brand/40 hover:text-foreground"
@@ -747,11 +754,17 @@ function FunctionDetailPage() {
                 }
               />
             )}
-            {tab === 'Routes' && <RoutesBody slug={fn.id} baseUrl={fn.url} />}
+            {tab === 'Routes' && (
+              <RoutesBody
+                slug={fn.id}
+                baseUrl={fn.visibility === 'internal' ? undefined : fn.url}
+              />
+            )}
             {tab === 'Secrets' && <SecretsBody slug={fn.id} />}
             {tab === 'Env vars' && <EnvBody slug={fn.id} />}
             {tab === 'Queues' && <QueuesBody slug={fn.id} />}
             {tab === 'Upstreams' && <UpstreamsBody slug={fn.id} />}
+            {tab === 'Services' && <ServiceBindings slug={fn.id} />}
             {tab === 'Alerts' && <AlertsBody slug={fn.id} />}
             {tab === 'Webhooks' && (
               <WebhooksHub

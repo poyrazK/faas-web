@@ -8,6 +8,7 @@ import { ApiError, errorMessage } from '@/lib/api/errors';
 import { keys, retryPolicy } from '@/lib/api/queries';
 import { createImageApp, deployImage } from '@/lib/api/image-deployments';
 import { useCapability } from '@/lib/api/capabilities';
+import { readPrivateAppCreateContext } from '@/lib/api/bindings';
 import { imageRequest } from '@/lib/oci-image';
 import {
   clearImageOperation,
@@ -62,7 +63,7 @@ function ImageJourney({
   slug,
 }: {
   accountId: string;
-  plan: string;
+  plan: components['schemas']['CapabilitiesResponse']['plan'];
   maxMemory: number;
   slug: string;
 }) {
@@ -82,6 +83,7 @@ function ImageJourney({
   const [port, setPort] = useState('');
   const [health, setHealth] = useState('');
   const [memory, setMemory] = useState(128);
+  const [visibility, setVisibility] = useState<'public' | 'internal'>('public');
   const [allowAuto, setAllowAuto] = useState(false);
   const [privateRegistry, setPrivateRegistry] = useState(false);
   const [username, setUsername] = useState('');
@@ -94,6 +96,7 @@ function ImageJourney({
   const [confirmAttempt, setConfirmAttempt] = useState(false);
   const [history, setHistory] = useState<components['schemas']['DeploymentResponse'][]>([]);
   const availability = useCapability('container-deployments');
+  const privateAvailability = useCapability('private-apps');
   const cache = useQueryClient();
   const active = useRef(true);
   const lock = useRef(false);
@@ -124,6 +127,10 @@ function ImageJourney({
     Boolean(operation && operation.stage !== 'accepted') || Boolean(image || password)
   );
   const permitted = availability.state === 'available' && !busy && !recovery.error;
+  const privateCreateAllowed =
+    visibility !== 'internal' ||
+    Boolean(fixedApp) ||
+    (privateAvailability.accountId === accountId && privateAvailability.state === 'available');
   const frozen = Boolean(operation);
   const unknown = operation?.stage === 'deploy-unknown' || operation?.stage === 'deploy-submitting';
   const credentialsNeeded = operation?.stage === 'credentials';
@@ -144,11 +151,23 @@ function ImageJourney({
     );
     if (app.id !== current.appId || app.type !== 'app')
       throw new Error('The app identity or type has changed. Inspect the app before resuming.');
+    if (current.createRequest.visibility === 'internal' && app.visibility !== 'internal')
+      throw new Error('Internal visibility is not confirmed. Inspect the app before deploying.');
     ensureCanWrite();
+    if (app.visibility === 'internal' || app.visibility === 'public') {
+      const endpoint = app.visibility === 'internal' ? undefined : app.url;
+      if (current.createRequest.visibility !== app.visibility || current.endpoint !== endpoint)
+        return persist({
+          ...current,
+          createRequest: { ...current.createRequest, visibility: app.visibility },
+          endpoint,
+        });
+    }
+    return current;
   }
   async function submitDeployment(current: ImageOperation) {
     ensureCanWrite();
-    await verifyApp(current);
+    current = await verifyApp(current);
     current = persist({ ...current, stage: 'deploy-submitting' });
     try {
       const deployment = await deployImage(
@@ -177,7 +196,7 @@ function ImageJourney({
       );
     const registryHost = current.deployRequest.image!.split('/')[0];
     ensureCanWrite();
-    await verifyApp(current);
+    current = await verifyApp(current);
     await unwrap(
       api.PUT('/v1/apps/{slug}/registry-credentials', {
         params: { path: { slug: current.createRequest.slug } },
@@ -215,6 +234,10 @@ function ImageJourney({
       throw new Error(
         'The creation outcome is unresolved. Inspect the app; do not create a renamed replacement.'
       );
+    if (current.createRequest.visibility === 'internal') {
+      await readPrivateAppCreateContext(accountId, plan);
+      ensureCanWrite();
+    }
     let app;
     try {
       app = await createImageApp(current.createRequest, current.createKey);
@@ -233,10 +256,14 @@ function ImageJourney({
       throw new Error(
         'App creation returned an unexpected identity. Inspect your apps before resuming.'
       );
+    if (current.createRequest.visibility === 'internal' && app.visibility !== 'internal') {
+      persist({ ...current, appId: app.id, endpoint: undefined, stage: 'app-created' });
+      throw new Error('Internal visibility was not confirmed. Inspect the app before deploying.');
+    }
     current = persist({
       ...current,
       appId: app.id,
-      endpoint: app.url,
+      endpoint: current.createRequest.visibility === 'internal' ? undefined : app.url,
       stage: current.needsCredentials ? 'credentials' : 'app-created',
     });
     void cache.invalidateQueries({ queryKey: keys.apps });
@@ -255,6 +282,7 @@ function ImageJourney({
           type: 'app',
           ram_mb: memory,
           idle_timeout_s: 0,
+          visibility,
         },
         request,
         editingApp?.existingSlug ?? slug
@@ -307,7 +335,8 @@ function ImageJourney({
     current = persist({
       ...current,
       appId: app.id,
-      endpoint: app.url,
+      endpoint: app.visibility === 'internal' ? undefined : app.url,
+      createRequest: { ...current.createRequest, visibility: app.visibility ?? 'public' },
       stage: privateRegistry ? 'credentials' : 'app-created',
     });
     if (current.needsCredentials)
@@ -356,6 +385,13 @@ function ImageJourney({
         state={availability.state}
         onRetry={availability.refresh}
       />
+      {!fixedApp && visibility === 'internal' && (
+        <CapabilityNotice
+          capability={privateAvailability.capability}
+          state={privateAvailability.state}
+          onRetry={privateAvailability.refresh}
+        />
+      )}
       {error && (
         <p role="alert" className="text-sm text-[color:var(--status-critical)]">
           {error}
@@ -512,7 +548,9 @@ function ImageJourney({
               appName={operation.createRequest.slug}
               deploymentId={operation.deploymentId ?? null}
               source={{ kind: 'image', reference: operation.deployRequest.image! }}
-              endpoint={operation.endpoint}
+              endpoint={
+                operation.createRequest.visibility === 'internal' ? null : operation.endpoint
+              }
               onLive={(deployment) => {
                 if (
                   deployment.id === operation.deploymentId &&
@@ -563,6 +601,21 @@ function ImageJourney({
                 onChange={(e) => setName(e.target.value)}
                 maxLength={40}
               />
+            </label>
+          )}
+          {!fixedApp && (
+            <label className="text-sm">
+              App visibility
+              <select
+                aria-label="App visibility"
+                className="ml-2 rounded border border-border bg-background px-2 py-1"
+                value={visibility}
+                disabled={reviewing || frozen}
+                onChange={(event) => setVisibility(event.target.value as 'public' | 'internal')}
+              >
+                <option value="public">Public edge</option>
+                <option value="internal">Internal service only</option>
+              </select>
             </label>
           )}
           <label className="text-sm">
@@ -684,6 +737,10 @@ function ImageJourney({
             <>
               <p className="text-sm">
                 Review: {fixedApp || name} · {memory} MB ·{' '}
+                {!fixedApp &&
+                  (visibility === 'internal'
+                    ? 'Internal service only · no public endpoint · '
+                    : 'Public edge · ')}
                 {allowAuto ? 'Self-contained fallback allowed' : 'Image defaults'}
                 {port && ` · Port ${port}`}
                 {health && ` · Health path ${health}`}.{' '}
@@ -695,7 +752,10 @@ function ImageJourney({
                 <Button variant="outline" disabled={busy} onClick={() => setReviewing(false)}>
                   Edit configuration
                 </Button>
-                <Button disabled={!permitted} onClick={() => void run(start)}>
+                <Button
+                  disabled={!permitted || !privateCreateAllowed}
+                  onClick={() => void run(start)}
+                >
                   {fixedApp ? 'Deploy reviewed image' : 'Create app and deploy image'}
                 </Button>
               </div>
@@ -711,6 +771,8 @@ function ImageJourney({
                     throw new Error('Enter registry credentials before review.');
                   if (!Number.isInteger(memory) || memory < 128 || memory > maxMemory)
                     throw new Error('Select memory within your plan limit.');
+                  if (!privateCreateAllowed)
+                    throw new Error('Private app availability must be confirmed before review.');
                   setError(null);
                   setReviewing(true);
                 } catch (error) {

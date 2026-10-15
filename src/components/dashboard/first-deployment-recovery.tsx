@@ -89,7 +89,7 @@ export function FirstDeploymentRecovery({
           deploymentId={recovery.deployment ?? null}
           repo={recovery.repo}
           sourceRef={recovery.ref}
-          endpoint={app.data.url}
+          endpoint={app.data.visibility === 'internal' ? null : app.data.url}
           hideRetryOptions
         />
       ) : (

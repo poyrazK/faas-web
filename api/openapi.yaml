@@ -2600,6 +2600,32 @@ paths:
 
   # ─── Apps ─────────────────────────────────────────────────────────────────
 
+  /v1/apps/{slug}/bindings:
+    get:
+      tags: [apps]
+      operationId: getAppBindingInventory
+      summary: Inspect app resource bindings without probing workloads.
+      description: Read-only best-effort inventory. A partial read returns complete=false and sanitized section issues. State is configured intent; runtime and verification are separate observations. Service, queue and outbound bindings remain app-wide when scope filters database and storage bindings.
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - name: scope
+          in: query
+          schema: { type: string }
+        - name: deployment_id
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Complete or partial metadata-only binding inventory.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AppBindingInventory' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
   /v1/apps:
     get:
       tags: [apps]
@@ -16698,6 +16724,90 @@ components:
       type: string
       enum: [micro, small, medium, large, xlarge]
 
+    AppBindingInventory:
+      type: object
+      description: Best-effort read-only binding metadata; complete does not mean healthy or verified.
+      required: [app, generated_at, complete, bindings]
+      properties:
+        app: { type: string }
+        scope: { type: string }
+        generated_at: { type: string, format: date-time }
+        requested_deployment_id: { type: string, format: uuid }
+        verification_deployment_id: { type: string, format: uuid }
+        verification_scope: { type: string }
+        complete: { type: boolean }
+        bindings:
+          type: array
+          items: { $ref: '#/components/schemas/AppBindingInventoryItem' }
+        issues:
+          type: array
+          items: { $ref: '#/components/schemas/BindingInventoryIssue' }
+        warnings: { type: array, items: { type: string } }
+    AppBindingInventoryItem:
+      type: object
+      description: Configured resource binding with independent runtime and verification observations.
+      required: [type, name, binding, scope, access, state, runtime_status, verification_status]
+      properties:
+        type: { type: string, enum: [service, postgres, object_storage, queue, outbound] }
+        name: { type: string }
+        binding: { type: string }
+        scope: { type: string }
+        access: { type: string }
+        state: { type: string }
+        runtime_status: { type: string }
+        verification_status: { type: string }
+        verification: { $ref: '#/components/schemas/BindingVerification' }
+        observed_at: { type: string, format: date-time }
+        http_url: { type: string }
+        https_env: { type: string }
+        https_url: { type: string }
+        transport: { type: string }
+    BindingInventoryIssue:
+      type: object
+      description: Sanitized reason a binding inventory section could not be read.
+      required: [type, code, severity, message]
+      properties:
+        type: { type: string }
+        code: { type: string }
+        severity: { type: string, enum: [warning, error] }
+        message: { type: string }
+    BindingVerification:
+      type: object
+      description: Sanitized durable task-guest canary evidence, never an application health guarantee.
+      required: [result, source, deployment_id, scope]
+      properties:
+        result: { type: string }
+        reason: { type: string }
+        source: { type: string }
+        deployment_id: { type: string, format: uuid }
+        scope: { type: string }
+        checked_at: { type: string, format: date-time }
+        checks:
+          type: array
+          items: { $ref: '#/components/schemas/BindingVerificationCheck' }
+    BindingVerificationCheck:
+      type: object
+      required: [name, status]
+      properties:
+        name: { type: string }
+        status: { type: string }
+    AppServiceBinding:
+      type: object
+      required: [binding, service]
+      properties:
+        binding: { type: string, pattern: '^GREGALE_SERVICE_[A-Z0-9_]+_URL$' }
+        service: { type: string }
+    ServiceCallScope:
+      type: object
+      required: [methods, path_prefixes]
+      properties:
+        methods: { type: array, minItems: 1, maxItems: 32, items: { type: string } }
+        path_prefixes: { type: array, minItems: 1, maxItems: 64, items: { type: string } }
+    ServiceCallerScopes:
+      type: object
+      maxProperties: 100
+      additionalProperties: { $ref: '#/components/schemas/ServiceCallScope' }
+
     AppResponse:
       description: "An app: slug, type, runtime (for functions), RAM/cpu/idle-timeout config, current state, last-deploy pointer, per-app outbound CIDR allowlist (ADR-031 + ADR-032), and reactive scale-up trigger targets (issue #169 / #172)."
       type: object
@@ -16706,6 +16816,7 @@ components:
         id: { type: string, pattern: '^[a-f0-9]{32}$', example: "0123456789abcdef0123456789abcdef" }
         slug: { type: string, pattern: '^[a-z0-9]([a-z0-9-]{1,38})[a-z0-9]$', example: "hello-world" }
         type: { type: string, enum: [app, function] , example: "app"}
+        visibility: { type: string, enum: [public, internal], default: public, description: "Public edge exposure or authenticated internal service routing only. Available on every plan." }
         workload_class:
           type: string
           enum: [http, graphql, grpc, job, worker]
@@ -16743,6 +16854,19 @@ components:
         preview_pr_state: { type: string, enum: [open, closed, stale, torn_down] }
         preview_expires_at: { type: [string, "null"], format: date-time }
         manifest: { $ref: '#/components/schemas/AppManifest' }
+        service_bindings:
+          type: array
+          items: { $ref: '#/components/schemas/AppServiceBinding' }
+        service_binding_policy: { type: string, enum: [account, declared] }
+        service_binding_transport: { type: string, enum: [http, https] }
+        allowed_service_callers:
+          type: array
+          maxItems: 100
+          items: { type: string }
+          description: Omitted allows any same-account caller; explicit [] denies all.
+        allowed_service_call_scopes:
+          $ref: '#/components/schemas/ServiceCallerScopes'
+          description: When present, callers absent from this map are denied.
         # ADR-031 + ADR-032 (tier-2 network follow-ups, PR-C):
         # the per-app outbound CIDR allowlist. Each entry is a
         # canonical CIDR string — v4 ("1.2.3.0/24") or v6
@@ -17052,6 +17176,19 @@ components:
       required: [slug]
       properties:
         slug: { type: string, pattern: '^[a-z0-9]([a-z0-9-]{1,38})[a-z0-9]$', minLength: 3, maxLength: 40, example: "hello-world" }
+        visibility: { type: string, enum: [public, internal], description: "Omit for public edge exposure; internal permits authenticated service routing only." }
+        allowed_service_callers:
+          type: array
+          maxItems: 100
+          items: { type: string }
+          description: Omit for same-account access; [] denies all internal callers.
+        allowed_service_call_scopes: { $ref: '#/components/schemas/ServiceCallerScopes' }
+        service_binding_targets:
+          type: array
+          maxItems: 100
+          items: { type: string }
+        service_binding_policy: { type: string, enum: [account, declared] }
+        service_binding_transport: { type: string, enum: [http, https] }
         type: { type: string, enum: [app, function] , example: "app"}
         runtime: { type: string, enum: [node22, python312, go124, go124-alpine, node24, python313] }
         ram_mb: { type: integer , example: 256}
@@ -17229,6 +17366,33 @@ components:
       description: "Partial update — every field is optional; omitted fields are unchanged."
       type: object
       properties:
+        visibility:
+          type: [string, "null"]
+          enum: [public, internal, null]
+          description: Omit for unchanged edge exposure; internal is available on every plan.
+        allowed_service_callers:
+          type: [array, "null"]
+          maxItems: 100
+          items: { type: string }
+          description: "Omit to keep unchanged, [] to deny all, an array to replace, or null to restore same-account access. Project-managed and preview apps reject this PATCH."
+        allowed_service_call_scopes:
+          oneOf:
+            - $ref: '#/components/schemas/ServiceCallerScopes'
+            - type: "null"
+          description: "Omit to keep unchanged, null to clear, or an object including {} to replace. Project-managed and preview apps reject this PATCH."
+        service_binding_targets:
+          type: [array, "null"]
+          maxItems: 100
+          items: { type: string }
+          description: "Omit or null to keep unchanged; [] clears every binding. Project-managed and preview apps reject non-null changes."
+        service_binding_policy:
+          type: [string, "null"]
+          enum: [account, declared, null]
+          description: "Omit or null to keep unchanged; account restores same-account reachability. Project-managed and preview apps reject non-null changes."
+        service_binding_transport:
+          type: [string, "null"]
+          enum: [http, https, null]
+          description: "Omit or null to keep unchanged; http is the legacy endpoint and https selects the private alias. Project-managed and preview apps reject non-null changes."
         ram_mb: { type: [integer, "null"] , example: 256}
         cpu_millicores:
           type: [integer, "null"]
