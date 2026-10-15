@@ -37,8 +37,10 @@ export function toRunState(status: string | undefined): RunState {
     case 'failed':
     case 'crashed':
       return 'error';
+    case 'undeployed':
+      return 'undeployed';
     default:
-      // `parked` and `stopped` land here, which is correct: scale-to-zero is
+      // `evicted_cold` (apid's parked state), `parked` and `stopped` land here, which is correct: scale-to-zero is
       // the normal resting state on this platform, not a fault.
       return 'idle';
   }

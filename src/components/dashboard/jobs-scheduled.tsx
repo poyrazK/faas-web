@@ -74,7 +74,8 @@ interface CronRow {
   id: string;
   app: string;
   schedule: string;
-  path: string;
+  /** The HTTP path, or `$ argv…` for a command cron, which has no path. */
+  target: string;
   enabled: boolean;
   lastFiredAt: string | null;
   description: string;
@@ -114,7 +115,7 @@ function RunHistory({
     <Modal
       open
       onClose={onClose}
-      title={`${cron.schedule} → ${cron.path}`}
+      title={`${cron.schedule} → ${cron.target}`}
       description="Recent runs, newest first."
       width="max-w-2xl"
     >
@@ -232,7 +233,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
       id: c.id,
       app: bySlug.get(c.app_id) ?? c.app_id,
       schedule: c.schedule,
-      path: c.path,
+      target: c.path ?? (c.command?.length ? `$ ${c.command.join(' ')}` : '—'),
       enabled: c.enabled,
       lastFiredAt: c.last_fired_at ?? null,
       timezone: c.timezone || 'UTC',
@@ -273,10 +274,10 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
       render: (c) => <span className="font-mono text-xs text-muted-foreground">{c.app}</span>,
     },
     {
-      key: 'path',
-      label: 'Path',
+      key: 'target',
+      label: 'Target',
       priority: 'secondary',
-      render: (c) => <span className="font-mono text-xs text-muted-foreground">{c.path}</span>,
+      render: (c) => <span className="font-mono text-xs text-muted-foreground">{c.target}</span>,
     },
     {
       key: 'enabled',
@@ -366,7 +367,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
               if (
                 !(await confirm({
                   title: 'Delete this cron?',
-                  description: `${c.schedule} → ${c.path} stops firing. This cannot be undone.`,
+                  description: `${c.schedule} → ${c.target} stops firing. This cannot be undone.`,
                   confirmLabel: 'Delete cron',
                   destructive: true,
                 }))
@@ -445,7 +446,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
                   toast({
                     kind: 'success',
                     title: 'Scheduled request created',
-                    description: `${c.schedule} → ${c.path}`,
+                    description: `${c.schedule} → ${c.path ?? path}`,
                   });
                 })
                 .catch((err: unknown) => setCreationError(errorMessage(err)));
@@ -539,7 +540,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
         rows={rows}
         columns={columns}
         initialSort={{ key: 'schedule', dir: 'asc' }}
-        searchKeys={rows.length ? ['schedule', 'description', 'path', 'app'] : undefined}
+        searchKeys={rows.length ? ['schedule', 'description', 'target', 'app'] : undefined}
         searchPlaceholder="Filter by schedule, app, or path…"
         emptyMessage="Schedule a request to your app’s endpoint for regular tasks like reports, cleanup, or syncing data."
         emptyAction={

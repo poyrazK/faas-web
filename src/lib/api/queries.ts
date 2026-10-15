@@ -2990,10 +2990,11 @@ export function useRemoveMember(org: string) {
 export function useRevokeInvitation(org: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (token: string) =>
+    // Revoked by the list's invitation id; the one-time token is never stored.
+    mutationFn: (invitationId: string) =>
       unwrap(
-        api.DELETE('/v1/orgs/{slug}/invitations/{token}', {
-          params: { path: { slug: org, token } },
+        api.DELETE('/v1/orgs/{slug}/invitations/{invitation_id}', {
+          params: { path: { slug: org, invitation_id: invitationId } },
         })
       ),
     onSuccess: () => qc.invalidateQueries({ queryKey: orgKey(org, 'invitations') }),
