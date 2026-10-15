@@ -11,7 +11,7 @@ import { QueryClient, QueryClientProvider, useMutation } from '@tanstack/react-q
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import userEvent from '@testing-library/user-event';
 import { Route as Debug } from './dashboard.debug';
-import { Route as App } from './dashboard.workflows.$workflowId';
+import { Route as App } from './dashboard.apps.$appSlug';
 
 const fixtures = vi.hoisted(() => ({
   requestState: 'ready',
@@ -176,7 +176,7 @@ async function mount(entry = '/dashboard/debug?app=alpha') {
   const routes = [Debug, App].map((route, i) =>
     createRoute({
       getParentRoute: () => dashboard,
-      path: ['debug', 'workflows/$workflowId'][i],
+      path: ['debug', 'apps/$appSlug'][i],
       component: route.options.component,
       validateSearch: route.options.validateSearch,
     })
@@ -245,7 +245,7 @@ describe('Debugger investigation navigation', () => {
 
   it('uses the same investigation body and URL state in the app Debugger tab', async () => {
     const router = await mount(
-      '/dashboard/workflows/alpha?tab=Debugger&debugFilter=cold&keep=yes#app-context'
+      '/dashboard/apps/alpha?tab=Debugger&debugFilter=cold&keep=yes#app-context'
     );
     expect(screen.getByLabelText('Quick filter')).toHaveValue('cold');
     fireEvent.click(screen.getByRole('button', { name: 'Regressions' }));
@@ -370,10 +370,14 @@ describe('Debugger investigation navigation', () => {
 
   it('keeps investigation context when moving between app tabs and browser history', async () => {
     const router = await mount(
-      '/dashboard/workflows/alpha?tab=Debugger&debugFilter=cold&keep=yes#context'
+      '/dashboard/apps/alpha?tab=Debugger&debugFilter=cold&keep=yes#context'
     );
-    await userEvent.click(screen.getByRole('button', { name: 'Overview app section' }));
-    await userEvent.click(screen.getByRole('tab', { name: 'Metrics' }));
+    await userEvent.click(screen.getByRole('tab', { name: 'Overview' }));
+    await userEvent.click(
+      within(screen.getByRole('group', { name: 'Overview pages' })).getByRole('button', {
+        name: 'Metrics',
+      })
+    );
     await waitFor(() =>
       expect(router.state.location.search).toMatchObject({
         tab: 'Metrics',
@@ -452,7 +456,7 @@ describe('Debugger investigation navigation', () => {
   });
 
   it('falls back to Overview for an invalid app tab while preserving debugger and unrelated parameters', async () => {
-    await mount('/dashboard/workflows/alpha?tab=invalid&debugFilter=slow&keep=yes');
+    await mount('/dashboard/apps/alpha?tab=invalid&debugFilter=slow&keep=yes');
     expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true');
   });
 

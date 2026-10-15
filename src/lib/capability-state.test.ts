@@ -65,11 +65,9 @@ describe('verified capability destinations', () => {
   it('hands missing console journeys to explicit CLI guidance without invented routes', () => {
     expect(capabilityEntrypoint('object-storage').href).toBe('/dashboard/storage');
     expect(capabilityEntrypoint('container-deployments').href).toBe(
-      '/dashboard/workflows/new?source=container'
+      '/dashboard/apps/new?source=container'
     );
-    expect(capabilityEntrypoint('worker-pools').href).toBe(
-      '/dashboard/workflows/new?source=worker'
-    );
+    expect(capabilityEntrypoint('worker-pools').href).toBe('/dashboard/apps/new?source=worker');
     expect(capabilityEntrypoint('future-key').href).toBeUndefined();
   });
 });

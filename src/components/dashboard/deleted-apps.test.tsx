@@ -8,7 +8,7 @@ import { DeletedApps } from './deleted-apps';
 
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children }: { children: ReactNode }) => (
-    <a href="/dashboard/workflows/retained-app">{children}</a>
+    <a href="/dashboard/apps/retained-app">{children}</a>
   ),
 }));
 const row = {

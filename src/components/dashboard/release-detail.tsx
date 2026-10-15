@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { RefreshDouble } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
+import { SegmentedControl } from '@/components/dashboard/tabs';
 import { Modal } from '@/components/ui/modal';
 import { ErrorState, InlinePhase, LoadingState, UnreachableState, queryPhase } from './primitives';
 import { LogStreamRecovery } from './log-stream-recovery';
@@ -155,22 +156,12 @@ export function ReleaseDetailPanel({
           </p>
         ) : (
           <div className="flex flex-col gap-5">
-            <nav
-              aria-label="Release detail sections"
-              className="flex flex-wrap gap-2 border-b border-border pb-3"
-            >
-              {sections.map(([value, label]) => (
-                <Button
-                  key={value}
-                  size="xs"
-                  variant={value === activeSection ? 'outline' : 'ghost'}
-                  aria-pressed={value === activeSection}
-                  onClick={() => (onSectionChange ?? setLocalSection)(value)}
-                >
-                  {label}
-                </Button>
-              ))}
-            </nav>
+            <SegmentedControl
+              label="Release detail sections"
+              value={activeSection}
+              options={sections.map(([key, label]) => ({ key, label }))}
+              onChange={(value) => (onSectionChange ?? setLocalSection)(value)}
+            />
             {activeSection === 'overview' && (
               <>
                 {(failedDeployment || failedBuild) && (

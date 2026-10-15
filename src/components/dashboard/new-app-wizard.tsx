@@ -262,7 +262,7 @@ function CreateAppWizard({
   useUnsavedGuard(
     !createdId && Boolean(repo.trim() || (name.trim() && name !== initialName)),
     undefined,
-    onboarding ? '/onboarding' : '/dashboard/workflows/new'
+    onboarding ? '/onboarding' : '/dashboard/apps/new'
   );
 
   const nameError = appNameError(name);
@@ -553,7 +553,7 @@ function CreateAppWizard({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => navigate({ to: '/dashboard/workflows' })}
+                onClick={() => navigate({ to: '/dashboard/apps' })}
               >
                 All apps
               </Button>
@@ -563,8 +563,8 @@ function CreateAppWizard({
                 className="gap-1.5 rounded-md"
                 onClick={() =>
                   navigate({
-                    to: '/dashboard/workflows/$workflowId',
-                    params: { workflowId: createdId },
+                    to: '/dashboard/apps/$appSlug',
+                    params: { appSlug: createdId },
                   })
                 }
               >
@@ -607,7 +607,7 @@ function CreateAppWizard({
     >
       {!onboarding && (
         <Link
-          to="/dashboard/workflows"
+          to="/dashboard/apps"
           className="inline-flex w-fit items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
         >
           <ArrowLeft className="h-3 w-3" />

@@ -151,6 +151,6 @@ describe('App deletion contract copy', () => {
     expect(mocks.toast).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'App deletion scheduled' })
     );
-    expect(mocks.navigate).toHaveBeenCalledWith({ to: '/dashboard/workflows' });
+    expect(mocks.navigate).toHaveBeenCalledWith({ to: '/dashboard/apps' });
   });
 });

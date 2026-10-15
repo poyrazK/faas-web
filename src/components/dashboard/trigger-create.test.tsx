@@ -66,7 +66,7 @@ describe('CreateTrigger', () => {
     expect(await screen.findByText(/create an app first/i)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /create app/i })).toHaveAttribute(
       'href',
-      '/dashboard/workflows/new'
+      '/dashboard/apps/new'
     );
   });
 

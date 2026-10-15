@@ -52,7 +52,7 @@ vi.mock('@/components/dashboard/resource-table', () => ({
 }));
 vi.mock('@/components/ui/modal', () => ({ Modal: () => null }));
 
-const { DeploymentsPage } = await import('./dashboard.deployments');
+const { DeploymentsPage } = await import('./dashboard.releases');
 
 const ready = (data: unknown) => ({ data, isPending: false, error: null, refetch: vi.fn() });
 

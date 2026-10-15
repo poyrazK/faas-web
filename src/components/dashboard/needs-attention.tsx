@@ -253,8 +253,8 @@ export function NeedsAttentionContent({
                     >
                       <Link
                         onClick={onNavigate}
-                        to="/dashboard/workflows/$workflowId"
-                        params={{ workflowId: app.slug }}
+                        to="/dashboard/apps/$appSlug"
+                        params={{ appSlug: app.slug }}
                         search={{ tab: 'Logs' }}
                         aria-label={`View logs for ${app.slug}`}
                         className={ACTION_CLASS}
@@ -267,7 +267,7 @@ export function NeedsAttentionContent({
                 {appFailures.length > DISPLAY_LIMIT && (
                   <p className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
                     <span>Showing 3 of {appFailures.length} failing apps.</span>
-                    <Link onClick={onNavigate} to="/dashboard/workflows" className={ACTION_CLASS}>
+                    <Link onClick={onNavigate} to="/dashboard/apps" className={ACTION_CLASS}>
                       View all apps
                     </Link>
                   </p>
@@ -298,7 +298,7 @@ export function NeedsAttentionContent({
                     >
                       <Link
                         onClick={onNavigate}
-                        to="/dashboard/deployments"
+                        to="/dashboard/releases"
                         search={{ deployment: deployment.id }}
                         aria-label={`View deployment ${deployment.id}`}
                         title={deployment.id}
@@ -348,7 +348,7 @@ export function NeedsAttentionContent({
           <span>
             Deployment checks cover at most the latest 50 deployments, not the full history.
           </span>
-          <Link onClick={onNavigate} to="/dashboard/deployments" className={ACTION_CLASS}>
+          <Link onClick={onNavigate} to="/dashboard/releases" className={ACTION_CLASS}>
             Open deployment history
           </Link>
         </p>

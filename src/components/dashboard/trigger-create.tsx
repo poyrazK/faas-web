@@ -103,7 +103,7 @@ export function CreateTrigger({ account, apps }: { account: Account; apps: App[]
           A trigger needs a destination to invoke.
         </p>
         <Button asChild size="sm" className="mt-4">
-          <Link to="/dashboard/workflows/new">Create app</Link>
+          <Link to="/dashboard/apps/new">Create app</Link>
         </Button>
       </div>
     );

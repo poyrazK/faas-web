@@ -700,7 +700,7 @@ function ImageJourney({
                       <li key={item.id} className="break-all text-sm">
                         <a
                           className="text-brand underline"
-                          href={`/dashboard/deployments?deployment=${encodeURIComponent(item.id)}`}
+                          href={`/dashboard/releases?deployment=${encodeURIComponent(item.id)}`}
                         >
                           {item.id}
                         </a>{' '}
@@ -785,7 +785,7 @@ function ImageJourney({
           )}
           <a
             className="w-fit text-sm text-brand underline"
-            href={`/dashboard/workflows/${encodeURIComponent(operation.createRequest.slug)}?tab=Deployments`}
+            href={`/dashboard/apps/${encodeURIComponent(operation.createRequest.slug)}?tab=Deployments`}
           >
             Inspect app and releases
           </a>

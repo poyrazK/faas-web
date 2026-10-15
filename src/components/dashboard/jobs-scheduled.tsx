@@ -497,7 +497,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
               {!appQuery.isPending && !appQuery.error && !targetApp && (
                 <p className="text-sm text-muted-foreground">
                   Create an app before scheduling requests.{' '}
-                  <Link to="/dashboard/workflows/new" className="underline underline-offset-4">
+                  <Link to="/dashboard/apps/new" className="underline underline-offset-4">
                     Create an app
                   </Link>
                 </p>
@@ -548,7 +548,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
               Create your first scheduled request
             </Button>
           ) : (
-            <Link to="/dashboard/workflows/new" className="text-sm underline underline-offset-4">
+            <Link to="/dashboard/apps/new" className="text-sm underline underline-offset-4">
               Create an app
             </Link>
           )

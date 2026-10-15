@@ -9,7 +9,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { Route as Apps } from './dashboard.workflows.index';
+import { Route as Apps } from './dashboard.apps.index';
 
 let empty = true;
 vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { id: 'account-a' } }) }));
@@ -38,17 +38,17 @@ vi.mock('@/lib/store', () => ({
 beforeEach(() => {
   empty = true;
 });
-async function mount(entry = '/dashboard/workflows') {
+async function mount(entry = '/dashboard/apps') {
   const root = createRootRoute({ component: Outlet });
   const route = createRoute({
     getParentRoute: () => root,
-    path: '/dashboard/workflows/',
+    path: '/dashboard/apps/',
     component: Apps.options.component,
     validateSearch: Apps.options.validateSearch,
   });
   const create = createRoute({
     getParentRoute: () => root,
-    path: '/dashboard/workflows/new',
+    path: '/dashboard/apps/new',
     component: () => <h1>New app wizard</h1>,
   });
   const router = createRouter({
@@ -66,7 +66,7 @@ describe('Apps polish', () => {
     'preserves foreign search and hash when changing %s',
     async (filter) => {
       empty = false;
-      const router = await mount('/dashboard/workflows?campaign=handoff#apps');
+      const router = await mount('/dashboard/apps?campaign=handoff#apps');
       if (filter === 'text') await userEvent.type(screen.getByRole('searchbox'), 'alpha');
       if (filter === 'state')
         await userEvent.click(screen.getByRole('button', { name: 'Running' }));
@@ -81,7 +81,7 @@ describe('Apps polish', () => {
   );
   it('clears only App filters and preserves unrelated URL context', async () => {
     empty = false;
-    const router = await mount('/dashboard/workflows?state=error&q=missing&campaign=handoff#apps');
+    const router = await mount('/dashboard/apps?state=error&q=missing&campaign=handoff#apps');
     await userEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
     expect(router.state.location.search.campaign).toBe('handoff');
     expect(router.state.location.hash).toBe('apps');
@@ -93,7 +93,7 @@ describe('Apps polish', () => {
     const router = await mount();
     await userEvent.click(screen.getByRole('link', { name: 'Create your first app' }));
     expect(await screen.findByRole('heading', { name: 'New app wizard' })).toBeInTheDocument();
-    expect(router.state.location.pathname).toBe('/dashboard/workflows/new');
+    expect(router.state.location.pathname).toBe('/dashboard/apps/new');
   });
   it('uses the App noun and compact detail access without hiding state', async () => {
     empty = false;

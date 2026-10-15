@@ -69,7 +69,7 @@ export function FirstDeploymentRecovery({
   const code = attempt.data?.error_code;
   const configTab =
     code === 'env_var_missing'
-      ? 'Env vars'
+      ? 'Environment'
       : code === 'app_runtime_oom' || code === 'app_startup_timeout' || code === 'app_not_listening'
         ? 'Configuration'
         : undefined;
@@ -141,12 +141,12 @@ export function FirstDeploymentRecovery({
             </Button>
             {configTab && (
               <Link
-                to="/dashboard/workflows/$workflowId"
-                params={{ workflowId: recovery.app }}
+                to="/dashboard/apps/$appSlug"
+                params={{ appSlug: recovery.app }}
                 search={{ tab: configTab }}
                 className="text-sm text-brand underline"
               >
-                {configTab === 'Env vars'
+                {configTab === 'Environment'
                   ? 'Review environment variables'
                   : 'Review app configuration'}
               </Link>
@@ -178,8 +178,8 @@ export function FirstDeploymentRecovery({
         />
       )}
       <Link
-        to="/dashboard/workflows/$workflowId"
-        params={{ workflowId: recovery.app }}
+        to="/dashboard/apps/$appSlug"
+        params={{ appSlug: recovery.app }}
         search={{ tab: 'Deployments' }}
         className="text-sm text-brand underline"
       >

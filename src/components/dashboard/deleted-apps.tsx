@@ -94,8 +94,8 @@ function Recovery({ attempt, onChange }: { attempt: RestoreAttempt; onChange: ()
           </p>
           <Link
             className="text-primary underline"
-            to="/dashboard/workflows/$workflowId"
-            params={{ workflowId: attempt.slug }}
+            to="/dashboard/apps/$appSlug"
+            params={{ appSlug: attempt.slug }}
           >
             Open restored app
           </Link>

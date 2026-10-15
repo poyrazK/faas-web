@@ -17,28 +17,28 @@ interface Entrypoint {
 }
 const TARGETS: Record<string, Entrypoint> = {
   'object-storage': { href: '/dashboard/storage', label: 'Open storage' },
-  'github-deploys': { href: '/dashboard/workflows/new?source=git', label: 'Deploy from Git' },
-  'source-deploy': { href: '/dashboard/workflows/new', label: 'Create an app' },
+  'github-deploys': { href: '/dashboard/apps/new?source=git', label: 'Deploy from Git' },
+  'source-deploy': { href: '/dashboard/apps/new', label: 'Create an app' },
   'custom-domains': { href: '/dashboard/domains', label: 'Open domains' },
-  'scale-to-zero': { href: '/dashboard/workflows', label: 'Choose an app' },
+  'scale-to-zero': { href: '/dashboard/apps', label: 'Choose an app' },
   'workflows-and-jobs': { href: '/dashboard/jobs?section=automations', label: 'Open automations' },
   'container-deployments': {
-    href: '/dashboard/workflows/new?source=container',
+    href: '/dashboard/apps/new?source=container',
     label: 'Deploy an image',
   },
   'worker-pools': {
-    href: '/dashboard/workflows/new?source=worker',
+    href: '/dashboard/apps/new?source=worker',
     label: 'Create an OCI worker',
   },
   'disposable-runs': {
     instruction: 'Use the CLI or API for isolated runs. See the disposable executions guide.',
   },
-  'pr-previews': { href: '/dashboard/deployments', label: 'Open releases' },
-  issues: { href: '/dashboard/workflows', label: 'Choose an app, then open Issues' },
-  companions: { href: '/dashboard/workflows', label: 'Choose an app, then open Companions' },
-  'private-apps': { href: '/dashboard/workflows/new', label: 'Create an app' },
-  'internal-services': { href: '/dashboard/workflows', label: 'Choose an app, then open Services' },
-  'mcp-hosting': { href: '/dashboard/workflows', label: 'Choose an app, then open MCP' },
+  'pr-previews': { href: '/dashboard/releases', label: 'Open releases' },
+  issues: { href: '/dashboard/apps', label: 'Choose an app, then open Issues' },
+  companions: { href: '/dashboard/apps', label: 'Choose an app, then open Companions' },
+  'private-apps': { href: '/dashboard/apps/new', label: 'Create an app' },
+  'internal-services': { href: '/dashboard/apps', label: 'Choose an app, then open Services' },
+  'mcp-hosting': { href: '/dashboard/apps', label: 'Choose an app, then open MCP' },
 };
 export function capabilityEntrypoint(key: string): Entrypoint {
   return (

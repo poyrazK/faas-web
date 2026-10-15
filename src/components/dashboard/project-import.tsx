@@ -73,7 +73,7 @@ export function ProjectImport({
     scanResult.branch === branch
       ? scanResult.plan
       : null;
-  useUnsavedGuard(Boolean(file) && !applied, undefined, '/dashboard/workflows/new');
+  useUnsavedGuard(Boolean(file) && !applied, undefined, '/dashboard/apps/new');
 
   const slugOk = slug.trim() === '' || SLUG_RULE.test(slug.trim());
   const showSlugError = slugTouched && !slugOk;
@@ -322,8 +322,8 @@ export function ProjectImport({
             {applied.apps.map((a) => (
               <li key={a.id}>
                 <Link
-                  to="/dashboard/workflows/$workflowId"
-                  params={{ workflowId: a.slug }}
+                  to="/dashboard/apps/$appSlug"
+                  params={{ appSlug: a.slug }}
                   className="pressable inline-flex items-center gap-1.5 rounded font-mono text-xs text-brand hover:text-brand-hover"
                 >
                   {a.slug}

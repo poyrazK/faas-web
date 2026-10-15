@@ -40,9 +40,9 @@ async function mount(props = inputs()) {
   const router = createRouter({
     routeTree: root.addChildren([
       index,
-      leaf('/dashboard/workflows'),
-      leaf('/dashboard/workflows/$workflowId'),
-      leaf('/dashboard/deployments'),
+      leaf('/dashboard/apps'),
+      leaf('/dashboard/apps/$appSlug'),
+      leaf('/dashboard/releases'),
       leaf('/dashboard/usage'),
     ]),
     history: createMemoryHistory({ initialEntries: ['/'] }),
@@ -72,11 +72,11 @@ describe('app failures', () => {
     await mount(props);
     expect(panel().getByRole('link', { name: 'View logs for alpha' })).toHaveAttribute(
       'href',
-      '/dashboard/workflows/alpha?tab=Logs'
+      '/dashboard/apps/alpha?tab=Logs'
     );
     expect(panel().getByRole('link', { name: 'View logs for beta' })).toHaveAttribute(
       'href',
-      '/dashboard/workflows/beta?tab=Logs'
+      '/dashboard/apps/beta?tab=Logs'
     );
     expect(panel().getByRole('link', { name: 'View logs for gamma' })).toBeInTheDocument();
     expect(panel().getAllByRole('link', { name: /View logs/ })).toHaveLength(3);
@@ -90,7 +90,7 @@ describe('app failures', () => {
     expect(panel().getByText('Showing 3 of 4 failing apps.')).toBeInTheDocument();
     expect(panel().getByRole('link', { name: 'View all apps' })).toHaveAttribute(
       'href',
-      '/dashboard/workflows'
+      '/dashboard/apps'
     );
   });
 });
@@ -113,7 +113,7 @@ describe('recent failed deployments', () => {
     await mount(props);
     expect(panel().getByRole('link', { name: 'View deployment recent' })).toHaveAttribute(
       'href',
-      '/dashboard/deployments?deployment=recent'
+      '/dashboard/releases?deployment=recent'
     );
     expect(panel().getByRole('link', { name: 'View deployment boundary' })).toBeInTheDocument();
     expect(panel().getAllByRole('link', { name: /View deployment / })).toHaveLength(2);
@@ -133,15 +133,15 @@ describe('recent failed deployments', () => {
     await mount(props);
     const links = panel().getAllByRole('link', { name: /View deployment / });
     expect(links.map((link) => link.getAttribute('href'))).toEqual([
-      '/dashboard/deployments?deployment=newest',
-      '/dashboard/deployments?deployment=second',
-      '/dashboard/deployments?deployment=third',
+      '/dashboard/releases?deployment=newest',
+      '/dashboard/releases?deployment=second',
+      '/dashboard/releases?deployment=third',
     ]);
     expect(panel().getByText('Showing 3 of 4 recent failed deployments.')).toBeInTheDocument();
     expect(panel().getByText(/latest 50 deployments/i)).toBeInTheDocument();
     expect(panel().getByRole('link', { name: 'Open deployment history' })).toHaveAttribute(
       'href',
-      '/dashboard/deployments'
+      '/dashboard/releases'
     );
   });
 

@@ -250,7 +250,7 @@ describe('Jobs hub', () => {
     await mount('/dashboard/jobs?section=scheduled');
     expect(screen.getByRole('link', { name: 'Create an app' })).toHaveAttribute(
       'href',
-      '/dashboard/workflows/new'
+      '/dashboard/apps/new'
     );
   });
 

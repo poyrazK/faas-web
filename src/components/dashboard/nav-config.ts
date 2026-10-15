@@ -70,12 +70,12 @@ export const NAV_HUBS: NavHub[] = [
     sidebarIconClassName: 'text-brand/80',
   },
   {
-    to: '/dashboard/workflows',
+    to: '/dashboard/apps',
     label: 'Apps',
     icon: WorkflowIcon,
     sidebarIconClassName: 'text-cat-compute/80',
     sections: [
-      { to: '/dashboard/workflows', label: 'Apps', icon: WorkflowIcon },
+      { to: '/dashboard/apps', label: 'Apps', icon: WorkflowIcon },
       { to: '/dashboard/templates', label: 'Templates', icon: Cube },
       { to: '/dashboard/import', label: 'Import', icon: Upload },
     ],
@@ -105,18 +105,18 @@ export const NAV_HUBS: NavHub[] = [
     ],
   },
   {
-    to: '/dashboard/deployments',
+    to: '/dashboard/releases',
     label: 'Releases',
     icon: Rocket,
     sidebarIconClassName: 'text-cat-compute/80',
     pageOwnsNavigation: true,
     sections: [
-      { to: '/dashboard/deployments', label: 'Deployments', icon: Rocket },
+      { to: '/dashboard/releases', label: 'Deployments', icon: Rocket },
       { to: '/dashboard/builds', label: 'Builds', icon: Package },
     ],
   },
   {
-    to: '/dashboard/workers',
+    to: '/dashboard/instances',
     label: 'Instances',
     icon: Server,
     sidebarIconClassName: 'text-cat-compute/80',
@@ -150,7 +150,7 @@ export const NAV_HUBS: NavHub[] = [
     sidebarIconClassName: 'text-cat-security/80',
     sections: [
       { to: '/dashboard/debug', label: 'Debugger', icon: Search },
-      { to: '/dashboard/traces', label: 'Invocations', icon: Activity },
+      { to: '/dashboard/invocations', label: 'Invocations', icon: Activity },
       { to: '/dashboard/audit', label: 'Audit Log', icon: Journal },
     ],
   },
@@ -259,11 +259,11 @@ export function isDisclosureHub(hub: NavHub): boolean {
 export const APP_TABS: { tab: string; segment: string }[] = [
   { tab: 'Metrics', segment: 'metrics' },
   { tab: 'Logs', segment: 'logs' },
-  { tab: 'Routes', segment: 'apis' },
+  { tab: 'Routes', segment: 'routes' },
   { tab: 'Secrets', segment: 'secrets' },
   { tab: 'Env vars', segment: 'env' },
   { tab: 'Queues', segment: 'queues' },
-  { tab: 'Upstreams', segment: 'databases' },
+  { tab: 'Upstreams', segment: 'upstreams' },
   { tab: 'Alerts', segment: 'alerts' },
   { tab: 'Webhooks', segment: 'webhooks' },
   { tab: 'Edge rules', segment: 'edge-rules' },
@@ -328,6 +328,9 @@ export const SECTION_LABELS: Record<string, string> = {
       i.label,
     ])
   ),
+  // The Releases page keeps "Deployments" as a searchable section name, but its
+  // title is the page's own.
+  releases: 'Releases',
   team: 'Team',
   keys: 'API Keys',
   account: 'Account',

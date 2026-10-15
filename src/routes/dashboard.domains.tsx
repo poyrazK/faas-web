@@ -381,7 +381,7 @@ function DomainsPage() {
             </Button>
           ) : apps ? (
             <Button asChild size="sm">
-              <Link to="/dashboard/workflows/new">Create an app</Link>
+              <Link to="/dashboard/apps/new">Create an app</Link>
             </Button>
           ) : undefined
         }

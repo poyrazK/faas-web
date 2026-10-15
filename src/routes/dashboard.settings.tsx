@@ -1,5 +1,6 @@
 import { createFileRoute, Link, useNavigate, useRouterState } from '@tanstack/react-router';
 import { PageHeader } from '@/components/dashboard/primitives';
+import { SegmentGroup, segmentClassName } from '@/components/dashboard/tabs';
 import { SettingsPanels } from '@/components/dashboard/settings-panels';
 import { PlatformCapabilities } from '@/components/dashboard/platform-capabilities';
 import { IntegrationSettings } from '@/components/dashboard/integration-settings';
@@ -138,7 +139,7 @@ function SettingsPage() {
       {section === 'security' && <SecuritySettings />}
       {section === 'api-keys' && (
         <>
-          <nav aria-label="API key scopes" className="flex gap-3">
+          <SegmentGroup as="nav" label="API key scopes">
             {(['personal', 'organization'] as const).map((value) => (
               <Link
                 key={value}
@@ -146,12 +147,12 @@ function SettingsPage() {
                 search={(previous) => ({ ...previous, section: 'api-keys', scope: value })}
                 hash={hash}
                 aria-current={scope === value ? 'page' : undefined}
-                className="rounded-md border border-border px-3 py-2 text-sm aria-[current=page]:border-brand"
+                className={segmentClassName(scope === value)}
               >
                 {value === 'personal' ? 'Personal' : 'Organization'}
               </Link>
             ))}
-          </nav>
+          </SegmentGroup>
           {scope === 'personal' ? (
             <PersonalKeysBody
               selectedKeyId={search.key}

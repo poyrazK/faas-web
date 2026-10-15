@@ -1,6 +1,15 @@
-import { useRef, useState } from 'react';
-import { cn } from '@/lib/utils';
+import { useState } from 'react';
+import { SegmentedControl, Tabs, tabId } from './tabs';
 
+/**
+ * The app page's pages, in six groups.
+ *
+ * The groups are the tabs; a group's pages are a segmented control beneath
+ * them, shown only when the group has more than one. It used to be the other
+ * way round — the groups as a boxed pill bar and every page as an underline tab
+ * — so the strip that changed least looked heaviest, and the eye landed on a
+ * row of up to eight peers before it knew which group it was in.
+ */
 export const APP_TAB_GROUPS = [
   { label: 'Overview', tabs: ['Overview', 'Metrics', 'Invoke'] },
   { label: 'Delivery', tabs: ['Deployments', 'Activity'] },
@@ -19,10 +28,38 @@ export const APP_TAB_GROUPS = [
     ],
   },
   { label: 'Automate', tabs: ['Automations', 'Queues', 'Webhooks'] },
-  { label: 'Configure', tabs: ['Secrets', 'Env vars', 'Configuration', 'Companions'] },
+  { label: 'Configure', tabs: ['Environment', 'Configuration', 'Companions'] },
 ] as const;
 export type AppTab = (typeof APP_TAB_GROUPS)[number]['tabs'][number];
+type AppTabGroup = (typeof APP_TAB_GROUPS)[number];
+type AppTabGroupLabel = AppTabGroup['label'];
 export const APP_DETAIL_TABS: readonly AppTab[] = APP_TAB_GROUPS.flatMap((g) => [...g.tabs]);
+
+/**
+ * Tabs that were merged away. Env vars and secrets are one question — what
+ * does this app's environment contain — so they are one page now; links that
+ * still name either land on it.
+ */
+const LEGACY_APP_TABS: Record<string, AppTab> = {
+  Secrets: 'Environment',
+  'Env vars': 'Environment',
+};
+
+/** The tab a `?tab=` value names, including retired names; undefined if none. */
+export function resolveAppTab(value: unknown): AppTab | undefined {
+  if (typeof value !== 'string') return undefined;
+  if ((APP_DETAIL_TABS as readonly string[]).includes(value)) return value as AppTab;
+  return LEGACY_APP_TABS[value];
+}
+
+export function appTabGroup(tab: AppTab): AppTabGroup {
+  return APP_TAB_GROUPS.find((g) => (g.tabs as readonly string[]).includes(tab))!;
+}
+
+/** The id of the group tab that labels the panel showing `tab`. */
+export function appTabPanelLabel(panelId: string, tab: AppTab) {
+  return tabId(panelId, appTabGroup(tab).label);
+}
 
 export function AppTabNavigation({
   tab,
@@ -33,84 +70,37 @@ export function AppTabNavigation({
   onSelect: (tab: AppTab) => void;
   panelId: string;
 }) {
-  const refs = useRef<(HTMLButtonElement | null)[]>([]);
-  const [remembered, setRemembered] = useState<Partial<Record<string, AppTab>>>({});
-  const active = APP_TAB_GROUPS.find((g) => (g.tabs as readonly string[]).includes(tab))!;
+  const [remembered, setRemembered] = useState<Partial<Record<AppTabGroupLabel, AppTab>>>({});
+  const active = appTabGroup(tab);
   const select = (next: AppTab) => {
-    const target = APP_TAB_GROUPS.find((g) => (g.tabs as readonly string[]).includes(next))!;
-    setRemembered((current) => ({ ...current, [active.label]: tab, [target.label]: next }));
+    setRemembered((current) => ({
+      ...current,
+      [active.label]: tab,
+      [appTabGroup(next).label]: next,
+    }));
     onSelect(next);
   };
+  const pages = active.tabs.map((name) => ({ key: name as AppTab, label: name }));
   return (
     <div className="flex flex-col gap-3">
-      <nav
-        aria-label="App sections"
-        className="flex flex-wrap gap-1 rounded-lg border border-border bg-card p-1"
-      >
-        {APP_TAB_GROUPS.map((group) => (
-          <button
-            key={group.label}
-            type="button"
-            aria-pressed={group === active}
-            aria-label={`${group.label} app section`}
-            onClick={() => select(remembered[group.label] ?? group.tabs[0])}
-            className={cn(
-              'pressable rounded-md px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-brand',
-              group === active
-                ? 'bg-muted text-foreground'
-                : 'text-muted-foreground hover:text-foreground'
-            )}
-          >
-            {group.label}
-          </button>
-        ))}
-      </nav>
-      <div
-        role="tablist"
-        aria-label={`${active.label} tabs`}
-        className="flex flex-wrap gap-1 border-b border-border"
-      >
-        {active.tabs.map((name, index) => (
-          <button
-            key={name}
-            type="button"
-            role="tab"
-            id={`${panelId}-tab-${name}`}
-            ref={(el) => {
-              refs.current[index] = el;
-            }}
-            aria-selected={tab === name}
-            aria-controls={panelId}
-            tabIndex={tab === name ? 0 : -1}
-            onClick={() => select(name)}
-            onKeyDown={(event) => {
-              const last = active.tabs.length - 1;
-              const next =
-                event.key === 'ArrowRight'
-                  ? (index + 1) % active.tabs.length
-                  : event.key === 'ArrowLeft'
-                    ? (index + last) % active.tabs.length
-                    : event.key === 'Home'
-                      ? 0
-                      : event.key === 'End'
-                        ? last
-                        : null;
-              if (next === null) return;
-              event.preventDefault();
-              refs.current[next]?.focus();
-              select(active.tabs[next]);
-            }}
-            className={cn(
-              'pressable -mb-px border-b-2 px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-brand',
-              tab === name
-                ? 'border-brand text-foreground'
-                : 'border-transparent text-muted-foreground hover:text-foreground'
-            )}
-          >
-            {name}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        label="App sections"
+        value={active.label}
+        options={APP_TAB_GROUPS.map((group) => ({ key: group.label, label: group.label }))}
+        onChange={(label) => {
+          const group = APP_TAB_GROUPS.find((g) => g.label === label)!;
+          select(remembered[group.label] ?? group.tabs[0]);
+        }}
+        panelId={panelId}
+      />
+      {pages.length > 1 && (
+        <SegmentedControl
+          label={`${active.label} pages`}
+          value={tab}
+          options={pages}
+          onChange={select}
+        />
+      )}
     </div>
   );
 }

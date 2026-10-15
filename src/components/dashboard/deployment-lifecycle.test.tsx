@@ -83,7 +83,7 @@ describe('DeploymentLifecycle', () => {
     expect(retry).toHaveBeenCalledWith({ id: 'd'.repeat(32), from_stage: 'source_download' });
     expect(await screen.findByRole('link', { name: 'View new deployment' })).toHaveAttribute(
       'href',
-      '/dashboard/deployments?deployment=new-deployment&releaseSection=overview'
+      '/dashboard/releases?deployment=new-deployment&releaseSection=overview'
     );
     expect(screen.getByRole('status')).toHaveTextContent('failed record is unchanged');
     expect(screen.getByRole('button', { name: 'Retry deployment' })).toBeDisabled();
@@ -257,7 +257,7 @@ describe('DeploymentLifecycle', () => {
     expect(screen.getByRole('button', { name: 'Retry deployment' })).toBeDisabled();
     expect(screen.getByRole('link', { name: 'Check deployment history' })).toHaveAttribute(
       'href',
-      '/dashboard/deployments?'
+      '/dashboard/releases?'
     );
   });
 
