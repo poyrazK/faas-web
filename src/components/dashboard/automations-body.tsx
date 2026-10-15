@@ -13,6 +13,7 @@ import { AutomationStatus, Pagination } from './automation-primitives';
 import { AutomationRuns } from './automation-runs';
 import { availabilityMessage, jsonValue } from './automation-definition';
 import { useAuth } from '@/lib/auth';
+import { useCapability } from '@/lib/api/capabilities';
 import { errorMessage } from '@/lib/api/errors';
 import {
   useAutomations,
@@ -125,6 +126,10 @@ function AppAutomations({
 }: JobsSelectionProps & { account: string; slug: string; appId: string }) {
   const q = useAutomations(account, slug);
   const { toast } = useToast();
+  // The stage comes from the capability registry; nothing is claimed until it answers.
+  const { capability } = useCapability('workflows-and-jobs');
+  const maturity =
+    capability?.maturity === 'preview' ? 'preview' : capability?.maturity === 'beta' ? 'beta' : '';
   const [reloadKey, setReloadKey] = useState(0);
   const phase = queryPhase({ loading: q.isPending, error: q.error });
   const rows = (q.data?.automations ?? []).map((automation) => ({
@@ -236,7 +241,8 @@ function AppAutomations({
         )}
         {q.data && (
           <p className="mb-4 text-xs text-muted-foreground">
-            {rows.length} of {q.data.max_definitions} definitions used · Automations preview
+            {rows.length} of {q.data.max_definitions} definitions used
+            {maturity && ` · Automations ${maturity}`}
             {atLimit ? ' · Definition limit reached' : ''}
           </p>
         )}

@@ -10,6 +10,14 @@ const state = vi.hoisted(() => ({
   runtime: false,
   empty: false,
   toast: vi.fn(),
+  maturity: 'preview' as string | undefined,
+}));
+vi.mock('@/lib/api/capabilities', () => ({
+  useCapability: () => ({
+    capability: state.maturity
+      ? { key: 'workflows-and-jobs', maturity: state.maturity }
+      : undefined,
+  }),
 }));
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children }: { children: ReactNode }) => <a>{children}</a>,
@@ -103,6 +111,7 @@ beforeEach(() => {
   state.empty = false;
   state.read.mockClear();
   state.toast.mockClear();
+  state.maturity = 'preview';
 });
 it('keeps authoring discoverable while runtime execution is disabled', () => {
   render(<AutomationsBody search={{ app: 'alpha', automation: 'orders' }} onSelection={vi.fn()} />);
@@ -215,4 +224,15 @@ it('shows health tiles with the run history', () => {
   );
   expect(screen.getByText('Runs · last 7 days')).toBeInTheDocument();
   expect(screen.getByRole('tab', { name: 'Run history' })).toHaveAttribute('aria-selected', 'true');
+});
+
+it.each([
+  ['preview', '1 of 10 definitions used · Automations preview'],
+  ['beta', '1 of 10 definitions used · Automations beta'],
+  ['ga', '1 of 10 definitions used'],
+  [undefined, '1 of 10 definitions used'],
+])('labels the automation stage from the capability registry (%s)', (maturity, text) => {
+  state.maturity = maturity;
+  render(<AutomationsBody search={{ app: 'alpha' }} onSelection={vi.fn()} />);
+  expect(screen.getByText(/definitions used/)).toHaveTextContent(new RegExp(`^${text}$`));
 });
