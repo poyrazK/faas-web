@@ -3128,9 +3128,13 @@ export interface paths {
         post?: never;
         /**
          * Purge cached responses for an app.
-         * @description Requests an in-process response-cache purge on every gateway. The
-         *     optional path glob limits the purge to matching normalized request
-         *     paths; omit it to purge the complete app cache.
+         * @description Records a durable response-cache purge request for every gateway and
+         *     the optional distributed cache tier. Gateways replay missed requests;
+         *     `GET /v1/apps/{slug}/policy/status` reports convergence in `response_cache`.
+         *     The optional path glob limits the purge to
+         *     matching normalized request paths. The optional tag limits it to
+         *     responses carrying that Cache-Tag. Path and tag are mutually exclusive;
+         *     omit both to purge the complete app cache.
          */
         delete: operations["purgeAppCache"];
         options?: never;
@@ -15121,7 +15125,7 @@ export interface components {
              */
             validate_mode: "block" | "observe" | "warn";
             /** @description Kind-tagged union — shape varies by `kind`. */
-            action: components["schemas"]["EdgeRuleRouteAction"] | components["schemas"]["EdgeRuleRewriteAction"] | components["schemas"]["EdgeRuleRedirectAction"] | components["schemas"]["EdgeRuleHeadersAction"] | components["schemas"]["EdgeRuleCORSAction"] | components["schemas"]["EdgeRuleJWTAction"] | components["schemas"]["EdgeRuleIPAction"] | components["schemas"]["EdgeRuleValidateAction"] | components["schemas"]["EdgeRuleLimitAction"] | components["schemas"]["EdgeRuleMaintenanceAction"] | components["schemas"]["EdgeRuleGeoAction"] | components["schemas"]["EdgeRuleThrottleAction"] | components["schemas"]["EdgeRuleBudgetAction"];
+            action: components["schemas"]["EdgeRuleRouteAction"] | components["schemas"]["EdgeRuleRewriteAction"] | components["schemas"]["EdgeRuleRedirectAction"] | components["schemas"]["EdgeRuleHeadersAction"] | components["schemas"]["EdgeRuleCORSAction"] | components["schemas"]["EdgeRuleJWTAction"] | components["schemas"]["EdgeRuleIPAction"] | components["schemas"]["EdgeRuleValidateAction"] | components["schemas"]["EdgeRuleLimitAction"] | components["schemas"]["EdgeRuleMaintenanceAction"] | components["schemas"]["EdgeRuleGeoAction"] | components["schemas"]["EdgeRuleThrottleAction"] | components["schemas"]["EdgeRuleBudgetAction"] | components["schemas"]["EdgeRuleCacheAction"];
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -15147,7 +15151,7 @@ export interface components {
              */
             validate_mode: "block" | "observe" | "warn";
             /** @description Kind-tagged action body — shape depends on `kind`. */
-            action: components["schemas"]["EdgeRuleRouteAction"] | components["schemas"]["EdgeRuleRewriteAction"] | components["schemas"]["EdgeRuleRedirectAction"] | components["schemas"]["EdgeRuleHeadersAction"] | components["schemas"]["EdgeRuleCORSAction"] | components["schemas"]["EdgeRuleJWTAction"] | components["schemas"]["EdgeRuleIPAction"] | components["schemas"]["EdgeRuleValidateAction"] | components["schemas"]["EdgeRuleLimitAction"] | components["schemas"]["EdgeRuleMaintenanceAction"] | components["schemas"]["EdgeRuleGeoAction"] | components["schemas"]["EdgeRuleThrottleAction"] | components["schemas"]["EdgeRuleBudgetAction"];
+            action: components["schemas"]["EdgeRuleRouteAction"] | components["schemas"]["EdgeRuleRewriteAction"] | components["schemas"]["EdgeRuleRedirectAction"] | components["schemas"]["EdgeRuleHeadersAction"] | components["schemas"]["EdgeRuleCORSAction"] | components["schemas"]["EdgeRuleJWTAction"] | components["schemas"]["EdgeRuleIPAction"] | components["schemas"]["EdgeRuleValidateAction"] | components["schemas"]["EdgeRuleLimitAction"] | components["schemas"]["EdgeRuleMaintenanceAction"] | components["schemas"]["EdgeRuleGeoAction"] | components["schemas"]["EdgeRuleThrottleAction"] | components["schemas"]["EdgeRuleBudgetAction"] | components["schemas"]["EdgeRuleCacheAction"];
         };
         /** @description Partial update — every field optional. Kind is not patchable. */
         UpdateEdgeRuleRequest: {
@@ -15163,7 +15167,7 @@ export interface components {
              */
             validate_mode?: "block" | "observe" | "warn";
             /** @description Replaces the jsonb column whole. */
-            action?: components["schemas"]["EdgeRuleRouteAction"] | components["schemas"]["EdgeRuleRewriteAction"] | components["schemas"]["EdgeRuleRedirectAction"] | components["schemas"]["EdgeRuleHeadersAction"] | components["schemas"]["EdgeRuleCORSAction"] | components["schemas"]["EdgeRuleJWTAction"] | components["schemas"]["EdgeRuleIPAction"] | components["schemas"]["EdgeRuleValidateAction"] | components["schemas"]["EdgeRuleLimitAction"] | components["schemas"]["EdgeRuleMaintenanceAction"] | components["schemas"]["EdgeRuleGeoAction"] | components["schemas"]["EdgeRuleThrottleAction"] | components["schemas"]["EdgeRuleBudgetAction"];
+            action?: components["schemas"]["EdgeRuleRouteAction"] | components["schemas"]["EdgeRuleRewriteAction"] | components["schemas"]["EdgeRuleRedirectAction"] | components["schemas"]["EdgeRuleHeadersAction"] | components["schemas"]["EdgeRuleCORSAction"] | components["schemas"]["EdgeRuleJWTAction"] | components["schemas"]["EdgeRuleIPAction"] | components["schemas"]["EdgeRuleValidateAction"] | components["schemas"]["EdgeRuleLimitAction"] | components["schemas"]["EdgeRuleMaintenanceAction"] | components["schemas"]["EdgeRuleGeoAction"] | components["schemas"]["EdgeRuleThrottleAction"] | components["schemas"]["EdgeRuleBudgetAction"] | components["schemas"]["EdgeRuleCacheAction"];
         };
         /** @description Re-targets the matched request to another app owned by the same account. */
         EdgeRuleRouteAction: {
@@ -15454,6 +15458,10 @@ export interface components {
          *         (`api.ResponseCacheMaxAgeMaxSeconds`). The runtime cache
          *         layer in `pkg/gateway/response_cache.go` re-checks this
          *         cap as defence-in-depth.
+         *       * `stale_while_revalidate_seconds` — optional. After the fresh
+         *         window, return the cached response immediately while one
+         *         gateway request refreshes the key in the background. Default
+         *         0 (disabled); absolute cap 300.
          *       * `stale_if_error_seconds` — required. Stale-on-error window
          *         in seconds. Default 300; absolute cap 300
          *         (`api.ResponseCacheStaleIfErrorMaxSeconds`). During an
@@ -15479,6 +15487,13 @@ export interface components {
              * @default 60
              */
             max_age_seconds: number;
+            /**
+             * @description After the fresh window, serve stale for this many seconds
+             *     while a single coalesced background request refreshes the
+             *     cache key. 0 disables stale-while-revalidate.
+             * @default 0
+             */
+            stale_while_revalidate_seconds: number;
             /**
              * @description Stale-on-error window in seconds. 0 = no stale-on-error
              *     (errors return 502/504 directly). Positive values are
@@ -26502,6 +26517,8 @@ export interface operations {
             query?: {
                 /** @description Optional normalized request path glob (for example `/products/*`). */
                 path?: string;
+                /** @description Optional cache tag (for example `product:42`); cannot be combined with path. */
+                tag?: string;
             };
             header?: never;
             path: {
@@ -26512,13 +26529,14 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Purge requested. */
+            /** @description Purge durably requested; check policy status for application. */
             204: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
+            400: components["responses"]["ValidationFailed"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];

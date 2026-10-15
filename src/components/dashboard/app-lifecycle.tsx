@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { Refresh, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
@@ -8,6 +8,9 @@ import { ApiError, errorMessage } from '@/lib/api/errors';
 import { usePurgeAppCache, useRestartApp } from '@/lib/api/queries';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth';
+import { useCapability } from '@/lib/api/capabilities';
+import { cachePurgeSelection } from '@/lib/cache-policy';
+import { CapabilityNotice } from './capability-notice';
 import { PolicyStatus } from './policy-status';
 import { usePolicyOperation } from './policy-operation';
 
@@ -21,7 +24,7 @@ import { usePolicyOperation } from './policy-operation';
  * account's spend cap is blocking new wakes, which is a budget decision, not
  * a fault.
  *
- * Cache purge clears the edge response cache, optionally under a path glob.
+ * Cache purge requests an all, path, or tag invalidation.
  * It is a request rather than a guarantee (`204`, "purge requested"), so the
  * confirmation says so instead of claiming the cache is empty.
  */
@@ -86,48 +89,104 @@ export function RestartAppButton({ slug }: { slug: string }) {
 
 export function PurgeCacheControl({ slug, appId = '' }: { slug: string; appId?: string }) {
   const { account } = useAuth();
+  const capability = useCapability('declarative-response-caching');
   const { toast } = useToast();
   const confirm = useConfirm();
   const purge = usePurgeAppCache(slug);
-  const [path, setPath] = useState('');
+  const [mode, setMode] = useState<'all' | 'path' | 'tag'>('all');
+  const [input, setInput] = useState('');
+  const [problem, setProblem] = useState('');
+  const flight = useRef(false);
+  const [confirming, setConfirming] = useState(false);
   const operation = usePolicyOperation(account?.id ?? '', slug, appId, 'purge');
+  const canPurge =
+    Boolean(account?.id && appId && slug) &&
+    account?.plan !== 'free' &&
+    capability.accountId === account?.id &&
+    capability.state === 'available';
+  const identity = `${account?.id ?? ''}:${slug}:${appId}`;
+  const context = useRef({ identity, canPurge, epoch: 0, selection: `${mode}:${input}` });
+  useLayoutEffect(() => {
+    const previous = context.current;
+    context.current = {
+      identity,
+      canPurge,
+      epoch:
+        previous.identity === identity && previous.canPurge === canPurge
+          ? previous.epoch
+          : previous.epoch + 1,
+      selection: `${mode}:${input}`,
+    };
+  }, [identity, canPurge, mode, input]);
 
   const onPurge = async () => {
-    if (operation.busy) return;
-    const glob = path.trim();
-    if (
-      !(await confirm({
-        title: glob ? `Purge cached responses under ${glob}?` : 'Purge every cached response?',
-        description:
-          'Records a purge request. Cached responses may remain until serving gateways apply it.',
-        confirmLabel: 'Purge',
-      }))
-    )
-      return;
+    if (flight.current || operation.busy || !canPurge) return;
+    let selection: { path?: string; tag?: string };
     try {
+      selection = cachePurgeSelection(mode, input);
+    } catch (error) {
+      setProblem(error instanceof Error ? error.message : 'Review the purge selection.');
+      return;
+    }
+    setProblem('');
+    const started = context.current;
+    const current = () =>
+      context.current.canPurge &&
+      context.current.epoch === started.epoch &&
+      context.current.identity === started.identity &&
+      context.current.selection === started.selection;
+    flight.current = true;
+    setConfirming(true);
+    try {
+      const target = selection.path ?? selection.tag;
+      const scope = selection.path ? 'path' : selection.tag ? 'tag' : 'all';
+      const approved = await confirm({
+        title:
+          scope === 'path'
+            ? `Purge cached responses under ${target}?`
+            : scope === 'tag'
+              ? `Purge cached responses tagged ${target}?`
+              : 'Purge every cached response?',
+        description:
+          'Records a purge request. Cached responses may remain until serving gateways and the optional shared tier apply it.',
+        confirmLabel: 'Purge',
+      });
+      if (!approved || !current()) return;
       const accepted = await operation.run(['response_cache'], async () => {
-        await purge.mutateAsync(glob || undefined);
+        if (!current()) throw new Error('Cache availability changed. Review this purge again.');
+        await purge.mutateAsync(selection);
         return true;
       });
       if (!accepted) return;
       toast({
         kind: 'success',
         title: 'Purge requested',
-        description: glob
-          ? `The purge for ${glob} is saved. Runtime application is verified separately.`
+        description: target
+          ? `The ${scope} purge for ${target} is saved. Runtime application is verified separately.`
           : 'The purge is saved. Runtime application is verified separately.',
       });
-      setPath('');
+      setInput('');
     } catch (err) {
+      if (!current()) return;
       if (err instanceof ApiError && err.code === 'validation_failed') {
         toast({
           kind: 'error',
-          title: 'That path glob was rejected',
+          title: 'That purge selection was rejected',
           description: errorMessage(err),
         });
         return;
       }
-      toast({ kind: 'error', title: 'Could not purge', description: errorMessage(err) });
+      toast({
+        kind: 'error',
+        title: 'Could not confirm the purge',
+        description:
+          err instanceof ApiError
+            ? errorMessage(err)
+            : 'The request may have been accepted. Inspect runtime status before sending another purge.',
+      });
+    } finally {
+      flight.current = false;
+      setConfirming(false);
     }
   };
 
@@ -138,22 +197,59 @@ export function PurgeCacheControl({ slug, appId = '' }: { slug: string; appId?: 
         className="flex flex-wrap items-center gap-2"
         onSubmit={(e) => {
           e.preventDefault();
-          if (!purge.isPending && !operation.busy) void onPurge();
+          if (!purge.isPending && !operation.busy && !confirming) void onPurge();
         }}
       >
-        <input
-          value={path}
-          onChange={(e) => setPath(e.target.value)}
-          placeholder="/products/*  (empty purges everything)"
-          spellCheck={false}
-          aria-label="Path glob to purge"
-          className={cn(FIELD, 'w-72')}
-        />
-        <Button type="submit" size="sm" variant="outline" busy={purge.isPending || operation.busy}>
+        <select
+          aria-label="Purge scope"
+          value={mode}
+          onChange={(e) => {
+            setMode(e.target.value as 'all' | 'path' | 'tag');
+            setInput('');
+            setProblem('');
+          }}
+          className={cn(FIELD, 'w-40')}
+        >
+          <option value="all">All responses</option>
+          <option value="path">Path glob</option>
+          <option value="tag">Cache tag</option>
+        </select>
+        {mode !== 'all' && (
+          <input
+            value={input}
+            onChange={(e) => {
+              setInput(e.target.value);
+              setProblem('');
+            }}
+            placeholder={mode === 'path' ? '/products/*' : 'product:42'}
+            spellCheck={false}
+            aria-label={mode === 'path' ? 'Path glob to purge' : 'Cache tag to purge'}
+            className={cn(FIELD, 'w-72')}
+          />
+        )}
+        <Button
+          type="submit"
+          size="sm"
+          variant="outline"
+          busy={purge.isPending || operation.busy || confirming}
+          disabled={!canPurge}
+        >
           <Trash className="h-3.5 w-3.5" />
           Purge
         </Button>
       </form>
+      {problem && (
+        <span role="alert" className="text-xs text-[color:var(--status-critical)]">
+          {problem}
+        </span>
+      )}
+      {!canPurge && (
+        <CapabilityNotice
+          capability={capability.capability}
+          state={capability.state}
+          onRetry={capability.refresh}
+        />
+      )}
       <span className="text-xs text-muted-foreground">
         Requests a purge of Gregale’s gateway cache and optional shared Redis tier. External caches
         and CDNs are unaffected.

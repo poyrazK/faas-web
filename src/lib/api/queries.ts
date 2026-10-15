@@ -701,11 +701,12 @@ export function useProjectApply() {
  * Apps
  * ------------------------------------------------------------------ */
 
-export function useApps(options?: Options<App[]>) {
+export function useApps(options?: Options<App[]>, accountId?: string) {
   return useQuery({
-    queryKey: keys.apps,
-    queryFn: () => unwrap(api.GET('/v1/apps', {})),
+    queryKey: accountId === undefined ? keys.apps : ['apps', 'account', accountId],
+    queryFn: ({ signal }) => unwrap(api.GET('/v1/apps', { signal })),
     ...options,
+    enabled: (options?.enabled ?? true) && (accountId === undefined || Boolean(accountId)),
   });
 }
 
@@ -2485,11 +2486,11 @@ export function useRetryDelivery(slug: string, id: string) {
  * Edge rules and queues
  * ------------------------------------------------------------------ */
 
-export function useEdgeRules(enabled = true) {
+export function useEdgeRules(enabled = true, accountId?: string) {
   return useQuery({
-    queryKey: ['edge-rules'],
-    queryFn: () => unwrap(api.GET('/v1/edge-rules', {})),
-    enabled,
+    queryKey: accountId === undefined ? ['edge-rules'] : ['edge-rules', 'account', accountId],
+    queryFn: ({ signal }) => unwrap(api.GET('/v1/edge-rules', { signal })),
+    enabled: enabled && (accountId === undefined || Boolean(accountId)),
   });
 }
 
@@ -3045,11 +3046,15 @@ export type EdgeRule = components['schemas']['EdgeRuleResponse'];
 export type EdgeRuleKind = EdgeRule['kind'];
 export type EdgeRuleAction = EdgeRule['action'];
 
-export function useAppEdgeRules(slug: string) {
+export function useAppEdgeRules(slug: string, accountId?: string) {
   return useQuery({
-    queryKey: ['apps', slug, 'edge-rules'],
-    queryFn: () => unwrap(api.GET('/v1/apps/{slug}/edge-rules', { params: { path: { slug } } })),
-    enabled: Boolean(slug),
+    queryKey:
+      accountId === undefined
+        ? ['apps', slug, 'edge-rules']
+        : ['apps', slug, 'edge-rules', 'account', accountId],
+    queryFn: ({ signal }) =>
+      unwrap(api.GET('/v1/apps/{slug}/edge-rules', { params: { path: { slug } }, signal })),
+    enabled: Boolean(slug) && (accountId === undefined || Boolean(accountId)),
   });
 }
 
@@ -3283,13 +3288,13 @@ export function useDebugRequestEvidence(slug: string, reqId: string) {
   });
 }
 
-/** Purge the edge response cache, optionally under one path glob. */
+/** Request an all, path, or tag purge. The API accepts one selector at most. */
 export function usePurgeAppCache(slug: string) {
   return useMutation({
-    mutationFn: (path?: string) =>
+    mutationFn: (selection: { path?: string; tag?: string }) =>
       unwrap(
         api.DELETE('/v1/apps/{slug}/cache', {
-          params: { path: { slug }, query: path ? { path } : {} },
+          params: { path: { slug }, query: selection },
         })
       ),
   });
