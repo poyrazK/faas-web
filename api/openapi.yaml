@@ -8960,6 +8960,167 @@ paths:
         '413': { $ref: '#/components/responses/SourceTooLarge' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
 
+  /v1/projects/{slug}/environments/{environment}/promotion-preview:
+    parameters:
+      - name: slug
+        in: path
+        required: true
+        description: Project slug owning the environment promotion preview.
+        schema: { type: string, pattern: '^[a-z0-9][a-z0-9-]{0,62}$' }
+      - name: environment
+        in: path
+        required: true
+        description: Target environment receiving the promotion preview.
+        schema: { type: string, pattern: '^[a-z0-9](?:[a-z0-9-]{0,31}[a-z0-9])?$' }
+      - name: from
+        in: query
+        required: true
+        description: Source environment whose live releases are compared with the target.
+        schema: { type: string, pattern: '^[a-z0-9](?:[a-z0-9-]{0,31}[a-z0-9])?$' }
+      - name: sync_config
+        in: query
+        required: false
+        description: Opt in to copying the source's non-secret configuration atomically with the target release graph.
+        schema: { type: boolean, default: false }
+    get:
+      tags: [projects]
+      operationId: getProjectEnvironmentPromotionPreview
+      summary: Preview promotion of live workloads between project environments.
+      description: |
+        Read-only comparison of the source and target environment. The
+        response includes non-secret configuration changes, live deployment
+        identities, target protection state, and an opaque promotion token
+        bound to those identities. It does not create deployments or audit
+        mutations. Configuration remains target-scoped by default;
+        `sync_config=true` opts into applying the source's non-secret
+        configuration snapshot with the release graph, and is blocked unless
+        the target already has an active release graph for atomic cutover.
+        Protected-target promotions from an active source release set also
+        require the latest passing health and smoke qualification, which is
+        bound to that immutable release-set ID and expires after 24 hours.
+      responses:
+        '200':
+          description: Promotion preview and immutable promotion identity.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectEnvironmentPromotionPreviewResponse' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/projects/{slug}/environments/{environment}/promotions:
+    parameters:
+      - name: slug
+        in: path
+        required: true
+        description: Project slug owning the promotion history.
+        schema: { type: string, pattern: '^[a-z0-9][a-z0-9-]{0,62}$' }
+      - name: environment
+        in: path
+        required: true
+        description: Target environment whose promotion history is requested.
+        schema: { type: string, pattern: '^[a-z0-9](?:[a-z0-9-]{0,31}[a-z0-9])?$' }
+      - name: before
+        in: query
+        required: false
+        description: Opaque cursor returned as next_before.
+        schema: { type: string }
+      - name: limit
+        in: query
+        required: false
+        description: Page size, capped at 100.
+        schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      - name: from
+        in: query
+        required: false
+        description: Restrict history to promotions from this source environment.
+        schema: { type: string, pattern: '^[a-z0-9](?:[a-z0-9-]{0,31}[a-z0-9])?$' }
+      - name: status
+        in: query
+        required: false
+        description: Restrict history to a promotion lifecycle status.
+        schema: { type: string, enum: [running, succeeded, failed] }
+    get:
+      tags: [projects]
+      operationId: listProjectEnvironmentPromotions
+      summary: List project environment promotion history.
+      description: Returns newest-first compact promotion history. Use the promotion status endpoint for per-workload checkpoints.
+      responses:
+        '200':
+          description: Cursor-paginated promotion history.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectEnvironmentPromotionListResponse' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/projects/{slug}/environments/{environment}/promotions/{promotion}:
+    parameters:
+      - name: slug
+        in: path
+        required: true
+        description: Project slug owning the promotion status operation.
+        schema: { type: string, pattern: '^[a-z0-9][a-z0-9-]{0,62}$' }
+      - name: environment
+        in: path
+        required: true
+        description: Target environment associated with the promotion status operation.
+        schema: { type: string, pattern: '^[a-z0-9](?:[a-z0-9-]{0,31}[a-z0-9])?$' }
+      - name: promotion
+        in: path
+        required: true
+        description: Durable promotion operation identifier.
+        schema: { type: string, minLength: 1 }
+    get:
+      tags: [projects]
+      operationId: getProjectEnvironmentPromotionStatus
+      summary: Get durable project environment promotion status.
+      description: Returns the operation status, post-cutover verification result, and non-secret per-workload checkpoints for a promotion.
+      responses:
+        '200':
+          description: Durable promotion status, including post-cutover verification and any automatic rollback.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectEnvironmentPromotionStatusResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/projects/{slug}/environments/{environment}/approvals/{approval}:
+    parameters:
+      - name: slug
+        in: path
+        required: true
+        description: Project slug owning the approval lookup.
+        schema: { type: string, pattern: '^[a-z0-9][a-z0-9-]{0,62}$' }
+      - name: environment
+        in: path
+        required: true
+        description: Protected environment slug containing the approval.
+        schema: { type: string, pattern: '^[a-z0-9](?:[a-z0-9-]{0,31}[a-z0-9])?$' }
+      - name: approval
+        in: path
+        required: true
+        description: Durable approval identifier returned when the approval is created.
+        schema: { type: string, format: uuid }
+    get:
+      tags: [projects]
+      operationId: getProjectEnvironmentApprovalStatus
+      summary: Get the lifecycle status of a project environment approval.
+      description: The raw approval token is never returned by this endpoint.
+      responses:
+        '200':
+          description: Durable approval lifecycle status.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectEnvironmentApprovalStatusResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
   /v1/projects/{slug}:
     parameters:
       - name: slug
@@ -17571,6 +17732,256 @@ components:
         deployment_status: { type: string }
         rollout_state: { type: string }
         build_status: { type: string }
+
+    ProjectEnvironmentApprovalStatusResponse:
+      description: Durable, non-secret lifecycle status for one environment approval.
+      type: object
+      required: [approval_id, environment, token_kind, status, created_at, expires_at]
+      properties:
+        approval_id: { type: string, format: uuid }
+        environment: { type: string }
+        token_kind: { type: string, enum: [plan, promotion] }
+        status: { type: string, enum: [pending, expired, consumed] }
+        created_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+        consumed_at: { type: string, format: date-time }
+
+    ProjectEnvironmentPromotionListResponse:
+      description: Cursor-paginated project environment promotion history.
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/ProjectEnvironmentPromotionSummaryResponse' }
+        next_before: { type: string, description: Opaque cursor for the next older page. }
+
+    ProjectEnvironmentPromotionPreviewResponse:
+      description: Read-only promotion preview between two registered project environments.
+      type: object
+      required: [project_slug, from_environment, to_environment, to_environment_protected, approval_required, can_promote, config_diff, changes, release_graph_mode, promotion_hash, promotion_token]
+      properties:
+        project_slug: { type: string }
+        from_environment: { type: string }
+        to_environment: { type: string }
+        sync_config:
+          type: boolean
+          description: Whether this exact promotion will copy the source's non-secret configuration to the target.
+        to_environment_protected: { type: boolean }
+        approval_required: { type: boolean }
+        can_promote: { type: boolean }
+        blocking_reasons:
+          type: array
+          items: { type: string }
+        config_diff: { $ref: '#/components/schemas/ProjectEnvironmentConfigDiffResponse' }
+        changes:
+          type: array
+          items: { $ref: '#/components/schemas/ProjectEnvironmentPromotionChange' }
+        from_release_set:
+          allOf:
+            - $ref: '#/components/schemas/ProjectReleaseSetResponse'
+          description: Immutable active release graph snapshot for the source environment, when present.
+        to_release_set:
+          allOf:
+            - $ref: '#/components/schemas/ProjectReleaseSetResponse'
+          description: Immutable active release graph snapshot for the target environment, when present.
+        release_graph_mode:
+          type: boolean
+          description: True when promotion stages deployments dark and atomically activates a project release graph.
+        release_ttl_seconds:
+          type: integer
+          minimum: 1
+          maximum: 604800
+          description: Compatibility window used by the promoted release graph.
+        qualification_required:
+          type: boolean
+          description: True when a protected-target promotion requires a fresh source qualification.
+        qualification:
+          allOf:
+            - $ref: '#/components/schemas/ProjectEnvironmentQualificationResponse'
+          description: Latest qualification for the active source release set, including failed or expired receipts.
+        promotion_hash: { type: string, pattern: '^[a-f0-9]{64}$' }
+        promotion_token: { type: string, minLength: 1 }
+
+    ProjectEnvironmentPromotionChange:
+      description: One workload's live release identity in a source and target environment.
+      type: object
+      required: [workload_slug, workload_name, kind]
+      properties:
+        source_workload_config_hash: { type: string, pattern: '^[a-f0-9]{64}$' }
+        target_workload_config_hash: { type: string, pattern: '^[a-f0-9]{64}$' }
+        promoted_workload_config_hash: { type: string, pattern: '^[a-f0-9]{64}$' }
+        workload_slug: { type: string }
+        workload_name: { type: string }
+        kind:
+          type: string
+          enum: [source_missing, create, update, unchanged]
+        source_deployment_id: { type: string, pattern: '^[a-f0-9]{32}$' }
+        target_deployment_id: { type: string, pattern: '^[a-f0-9]{32}$' }
+        source_build_id: { type: string, pattern: '^[a-f0-9]{32}$' }
+        target_build_id: { type: string, pattern: '^[a-f0-9]{32}$' }
+        source_revision: { type: string }
+        target_revision: { type: string }
+        source_revision_kind:
+          type: string
+          enum: [source_sha256, image_digest, commit_sha, deployment_id]
+        target_revision_kind:
+          type: string
+          enum: [source_sha256, image_digest, commit_sha, deployment_id]
+
+    ProjectEnvironmentPromotionStatusResponse:
+      description: Durable status for a project environment promotion operation.
+      type: object
+      required: [promotion_id, project_slug, from_environment, to_environment, promotion_hash, status, created_at, updated_at, workloads]
+      properties:
+        promotion_id: { type: string, minLength: 1 }
+        project_slug: { type: string }
+        from_environment: { type: string }
+        to_environment: { type: string }
+        sync_config:
+          type: boolean
+          description: Config sync was enabled for this promotion.
+        promotion_hash: { type: string, pattern: '^[a-f0-9]{64}$' }
+        status:
+          type: string
+          enum: [running, succeeded, failed]
+        error: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        completed_at: { type: string, format: date-time }
+        rollback_status:
+          type: string
+          enum: [rolling_back, rolled_back, rollback_failed]
+        rollback_error: { type: string }
+        rollback_started_at: { type: string, format: date-time }
+        rollback_completed_at: { type: string, format: date-time }
+        verification_status:
+          type: string
+          enum: [pending, verifying, verified, failed]
+        verification_error: { type: string }
+        verification_started_at: { type: string, format: date-time }
+        verification_completed_at: { type: string, format: date-time }
+        release_graph: { $ref: '#/components/schemas/ProjectEnvironmentPromotionReleaseGraphResponse' }
+        workloads:
+          type: array
+          items: { $ref: '#/components/schemas/ProjectEnvironmentPromotionStatusWorkloadResponse' }
+
+    ProjectEnvironmentPromotionReleaseGraphResponse:
+      description: Immutable graph identities involved in a graph-aware promotion and rollback.
+      type: object
+      required: [ttl_seconds]
+      properties:
+        source_release_set_id: { type: string, format: uuid }
+        previous_target_release_set_id: { type: string, format: uuid }
+        target_release_set_id: { type: string, format: uuid }
+        restored_target_release_set_id: { type: string, format: uuid }
+        ttl_seconds: { type: integer, minimum: 1, maximum: 604800 }
+
+    ProjectEnvironmentPromotionStatusWorkloadResponse:
+      description: Durable checkpoint for one workload in an environment promotion.
+      type: object
+      required: [workload_slug, workload_name, status]
+      properties:
+        workload_slug: { type: string }
+        workload_name: { type: string }
+        status:
+          type: string
+          enum: [pending, promoted, unchanged, failed]
+        source_deployment_id: { type: string }
+        previous_target_deployment_id: { type: string }
+        target_deployment_id: { type: string }
+        error: { type: string }
+        rollback_status:
+          type: string
+          enum: [pending, restored, cleared, unchanged, skipped, failed]
+        restored_target_deployment_id: { type: string }
+        rollback_error: { type: string }
+        verification_status:
+          type: string
+          enum: [pending, verified, failed]
+        verification_error: { type: string }
+
+    ProjectEnvironmentPromotionSummaryResponse:
+      description: Compact non-secret summary of one project environment promotion.
+      type: object
+      required: [promotion_id, project_slug, from_environment, to_environment, promotion_hash, status, created_at, updated_at]
+      properties:
+        promotion_id: { type: string }
+        project_slug: { type: string }
+        from_environment: { type: string }
+        to_environment: { type: string }
+        sync_config:
+          type: boolean
+          description: Whether the operation copied non-secret source config to its target.
+        promotion_hash: { type: string, pattern: '^[a-f0-9]{64}$' }
+        status: { type: string, enum: [running, succeeded, failed] }
+        error: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        completed_at: { type: string, format: date-time }
+        rollback_status: { type: string, enum: [rolling_back, rolled_back, rollback_failed] }
+        rollback_error: { type: string }
+        verification_status: { type: string, enum: [pending, verifying, verified, failed] }
+        verification_error: { type: string }
+        verification_completed_at: { type: string, format: date-time }
+
+    ProjectEnvironmentQualificationResponse:
+      description: Non-secret, 24-hour qualification receipt for an immutable release set and the exact source configuration and per-workload secret revision snapshots probed.
+      type: object
+      required: [id, environment, release_set_id, configuration_version, configuration_hash, secret_revision_hashes, status, checks, created_at, expires_at]
+      properties:
+        workload_config_hashes:
+          description: Immutable per-workload fingerprints bound to this qualification receipt.
+          type: object
+          propertyNames: { type: string, pattern: '^[a-z0-9][a-z0-9-]{0,62}$' }
+          additionalProperties: { type: string, pattern: '^[a-f0-9]{64}$' }
+        id: { type: string, format: uuid }
+        environment: { type: string }
+        release_set_id: { type: string, format: uuid }
+        configuration_version:
+          type: integer
+          minimum: -1
+          description: Version tested; -1 marks a legacy receipt that predates configuration binding and cannot qualify for promotion.
+        configuration_hash:
+          type: string
+          description: SHA-256 of canonical non-secret environment configuration; empty only for a legacy receipt that cannot qualify for promotion.
+        secret_revision_hashes:
+          type: object
+          description: Opaque per-workload fingerprints of secret keys, version metadata, and managed credential generations; no secret values or value hashes are included. Empty only for a legacy receipt that cannot qualify for promotion.
+          additionalProperties: { type: string, pattern: '^[a-f0-9]{64}$' }
+        status: { type: string, enum: [passed, failed] }
+        checks:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items: { $ref: '#/components/schemas/ProjectEnvironmentQualificationCheck' }
+        created_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+
+    ProjectEnvironmentQualificationCheck:
+      description: Aggregate result plus one exact-deployment probe outcome per workload.
+      type: object
+      additionalProperties: false
+      required: [name, status, results]
+      properties:
+        name: { type: string, enum: [health, smoke] }
+        status: { type: string, enum: [passed, failed] }
+        results:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/ProjectEnvironmentQualificationResult' }
+
+    ProjectEnvironmentQualificationResult:
+      description: Non-secret GET probe result tied to one workload deployment in the active release set.
+      type: object
+      additionalProperties: false
+      required: [workload_slug, deployment_id, status]
+      properties:
+        workload_slug: { type: string, pattern: '^[a-z0-9][a-z0-9-]{0,62}$' }
+        deployment_id: { type: string, format: uuid }
+        status: { type: string, enum: [passed, failed] }
+        http_status: { type: integer, minimum: 100, maximum: 599 }
+        error_code: { type: string, enum: [preview_unavailable, request_failed, unexpected_status] }
 
     ProjectResponse:
       description: Project metadata with its workloads, exclusions, and latest reconciliation state.

@@ -1,16 +1,26 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { useAuth } from '@/lib/auth';
 import { useProject } from '@/lib/api/projects';
+import { canonicalApprovalId } from '@/lib/api/environment-readiness';
 import { ErrorState, LoadingState, PageHeader, Panel } from '@/components/dashboard/primitives';
 import { ProjectWorkloads } from '@/components/dashboard/projects/project-workloads';
 import { ProjectEnvironments } from '@/components/dashboard/projects/environment-selector';
+import {
+  validApprovalId,
+  type ReadinessSearch,
+} from '@/components/dashboard/projects/environment-readiness';
 import { ProjectPreviews } from '@/components/dashboard/projects/preview-workload-set';
 import { Route as ProjectsRoute } from './dashboard.projects';
 export const Route = createFileRoute('/dashboard/projects/$projectSlug')({
   component: ProjectPage,
   validateSearch: (
     search: Record<string, unknown>
-  ): { environment?: string; compare?: string; preview?: string; queueWorkload?: string } => {
+  ): ReadinessSearch & {
+    environment?: string;
+    compare?: string;
+    preview?: string;
+    queueWorkload?: string;
+  } => {
     const selection = (value: unknown) =>
       value === undefined ? undefined : typeof value === 'string' ? value : '__invalid__';
     return {
@@ -18,6 +28,21 @@ export const Route = createFileRoute('/dashboard/projects/$projectSlug')({
       compare: selection(search.compare),
       preview: selection(search.preview),
       queueWorkload: selection(search.queueWorkload),
+      promotion:
+        typeof search.promotion === 'string' && /^[a-zA-Z0-9-]{1,128}$/.test(search.promotion)
+          ? search.promotion
+          : undefined,
+      approval:
+        typeof search.approval === 'string' && validApprovalId(search.approval)
+          ? canonicalApprovalId(search.approval)
+          : undefined,
+      promotionBefore:
+        typeof search.promotionBefore === 'string' && search.promotionBefore.length <= 4096
+          ? search.promotionBefore
+          : undefined,
+      promotionStatus: ['running', 'succeeded', 'failed'].includes(search.promotionStatus as string)
+        ? (search.promotionStatus as ReadinessSearch['promotionStatus'])
+        : undefined,
     };
   },
 });
@@ -26,7 +51,8 @@ function ProjectPage() {
   const { account } = useAuth();
   const query = useProject(account?.id ?? '', projectSlug);
   const { q } = ProjectsRoute.useSearch();
-  const { environment, compare, preview, queueWorkload } = Route.useSearch();
+  const search = Route.useSearch();
+  const { environment, compare, preview, queueWorkload } = search;
   const navigate = Route.useNavigate();
   if (query.isError) return <ErrorState error={query.error} onRetry={() => void query.refetch()} />;
   if (!account || query.isPending) return <LoadingState message="Loading project…" />;
@@ -80,6 +106,10 @@ function ProjectPage() {
         environment={environment}
         compare={compare}
         queueWorkload={queueWorkload}
+        readinessSearch={search}
+        onReadinessSearch={(patch) =>
+          void navigate({ search: (current) => ({ ...current, ...patch }), resetScroll: false })
+        }
         onChange={(next) =>
           void navigate({
             search: (current) => ({
@@ -87,6 +117,10 @@ function ProjectPage() {
               ...next,
               queueWorkload:
                 current.environment === next.environment ? current.queueWorkload : undefined,
+              promotion: undefined,
+              approval: undefined,
+              promotionBefore: undefined,
+              promotionStatus: undefined,
             }),
             resetScroll: false,
           })
