@@ -53,6 +53,29 @@ it('serves durable project inventory/detail and hides unknown project identities
   expect(detail.body.workloads.length).toBe(inventory.body[0].workload_count);
   expect((await get('/v1/projects/not-owned')).response.status).toBe(404);
 });
+it('serves only registered environment reads and current-head preview evidence', async () => {
+  const envs = await get('/v1/projects/acme-shop/environments');
+  expect(envs.response.status).toBe(200);
+  expect(envs.body.map((env: { slug: string }) => env.slug)).toEqual(['production', 'staging']);
+  const state = await get('/v1/projects/acme-shop/environments/staging/state');
+  expect(state.body.environment).toBe('staging');
+  expect(state.body.active_release_set).toBeNull();
+  const diff = await get('/v1/projects/acme-shop/environments/staging/diff?from=production');
+  expect(diff.body.from_environment).toBe('production');
+  expect(diff.body.to_environment).toBe('staging');
+  expect((await get('/v1/projects/acme-shop/environments/default/state')).response.status).toBe(
+    404
+  );
+  const apps = await get('/v1/apps');
+  const preview = apps.body.find(
+    (app: { preview_pr_number?: number }) => app.preview_pr_number === 42
+  );
+  expect(preview).toBeDefined();
+  const set = await get(`/v1/preview/${preview.slug}/environment`);
+  expect(set.body.root_slug).toBe(preview.slug);
+  expect(set.body.pr_number).toBe(42);
+  expect(set.body.members[0].links.url).toBe(preview.url);
+});
 it('replays app creation and accepts a digest-pinned image without a build ID', async () => {
   const slug = `image-${Date.now()}`;
   const options = {

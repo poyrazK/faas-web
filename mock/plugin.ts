@@ -8,6 +8,12 @@ import { mockCapabilities } from './capabilities';
 import { isDigestPinnedImage } from '../src/lib/oci-image';
 import { projects, projectSummaries } from './projects';
 import {
+  environmentInventory,
+  environmentState,
+  environmentDiff,
+  previewSet,
+} from './environments';
+import {
   FREE_TRIGGER_ERROR_CODE,
   KAFKA_SASL_MECHANISMS,
   TRIGGER_CAPABILITIES_BY_PLAN,
@@ -4863,6 +4869,34 @@ route('GET', '/v1/projects/{slug}', ({ params }) => {
   const project = projects.find((item) => item.slug === params.slug);
   if (!project) throw new Problem(404, 'not_found', 'Project not found.');
   return project;
+});
+route('GET', '/v1/projects/{slug}/environments', ({ params }) => {
+  const items = environmentInventory(params.slug);
+  if (!items) throw new Problem(404, 'not_found', 'Project not found.');
+  return items;
+});
+route('GET', '/v1/projects/{slug}/environments/{environment}', ({ params }) => {
+  const item = environmentInventory(params.slug)?.find((env) => env.slug === params.environment);
+  if (!item) throw new Problem(404, 'not_found', 'Environment not found.');
+  return item;
+});
+route('GET', '/v1/projects/{slug}/environments/{environment}/state', ({ params }) => {
+  const item = environmentState(params.slug, params.environment);
+  if (!item) throw new Problem(404, 'not_found', 'Environment not found.');
+  return item;
+});
+route('GET', '/v1/projects/{slug}/environments/{environment}/diff', ({ params, query }) => {
+  const source = query.get('from') ?? '';
+  if (source === params.environment)
+    throw new Problem(400, 'validation', 'Select a different source environment.');
+  const item = environmentDiff(params.slug, source, params.environment);
+  if (!item) throw new Problem(404, 'not_found', 'Environment not found.');
+  return item;
+});
+route('GET', '/v1/preview/{slug}/environment', ({ params }) => {
+  const item = previewSet(params.slug);
+  if (!item) throw new Problem(404, 'preview_environment_not_found', 'No recorded preview set.');
+  return item;
 });
 route('POST', '/v1/projects', () => ({
   ...MOCK_PLAN,

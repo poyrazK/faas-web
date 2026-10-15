@@ -8721,6 +8721,135 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{slug}/environments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project slug whose environment registry is addressed. */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        /** List durable environments for a project. */
+        get: operations["listProjectEnvironments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{slug}/environments/{environment}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project slug owning the environment. */
+                slug: string;
+                /** @description Environment slug. */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        /** Inspect one project environment. */
+        get: operations["getProjectEnvironment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{slug}/environments/{environment}/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project whose environment state is requested. */
+                slug: string;
+                /** @description Target environment whose effective state is returned. */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Get effective state for a project environment.
+         * @description Returns configuration, live releases, non-secret runtime variables,
+         *     secret fingerprints, and managed binding metadata. Secret plaintext,
+         *     ciphertext, and sealing-key identifiers are never returned. Resources
+         *     that remain application-scoped are identified under shared_resources.
+         */
+        get: operations["getProjectEnvironmentState"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{slug}/environments/{environment}/diff": {
+        parameters: {
+            query: {
+                /** @description Source environment being compared with the target environment. */
+                from: string;
+            };
+            header?: never;
+            path: {
+                /** @description Project slug whose environments are compared. */
+                slug: string;
+                /** @description Target environment. */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Compare two effective project environments.
+         * @description Compares configuration, releases, runtime variables, secret
+         *     fingerprints and credential generations, and managed bindings. Secret
+         *     values are never returned. A secret without a fingerprint is reported
+         *     as unknown rather than incorrectly reported as equal.
+         */
+        get: operations["getProjectEnvironmentDiff"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/preview/{slug}/environment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read the current-head workload set for a GitHub PR preview.
+         * @description The slug must be the root preview app of a recorded GitHub PR set.
+         *     The response evaluates only preview deployments for the recorded
+         *     commit. It never reports a root as ready while an expected sibling is
+         *     missing, building, failed, or on an older commit. Closed PRs are not
+         *     ready. Developer previews and unrecorded legacy PR previews return 404.
+         *     Requires the deployment read scope and account ownership of the root.
+         */
+        get: operations["getPreviewEnvironmentStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -10669,6 +10798,14 @@ export interface components {
             delete_grace_until?: string | null;
             /** Format: uri */
             url: string;
+            /** @description Parent app slug for a pull-request or developer preview. */
+            preview_of_slug?: string;
+            /** @description PR number; zero identifies a developer preview. */
+            preview_pr_number?: number;
+            /** @enum {string} */
+            preview_pr_state?: "open" | "closed" | "stale" | "torn_down";
+            /** Format: date-time */
+            preview_expires_at?: string | null;
             manifest: components["schemas"]["AppManifest"];
             /** @description Per-app outbound CIDR allowlist (ADR-031 + ADR-032). Each entry is a CIDR string — v4 (`1.2.3.0/24`) or v6 (`2001:db8::/32`). v4-mapped v6 form (`::ffff:1.2.3.0/120`) is silently canonicalised to its v4 form at write time. Empty array means no allowlist rule; the per-netns chain's default-accept policy applies. */
             egress_allowlist?: string[];
@@ -18731,6 +18868,404 @@ export interface components {
             mirror_invocation_id?: string | null;
             /** @enum {string} */
             status: "queued" | "running" | "completed" | "failed";
+        };
+        /** @description Durable named environment target for a project. */
+        ProjectEnvironmentResponse: {
+            id: string;
+            project_id: string;
+            /** @description Project environment slug; the reserved app scope `default` cannot be used. */
+            slug: string;
+            protected: boolean;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            cloned_from?: string;
+            clone?: components["schemas"]["ProjectEnvironmentCloneResponse"];
+            clone_operation?: components["schemas"]["ProjectEnvironmentCloneOperationResponse"];
+        };
+        /** @description Point-in-time effective state snapshot for a project environment. */
+        ProjectEnvironmentStateResponse: {
+            /** @description Fingerprint of the environment identity, current flag version, and configuration observed before qualification probes. Omitted only for the legacy identity with no published flags. Combine with each released workload settings hash when submitting workload_config_hashes. */
+            feature_flags_hash?: string;
+            /** @description Active graph, or null when no graph has been published. Its selected members may differ from the per-workload live deployments below. */
+            active_release_set?: components["schemas"]["ProjectReleaseSetResponse"] | null;
+            /** @enum {string} */
+            release_set_status?: "active" | "none";
+            project_slug: string;
+            environment: string;
+            protected: boolean;
+            configuration: components["schemas"]["ProjectEnvironmentConfigResponse"];
+            workloads: components["schemas"]["ProjectEnvironmentStateWorkloadResponse"][];
+            shared_resources: components["schemas"]["ProjectEnvironmentSharedResourceResponse"][];
+            /** Format: date-time */
+            generated_at: string;
+        };
+        /** @description Effective-state comparison from one project environment to another. */
+        ProjectEnvironmentDiffResponse: {
+            project_slug: string;
+            from_environment: string;
+            to_environment: string;
+            configuration: components["schemas"]["ProjectEnvironmentConfigDiffResponse"];
+            workloads: components["schemas"]["ProjectEnvironmentWorkloadDiffResponse"][];
+            shared_resources: components["schemas"]["ProjectEnvironmentSharedResourceResponse"][];
+            /** Format: date-time */
+            generated_at: string;
+        };
+        /** @description Aggregate current-head readiness for a recorded GitHub PR preview workload set. */
+        PreviewEnvironmentStatusResponse: {
+            root_slug: string;
+            repo_full_name: string;
+            pr_number: number;
+            commit_sha: string;
+            /** @enum {string} */
+            phase: "building" | "live" | "failed" | "closed";
+            ready: boolean;
+            summary: string;
+            live_workloads: number;
+            total_workloads: number;
+            members: components["schemas"]["PreviewEnvironmentMemberResponse"][];
+        };
+        /** @description Non-secret copy counts for an environment clone. Managed database or bucket data appears as shared only after explicit opt-in. */
+        ProjectEnvironmentCloneResponse: {
+            configuration_copied: boolean;
+            variables_copied: number;
+            secrets_copied: number;
+            /** @description Destination-to-source references copied under the new catalog environment identity. Git source bindings, ownership, overrides and runtime receipts are not copied. */
+            secret_references_copied?: number;
+            workloads_copied: number;
+            bindings_copied: number;
+            routes_copied: number;
+            policies_copied: number;
+            shared_resources: ("domains" | "policies" | "routes" | "managed_postgres_data" | "object_storage_bucket_data")[];
+        };
+        /** @description Durable clone progress within one account and project, excluding private source configuration and worker credentials. */
+        ProjectEnvironmentCloneOperationResponse: {
+            operation_id: string;
+            project_slug: string;
+            source_environment: string;
+            target_environment: string;
+            source_revision_hash: string;
+            source_release_set_id?: string;
+            target_release_set_id?: string;
+            /** @enum {string} */
+            status: "pending" | "capturing" | "copying" | "publishing" | "ready" | "failed" | "compensating" | "compensated";
+            /** Format: int64 */
+            revision: number;
+            resources: components["schemas"]["ProjectEnvironmentCloneResourceResponse"][];
+            error_code?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /** @description Immutable project deployment graph. Active sets do not expire; when replaced, their TTL starts and expires_at is set. */
+        ProjectReleaseSetResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            account_id: string;
+            /** Format: uuid */
+            project_id: string;
+            environment: string;
+            active: boolean;
+            ttl_seconds: number;
+            /** Format: date-time */
+            expires_at?: string;
+            /** Format: date-time */
+            created_at: string;
+            members: components["schemas"]["ProjectReleaseSetMemberResponse"][];
+        };
+        /** @description Latest immutable non-secret configuration snapshot for a project environment. */
+        ProjectEnvironmentConfigResponse: {
+            project_slug: string;
+            environment: string;
+            /** Format: int64 */
+            version: number;
+            config_hash: string;
+            values: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        /** @description Effective configuration and live release state for one workload. */
+        ProjectEnvironmentStateWorkloadResponse: {
+            workload_config_hash?: string;
+            /** Format: int64 */
+            workload_config_revision?: number;
+            /** Format: uuid */
+            app_id?: string;
+            workload_slug: string;
+            workload_name: string;
+            release: components["schemas"]["ProjectEnvironmentReleaseWorkloadResponse"];
+            variables: components["schemas"]["ProjectEnvironmentVariableResponse"][];
+            secrets: components["schemas"]["ProjectEnvironmentSecretResponse"][];
+            bindings: components["schemas"]["ProjectEnvironmentBindingResponse"][];
+            domains: components["schemas"]["ProjectEnvironmentDomainResponse"][];
+            routes: components["schemas"]["ProjectEnvironmentRoutePolicyResponse"];
+            policies: components["schemas"]["ProjectEnvironmentEdgePolicyResponse"];
+        };
+        /** @description Application-scoped resource that is shared by all environments. */
+        ProjectEnvironmentSharedResourceResponse: {
+            /** @enum {string} */
+            kind: "domains" | "policies" | "routes";
+            /** @enum {string} */
+            ownership: "application";
+            note: string;
+        };
+        /** @description Stable key-level diff between two project environment configuration snapshots. */
+        ProjectEnvironmentConfigDiffResponse: {
+            project_slug: string;
+            from_environment: string;
+            to_environment: string;
+            /** Format: int64 */
+            from_version: number;
+            /** Format: int64 */
+            to_version: number;
+            from_hash: string;
+            to_hash: string;
+            changes: components["schemas"]["ProjectEnvironmentConfigChange"][];
+        };
+        /** @description Release, variable, secret, binding, and domain changes for one workload. */
+        ProjectEnvironmentWorkloadDiffResponse: {
+            workload_slug: string;
+            workload_name: string;
+            release: components["schemas"]["ProjectEnvironmentReleaseDiffResponse"];
+            variables: components["schemas"]["ProjectEnvironmentVariableChangeResponse"][];
+            secrets: components["schemas"]["ProjectEnvironmentSecretChangeResponse"][];
+            bindings: components["schemas"]["ProjectEnvironmentBindingChangeResponse"][];
+            domains: components["schemas"]["ProjectEnvironmentDomainDiffResponse"];
+            routes: components["schemas"]["ProjectEnvironmentRoutePolicyDiffResponse"];
+            policies: components["schemas"]["ProjectEnvironmentEdgePolicyDiffResponse"];
+        };
+        /** @description One expected preview workload and its latest deployment for the recorded commit. */
+        PreviewEnvironmentMemberResponse: {
+            /** Format: uuid */
+            app_id: string;
+            /** @description Empty if the recorded app is missing. */
+            slug: string;
+            workload_name: string;
+            /** @description Includes missing when the recorded app is unavailable. */
+            app_status: string;
+            preview_state: string;
+            /** @description Empty until a deployment for the recorded commit exists. */
+            deployment_id: string;
+            /** @description Missing until a deployment for the recorded commit exists. */
+            deployment_status: string;
+            /**
+             * Format: date-time
+             * @description Preview workload expiration.
+             */
+            expires_at?: string;
+            /** @description Safe artifact and configuration-group comparison with the production parent; never includes secret values. */
+            changes_from_production?: components["schemas"]["PreviewProductionChangesResponse"];
+            /** @description URL and diagnostic links for this preview workload. */
+            links?: components["schemas"]["PreviewResourceLinksResponse"];
+        };
+        /** @description Progress and named blockers for an individual resource in a complete environment clone. */
+        ProjectEnvironmentCloneResourceResponse: {
+            kind: string;
+            name: string;
+            source_id?: string;
+            source_version?: string;
+            target_id?: string;
+            capture_point?: string;
+            /** @enum {string} */
+            status: "planned" | "capturing" | "captured" | "copying" | "verifying" | "ready" | "failed" | "unsupported" | "compensating" | "compensated";
+        };
+        /** @description One app and exact deployment in an immutable project release set. */
+        ProjectReleaseSetMemberResponse: {
+            /** Format: uuid */
+            app_id: string;
+            /** Format: uuid */
+            deployment_id: string;
+        };
+        /** @description Current live deployment metadata for one project workload. The stable environment URL is present before the first deployment but returns 404 until a live release exists. */
+        ProjectEnvironmentReleaseWorkloadResponse: {
+            workload_config_hash?: string;
+            workload_slug: string;
+            workload_name: string;
+            /** @enum {string} */
+            status: "live" | "not_deployed";
+            /** Format: uri */
+            url?: string;
+            deployment_id?: string;
+            build_id?: string;
+            image_digest?: string;
+            source_url?: string;
+            commit_sha?: string;
+            source_sha256?: string;
+            traffic_percent?: number;
+            /** Format: date-time */
+            created_at?: string;
+        };
+        /** @description Non-secret runtime variable attached to an environment workload. */
+        ProjectEnvironmentVariableResponse: {
+            key: string;
+            value: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        /** @description Safe secret metadata. Version is omitted for legacy secrets with unknown history; secret values and ciphertext are never included. */
+        ProjectEnvironmentSecretResponse: {
+            key: string;
+            value_hash?: string;
+            /** Format: int64 */
+            version?: number;
+            /** @enum {string} */
+            managed_by?: "managed_postgres" | "object_storage";
+            binding_id?: string;
+            /** Format: int64 */
+            credential_generation?: number;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        /** @description Managed resource binding and its target-scoped credential metadata. */
+        ProjectEnvironmentBindingResponse: {
+            /** @enum {string} */
+            kind: "managed_postgres" | "object_storage";
+            binding_id: string;
+            /** Format: int64 */
+            credential_generation?: number;
+            secret_keys: string[];
+        };
+        /** @description Custom hostname routed to one workload in this project environment. */
+        ProjectEnvironmentDomainResponse: {
+            domain: string;
+            verified: boolean;
+        };
+        /** @description Effective declared-route contract and whether it is environment-owned. */
+        ProjectEnvironmentRoutePolicyResponse: {
+            /** @enum {string} */
+            ownership: "application" | "environment";
+            only_allow_declared_routes: boolean;
+            declared_routes: components["schemas"]["DeclaredRoute"][];
+        };
+        /** @description Headers/CORS policy ownership and rules. Other edge-rule kinds remain application-owned. */
+        ProjectEnvironmentEdgePolicyResponse: {
+            /** @enum {string} */
+            ownership: "application" | "environment";
+            rules: components["schemas"]["ProjectEnvironmentEdgeRuleResponse"][];
+        };
+        /** @description One key-level change between two environment configuration snapshots. */
+        ProjectEnvironmentConfigChange: {
+            key: string;
+            /** @enum {string} */
+            kind: "added" | "removed" | "changed";
+            before?: unknown;
+            after?: unknown;
+        };
+        /** @description Before-and-after release state for a workload in an environment diff. */
+        ProjectEnvironmentReleaseDiffResponse: {
+            /** @enum {string} */
+            kind: "added" | "removed" | "changed" | "unchanged";
+            before: components["schemas"]["ProjectEnvironmentReleaseWorkloadResponse"];
+            after: components["schemas"]["ProjectEnvironmentReleaseWorkloadResponse"];
+        };
+        /** @description Non-secret runtime variable change between two environments. */
+        ProjectEnvironmentVariableChangeResponse: {
+            key: string;
+            /** @enum {string} */
+            kind: "added" | "removed" | "changed";
+            before?: string;
+            after?: string;
+        };
+        /** @description Secret metadata comparison that excludes secret values and ciphertext. */
+        ProjectEnvironmentSecretChangeResponse: {
+            key: string;
+            /** @enum {string} */
+            kind: "added" | "removed" | "changed" | "version_drift" | "unknown";
+            before: components["schemas"]["ProjectEnvironmentSecretCellResponse"];
+            after: components["schemas"]["ProjectEnvironmentSecretCellResponse"];
+        };
+        /** @description Managed resource binding change between two environment states. */
+        ProjectEnvironmentBindingChangeResponse: {
+            /** @enum {string} */
+            kind: "managed_postgres" | "object_storage";
+            binding_id: string;
+            /** @enum {string} */
+            change: "added" | "removed" | "changed";
+            before?: components["schemas"]["ProjectEnvironmentBindingResponse"];
+            after?: components["schemas"]["ProjectEnvironmentBindingResponse"];
+        };
+        /** @description Environment-owned hostname changes for one workload. */
+        ProjectEnvironmentDomainDiffResponse: {
+            /** @enum {string} */
+            kind: "unchanged" | "changed";
+            before: components["schemas"]["ProjectEnvironmentDomainResponse"][];
+            after: components["schemas"]["ProjectEnvironmentDomainResponse"][];
+        };
+        /** @description Difference in the effective declared-route contract or its ownership. */
+        ProjectEnvironmentRoutePolicyDiffResponse: {
+            /** @enum {string} */
+            kind: "unchanged" | "changed";
+            before: components["schemas"]["ProjectEnvironmentRoutePolicyResponse"];
+            after: components["schemas"]["ProjectEnvironmentRoutePolicyResponse"];
+        };
+        /** @description Difference in environment headers/CORS rules or ownership. */
+        ProjectEnvironmentEdgePolicyDiffResponse: {
+            /** @enum {string} */
+            kind: "unchanged" | "changed";
+            before: components["schemas"]["ProjectEnvironmentEdgePolicyResponse"];
+            after: components["schemas"]["ProjectEnvironmentEdgePolicyResponse"];
+        };
+        /** @description Non-secret preview differences from the production parent. */
+        PreviewProductionChangesResponse: {
+            artifact_changed: boolean;
+            preview_artifact: components["schemas"]["PreviewArtifactResponse"];
+            production_artifact: components["schemas"]["PreviewArtifactResponse"];
+            configuration_changed_groups: ("runtime" | "resources" | "scaling" | "routing" | "policies")[];
+        };
+        /** @description Public preview URL and native APIs for its logs, metrics, and effective app configuration. */
+        PreviewResourceLinksResponse: {
+            /** Format: uri */
+            url: string;
+            logs: string;
+            metrics: string;
+            configuration: string;
+        };
+        /** @description One gateway route declaration. Path parameters use OpenAPI {name} segments. */
+        DeclaredRoute: {
+            path: string;
+            methods: ("GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS" | "HEAD" | "CONNECT" | "TRACE")[];
+        };
+        /** @description One inline headers or CORS rule on a stable environment URL. */
+        ProjectEnvironmentEdgeRuleResponse: {
+            /** @enum {string} */
+            kind: "headers" | "cors";
+            match_path: string;
+            match_methods?: string[];
+            match_headers?: {
+                [key: string]: string;
+            };
+            priority: number;
+            enabled: boolean;
+            action: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description One side of a secret comparison. Version is omitted when unknown; never contains secret material. */
+        ProjectEnvironmentSecretCellResponse: {
+            present: boolean;
+            value_hash?: string;
+            /** Format: int64 */
+            version?: number;
+            /** @enum {string} */
+            managed_by?: "managed_postgres" | "object_storage";
+            binding_id?: string;
+            /** Format: int64 */
+            credential_generation?: number;
+        };
+        /** @description Strongest available non-secret deployment artifact identity. */
+        PreviewArtifactResponse: {
+            deployment_id?: string;
+            revision?: number;
+            status?: string;
+            image_digest?: string;
+            source_sha256?: string;
+            commit_sha?: string;
+            build_id?: string;
         };
     };
     responses: {
@@ -34712,6 +35247,147 @@ export interface operations {
             404: components["responses"]["WorkflowStepAttemptsNotFound"];
             429: components["responses"]["TooManyRequests"];
             503: components["responses"]["ServerError"];
+        };
+    };
+    listProjectEnvironments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project slug whose environment registry is addressed. */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Account-scoped project environments. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectEnvironmentResponse"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getProjectEnvironment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project slug owning the environment. */
+                slug: string;
+                /** @description Environment slug. */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Project environment. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectEnvironmentResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getProjectEnvironmentState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project whose environment state is requested. */
+                slug: string;
+                /** @description Target environment whose effective state is returned. */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Effective environment state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectEnvironmentStateResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getProjectEnvironmentDiff: {
+        parameters: {
+            query: {
+                /** @description Source environment being compared with the target environment. */
+                from: string;
+            };
+            header?: never;
+            path: {
+                /** @description Project slug whose environments are compared. */
+                slug: string;
+                /** @description Target environment. */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unified effective-state diff. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectEnvironmentDiffResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getPreviewEnvironmentStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current-head preview environment status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewEnvironmentStatusResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
         };
     };
 }

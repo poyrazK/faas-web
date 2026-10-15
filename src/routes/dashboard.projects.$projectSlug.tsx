@@ -3,15 +3,30 @@ import { useAuth } from '@/lib/auth';
 import { useProject } from '@/lib/api/projects';
 import { ErrorState, LoadingState, PageHeader, Panel } from '@/components/dashboard/primitives';
 import { ProjectWorkloads } from '@/components/dashboard/projects/project-workloads';
+import { ProjectEnvironments } from '@/components/dashboard/projects/environment-selector';
+import { ProjectPreviews } from '@/components/dashboard/projects/preview-workload-set';
 import { Route as ProjectsRoute } from './dashboard.projects';
 export const Route = createFileRoute('/dashboard/projects/$projectSlug')({
   component: ProjectPage,
+  validateSearch: (
+    search: Record<string, unknown>
+  ): { environment?: string; compare?: string; preview?: string } => {
+    const selection = (value: unknown) =>
+      value === undefined ? undefined : typeof value === 'string' ? value : '__invalid__';
+    return {
+      environment: selection(search.environment),
+      compare: selection(search.compare),
+      preview: selection(search.preview),
+    };
+  },
 });
 function ProjectPage() {
   const { projectSlug } = Route.useParams();
   const { account } = useAuth();
   const query = useProject(account?.id ?? '', projectSlug);
   const { q } = ProjectsRoute.useSearch();
+  const { environment, compare, preview } = Route.useSearch();
+  const navigate = Route.useNavigate();
   if (query.isError) return <ErrorState error={query.error} onRetry={() => void query.refetch()} />;
   if (!account || query.isPending) return <LoadingState message="Loading project…" />;
   const project = query.data;
@@ -56,6 +71,29 @@ function ProjectPage() {
         )}
       </Panel>
       <ProjectWorkloads key={`${account.id}:${project.id}`} workloads={project.workloads} />
+      <ProjectEnvironments
+        accountId={account.id}
+        projectId={project.id}
+        slug={projectSlug}
+        environment={environment}
+        compare={compare}
+        onChange={(next) =>
+          void navigate({ search: (current) => ({ ...current, ...next }), resetScroll: false })
+        }
+      />
+      <ProjectPreviews
+        key={`previews:${account.id}:${project.id}`}
+        accountId={account.id}
+        projectSlug={projectSlug}
+        parents={project.workloads.map((workload) => workload.slug)}
+        selected={preview}
+        onSelect={(slug) =>
+          void navigate({
+            search: (current) => ({ ...current, preview: slug }),
+            resetScroll: false,
+          })
+        }
+      />
     </div>
   );
 }

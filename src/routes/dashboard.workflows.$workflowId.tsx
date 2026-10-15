@@ -68,6 +68,7 @@ import { InvokePanel, SloPanel } from '@/components/dashboard/app-core-panels';
 import { AppUsagePanel, WakeTimelinePanel } from '@/components/dashboard/app-insights';
 import { AppAnalyticsPanel } from '@/components/dashboard/app-analytics';
 import { AppOverview } from '@/components/dashboard/app-overview';
+import { PreviewDiscovery } from '@/components/dashboard/projects/preview-workload-set';
 import { RestartAppButton } from '@/components/dashboard/app-lifecycle';
 import { TarballDeploy } from '@/components/dashboard/tarball-deploy';
 import { ImageDeploymentPanel } from '@/components/dashboard/image-deploy-form';
@@ -484,6 +485,7 @@ function FunctionDetailPage() {
                 }}
               />
             )}
+            {tab === 'Overview' && <PreviewDiscovery slug={workflowId} />}
             {tab === 'Overview' && (
               <AppOverview
                 app={fn}

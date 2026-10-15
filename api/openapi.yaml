@@ -13790,6 +13790,148 @@ paths:
         '503': { $ref: '#/components/responses/ServerError' }
 
 
+  /v1/projects/{slug}/environments:
+    parameters:
+      - name: slug
+        in: path
+        required: true
+        description: Project slug whose environment registry is addressed.
+        schema: { type: string, pattern: '^[a-z0-9][a-z0-9-]{0,62}$' }
+    get:
+      tags: [projects]
+      operationId: listProjectEnvironments
+      summary: List durable environments for a project.
+      responses:
+        '200':
+          description: Account-scoped project environments.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ProjectEnvironmentResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/projects/{slug}/environments/{environment}:
+    parameters:
+      - name: slug
+        in: path
+        required: true
+        description: Project slug owning the environment.
+        schema: { type: string, pattern: '^[a-z0-9][a-z0-9-]{0,62}$' }
+      - name: environment
+        in: path
+        required: true
+        description: Environment slug.
+        schema: { type: string, pattern: '^[a-z0-9](?:[a-z0-9-]{0,31}[a-z0-9])?$' }
+    get:
+      tags: [projects]
+      operationId: getProjectEnvironment
+      summary: Inspect one project environment.
+      responses:
+        '200':
+          description: Project environment.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectEnvironmentResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/projects/{slug}/environments/{environment}/state:
+    parameters:
+      - name: slug
+        in: path
+        required: true
+        description: Project whose environment state is requested.
+        schema: { type: string, pattern: '^[a-z0-9][a-z0-9-]{0,62}$' }
+      - name: environment
+        in: path
+        required: true
+        description: Target environment whose effective state is returned.
+        schema: { type: string, pattern: '^[a-z0-9](?:[a-z0-9-]{0,31}[a-z0-9])?$' }
+    get:
+      tags: [projects]
+      operationId: getProjectEnvironmentState
+      summary: Get effective state for a project environment.
+      description: |
+        Returns configuration, live releases, non-secret runtime variables,
+        secret fingerprints, and managed binding metadata. Secret plaintext,
+        ciphertext, and sealing-key identifiers are never returned. Resources
+        that remain application-scoped are identified under shared_resources.
+      responses:
+        '200':
+          description: Effective environment state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectEnvironmentStateResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/projects/{slug}/environments/{environment}/diff:
+    parameters:
+      - name: slug
+        in: path
+        required: true
+        description: Project slug whose environments are compared.
+        schema: { type: string, pattern: '^[a-z0-9][a-z0-9-]{0,62}$' }
+      - name: environment
+        in: path
+        required: true
+        description: Target environment.
+        schema: { type: string, pattern: '^[a-z0-9](?:[a-z0-9-]{0,31}[a-z0-9])?$' }
+      - name: from
+        in: query
+        required: true
+        description: Source environment being compared with the target environment.
+        schema: { type: string, pattern: '^[a-z0-9](?:[a-z0-9-]{0,31}[a-z0-9])?$' }
+    get:
+      tags: [projects]
+      operationId: getProjectEnvironmentDiff
+      summary: Compare two effective project environments.
+      description: |
+        Compares configuration, releases, runtime variables, secret
+        fingerprints and credential generations, and managed bindings. Secret
+        values are never returned. A secret without a fingerprint is reported
+        as unknown rather than incorrectly reported as equal.
+      responses:
+        '200':
+          description: Unified effective-state diff.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectEnvironmentDiffResponse' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/preview/{slug}/environment:
+    parameters:
+      - $ref: '#/components/parameters/Slug'
+    get:
+      tags: [previews]
+      operationId: getPreviewEnvironmentStatus
+      summary: Read the current-head workload set for a GitHub PR preview.
+      description: |
+        The slug must be the root preview app of a recorded GitHub PR set.
+        The response evaluates only preview deployments for the recorded
+        commit. It never reports a root as ready while an expected sibling is
+        missing, building, failed, or on an older commit. Closed PRs are not
+        ready. Developer previews and unrecorded legacy PR previews return 404.
+        Requires the deployment read scope and account ownership of the root.
+      responses:
+        '200':
+          description: Current-head preview environment status.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PreviewEnvironmentStatusResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
 components:
 
   securitySchemes:
@@ -16147,6 +16289,10 @@ components:
         deleted_at: { type: [string, "null"], format: date-time }
         delete_grace_until: { type: [string, "null"], format: date-time }
         url: { type: string, format: uri }
+        preview_of_slug: { type: string, description: Parent app slug for a pull-request or developer preview. }
+        preview_pr_number: { type: integer, minimum: 0, description: PR number; zero identifies a developer preview. }
+        preview_pr_state: { type: string, enum: [open, closed, stale, torn_down] }
+        preview_expires_at: { type: [string, "null"], format: date-time }
         manifest: { $ref: '#/components/schemas/AppManifest' }
         # ADR-031 + ADR-032 (tier-2 network follow-ups, PR-C):
         # the per-app outbound CIDR allowlist. Each entry is a
@@ -26058,6 +26204,514 @@ components:
         mirror_invocation_id: { type: [string, 'null'], format: uuid, description: "Durable invocation ID for polling replay status and comparison results." }
         status: { type: string, enum: [queued, running, completed, failed] }
 
+
+    ProjectEnvironmentResponse:
+      description: Durable named environment target for a project.
+      type: object
+      required: [id, project_id, slug, protected, created_at, updated_at]
+      properties:
+        id: { type: string, pattern: '^[a-f0-9]{32}$' }
+        project_id: { type: string, pattern: '^[a-f0-9]{32}$' }
+        slug:
+          type: string
+          pattern: '^[a-z0-9](?:[a-z0-9-]{0,31}[a-z0-9])?$'
+          not: { const: default }
+          description: Project environment slug; the reserved app scope `default` cannot be used.
+        protected: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        cloned_from: { type: string }
+        clone: { $ref: '#/components/schemas/ProjectEnvironmentCloneResponse' }
+        clone_operation: { $ref: '#/components/schemas/ProjectEnvironmentCloneOperationResponse' }
+
+    ProjectEnvironmentStateResponse:
+      description: Point-in-time effective state snapshot for a project environment.
+      type: object
+      required: [project_slug, environment, protected, configuration, workloads, shared_resources, generated_at]
+      properties:
+        feature_flags_hash:
+          description: Fingerprint of the environment identity, current flag version, and configuration observed before qualification probes. Omitted only for the legacy identity with no published flags. Combine with each released workload settings hash when submitting workload_config_hashes.
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        active_release_set:
+          description: Active graph, or null when no graph has been published. Its selected members may differ from the per-workload live deployments below.
+          oneOf:
+            - $ref: '#/components/schemas/ProjectReleaseSetResponse'
+            - type: 'null'
+        release_set_status: { type: string, enum: [active, none] }
+        project_slug: { type: string }
+        environment: { type: string }
+        protected: { type: boolean }
+        configuration: { $ref: '#/components/schemas/ProjectEnvironmentConfigResponse' }
+        workloads:
+          type: array
+          items: { $ref: '#/components/schemas/ProjectEnvironmentStateWorkloadResponse' }
+        shared_resources:
+          type: array
+          items: { $ref: '#/components/schemas/ProjectEnvironmentSharedResourceResponse' }
+        generated_at: { type: string, format: date-time }
+
+    ProjectEnvironmentDiffResponse:
+      description: Effective-state comparison from one project environment to another.
+      type: object
+      required: [project_slug, from_environment, to_environment, configuration, workloads, shared_resources, generated_at]
+      properties:
+        project_slug: { type: string }
+        from_environment: { type: string }
+        to_environment: { type: string }
+        configuration: { $ref: '#/components/schemas/ProjectEnvironmentConfigDiffResponse' }
+        workloads:
+          type: array
+          items: { $ref: '#/components/schemas/ProjectEnvironmentWorkloadDiffResponse' }
+        shared_resources:
+          type: array
+          items: { $ref: '#/components/schemas/ProjectEnvironmentSharedResourceResponse' }
+        generated_at: { type: string, format: date-time }
+
+    PreviewEnvironmentStatusResponse:
+      description: Aggregate current-head readiness for a recorded GitHub PR preview workload set.
+      type: object
+      required: [root_slug, repo_full_name, pr_number, commit_sha, phase, ready, summary, live_workloads, total_workloads, members]
+      properties:
+        root_slug: { type: string }
+        repo_full_name: { type: string }
+        pr_number: { type: integer, minimum: 1 }
+        commit_sha: { type: string }
+        phase: { type: string, enum: [building, live, failed, closed] }
+        ready: { type: boolean }
+        summary: { type: string }
+        live_workloads: { type: integer, minimum: 0 }
+        total_workloads: { type: integer, minimum: 1 }
+        members:
+          type: array
+          items: { $ref: '#/components/schemas/PreviewEnvironmentMemberResponse' }
+
+    ProjectEnvironmentCloneResponse:
+      description: Non-secret copy counts for an environment clone. Managed database or bucket data appears as shared only after explicit opt-in.
+      type: object
+      required: [configuration_copied, variables_copied, secrets_copied, workloads_copied, bindings_copied, routes_copied, policies_copied, shared_resources]
+      properties:
+        configuration_copied: { type: boolean }
+        variables_copied: { type: integer, minimum: 0 }
+        secrets_copied: { type: integer, minimum: 0 }
+        secret_references_copied:
+          type: integer
+          minimum: 0
+          description: Destination-to-source references copied under the new catalog environment identity. Git source bindings, ownership, overrides and runtime receipts are not copied.
+        workloads_copied: { type: integer, minimum: 0 }
+        bindings_copied: { type: integer, minimum: 0 }
+        routes_copied: { type: integer, minimum: 0 }
+        policies_copied: { type: integer, minimum: 0 }
+        shared_resources:
+          type: array
+          items: { type: string, enum: [domains, policies, routes, managed_postgres_data, object_storage_bucket_data] }
+
+    ProjectEnvironmentCloneOperationResponse:
+      description: Durable clone progress within one account and project, excluding private source configuration and worker credentials.
+      type: object
+      required: [operation_id, project_slug, source_environment, target_environment, source_revision_hash, status, revision, resources, created_at, updated_at]
+      properties:
+        operation_id: { type: string }
+        project_slug: { type: string }
+        source_environment: { type: string }
+        target_environment: { type: string }
+        source_revision_hash: { type: string, pattern: '^[a-f0-9]{64}$' }
+        source_release_set_id: { type: string }
+        target_release_set_id: { type: string }
+        status: { type: string, enum: [pending, capturing, copying, publishing, ready, failed, compensating, compensated] }
+        revision: { type: integer, format: int64, minimum: 1 }
+        resources:
+          type: array
+          items: { $ref: '#/components/schemas/ProjectEnvironmentCloneResourceResponse' }
+        error_code: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    ProjectReleaseSetResponse:
+      description: Immutable project deployment graph. Active sets do not expire; when replaced, their TTL starts and expires_at is set.
+      type: object
+      required: [id, account_id, project_id, environment, active, ttl_seconds, created_at, members]
+      properties:
+        id: { type: string, format: uuid }
+        account_id: { type: string, format: uuid }
+        project_id: { type: string, format: uuid }
+        environment: { type: string }
+        active: { type: boolean }
+        ttl_seconds: { type: integer, minimum: 1, maximum: 604800 }
+        expires_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+        members:
+          type: array
+          items: { $ref: '#/components/schemas/ProjectReleaseSetMemberResponse' }
+
+    ProjectEnvironmentConfigResponse:
+      description: Latest immutable non-secret configuration snapshot for a project environment.
+      type: object
+      required: [project_slug, environment, version, config_hash, values]
+      properties:
+        project_slug: { type: string }
+        environment: { type: string }
+        version: { type: integer, format: int64, minimum: 0 }
+        config_hash: { type: string, pattern: '^[a-f0-9]{64}$' }
+        values:
+          type: object
+          additionalProperties: true
+        updated_at: { type: string, format: date-time }
+
+    ProjectEnvironmentStateWorkloadResponse:
+      description: Effective configuration and live release state for one workload.
+      type: object
+      required: [workload_slug, workload_name, release, variables, secrets, bindings, domains, routes, policies]
+      properties:
+        workload_config_hash: { type: string, pattern: '^[a-f0-9]{64}$' }
+        workload_config_revision: { type: integer, format: int64, minimum: 1 }
+        app_id: { type: string, format: uuid }
+        workload_slug: { type: string }
+        workload_name: { type: string }
+        release: { $ref: '#/components/schemas/ProjectEnvironmentReleaseWorkloadResponse' }
+        variables:
+          type: array
+          items: { $ref: '#/components/schemas/ProjectEnvironmentVariableResponse' }
+        secrets:
+          type: array
+          items: { $ref: '#/components/schemas/ProjectEnvironmentSecretResponse' }
+        bindings:
+          type: array
+          items: { $ref: '#/components/schemas/ProjectEnvironmentBindingResponse' }
+        domains:
+          type: array
+          items: { $ref: '#/components/schemas/ProjectEnvironmentDomainResponse' }
+        routes: { $ref: '#/components/schemas/ProjectEnvironmentRoutePolicyResponse' }
+        policies: { $ref: '#/components/schemas/ProjectEnvironmentEdgePolicyResponse' }
+
+    ProjectEnvironmentSharedResourceResponse:
+      description: Application-scoped resource that is shared by all environments.
+      type: object
+      required: [kind, ownership, note]
+      properties:
+        kind: { type: string, enum: [domains, policies, routes] }
+        ownership: { type: string, enum: [application] }
+        note: { type: string }
+
+    ProjectEnvironmentConfigDiffResponse:
+      description: Stable key-level diff between two project environment configuration snapshots.
+      type: object
+      required: [project_slug, from_environment, to_environment, from_version, to_version, from_hash, to_hash, changes]
+      properties:
+        project_slug: { type: string }
+        from_environment: { type: string }
+        to_environment: { type: string }
+        from_version: { type: integer, format: int64, minimum: 0 }
+        to_version: { type: integer, format: int64, minimum: 0 }
+        from_hash: { type: string, pattern: '^[a-f0-9]{64}$' }
+        to_hash: { type: string, pattern: '^[a-f0-9]{64}$' }
+        changes:
+          type: array
+          items: { $ref: '#/components/schemas/ProjectEnvironmentConfigChange' }
+
+    ProjectEnvironmentWorkloadDiffResponse:
+      description: Release, variable, secret, binding, and domain changes for one workload.
+      type: object
+      required: [workload_slug, workload_name, release, variables, secrets, bindings, domains, routes, policies]
+      properties:
+        workload_slug: { type: string }
+        workload_name: { type: string }
+        release: { $ref: '#/components/schemas/ProjectEnvironmentReleaseDiffResponse' }
+        variables:
+          type: array
+          items: { $ref: '#/components/schemas/ProjectEnvironmentVariableChangeResponse' }
+        secrets:
+          type: array
+          items: { $ref: '#/components/schemas/ProjectEnvironmentSecretChangeResponse' }
+        bindings:
+          type: array
+          items: { $ref: '#/components/schemas/ProjectEnvironmentBindingChangeResponse' }
+        domains: { $ref: '#/components/schemas/ProjectEnvironmentDomainDiffResponse' }
+        routes: { $ref: '#/components/schemas/ProjectEnvironmentRoutePolicyDiffResponse' }
+        policies: { $ref: '#/components/schemas/ProjectEnvironmentEdgePolicyDiffResponse' }
+
+    PreviewEnvironmentMemberResponse:
+      description: One expected preview workload and its latest deployment for the recorded commit.
+      type: object
+      required: [app_id, slug, workload_name, app_status, preview_state, deployment_id, deployment_status]
+      properties:
+        app_id: { type: string, format: uuid }
+        slug: { type: string, description: Empty if the recorded app is missing. }
+        workload_name: { type: string }
+        app_status: { type: string, description: Includes missing when the recorded app is unavailable. }
+        preview_state: { type: string }
+        deployment_id: { type: string, description: Empty until a deployment for the recorded commit exists. }
+        deployment_status: { type: string, description: Missing until a deployment for the recorded commit exists. }
+        expires_at: { type: string, format: date-time, description: Preview workload expiration. }
+        changes_from_production:
+          description: Safe artifact and configuration-group comparison with the production parent; never includes secret values.
+          $ref: '#/components/schemas/PreviewProductionChangesResponse'
+        links:
+          description: URL and diagnostic links for this preview workload.
+          $ref: '#/components/schemas/PreviewResourceLinksResponse'
+
+    ProjectEnvironmentCloneResourceResponse:
+      description: Progress and named blockers for an individual resource in a complete environment clone.
+      type: object
+      required: [kind, name, status]
+      properties:
+        kind: { type: string }
+        name: { type: string }
+        source_id: { type: string }
+        source_version: { type: string }
+        target_id: { type: string }
+        capture_point: { type: string }
+        status: { type: string, enum: [planned, capturing, captured, copying, verifying, ready, failed, unsupported, compensating, compensated] }
+
+    ProjectReleaseSetMemberResponse:
+      description: One app and exact deployment in an immutable project release set.
+      type: object
+      required: [app_id, deployment_id]
+      properties:
+        app_id: { type: string, format: uuid }
+        deployment_id: { type: string, format: uuid }
+
+    ProjectEnvironmentReleaseWorkloadResponse:
+      description: Current live deployment metadata for one project workload. The stable environment URL is present before the first deployment but returns 404 until a live release exists.
+      type: object
+      required: [workload_slug, workload_name, status]
+      properties:
+        workload_config_hash: { type: string, pattern: '^[a-f0-9]{64}$' }
+        workload_slug: { type: string }
+        workload_name: { type: string }
+        status: { type: string, enum: [live, not_deployed] }
+        url: { type: string, format: uri }
+        deployment_id: { type: string }
+        build_id: { type: string }
+        image_digest: { type: string }
+        source_url: { type: string }
+        commit_sha: { type: string }
+        source_sha256: { type: string }
+        traffic_percent: { type: integer, minimum: 0, maximum: 100 }
+        created_at: { type: string, format: date-time }
+
+    ProjectEnvironmentVariableResponse:
+      description: Non-secret runtime variable attached to an environment workload.
+      type: object
+      required: [key, value]
+      properties:
+        key: { type: string }
+        value: { type: string }
+        updated_at: { type: string, format: date-time }
+
+    ProjectEnvironmentSecretResponse:
+      description: Safe secret metadata. Version is omitted for legacy secrets with unknown history; secret values and ciphertext are never included.
+      type: object
+      required: [key]
+      properties:
+        key: { type: string }
+        value_hash: { type: string, pattern: '^[a-f0-9]{16}$' }
+        version: { type: integer, format: int64, minimum: 1 }
+        managed_by: { type: string, enum: [managed_postgres, object_storage] }
+        binding_id: { type: string }
+        credential_generation: { type: integer, format: int64, minimum: 1 }
+        updated_at: { type: string, format: date-time }
+
+    ProjectEnvironmentBindingResponse:
+      description: Managed resource binding and its target-scoped credential metadata.
+      type: object
+      required: [kind, binding_id, secret_keys]
+      properties:
+        kind: { type: string, enum: [managed_postgres, object_storage] }
+        binding_id: { type: string }
+        credential_generation: { type: integer, format: int64, minimum: 1 }
+        secret_keys:
+          type: array
+          items: { type: string }
+
+    ProjectEnvironmentDomainResponse:
+      description: Custom hostname routed to one workload in this project environment.
+      type: object
+      required: [domain, verified]
+      properties:
+        domain: { type: string }
+        verified: { type: boolean }
+
+    ProjectEnvironmentRoutePolicyResponse:
+      description: Effective declared-route contract and whether it is environment-owned.
+      type: object
+      required: [ownership, only_allow_declared_routes, declared_routes]
+      properties:
+        ownership: { type: string, enum: [application, environment] }
+        only_allow_declared_routes: { type: boolean }
+        declared_routes:
+          type: array
+          items: { $ref: '#/components/schemas/DeclaredRoute' }
+
+    ProjectEnvironmentEdgePolicyResponse:
+      description: Headers/CORS policy ownership and rules. Other edge-rule kinds remain application-owned.
+      type: object
+      required: [ownership, rules]
+      properties:
+        ownership: { type: string, enum: [application, environment] }
+        rules:
+          type: array
+          items: { $ref: '#/components/schemas/ProjectEnvironmentEdgeRuleResponse' }
+
+    ProjectEnvironmentConfigChange:
+      description: One key-level change between two environment configuration snapshots.
+      type: object
+      required: [key, kind]
+      properties:
+        key: { type: string }
+        kind: { type: string, enum: [added, removed, changed] }
+        before: {}
+        after: {}
+
+    ProjectEnvironmentReleaseDiffResponse:
+      description: Before-and-after release state for a workload in an environment diff.
+      type: object
+      required: [kind, before, after]
+      properties:
+        kind: { type: string, enum: [added, removed, changed, unchanged] }
+        before: { $ref: '#/components/schemas/ProjectEnvironmentReleaseWorkloadResponse' }
+        after: { $ref: '#/components/schemas/ProjectEnvironmentReleaseWorkloadResponse' }
+
+    ProjectEnvironmentVariableChangeResponse:
+      description: Non-secret runtime variable change between two environments.
+      type: object
+      required: [key, kind]
+      properties:
+        key: { type: string }
+        kind: { type: string, enum: [added, removed, changed] }
+        before: { type: string }
+        after: { type: string }
+
+    ProjectEnvironmentSecretChangeResponse:
+      description: Secret metadata comparison that excludes secret values and ciphertext.
+      type: object
+      required: [key, kind, before, after]
+      properties:
+        key: { type: string }
+        kind: { type: string, enum: [added, removed, changed, version_drift, unknown] }
+        before: { $ref: '#/components/schemas/ProjectEnvironmentSecretCellResponse' }
+        after: { $ref: '#/components/schemas/ProjectEnvironmentSecretCellResponse' }
+
+    ProjectEnvironmentBindingChangeResponse:
+      description: Managed resource binding change between two environment states.
+      type: object
+      required: [kind, binding_id, change]
+      properties:
+        kind: { type: string, enum: [managed_postgres, object_storage] }
+        binding_id: { type: string }
+        change: { type: string, enum: [added, removed, changed] }
+        before: { $ref: '#/components/schemas/ProjectEnvironmentBindingResponse' }
+        after: { $ref: '#/components/schemas/ProjectEnvironmentBindingResponse' }
+
+    ProjectEnvironmentDomainDiffResponse:
+      description: Environment-owned hostname changes for one workload.
+      type: object
+      required: [kind, before, after]
+      properties:
+        kind: { type: string, enum: [unchanged, changed] }
+        before:
+          type: array
+          items: { $ref: '#/components/schemas/ProjectEnvironmentDomainResponse' }
+        after:
+          type: array
+          items: { $ref: '#/components/schemas/ProjectEnvironmentDomainResponse' }
+
+    ProjectEnvironmentRoutePolicyDiffResponse:
+      description: Difference in the effective declared-route contract or its ownership.
+      type: object
+      required: [kind, before, after]
+      properties:
+        kind: { type: string, enum: [unchanged, changed] }
+        before: { $ref: '#/components/schemas/ProjectEnvironmentRoutePolicyResponse' }
+        after: { $ref: '#/components/schemas/ProjectEnvironmentRoutePolicyResponse' }
+
+    ProjectEnvironmentEdgePolicyDiffResponse:
+      description: Difference in environment headers/CORS rules or ownership.
+      type: object
+      required: [kind, before, after]
+      properties:
+        kind: { type: string, enum: [unchanged, changed] }
+        before: { $ref: '#/components/schemas/ProjectEnvironmentEdgePolicyResponse' }
+        after: { $ref: '#/components/schemas/ProjectEnvironmentEdgePolicyResponse' }
+
+    PreviewProductionChangesResponse:
+      description: Non-secret preview differences from the production parent.
+      type: object
+      required: [artifact_changed, preview_artifact, production_artifact, configuration_changed_groups]
+      properties:
+        artifact_changed: { type: boolean }
+        preview_artifact: { $ref: '#/components/schemas/PreviewArtifactResponse' }
+        production_artifact: { $ref: '#/components/schemas/PreviewArtifactResponse' }
+        configuration_changed_groups:
+          type: array
+          items: { type: string, enum: [runtime, resources, scaling, routing, policies] }
+
+    PreviewResourceLinksResponse:
+      description: Public preview URL and native APIs for its logs, metrics, and effective app configuration.
+      type: object
+      required: [url, logs, metrics, configuration]
+      properties:
+        url: { type: string, format: uri }
+        logs: { type: string }
+        metrics: { type: string }
+        configuration: { type: string }
+
+    DeclaredRoute:
+      description: "One gateway route declaration. Path parameters use OpenAPI {name} segments."
+      type: object
+      required: [path, methods]
+      properties:
+        path: { type: string, pattern: '^/[^?#]*$' }
+        methods:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            enum: [GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD, CONNECT, TRACE]
+
+    ProjectEnvironmentEdgeRuleResponse:
+      description: One inline headers or CORS rule on a stable environment URL.
+      type: object
+      required: [kind, match_path, priority, enabled, action]
+      additionalProperties: false
+      properties:
+        kind: { type: string, enum: [headers, cors] }
+        match_path: { type: string }
+        match_methods:
+          type: array
+          items: { type: string }
+        match_headers:
+          type: object
+          additionalProperties: { type: string }
+        priority: { type: integer, minimum: 0, maximum: 10000 }
+        enabled: { type: boolean }
+        action:
+          type: object
+          additionalProperties: true
+
+    ProjectEnvironmentSecretCellResponse:
+      description: One side of a secret comparison. Version is omitted when unknown; never contains secret material.
+      type: object
+      required: [present]
+      properties:
+        present: { type: boolean }
+        value_hash: { type: string, pattern: '^[a-f0-9]{16}$' }
+        version: { type: integer, format: int64, minimum: 1 }
+        managed_by: { type: string, enum: [managed_postgres, object_storage] }
+        binding_id: { type: string }
+        credential_generation: { type: integer, format: int64, minimum: 1 }
+
+    PreviewArtifactResponse:
+      description: Strongest available non-secret deployment artifact identity.
+      type: object
+      properties:
+        deployment_id: { type: string }
+        revision: { type: integer, minimum: 1 }
+        status: { type: string }
+        image_digest: { type: string }
+        source_sha256: { type: string }
+        commit_sha: { type: string }
+        build_id: { type: string }
 
   responses:
     WorkflowStepAttemptsNotFound:
