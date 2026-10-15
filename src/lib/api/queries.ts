@@ -2329,6 +2329,9 @@ export type OpenAPIDocument =
 export type EdgeRuleSuggestion = components['schemas']['EdgeRuleSuggestion'];
 
 const appOpenAPIKey = (slug: string) => ['apps', slug, 'openapi'] as const;
+const openAPIFilters: QueryFilters = {
+  predicate: (query) => query.queryKey[0] === 'apps' && query.queryKey[2] === 'openapi',
+};
 
 /**
  * `manual_import` is the customer's own document verbatim and 404s with
@@ -2513,7 +2516,8 @@ export function useDeleteEdgeRule() {
     onMutate: (id) =>
       applyOptimistic<EdgeRule[]>(qc, edgeRuleFilters, (old) => old.filter((r) => r.id !== id)),
     onError: (_err, _id, rollback) => rollback?.(),
-    onSettled: () => qc.invalidateQueries(edgeRuleFilters),
+    onSettled: () =>
+      Promise.all([qc.invalidateQueries(edgeRuleFilters), qc.invalidateQueries(openAPIFilters)]),
   });
 }
 
@@ -3074,6 +3078,7 @@ export function useCreateEdgeRule() {
     onSuccess: (_rule, { slug }) => {
       void qc.invalidateQueries({ queryKey: ['edge-rules'] });
       void qc.invalidateQueries({ queryKey: ['apps', slug, 'edge-rules'] });
+      void qc.invalidateQueries({ queryKey: appOpenAPIKey(slug) });
     },
   });
 }
@@ -3093,7 +3098,8 @@ export function useUpdateEdgeRule() {
         old.map((r) => (r.id === id ? ({ ...r, ...patch } as EdgeRule) : r))
       ),
     onError: (_err, _vars, rollback) => rollback?.(),
-    onSettled: () => qc.invalidateQueries(edgeRuleFilters),
+    onSettled: () =>
+      Promise.all([qc.invalidateQueries(edgeRuleFilters), qc.invalidateQueries(openAPIFilters)]),
   });
 }
 
