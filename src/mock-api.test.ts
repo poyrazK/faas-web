@@ -44,6 +44,20 @@ async function get(path: string) {
   const response = await fetch(`${origin}${path}`);
   return { response, body: await response.json() };
 }
+it('separates purge acceptance from the cache revision applying in the mock runtime', async () => {
+  const apps = await get('/v1/apps');
+  const slug = apps.body[0].slug;
+  const before = await get(`/v1/apps/${slug}/policy/status`);
+  expect(before.response.status).toBe(200);
+  const accepted = await fetch(`${origin}/v1/apps/${slug}/cache`, { method: 'DELETE' });
+  expect(accepted.status).toBe(204);
+  const pending = await get(`/v1/apps/${slug}/policy/status`);
+  expect(pending.body.response_cache.desired_revision).toBeGreaterThan(
+    before.body.response_cache.desired_revision
+  );
+  expect(pending.body.response_cache.state).toBe('pending');
+  expect((await get(`/v1/apps/${slug}/policy/status`)).body.response_cache.state).toBe('active');
+});
 it('serves durable project inventory/detail and hides unknown project identities', async () => {
   const inventory = await get('/v1/projects');
   expect(inventory.response.status).toBe(200);

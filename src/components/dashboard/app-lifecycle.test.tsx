@@ -14,6 +14,7 @@ vi.mock('@/lib/api/queries', () => ({
 }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => confirm }));
+vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { id: 'account' } }) }));
 
 const { PurgeCacheControl, RestartAppButton } = await import('./app-lifecycle');
 
@@ -63,6 +64,10 @@ describe('PurgeCacheControl', () => {
     await userEvent.click(screen.getByRole('button', { name: /purge/i }));
     await waitFor(() => expect(purge).toHaveBeenCalledWith(undefined));
     expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Purge requested' }));
+    expect(confirm).toHaveBeenCalledWith(
+      expect.objectContaining({ description: expect.stringContaining('may remain') })
+    );
+    expect(screen.getByText(/optional shared Redis/)).toBeVisible();
   });
 
   it('passes the glob through when one is typed', async () => {

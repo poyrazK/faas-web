@@ -709,10 +709,11 @@ export function useApps(options?: Options<App[]>) {
   });
 }
 
-export function useApp(slug: string, options?: Options<App>) {
+export function useApp(slug: string, options?: Options<App>, accountId?: string) {
   return useQuery({
-    queryKey: keys.app(slug),
-    queryFn: () => unwrap(api.GET('/v1/apps/{slug}', { params: { path: { slug } } })),
+    queryKey: accountId === undefined ? keys.app(slug) : ['apps', 'account', accountId, slug],
+    queryFn: ({ signal }) =>
+      unwrap(api.GET('/v1/apps/{slug}', { params: { path: { slug } }, signal })),
     enabled: Boolean(slug),
     ...options,
   });
