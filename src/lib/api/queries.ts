@@ -12,11 +12,6 @@ import {
 import { api, issueCSRF, unwrap } from './client';
 import { ApiError } from './errors';
 import { isDeploymentTerminal } from '../deployment-status';
-import {
-  restoreAcknowledgment,
-  restoreReviewedApp,
-  type RestoreIntent,
-} from './deleted-app-restores';
 import type { components, paths } from './schema';
 
 /**
@@ -3323,27 +3318,24 @@ export function useRestartApp(slug: string) {
   });
 }
 
-/** Undo a delete inside the grace window. */
+/**
+ * Undo a delete inside the grace window, by slug. Only `id`, `slug` and
+ * `status` are kept from the response, so nothing secret-bearing lingers in
+ * the mutation cache.
+ */
 export function useRestoreApp() {
   const qc = useQueryClient();
   return useMutation({
     retry: false,
-    mutationFn: async (intent: string | RestoreIntent) =>
-      typeof intent === 'string'
-        ? restoreAcknowledgment(
-            await unwrap(
-              api.POST('/v1/apps/{slug}/restore', { params: { path: { slug: intent } } })
-            )
-          )
-        : restoreReviewedApp(intent),
-    onSuccess: (_result, intent) => {
+    mutationFn: async (slug: string) => {
+      const app = await unwrap(api.POST('/v1/apps/{slug}/restore', { params: { path: { slug } } }));
+      return { id: app.id, slug: app.slug, status: app.status };
+    },
+    onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.apps });
       void qc.invalidateQueries({ queryKey: keys.deployments });
       void qc.invalidateQueries({ queryKey: ['projects'] });
-      void qc.invalidateQueries({
-        queryKey:
-          typeof intent === 'string' ? keys.account : ['account', intent.accountId, 'deleted-apps'],
-      });
+      void qc.invalidateQueries({ queryKey: keys.account });
     },
   });
 }

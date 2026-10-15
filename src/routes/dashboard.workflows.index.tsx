@@ -15,13 +15,6 @@ import {
 import { useData } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import { consoleHead } from '@/lib/seo';
-import { useAuth } from '@/lib/auth';
-import { DeletedApps } from '@/components/dashboard/deleted-apps';
-import {
-  deletedCursorForAccount,
-  validateDeletedSearch,
-  type DeletedInventorySearch,
-} from '@/lib/deleted-inventory-search';
 
 const STATE_FILTERS: { key: RunState | 'all'; label: string }[] = [
   { key: 'all', label: 'All' },
@@ -42,10 +35,8 @@ export const Route = createFileRoute('/dashboard/workflows/')({
   // string behind.
   validateSearch: (
     search: Record<string, unknown>
-  ): Record<string, unknown> &
-    DeletedInventorySearch & { q?: string; state?: RunState | 'all'; runtime?: string } => ({
+  ): Record<string, unknown> & { q?: string; state?: RunState | 'all'; runtime?: string } => ({
     ...search,
-    ...validateDeletedSearch(search),
     q: undefined,
     state: undefined,
     runtime: undefined,
@@ -128,9 +119,6 @@ const COLUMNS: Column<Workflow>[] = [
 function FunctionsPage() {
   const search = Route.useSearch();
   const { q: query = '', state = 'all', runtime = 'all' } = search;
-  const { account } = useAuth();
-  const accountId = account?.id ?? '';
-  const deletedPage = deletedCursorForAccount(search, accountId);
   const routeNavigate = Route.useNavigate();
   // Filter changes replace rather than push — refining a filter is not
   // history the back button should replay keystroke by keystroke.
@@ -191,156 +179,84 @@ function FunctionsPage() {
         }
       />
 
-      <nav aria-label="App inventory" className="flex flex-wrap gap-2">
-        <Button variant={search.view === 'deleted' ? 'outline' : 'secondary'} asChild>
-          <Link
-            to="/dashboard/workflows"
-            search={(prev) => ({
-              ...prev,
-              view: undefined,
-              deletedCursor: undefined,
-              deletedAccount: undefined,
-            })}
-            aria-current={search.view !== 'deleted' ? 'page' : undefined}
-          >
-            Active apps
-          </Link>
-        </Button>
-        <Button variant={search.view === 'deleted' ? 'secondary' : 'outline'} asChild>
-          <Link
-            to="/dashboard/workflows"
-            search={(prev) => ({
-              ...prev,
-              view: 'deleted',
-              deletedCursor: undefined,
-              deletedAccount: accountId,
-            })}
-            aria-current={search.view === 'deleted' ? 'page' : undefined}
-          >
-            Recently deleted
-          </Link>
-        </Button>
-      </nav>
-      {search.view === 'deleted' ? (
-        deletedPage.kind === 'restart_required' ? (
-          <div role="status" className="space-y-2">
-            <p>This cursor belongs to another account. Start this account’s deleted inventory.</p>
+      <ResourceTable
+        rows={rows}
+        columns={COLUMNS}
+        initialSort={{ key: 'invocations24h', dir: 'desc' }}
+        searchKeys={['name', 'runtime']}
+        searchPlaceholder="Filter by name or runtime…"
+        query={query}
+        onQueryChange={setQuery}
+        filters={
+          <>
+            <div className="flex flex-wrap rounded-md border border-border p-0.5">
+              {STATE_FILTERS.map((f) => (
+                <button
+                  key={f.key}
+                  type="button"
+                  aria-pressed={state === f.key}
+                  onClick={() => setState(f.key)}
+                  className={cn(
+                    'pressable rounded px-2.5 py-1 text-xs',
+                    state === f.key
+                      ? 'bg-muted text-foreground'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+            <Select
+              value={runtime}
+              onChange={(e) => setRuntime(e.target.value)}
+              aria-label="Filter by runtime"
+              className="bg-card px-2.5"
+            >
+              <option value="all">All runtimes</option>
+              {runtimes.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </Select>
+          </>
+        }
+        emptyMessage={
+          workflows.length === 0 ? 'No apps on this account yet.' : 'No apps match these filters.'
+        }
+        emptyAction={
+          workflows.length === 0 ? (
+            <Button asChild size="sm">
+              <Link to="/dashboard/workflows/new">Create your first app</Link>
+            </Button>
+          ) : (
             <Button
+              size="sm"
+              variant="outline"
               onClick={() =>
                 void routeNavigate({
-                  search: (prev) => ({
-                    ...prev,
-                    deletedCursor: undefined,
-                    deletedAccount: accountId,
+                  search: (current) => ({
+                    ...current,
+                    q: undefined,
+                    state: undefined,
+                    runtime: undefined,
                   }),
+                  hash: true,
                 })
               }
             >
-              Restart deleted inventory
+              Clear filters
             </Button>
-          </div>
-        ) : accountId ? (
-          <DeletedApps
-            accountId={accountId}
-            cursor={deletedPage.cursor}
-            onNext={(cursor) =>
-              void routeNavigate({
-                search: (prev) => ({ ...prev, deletedCursor: cursor, deletedAccount: accountId }),
-              })
-            }
-            onRestart={() =>
-              void routeNavigate({
-                search: (prev) => ({
-                  ...prev,
-                  deletedCursor: undefined,
-                  deletedAccount: accountId,
-                }),
-              })
-            }
-          />
-        ) : (
-          <p role="status">Reading account identity…</p>
-        )
-      ) : (
-        <ResourceTable
-          rows={rows}
-          columns={COLUMNS}
-          initialSort={{ key: 'invocations24h', dir: 'desc' }}
-          searchKeys={['name', 'runtime']}
-          searchPlaceholder="Filter by name or runtime…"
-          query={query}
-          onQueryChange={setQuery}
-          filters={
-            <>
-              <div className="flex flex-wrap rounded-md border border-border p-0.5">
-                {STATE_FILTERS.map((f) => (
-                  <button
-                    key={f.key}
-                    type="button"
-                    aria-pressed={state === f.key}
-                    onClick={() => setState(f.key)}
-                    className={cn(
-                      'pressable rounded px-2.5 py-1 text-xs',
-                      state === f.key
-                        ? 'bg-muted text-foreground'
-                        : 'text-muted-foreground hover:text-foreground'
-                    )}
-                  >
-                    {f.label}
-                  </button>
-                ))}
-              </div>
-              <Select
-                value={runtime}
-                onChange={(e) => setRuntime(e.target.value)}
-                aria-label="Filter by runtime"
-                className="bg-card px-2.5"
-              >
-                <option value="all">All runtimes</option>
-                {runtimes.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
-                  </option>
-                ))}
-              </Select>
-            </>
-          }
-          emptyMessage={
-            workflows.length === 0 ? 'No apps on this account yet.' : 'No apps match these filters.'
-          }
-          emptyAction={
-            workflows.length === 0 ? (
-              <Button asChild size="sm">
-                <Link to="/dashboard/workflows/new">Create your first app</Link>
-              </Button>
-            ) : (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() =>
-                  void routeNavigate({
-                    search: (current) => ({
-                      ...current,
-                      q: undefined,
-                      state: undefined,
-                      runtime: undefined,
-                    }),
-                    hash: true,
-                  })
-                }
-              >
-                Clear filters
-              </Button>
-            )
-          }
-          loading={loading}
-          error={error}
-          onRetry={refresh}
-          onRowClick={(fn) =>
-            navigate({ to: '/dashboard/workflows/$workflowId', params: { workflowId: fn.id } })
-          }
-        />
-      )}
+          )
+        }
+        loading={loading}
+        error={error}
+        onRetry={refresh}
+        onRowClick={(fn) =>
+          navigate({ to: '/dashboard/workflows/$workflowId', params: { workflowId: fn.id } })
+        }
+      />
     </div>
   );
 }

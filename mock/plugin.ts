@@ -16,7 +16,6 @@ import {
   mockApprovalId,
 } from './environment-readiness';
 import { getStageQueueRecord, putStageQueueRecord } from './stage-queues';
-import { listDeletedRecords, readDeletedRecord, type DeletedRecord } from './deleted-apps';
 import {
   environmentInventory,
   environmentState,
@@ -453,43 +452,14 @@ route('POST', '/v1/auth/sessions/revoke_all', () => {
 
 // --- Apps --------------------------------------------------------------------
 
-const deletedApps = new Map<string, DeletedRecord & { app: db.App }>();
-// Retained fixtures are independent records; no live mock app is deleted to seed recovery.
-for (let i = 0; i < 29; i++) {
-  const slug = `retained-app-${String(i).padStart(2, '0')}`;
-  const retained = { ...db.apps[0], id: db.id(), slug, status: 'deleted' } as db.App;
-  deletedApps.set(slug, {
-    app: retained,
-    accountId: db.account.id,
-    deletedAt: i === 27 ? null : new Date(Date.now() - i * 60_000).toISOString(),
-    expiresAt: i === 26 ? Date.now() - 1000 : i === 27 ? null : Date.now() + 6 * 86400e3,
-    purgeStarted: i === 28,
-  });
-}
-deletedApps.set('foreign-retained', {
-  app: { ...db.apps[0], id: db.id(), slug: 'foreign-retained' },
-  accountId: 'another-account',
-  deletedAt: new Date().toISOString(),
-  expiresAt: Date.now() + 86400e3,
-});
-
-function deletedQuery(query: URLSearchParams, list = false) {
-  for (const key of query.keys()) {
-    if (!list || !['cursor', 'limit'].includes(key) || query.getAll(key).length !== 1)
-      throw new Problem(400, 'validation_failed', 'Unsupported or repeated inventory parameter.');
-  }
-}
-function restoreDeleted(record: DeletedRecord & { app: db.App }) {
-  const metadata = readDeletedRecord([record], db.account.id, record.app.id, Date.now());
-  if (!metadata) throw new Problem(404, 'app_not_found');
-  if (!metadata.restore_eligible)
-    throw new Problem(409, 'app_not_restorable', metadata.restore_blocker);
+// Deleted apps wait out their grace window here; `POST /v1/apps/{slug}/restore`
+// brings one back. apid has no customer listing of them.
+const deletedApps = new Map<string, { app: db.App; expiresAt: number }>();
+function restoreDeleted(record: { app: db.App; expiresAt: number }) {
+  if (record.expiresAt <= Date.now())
+    throw new Problem(409, 'app_not_restorable', 'the deletion grace window has ended.');
   if (db.appBySlug(record.app.slug))
     throw new Problem(409, 'conflict', 'An active app occupies this slug.');
-  if (process.env.MOCK_RESTORE_FAILURE === 'quota')
-    throw new Problem(402, 'quota_exceeded', 'App quota reached.');
-  if (process.env.MOCK_RESTORE_FAILURE === 'temporary')
-    throw new Problem(503, 'temporarily_unavailable', 'Restore capacity unavailable.');
   record.app.status = db.deployments.some((deployment) => deployment.app_id === record.app.id)
     ? 'active'
     : 'undeployed';
@@ -497,45 +467,6 @@ function restoreDeleted(record: DeletedRecord & { app: db.App }) {
   deletedApps.delete(record.app.slug);
   return record.app;
 }
-route('GET', '/v1/deleted-apps', ({ query }) => {
-  deletedQuery(query, true);
-  try {
-    return listDeletedRecords(
-      [...deletedApps.values()],
-      db.account.id,
-      query.get('cursor') ?? '',
-      Number(query.get('limit') ?? 25),
-      Date.now()
-    );
-  } catch (error) {
-    throw new Problem(
-      400,
-      'validation_failed',
-      error instanceof Error ? error.message : 'Invalid inventory request.'
-    );
-  }
-});
-route('GET', '/v1/deleted-apps/{id}', ({ params, query }) => {
-  deletedQuery(query);
-  const metadata = readDeletedRecord(
-    [...deletedApps.values()],
-    db.account.id,
-    params.id,
-    Date.now()
-  );
-  if (!metadata) throw new Problem(404, 'app_not_found');
-  return metadata;
-});
-route('POST', '/v1/deleted-apps/{id}/restore', ({ params, query, body }) => {
-  deletedQuery(query);
-  if (Object.keys(body).length)
-    throw new Problem(400, 'validation_failed', 'Restore accepts no body intent.');
-  const retained = [...deletedApps.values()].find(
-    (record) => record.app.id === params.id && record.accountId === db.account.id
-  );
-  if (!retained) throw new Problem(404, 'app_not_found');
-  return restoreDeleted(retained);
-});
 
 function app(slug: string) {
   const found = db.appBySlug(slug);
@@ -754,12 +685,7 @@ route('GET', '/v1/apps/{slug}/policy/status', ({ params }) =>
 route('DELETE', '/v1/apps/{slug}', ({ params }) => {
   const a = app(params.slug);
   // Active reads hide tombstones; the restore API retains the same app identity.
-  deletedApps.set(a.slug, {
-    app: a,
-    accountId: db.account.id,
-    deletedAt: new Date().toISOString(),
-    expiresAt: Date.now() + 7 * 86400e3,
-  });
+  deletedApps.set(a.slug, { app: a, expiresAt: Date.now() + 7 * 86400e3 });
   db.apps.splice(db.apps.indexOf(a), 1);
   return NO_CONTENT;
 });
@@ -983,19 +909,6 @@ route('DELETE', '/v1/apps/{slug}/env/{key}', ({ params, query }) => {
   envValues.delete(envValueKey(params.slug, scope, params.key));
   return NO_CONTENT;
 });
-route('POST', '/v1/apps/{slug}/env-export', ({ params, query, body }) => {
-  if (body.acknowledge_sensitive_values !== true) throw new Problem(400, 'validation_error');
-  const scope = envScope(query);
-  const rows = listOf(db.env, params.slug).filter((row) => row.scope === scope);
-  return {
-    app_slug: params.slug,
-    scope,
-    values: Object.fromEntries(
-      rows.map((row) => [row.key, envValues.get(envValueKey(params.slug, scope, row.key)) ?? ''])
-    ),
-  };
-});
-
 route('GET', '/v1/apps/{slug}/upstreams', ({ params }) => {
   const upstreams = listOf(db.upstreams, params.slug);
   return { upstreams, quota_max: 16, count: upstreams.length };
@@ -2191,20 +2104,12 @@ route('POST', '/v1/apps/{slug}/restart', ({ params }) => {
   return status(202, { wake_id: db.id() });
 });
 
-route('POST', '/v1/apps/{slug}/restore', ({ params, body }) => {
+route('POST', '/v1/apps/{slug}/restore', ({ params }) => {
   const deleted = deletedApps.get(params.slug);
   if (!deleted) {
     app(params.slug);
     throw new Problem(409, 'app_not_restorable', 'the app is not pending deletion.');
   }
-  if (
-    Object.keys(body).some((key) => key !== 'expected_app_id') ||
-    ('expected_app_id' in body &&
-      (typeof body.expected_app_id !== 'string' || !body.expected_app_id))
-  )
-    throw new Problem(400, 'validation_failed', 'Invalid restore identity.');
-  if (body.expected_app_id && body.expected_app_id !== deleted.app.id)
-    throw new Problem(409, 'conflict', 'Retained identity changed.');
   return restoreDeleted(deleted);
 });
 
@@ -3771,40 +3676,6 @@ route('GET', '/v1/deployments/latest-by-app', () => {
       return true;
     });
   return { items } satisfies components['schemas']['LatestDeploymentsByAppResponse'];
-});
-route('GET', '/v1/deployments/{id}/companions', ({ params, query }) => {
-  if (query.size)
-    throw new Problem(
-      400,
-      'validation_failed',
-      'Select an exact deployment; query scope is unsupported.'
-    );
-  const deployment = db.deployments.find((row) => row.id === params.id);
-  const owner = db.apps.find((row) => row.id === deployment?.app_id);
-  if (!deployment || !owner) throw new Problem(404, 'not_found');
-  const declaration = {
-    name: 'metrics',
-    type: 'sidecar' as const,
-    image: `registry.example.test/metrics@sha256:${'a'.repeat(64)}`,
-    preset: 'opentelemetry' as const,
-    ram_mb: 128,
-    cpu_millicores: 0,
-    scratch_mb: 0,
-    port: 9090,
-    primary_ingress: false,
-    essential: true,
-    depends_on: [{ name: 'main', condition: 'started' as const }],
-    environment_keys: ['OTEL_EXPORTER_OTLP_ENDPOINT', 'TOKEN'],
-  };
-  return {
-    account_id: db.account.id,
-    app_id: owner.id,
-    app_slug: owner.slug,
-    deployment_id: deployment.id,
-    scope: 'default',
-    state: 'available',
-    companions: owner.slug === 'api-gateway' ? [declaration] : [],
-  } satisfies components['schemas']['DeploymentCompanionsResponse'];
 });
 route('GET', '/v1/deployments/{id}', ({ params }) => {
   const d = db.deployments.find((x) => x.id === params.id);

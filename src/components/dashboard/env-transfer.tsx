@@ -5,7 +5,7 @@ import { useConfirm } from '@/components/ui/confirm';
 import { Panel } from './primitives';
 import { api, unwrap } from '@/lib/api/client';
 import { errorMessage } from '@/lib/api/errors';
-import { applyEnvImport, fetchEnvExport, type EnvBatchResult } from '@/lib/api/env-transfer';
+import { applyEnvImport, type EnvBatchResult } from '@/lib/api/env-transfer';
 import {
   ENV_IMPORT_MAX_BYTES,
   ENV_SCOPE,
@@ -19,7 +19,7 @@ export function EnvTransferPanel({ slug }: { slug: string }) {
   const { account } = useAuth();
   if (!account?.id)
     return (
-      <Panel title="Import and export environment variables">
+      <Panel title="Import environment variables">
         <p className="text-sm text-muted-foreground">Loading account…</p>
       </Panel>
     );
@@ -119,45 +119,8 @@ function EnvTransferBody({ slug, accountId }: { slug: string; accountId: string 
       if (!request.signal.aborted) setPending(false);
     }
   };
-  const download = async () => {
-    if (lock.current || !ready) return;
-    lock.current = true;
-    setPending(true);
-    setNotice('');
-    const request = new AbortController();
-    controller.current = request;
-    try {
-      if (
-        !(await confirm({
-          title: `Download env values for ${slug} (${scope})?`,
-          description:
-            'This file contains plaintext values that may be sensitive. Keep it private and out of version control. Only mutable environment variables in this scope are included; sealed secrets, manifest defaults, and image defaults are excluded.',
-          confirmLabel: 'Download .env',
-        }))
-      )
-        return;
-      if (request.signal.aborted) return;
-      const content = await fetchEnvExport(slug, scope, request.signal);
-      if (request.signal.aborted) return;
-      const url = URL.createObjectURL(new Blob([content], { type: 'text/plain;charset=utf-8' }));
-      try {
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `${slug}-${scope}.env`;
-        link.click();
-        setNotice('Environment file downloaded. Keep it private.');
-      } finally {
-        URL.revokeObjectURL(url);
-      }
-    } catch (error) {
-      if (!request.signal.aborted) setNotice(errorMessage(error));
-    } finally {
-      lock.current = false;
-      if (!request.signal.aborted) setPending(false);
-    }
-  };
   return (
-    <Panel title="Import and export environment variables">
+    <Panel title="Import environment variables">
       <div className="flex flex-col gap-4">
         <p className="text-sm text-muted-foreground">
           Review additions and overwrites before applying a file or pasted block. Values stay in
@@ -180,9 +143,6 @@ function EnvTransferBody({ slug, accountId }: { slug: string; accountId: string 
               className="h-10 rounded-lg border border-border bg-background px-3 font-mono text-sm"
             />
           </label>
-          <Button variant="outline" disabled={!ready || pending} onClick={() => void download()}>
-            Export .env
-          </Button>
         </div>
         {!scopeValid && (
           <p role="alert" className="text-sm">
