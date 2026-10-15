@@ -9646,7 +9646,7 @@ export interface components {
              * @description Assert that the provider deduplicates the stable Idempotency-Key for this mutating operation; enables retries and recovery.
              * @default false
              */
-            idempotency_supported: boolean;
+            idempotency_supported?: boolean;
         };
         /**
          * @description Native branch join. Waits for all dependencies to finish and permits only
@@ -9812,7 +9812,7 @@ export interface components {
              */
             expected_version: number;
             /** @default false */
-            take_over_manifest: boolean;
+            take_over_manifest?: boolean;
         };
         /** @description Restores a selected immutable publication into the draft without publishing it. */
         RestoreAutomationRevisionRequest: {
@@ -10231,19 +10231,19 @@ export interface components {
             name: string;
             region: string;
             /** @default 16 */
-            postgres_major: number;
+            postgres_major?: number;
             /**
              * @default development
              * @enum {string}
              */
-            service_class: "development" | "burstable" | "production";
+            service_class?: "development" | "burstable" | "production";
             /**
              * @default single_zone
              * @enum {string}
              */
-            availability: "single_zone" | "high_availability";
+            availability?: "single_zone" | "high_availability";
             /** @default true */
-            scale_to_zero: boolean;
+            scale_to_zero?: boolean;
             /** Format: int64 */
             storage_limit_bytes?: number;
             /** Format: int64 */
@@ -10468,7 +10468,7 @@ export interface components {
             method: "GET" | "HEAD" | "PUT";
             key: string;
             /** @default 300 */
-            expires_in: number;
+            expires_in?: number;
             /**
              * Format: int64
              * @description Required for PUT; forbidden for GET.
@@ -10523,7 +10523,7 @@ export interface components {
         /** @description Requested lifetime for one exact-length part capability. */
         ObjectMultipartPartSignRequest: {
             /** @default 300 */
-            expires_in: number;
+            expires_in?: number;
         };
         /** @description Provider ETag returned after uploading one numbered part. */
         ObjectMultipartCompletedPart: {
@@ -11553,7 +11553,7 @@ export interface components {
              * @default public
              * @enum {string}
              */
-            visibility: "public" | "internal";
+            visibility?: "public" | "internal";
             /**
              * @description Runtime-observed application shape. Repository scanning seeds the value and the first characterization boot may replace it. Distinct from type, which selects the app-vs-function execution contract.
              * @example http
@@ -11986,7 +11986,7 @@ export interface components {
              * @default 1000
              * @enum {integer}
              */
-            cpu_millicores: 250 | 500 | 1000;
+            cpu_millicores?: 250 | 500 | 1000;
             /** @description Named memory/CPU profile. When set, ram_mb and cpu_millicores are filled from the profile; explicit values must agree with it. */
             resource_profile?: components["schemas"]["ResourceProfile"];
             max_concurrency?: number;
@@ -12025,13 +12025,13 @@ export interface components {
              * @description Create-time opt-in to waking a parked app for HEAD / instead of receiving the cached edge answer.
              * @default false
              */
-            head_wakes: boolean;
+            head_wakes?: boolean;
             /**
              * @description Policy for known monitor/crawler requests: wake the app, serve only a fresh edge cache hit, or suppress the wake.
              * @default wake
              * @enum {string}
              */
-            crawler_policy: "wake" | "cached" | "block";
+            crawler_policy?: "wake" | "cached" | "block";
             /**
              * @description Per-app streaming flag. Omitted at create-time → apid applies the plan default (issue #471).
              * @example false
@@ -12096,7 +12096,7 @@ export interface components {
              * @default app
              * @enum {string}
              */
-            type: "app" | "function";
+            type?: "app" | "function";
             /** @enum {string} */
             runtime?: "node22" | "python312" | "go124" | "go124-alpine" | "node24" | "python313";
             /** @description Opaque identity derived locally from the CLI installation and canonical source path. Omit only for legacy sessions. */
@@ -12443,13 +12443,13 @@ export interface components {
              * @description Persisted opt-in to waking a parked app for HEAD / instead of receiving the cached edge answer.
              * @default false
              */
-            head_wakes: boolean;
+            head_wakes?: boolean;
             /**
              * @description Effective policy for known monitor/crawler requests.
              * @default wake
              * @enum {string}
              */
-            crawler_policy: "wake" | "cached" | "block";
+            crawler_policy?: "wake" | "cached" | "block";
         };
         /** @description One protocol-aware listener in a container workload (ADR-165). */
         WorkloadPort: {
@@ -12736,7 +12736,7 @@ export interface components {
              * @description Per-deployment auto-rollback opt-in (issue #961 leaf 8 / ADR-118 / Mega-C PR-2). Customer sets this at create time (Pro+ only); schedd fires the rollback when first_5xx_count crosses the per-plan threshold inside first_5xx_window_ends_at.
              * @default false
              */
-            rollback_on_5xx: boolean;
+            rollback_on_5xx?: boolean;
             /**
              * Format: date-time
              * @description Wall-clock timestamp of the first customer-visible wake response (anchor for the auto-rollback window). NULL until the gateway stamps it on the first wake.proxy_first_byte event.
@@ -12751,7 +12751,7 @@ export interface components {
              * @description Atomic 5xx counter incremented by schedd on every wake.response_5xx event for this row. Default 0; NOT NULL DEFAULT 0 enforced at the schema layer.
              * @default 0
              */
-            first_5xx_count: number;
+            first_5xx_count?: number;
             /**
              * Format: date-time
              * @description Wall-clock timestamp the most recent auto-rollback fired (idempotent across retries; updated by schedd when the rollback tx commits). NULL until the first auto-rollback.
@@ -13498,12 +13498,12 @@ export interface components {
              * @description Maximum active run instances for this workflow. Omit or set 0 to rely only on the app plan limit. Pending runs that have not started are queued and do not consume a slot.
              * @default 0
              */
-            max_concurrent_runs: number;
+            max_concurrent_runs?: number;
             /**
              * @description Maximum running action and condition-check steps across runs of this workflow. Omit or set 0 for no additional per-workflow action cap. Event, callback, and duration waits do not consume an action slot. Runs use the value from their immutable definition snapshot.
              * @default 0
              */
-            max_concurrent_actions: number;
+            max_concurrent_actions?: number;
             steps: components["schemas"]["WorkflowStepSpec"][];
         };
         /** @description A persisted durable workflow run (ADR-081). */
@@ -13956,7 +13956,7 @@ export interface components {
              * @default started
              * @enum {string}
              */
-            condition: "started" | "healthy" | "completed_successfully";
+            condition?: "started" | "healthy" | "completed_successfully";
         };
         /**
          * @description One entry in the deploy request's `sidecars` array
@@ -14025,7 +14025,7 @@ export interface components {
              * @default 0
              * @enum {integer}
              */
-            cpu_millicores: 0 | 250 | 500 | 1000;
+            cpu_millicores?: 0 | 250 | 500 | 1000;
             /** @description Defaults to true. Essential workload failure fails the set; non-essential failure is logged and contained. */
             essential?: boolean;
             /** @description Optional workload lifecycle dependencies. Init workloads are implicit prerequisites of main and long-running sidecars. */
@@ -14145,7 +14145,7 @@ export interface components {
             domain: string;
             app_id: string;
             /** @default false */
-            stale: boolean;
+            stale?: boolean;
             /**
              * Format: date-time
              * @example 2026-08-18T14:23:11Z
@@ -14381,7 +14381,7 @@ export interface components {
              * @default batch
              * @enum {string}
              */
-            kind: "batch" | "recurring";
+            kind?: "batch" | "recurring";
             /** @example ghcr.io/acme/etl:v1.2.3 */
             image_ref: string;
             /**
@@ -14796,7 +14796,7 @@ export interface components {
              *     Pro and Scale accept it for self-signed brokers.
              * @default false
              */
-            skip_verify: boolean;
+            skip_verify?: boolean;
         };
         /**
          * @description Decoded `config` for kind=kafka triggers. The wire-level
@@ -14988,7 +14988,7 @@ export interface components {
              * @default tarball
              * @enum {string}
              */
-            format: "tarball";
+            format?: "tarball";
             /** @description Free-form operator note (≤280 chars). Example: 'Emergency rollback after payment provider incident'. */
             reason?: string;
             /**
@@ -15432,7 +15432,7 @@ export interface components {
              * @example webhook
              * @enum {string}
              */
-            action: "webhook" | "rollback" | "demote" | "promote";
+            action?: "webhook" | "rollback" | "demote" | "promote";
         };
         /** @description Partial update — every field is optional. Omitted means leave alone. */
         UpdateAlertRuleRequest: {
@@ -15583,7 +15583,7 @@ export interface components {
              *     true; pass false to stage the rule in disabled state.
              * @default true
              */
-            enabled: boolean;
+            enabled?: boolean;
         };
         /**
          * @description Response body for POST /v1/apps/{slug}/alert-presets/{name}/test
@@ -15665,7 +15665,7 @@ export interface components {
              * @default block
              * @enum {string}
              */
-            validate_mode: "block" | "observe" | "warn";
+            validate_mode?: "block" | "observe" | "warn";
             /** @description Kind-tagged union — shape varies by `kind`. */
             action: components["schemas"]["EdgeRuleRouteAction"] | components["schemas"]["EdgeRuleRewriteAction"] | components["schemas"]["EdgeRuleRedirectAction"] | components["schemas"]["EdgeRuleHeadersAction"] | components["schemas"]["EdgeRuleCORSAction"] | components["schemas"]["EdgeRuleJWTAction"] | components["schemas"]["EdgeRuleIPAction"] | components["schemas"]["EdgeRuleValidateAction"] | components["schemas"]["EdgeRuleLimitAction"] | components["schemas"]["EdgeRuleMaintenanceAction"] | components["schemas"]["EdgeRuleGeoAction"] | components["schemas"]["EdgeRuleThrottleAction"] | components["schemas"]["EdgeRuleBudgetAction"] | components["schemas"]["EdgeRuleCacheAction"];
             /** Format: date-time */
@@ -15677,12 +15677,12 @@ export interface components {
         CreateEdgeRuleRequest: {
             match_host: string;
             /** @default / */
-            match_path: string;
+            match_path?: string;
             match_methods?: string[];
             /** @default 100 */
-            priority: number;
+            priority?: number;
             /** @default true */
-            enabled: boolean;
+            enabled?: boolean;
             /** @enum {string} */
             kind: "route" | "rewrite" | "redirect" | "headers" | "cors" | "jwt" | "ip" | "validate" | "limit" | "maintenance" | "geo" | "throttle" | "budget" | "cache";
             /**
@@ -15691,7 +15691,7 @@ export interface components {
              * @default block
              * @enum {string}
              */
-            validate_mode: "block" | "observe" | "warn";
+            validate_mode?: "block" | "observe" | "warn";
             /** @description Kind-tagged action body — shape depends on `kind`. */
             action: components["schemas"]["EdgeRuleRouteAction"] | components["schemas"]["EdgeRuleRewriteAction"] | components["schemas"]["EdgeRuleRedirectAction"] | components["schemas"]["EdgeRuleHeadersAction"] | components["schemas"]["EdgeRuleCORSAction"] | components["schemas"]["EdgeRuleJWTAction"] | components["schemas"]["EdgeRuleIPAction"] | components["schemas"]["EdgeRuleValidateAction"] | components["schemas"]["EdgeRuleLimitAction"] | components["schemas"]["EdgeRuleMaintenanceAction"] | components["schemas"]["EdgeRuleGeoAction"] | components["schemas"]["EdgeRuleThrottleAction"] | components["schemas"]["EdgeRuleBudgetAction"] | components["schemas"]["EdgeRuleCacheAction"];
         };
@@ -15885,7 +15885,7 @@ export interface components {
             allow_headers?: string[];
             expose_headers?: string[];
             /** @default false */
-            allow_credentials: boolean;
+            allow_credentials?: boolean;
             max_age_seconds?: number;
         };
         /** @description Validates an inbound Bearer JWT against a JWKS endpoint. */
@@ -15987,7 +15987,7 @@ export interface components {
              * @default block
              * @enum {string}
              */
-            validate_mode: "block" | "observe" | "warn";
+            validate_mode?: "block" | "observe" | "warn";
         };
         /**
          * @description Edge-cache control primitive (ADR-122, kind=cache). Wraps the
@@ -16035,7 +16035,7 @@ export interface components {
              *     cache key. 0 disables stale-while-revalidate.
              * @default 0
              */
-            stale_while_revalidate_seconds: number;
+            stale_while_revalidate_seconds?: number;
             /**
              * @description Stale-on-error window in seconds. 0 = no stale-on-error
              *     (errors return 502/504 directly). Positive values are
@@ -16254,7 +16254,7 @@ export interface components {
              * @example api_key
              * @enum {string}
              */
-            key_by: "" | "none" | "api_key" | "jwt_subject" | "jwt_claim";
+            key_by?: "" | "none" | "api_key" | "jwt_subject" | "jwt_claim";
             /**
              * @description Required iff `key_by="jwt_claim"`. Names the JWT
              *     custom claim to extract (e.g., `"tier"`,
@@ -16277,7 +16277,7 @@ export interface components {
              *     non-per-consumer rules.
              * @default 0
              */
-            max_keys_per_rule: number;
+            max_keys_per_rule?: number;
         };
         /**
          * @description Per-route end-to-end request budget (ADR-093 / §4.1.2.16).
@@ -16353,17 +16353,17 @@ export interface components {
              * @default 100
              * @example 100
              */
-            percent: number;
+            percent?: number;
             /**
              * @description If true, the comparison ledger captures request/response bodies (heaviest storage cost). Off by default.
              * @default false
              */
-            include_body: boolean;
+            include_body?: boolean;
             /**
              * @description Customer-supplied additional header names to redact on top of the always-stripped list (Authorization, Cookie, Set-Cookie, X-API-Key, Proxy-Authorization, WWW-Authenticate).
              * @default []
              */
-            redact_headers: string[];
+            redact_headers?: string[];
         };
         /**
          * @description Body for PATCH /v1/apps/{slug}/mirrors/{id}. All fields are
@@ -17483,7 +17483,7 @@ export interface components {
              *     fails).
              * @default false
              */
-            cap_hit: boolean;
+            cap_hit?: boolean;
         };
         /**
          * @description One (route → suggested rate) row in the payload returned by
@@ -18672,9 +18672,9 @@ export interface components {
                 [key: string]: unknown;
             };
             /** @default POST */
-            method: string;
+            method?: string;
             /** @default / */
-            path: string;
+            path?: string;
             /**
              * Format: date-time
              * @description ADR-134 PR-B. Hard-stop timestamp. Must be within now+Limits.MaxAsyncInvocationDeadlineSeconds.
@@ -18700,23 +18700,23 @@ export interface components {
          */
         QueueWorkloadProfileRequest: {
             /** @default default */
-            queue_name: string;
+            queue_name?: string;
             /**
              * @description Defaults to the app workload class.
              * @enum {string}
              */
             workload_class?: "worker" | "job";
             /** @default 1 */
-            max_concurrency: number;
+            max_concurrency?: number;
             /** @default 10 */
-            target_depth: number;
+            target_depth?: number;
             /** @description Optional per-binding retry curve. */
             retry_policy?: components["schemas"]["RetryPolicyDTO"];
             /**
              * @description Replace an existing default binding that points at another queue.
              * @default false
              */
-            force: boolean;
+            force?: boolean;
         };
         /** @description The converged queue binding and queue-depth scaling policy. */
         QueueWorkloadProfileResponse: {
@@ -18736,16 +18736,16 @@ export interface components {
              * @default pull
              * @enum {string}
              */
-            mode: "pull" | "push";
+            mode?: "pull" | "push";
             /**
              * @default worker
              * @enum {string}
              */
-            workload_class: "worker" | "job" | "http";
+            workload_class?: "worker" | "job" | "http";
             /** @default true */
-            enabled: boolean;
+            enabled?: boolean;
             /** @default 1 */
-            max_concurrency: number;
+            max_concurrency?: number;
             /** @description Optional per-binding retry curve; zero values use platform defaults. */
             retry_policy?: components["schemas"]["RetryPolicyDTO"];
         };
@@ -19865,9 +19865,9 @@ export interface components {
             /** @description Stripe signing secret or custom sender HMAC secret (at least 32 bytes for generic); sealed at rest and never returned. */
             signing_secret: string;
             /** @default / */
-            delivery_path: string;
+            delivery_path?: string;
             /** @default true */
-            enabled: boolean;
+            enabled?: boolean;
         };
         /** @description Omitted fields remain unchanged. A signing_secret value rotates the provider secret in place; generic secrets must contain at least 32 bytes. */
         UpdateInboundWebhookEndpointRequest: {
@@ -20195,7 +20195,7 @@ export interface components {
             /** @description One Name: value pair; sealed at rest and never returned. */
             auth_header?: string;
             /** @default true */
-            enabled: boolean;
+            enabled?: boolean;
         };
         /** @description Partially update a runtime log destination; omitted fields remain unchanged. */
         UpdateAppLogDrainRequest: {
@@ -20231,9 +20231,9 @@ export interface components {
              * @default default
              * @enum {string}
              */
-            retry_policy: "default" | "aggressive" | "none";
+            retry_policy?: "default" | "aggressive" | "none";
             /** @default true */
-            enabled: boolean;
+            enabled?: boolean;
         };
         /**
          * @description Partial update of an existing webhook subscription. Every

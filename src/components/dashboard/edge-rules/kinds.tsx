@@ -322,7 +322,7 @@ export const KINDS = {
               <ToggleRow
                 label="Allow credentials"
                 hint="Lets the browser send cookies and Authorization. Not valid with a wildcard origin."
-                checked={value.allow_credentials}
+                checked={value.allow_credentials ?? false}
                 onChange={(allow_credentials) => onChange({ ...value, allow_credentials })}
               />
             </div>
