@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate, useRouterState } from '@tanstack/react-router';
 import { PageHeader } from '@/components/dashboard/primitives';
 import { SettingsPanels } from '@/components/dashboard/settings-panels';
+import { PlatformCapabilities } from '@/components/dashboard/platform-capabilities';
 import { IntegrationSettings } from '@/components/dashboard/integration-settings';
 import { SecuritySettings } from '@/components/dashboard/security-settings';
 import { PersonalKeysBody } from '@/components/dashboard/personal-keys';
@@ -129,6 +130,7 @@ function SettingsPage() {
         description="Account preferences, organization access and security."
       />
       <SettingsPanels section={section} />
+      {section === 'platform-capabilities' && <PlatformCapabilities />}
       {(section === 'organization' || section === 'members') && (
         <OrganizationScope search={{ ...search, section }} onSelection={onSelection} />
       )}

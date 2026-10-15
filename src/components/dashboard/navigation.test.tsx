@@ -103,6 +103,7 @@ function attentionClient() {
     {
       id: 'app-api',
       slug: 'api',
+      visibility: 'public',
       status: 'failed',
       type: 'app',
       ram_mb: 256,
@@ -236,6 +237,7 @@ const RAIL = [
   'All apps',
   'Templates',
   'Import',
+  'Projects',
   'Jobs',
   'Releases',
   'Instances',

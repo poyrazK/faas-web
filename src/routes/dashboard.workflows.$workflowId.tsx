@@ -60,16 +60,23 @@ import { validateDebugSearch, type DebugSearch } from '@/components/dashboard/de
 import { MirrorsBody } from './dashboard.mirrors';
 import { TenantSurfacesBody } from './dashboard.tenant-surfaces';
 import { OpenAPIBody } from './dashboard.openapi';
-import { WebhooksBody } from './dashboard.webhooks';
+import { WebhooksHub } from './dashboard.webhooks';
 import { EdgeRulesBody } from './dashboard.edge-rules';
 import { ErrorsBody } from '@/components/dashboard/errors-body';
+import { IssuesBody } from '@/components/dashboard/issues-body';
+import { ServiceBindings } from '@/components/dashboard/service-bindings';
+import { McpGuidance } from '@/components/dashboard/mcp-guidance';
+import { validateIssueSearch, type IssueSearch } from '@/components/dashboard/issues-search';
 import { AppConfiguration } from '@/components/dashboard/app-configuration';
+import { CompanionsSummary } from '@/components/dashboard/companions-summary';
 import { InvokePanel, SloPanel } from '@/components/dashboard/app-core-panels';
 import { AppUsagePanel, WakeTimelinePanel } from '@/components/dashboard/app-insights';
 import { AppAnalyticsPanel } from '@/components/dashboard/app-analytics';
 import { AppOverview } from '@/components/dashboard/app-overview';
+import { PreviewDiscovery } from '@/components/dashboard/projects/preview-workload-set';
 import { RestartAppButton } from '@/components/dashboard/app-lifecycle';
 import { TarballDeploy } from '@/components/dashboard/tarball-deploy';
+import { ImageDeploymentPanel } from '@/components/dashboard/image-deploy-form';
 import { TearDownPreviewButton } from '@/components/dashboard/preview-actions';
 import { Swap } from '@/components/dashboard/motion';
 import { RepoPicker } from '@/components/dashboard/repo-picker';
@@ -135,18 +142,28 @@ export const Route = createFileRoute('/dashboard/workflows/$workflowId')({
     search: Record<string, unknown>
   ): DebugSearch &
     LogsSearch &
+    IssueSearch &
     ReturnType<typeof automationSearchPatch> & {
       tab?: Tab;
       deployment?: string;
       releaseSection?: ReleaseSection;
+      webhookDirection?: 'inbound' | 'outbound';
+      companionBefore?: string;
     } => ({
     ...validateDebugSearch(search),
     ...automationSearchPatch(validateJobsSearch(search)),
     ...logsSearchPatch(validateLogsSearch(search)),
+    ...validateIssueSearch(search),
     tab: TABS.includes(search.tab as Tab) ? (search.tab as Tab) : undefined,
     deployment:
       typeof search.deployment === 'string' && search.deployment ? search.deployment : undefined,
     releaseSection: validateReleasesSearch({ ...search, build: undefined }).releaseSection,
+    webhookDirection: search.webhookDirection === 'inbound' ? 'inbound' : undefined,
+    companionBefore:
+      typeof search.companionBefore === 'string' &&
+      Number.isFinite(Date.parse(search.companionBefore))
+        ? search.companionBefore
+        : undefined,
   }),
   component: FunctionDetailPage,
 });
@@ -319,7 +336,13 @@ function FunctionDetailPage() {
         description={
           tab === 'Overview'
             ? undefined
-            : [fn.runtime, `${fn.memoryMb} MB`, fn.url].filter(Boolean).join(' · ')
+            : [
+                fn.runtime,
+                `${fn.memoryMb} MB`,
+                fn.visibility === 'internal' ? 'Internal only' : fn.url,
+              ]
+                .filter(Boolean)
+                .join(' · ')
         }
         actions={
           <>
@@ -436,7 +459,7 @@ function FunctionDetailPage() {
         }
       />
 
-      {tab !== 'Overview' && fn.url && (
+      {tab !== 'Overview' && fn.url && fn.visibility !== 'internal' && (
         <a
           href={fn.url}
           className="inline-flex w-fit items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 font-mono text-xs text-muted-foreground transition-colors hover:border-brand/40 hover:text-foreground"
@@ -483,6 +506,7 @@ function FunctionDetailPage() {
                 }}
               />
             )}
+            {tab === 'Overview' && <PreviewDiscovery slug={workflowId} />}
             {tab === 'Overview' && (
               <AppOverview
                 app={fn}
@@ -626,6 +650,7 @@ function FunctionDetailPage() {
 
             {tab === 'Deployments' && (
               <>
+                <ImageDeploymentPanel key={workflowId} slug={workflowId} />
                 <DeploymentHistoryPanel
                   slug={fn.id}
                   selectedDeploymentId={selectedDeploymentId}
@@ -723,13 +748,49 @@ function FunctionDetailPage() {
               </DeploymentCapability>
             )}
             {tab === 'Errors' && <ErrorsBody slug={fn.id} />}
-            {tab === 'Routes' && <RoutesBody slug={fn.id} baseUrl={fn.url} />}
+            {tab === 'Issues' && (
+              <IssuesBody
+                accountId={account?.id ?? ''}
+                slug={fn.id}
+                search={search}
+                onSearch={(patch) =>
+                  void navigate({
+                    search: (current) => ({ ...current, ...patch }),
+                    hash: true,
+                    resetScroll: false,
+                  })
+                }
+              />
+            )}
+            {tab === 'Routes' && (
+              <RoutesBody
+                slug={fn.id}
+                baseUrl={fn.visibility === 'internal' ? undefined : fn.url}
+              />
+            )}
             {tab === 'Secrets' && <SecretsBody slug={fn.id} />}
             {tab === 'Env vars' && <EnvBody slug={fn.id} />}
             {tab === 'Queues' && <QueuesBody slug={fn.id} />}
             {tab === 'Upstreams' && <UpstreamsBody slug={fn.id} />}
+            {tab === 'Services' && <ServiceBindings slug={fn.id} />}
+            {tab === 'MCP' && <McpGuidance key={workflowId} slug={workflowId} />}
             {tab === 'Alerts' && <AlertsBody slug={fn.id} />}
-            {tab === 'Webhooks' && <WebhooksBody slug={fn.id} />}
+            {tab === 'Webhooks' && (
+              <WebhooksHub
+                accountId={account?.id ?? ''}
+                slug={fn.id}
+                direction={search.webhookDirection ?? 'outbound'}
+                onDirection={(next) =>
+                  void navigate({
+                    search: (current) => ({
+                      ...current,
+                      webhookDirection: next === 'inbound' ? 'inbound' : undefined,
+                    }),
+                    hash: true,
+                  })
+                }
+              />
+            )}
             {tab === 'Edge rules' && <EdgeRulesBody slug={fn.id} />}
             {tab === 'Debugger' && (
               <DebugBody
@@ -749,6 +810,21 @@ function FunctionDetailPage() {
             {tab === 'OpenAPI' && <OpenAPIBody slug={fn.id} />}
 
             {tab === 'Configuration' && <AppConfiguration slug={fn.id} />}
+            {tab === 'Companions' && (
+              <CompanionsSummary
+                key={`${account?.id ?? ''}:${fn.id}`}
+                slug={fn.id}
+                selectedId={selectedDeploymentId}
+                before={search.companionBefore}
+                onSelect={(id, before) =>
+                  void navigate({
+                    search: (current) => ({ ...current, deployment: id, companionBefore: before }),
+                    hash: true,
+                    resetScroll: false,
+                  })
+                }
+              />
+            )}
           </div>
         </Swap>
       </div>

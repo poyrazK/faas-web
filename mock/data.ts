@@ -250,6 +250,8 @@ export const apps: App[] = APP_SEEDS.map((a, i) => ({
   id: id(),
   slug: a.slug,
   type: a.type,
+  ...(a.slug === 'search-indexer' ? { workload_class: 'worker' as const } : {}),
+  visibility: 'public',
   runtime: a.runtime,
   ram_mb: a.ram,
   cpu_millicores: 500,
@@ -278,12 +280,15 @@ export const apps: App[] = APP_SEEDS.map((a, i) => ({
   status: a.status,
   url: `https://${a.slug}.gregale.app`,
   manifest: {
-    entrypoint: a.runtime.startsWith('node')
-      ? ['node', 'server.js']
-      : a.runtime.startsWith('python')
-        ? ['python', '-m', 'app']
-        : ['/app/bin/server'],
-    port: 8080,
+    entrypoint:
+      a.slug === 'search-indexer'
+        ? ['node', 'worker.js']
+        : a.runtime.startsWith('node')
+          ? ['node', 'server.js']
+          : a.runtime.startsWith('python')
+            ? ['python', '-m', 'app']
+            : ['/app/bin/server'],
+    ...(a.slug === 'search-indexer' ? { execution_mode: 'worker' as const } : { port: 8080 }),
     head_wakes: false,
     crawler_policy: 'wake',
     healthz: '/healthz',
@@ -393,6 +398,10 @@ apps.push({
   ...apps[0],
   id: id(),
   slug: `pr-42-${apps[0].slug}`,
+  preview_of_slug: apps[0].slug,
+  preview_pr_number: 42,
+  preview_pr_state: 'open',
+  preview_expires_at: new Date(NOW + 7 * D).toISOString(),
   url: `https://pr-42-${apps[0].slug}.gregale.app`,
   min_instances: 0,
   status: 'active',

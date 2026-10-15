@@ -8,6 +8,7 @@ export const SETTINGS_SECTIONS = [
   ['security', 'Security'],
   ['integrations', 'Integrations'],
   ['platform-limits', 'Platform limits'],
+  ['platform-capabilities', 'Platform capabilities'],
   ['data-and-privacy', 'Data and privacy'],
 ] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number][0];

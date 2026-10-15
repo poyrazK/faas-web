@@ -44,6 +44,375 @@ async function get(path: string) {
   const response = await fetch(`${origin}${path}`);
   return { response, body: await response.json() };
 }
+it('serves companion declaration identity and known empty metadata without health or secrets', async () => {
+  const list = await get('/v1/apps/api-gateway/deployments?limit=25');
+  const id = list.body.items[0].id;
+  const view = await get(`/v1/deployments/${id}/companions`);
+  expect(view.response.status).toBe(200);
+  expect(view.body).toMatchObject({
+    app_slug: 'api-gateway',
+    deployment_id: id,
+    scope: 'default',
+    state: 'available',
+    companions: [
+      expect.objectContaining({
+        name: 'metrics',
+        environment_keys: ['OTEL_EXPORTER_OTLP_ENDPOINT', 'TOKEN'],
+      }),
+    ],
+  });
+  expect(view.body.companions[0]).not.toHaveProperty('env');
+  expect(view.body.companions[0]).not.toHaveProperty('health');
+  expect((await get(`/v1/deployments/${id}/companions?environment=staging`)).response.status).toBe(
+    400
+  );
+  expect((await get('/v1/deployments/missing/companions')).response.status).toBe(404);
+});
+it('serves worker consumer state and reviewed default push replacement without stage selectors', async () => {
+  const slug = 'search-indexer';
+  const list = await get(`/v1/apps/${slug}/queue-bindings`);
+  expect(list.response.status).toBe(200);
+  expect(list.body).toEqual(
+    expect.arrayContaining([expect.objectContaining({ name: 'default', mode: 'push' })])
+  );
+  const defaultBinding = list.body.find((row: { name: string }) => row.name === 'default');
+  const status = await get(`/v1/apps/${slug}/queue-bindings/${defaultBinding.id}/status`);
+  expect(status.body).toMatchObject({ consumer_state: 'active', consumer_liveness: 'stale' });
+  const conflict = await fetch(`${origin}/v1/apps/${slug}/queue-workload`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      queue_name: 'replacement',
+      workload_class: 'worker',
+      max_concurrency: 2,
+      target_depth: 10,
+      force: false,
+    }),
+  });
+  expect(conflict.status).toBe(409);
+  const replace = await fetch(`${origin}/v1/apps/${slug}/queue-workload`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      queue_name: 'replacement',
+      workload_class: 'worker',
+      max_concurrency: 2,
+      target_depth: 10,
+      force: true,
+    }),
+  });
+  expect(replace.status).toBe(200);
+  expect(await replace.json()).toMatchObject({
+    binding: { name: 'default', queue_name: 'replacement', mode: 'push' },
+  });
+  process.env.MOCK_PLAN = 'free';
+  const denied = await fetch(`${origin}/v1/apps/${slug}/queue-bindings`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: 'denied',
+      queue_name: 'denied',
+      mode: 'pull',
+      workload_class: 'worker',
+      enabled: true,
+      max_concurrency: 1,
+    }),
+  });
+  expect(denied.status).toBe(403);
+});
+it('serves internal app visibility and binding policy with distinct null and empty meanings', async () => {
+  const slug = `private-${Date.now()}`;
+  const target = (await get('/v1/apps')).body[0].slug;
+  const create = await fetch(`${origin}/v1/apps`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slug, type: 'app', visibility: 'internal', ram_mb: 128 }),
+  });
+  expect(create.status).toBe(201);
+  expect(await create.json()).toMatchObject({ visibility: 'internal', url: '' });
+  const empty = await get(`/v1/apps/${slug}/bindings`);
+  expect(empty.response.status).toBe(200);
+  expect(empty.body).toMatchObject({ app: slug, complete: true, bindings: [] });
+  const policy = await fetch(`${origin}/v1/apps/${slug}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      allowed_service_callers: [],
+      allowed_service_call_scopes: {},
+      service_binding_targets: [target],
+      service_binding_policy: 'declared',
+    }),
+  });
+  expect(policy.status).toBe(200);
+  expect(await policy.json()).toMatchObject({
+    allowed_service_callers: [],
+    allowed_service_call_scopes: {},
+    service_binding_policy: 'declared',
+  });
+  const inventory = await get(`/v1/apps/${slug}/bindings`);
+  expect(inventory.body.bindings).toEqual([
+    expect.objectContaining({ type: 'service', name: target, verification_status: 'unknown' }),
+  ]);
+  const inherit = await fetch(`${origin}/v1/apps/${slug}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ allowed_service_callers: null, allowed_service_call_scopes: null }),
+  });
+  const inherited = await inherit.json();
+  expect(inherited).not.toHaveProperty('allowed_service_callers');
+  expect(inherited).not.toHaveProperty('allowed_service_call_scopes');
+  const sourceManaged = await fetch(`${origin}/v1/apps/${target}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ allowed_service_callers: [] }),
+  });
+  expect(sourceManaged.status).toBe(409);
+});
+it('serves bounded instrumented Issues and one-time deployment-bound reporting credentials', async () => {
+  const apps = await get('/v1/apps');
+  const slug = apps.body[0].slug;
+  const deployments = await get(`/v1/apps/${slug}/deployments`);
+  const deploymentId = deployments.body.items[0].id;
+  const list = await get(`/v1/apps/${slug}/issues?state=open&sort=impact&min_customers=1`);
+  expect(list.response.status).toBe(200);
+  expect(list.body.items[0]).toMatchObject({ state: 'open', impact_24h: expect.any(Object) });
+  const id = list.body.items[0].id;
+  const detail = await get(`/v1/apps/${slug}/issues/${id}`);
+  expect(detail.body).toMatchObject({ issue: { id }, impact: expect.any(Object) });
+  expect(detail.body.next_event_cursor).toBeTruthy();
+  const older = await get(
+    `/v1/apps/${slug}/issues/${id}?event_cursor=${encodeURIComponent(detail.body.next_event_cursor)}`
+  );
+  expect(older.body.events[0].id).not.toBe(detail.body.events[0].id);
+  const created = await fetch(`${origin}/v1/apps/${slug}/issue-ingest-tokens`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      deployment_id: deploymentId,
+      environment: 'application',
+      name: `test-${Date.now()}`,
+      expires_at: new Date(Date.now() + 3600_000).toISOString(),
+    }),
+  });
+  expect(created.status).toBe(201);
+  const credential = await created.json();
+  expect(credential.token).toMatch(/^g_issue_/);
+  const metadata = await get(`/v1/apps/${slug}/issue-ingest-tokens`);
+  expect(
+    metadata.body.items.find((item: { id: string }) => item.id === credential.id)
+  ).not.toHaveProperty('token');
+  const invalid = await fetch(`${origin}/v1/apps/${slug}/issue-ingest-tokens`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      deployment_id: 'wrong-deployment',
+      environment: 'application',
+      name: 'invalid',
+      expires_at: new Date(Date.now() + 3600_000).toISOString(),
+    }),
+  });
+  expect(invalid.status).toBe(422);
+});
+it('separates one-time Stripe URL from metadata and looks up only a known receipt', async () => {
+  const apps = await get('/v1/apps');
+  const slug = apps.body[0].slug;
+  const name = `stripe-${Date.now()}`;
+  const createdResponse = await fetch(`${origin}/v1/apps/${slug}/inbound-webhooks`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, provider: 'stripe', signing_secret: 'whsec_private' }),
+  });
+  expect(createdResponse.status).toBe(201);
+  const created = await createdResponse.json();
+  expect(created.endpoint_url).toMatch(/^https:\/\//);
+  const list = await get(`/v1/apps/${slug}/inbound-webhooks`);
+  expect(list.body.find((item: { id: string }) => item.id === created.id)).not.toHaveProperty(
+    'endpoint_url'
+  );
+  const metadata = await get(`/v1/apps/${slug}/inbound-webhooks/${created.id}`);
+  expect(metadata.body).not.toHaveProperty('endpoint_url');
+  const duplicate = await fetch(`${origin}/v1/apps/${slug}/inbound-webhooks`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, provider: 'stripe', signing_secret: 'whsec_private' }),
+  });
+  expect(duplicate.status).toBe(409);
+  const binding = await fetch(
+    `${origin}/v1/apps/${slug}/inbound-webhooks/${created.id}/automation-binding`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': `bind-${name}` },
+      body: JSON.stringify({
+        expected_version: 0,
+        workflow_name: 'process-request',
+        event_type: '*',
+        take_over_delivery: true,
+      }),
+    }
+  );
+  expect(binding.status).toBe(200);
+  expect(
+    (await get(`/v1/apps/${slug}/inbound-webhooks/${created.id}/automation-receipts/evt_unknown`))
+      .response.status
+  ).toBe(404);
+  const known = await get(
+    `/v1/apps/${slug}/inbound-webhooks/${created.id}/automation-receipts/evt_mock_pending`
+  );
+  expect(known.body).toMatchObject({
+    provider_event_id: 'evt_mock_pending',
+    routing_status: 'pending',
+  });
+});
+it('separates purge acceptance from the cache revision applying in the mock runtime', async () => {
+  const apps = await get('/v1/apps');
+  const slug = apps.body[0].slug;
+  const before = await get(`/v1/apps/${slug}/policy/status`);
+  expect(before.response.status).toBe(200);
+  const accepted = await fetch(`${origin}/v1/apps/${slug}/cache`, { method: 'DELETE' });
+  expect(accepted.status).toBe(204);
+  const pending = await get(`/v1/apps/${slug}/policy/status`);
+  expect(pending.body.response_cache.desired_revision).toBeGreaterThan(
+    before.body.response_cache.desired_revision
+  );
+  expect(pending.body.response_cache.state).toBe('pending');
+  expect((await get(`/v1/apps/${slug}/policy/status`)).body.response_cache.state).toBe('active');
+});
+it('keeps mock cache purges exclusive and validates cache tags', async () => {
+  const apps = await get('/v1/apps');
+  const slug = apps.body[0].slug;
+  const send = (query: string) =>
+    fetch(`${origin}/v1/apps/${slug}/cache${query}`, { method: 'DELETE' });
+  expect((await send('?tag=Product%3A42')).status).toBe(204);
+  expect((await send('?path=%2Fproducts%2F*&tag=Product%3A42')).status).toBe(422);
+  expect((await send('?tag=bad%20tag')).status).toBe(422);
+});
+it('serves durable project inventory/detail and hides unknown project identities', async () => {
+  const inventory = await get('/v1/projects');
+  expect(inventory.response.status).toBe(200);
+  expect(inventory.body).toHaveLength(2);
+  const detail = await get(`/v1/projects/${inventory.body[0].slug}`);
+  expect(detail.body.id).toBe(inventory.body[0].id);
+  expect(detail.body.workloads.length).toBe(inventory.body[0].workload_count);
+  expect((await get('/v1/projects/not-owned')).response.status).toBe(404);
+});
+it('serves only registered environment reads and current-head preview evidence', async () => {
+  const envs = await get('/v1/projects/acme-shop/environments');
+  expect(envs.response.status).toBe(200);
+  expect(envs.body.map((env: { slug: string }) => env.slug)).toEqual(['production', 'staging']);
+  const state = await get('/v1/projects/acme-shop/environments/staging/state');
+  expect(state.body.environment).toBe('staging');
+  expect(state.body.active_release_set).toBeNull();
+  const diff = await get('/v1/projects/acme-shop/environments/staging/diff?from=production');
+  expect(diff.body.from_environment).toBe('production');
+  expect(diff.body.to_environment).toBe('staging');
+  expect((await get('/v1/projects/acme-shop/environments/default/state')).response.status).toBe(
+    404
+  );
+  const apps = await get('/v1/apps');
+  const preview = apps.body.find(
+    (app: { preview_pr_number?: number }) => app.preview_pr_number === 42
+  );
+  expect(preview).toBeDefined();
+  const set = await get(`/v1/preview/${preview.slug}/environment`);
+  expect(set.body.root_slug).toBe(preview.slug);
+  expect(set.body.pr_number).toBe(42);
+  expect(set.body.members[0].links.url).toBe(preview.url);
+});
+it('replays app creation and accepts a digest-pinned image without a build ID', async () => {
+  const slug = `image-${Date.now()}`;
+  const options = {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Idempotency-Key': `create-${slug}` },
+    body: JSON.stringify({ slug, type: 'app', ram_mb: 128 }),
+  };
+  const first = await fetch(`${origin}/v1/apps`, options);
+  const created = await first.json();
+  const replay = await fetch(`${origin}/v1/apps`, options);
+  expect(replay.status).toBe(201);
+  expect((await replay.json()).id).toBe(created.id);
+  const accepted = await fetch(`${origin}/v1/apps/${slug}/deployments`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Idempotency-Key': `deploy-${slug}` },
+    body: JSON.stringify({ image: `ghcr.io/team/api@sha256:${'a'.repeat(64)}` }),
+  });
+  expect(accepted.status).toBe(202);
+  expect(await accepted.json()).toMatchObject({
+    app_id: created.id,
+    kind: 'image',
+    status: 'imaging',
+    build_id: null,
+  });
+});
+
+it('admits a reviewed internal OCI worker on Hobby without HTTP settings', async () => {
+  const slug = `worker-${Date.now()}`;
+  process.env.MOCK_PLAN = 'free';
+  const payload = {
+    slug,
+    type: 'app',
+    ram_mb: 256,
+    visibility: 'internal',
+    execution_mode: 'worker',
+    restart_policy: 'always',
+    startup_deadline_s: 30,
+    max_retries: 5,
+  };
+  const create = () =>
+    fetch(`${origin}/v1/apps`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': `create-${slug}` },
+      body: JSON.stringify(payload),
+    });
+  try {
+    expect((await create()).status).toBe(403);
+    process.env.MOCK_PLAN = 'hobby';
+    const accepted = await create();
+    expect(accepted.status).toBe(201);
+    const worker = await accepted.json();
+    expect(worker).toMatchObject({
+      slug,
+      visibility: 'internal',
+      manifest: { execution_mode: 'worker', restart_policy: 'always' },
+    });
+    expect(worker.manifest.port).toBeUndefined();
+    expect(worker.url).toBe('');
+  } finally {
+    delete process.env.MOCK_PLAN;
+  }
+});
+
+it('reports registry plan denial separately from installation availability', async () => {
+  process.env.MOCK_PLAN = 'free';
+  const free = await get('/v1/capabilities');
+  expect(free.response.status).toBe(200);
+  expect(free.body.capabilities).toContainEqual(
+    expect.objectContaining({
+      key: 'object-storage',
+      enabled: false,
+      unavailable_reason: 'plan_not_entitled',
+    })
+  );
+  process.env.MOCK_PLAN = 'scale';
+  process.env.MOCK_UNAVAILABLE_CAPABILITIES = 'object-storage';
+  try {
+    const scale = await get('/v1/capabilities');
+    expect(scale.body.capabilities).toContainEqual(
+      expect.objectContaining({
+        key: 'object-storage',
+        enabled: false,
+        unavailable_reason: 'runtime_unavailable',
+      })
+    );
+    expect(scale.body.capabilities).toContainEqual(
+      expect.objectContaining({ key: 'container-deployments', enabled: true, maturity: 'beta' })
+    );
+    expect(
+      scale.body.capabilities.some((item: { maturity: string }) => item.maturity === 'internal')
+    ).toBe(false);
+  } finally {
+    delete process.env.MOCK_UNAVAILABLE_CAPABILITIES;
+  }
+});
 
 it('issues GitHub connect proof with the dedicated cookie', async () => {
   const { response, body } = await get('/v1/auth/csrf?action=connect_github');
@@ -323,7 +692,8 @@ describe('mock API', () => {
       expect(active.some((app) => app.slug === slug)).toBe(false);
       const restored = await fetch(`${base}/v1/apps/${slug}/restore`, { method: 'POST' });
       expect(restored.status).toBe(200);
-      expect(await restored.json()).toMatchObject({ id: original.id, slug, status: 'active' });
+      // The fixture has no deployment. Restored metadata alone is not execution evidence.
+      expect(await restored.json()).toMatchObject({ id: original.id, slug, status: 'undeployed' });
       expect((await fetch(`${base}/v1/apps/${slug}/restore`, { method: 'POST' })).status).toBe(409);
       expect((await fetch(`${base}/v1/apps/${slug}`, { method: 'DELETE' })).status).toBe(204);
       clock.mockReturnValue(now + 8 * 86400e3);
@@ -494,5 +864,26 @@ describe('mock API', () => {
         server.close((error) => (error ? reject(error) : resolve()))
       );
     }
+  });
+});
+
+describe('logout CSRF contract', () => {
+  it('refuses a logout without the auth.logout token, like apid', async () => {
+    const response = await fetch(`${origin}/v1/auth/logout`, { method: 'POST' });
+
+    expect(response.status).toBe(400);
+    expect((await response.json()).code).toBe('csrf_mismatch');
+  });
+
+  it('ends the session when the minted token is posted back', async () => {
+    const { body } = await get('/v1/auth/csrf?action=auth.logout');
+    const response = await fetch(`${origin}/v1/auth/logout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ csrf_token: body.csrf_token }),
+    });
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get('set-cookie')).toContain('faas_sid=;');
   });
 });

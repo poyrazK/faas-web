@@ -146,6 +146,7 @@ export function AppOverview({
   const appError = ['error', 'failed', 'crashed'].includes(rawState.toLowerCase());
   const url = publicAppUrl(app.url);
   const canOpen =
+    app.visibility !== 'internal' &&
     url &&
     releasesReady &&
     releases.data?.some((release) => deploymentPhase(release.status) === 'live');
@@ -218,6 +219,8 @@ export function AppOverview({
                 >
                   {url.replace(/^https?:\/\//, '').replace(/\/$/, '')}
                 </a>
+              ) : app.visibility === 'internal' ? (
+                'Internal only'
               ) : url ? (
                 url.replace(/^https?:\/\//, '').replace(/\/$/, '')
               ) : (

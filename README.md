@@ -583,6 +583,22 @@ and a dropped/5xx response directs the user to inspect history before refreshing
 and trying again. It cannot claim failure or start a second attempt while the
 first request's outcome is unknown.
 
+The Git creation journey also keeps recovery inline. A failed first deployment
+shows the API's reported explanation and logs, offers an immutable **Retry original
+deployment**, and separates it from **Deploy a fix**. The latter builds an explicitly
+chosen branch, tag, or commit in the same saved app using its current configuration;
+it neither creates another app nor changes the app's auto-deploy binding. A previous
+commit SHA is not silently preselected as the fixed source. Known environment or
+startup error codes link to the relevant app settings.
+
+An allowlisted `recovery` search object records the app slug, repository, ref,
+deployment ID, and submission phase—never credentials, environment values, or logs.
+Reloading resolves the app and deployment through the API and verifies their
+association before offering actions. A pending or ambiguous submission survives
+refresh as an unknown outcome, with a link to app deployment history and no
+automatic resubmission. Explicit server rejections leave correction available.
+Only a confirmed new deployment changes the saved source and selected attempt.
+
 ### Resource activity
 
 The app **Activity** tab and release **Audit context** show the existing curated

@@ -1,7 +1,7 @@
 import { MemorySelect } from './memory-select';
 import { RestoreTarget } from '@/components/restore-target';
 import { RESTORE_CONTEXT } from '@/lib/platform-claims';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useUnsavedGuard } from '@/lib/use-unsaved-guard';
 import { RepoPicker } from '@/components/dashboard/repo-picker';
 import { GitHubConnectForm } from '@/components/dashboard/github-connect-form';
@@ -22,13 +22,16 @@ import {
   isValidGitRef,
   type AppSource,
   type NewAppSearch,
+  type DeploymentRecoveryContext,
 } from '@/components/dashboard/new-app-source';
 import { TemplateCatalog } from '@/components/dashboard/template-catalog';
 import { ProjectImport } from '@/components/dashboard/project-import';
+import { NewAppCapabilities } from './new-app-capabilities';
+import { ImageDeployForm } from './image-deploy-form';
 import { CopyIconButton } from '@/components/ui/copy-button';
 import { templateBySlug } from '@/lib/templates';
 import { type Runtime } from '@/lib/mock-data';
-import { errorMessage } from '@/lib/api/errors';
+import { ApiError, errorMessage } from '@/lib/api/errors';
 import { useData } from '@/lib/store';
 import {
   useBindRepoFor,
@@ -37,6 +40,8 @@ import {
   useUpdateAppFor,
 } from '@/lib/api/queries';
 import { useAuth } from '@/lib/auth';
+import { useCapability } from '@/lib/api/capabilities';
+import { readPrivateAppCreateContext } from '@/lib/api/bindings';
 import {
   appQuotaExceeded,
   appQuotaRemaining,
@@ -44,6 +49,7 @@ import {
   residentInstancesAllowed,
 } from '@/lib/plan';
 import { cn } from '@/lib/utils';
+import { FirstDeploymentRecovery } from './first-deployment-recovery';
 
 const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
 const STEPS = ['Source', 'Configure', 'Review'] as const;
@@ -51,6 +57,18 @@ const STEPS = ['Source', 'Configure', 'Review'] as const;
 /** Git deploys immediately; empty/template apps await CLI deployment.
  * Import keeps the existing project scan/apply contract inside this flow. */
 const SOURCES = [
+  {
+    id: 'container',
+    name: 'Container image',
+    desc: 'Deploy an immutable HTTP image by digest. No GitHub connection required.',
+    icon: Package,
+  },
+  {
+    id: 'worker',
+    name: 'Long-lived worker',
+    desc: 'Deploy a pinned OCI worker without an HTTP listener. Hobby or above.',
+    icon: Package,
+  },
   {
     id: 'git',
     name: 'Git repository',
@@ -108,22 +126,44 @@ interface NewAppWizardProps {
   onboarding?: boolean;
   /** Called after the first source-ref deployment has been accepted. */
   onDeploymentAccepted?: () => void;
+  /** A saved app can be managed even when the first source submission fails. */
+  onAppCreated?: () => void;
   /** Allows onboarding to make a deliberate hand-off to the account connection screen. */
   onConnectGitHub?: () => void;
 }
 
-export function NewAppWizard({
+export function NewAppWizard(props: NewAppWizardProps) {
+  // Only restoration bypasses creation. An in-flight create keeps its owner
+  // mounted while it writes the durable pointer and submits the first build.
+  const [restored, setRestored] = useState(props.search?.recovery);
+  if (restored)
+    return (
+      <FirstDeploymentRecovery
+        recovery={props.onSearchChange ? (props.search?.recovery ?? restored) : restored}
+        onChange={(recovery) => {
+          setRestored(recovery);
+          props.onSearchChange?.({ ...props.search, recovery }, { replace: true });
+          if (recovery.deployment) props.onDeploymentAccepted?.();
+        }}
+      />
+    );
+  return <CreateAppWizard {...props} />;
+}
+
+function CreateAppWizard({
   templateSlug: initialTemplateSlug,
   search: urlSearch,
   onSearchChange,
   onboarding = false,
   onDeploymentAccepted,
+  onAppCreated,
   onConnectGitHub,
 }: NewAppWizardProps) {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { addWorkflow } = useData();
   const { account, loading: authLoading } = useAuth();
+  const privateCapability = useCapability('private-apps');
   const reduce = useReducedMotion();
   const [localSearch, setLocalSearch] = useState<NewAppSearch>({
     source: onboarding ? 'git' : undefined,
@@ -179,6 +219,7 @@ export function NewAppWizard({
   const deployFromRef = useDeployFromRefFor();
   const updateApp = useUpdateAppFor();
   const [appType, setAppType] = useState<'function' | 'app'>('function');
+  const [visibility, setVisibility] = useState<'public' | 'internal'>('public');
   const [runtimeDraft, setRuntime] = useState<Runtime | null>(null);
   const runtime = runtimeDraft ?? template?.runtime ?? (picked ? catalogRuntime : null) ?? 'node22';
   // Start at the platform floor. The previous 512 MB default guaranteed a
@@ -193,7 +234,27 @@ export function NewAppWizard({
   const [deploying, setDeploying] = useState(false);
   const [deploymentId, setDeploymentId] = useState<string | null>(null);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
-  const [retrying, setRetrying] = useState(false);
+  const creationContext = useRef({ accountId: account?.id ?? '', name, visibility, source });
+  const createController = useRef<AbortController | null>(null);
+  const mounted = useRef(true);
+  useLayoutEffect(() => {
+    creationContext.current = { accountId: account?.id ?? '', name, visibility, source };
+  }, [account?.id, name, visibility, source]);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      createController.current?.abort();
+    };
+  }, []);
+  const privateAvailable =
+    privateCapability.accountId === account?.id && privateCapability.state === 'available';
+  const [recovery, setRecovery] = useState<DeploymentRecoveryContext>();
+  const sourceRequested = useRef(false);
+  function saveRecovery(next: DeploymentRecoveryContext) {
+    setRecovery(next);
+    onSearchChange?.({ ...search, recovery: next }, { replace: true });
+  }
 
   // A half-filled wizard asks before it is discarded. Once the app exists
   // (or nothing was typed) leaving is free. A template's prefilled name is
@@ -201,7 +262,7 @@ export function NewAppWizard({
   useUnsavedGuard(
     !createdId && Boolean(repo.trim() || (name.trim() && name !== initialName)),
     undefined,
-    '/dashboard/workflows/new'
+    onboarding ? '/onboarding' : '/dashboard/workflows/new'
   );
 
   const nameError = appNameError(name);
@@ -240,9 +301,14 @@ export function NewAppWizard({
   const quotaRemaining = appQuotaRemaining(account);
   const quotaExceeded = appQuotaExceeded(account);
   const limitsLoading = authLoading && !account;
-  const deployBlocked = limitsLoading || quotaExceeded || !memoryAllowed(account, selectedMemoryMb);
+  const deployBlocked =
+    limitsLoading ||
+    quotaExceeded ||
+    !memoryAllowed(account, selectedMemoryMb) ||
+    (visibility === 'internal' && !privateAvailable);
 
   async function submitGitSource(slug: string) {
+    sourceRequested.current = false;
     const installationId = Number(account?.github_install_id);
     if (!Number.isSafeInteger(installationId) || installationId <= 0) {
       throw new Error('Connect GitHub before deploying from a repository.');
@@ -254,32 +320,13 @@ export function NewAppWizard({
       repo: repo.trim(),
       branch: normalizedRef,
     });
+    sourceRequested.current = true;
     return deployFromRef.mutateAsync({
       slug,
       repo: repo.trim(),
       ref: normalizedRef,
       format: 'tarball',
     });
-  }
-
-  async function retrySourceDeploy() {
-    if (!createdId || source !== 'git' || !gitSourceValid || retrying) return;
-    setRetrying(true);
-    setSubmissionError(null);
-    try {
-      const deployment = await submitGitSource(createdId);
-      setDeploymentId(deployment.id);
-      onDeploymentAccepted?.();
-      toast({
-        kind: 'success',
-        title: 'Build accepted',
-        description: `${repo.trim()}@${normalizedRef} is queued for build.`,
-      });
-    } catch (err) {
-      setSubmissionError(errorMessage(err));
-    } finally {
-      setRetrying(false);
-    }
   }
 
   async function createFunction() {
@@ -290,6 +337,17 @@ export function NewAppWizard({
     setSubmittedSearch(search);
     setSubmissionError(null);
     try {
+      if (visibility === 'internal') {
+        if (!account?.id) throw new Error('Account access could not be confirmed.');
+        const before = { ...creationContext.current };
+        const controller = new AbortController();
+        createController.current = controller;
+        await readPrivateAppCreateContext(account.id, account.plan, controller.signal);
+        createController.current = null;
+        if (!mounted.current) return;
+        if (JSON.stringify(before) !== JSON.stringify(creationContext.current))
+          throw new Error('Creation choices changed during access check. Review again.');
+      }
       // App creation is the durable first step. The UI only advances to build
       // status after the API returns the actual deployment id.
       const created = await addWorkflow({
@@ -297,9 +355,18 @@ export function NewAppWizard({
         runtime,
         memoryMb: selectedMemoryMb,
         type: appType,
+        visibility,
       });
       setCreatedId(created.id);
-      setCreatedUrl(created.url);
+      setCreatedUrl(visibility === 'internal' ? null : created.url);
+      onAppCreated?.();
+      const pointer: DeploymentRecoveryContext = {
+        app: created.id,
+        repo: repo.trim(),
+        ref: normalizedRef,
+        phase: 'submitting',
+      };
+      if (source === 'git') saveRecovery(pointer);
 
       const scalePromise: Promise<unknown> = !effectiveScaleToZero
         ? updateApp.mutateAsync({ slug: created.id, min_instances: 1 })
@@ -322,6 +389,7 @@ export function NewAppWizard({
 
       if (deploymentResult.status === 'fulfilled' && deploymentResult.value) {
         setDeploymentId(deploymentResult.value.id);
+        saveRecovery({ ...pointer, deployment: deploymentResult.value.id, phase: undefined });
         onDeploymentAccepted?.();
         toast({
           kind: 'success',
@@ -330,6 +398,14 @@ export function NewAppWizard({
         });
       } else if (deploymentResult.status === 'rejected') {
         setSubmissionError(errorMessage(deploymentResult.reason));
+        const err: unknown = deploymentResult.reason;
+        saveRecovery({
+          ...pointer,
+          phase:
+            sourceRequested.current && (!(err instanceof ApiError) || err.status >= 500)
+              ? 'unknown'
+              : 'rejected',
+        });
         toast({
           kind: 'error',
           title: 'App created, but build was not submitted',
@@ -343,6 +419,8 @@ export function NewAppWizard({
         });
       }
     } catch (err) {
+      createController.current = null;
+      if (!mounted.current) return;
       setDeploying(false);
       setSubmittedSearch(null);
       toast({
@@ -354,6 +432,21 @@ export function NewAppWizard({
   }
 
   function renderCompletion() {
+    if (source === 'git' && recovery)
+      return (
+        <FirstDeploymentRecovery
+          recovery={recovery}
+          submitting={recovery.phase === 'submitting'}
+          submissionError={submissionError}
+          onChange={(next) => {
+            saveRecovery(next);
+            if (next.deployment) {
+              setDeploymentId(next.deployment);
+              onDeploymentAccepted?.();
+            }
+          }}
+        />
+      );
     return (
       <div className="mx-auto flex max-w-2xl flex-col gap-6">
         <PageHeader
@@ -369,7 +462,7 @@ export function NewAppWizard({
             repo={repo}
             sourceRef={ref}
             submissionError={submissionError}
-            endpoint={createdUrl}
+            endpoint={visibility === 'internal' ? null : createdUrl}
           />
         ) : !createdId ? (
           <Panel title="Creating app">
@@ -430,22 +523,6 @@ export function NewAppWizard({
           </Panel>
         )}
 
-        {submissionError && (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[color:var(--status-critical)]/35 bg-card p-4">
-            <p className="text-xs text-muted-foreground">
-              The app exists, so you can retry the source deployment without creating a second app.
-            </p>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={retrying}
-              onClick={() => void retrySourceDeploy()}
-            >
-              {retrying ? 'Retrying…' : 'Try again'}
-            </Button>
-          </div>
-        )}
-
         {createdId && (
           <motion.div
             initial={reduce ? false : { opacity: 0, y: 8 }}
@@ -456,10 +533,14 @@ export function NewAppWizard({
             {source !== 'git' && (
               <div className="min-w-0">
                 <p className="text-xs text-muted-foreground">
-                  App endpoint · available after deployment
+                  {visibility === 'internal'
+                    ? 'Internal service only'
+                    : 'App endpoint · available after deployment'}
                 </p>
                 <p className="break-all font-mono text-xs text-muted-foreground">
-                  {createdUrl ?? 'Waiting for the endpoint…'}
+                  {visibility === 'internal'
+                    ? 'No public endpoint'
+                    : (createdUrl ?? 'Waiting for the endpoint…')}
                 </p>
               </div>
             )}
@@ -497,6 +578,26 @@ export function NewAppWizard({
     );
   }
 
+  const containerForm = (
+    <div className="mx-auto flex max-w-2xl flex-col gap-6">
+      <button
+        type="button"
+        className="w-fit text-sm text-muted-foreground underline"
+        onClick={() => changeSearch({ ...search, source: undefined, step: undefined })}
+      >
+        Choose another source
+      </button>
+      <PageHeader
+        title="New app"
+        description={
+          source === 'worker'
+            ? 'Deploy a long-lived OCI worker from a digest-pinned image.'
+            : 'Deploy a compatible HTTP container image.'
+        }
+      />
+      <ImageDeployForm kind={source === 'worker' ? 'worker' : 'http'} />
+    </div>
+  );
   const form = (
     <div
       className={cn(
@@ -594,6 +695,7 @@ export function NewAppWizard({
               )}
             </div>
 
+            {!onboarding && <NewAppCapabilities />}
             {source === 'git' && !githubConnected ? (
               <div
                 role="status"
@@ -755,6 +857,26 @@ export function NewAppWizard({
                   </Select>
                 </label>
 
+                <label className="flex flex-col gap-1.5">
+                  <span className={LABEL}>App visibility</span>
+                  <Select
+                    aria-label="App visibility"
+                    value={visibility}
+                    onChange={(event) => setVisibility(event.target.value as 'public' | 'internal')}
+                    className={CONTROL}
+                  >
+                    <option value="public">Public edge and internal service</option>
+                    <option value="internal">Internal service only</option>
+                  </Select>
+                  <span className="text-[13px] leading-5 text-muted-foreground">
+                    Internal apps have no public platform URL or custom-domain route. Authenticated
+                    same-account service calls remain subject to caller policy.
+                    {visibility === 'internal' && !privateAvailable
+                      ? ' Checking private-app availability before creation.'
+                      : ''}
+                  </span>
+                </label>
+
                 {/* No region picker: this is a one-box platform and the API
                     exposes no region to choose. */}
               </div>
@@ -849,13 +971,22 @@ export function NewAppWizard({
                       : 'Later, from the CLI',
                   ],
                   ['Runtime', runtime],
+                  [
+                    'Visibility',
+                    visibility === 'internal' ? 'Internal service only' : 'Public edge',
+                  ],
                   ['Memory', `${selectedMemoryMb} MB`],
                   [
                     'Scale to zero',
                     effectiveScaleToZero ? 'Parks when idle' : 'One instance kept resident',
                   ],
                   // Assigned by the API on create, so it is not known until then.
-                  ['Endpoint', createdUrl ?? 'Assigned on create'],
+                  [
+                    'Endpoint',
+                    visibility === 'internal'
+                      ? 'No public endpoint'
+                      : (createdUrl ?? 'Assigned on create'),
+                  ],
                 ].map(([label, value]) => (
                   <div key={label} className="flex flex-col gap-1 border-b border-border pb-3">
                     <dt className={cn(LABEL, 'text-muted-foreground')}>{label}</dt>
@@ -923,7 +1054,11 @@ export function NewAppWizard({
 
   return (
     <>
-      {deploying ? renderCompletion() : form}
+      {deploying
+        ? renderCompletion()
+        : !onboarding && (source === 'container' || source === 'worker')
+          ? containerForm
+          : form}
       {/* Keep the archive and plan mounted through source switches and
           submission/completion, including a failed attempt from another source. */}
       {!onboarding && (

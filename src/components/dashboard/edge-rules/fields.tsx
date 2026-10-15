@@ -83,6 +83,7 @@ export function NumberField({
   value,
   onChange,
   min = 0,
+  emptyWhenNegative = false,
   className,
 }: {
   label: string;
@@ -91,6 +92,7 @@ export function NumberField({
   value: number | undefined;
   onChange: (v: number | undefined) => void;
   min?: number;
+  emptyWhenNegative?: boolean;
   className?: string;
 }) {
   return (
@@ -98,7 +100,7 @@ export function NumberField({
       <input
         type="number"
         min={min}
-        value={value ?? ''}
+        value={value == null || (emptyWhenNegative && value < 0) ? '' : value}
         onChange={(e) => onChange(e.target.value === '' ? undefined : Number(e.target.value))}
         aria-invalid={error ? true : undefined}
         className={cn(INPUT, 'font-mono [font-variant-numeric:tabular-nums]')}
@@ -194,6 +196,7 @@ export function ChipSet<T extends string>({
             <button
               key={opt}
               type="button"
+              aria-label={opt}
               aria-pressed={on}
               onClick={() => onChange(on ? value.filter((x) => x !== opt) : [...value, opt])}
               className={cn(

@@ -44,10 +44,10 @@ const AUTH_ROUTES = ['/login', '/signup', '/v1/auth/'];
 
 const sessionMiddleware: Middleware = {
   async onRequest({ request }) {
-    // Successful POSTs are replay-safe for 24h if they carry a key, and the
-    // server echoes `Idempotent-Replayed: true`. Costs nothing to always send
-    // one, and turns a double-click or a retry into a no-op rather than a
-    // second deployment.
+    // Supply a key when callers do not own a stable operation identity.
+    // This is not unconditional exactly-once execution: replay behavior and
+    // receipt windows belong to each endpoint's backend wrapper. Recovery
+    // journeys must retain explicit keys and reconcile ambiguous outcomes.
     if (request.method === 'POST' && !request.headers.has('Idempotency-Key')) {
       request.headers.set('Idempotency-Key', crypto.randomUUID());
     }

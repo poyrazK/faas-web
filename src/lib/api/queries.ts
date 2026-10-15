@@ -12,6 +12,11 @@ import {
 import { api, issueCSRF, unwrap } from './client';
 import { ApiError } from './errors';
 import { isDeploymentTerminal } from '../deployment-status';
+import {
+  restoreAcknowledgment,
+  restoreReviewedApp,
+  type RestoreIntent,
+} from './deleted-app-restores';
 import type { components, paths } from './schema';
 
 /**
@@ -667,10 +672,10 @@ export function useProjectScan() {
     mutationFn: (input: { file: File; slug?: string; branch?: string }) =>
       unwrap(
         api.POST('/v1/projects/scan', {
-          // The typed body is JSON-shaped; the endpoint takes multipart. The
-          // serializer override is openapi-fetch's sanctioned escape hatch.
-          body: undefined as never,
-          bodySerializer: () => projectForm(input),
+          // The generated body is an object shape, but this operation uses
+          // multipart. A real FormData lets fetch set its boundary; undefined
+          // skips serialization entirely in openapi-fetch.
+          body: projectForm(input) as never,
         })
       ),
   });
@@ -685,11 +690,11 @@ export function useProjectApply() {
       unwrap(
         api.POST('/v1/projects', {
           params: { query: { plan_token: input.planToken } },
-          body: undefined as never,
-          bodySerializer: () => projectForm(input),
+          body: projectForm(input) as never,
         })
       ),
     onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['projects'] });
       void qc.invalidateQueries({ queryKey: keys.apps });
       void qc.invalidateQueries({ queryKey: keys.deployments });
       void qc.invalidateQueries({ queryKey: keys.crons });
@@ -701,18 +706,20 @@ export function useProjectApply() {
  * Apps
  * ------------------------------------------------------------------ */
 
-export function useApps(options?: Options<App[]>) {
+export function useApps(options?: Options<App[]>, accountId?: string) {
   return useQuery({
-    queryKey: keys.apps,
-    queryFn: () => unwrap(api.GET('/v1/apps', {})),
+    queryKey: accountId === undefined ? keys.apps : ['apps', 'account', accountId],
+    queryFn: ({ signal }) => unwrap(api.GET('/v1/apps', { signal })),
     ...options,
+    enabled: (options?.enabled ?? true) && (accountId === undefined || Boolean(accountId)),
   });
 }
 
-export function useApp(slug: string, options?: Options<App>) {
+export function useApp(slug: string, options?: Options<App>, accountId?: string) {
   return useQuery({
-    queryKey: keys.app(slug),
-    queryFn: () => unwrap(api.GET('/v1/apps/{slug}', { params: { path: { slug } } })),
+    queryKey: accountId === undefined ? keys.app(slug) : ['apps', 'account', accountId, slug],
+    queryFn: ({ signal }) =>
+      unwrap(api.GET('/v1/apps/{slug}', { params: { path: { slug } }, signal })),
     enabled: Boolean(slug),
     ...options,
   });
@@ -2322,6 +2329,9 @@ export type OpenAPIDocument =
 export type EdgeRuleSuggestion = components['schemas']['EdgeRuleSuggestion'];
 
 const appOpenAPIKey = (slug: string) => ['apps', slug, 'openapi'] as const;
+const openAPIFilters: QueryFilters = {
+  predicate: (query) => query.queryKey[0] === 'apps' && query.queryKey[2] === 'openapi',
+};
 
 /**
  * `manual_import` is the customer's own document verbatim and 404s with
@@ -2484,11 +2494,11 @@ export function useRetryDelivery(slug: string, id: string) {
  * Edge rules and queues
  * ------------------------------------------------------------------ */
 
-export function useEdgeRules(enabled = true) {
+export function useEdgeRules(enabled = true, accountId?: string) {
   return useQuery({
-    queryKey: ['edge-rules'],
-    queryFn: () => unwrap(api.GET('/v1/edge-rules', {})),
-    enabled,
+    queryKey: accountId === undefined ? ['edge-rules'] : ['edge-rules', 'account', accountId],
+    queryFn: ({ signal }) => unwrap(api.GET('/v1/edge-rules', { signal })),
+    enabled: enabled && (accountId === undefined || Boolean(accountId)),
   });
 }
 
@@ -2506,7 +2516,8 @@ export function useDeleteEdgeRule() {
     onMutate: (id) =>
       applyOptimistic<EdgeRule[]>(qc, edgeRuleFilters, (old) => old.filter((r) => r.id !== id)),
     onError: (_err, _id, rollback) => rollback?.(),
-    onSettled: () => qc.invalidateQueries(edgeRuleFilters),
+    onSettled: () =>
+      Promise.all([qc.invalidateQueries(edgeRuleFilters), qc.invalidateQueries(openAPIFilters)]),
   });
 }
 
@@ -3044,11 +3055,15 @@ export type EdgeRule = components['schemas']['EdgeRuleResponse'];
 export type EdgeRuleKind = EdgeRule['kind'];
 export type EdgeRuleAction = EdgeRule['action'];
 
-export function useAppEdgeRules(slug: string) {
+export function useAppEdgeRules(slug: string, accountId?: string) {
   return useQuery({
-    queryKey: ['apps', slug, 'edge-rules'],
-    queryFn: () => unwrap(api.GET('/v1/apps/{slug}/edge-rules', { params: { path: { slug } } })),
-    enabled: Boolean(slug),
+    queryKey:
+      accountId === undefined
+        ? ['apps', slug, 'edge-rules']
+        : ['apps', slug, 'edge-rules', 'account', accountId],
+    queryFn: ({ signal }) =>
+      unwrap(api.GET('/v1/apps/{slug}/edge-rules', { params: { path: { slug } }, signal })),
+    enabled: Boolean(slug) && (accountId === undefined || Boolean(accountId)),
   });
 }
 
@@ -3063,6 +3078,7 @@ export function useCreateEdgeRule() {
     onSuccess: (_rule, { slug }) => {
       void qc.invalidateQueries({ queryKey: ['edge-rules'] });
       void qc.invalidateQueries({ queryKey: ['apps', slug, 'edge-rules'] });
+      void qc.invalidateQueries({ queryKey: appOpenAPIKey(slug) });
     },
   });
 }
@@ -3082,7 +3098,8 @@ export function useUpdateEdgeRule() {
         old.map((r) => (r.id === id ? ({ ...r, ...patch } as EdgeRule) : r))
       ),
     onError: (_err, _vars, rollback) => rollback?.(),
-    onSettled: () => qc.invalidateQueries(edgeRuleFilters),
+    onSettled: () =>
+      Promise.all([qc.invalidateQueries(edgeRuleFilters), qc.invalidateQueries(openAPIFilters)]),
   });
 }
 
@@ -3282,13 +3299,13 @@ export function useDebugRequestEvidence(slug: string, reqId: string) {
   });
 }
 
-/** Purge the edge response cache, optionally under one path glob. */
+/** Request an all, path, or tag purge. The API accepts one selector at most. */
 export function usePurgeAppCache(slug: string) {
   return useMutation({
-    mutationFn: (path?: string) =>
+    mutationFn: (selection: { path?: string; tag?: string }) =>
       unwrap(
         api.DELETE('/v1/apps/{slug}/cache', {
-          params: { path: { slug }, query: path ? { path } : {} },
+          params: { path: { slug }, query: selection },
         })
       ),
   });
@@ -3310,9 +3327,24 @@ export function useRestartApp(slug: string) {
 export function useRestoreApp() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (slug: string) =>
-      unwrap(api.POST('/v1/apps/{slug}/restore', { params: { path: { slug } } })),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.apps }),
+    retry: false,
+    mutationFn: async (intent: string | RestoreIntent) =>
+      typeof intent === 'string'
+        ? restoreAcknowledgment(
+            await unwrap(
+              api.POST('/v1/apps/{slug}/restore', { params: { path: { slug: intent } } })
+            )
+          )
+        : restoreReviewedApp(intent),
+    onSuccess: (_result, intent) => {
+      void qc.invalidateQueries({ queryKey: keys.apps });
+      void qc.invalidateQueries({ queryKey: keys.deployments });
+      void qc.invalidateQueries({ queryKey: ['projects'] });
+      void qc.invalidateQueries({
+        queryKey:
+          typeof intent === 'string' ? keys.account : ['account', intent.accountId, 'deleted-apps'],
+      });
+    },
   });
 }
 

@@ -4,6 +4,27 @@
  */
 
 export interface paths {
+    "/v1/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return feature maturity and plan availability.
+         * @description Returns the canonical, account-scoped capability registry. Maturity is
+         *     separate from account/runtime availability; enabled is not fleet health.
+         */
+        get: operations["getCapabilities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/preflight": {
         parameters: {
             query?: never;
@@ -1616,6 +1637,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/apps/{slug}/bindings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Inspect app resource bindings without probing workloads.
+         * @description Read-only best-effort inventory. A partial read returns complete=false and sanitized section issues. State is configured intent; runtime and verification are separate observations. Service, queue and outbound bindings remain app-wide when scope filters database and storage bindings.
+         */
+        get: operations["getAppBindingInventory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/apps": {
         parameters: {
             query?: never;
@@ -1654,6 +1695,78 @@ export interface paths {
         head?: never;
         /** Partial-update an app. */
         patch: operations["updateApp"];
+        trace?: never;
+    };
+    "/v1/deleted-apps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List account-owned retained deleted apps.
+         * @description Bounded lifecycle inventory; never includes another account's tombstones.
+         *     Eligibility does not reserve quota or capacity. Use the returned deadline
+         *     and evaluation time, not a deadline inferred from the browser clock.
+         */
+        get: operations["listDeletedApps"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/deleted-apps/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Exact deleted-app ID returned by this account's inventory. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read one account-owned deleted app before restore review.
+         * @description Returns current lifecycle evidence for the exact owned retained ID; foreign and restored IDs are absent.
+         */
+        get: operations["getDeletedApp"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/deleted-apps/{id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Exact account-owned deleted-app ID; never resolved to a replacement slug. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore an identified app within its retained deletion window.
+         * @description Requires deploy-write, MFA completion and trusted browser origin for cookie
+         *     authentication. Rechecks identity, deadline, purge claim, quota and capacity.
+         *     This operation has no idempotent replay receipt. After an uncertain response,
+         *     reconcile exact-ID reads; never automatically retry or fall back to slug restore.
+         *     Success acknowledges restoration, not execution health.
+         */
+        post: operations["restoreDeletedApp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/v1/apps/{slug}/restore": {
@@ -2048,6 +2161,113 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/issues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /** List durable grouped application issues. */
+        get: operations["listIssues"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/issues/{issue_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description UUID of the durable issue within this app. */
+                issue_id: string;
+            };
+            cookie?: never;
+        };
+        /** Read sanitized evidence, release history, activity, and observed customer impact. */
+        get: operations["getIssue"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/issues/{issue_id}/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description UUID of the issue whose ownership or lifecycle should change. */
+                issue_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Assign, resolve in a deployment, reopen, or ignore an issue. */
+        post: operations["actOnIssue"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/issue-ingest-tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /** List issue ingest credential metadata. */
+        get: operations["listIssueIngestTokens"];
+        put?: never;
+        /** Create a reporting-only credential bound to one app and deployment. */
+        post: operations["createIssueIngestToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/issue-ingest-tokens/{token_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description UUID of the reporting credential to revoke. */
+                token_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke an issue ingest credential. */
+        delete: operations["revokeIssueIngestToken"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2750,6 +2970,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/apps/{slug}/openapi/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Preview declared routes, observed routes, and matching edge policies.
+         * @description Read-only route-policy preview for API-hosting roadmap item 11.
+         *     Joins the persisted OpenAPI declaration with gatewayd's observed
+         *     route labels and the app's edge rules. Each route is classified as
+         *     `matched`, `declared_only`, or `observed_only`; `covered` is true
+         *     when at least one enabled edge rule matches the path and method.
+         *     Observed routes come from the fleet-wide Prometheus aggregate. A
+         *     partial scrape returns the available union with
+         *     `source=degraded: routes_partial`; a total bridge failure sets
+         *     `observed_available` to false and reports
+         *     `source=degraded: routes_unavailable`. Collector counts distinguish
+         *     both states from a healthy fleet that has not received traffic. No
+         *     policy or document writes occur on this endpoint.
+         */
+        get: operations["previewAppOpenAPIPolicy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/apps/{slug}/openapi/dry-run": {
         parameters: {
             query?: never;
@@ -2980,9 +3234,13 @@ export interface paths {
         post?: never;
         /**
          * Purge cached responses for an app.
-         * @description Requests an in-process response-cache purge on every gateway. The
-         *     optional path glob limits the purge to matching normalized request
-         *     paths; omit it to purge the complete app cache.
+         * @description Records a durable response-cache purge request for every gateway and
+         *     the optional distributed cache tier. Gateways replay missed requests;
+         *     `GET /v1/apps/{slug}/policy/status` reports convergence in `response_cache`.
+         *     The optional path glob limits the purge to
+         *     matching normalized request paths. The optional tag limits it to
+         *     responses carrying that Cache-Tag. Path and tag are mutually exclusive;
+         *     omit both to purge the complete app cache.
          */
         delete: operations["purgeAppCache"];
         options?: never;
@@ -3922,6 +4180,36 @@ export interface paths {
          *     with deployment ID as the stable tie-breaker.
          */
         get: operations["listLatestDeploymentsByApp"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/deployments/{id}/companions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Inspect owned deployment companion declarations.
+         * @description Returns bounded declared configuration from this exact deployment.
+         *     The deployment identifies its environment scope; query scope is not
+         *     supported. Empty declarations are distinct from unavailable retained
+         *     metadata. No environment values, ciphertext, secret references or
+         *     commands are returned. No workload is probed and no execution health
+         *     is inferred; absent telemetry is Unverified. Managed preset availability
+         *     requires separate runtime qualification and does not imply that all
+         *     custom helpers are unavailable. Requires deployment-read scope and MFA.
+         */
+        get: operations["getDeploymentCompanions"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5471,7 +5759,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** List durable projects owned by the current account. */
+        get: operations["listProjects"];
         put?: never;
         /**
          * Apply a deploy plan in one transaction.
@@ -5488,6 +5777,154 @@ export interface paths {
          *     pass; the quota check ran inside ApplyProjectPlan's Tx.
          */
         post: operations["applyProject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{slug}/environments/{environment}/promotion-preview": {
+        parameters: {
+            query: {
+                /** @description Source environment whose live releases are compared with the target. */
+                from: string;
+                /** @description Opt in to copying the source's non-secret configuration atomically with the target release graph. */
+                sync_config?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description Project slug owning the environment promotion preview. */
+                slug: string;
+                /** @description Target environment receiving the promotion preview. */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Preview promotion of live workloads between project environments.
+         * @description Read-only comparison of the source and target environment. The
+         *     response includes non-secret configuration changes, live deployment
+         *     identities, target protection state, and an opaque promotion token
+         *     bound to those identities. It does not create deployments or audit
+         *     mutations. Configuration remains target-scoped by default;
+         *     `sync_config=true` opts into applying the source's non-secret
+         *     configuration snapshot with the release graph, and is blocked unless
+         *     the target already has an active release graph for atomic cutover.
+         *     Protected-target promotions from an active source release set also
+         *     require the latest passing health and smoke qualification, which is
+         *     bound to that immutable release-set ID and expires after 24 hours.
+         */
+        get: operations["getProjectEnvironmentPromotionPreview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{slug}/environments/{environment}/promotions": {
+        parameters: {
+            query?: {
+                /** @description Opaque cursor returned as next_before. */
+                before?: string;
+                /** @description Page size, capped at 100. */
+                limit?: number;
+                /** @description Restrict history to promotions from this source environment. */
+                from?: string;
+                /** @description Restrict history to a promotion lifecycle status. */
+                status?: "running" | "succeeded" | "failed";
+            };
+            header?: never;
+            path: {
+                /** @description Project slug owning the promotion history. */
+                slug: string;
+                /** @description Target environment whose promotion history is requested. */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * List project environment promotion history.
+         * @description Returns newest-first compact promotion history. Use the promotion status endpoint for per-workload checkpoints.
+         */
+        get: operations["listProjectEnvironmentPromotions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{slug}/environments/{environment}/promotions/{promotion}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project slug owning the promotion status operation. */
+                slug: string;
+                /** @description Target environment associated with the promotion status operation. */
+                environment: string;
+                /** @description Durable promotion operation identifier. */
+                promotion: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Get durable project environment promotion status.
+         * @description Returns the operation status, post-cutover verification result, and non-secret per-workload checkpoints for a promotion.
+         */
+        get: operations["getProjectEnvironmentPromotionStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{slug}/environments/{environment}/approvals/{approval}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project slug owning the approval lookup. */
+                slug: string;
+                /** @description Protected environment slug containing the approval. */
+                environment: string;
+                /** @description Durable approval identifier returned when the approval is created. */
+                approval: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Get the lifecycle status of a project environment approval.
+         * @description The raw approval token is never returned by this endpoint.
+         */
+        get: operations["getProjectEnvironmentApprovalStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project slug in the authenticated account. */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        /** Inspect a project, its workloads, exclusions, and latest status. */
+        get: operations["getProject"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -6152,6 +6589,118 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/apps/{slug}/inbound-webhooks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /** List durable inbound webhook endpoints for this app. */
+        get: operations["listInboundWebhookEndpoints"];
+        put?: never;
+        /**
+         * Create a provider-verified durable webhook endpoint.
+         * @description Returns the public endpoint_url once. Gregale stores only a SHA-256
+         *     digest of its opaque token and an age/X25519-sealed provider signing
+         *     secret. Providers are Stripe and generic timestamped HMAC-SHA256 senders.
+         *     Generic secrets must contain at least 32 bytes of random material.
+         *     Hobby, Pro, and Scale plans are supported.
+         */
+        post: operations["createInboundWebhookEndpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/inbound-webhooks/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Inbound webhook endpoint ID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** Fetch one durable inbound webhook endpoint. */
+        get: operations["getInboundWebhookEndpoint"];
+        put?: never;
+        post?: never;
+        /**
+         * Stop future ingress for this endpoint.
+         * @description Already accepted invocation rows remain queued and deliverable.
+         */
+        delete: operations["deleteInboundWebhookEndpoint"];
+        options?: never;
+        head?: never;
+        /** Change delivery, enabled state, or rotate the provider secret. */
+        patch: operations["updateInboundWebhookEndpoint"];
+        trace?: never;
+    };
+    "/v1/apps/{slug}/inbound-webhooks/{id}/automation-binding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Endpoint whose future verified events use this automation binding. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Inspect an endpoint automation binding.
+         * @description Returns the current event selection and revision for this endpoint.
+         */
+        get: operations["getWebhookAutomationBinding"];
+        /**
+         * Route a verified Stripe endpoint to a published automation.
+         * @description One binding per endpoint, owned by the same app. expected_version is zero
+         *     for creation and the returned version for updates. take_over_delivery
+         *     must be true: bound endpoints start automations instead of app delivery.
+         *     Callback and managed-operation bindings must be removed first.
+         *     Event types accept edge wildcards; filters use the existing event language.
+         */
+        put: operations["putWebhookAutomationBinding"];
+        post?: never;
+        /**
+         * Restore ordinary delivery for future webhook events.
+         * @description Already accepted receipts retain their captured routing decision.
+         */
+        delete: operations["deleteWebhookAutomationBinding"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/inbound-webhooks/{id}/automation-receipts/{event_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Inspect a verified provider event and its automation admission.
+         * @description Returns the captured decision and scheduler progress for a retained provider event.
+         */
+        get: operations["getWebhookAutomationReceipt"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/apps/{slug}/webhooks": {
         parameters: {
             query?: never;
@@ -6422,6 +6971,108 @@ export interface paths {
          *     Scale 100). The drain re-checks at dispatch tick.
          */
         post: operations["queueSend"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/queue-workload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Configure the simple queue workload profile.
+         * @description Idempotently creates or updates the app's default push queue
+         *     binding, consumer projection, and queue-depth scaling policy.
+         *     Zero-valued request fields use platform defaults; advanced
+         *     resources remain available through the individual APIs.
+         */
+        put: operations["configureQueueWorkload"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/queue-bindings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List first-class queue bindings for an app.
+         * @description Returns the durable mappings between logical queues and worker/job
+         *     workloads. Bindings are the configuration source for push consumers
+         *     and queue-depth autoscaling; queue messages remain under /queues/*.
+         *     Active bindings are returned by default. Set include_retired=true to
+         *     retrieve retained identities and retirement timestamps for reviewed recovery.
+         */
+        get: operations["listQueueBindings"];
+        put?: never;
+        /** Create a first-class queue binding. */
+        post: operations["createQueueBinding"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/queue-bindings/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        /** Get one queue binding. */
+        get: operations["getQueueBinding"];
+        put?: never;
+        post?: never;
+        /** Delete one queue binding. */
+        delete: operations["deleteQueueBinding"];
+        options?: never;
+        head?: never;
+        /** Update one queue binding. */
+        patch: operations["updateQueueBinding"];
+        trace?: never;
+    };
+    "/v1/apps/{slug}/queue-bindings/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read queue binding consumer state and queue counters.
+         * @description Returns the durable push-consumer projection and binding-scoped
+         *     queue counters. `consumer_state` is control-plane state
+         *     (`active`, `paused`, `not_configured`, or `external`), while
+         *     `consumer_liveness` and the poll timestamps expose the scheduler's
+         *     last-known health. A push snapshot is stale after 30 seconds without
+         *     a completed poll; pull bindings report `external` liveness.
+         */
+        get: operations["getQueueBindingStatus"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -8679,6 +9330,215 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{slug}/environments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project slug whose environment registry is addressed. */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        /** List durable environments for a project. */
+        get: operations["listProjectEnvironments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{slug}/environments/{environment}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project slug owning the environment. */
+                slug: string;
+                /** @description Environment slug. */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        /** Inspect one project environment. */
+        get: operations["getProjectEnvironment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{slug}/environments/{environment}/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project whose environment state is requested. */
+                slug: string;
+                /** @description Target environment whose effective state is returned. */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Get effective state for a project environment.
+         * @description Returns configuration, live releases, non-secret runtime variables,
+         *     secret fingerprints, and managed binding metadata. Secret plaintext,
+         *     ciphertext, and sealing-key identifiers are never returned. Resources
+         *     that remain application-scoped are identified under shared_resources.
+         */
+        get: operations["getProjectEnvironmentState"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{slug}/environments/{environment}/workloads/{workload}/queue-bindings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project containing the workload and stage. */
+                slug: string;
+                /** @description Registered stage. Production is managed through the app queue-bindings API. */
+                environment: string;
+                /** @description Workload application slug belonging to this project. */
+                workload: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read a stage workload's complete desired queue configuration.
+         * @description Returns logical definitions and the current workload revision. A missing
+         *     collection returns 409 environment_queue_collection_unavailable and never
+         *     inherits production queues. X-Gregale-Workload-Revision identifies the
+         *     head to use when initializing or replacing the collection.
+         *     Consumer activation is currently unavailable; saved definitions do not
+         *     activate delivery or qualify the stage for promotion.
+         */
+        get: operations["getProjectEnvironmentQueueBindings"];
+        /**
+         * Replace a stage workload's complete desired queue configuration.
+         * @description Requires expected_revision to match the complete workload settings head,
+         *     with zero for an uninitialized workload. An explicit empty bindings list
+         *     removes all stage definitions. Stale revisions and protected stages
+         *     return 409, including protected no-op writes. Definitions have logical
+         *     names and no production consumer IDs. Existing deployments retain their
+         *     pinned definitions. Consumer activation is currently unavailable.
+         */
+        put: operations["replaceProjectEnvironmentQueueBindings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{slug}/environments/{environment}/diff": {
+        parameters: {
+            query: {
+                /** @description Source environment being compared with the target environment. */
+                from: string;
+            };
+            header?: never;
+            path: {
+                /** @description Project slug whose environments are compared. */
+                slug: string;
+                /** @description Target environment. */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Compare two effective project environments.
+         * @description Compares configuration, releases, runtime variables, secret
+         *     fingerprints and credential generations, and managed bindings. Secret
+         *     values are never returned. A secret without a fingerprint is reported
+         *     as unknown rather than incorrectly reported as equal.
+         */
+        get: operations["getProjectEnvironmentDiff"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/preview/{slug}/environment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read the current-head workload set for a GitHub PR preview.
+         * @description The slug must be the root preview app of a recorded GitHub PR set.
+         *     The response evaluates only preview deployments for the recorded
+         *     commit. It never reports a root as ready while an expected sibling is
+         *     missing, building, failed, or on an older commit. Closed PRs are not
+         *     ready. Developer previews and unrecorded legacy PR previews return 404.
+         *     Requires the deployment read scope and account ownership of the root.
+         */
+        get: operations["getPreviewEnvironmentStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/policy/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Check whether runtime policy changes have reached their serving consumers.
+         * @description Reports desired/applied positions for the gateway request envelope,
+         *     gateway app-cache and traffic policy, edge rules, account CORS presets,
+         *     explicit response-cache purges, app egress allowlists on nodes hosting
+         *     live instances, and scheduler scaling-policy observation. The
+         *     `request_policy` component covers app-row request settings such as
+         *     request timeout and concurrency, and excludes deployment-traffic
+         *     revisions. A response-cache purge is active only after every serving
+         *     gateway has invalidated its local cache and optional shared tier. The
+         *     top-level state and gateway counts remain the app-cache/traffic
+         *     projection; use each named component for its own convergence state.
+         *     `active` requires fresh observations from every relevant serving
+         *     consumer. The egress allowlist is replayed from current app state by
+         *     schedd if a notification is missed. Scheduler scaling `active` means
+         *     the owning schedd loaded the policy, not that the replica target was
+         *     reached. This does not attest host-level firewall policy or guest
+         *     configuration.
+         *     `unverified` means no revision or no relevant serving fleet can be observed.
+         */
+        get: operations["getRuntimePolicyStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -9941,6 +10801,29 @@ export interface components {
             default_branch: string;
             private: boolean;
         };
+        /** @description Account entitlement and runtime availability, not execution health. Internal capabilities are omitted. */
+        CapabilityStatus: {
+            key: string;
+            name: string;
+            category: string;
+            description: string;
+            /** @enum {string} */
+            maturity: "internal" | "preview" | "beta" | "ga";
+            plans: ("free" | "hobby" | "pro" | "scale")[];
+            /** Format: uri-reference */
+            docs_url: string;
+            acceptance: string;
+            enabled: boolean;
+            /** @enum {string} */
+            unavailable_reason?: "plan_not_entitled" | "runtime_unavailable";
+            unavailable_detail?: string;
+        };
+        CapabilitiesResponse: {
+            registry_version: number;
+            /** @enum {string} */
+            plan: "free" | "hobby" | "pro" | "scale";
+            capabilities: components["schemas"]["CapabilityStatus"][];
+        };
         /** @description Account profile: id, email verification state, plan, status, limits snapshot, current-month usage, deployed-app count, and developer-environment count. */
         AccountResponse: {
             /** @example 0123456789abcdef0123456789abcdef */
@@ -10558,6 +11441,102 @@ export interface components {
          * @enum {string}
          */
         ResourceProfile: "micro" | "small" | "medium" | "large" | "xlarge";
+        /** @description Best-effort read-only binding metadata; complete does not mean healthy or verified. */
+        AppBindingInventory: {
+            app: string;
+            scope?: string;
+            /** Format: date-time */
+            generated_at: string;
+            /** Format: uuid */
+            requested_deployment_id?: string;
+            /** Format: uuid */
+            verification_deployment_id?: string;
+            verification_scope?: string;
+            complete: boolean;
+            bindings: components["schemas"]["AppBindingInventoryItem"][];
+            issues?: components["schemas"]["BindingInventoryIssue"][];
+            warnings?: string[];
+        };
+        /** @description Configured resource binding with independent runtime and verification observations. */
+        AppBindingInventoryItem: {
+            /** @enum {string} */
+            type: "service" | "postgres" | "object_storage" | "queue" | "outbound";
+            name: string;
+            binding: string;
+            scope: string;
+            access: string;
+            state: string;
+            runtime_status: string;
+            verification_status: string;
+            verification?: components["schemas"]["BindingVerification"];
+            /** Format: date-time */
+            observed_at?: string;
+            http_url?: string;
+            https_env?: string;
+            https_url?: string;
+            transport?: string;
+        };
+        /** @description Sanitized reason a binding inventory section could not be read. */
+        BindingInventoryIssue: {
+            type: string;
+            code: string;
+            /** @enum {string} */
+            severity: "warning" | "error";
+            message: string;
+        };
+        /** @description Sanitized durable task-guest canary evidence, never an application health guarantee. */
+        BindingVerification: {
+            result: string;
+            reason?: string;
+            source: string;
+            /** Format: uuid */
+            deployment_id: string;
+            scope: string;
+            /** Format: date-time */
+            checked_at?: string;
+            checks?: components["schemas"]["BindingVerificationCheck"][];
+        };
+        BindingVerificationCheck: {
+            name: string;
+            status: string;
+        };
+        AppServiceBinding: {
+            binding: string;
+            service: string;
+        };
+        ServiceCallScope: {
+            methods: string[];
+            path_prefixes: string[];
+        };
+        ServiceCallerScopes: {
+            [key: string]: components["schemas"]["ServiceCallScope"];
+        };
+        /** @description Account-owned retained lifecycle metadata. Eligibility never reserves quota or proves execution health. */
+        DeletedAppSummary: {
+            /** Format: uuid */
+            account_id: string;
+            /** Format: uuid */
+            id: string;
+            slug: string;
+            /** Format: date-time */
+            deleted_at: string | null;
+            /** Format: date-time */
+            delete_grace_until: string | null;
+            restore_eligible: boolean;
+            /** @enum {string} */
+            restore_blocker: "" | "grace_expired" | "purge_started" | "metadata_unavailable";
+            /** Format: date-time */
+            evaluated_at: string;
+        };
+        /** @description Bounded account-owned tombstone inventory and its opaque cursor. */
+        DeletedAppListResponse: {
+            /** Format: uuid */
+            account_id: string;
+            apps: components["schemas"]["DeletedAppSummary"][];
+            next_cursor?: string;
+            /** Format: date-time */
+            evaluated_at: string;
+        };
         /** @description An app: slug, type, runtime (for functions), RAM/cpu/idle-timeout config, current state, last-deploy pointer, per-app outbound CIDR allowlist (ADR-031 + ADR-032), and reactive scale-up trigger targets (issue #169 / #172). */
         AppResponse: {
             /** @example 0123456789abcdef0123456789abcdef */
@@ -10569,6 +11548,12 @@ export interface components {
              * @enum {string}
              */
             type: "app" | "function";
+            /**
+             * @description Public edge exposure or authenticated internal service routing only. Available on every plan.
+             * @default public
+             * @enum {string}
+             */
+            visibility: "public" | "internal";
             /**
              * @description Runtime-observed application shape. Repository scanning seeds the value and the first characterization boot may replace it. Distinct from type, which selects the app-vs-function execution contract.
              * @example http
@@ -10604,7 +11589,24 @@ export interface components {
             delete_grace_until?: string | null;
             /** Format: uri */
             url: string;
+            /** @description Parent app slug for a pull-request or developer preview. */
+            preview_of_slug?: string;
+            /** @description PR number; zero identifies a developer preview. */
+            preview_pr_number?: number;
+            /** @enum {string} */
+            preview_pr_state?: "open" | "closed" | "stale" | "torn_down";
+            /** Format: date-time */
+            preview_expires_at?: string | null;
             manifest: components["schemas"]["AppManifest"];
+            service_bindings?: components["schemas"]["AppServiceBinding"][];
+            /** @enum {string} */
+            service_binding_policy?: "account" | "declared";
+            /** @enum {string} */
+            service_binding_transport?: "http" | "https";
+            /** @description Omitted allows any same-account caller; explicit [] denies all. */
+            allowed_service_callers?: string[];
+            /** @description When present, callers absent from this map are denied. */
+            allowed_service_call_scopes?: components["schemas"]["ServiceCallerScopes"];
             /** @description Per-app outbound CIDR allowlist (ADR-031 + ADR-032). Each entry is a CIDR string — v4 (`1.2.3.0/24`) or v6 (`2001:db8::/32`). v4-mapped v6 form (`::ffff:1.2.3.0/120`) is silently canonicalised to its v4 form at write time. Empty array means no allowlist rule; the per-netns chain's default-accept policy applies. */
             egress_allowlist?: string[];
             /**
@@ -10716,10 +11718,260 @@ export interface components {
              */
             wake_id: string;
         };
+        /** @description Stable account-scoped project list item. */
+        ProjectSummaryResponse: {
+            id: string;
+            slug: string;
+            repo_full_name?: string;
+            production_branch?: string;
+            scan_source: string;
+            workload_count: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /** @description Live app attached to a durable project and its latest release state. */
+        ProjectWorkloadResponse: {
+            slug: string;
+            workload_name: string;
+            status: string;
+            deployment_status?: string;
+            rollout_state?: string;
+            build_status?: string;
+        };
+        /** @description Durable, non-secret lifecycle status for one environment approval. */
+        ProjectEnvironmentApprovalStatusResponse: {
+            /** Format: uuid */
+            approval_id: string;
+            environment: string;
+            /** @enum {string} */
+            token_kind: "plan" | "promotion";
+            /** @enum {string} */
+            status: "pending" | "expired" | "consumed";
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: date-time */
+            consumed_at?: string;
+        };
+        /** @description Cursor-paginated project environment promotion history. */
+        ProjectEnvironmentPromotionListResponse: {
+            items: components["schemas"]["ProjectEnvironmentPromotionSummaryResponse"][];
+            /** @description Opaque cursor for the next older page. */
+            next_before?: string;
+        };
+        /** @description Read-only promotion preview between two registered project environments. */
+        ProjectEnvironmentPromotionPreviewResponse: {
+            project_slug: string;
+            from_environment: string;
+            to_environment: string;
+            /** @description Whether this exact promotion will copy the source's non-secret configuration to the target. */
+            sync_config?: boolean;
+            to_environment_protected: boolean;
+            approval_required: boolean;
+            can_promote: boolean;
+            blocking_reasons?: string[];
+            config_diff: components["schemas"]["ProjectEnvironmentConfigDiffResponse"];
+            changes: components["schemas"]["ProjectEnvironmentPromotionChange"][];
+            /** @description Immutable active release graph snapshot for the source environment, when present. */
+            from_release_set?: components["schemas"]["ProjectReleaseSetResponse"];
+            /** @description Immutable active release graph snapshot for the target environment, when present. */
+            to_release_set?: components["schemas"]["ProjectReleaseSetResponse"];
+            /** @description True when promotion stages deployments dark and atomically activates a project release graph. */
+            release_graph_mode: boolean;
+            /** @description Compatibility window used by the promoted release graph. */
+            release_ttl_seconds?: number;
+            /** @description True when a protected-target promotion requires a fresh source qualification. */
+            qualification_required?: boolean;
+            /** @description Latest qualification for the active source release set, including failed or expired receipts. */
+            qualification?: components["schemas"]["ProjectEnvironmentQualificationResponse"];
+            promotion_hash: string;
+            promotion_token: string;
+        };
+        /** @description One workload's live release identity in a source and target environment. */
+        ProjectEnvironmentPromotionChange: {
+            source_workload_config_hash?: string;
+            target_workload_config_hash?: string;
+            promoted_workload_config_hash?: string;
+            workload_slug: string;
+            workload_name: string;
+            /** @enum {string} */
+            kind: "source_missing" | "create" | "update" | "unchanged";
+            source_deployment_id?: string;
+            target_deployment_id?: string;
+            source_build_id?: string;
+            target_build_id?: string;
+            source_revision?: string;
+            target_revision?: string;
+            /** @enum {string} */
+            source_revision_kind?: "source_sha256" | "image_digest" | "commit_sha" | "deployment_id";
+            /** @enum {string} */
+            target_revision_kind?: "source_sha256" | "image_digest" | "commit_sha" | "deployment_id";
+        };
+        /** @description Durable status for a project environment promotion operation. */
+        ProjectEnvironmentPromotionStatusResponse: {
+            promotion_id: string;
+            project_slug: string;
+            from_environment: string;
+            to_environment: string;
+            /** @description Config sync was enabled for this promotion. */
+            sync_config?: boolean;
+            promotion_hash: string;
+            /** @enum {string} */
+            status: "running" | "succeeded" | "failed";
+            error?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: date-time */
+            completed_at?: string;
+            /** @enum {string} */
+            rollback_status?: "rolling_back" | "rolled_back" | "rollback_failed";
+            rollback_error?: string;
+            /** Format: date-time */
+            rollback_started_at?: string;
+            /** Format: date-time */
+            rollback_completed_at?: string;
+            /** @enum {string} */
+            verification_status?: "pending" | "verifying" | "verified" | "failed";
+            verification_error?: string;
+            /** Format: date-time */
+            verification_started_at?: string;
+            /** Format: date-time */
+            verification_completed_at?: string;
+            release_graph?: components["schemas"]["ProjectEnvironmentPromotionReleaseGraphResponse"];
+            workloads: components["schemas"]["ProjectEnvironmentPromotionStatusWorkloadResponse"][];
+        };
+        /** @description Immutable graph identities involved in a graph-aware promotion and rollback. */
+        ProjectEnvironmentPromotionReleaseGraphResponse: {
+            /** Format: uuid */
+            source_release_set_id?: string;
+            /** Format: uuid */
+            previous_target_release_set_id?: string;
+            /** Format: uuid */
+            target_release_set_id?: string;
+            /** Format: uuid */
+            restored_target_release_set_id?: string;
+            ttl_seconds: number;
+        };
+        /** @description Durable checkpoint for one workload in an environment promotion. */
+        ProjectEnvironmentPromotionStatusWorkloadResponse: {
+            workload_slug: string;
+            workload_name: string;
+            /** @enum {string} */
+            status: "pending" | "promoted" | "unchanged" | "failed";
+            source_deployment_id?: string;
+            previous_target_deployment_id?: string;
+            target_deployment_id?: string;
+            error?: string;
+            /** @enum {string} */
+            rollback_status?: "pending" | "restored" | "cleared" | "unchanged" | "skipped" | "failed";
+            restored_target_deployment_id?: string;
+            rollback_error?: string;
+            /** @enum {string} */
+            verification_status?: "pending" | "verified" | "failed";
+            verification_error?: string;
+        };
+        /** @description Compact non-secret summary of one project environment promotion. */
+        ProjectEnvironmentPromotionSummaryResponse: {
+            promotion_id: string;
+            project_slug: string;
+            from_environment: string;
+            to_environment: string;
+            /** @description Whether the operation copied non-secret source config to its target. */
+            sync_config?: boolean;
+            promotion_hash: string;
+            /** @enum {string} */
+            status: "running" | "succeeded" | "failed";
+            error?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: date-time */
+            completed_at?: string;
+            /** @enum {string} */
+            rollback_status?: "rolling_back" | "rolled_back" | "rollback_failed";
+            rollback_error?: string;
+            /** @enum {string} */
+            verification_status?: "pending" | "verifying" | "verified" | "failed";
+            verification_error?: string;
+            /** Format: date-time */
+            verification_completed_at?: string;
+        };
+        /** @description Non-secret, 24-hour qualification receipt for an immutable release set and the exact source configuration and per-workload secret revision snapshots probed. */
+        ProjectEnvironmentQualificationResponse: {
+            /** @description Immutable per-workload fingerprints bound to this qualification receipt. */
+            workload_config_hashes?: {
+                [key: string]: string;
+            };
+            /** Format: uuid */
+            id: string;
+            environment: string;
+            /** Format: uuid */
+            release_set_id: string;
+            /** @description Version tested; -1 marks a legacy receipt that predates configuration binding and cannot qualify for promotion. */
+            configuration_version: number;
+            /** @description SHA-256 of canonical non-secret environment configuration; empty only for a legacy receipt that cannot qualify for promotion. */
+            configuration_hash: string;
+            /** @description Opaque per-workload fingerprints of secret keys, version metadata, and managed credential generations; no secret values or value hashes are included. Empty only for a legacy receipt that cannot qualify for promotion. */
+            secret_revision_hashes: {
+                [key: string]: string;
+            };
+            /** @enum {string} */
+            status: "passed" | "failed";
+            checks: components["schemas"]["ProjectEnvironmentQualificationCheck"][];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
+        /** @description Aggregate result plus one exact-deployment probe outcome per workload. */
+        ProjectEnvironmentQualificationCheck: {
+            /** @enum {string} */
+            name: "health" | "smoke";
+            /** @enum {string} */
+            status: "passed" | "failed";
+            results: components["schemas"]["ProjectEnvironmentQualificationResult"][];
+        };
+        /** @description Non-secret GET probe result tied to one workload deployment in the active release set. */
+        ProjectEnvironmentQualificationResult: {
+            workload_slug: string;
+            /** Format: uuid */
+            deployment_id: string;
+            /** @enum {string} */
+            status: "passed" | "failed";
+            http_status?: number;
+            /** @enum {string} */
+            error_code?: "preview_unavailable" | "request_failed" | "unexpected_status";
+        };
+        /** @description Project metadata with its workloads, exclusions, and latest reconciliation state. */
+        ProjectResponse: components["schemas"]["ProjectSummaryResponse"] & {
+            workloads: components["schemas"]["ProjectWorkloadResponse"][];
+            exclusions: string[];
+            last_reconciliation_status?: string;
+            last_build_status?: string;
+        };
         /** @description App creation payload: slug, type (app|function), runtime (only for function), RAM MB, max concurrency, idle timeout, and optional manifest. */
         CreateAppRequest: {
             /** @example hello-world */
             slug: string;
+            /**
+             * @description Omit for public edge exposure; internal permits authenticated service routing only.
+             * @enum {string}
+             */
+            visibility?: "public" | "internal";
+            /** @description Omit for same-account access; [] denies all internal callers. */
+            allowed_service_callers?: string[];
+            allowed_service_call_scopes?: components["schemas"]["ServiceCallerScopes"];
+            service_binding_targets?: string[];
+            /** @enum {string} */
+            service_binding_policy?: "account" | "declared";
+            /** @enum {string} */
+            service_binding_transport?: "http" | "https";
             /**
              * @example app
              * @enum {string}
@@ -10858,6 +12110,27 @@ export interface components {
         };
         /** @description Partial update — every field is optional; omitted fields are unchanged. */
         UpdateAppRequest: {
+            /**
+             * @description Omit for unchanged edge exposure; internal is available on every plan.
+             * @enum {string|null}
+             */
+            visibility?: "public" | "internal" | null;
+            /** @description Omit to keep unchanged, [] to deny all, an array to replace, or null to restore same-account access. Project-managed and preview apps reject this PATCH. */
+            allowed_service_callers?: string[] | null;
+            /** @description Omit to keep unchanged, null to clear, or an object including {} to replace. Project-managed and preview apps reject this PATCH. */
+            allowed_service_call_scopes?: components["schemas"]["ServiceCallerScopes"] | null;
+            /** @description Omit or null to keep unchanged; [] clears every binding. Project-managed and preview apps reject non-null changes. */
+            service_binding_targets?: string[] | null;
+            /**
+             * @description Omit or null to keep unchanged; account restores same-account reachability. Project-managed and preview apps reject non-null changes.
+             * @enum {string|null}
+             */
+            service_binding_policy?: "account" | "declared" | null;
+            /**
+             * @description Omit or null to keep unchanged; http is the legacy endpoint and https selects the private alias. Project-managed and preview apps reject non-null changes.
+             * @enum {string|null}
+             */
+            service_binding_transport?: "http" | "https" | null;
             /** @example 256 */
             ram_mb?: number | null;
             /**
@@ -11023,8 +12296,10 @@ export interface components {
              * @example 5
              */
             max_instances?: number;
-            /** @description Per-instance signal the engine watches for the scale-up trigger. Closed metric set: rps | concurrent_requests | p99_latency_ms. Empty/null = engine falls back to the legacy autoscale_target_rps / autoscale_target_cpu_pct columns. Worker-class apps reject concurrent_requests with 422 scaling_target_incompatible_with_workload_class (PR-D carve-out). */
+            /** @description Single-signal form, superseded by targets. Valid metrics include rps, cpu, concurrent_requests, and queue_depth. Mutually exclusive with targets. */
             target?: null | components["schemas"]["ScalingTarget"];
+            /** @description Multi-signal autoscaling. Each metric may appear once; mutually exclusive with target. */
+            targets?: components["schemas"]["ScalingTarget"][];
             /**
              * @description Minimum seconds between two scale-out events. Floor 1 (no 0 traps); ceiling 3600 (1 h). Out-of-range → 422 invalid_cooldown.
              * @example 5
@@ -11035,6 +12310,21 @@ export interface components {
              * @example 60
              */
             scale_in_cooldown_s?: number;
+            /** @enum {string} */
+            concurrency_overflow?: "queue" | "drop";
+            max_queue_wait_ms?: number;
+            max_queue_depth?: number;
+            wake_max_queue_depth?: number;
+            wake_max_queue_wait_seconds?: number;
+            /** @description IANA timezone for scaling schedules; empty means UTC. */
+            timezone?: string;
+            schedules?: components["schemas"]["ScalingSchedule"][];
+        };
+        /** @description Recurring window that raises the warm floor. */
+        ScalingSchedule: {
+            cron: string;
+            duration_s: number;
+            min_instances: number;
         };
         /** @description Per-app public-URL auth write shape (issue #477 / ADR-077 + ADR-118). Sent on PATCH /v1/apps/{slug}; apid seals the basic_user + basic_pass into a single APP_BASIC_AUTH secretbox blob before persistence. The plaintext is never echoed on read (see PublicAuthStatus). For mode='ip_allowlist' (ADR-118), ip_allowlist carries the per-app CIDR allowlist (Pro 16 max, Scale 64 max — Free/Hobby → 403 plan_public_auth_ip_allowlist_not_allowed). */
         PublicAuthBlock: {
@@ -11083,13 +12373,15 @@ export interface components {
              */
             ip_allowlist_entry_count?: number;
         };
-        /** @description (metric, value) pair the engine watches for the scale-up trigger. The metric surface is closed; the unset state (null) is the legacy 'engine falls back to autoscale_target_rps' path. */
+        /** @description (metric, value) pair the scheduler watches for scaling. */
         ScalingTarget: {
             /**
              * @example rps
              * @enum {string}
              */
-            metric?: "rps" | "concurrent_requests" | "p99_latency_ms";
+            metric?: "rps" | "cpu" | "concurrent_requests" | "queue_depth";
+            /** @description Custom metric name, when supported by the backend. */
+            name?: string;
             /**
              * @description Target value (units depend on Metric). Must be >= 0.
              * @example 1
@@ -11268,6 +12560,50 @@ export interface components {
             /** Format: date-time */
             expires_at: string;
             deployment_id?: string | null;
+        };
+        /** @description Declared companion configuration only; no commands, environment values or observed health. */
+        CompanionDeclaration: {
+            name: string;
+            /** @description Declared immutable OCI reference, when returned. */
+            image?: string;
+            /** @enum {string} */
+            preset?: "opentelemetry" | "sentry" | "datadog-dogstatsd";
+            /** @enum {string} */
+            type: "init" | "sidecar";
+            /** @description Declared memory ceiling. Zero inherits the platform default; not observed effective usage. */
+            ram_mb: number;
+            /** @description Declared CPU ceiling. Zero inherits the platform default. */
+            cpu_millicores: number;
+            /** @description Declared scratch ceiling. Zero derives the runtime default. */
+            scratch_mb: number;
+            /** @enum {string} */
+            disk_io_profile?: "low" | "standard" | "high";
+            /** @description Declared port. Zero is not an observed listener. */
+            port: number;
+            primary_ingress: boolean;
+            /** @description Declared essential policy. Omitted uses the default true; not runtime health. */
+            essential?: boolean;
+            depends_on: components["schemas"]["WorkloadDependency"][];
+            /** @description Sorted unique names only, including explicit secret-binding environment names. Values and secret references are never returned. */
+            environment_keys: string[];
+        };
+        /** @description Account-owned declarations for one exact deployment; metadata availability is separate from execution health. */
+        DeploymentCompanionsResponse: {
+            account_id: string;
+            app_id: string;
+            app_slug: string;
+            deployment_id: string;
+            /** @description Returned deployment scope; not inferred from a query parameter. */
+            scope: string;
+            /**
+             * @description Declaration metadata availability only, never execution health.
+             * @enum {string}
+             */
+            state: "available" | "unavailable";
+            /** @enum {string} */
+            reason?: "declaration_metadata_unavailable";
+            /** @description Known empty is an available empty array. Unavailable metadata is explicitly labelled and must not be presented as no configured helpers. */
+            companions: components["schemas"]["CompanionDeclaration"][];
         };
         /** @description One deployment: id, app, source ref, build status, commit SHA, and lifecycle timestamps. The optional `has_overrides` and `override_*` fields are the persisted echo of the create-time overrides object (issue #460 / ADR-053); they round-trip via `GET /v1/apps/{slug}/deployments/{id}` so a customer can audit what their last deploy pinned. Env values are NEVER echoed — only the keys (`override_env_keys`); env_secrets refs ARE echoed because the ref shape is non-secret by design. */
         DeploymentResponse: {
@@ -14331,7 +15667,7 @@ export interface components {
              */
             validate_mode: "block" | "observe" | "warn";
             /** @description Kind-tagged union — shape varies by `kind`. */
-            action: components["schemas"]["EdgeRuleRouteAction"] | components["schemas"]["EdgeRuleRewriteAction"] | components["schemas"]["EdgeRuleRedirectAction"] | components["schemas"]["EdgeRuleHeadersAction"] | components["schemas"]["EdgeRuleCORSAction"] | components["schemas"]["EdgeRuleJWTAction"] | components["schemas"]["EdgeRuleIPAction"] | components["schemas"]["EdgeRuleValidateAction"] | components["schemas"]["EdgeRuleLimitAction"] | components["schemas"]["EdgeRuleMaintenanceAction"] | components["schemas"]["EdgeRuleGeoAction"] | components["schemas"]["EdgeRuleThrottleAction"] | components["schemas"]["EdgeRuleBudgetAction"];
+            action: components["schemas"]["EdgeRuleRouteAction"] | components["schemas"]["EdgeRuleRewriteAction"] | components["schemas"]["EdgeRuleRedirectAction"] | components["schemas"]["EdgeRuleHeadersAction"] | components["schemas"]["EdgeRuleCORSAction"] | components["schemas"]["EdgeRuleJWTAction"] | components["schemas"]["EdgeRuleIPAction"] | components["schemas"]["EdgeRuleValidateAction"] | components["schemas"]["EdgeRuleLimitAction"] | components["schemas"]["EdgeRuleMaintenanceAction"] | components["schemas"]["EdgeRuleGeoAction"] | components["schemas"]["EdgeRuleThrottleAction"] | components["schemas"]["EdgeRuleBudgetAction"] | components["schemas"]["EdgeRuleCacheAction"];
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -14357,7 +15693,7 @@ export interface components {
              */
             validate_mode: "block" | "observe" | "warn";
             /** @description Kind-tagged action body — shape depends on `kind`. */
-            action: components["schemas"]["EdgeRuleRouteAction"] | components["schemas"]["EdgeRuleRewriteAction"] | components["schemas"]["EdgeRuleRedirectAction"] | components["schemas"]["EdgeRuleHeadersAction"] | components["schemas"]["EdgeRuleCORSAction"] | components["schemas"]["EdgeRuleJWTAction"] | components["schemas"]["EdgeRuleIPAction"] | components["schemas"]["EdgeRuleValidateAction"] | components["schemas"]["EdgeRuleLimitAction"] | components["schemas"]["EdgeRuleMaintenanceAction"] | components["schemas"]["EdgeRuleGeoAction"] | components["schemas"]["EdgeRuleThrottleAction"] | components["schemas"]["EdgeRuleBudgetAction"];
+            action: components["schemas"]["EdgeRuleRouteAction"] | components["schemas"]["EdgeRuleRewriteAction"] | components["schemas"]["EdgeRuleRedirectAction"] | components["schemas"]["EdgeRuleHeadersAction"] | components["schemas"]["EdgeRuleCORSAction"] | components["schemas"]["EdgeRuleJWTAction"] | components["schemas"]["EdgeRuleIPAction"] | components["schemas"]["EdgeRuleValidateAction"] | components["schemas"]["EdgeRuleLimitAction"] | components["schemas"]["EdgeRuleMaintenanceAction"] | components["schemas"]["EdgeRuleGeoAction"] | components["schemas"]["EdgeRuleThrottleAction"] | components["schemas"]["EdgeRuleBudgetAction"] | components["schemas"]["EdgeRuleCacheAction"];
         };
         /** @description Partial update — every field optional. Kind is not patchable. */
         UpdateEdgeRuleRequest: {
@@ -14373,7 +15709,7 @@ export interface components {
              */
             validate_mode?: "block" | "observe" | "warn";
             /** @description Replaces the jsonb column whole. */
-            action?: components["schemas"]["EdgeRuleRouteAction"] | components["schemas"]["EdgeRuleRewriteAction"] | components["schemas"]["EdgeRuleRedirectAction"] | components["schemas"]["EdgeRuleHeadersAction"] | components["schemas"]["EdgeRuleCORSAction"] | components["schemas"]["EdgeRuleJWTAction"] | components["schemas"]["EdgeRuleIPAction"] | components["schemas"]["EdgeRuleValidateAction"] | components["schemas"]["EdgeRuleLimitAction"] | components["schemas"]["EdgeRuleMaintenanceAction"] | components["schemas"]["EdgeRuleGeoAction"] | components["schemas"]["EdgeRuleThrottleAction"] | components["schemas"]["EdgeRuleBudgetAction"];
+            action?: components["schemas"]["EdgeRuleRouteAction"] | components["schemas"]["EdgeRuleRewriteAction"] | components["schemas"]["EdgeRuleRedirectAction"] | components["schemas"]["EdgeRuleHeadersAction"] | components["schemas"]["EdgeRuleCORSAction"] | components["schemas"]["EdgeRuleJWTAction"] | components["schemas"]["EdgeRuleIPAction"] | components["schemas"]["EdgeRuleValidateAction"] | components["schemas"]["EdgeRuleLimitAction"] | components["schemas"]["EdgeRuleMaintenanceAction"] | components["schemas"]["EdgeRuleGeoAction"] | components["schemas"]["EdgeRuleThrottleAction"] | components["schemas"]["EdgeRuleBudgetAction"] | components["schemas"]["EdgeRuleCacheAction"];
         };
         /** @description Re-targets the matched request to another app owned by the same account. */
         EdgeRuleRouteAction: {
@@ -14664,6 +16000,10 @@ export interface components {
          *         (`api.ResponseCacheMaxAgeMaxSeconds`). The runtime cache
          *         layer in `pkg/gateway/response_cache.go` re-checks this
          *         cap as defence-in-depth.
+         *       * `stale_while_revalidate_seconds` — optional. After the fresh
+         *         window, return the cached response immediately while one
+         *         gateway request refreshes the key in the background. Default
+         *         0 (disabled); absolute cap 300.
          *       * `stale_if_error_seconds` — required. Stale-on-error window
          *         in seconds. Default 300; absolute cap 300
          *         (`api.ResponseCacheStaleIfErrorMaxSeconds`). During an
@@ -14689,6 +16029,13 @@ export interface components {
              * @default 60
              */
             max_age_seconds: number;
+            /**
+             * @description After the fresh window, serve stale for this many seconds
+             *     while a single coalesced background request refreshes the
+             *     cache key. 0 disables stale-while-revalidate.
+             * @default 0
+             */
+            stale_while_revalidate_seconds: number;
             /**
              * @description Stale-on-error window in seconds. 0 = no stale-on-error
              *     (errors return 502/504 directly). Positive values are
@@ -16045,6 +17392,64 @@ export interface components {
             endpoint_count: number;
         };
         /**
+         * @description Read-only declared-vs-observed route and edge-policy preview
+         *     (API-hosting roadmap item 11 / ADR-126 follow-up). The response
+         *     never writes an OpenAPI document or edge rule.
+         */
+        AppOpenAPIPolicyPreviewResponse: {
+            /** Format: uuid */
+            app_id: string;
+            /** @description preview, empty: no_import, degraded: routes_partial, or degraded: routes_unavailable. */
+            source: string;
+            /** @description Whether current route telemetry or a persisted discovered-route inventory is available. */
+            observed_available: boolean;
+            /**
+             * @description Completeness of the current fleet-wide telemetry input; persisted inventory availability is reported separately.
+             * @enum {string}
+             */
+            observed_source: "live" | "partial" | "unavailable";
+            /** @description Whether durable, opt-in discovered routes contributed to the observed route set. */
+            observed_inventory_available: boolean;
+            /** @description Whether the live route snapshot or durable discovered-route inventory reached its route cap. */
+            observed_cap_hit: boolean;
+            /** @description Number of registry compute gateways expected to contribute route observations. */
+            collectors_expected: number;
+            /** @description Expected compute route collectors currently healthy in Prometheus. */
+            collectors_healthy: number;
+            /** @description OpenAPI version from the persisted declaration, when present. */
+            openapi_version?: string;
+            routes: components["schemas"]["AppOpenAPIPolicyPreviewRoute"][];
+            suggestions?: components["schemas"]["EdgeRuleSuggestion"][];
+        };
+        /** @description One declared/observed path-method row with policy coverage and drift status. */
+        AppOpenAPIPolicyPreviewRoute: {
+            path: string;
+            /** @enum {string} */
+            method: "get" | "put" | "post" | "delete" | "options" | "head" | "patch" | "trace";
+            /** @enum {string} */
+            status: "matched" | "declared_only" | "observed_only";
+            declared: boolean;
+            observed: boolean;
+            /** @description True when at least one enabled edge rule matches this path and method. */
+            covered: boolean;
+            rules?: components["schemas"]["AppOpenAPIPolicyPreviewRule"][];
+        };
+        /** @description Read-only edge-rule subset explaining why a preview route is covered. */
+        AppOpenAPIPolicyPreviewRule: {
+            /** Format: uuid */
+            id: string;
+            match_host: string;
+            match_path: string;
+            match_methods: string[];
+            priority: number;
+            enabled: boolean;
+            kind: string;
+            validate_mode?: string;
+            action: {
+                [key: string]: unknown;
+            };
+        };
+        /**
          * @description Per-route label snapshot (ADR-093). The bounded route label
          *     set the gatewayd-internal control listener emits for the app.
          *     Each item is `"<METHOD> <PATH>"` (pre-edge-rule-rewrite) for
@@ -17288,6 +18693,146 @@ export interface components {
             /** @description ADR-134 PR-B. Retention horizon in seconds. NULL/0 means 'use plan default' (Limits.MaxAsyncResultRetentionSeconds). */
             retention_seconds?: number | null;
         };
+        /**
+         * @description Declarative setup for the common queue worker profile. The server
+         *     reconciles the default push binding, consumer projection, and
+         *     queue-depth scaling policy as one idempotent operation.
+         */
+        QueueWorkloadProfileRequest: {
+            /** @default default */
+            queue_name: string;
+            /**
+             * @description Defaults to the app workload class.
+             * @enum {string}
+             */
+            workload_class?: "worker" | "job";
+            /** @default 1 */
+            max_concurrency: number;
+            /** @default 10 */
+            target_depth: number;
+            /** @description Optional per-binding retry curve. */
+            retry_policy?: components["schemas"]["RetryPolicyDTO"];
+            /**
+             * @description Replace an existing default binding that points at another queue.
+             * @default false
+             */
+            force: boolean;
+        };
+        /** @description The converged queue binding and queue-depth scaling policy. */
+        QueueWorkloadProfileResponse: {
+            app: components["schemas"]["AppResponse"];
+            binding: components["schemas"]["QueueBindingResponse"];
+            scaling_policy: components["schemas"]["ScalingPolicy"];
+            /** @description True when the default binding was created by this request. */
+            created: boolean;
+        };
+        /** @description Durable queue mapping. HTTP functions may use push mode; pull mode remains for worker/job workloads. */
+        CreateQueueBindingRequest: {
+            /** @description Immutable registered project environment. The binding captures its catalog UUID; omitted creates a shared legacy binding. */
+            environment?: string;
+            name: string;
+            queue_name: string;
+            /**
+             * @default pull
+             * @enum {string}
+             */
+            mode: "pull" | "push";
+            /**
+             * @default worker
+             * @enum {string}
+             */
+            workload_class: "worker" | "job" | "http";
+            /** @default true */
+            enabled: boolean;
+            /** @default 1 */
+            max_concurrency: number;
+            /** @description Optional per-binding retry curve; zero values use platform defaults. */
+            retry_policy?: components["schemas"]["RetryPolicyDTO"];
+        };
+        /** @description Partial queue-binding update; omitted fields are unchanged. */
+        UpdateQueueBindingRequest: {
+            queue_name?: string;
+            /** @enum {string} */
+            mode?: "pull" | "push";
+            /** @enum {string} */
+            workload_class?: "worker" | "job" | "http";
+            enabled?: boolean;
+            max_concurrency?: number;
+            retry_policy?: components["schemas"]["RetryPolicyDTO"];
+        };
+        /** @description Durable queue-to-workload binding. */
+        QueueBindingResponse: {
+            /** @description Immutable project environment slug; omitted for a shared legacy binding. */
+            environment?: string;
+            /**
+             * Format: uuid
+             * @description Original catalog environment identity; omitted for a shared legacy binding.
+             */
+            environment_id?: string;
+            id: string;
+            app_id: string;
+            /** Format: uuid */
+            account_id: string;
+            name: string;
+            queue_name: string;
+            /** @enum {string} */
+            mode: "pull" | "push";
+            /** @enum {string} */
+            workload_class: "worker" | "job" | "http";
+            enabled: boolean;
+            max_concurrency: number;
+            retry_policy?: components["schemas"]["RetryPolicyDTO"];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /**
+             * Format: date-time
+             * @description Retirement hold timestamp; present only for a retained retired binding.
+             */
+            retired_at?: string;
+        };
+        /** @description Read-only queue binding consumer projection and queue counters. */
+        QueueBindingStatusResponse: {
+            /** @description Captured environment slug of the observed consumer; absent for legacy shared consumers. */
+            environment?: string;
+            /**
+             * Format: uuid
+             * @description Original environment catalog UUID of this consumer status; absent for a shared legacy consumer.
+             */
+            environment_id?: string;
+            binding_id: string;
+            name: string;
+            queue_name: string;
+            /** @enum {string} */
+            mode: "pull" | "push";
+            /** @enum {string} */
+            workload_class: "worker" | "job" | "http";
+            enabled: boolean;
+            /** @enum {string} */
+            consumer_state: "active" | "paused" | "not_configured" | "external";
+            consumer_state_reason?: string;
+            /** @enum {string} */
+            consumer_liveness: "healthy" | "degraded" | "stale" | "not_observed" | "external";
+            trigger_id?: string;
+            /** Format: date-time */
+            last_poll_at?: string | null;
+            /** Format: date-time */
+            last_success_at?: string | null;
+            /** Format: date-time */
+            last_error_at?: string | null;
+            last_error?: string;
+            lag_messages?: number | null;
+            lag_age_seconds?: number | null;
+            depth: number;
+            in_flight: number;
+            dead_letter: number;
+            /** Format: date-time */
+            oldest_pending_at?: string | null;
+            oldest_pending_age_seconds?: number | null;
+            /** Format: date-time */
+            generated_at: string;
+        };
         /** @description Body for POST /v1/apps/{slug}/queues/send. Cap-checked against MaxQueueDepth. */
         QueueSendRequest: {
             payload?: {
@@ -17295,12 +18840,16 @@ export interface components {
             };
         };
         /**
-         * @description ADR-134 PR-B. Wire shape for dispatch.RetryPolicy. The handler
-         *     decodes this DTO into a dispatch.RetryPolicy before persisting
-         *     to invocations.retry_policy JSONB. Lives in pkg/api so the SDK
-         *     can type the override without importing pkg/dispatch directly.
+         * @description ADR-134 PR-B. Wire shape for dispatch.RetryPolicy. max_attempts
+         *     is a requested total-attempt count; zero inherits the applicable
+         *     account plan and never means unlimited. Durable invocation
+         *     producers materialize the effective plan-capped value, and the
+         *     scheduler re-clamps it at dispatch time to account for later plan
+         *     downgrades. Lives in pkg/api so the SDK can type the policy
+         *     without importing pkg/dispatch directly.
          */
         RetryPolicyDTO: {
+            /** @description Total delivery attempts including the original. 0 inherits the current plan cap; it never means unlimited. */
             max_attempts?: number;
             base_seconds?: number;
             max_seconds?: number;
@@ -18301,6 +19850,289 @@ export interface components {
             [key: string]: unknown;
         };
         /**
+         * @description Create a provider-verified endpoint for Stripe or a custom sender using Gregale's timestamped HMAC-SHA256 protocol. Accepted events become durable app invocations or automation starts when bound.
+         * @example {
+         *       "name": "stripe-primary",
+         *       "provider": "stripe",
+         *       "signing_secret": "whsec_example",
+         *       "delivery_path": "/internal/stripe"
+         *     }
+         */
+        CreateInboundWebhookEndpointRequest: {
+            name: string;
+            /** @enum {string} */
+            provider: "stripe" | "generic";
+            /** @description Stripe signing secret or custom sender HMAC secret (at least 32 bytes for generic); sealed at rest and never returned. */
+            signing_secret: string;
+            /** @default / */
+            delivery_path: string;
+            /** @default true */
+            enabled: boolean;
+        };
+        /** @description Omitted fields remain unchanged. A signing_secret value rotates the provider secret in place; generic secrets must contain at least 32 bytes. */
+        UpdateInboundWebhookEndpointRequest: {
+            /** @description Generic provider secrets must contain at least 32 bytes. */
+            signing_secret?: string;
+            delivery_path?: string;
+            enabled?: boolean;
+        };
+        /** @description Safe endpoint metadata. endpoint_url is disclosed only by the create response. */
+        InboundWebhookEndpointResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            app_id: string;
+            /** Format: uuid */
+            account_id: string;
+            name: string;
+            /** @enum {string} */
+            provider: "stripe" | "generic";
+            delivery_path: string;
+            enabled: boolean;
+            /** @enum {string} */
+            signing_secret_masked: "***";
+            /**
+             * Format: uri
+             * @description One-time-disclosed public provider URL, present only on create.
+             */
+            endpoint_url?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /** @description Bind a verified provider endpoint to a published automation with revision control. */
+        PutWebhookAutomationBindingRequest: {
+            /** Format: int64 */
+            expected_version: number;
+            workflow_name: string;
+            event_type: string;
+            filter?: {
+                [key: string]: unknown;
+            };
+            /** @enum {boolean} */
+            take_over_delivery: true;
+        };
+        /** @description Captured automation name, event selection and current endpoint binding revision. */
+        WebhookAutomationBindingResponse: {
+            /** Format: uuid */
+            endpoint_id: string;
+            workflow_name: string;
+            event_type: string;
+            filter: {
+                [key: string]: unknown;
+            };
+            /** Format: int64 */
+            version: number;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /** @description Durable provider event routing decision and automation admission progress. */
+        WebhookAutomationReceiptResponse: {
+            /** Format: uuid */
+            receipt_id: string;
+            /** Format: uuid */
+            endpoint_id: string;
+            provider_event_id: string;
+            workflow_name: string;
+            /** @enum {string} */
+            status: "accepted" | "ignored";
+            /** @enum {string} */
+            ignored_reason?: "automation_paused" | "automation_failure_paused" | "event_filtered" | "automation_unpublished";
+            duplicate: boolean;
+            /** Format: date-time */
+            accepted_at: string;
+            event_source: string;
+            /** @enum {string} */
+            routing_status: "pending" | "filtered" | "enqueued" | "failed" | "ignored";
+            /** Format: uuid */
+            run_id?: string;
+        };
+        /** @description Returned only after the verified event has a committed durable invocation row. */
+        InboundWebhookReceiptResponse: {
+            /** Format: uuid */
+            receipt_id: string;
+            /** @enum {string} */
+            status: "accepted";
+            /** @description True when this endpoint already accepted the same provider event ID. */
+            duplicate: boolean;
+            /** Format: date-time */
+            accepted_at: string;
+        };
+        /** @description A sanitized application stack frame used by grouping version 1. */
+        IssueFrame: {
+            file: string;
+            function: string;
+            line?: number;
+            in_app: boolean;
+        };
+        /** @description Structured exception evidence; credential-derived account and deployment identity cannot be overridden. */
+        IssueEvent: {
+            /** Format: uuid */
+            event_id: string;
+            /** Format: date-time */
+            occurred_at: string;
+            exception_type: string;
+            message: string;
+            stack_trace?: string;
+            frames?: components["schemas"]["IssueFrame"][];
+            fingerprint_override?: string;
+            trace_id?: string;
+            span_id?: string;
+            /** @description Bounded opaque gateway request ID, sanitized before persistence. */
+            request_id?: string;
+            /** Format: uuid */
+            invocation_id?: string;
+            route?: string;
+            http_status?: number;
+            source_kind?: string;
+            redactions?: string[];
+        };
+        /** @description Durable failure group across releases in one app and environment. */
+        Issue: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            app_id: string;
+            environment: string;
+            fingerprint: string;
+            grouping_version: number;
+            title: string;
+            /** @enum {string} */
+            state: "open" | "resolved" | "ignored";
+            /** Format: uuid */
+            assignee_account_id?: string;
+            /** Format: date-time */
+            first_seen_at: string;
+            /** Format: date-time */
+            last_seen_at: string;
+            event_count: number;
+            regression_count: number;
+            impact_24h?: components["schemas"]["IssueImpactSummary"];
+            /** Format: date-time */
+            resolved_at?: string;
+            /** Format: uuid */
+            fixed_deployment_id?: string;
+            /** Format: date-time */
+            fixed_deployment_created_at?: string;
+            /** Format: date-time */
+            ignored_until?: string;
+        };
+        /** @description Observed retained occurrences, verified distinct customers, and unattributed events from the previous 24 hours. */
+        IssueImpactSummary: {
+            identified_customers: number;
+            observed_events: number;
+            unattributed_events: number;
+        };
+        /** @description Retained sanitized occurrence with verified platform attribution and optional debugger correlation. */
+        IssueOccurrence: components["schemas"]["IssueEvent"] & {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            deployment_id: string;
+            /** Format: date-time */
+            received_at: string;
+            /** Format: uuid */
+            verified_consumer_id?: string;
+            /** Format: uuid */
+            verified_platform_tenant_id?: string;
+            /** Format: uuid */
+            debug_request_id?: string;
+            attribution: string;
+        };
+        /** @description Immutable deployment metadata and aggregate observations for one issue. */
+        IssueRelease: {
+            /** Format: uuid */
+            deployment_id: string;
+            commit_sha?: string;
+            image_digest?: string;
+            event_count: number;
+            /** Format: date-time */
+            first_seen_at: string;
+            /** Format: date-time */
+            last_seen_at: string;
+        };
+        /** @description An audited issue lifecycle or ownership transition. */
+        IssueActivity: {
+            /** Format: uuid */
+            id: string;
+            action: string;
+            /** Format: uuid */
+            actor_account_id?: string;
+            /** Format: date-time */
+            created_at: string;
+            details: {
+                [key: string]: string;
+            };
+        };
+        /** @description Observed retained customer impact within an explicit time window; unknown identity remains unattributed. */
+        IssueImpact: {
+            /** Format: date-time */
+            window_start: string;
+            /** Format: date-time */
+            window_end: string;
+            identified_customers: number;
+            observed_events: number;
+            unattributed_events: number;
+            coverage: string;
+        };
+        /** @description Issue metadata and independently paginated occurrence, release, and activity collections. */
+        IssueDetail: {
+            issue: components["schemas"]["Issue"];
+            events: components["schemas"]["IssueOccurrence"][];
+            releases: components["schemas"]["IssueRelease"][];
+            activity: components["schemas"]["IssueActivity"][];
+            impact: components["schemas"]["IssueImpact"];
+            next_event_cursor?: string;
+            next_release_cursor?: string;
+            next_activity_cursor?: string;
+        };
+        /** @description A bounded page of grouped issues with an opaque continuation cursor. */
+        ListIssuesResponse: {
+            items: components["schemas"]["Issue"][];
+            next_cursor?: string;
+        };
+        /** @description Desired ownership or lifecycle action, validated within the app scope. */
+        IssueActionRequest: {
+            /** @enum {string} */
+            action: "assign" | "resolve" | "reopen" | "ignore";
+            /** Format: uuid */
+            assignee_account_id?: string;
+            /** Format: uuid */
+            fixed_deployment_id?: string;
+            /** Format: date-time */
+            ignored_until?: string;
+        };
+        /** @description Create a short-lived reporting credential for one existing deployment and environment. */
+        CreateIssueIngestTokenRequest: {
+            /** Format: uuid */
+            deployment_id: string;
+            environment?: string;
+            name: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
+        /** @description Reporting credential metadata; the bearer secret appears only on initial creation. */
+        IssueIngestToken: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: uuid */
+            app_id: string;
+            /** Format: uuid */
+            deployment_id: string;
+            environment: string;
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: date-time */
+            revoked_at?: string;
+            token?: string;
+        };
+        /** @description A collection of scoped reporting credentials; secret values are never included. */
+        ListIssueIngestTokensResponse: {
+            items: components["schemas"]["IssueIngestToken"][];
+        };
+        /**
          * @description An outbound webhook subscription. Carries the masked HMAC secret;
          *     the sealed ciphertext is server-side only.
          * @example {
@@ -18638,6 +20470,517 @@ export interface components {
             /** @enum {string} */
             status: "queued" | "running" | "completed" | "failed";
         };
+        /** @description Durable named environment target for a project. */
+        ProjectEnvironmentResponse: {
+            id: string;
+            project_id: string;
+            /** @description Project environment slug; the reserved app scope `default` cannot be used. */
+            slug: string;
+            protected: boolean;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            cloned_from?: string;
+            clone?: components["schemas"]["ProjectEnvironmentCloneResponse"];
+            clone_operation?: components["schemas"]["ProjectEnvironmentCloneOperationResponse"];
+        };
+        /** @description Point-in-time effective state snapshot for a project environment. */
+        ProjectEnvironmentStateResponse: {
+            /** @description Fingerprint of the environment identity, current flag version, and configuration observed before qualification probes. Omitted only for the legacy identity with no published flags. Combine with each released workload settings hash when submitting workload_config_hashes. */
+            feature_flags_hash?: string;
+            /** @description Active graph, or null when no graph has been published. Its selected members may differ from the per-workload live deployments below. */
+            active_release_set?: components["schemas"]["ProjectReleaseSetResponse"] | null;
+            /** @enum {string} */
+            release_set_status?: "active" | "none";
+            project_slug: string;
+            environment: string;
+            protected: boolean;
+            configuration: components["schemas"]["ProjectEnvironmentConfigResponse"];
+            workloads: components["schemas"]["ProjectEnvironmentStateWorkloadResponse"][];
+            shared_resources: components["schemas"]["ProjectEnvironmentSharedResourceResponse"][];
+            /** Format: date-time */
+            generated_at: string;
+        };
+        /** @description Effective-state comparison from one project environment to another. */
+        ProjectEnvironmentDiffResponse: {
+            project_slug: string;
+            from_environment: string;
+            to_environment: string;
+            configuration: components["schemas"]["ProjectEnvironmentConfigDiffResponse"];
+            workloads: components["schemas"]["ProjectEnvironmentWorkloadDiffResponse"][];
+            shared_resources: components["schemas"]["ProjectEnvironmentSharedResourceResponse"][];
+            /** Format: date-time */
+            generated_at: string;
+        };
+        /** @description Aggregate current-head readiness for a recorded GitHub PR preview workload set. */
+        PreviewEnvironmentStatusResponse: {
+            root_slug: string;
+            repo_full_name: string;
+            pr_number: number;
+            commit_sha: string;
+            /** @enum {string} */
+            phase: "building" | "live" | "failed" | "closed";
+            ready: boolean;
+            summary: string;
+            live_workloads: number;
+            total_workloads: number;
+            members: components["schemas"]["PreviewEnvironmentMemberResponse"][];
+        };
+        /** @description Non-secret copy counts for an environment clone. Managed database or bucket data appears as shared only after explicit opt-in. */
+        ProjectEnvironmentCloneResponse: {
+            configuration_copied: boolean;
+            variables_copied: number;
+            secrets_copied: number;
+            /** @description Destination-to-source references copied under the new catalog environment identity. Git source bindings, ownership, overrides and runtime receipts are not copied. */
+            secret_references_copied?: number;
+            workloads_copied: number;
+            bindings_copied: number;
+            routes_copied: number;
+            policies_copied: number;
+            shared_resources: ("domains" | "policies" | "routes" | "managed_postgres_data" | "object_storage_bucket_data")[];
+        };
+        /** @description Durable clone progress within one account and project, excluding private source configuration and worker credentials. */
+        ProjectEnvironmentCloneOperationResponse: {
+            operation_id: string;
+            project_slug: string;
+            source_environment: string;
+            target_environment: string;
+            source_revision_hash: string;
+            source_release_set_id?: string;
+            target_release_set_id?: string;
+            /** @enum {string} */
+            status: "pending" | "capturing" | "copying" | "publishing" | "ready" | "failed" | "compensating" | "compensated";
+            /** Format: int64 */
+            revision: number;
+            resources: components["schemas"]["ProjectEnvironmentCloneResourceResponse"][];
+            error_code?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /** @description Immutable project deployment graph. Active sets do not expire; when replaced, their TTL starts and expires_at is set. */
+        ProjectReleaseSetResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            account_id: string;
+            /** Format: uuid */
+            project_id: string;
+            environment: string;
+            active: boolean;
+            ttl_seconds: number;
+            /** Format: date-time */
+            expires_at?: string;
+            /** Format: date-time */
+            created_at: string;
+            members: components["schemas"]["ProjectReleaseSetMemberResponse"][];
+        };
+        /** @description Latest immutable non-secret configuration snapshot for a project environment. */
+        ProjectEnvironmentConfigResponse: {
+            project_slug: string;
+            environment: string;
+            /** Format: int64 */
+            version: number;
+            config_hash: string;
+            values: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        /** @description Effective configuration and live release state for one workload. */
+        ProjectEnvironmentStateWorkloadResponse: {
+            workload_config_hash?: string;
+            /** Format: int64 */
+            workload_config_revision?: number;
+            /** Format: uuid */
+            app_id?: string;
+            workload_slug: string;
+            workload_name: string;
+            release: components["schemas"]["ProjectEnvironmentReleaseWorkloadResponse"];
+            variables: components["schemas"]["ProjectEnvironmentVariableResponse"][];
+            secrets: components["schemas"]["ProjectEnvironmentSecretResponse"][];
+            bindings: components["schemas"]["ProjectEnvironmentBindingResponse"][];
+            domains: components["schemas"]["ProjectEnvironmentDomainResponse"][];
+            routes: components["schemas"]["ProjectEnvironmentRoutePolicyResponse"];
+            policies: components["schemas"]["ProjectEnvironmentEdgePolicyResponse"];
+        };
+        /** @description Desired logical queue binding without runtime consumer identity or messages. HTTP consumers require push mode and a function workload. */
+        ProjectEnvironmentQueueBinding: {
+            name: string;
+            queue_name: string;
+            /** @enum {string} */
+            mode: "pull" | "push";
+            /** @enum {string} */
+            workload_class: "worker" | "job" | "http";
+            enabled: boolean;
+            max_concurrency: number;
+            retry_policy?: components["schemas"]["RetryPolicyDTO"];
+        };
+        /** @description Complete stage queue replacement fenced by the workload revision, not the queue collection clock. */
+        ReplaceProjectEnvironmentQueueBindingsRequest: {
+            /** Format: int64 */
+            expected_revision: number;
+            bindings: components["schemas"]["ProjectEnvironmentQueueBinding"][];
+        };
+        /** @description Desired stage queue definitions. Consumer activation is currently unavailable and these definitions do not enable delivery or qualify promotion. */
+        ProjectEnvironmentQueueBindingsResponse: {
+            environment: string;
+            workload: string;
+            /**
+             * Format: int64
+             * @description Queue collection clock.
+             */
+            revision: number;
+            /**
+             * Format: int64
+             * @description Complete workload revision to use as expected_revision on replacement.
+             */
+            workload_revision: number;
+            config_hash: string;
+            /** @enum {string} */
+            activation_state: "unavailable";
+            bindings: components["schemas"]["ProjectEnvironmentQueueBinding"][];
+        };
+        /** @description Application-scoped resource that is shared by all environments. */
+        ProjectEnvironmentSharedResourceResponse: {
+            /** @enum {string} */
+            kind: "domains" | "policies" | "routes";
+            /** @enum {string} */
+            ownership: "application";
+            note: string;
+        };
+        /** @description Stable key-level diff between two project environment configuration snapshots. */
+        ProjectEnvironmentConfigDiffResponse: {
+            project_slug: string;
+            from_environment: string;
+            to_environment: string;
+            /** Format: int64 */
+            from_version: number;
+            /** Format: int64 */
+            to_version: number;
+            from_hash: string;
+            to_hash: string;
+            changes: components["schemas"]["ProjectEnvironmentConfigChange"][];
+        };
+        /** @description Release, variable, secret, binding, and domain changes for one workload. */
+        ProjectEnvironmentWorkloadDiffResponse: {
+            workload_slug: string;
+            workload_name: string;
+            release: components["schemas"]["ProjectEnvironmentReleaseDiffResponse"];
+            variables: components["schemas"]["ProjectEnvironmentVariableChangeResponse"][];
+            secrets: components["schemas"]["ProjectEnvironmentSecretChangeResponse"][];
+            bindings: components["schemas"]["ProjectEnvironmentBindingChangeResponse"][];
+            domains: components["schemas"]["ProjectEnvironmentDomainDiffResponse"];
+            routes: components["schemas"]["ProjectEnvironmentRoutePolicyDiffResponse"];
+            policies: components["schemas"]["ProjectEnvironmentEdgePolicyDiffResponse"];
+        };
+        /** @description One expected preview workload and its latest deployment for the recorded commit. */
+        PreviewEnvironmentMemberResponse: {
+            /** Format: uuid */
+            app_id: string;
+            /** @description Empty if the recorded app is missing. */
+            slug: string;
+            workload_name: string;
+            /** @description Includes missing when the recorded app is unavailable. */
+            app_status: string;
+            preview_state: string;
+            /** @description Empty until a deployment for the recorded commit exists. */
+            deployment_id: string;
+            /** @description Missing until a deployment for the recorded commit exists. */
+            deployment_status: string;
+            /**
+             * Format: date-time
+             * @description Preview workload expiration.
+             */
+            expires_at?: string;
+            /** @description Safe artifact and configuration-group comparison with the production parent; never includes secret values. */
+            changes_from_production?: components["schemas"]["PreviewProductionChangesResponse"];
+            /** @description URL and diagnostic links for this preview workload. */
+            links?: components["schemas"]["PreviewResourceLinksResponse"];
+        };
+        /** @description Progress and named blockers for an individual resource in a complete environment clone. */
+        ProjectEnvironmentCloneResourceResponse: {
+            kind: string;
+            name: string;
+            source_id?: string;
+            source_version?: string;
+            target_id?: string;
+            capture_point?: string;
+            /** @enum {string} */
+            status: "planned" | "capturing" | "captured" | "copying" | "verifying" | "ready" | "failed" | "unsupported" | "compensating" | "compensated";
+        };
+        /** @description One app and exact deployment in an immutable project release set. */
+        ProjectReleaseSetMemberResponse: {
+            /** Format: uuid */
+            app_id: string;
+            /** Format: uuid */
+            deployment_id: string;
+        };
+        /** @description Current live deployment metadata for one project workload. The stable environment URL is present before the first deployment but returns 404 until a live release exists. */
+        ProjectEnvironmentReleaseWorkloadResponse: {
+            workload_config_hash?: string;
+            workload_slug: string;
+            workload_name: string;
+            /** @enum {string} */
+            status: "live" | "not_deployed";
+            /** Format: uri */
+            url?: string;
+            deployment_id?: string;
+            build_id?: string;
+            image_digest?: string;
+            source_url?: string;
+            commit_sha?: string;
+            source_sha256?: string;
+            traffic_percent?: number;
+            /** Format: date-time */
+            created_at?: string;
+        };
+        /** @description Non-secret runtime variable attached to an environment workload. */
+        ProjectEnvironmentVariableResponse: {
+            key: string;
+            value: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        /** @description Safe secret metadata. Version is omitted for legacy secrets with unknown history; secret values and ciphertext are never included. */
+        ProjectEnvironmentSecretResponse: {
+            key: string;
+            value_hash?: string;
+            /** Format: int64 */
+            version?: number;
+            /** @enum {string} */
+            managed_by?: "managed_postgres" | "object_storage";
+            binding_id?: string;
+            /** Format: int64 */
+            credential_generation?: number;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        /** @description Managed resource binding and its target-scoped credential metadata. */
+        ProjectEnvironmentBindingResponse: {
+            /** @enum {string} */
+            kind: "managed_postgres" | "object_storage";
+            binding_id: string;
+            /** Format: int64 */
+            credential_generation?: number;
+            secret_keys: string[];
+        };
+        /** @description Custom hostname routed to one workload in this project environment. */
+        ProjectEnvironmentDomainResponse: {
+            domain: string;
+            verified: boolean;
+        };
+        /** @description Effective declared-route contract and whether it is environment-owned. */
+        ProjectEnvironmentRoutePolicyResponse: {
+            /** @enum {string} */
+            ownership: "application" | "environment";
+            only_allow_declared_routes: boolean;
+            declared_routes: components["schemas"]["DeclaredRoute"][];
+        };
+        /** @description Headers/CORS policy ownership and rules. Other edge-rule kinds remain application-owned. */
+        ProjectEnvironmentEdgePolicyResponse: {
+            /** @enum {string} */
+            ownership: "application" | "environment";
+            rules: components["schemas"]["ProjectEnvironmentEdgeRuleResponse"][];
+        };
+        /** @description One key-level change between two environment configuration snapshots. */
+        ProjectEnvironmentConfigChange: {
+            key: string;
+            /** @enum {string} */
+            kind: "added" | "removed" | "changed";
+            before?: unknown;
+            after?: unknown;
+        };
+        /** @description Before-and-after release state for a workload in an environment diff. */
+        ProjectEnvironmentReleaseDiffResponse: {
+            /** @enum {string} */
+            kind: "added" | "removed" | "changed" | "unchanged";
+            before: components["schemas"]["ProjectEnvironmentReleaseWorkloadResponse"];
+            after: components["schemas"]["ProjectEnvironmentReleaseWorkloadResponse"];
+        };
+        /** @description Non-secret runtime variable change between two environments. */
+        ProjectEnvironmentVariableChangeResponse: {
+            key: string;
+            /** @enum {string} */
+            kind: "added" | "removed" | "changed";
+            before?: string;
+            after?: string;
+        };
+        /** @description Secret metadata comparison that excludes secret values and ciphertext. */
+        ProjectEnvironmentSecretChangeResponse: {
+            key: string;
+            /** @enum {string} */
+            kind: "added" | "removed" | "changed" | "version_drift" | "unknown";
+            before: components["schemas"]["ProjectEnvironmentSecretCellResponse"];
+            after: components["schemas"]["ProjectEnvironmentSecretCellResponse"];
+        };
+        /** @description Managed resource binding change between two environment states. */
+        ProjectEnvironmentBindingChangeResponse: {
+            /** @enum {string} */
+            kind: "managed_postgres" | "object_storage";
+            binding_id: string;
+            /** @enum {string} */
+            change: "added" | "removed" | "changed";
+            before?: components["schemas"]["ProjectEnvironmentBindingResponse"];
+            after?: components["schemas"]["ProjectEnvironmentBindingResponse"];
+        };
+        /** @description Environment-owned hostname changes for one workload. */
+        ProjectEnvironmentDomainDiffResponse: {
+            /** @enum {string} */
+            kind: "unchanged" | "changed";
+            before: components["schemas"]["ProjectEnvironmentDomainResponse"][];
+            after: components["schemas"]["ProjectEnvironmentDomainResponse"][];
+        };
+        /** @description Difference in the effective declared-route contract or its ownership. */
+        ProjectEnvironmentRoutePolicyDiffResponse: {
+            /** @enum {string} */
+            kind: "unchanged" | "changed";
+            before: components["schemas"]["ProjectEnvironmentRoutePolicyResponse"];
+            after: components["schemas"]["ProjectEnvironmentRoutePolicyResponse"];
+        };
+        /** @description Difference in environment headers/CORS rules or ownership. */
+        ProjectEnvironmentEdgePolicyDiffResponse: {
+            /** @enum {string} */
+            kind: "unchanged" | "changed";
+            before: components["schemas"]["ProjectEnvironmentEdgePolicyResponse"];
+            after: components["schemas"]["ProjectEnvironmentEdgePolicyResponse"];
+        };
+        /** @description Non-secret preview differences from the production parent. */
+        PreviewProductionChangesResponse: {
+            artifact_changed: boolean;
+            preview_artifact: components["schemas"]["PreviewArtifactResponse"];
+            production_artifact: components["schemas"]["PreviewArtifactResponse"];
+            configuration_changed_groups: ("runtime" | "resources" | "scaling" | "routing" | "policies")[];
+        };
+        /** @description Public preview URL and native APIs for its logs, metrics, and effective app configuration. */
+        PreviewResourceLinksResponse: {
+            /** Format: uri */
+            url: string;
+            logs: string;
+            metrics: string;
+            configuration: string;
+        };
+        /** @description One gateway route declaration. Path parameters use OpenAPI {name} segments. */
+        DeclaredRoute: {
+            path: string;
+            methods: ("GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS" | "HEAD" | "CONNECT" | "TRACE")[];
+        };
+        /** @description One inline headers or CORS rule on a stable environment URL. */
+        ProjectEnvironmentEdgeRuleResponse: {
+            /** @enum {string} */
+            kind: "headers" | "cors";
+            match_path: string;
+            match_methods?: string[];
+            match_headers?: {
+                [key: string]: string;
+            };
+            priority: number;
+            enabled: boolean;
+            action: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description One side of a secret comparison. Version is omitted when unknown; never contains secret material. */
+        ProjectEnvironmentSecretCellResponse: {
+            present: boolean;
+            value_hash?: string;
+            /** Format: int64 */
+            version?: number;
+            /** @enum {string} */
+            managed_by?: "managed_postgres" | "object_storage";
+            binding_id?: string;
+            /** Format: int64 */
+            credential_generation?: number;
+        };
+        /** @description Strongest available non-secret deployment artifact identity. */
+        PreviewArtifactResponse: {
+            deployment_id?: string;
+            revision?: number;
+            status?: string;
+            image_digest?: string;
+            source_sha256?: string;
+            commit_sha?: string;
+            build_id?: string;
+        };
+        /** @description Runtime policy status across gateway replicas, the owning scheduler, and live VM consumers. Each component reports its scoped desired revision. Gateway request policy filters app-row changes from the combined app-cache and traffic projection; consumers use their existing acknowledged cursor. */
+        RuntimePolicyStatusResponse: {
+            app_id: string;
+            /**
+             * Format: int64
+             * @description Latest desired control-plane revision for app-cache and deployment traffic policy.
+             */
+            desired_revision: number;
+            /** @enum {string} */
+            state: "active" | "pending" | "unverified";
+            /**
+             * @example [
+             *       "gateway_app_cache",
+             *       "gateway_request_policy",
+             *       "deployment_traffic",
+             *       "response_cache_purge",
+             *       "app_egress_allowlist",
+             *       "app_cpu_limit",
+             *       "scheduler_scaling"
+             *     ]
+             */
+            coverage: string[];
+            serving_gateways: number;
+            applied_gateways: number;
+            pending_gateways: number;
+            stale_gateways: number;
+            request_policy: components["schemas"]["RuntimePolicyComponentStatus"];
+            edge_rules: components["schemas"]["RuntimePolicyComponentStatus"];
+            cors_presets: components["schemas"]["RuntimePolicyComponentStatus"];
+            response_cache: components["schemas"]["RuntimePolicyComponentStatus"];
+            egress_allowlist: components["schemas"]["RuntimePolicyNodeStatus"];
+            cpu_limit: components["schemas"]["RuntimePolicyNodeStatus"];
+            scheduler_scaling: components["schemas"]["RuntimePolicySchedulerStatus"];
+        };
+        /** @description Fresh serving-gateway status for a policy component with explicit scope. Its desired revision is meaningful within that component's ledger or filtered projection. */
+        RuntimePolicyComponentStatus: {
+            /** @enum {string} */
+            scope?: "app" | "account";
+            /** Format: int64 */
+            desired_revision: number;
+            /** @enum {string} */
+            state: "active" | "pending" | "unverified";
+            serving_gateways: number;
+            applied_gateways: number;
+            pending_gateways: number;
+            stale_gateways: number;
+        };
+        /** @description Fresh app-level host policy status for compute nodes currently hosting live instances of this app. This shape is used by the egress_allowlist and cpu_limit components. */
+        RuntimePolicyNodeStatus: {
+            /** @enum {string} */
+            scope?: "app";
+            /** Format: int64 */
+            desired_revision: number;
+            /** @enum {string} */
+            state: "active" | "pending" | "unverified";
+            serving_nodes: number;
+            applied_nodes: number;
+            pending_nodes: number;
+            stale_nodes: number;
+        };
+        /** @description Fresh observation of the desired scaling policy by the owning schedd. Active means the policy was loaded, not that a metric-driven replica target has been reached. */
+        RuntimePolicySchedulerStatus: {
+            /** @enum {string} */
+            scope: "app";
+            /** Format: int64 */
+            desired_revision: number;
+            /** Format: int64 */
+            observed_revision: number;
+            /** @enum {string} */
+            state: "active" | "pending" | "unverified";
+            /** @description Scheduler owner node when this app is sharded. */
+            scheduler_node_id?: string;
+            /** Format: date-time */
+            observed_at?: string | null;
+            stale: boolean;
+        };
     };
     responses: {
         /** @description The workflow run is absent or not owned by the caller, or code: workflow_step_not_found — the requested step is absent. */
@@ -18876,6 +21219,33 @@ export interface components {
         };
         /** @description code: rollback_target_already_live — the named target_deployment_id exists but has status != superseded (typically status=live). Rolling back to the already-current deployment is rejected. */
         RollbackTargetAlreadyLive: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description code: inbound_webhook_invalid for malformed endpoint configuration/body or a missing Stripe event id; code: inbound_webhook_bad_signature when Stripe-Signature does not verify. */
+        InboundWebhookInvalid: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description code: plan_inbound_webhooks_not_allowed — the plan excludes durable inbound webhook ingress. */
+        PlanInboundWebhooksNotAllowed: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description code: plan_inbound_webhook_quota — the app or account endpoint cap is reached. */
+        PlanInboundWebhookQuota: {
             headers: {
                 [name: string]: unknown;
             };
@@ -19357,6 +21727,37 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getCapabilities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Customer-visible capability registry. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CapabilitiesResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            429: components["responses"]["TooManyRequests"];
+            /** @description Capability registry unavailable; retry with backoff. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     getMigrationPreflight: {
         parameters: {
             query: {
@@ -22183,6 +24584,37 @@ export interface operations {
             429: components["responses"]["TooManyRequests"];
         };
     };
+    getAppBindingInventory: {
+        parameters: {
+            query?: {
+                scope?: string;
+                deployment_id?: string;
+            };
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Complete or partial metadata-only binding inventory. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppBindingInventory"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
     listApps: {
         parameters: {
             query?: never;
@@ -22347,6 +24779,100 @@ export interface operations {
             404: components["responses"]["NotFound"];
             422: components["responses"]["InvalidMinInstances"];
             429: components["responses"]["TooManyRequests"];
+        };
+    };
+    listDeletedApps: {
+        parameters: {
+            query?: {
+                /** @description Maximum records in this account-owned page. */
+                limit?: number;
+                /** @description Opaque cursor from this account and inventory order. Restart when rejected. */
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One bounded account-owned page. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeletedAppListResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getDeletedApp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Exact deleted-app ID returned by this account's inventory. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current lifecycle evidence; active or foreign apps return 404. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeletedAppSummary"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    restoreDeletedApp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Exact account-owned deleted-app ID; never resolved to a replacement slug. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** @description Optional empty object; no dry-run or other fields are accepted. */
+        requestBody?: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description The restored exact app. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     restoreApp: {
@@ -22962,6 +25488,226 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
             429: components["responses"]["TooManyRequests"];
+        };
+    };
+    listIssues: {
+        parameters: {
+            query?: {
+                /** @description Filter by open, resolved, or ignored lifecycle state. */
+                state?: string;
+                /** @description Exact issue environment namespace. */
+                environment?: string;
+                /** @description Filter by me, unassigned, or an owner account UUID. */
+                assignee?: string;
+                /** @description Issue ordering; impact ranks by verified distinct customers in the fixed 24-hour window. */
+                sort?: "recent" | "impact";
+                /** @description Return issues affecting at least this many verified distinct customers in the fixed 24-hour window. */
+                min_customers?: number;
+                /** @description Opaque next_cursor from the previous issue page. */
+                cursor?: string;
+            };
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A bounded page of issues for this application. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListIssuesResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    getIssue: {
+        parameters: {
+            query?: {
+                /** @description RFC3339 impact-window start, clamped to plan retention. */
+                since?: string;
+                /** @description Opaque next_event_cursor for earlier occurrences. */
+                event_cursor?: string;
+                /** @description Opaque next_release_cursor for earlier deployment history. */
+                release_cursor?: string;
+                /** @description Opaque next_activity_cursor for earlier actions. */
+                activity_cursor?: string;
+            };
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description UUID of the durable issue within this app. */
+                issue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Issue evidence, verified impact, and paginated history. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueDetail"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    actOnIssue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description UUID of the issue whose ownership or lifecycle should change. */
+                issue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IssueActionRequest"];
+            };
+        };
+        responses: {
+            /** @description Issue state or ownership updated with audited activity. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Issue"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    listIssueIngestTokens: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reporting credential metadata without bearer secrets. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListIssueIngestTokensResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    createIssueIngestToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateIssueIngestTokenRequest"];
+            };
+        };
+        responses: {
+            /** @description Reporting credential created; the secret is shown once. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueIngestToken"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    revokeIssueIngestToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description UUID of the reporting credential to revoke. */
+                token_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reporting credential revoked for subsequent ingestion. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["CapacityUnavailable"];
         };
     };
     getAppErrorsSummary: {
@@ -24101,6 +26847,31 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
         };
     };
+    previewAppOpenAPIPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Declared-vs-observed route and policy preview. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppOpenAPIPolicyPreviewResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     dryRunAppOpenAPI: {
         parameters: {
             query?: never;
@@ -24465,6 +27236,8 @@ export interface operations {
             query?: {
                 /** @description Optional normalized request path glob (for example `/products/*`). */
                 path?: string;
+                /** @description Optional cache tag (for example `product:42`); cannot be combined with path. */
+                tag?: string;
             };
             header?: never;
             path: {
@@ -24475,13 +27248,14 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Purge requested. */
+            /** @description Purge durably requested; check policy status for application. */
             204: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
+            400: components["responses"]["ValidationFailed"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
@@ -26067,6 +28841,35 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getDeploymentCompanions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Owned declaration metadata, including known empty or unavailable. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentCompanionsResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["CapacityUnavailable"];
         };
     };
     getDeployment: {
@@ -28503,6 +31306,28 @@ export interface operations {
             429: components["responses"]["TooManyRequests"];
         };
     };
+    listProjects: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Account-scoped project summaries. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectSummaryResponse"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
     applyProject: {
         parameters: {
             query?: {
@@ -28575,6 +31400,164 @@ export interface operations {
             403: components["responses"]["PlanLimit"];
             409: components["responses"]["ValidationFailed"];
             413: components["responses"]["SourceTooLarge"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getProjectEnvironmentPromotionPreview: {
+        parameters: {
+            query: {
+                /** @description Source environment whose live releases are compared with the target. */
+                from: string;
+                /** @description Opt in to copying the source's non-secret configuration atomically with the target release graph. */
+                sync_config?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description Project slug owning the environment promotion preview. */
+                slug: string;
+                /** @description Target environment receiving the promotion preview. */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Promotion preview and immutable promotion identity. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectEnvironmentPromotionPreviewResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    listProjectEnvironmentPromotions: {
+        parameters: {
+            query?: {
+                /** @description Opaque cursor returned as next_before. */
+                before?: string;
+                /** @description Page size, capped at 100. */
+                limit?: number;
+                /** @description Restrict history to promotions from this source environment. */
+                from?: string;
+                /** @description Restrict history to a promotion lifecycle status. */
+                status?: "running" | "succeeded" | "failed";
+            };
+            header?: never;
+            path: {
+                /** @description Project slug owning the promotion history. */
+                slug: string;
+                /** @description Target environment whose promotion history is requested. */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cursor-paginated promotion history. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectEnvironmentPromotionListResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getProjectEnvironmentPromotionStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project slug owning the promotion status operation. */
+                slug: string;
+                /** @description Target environment associated with the promotion status operation. */
+                environment: string;
+                /** @description Durable promotion operation identifier. */
+                promotion: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Durable promotion status, including post-cutover verification and any automatic rollback. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectEnvironmentPromotionStatusResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getProjectEnvironmentApprovalStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project slug owning the approval lookup. */
+                slug: string;
+                /** @description Protected environment slug containing the approval. */
+                environment: string;
+                /** @description Durable approval identifier returned when the approval is created. */
+                approval: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Durable approval lifecycle status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectEnvironmentApprovalStatusResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project slug in the authenticated account. */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Project recovery and workload state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
             429: components["responses"]["TooManyRequests"];
         };
     };
@@ -29771,6 +32754,323 @@ export interface operations {
             429: components["responses"]["TooManyRequests"];
         };
     };
+    listInboundWebhookEndpoints: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The configured endpoints. Public route tokens are never returned. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InboundWebhookEndpointResponse"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    createInboundWebhookEndpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateInboundWebhookEndpointRequest"];
+            };
+        };
+        responses: {
+            /** @description Endpoint created; copy endpoint_url into the provider now. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InboundWebhookEndpointResponse"];
+                };
+            };
+            400: components["responses"]["InboundWebhookInvalid"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanInboundWebhooksNotAllowed"];
+            403: components["responses"]["PlanInboundWebhookQuota"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["InboundWebhookInvalid"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    getInboundWebhookEndpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Inbound webhook endpoint ID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Endpoint metadata. The route token and signing secret are not returned. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InboundWebhookEndpointResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    deleteInboundWebhookEndpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Inbound webhook endpoint ID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Endpoint deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    updateInboundWebhookEndpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Inbound webhook endpoint ID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateInboundWebhookEndpointRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated endpoint metadata. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InboundWebhookEndpointResponse"];
+                };
+            };
+            400: components["responses"]["InboundWebhookInvalid"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    getWebhookAutomationBinding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Endpoint whose future verified events use this automation binding. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current binding. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookAutomationBindingResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    putWebhookAutomationBinding: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description Idempotency key for the POST. Stored for 24h. On replay the server
+                 *     returns the original response with `Idempotent-Replayed: true`.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Endpoint whose future verified events use this automation binding. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** @description Explicit delivery takeover and published automation selection. */
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutWebhookAutomationBindingRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved binding with its new revision. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookAutomationBindingResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            /** @description Plan does not allow workflows. */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description Binding revision or routing mode conflict (webhook_automation_conflict). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request body exceeds 64 KiB. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    deleteWebhookAutomationBinding: {
+        parameters: {
+            query: {
+                /** @description Current binding revision returned by a previous read or update. */
+                expected_version: number;
+            };
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Endpoint whose future verified events use this automation binding. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Binding removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description Binding revision conflict (webhook_automation_conflict). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    getWebhookAutomationReceipt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Endpoint that accepted the provider event being inspected. */
+                id: string;
+                /** @description Stripe event ID returned in the verified provider receipt. */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Receipt, routing status and admitted run ID when retained. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookAutomationReceiptResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
     listAppWebhooks: {
         parameters: {
             query?: never;
@@ -30308,6 +33608,235 @@ export interface operations {
             };
             403: components["responses"]["PlanQueueDepth"];
             413: components["responses"]["PlanSourceBytes"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    configureQueueWorkload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["QueueWorkloadProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description Existing profile converged. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueueWorkloadProfileResponse"];
+                };
+            };
+            /** @description New profile created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueueWorkloadProfileResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    listQueueBindings: {
+        parameters: {
+            query?: {
+                /** @description Include retained retired bindings belonging to this app. */
+                include_retired?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Queue bindings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueueBindingResponse"][];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    createQueueBinding: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description Idempotency key for the POST. Stored for 24h. On replay the server
+                 *     returns the original response with `Idempotent-Replayed: true`.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateQueueBindingRequest"];
+            };
+        };
+        responses: {
+            /** @description Created queue binding. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueueBindingResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getQueueBinding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Queue binding. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueueBindingResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    deleteQueueBinding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Queue binding deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    updateQueueBinding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateQueueBindingRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated queue binding. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueueBindingResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getQueueBindingStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Queue binding status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueueBindingStatusResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
             429: components["responses"]["TooManyRequests"];
         };
     };
@@ -34539,6 +38068,246 @@ export interface operations {
             404: components["responses"]["WorkflowStepAttemptsNotFound"];
             429: components["responses"]["TooManyRequests"];
             503: components["responses"]["ServerError"];
+        };
+    };
+    listProjectEnvironments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project slug whose environment registry is addressed. */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Account-scoped project environments. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectEnvironmentResponse"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getProjectEnvironment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project slug owning the environment. */
+                slug: string;
+                /** @description Environment slug. */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Project environment. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectEnvironmentResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getProjectEnvironmentState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project whose environment state is requested. */
+                slug: string;
+                /** @description Target environment whose effective state is returned. */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Effective environment state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectEnvironmentStateResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getProjectEnvironmentQueueBindings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project containing the workload and stage. */
+                slug: string;
+                /** @description Registered stage. Production is managed through the app queue-bindings API. */
+                environment: string;
+                /** @description Workload application slug belonging to this project. */
+                workload: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Complete stage-owned desired queue collection. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectEnvironmentQueueBindingsResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    replaceProjectEnvironmentQueueBindings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project containing the workload and stage. */
+                slug: string;
+                /** @description Registered stage. Production is managed through the app queue-bindings API. */
+                environment: string;
+                /** @description Workload application slug belonging to this project. */
+                workload: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReplaceProjectEnvironmentQueueBindingsRequest"];
+            };
+        };
+        responses: {
+            /** @description Stored desired queue definitions and their workload revision. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectEnvironmentQueueBindingsResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getProjectEnvironmentDiff: {
+        parameters: {
+            query: {
+                /** @description Source environment being compared with the target environment. */
+                from: string;
+            };
+            header?: never;
+            path: {
+                /** @description Project slug whose environments are compared. */
+                slug: string;
+                /** @description Target environment. */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unified effective-state diff. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectEnvironmentDiffResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getPreviewEnvironmentStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current-head preview environment status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewEnvironmentStatusResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getRuntimePolicyStatus: {
+        parameters: {
+            query?: {
+                /** @description Optional bounded wait for active state, up to 10s. */
+                wait?: string;
+            };
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current application state; pending remains possible after wait expires. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimePolicyStatusResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
         };
     };
 }
