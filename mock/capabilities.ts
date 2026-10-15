@@ -6,6 +6,28 @@ const PAID: Plan[] = ['hobby', 'pro', 'scale'];
 /** Synthetic account availability, not evidence of runtime qualification. */
 const entries: Capability[] = [
   {
+    key: 'mcp-hosting',
+    name: 'MCP hosting',
+    category: 'runtime',
+    description: 'Stateless Streamable HTTP MCP hosting and explicit CLI qualification.',
+    maturity: 'preview',
+    plans: PAID,
+    docs_url: '/docs/mcp',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
+  {
+    key: 'streaming-and-grpc',
+    name: 'Streaming and gRPC',
+    category: 'edge',
+    description: 'Streaming HTTP responses and gRPC.',
+    maturity: 'beta',
+    plans: PAID,
+    docs_url: '/docs/runtime-node',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
+  {
     key: 'companions',
     name: 'Application companions',
     category: 'runtime',

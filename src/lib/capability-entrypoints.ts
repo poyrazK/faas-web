@@ -38,6 +38,7 @@ const TARGETS: Record<string, Entrypoint> = {
   companions: { href: '/dashboard/workflows', label: 'Choose an app, then open Companions' },
   'private-apps': { href: '/dashboard/workflows/new', label: 'Create an app' },
   'internal-services': { href: '/dashboard/workflows', label: 'Choose an app, then open Services' },
+  'mcp-hosting': { href: '/dashboard/workflows', label: 'Choose an app, then open MCP' },
 };
 export function capabilityEntrypoint(key: string): Entrypoint {
   return (
