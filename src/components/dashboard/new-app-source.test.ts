@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { isValidGitHubRepo, isValidGitRef, validateNewAppSearch } from './new-app-source';
 
 describe('new app Git source validation', () => {
+  it('retains a direct container source URL', () => {
+    expect(validateNewAppSearch({ source: 'container' }).source).toBe('container');
+  });
   it.each([
     null,
     'bad',

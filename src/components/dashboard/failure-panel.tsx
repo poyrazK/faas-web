@@ -3,7 +3,7 @@ import type { FailureSummary } from './failure-summary';
 
 export interface FailurePanelProps {
   summary: FailureSummary;
-  onViewOutput: () => void;
+  onViewOutput?: () => void;
   onRetryOptions?: () => void;
 }
 
@@ -41,9 +41,11 @@ export function FailurePanel({ summary, onViewOutput, onRetryOptions }: FailureP
         </div>
       )}
       <div className="mt-5 flex flex-wrap gap-2">
-        <Button size="sm" variant="outline" onClick={onViewOutput}>
-          View build output
-        </Button>
+        {onViewOutput && (
+          <Button size="sm" variant="outline" onClick={onViewOutput}>
+            View build output
+          </Button>
+        )}
         {onRetryOptions && (
           <Button size="sm" variant="outline" onClick={onRetryOptions}>
             Retry options

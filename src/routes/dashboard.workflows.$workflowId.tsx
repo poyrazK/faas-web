@@ -70,6 +70,7 @@ import { AppAnalyticsPanel } from '@/components/dashboard/app-analytics';
 import { AppOverview } from '@/components/dashboard/app-overview';
 import { RestartAppButton } from '@/components/dashboard/app-lifecycle';
 import { TarballDeploy } from '@/components/dashboard/tarball-deploy';
+import { ImageDeploymentPanel } from '@/components/dashboard/image-deploy-form';
 import { TearDownPreviewButton } from '@/components/dashboard/preview-actions';
 import { Swap } from '@/components/dashboard/motion';
 import { RepoPicker } from '@/components/dashboard/repo-picker';
@@ -626,6 +627,7 @@ function FunctionDetailPage() {
 
             {tab === 'Deployments' && (
               <>
+                <ImageDeploymentPanel key={workflowId} slug={workflowId} />
                 <DeploymentHistoryPanel
                   slug={fn.id}
                   selectedDeploymentId={selectedDeploymentId}
