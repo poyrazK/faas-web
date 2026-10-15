@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type Ref } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type Ref } from 'react';
 import { CheckCircle, Plus, Trash, WarningTriangle } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { FIELD, Select } from '@/components/ui/field';
@@ -7,6 +7,7 @@ import { Modal } from '@/components/ui/modal';
 import { Panel } from './primitives';
 import { ScheduleField } from './schedule-field';
 import { useUnsavedGuard } from '@/lib/use-unsaved-guard';
+import { useAppRoutes } from '@/lib/api/queries';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import {
   useValidateAutomation,
@@ -27,10 +28,12 @@ import {
   jsonValue,
   stepKind,
   changeStepKind,
+  observedRoutes,
   renameStep,
   AUTOMATION_TEMPLATES,
   type AutomationTemplate,
   type DefinitionDraft,
+  type ObservedRoute,
   type StepDraft,
   type StepKind,
 } from './automation-definition';
@@ -52,6 +55,8 @@ function TextField({
   disabled,
   placeholder,
   inputRef,
+  list,
+  hint,
 }: {
   label: string;
   value: string;
@@ -59,8 +64,12 @@ function TextField({
   disabled?: boolean;
   placeholder?: string;
   inputRef?: Ref<HTMLInputElement>;
+  /** Id of a `<datalist>` offering suggestions; free text still works. */
+  list?: string;
+  hint?: string;
 }) {
-  return (
+  const hintId = useId();
+  const field = (
     <label className="flex flex-col gap-1.5">
       <span className="label-mono text-muted-foreground">{label}</span>
       <input
@@ -69,9 +78,21 @@ function TextField({
         value={value}
         disabled={disabled}
         placeholder={placeholder}
+        list={list}
+        autoComplete={list ? 'off' : undefined}
+        aria-describedby={hint ? hintId : undefined}
         onChange={(event) => onChange(event.target.value)}
       />
     </label>
+  );
+  if (!hint) return field;
+  return (
+    <div className="flex flex-col gap-1.5">
+      {field}
+      <p id={hintId} className="text-xs text-muted-foreground">
+        {hint}
+      </p>
+    </div>
   );
 }
 
@@ -170,6 +191,7 @@ function StepFields({
   onRename,
   onRemove,
   others,
+  routes,
   compact,
 }: {
   step: StepDraft;
@@ -179,9 +201,12 @@ function StepFields({
   onRemove: () => void;
   /** Names of the other steps, for the dependency picker. */
   others: string[];
+  /** Observed app routes and the `<datalist>` that offers them. */
+  routes: { list: string; observed: ObservedRoute[] };
   compact: boolean;
 }) {
   const kind = stepKind(step.spec);
+  const observed = routes.observed.find((route) => route.path === step.spec.path);
   const patch = (value: Partial<StepDraft['spec']>) =>
     onChange({ ...step, spec: { ...step.spec, ...value } });
   return (
@@ -227,6 +252,14 @@ function StepFields({
               value={step.spec.path ?? ''}
               onChange={(path) => patch({ path })}
               placeholder="/process"
+              list={routes.observed.length ? routes.list : undefined}
+              hint={
+                observed
+                  ? `Observed as ${observed.methods.join(', ')}.`
+                  : routes.observed.length
+                    ? 'Choose an observed route or type any path.'
+                    : undefined
+              }
             />
             <label className="flex flex-col gap-1.5">
               <span className="label-mono text-muted-foreground">HTTP method</span>
@@ -381,6 +414,12 @@ export function AutomationEditor({
   const write = useWriteAutomation(account, slug);
   const validate = useValidateAutomation(slug);
   const simulate = useSimulateAutomation(slug);
+  const appRoutes = useAppRoutes(slug);
+  const routeList = useId();
+  const routes = useMemo(
+    () => ({ list: routeList, observed: observedRoutes(appRoutes.data?.routes) }),
+    [routeList, appRoutes.data?.routes]
+  );
   const busy = write.isPending || validate.isPending || simulate.isPending;
   const inDialog = Boolean(onClose);
   const dirty = JSON.stringify(draft) !== baseline || rawOpen;
@@ -756,6 +795,7 @@ export function AutomationEditor({
                 .filter((_, i) => i !== index)
                 .map((other) => other.spec.name)
                 .filter(Boolean)}
+              routes={routes}
               onRename={(name) => edit({ ...draft, steps: renameStep(draft.steps, index, name) })}
               onChange={(next) =>
                 edit({
@@ -766,6 +806,15 @@ export function AutomationEditor({
               onRemove={() => edit({ ...draft, steps: draft.steps.filter((_, i) => i !== index) })}
             />
           ))}
+          {routes.observed.length > 0 && (
+            <datalist id={routes.list}>
+              {routes.observed.map((route) => (
+                <option key={route.path} value={route.path}>
+                  {route.methods.join(', ')}
+                </option>
+              ))}
+            </datalist>
+          )}
           <div className="flex flex-wrap gap-2">
             <Button
               size="sm"

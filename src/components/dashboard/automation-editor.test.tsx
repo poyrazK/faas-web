@@ -16,6 +16,12 @@ const mocks = vi.hoisted(() => ({
   close: vi.fn(),
   guard: vi.fn(),
   pending: false,
+  routes: undefined as string[] | undefined,
+}));
+vi.mock('@/lib/api/queries', () => ({
+  useAppRoutes: () => ({
+    data: mocks.routes && { slug: 'app-1', routes: mocks.routes, source: 'live' },
+  }),
 }));
 vi.mock('@/lib/use-unsaved-guard', () => ({ useUnsavedGuard: mocks.guard }));
 vi.mock('@/lib/api/automations', () => ({
@@ -53,6 +59,7 @@ function mount(record = automation) {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.pending = false;
+  mocks.routes = undefined;
   mocks.write.mockResolvedValue({ ...automation, version: 13 });
   mocks.validate.mockResolvedValue({ valid: true, issues: [], step_order: ['process'] });
   mocks.simulate.mockResolvedValue({
@@ -322,6 +329,39 @@ describe('automation editor write boundaries', () => {
       expect.objectContaining({ input: {}, mock_outputs: {} })
     );
     expect(mocks.write).not.toHaveBeenCalled();
+  });
+  it('suggests observed app routes for handler paths while keeping free text', async () => {
+    mocks.routes = ['POST /orders', 'GET /orders', 'GET /health', '__route_other__'];
+    mount();
+    const path = screen.getByLabelText('Handler path');
+    const list = document.getElementById(path.getAttribute('list')!)!;
+    expect(list.tagName).toBe('DATALIST');
+    expect([...list.querySelectorAll('option')].map((option) => option.value)).toEqual([
+      '/health',
+      '/orders',
+    ]);
+    expect(path).toHaveAccessibleDescription('Choose an observed route or type any path.');
+    await userEvent.clear(path);
+    await userEvent.type(path, '/orders');
+    expect(path).toHaveAccessibleDescription('Observed as GET, POST.');
+    await userEvent.type(path, '/custom');
+    expect(path).toHaveValue('/orders/custom');
+    await userEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+    await waitFor(() =>
+      expect(mocks.write).toHaveBeenCalledWith(
+        expect.objectContaining({
+          body: expect.objectContaining({
+            definition: expect.objectContaining({
+              steps: [expect.objectContaining({ path: '/orders/custom' })],
+            }),
+          }),
+        })
+      )
+    );
+  });
+  it('offers no route list when the app reports none', () => {
+    mount();
+    expect(screen.getByLabelText('Handler path')).not.toHaveAttribute('list');
   });
   it('picks dependencies from other steps and keeps names that match no step', async () => {
     mount({

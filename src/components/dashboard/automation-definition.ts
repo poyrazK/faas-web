@@ -189,3 +189,23 @@ export function availabilityMessage(runtimeEnabled: boolean, reason?: string): s
   if (reason) return reasons[reason] ?? `Execution is unavailable: ${reason}.`;
   return runtimeEnabled ? undefined : reasons.runtime_disabled;
 }
+
+export type ObservedRoute = { path: string; methods: string[] };
+
+/**
+ * Handler-path suggestions from `/v1/apps/{slug}/routes`, whose items are
+ * `"<METHOD> <PATH>"` plus the reserved `__route_other__` overflow bucket.
+ * Anything that does not parse is skipped rather than guessed at.
+ */
+export function observedRoutes(routes: readonly string[] | undefined): ObservedRoute[] {
+  const byPath = new Map<string, Set<string>>();
+  for (const route of routes ?? []) {
+    const match = /^([A-Z]+)\s+(\/\S*)$/.exec(route.trim());
+    if (!match) continue;
+    const [, method, path] = match;
+    byPath.set(path, (byPath.get(path) ?? new Set()).add(method));
+  }
+  return [...byPath]
+    .map(([path, methods]) => ({ path, methods: [...methods].sort() }))
+    .sort((a, b) => a.path.localeCompare(b.path));
+}

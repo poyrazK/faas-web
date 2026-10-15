@@ -6,6 +6,7 @@ import {
   newDefinition,
   parseDefinition,
   renameStep,
+  observedRoutes,
 } from './automation-definition';
 
 describe('automation authoring', () => {
@@ -57,6 +58,15 @@ describe('automation authoring', () => {
       ],
     });
     expect(renameStep(twins.steps, 0, 'c')[2].dependencies).toEqual(['a']);
+  });
+  it('turns observed route labels into path suggestions and skips the overflow bucket', () => {
+    expect(
+      observedRoutes(['POST /orders', 'GET /orders', 'GET /health', '__route_other__', 'junk'])
+    ).toEqual([
+      { path: '/health', methods: ['GET'] },
+      { path: '/orders', methods: ['GET', 'POST'] },
+    ]);
+    expect(observedRoutes(undefined)).toEqual([]);
   });
   it('rejects malformed inputs and non-object event filters before any request', () => {
     const draft = definitionDraft(newDefinition());
