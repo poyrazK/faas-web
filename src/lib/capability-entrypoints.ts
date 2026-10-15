@@ -26,6 +26,10 @@ const TARGETS: Record<string, Entrypoint> = {
     href: '/dashboard/workflows/new?source=container',
     label: 'Deploy an image',
   },
+  'worker-pools': {
+    href: '/dashboard/workflows/new?source=worker',
+    label: 'Create an OCI worker',
+  },
   'disposable-runs': {
     instruction: 'Use the CLI or API for isolated runs. See the disposable executions guide.',
   },

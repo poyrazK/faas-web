@@ -64,6 +64,12 @@ const SOURCES = [
     icon: Package,
   },
   {
+    id: 'worker',
+    name: 'Long-lived worker',
+    desc: 'Deploy a pinned OCI worker without an HTTP listener. Hobby or above.',
+    icon: Package,
+  },
+  {
     id: 'git',
     name: 'Git repository',
     desc: 'Build and deploy a branch, tag, or commit directly from the console.',
@@ -581,8 +587,15 @@ function CreateAppWizard({
       >
         Choose another source
       </button>
-      <PageHeader title="New app" description="Deploy a compatible HTTP container image." />
-      <ImageDeployForm />
+      <PageHeader
+        title="New app"
+        description={
+          source === 'worker'
+            ? 'Deploy a long-lived OCI worker from a digest-pinned image.'
+            : 'Deploy a compatible HTTP container image.'
+        }
+      />
+      <ImageDeployForm kind={source === 'worker' ? 'worker' : 'http'} />
     </div>
   );
   const form = (
@@ -1043,7 +1056,7 @@ function CreateAppWizard({
     <>
       {deploying
         ? renderCompletion()
-        : !onboarding && source === 'container'
+        : !onboarding && (source === 'container' || source === 'worker')
           ? containerForm
           : form}
       {/* Keep the archive and plan mounted through source switches and

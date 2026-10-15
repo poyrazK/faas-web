@@ -67,6 +67,9 @@ describe('verified capability destinations', () => {
     expect(capabilityEntrypoint('container-deployments').href).toBe(
       '/dashboard/workflows/new?source=container'
     );
+    expect(capabilityEntrypoint('worker-pools').href).toBe(
+      '/dashboard/workflows/new?source=worker'
+    );
     expect(capabilityEntrypoint('future-key').href).toBeUndefined();
   });
 });
