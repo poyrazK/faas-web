@@ -1,74 +1,81 @@
 # Deploy your first app
 
-Start with a small Node.js API, deploy it from your terminal, and verify the live URL. You can use your own repository afterward.
+Run `gregale start` to launch your own project or a small starter API. The guided session handles login, source checks, deployment, and the first response check.
 
 > Hosting is in public beta. Start with a demo, side project, or another non-critical workload. Deployments consume your account’s compute and app allowance; check your [plan limits](/docs/plans) first.
 
 ## Before you start
 
 - Create a [Gregale account](/signup), or sign in to your existing account.
-- Have a terminal with Node.js and npm installed.
+- Have a terminal available.
 - Make sure your plan has room for another deployed app.
 
-## Install and sign in
+## Install the CLI
 
-Install the CLI, then authenticate this machine:
+Install the CLI:
 
 ```bash
-npm install -g gregale
-gregale login
+curl -fsSL https://get.gregale.dev | sh
 ```
 
-Follow the login prompts. Keep credentials out of your repository and shared terminal output. For automation, use a scoped token rather than sharing your personal login.
+If you already use npm, `npm install -g gregale` is also available. Start opens browser login when needed. For automation, use `gregale deploy` with a scoped token.
 
-## Create a small API
+## Start a guided launch
 
-Generate the built-in Node.js starter in a new directory:
+From your project directory, run:
 
 ```bash
-gregale init --template hello-node --path my-first-api
-cd my-first-api
+gregale start
 ```
 
-Review the generated files before deploying. To explore other starters, run `gregale init --list`.
+Choose **Deploy this directory**, **Create a starter**, or **Choose another directory**. If you have no project ready, the starter option creates a local Node.js, Python, or Go HTTP app for you to edit.
 
-## Deploy the directory
+Review the source, account, app name, environment, access settings, and allowance before confirming. Start includes your working files, including uncommitted changes, with the normal source exclusions and secret scan. If an app with the inferred name already exists, choose whether to update it or create an app with another name.
 
-Choose an available app name and deploy the files you just generated:
+If you have used `gregale link`, Start reads the nearest link for the source you select and verifies its project, app, and environment. A linked project with several workloads and no default app offers a workload picker. Choosing a workload for one launch keeps your linked defaults. An unlinked source uses the `default` environment, including when you select it from another linked directory.
+
+## Configure required keys
+
+Start checks required runtime key names against the selected app's configuration in the reviewed environment and any secrets file you select. Existing metadata confirms key presence; it does not verify values or application behavior.
+
+A local `.env` alone does not configure the deployed app. If Start reports missing keys, choose a `KEY=VALUE` secrets file, which can be your `.env`, and review the key names before deployment. Selected values are sealed before source upload; the selected file is excluded from source and its values are omitted from session metadata.
+
+## Check the live response
+
+Start follows build progress and readiness, then tests the app. For a public app it shows the exact URL that answered, the HTTP status, a response preview, and elapsed time. Private apps use an owner-authorized check of the accepted deployment and environment, with the actual HTTP status and a bounded response preview. Account credentials stay on the control plane.
+
+In a named environment, public checks require the accepted deployment's live URL. Updates also require evidence identifying the accepted deployment. When a successful public response omits that identity, Start follows it with an owner-authorized check and labels the result separately from public URL verification.
+
+Owner-authorized checks can wake that exact deployment through normal scheduler admission. They do not follow redirects or bypass application-owned authentication: a GET returning 401 or 403 still needs attention. These checks do not establish public ingress or customer access. They require server support for deployment response checks; older servers fail visibly without testing a default-environment deployment instead.
+
+If the request fails, retry the check, view recent logs, or choose another app-relative GET path. These checks use the accepted deployment without submitting another one. A redirecting or authenticated root route may need a different health path. If `/healthz` is answered by the gateway, choose a route served by your app, such as `/`; a gateway health answer cannot verify an application response.
+
+Built-in starters offer an optional greeting change. Enter your greeting, review the edit and new deployment, and see the changed response live. Press Enter to finish without editing.
+
+For your own project, choose **I've made changes — review and deploy again** after editing in another terminal or editor. Start reviews added, modified, and deleted file names, refreshes configuration checks, and asks you to confirm an update to the same app and environment. It then checks the new deployment. You can repeat this loop or choose **Finish**, which is the default. Closing or declining before confirmation submits no update. When you resume a session, the review lists current files because the earlier source comparison is unavailable.
+
+If an update fails or is interrupted, its accepted deployment ID and the previous successful check's deployment ID remain recorded for recovery. The session shows an inspection command for the earlier deployment. Continuing reconnects to the accepted update without submitting another one.
+
+The session prints commands for deploying changes and following the accepted deployment's logs. Follow-up commands preserve the reviewed environment; named environments show the tested URL or a deployment inspection command. You can also use the [console](/dashboard) to inspect deployments and runtime logs. Eligible idle apps park; the next request waits for them to wake. Check `gregale usage` for your account's recorded usage.
+
+## Continue an interrupted or failed launch
+
+Run `gregale start` again from the same original directory and choose **Continue** to reconnect to an accepted deployment:
 
 ```bash
-gregale deploy --path . --worktree --name my-first-api
-```
-
-Replace `my-first-api` with your chosen app name. `--worktree` explicitly includes the current files, including uncommitted and untracked files. Review them for secrets before deploying.
-
-The CLI waits for the build, readiness checks, and a platform-side smoke request. A queued build is not the same as a live app. Wait for the successful deployment receipt and its app URL.
-
-## Verify the live app
-
-Open the URL printed by the CLI in your browser. Confirm that the starter responds, then inspect the app:
-
-```bash
-gregale inspect my-first-api
-```
-
-You can also open the [console](/dashboard) to inspect the deployment and runtime logs. With scale-to-zero enabled, an eligible idle app can park; the next request waits for it to wake.
-
-## If the deployment fails
-
-Inspect the latest failed deployment rather than repeatedly deploying unchanged code:
-
-```bash
-gregale inspect my-first-api --errors
+gregale start
 ```
 
 | Symptom | Next step |
 |---|---|
-| Authentication failed | Run `gregale login` again and confirm the account. |
+| Authentication failed | Follow Start's browser login or run `gregale login` and confirm the account. |
+| Required keys are missing | Select a secrets file or configure the existing app, then recheck. |
 | App or resource limit reached | Review your [plan limits](/docs/plans) and existing apps. |
 | Build failed | Read the build error and check dependencies, source files, and runtime selection. |
 | Readiness failed | Check the app’s startup command, listening port, and health route. |
 | Changes are missing | Confirm the selected directory. Git-based deploys can use committed source; `--worktree` explicitly deploys current files. |
+
+Switching to another account, API, or linked target offers a separate launch while preserving the original recovery record. Switch back to continue the earlier launch. Changing a source link after review stops submission; restore the saved target's link before retrying that deployment.
 
 ## Use your own project
 
