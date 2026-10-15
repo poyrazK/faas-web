@@ -2,9 +2,9 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
-import { api } from './client';
 import { ApiError } from './errors';
 import { useProjects, useProject } from './projects';
+import { spyApi } from '@/test/api';
 afterEach(() => vi.restoreAllMocks());
 function setup() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, retryDelay: 0 } } });
@@ -14,7 +14,7 @@ function setup() {
 }
 const ok = (data: unknown) => ({ data, response: new Response() }) as never;
 it('does not read before account or project identity resolves', () => {
-  const get = vi.spyOn(api, 'GET');
+  const get = spyApi('GET');
   const wrapper = setup();
   renderHook(
     () => {
@@ -27,7 +27,7 @@ it('does not read before account or project identity resolves', () => {
 });
 it('ignores a delayed prior account response', async () => {
   let finish!: (value: never) => void;
-  vi.spyOn(api, 'GET')
+  spyApi('GET')
     .mockReturnValueOnce(
       new Promise((resolve) => {
         finish = resolve;
@@ -44,9 +44,9 @@ it('ignores a delayed prior account response', async () => {
   expect(hook.result.current.data?.[0]?.slug).toBe('new-project');
 });
 it.each([403, 404])('does not automatically retry a settled %s project read', async (status) => {
-  const get = vi
-    .spyOn(api, 'GET')
-    .mockRejectedValue(new ApiError({ status, code: 'not_found', title: 'Unavailable' }));
+  const get = spyApi('GET').mockRejectedValue(
+    new ApiError({ status, code: 'not_found', title: 'Unavailable' })
+  );
   const hook = renderHook(() => useProject('a', 'api'), { wrapper: setup() });
   await waitFor(() => expect(hook.result.current.isError).toBe(true));
   expect(get).toHaveBeenCalledTimes(1);

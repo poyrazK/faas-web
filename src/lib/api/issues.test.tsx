@@ -2,7 +2,6 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
-import { api } from './client';
 import {
   createIssueTokenOnce,
   issueDetailKey,
@@ -18,6 +17,7 @@ import {
   useIssues,
   useIssueTokens,
 } from './issues';
+import { spyApi } from '@/test/api';
 
 afterEach(() => vi.restoreAllMocks());
 function setup() {
@@ -29,8 +29,7 @@ function setup() {
 }
 
 it('scopes issue pages by account, app and all filters, forwarding opaque cursors and AbortSignal', async () => {
-  const get = vi
-    .spyOn(api, 'GET')
+  const get = spyApi('GET')
     .mockResolvedValueOnce({
       data: { items: [], next_cursor: 'cursor-2' },
       response: new Response(),
@@ -65,7 +64,7 @@ it('scopes issue pages by account, app and all filters, forwarding opaque cursor
 });
 
 it('keeps detail and its three histories independently keyed to the same impact window', async () => {
-  const get = vi.spyOn(api, 'GET').mockResolvedValue({
+  const get = spyApi('GET').mockResolvedValue({
     data: {
       issue: { id: 'i1' },
       events: [],
@@ -113,8 +112,7 @@ it('keeps detail and its three histories independently keyed to the same impact 
 });
 
 it('reads only this app deployment inventory with an account-scoped key and abortable cursor', async () => {
-  const get = vi
-    .spyOn(api, 'GET')
+  const get = spyApi('GET')
     .mockResolvedValueOnce({
       data: { items: [], next_before: '2026-10-09T00:00:00Z' },
       response: new Response(),
@@ -139,7 +137,7 @@ it('reads only this app deployment inventory with an account-scoped key and abor
 });
 
 it('strips unexpected bearer fields from token metadata and keeps creation out of mutation cache', async () => {
-  const get = vi.spyOn(api, 'GET').mockResolvedValue({
+  const get = spyApi('GET').mockResolvedValue({
     data: {
       items: [
         {
@@ -156,7 +154,7 @@ it('strips unexpected bearer fields from token metadata and keeps creation out o
     },
     response: new Response(),
   } as never);
-  const post = vi.spyOn(api, 'POST').mockResolvedValue({
+  const post = spyApi('POST').mockResolvedValue({
     data: { id: 't2', token: 'g_issue_secret' },
     response: new Response(null, { status: 201 }),
   } as never);
@@ -181,12 +179,13 @@ it('strips unexpected bearer fields from token metadata and keeps creation out o
 });
 
 it('uses identified revocation and an explicit operation key for authorized issue actions', async () => {
-  const remove = vi
-    .spyOn(api, 'DELETE')
-    .mockResolvedValue({ response: new Response(null, { status: 204 }) } as never);
-  const post = vi
-    .spyOn(api, 'POST')
-    .mockResolvedValue({ data: { id: 'i1' }, response: new Response() } as never);
+  const remove = spyApi('DELETE').mockResolvedValue({
+    response: new Response(null, { status: 204 }),
+  } as never);
+  const post = spyApi('POST').mockResolvedValue({
+    data: { id: 'i1' },
+    response: new Response(),
+  } as never);
   await revokeIssueToken('app-a', 'token-id');
   expect(remove).toHaveBeenCalledWith('/v1/apps/{slug}/issue-ingest-tokens/{token_id}', {
     params: { path: { slug: 'app-a', token_id: 'token-id' } },

@@ -27,8 +27,6 @@ const fixtures = vi.hoisted(() => ({
     status: 'failed',
     build_id: 'build-1',
     created_at: '2026-09-11T00:00:00Z',
-    rollback_on_5xx: false,
-    first_5xx_count: 0,
     min_instances: 0,
     traffic_percent: 0,
   },

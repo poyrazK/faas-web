@@ -2,8 +2,8 @@ import { act, renderHook } from '@testing-library/react';
 import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
-import { api } from './client';
 import { usePreviewSet } from './preview-environments';
+import { spyApi } from '@/test/api';
 const state = (phase = 'live', commit = 'old') => ({
   root_slug: 'preview-api',
   repo_full_name: 'acme/shop',
@@ -48,8 +48,7 @@ it.each(['live', 'failed'])(
   async (phase) => {
     vi.useFakeTimers();
     focusManager.setFocused(true);
-    const get = vi
-      .spyOn(api, 'GET')
+    const get = spyApi('GET')
       .mockResolvedValueOnce(ok(state(phase)))
       .mockResolvedValue(ok(state('building', 'new')));
     const hook = renderHook(() => usePreviewSet('a', 'preview-api', 7), { wrapper: wrapper() });
@@ -67,8 +66,7 @@ it.each(['live', 'failed'])(
 it('stops routine closed polling, but manual reads detect reopening and resume', async () => {
   vi.useFakeTimers();
   focusManager.setFocused(true);
-  const get = vi
-    .spyOn(api, 'GET')
+  const get = spyApi('GET')
     .mockResolvedValueOnce(ok(state('closed')))
     .mockResolvedValue(ok(state('building', 'reopened')));
   const hook = renderHook(
@@ -96,7 +94,7 @@ it('stops routine closed polling, but manual reads detect reopening and resume',
 it('pauses hidden intervals and refetches on focus', async () => {
   vi.useFakeTimers();
   focusManager.setFocused(true);
-  const get = vi.spyOn(api, 'GET').mockResolvedValue(ok(state('building')));
+  const get = spyApi('GET').mockResolvedValue(ok(state('building')));
   renderHook(() => usePreviewSet('a', 'preview-api', 7), { wrapper: wrapper() });
   await tick();
   await act(async () => focusManager.setFocused(false));
@@ -109,8 +107,7 @@ it('pauses hidden intervals and refetches on focus', async () => {
 it('detects a reopened closed set on focus and resumes head polling', async () => {
   vi.useFakeTimers();
   focusManager.setFocused(true);
-  const get = vi
-    .spyOn(api, 'GET')
+  const get = spyApi('GET')
     .mockResolvedValueOnce(ok(state('closed')))
     .mockResolvedValue(ok(state('building', 'reopened')));
   const hook = renderHook(
@@ -135,8 +132,7 @@ it('detects a reopened closed set on focus and resumes head polling', async () =
 it('honors Retry-After before retrying a rate-limited read', async () => {
   vi.useFakeTimers();
   focusManager.setFocused(true);
-  const get = vi
-    .spyOn(api, 'GET')
+  const get = spyApi('GET')
     .mockResolvedValueOnce({
       error: { status: 429, code: 'rate_limited', title: 'Wait' },
       response: new Response('{}', { status: 429, headers: { 'Retry-After': '60' } }),
@@ -153,7 +149,7 @@ it('honors Retry-After before retrying a rate-limited read', async () => {
 it('does not retry an authoritative unrecorded-set 404', async () => {
   vi.useFakeTimers();
   focusManager.setFocused(true);
-  const get = vi.spyOn(api, 'GET').mockResolvedValue({
+  const get = spyApi('GET').mockResolvedValue({
     error: { status: 404, code: 'preview_environment_not_found', title: 'No set' },
     response: new Response('{}', { status: 404 }),
   } as never);
@@ -170,7 +166,7 @@ it('stops routine polling after every recorded member reports teardown', async (
     ...state('failed'),
     members: [{ ...state('failed').members[0], preview_state: 'torn_down' }],
   };
-  const get = vi.spyOn(api, 'GET').mockResolvedValue(ok(torn));
+  const get = spyApi('GET').mockResolvedValue(ok(torn));
   renderHook(() => usePreviewSet('a', 'preview-api', 7), { wrapper: wrapper() });
   await tick();
   await tick(120_000);
@@ -179,7 +175,7 @@ it('stops routine polling after every recorded member reports teardown', async (
 it('cannot accept a delayed response after account/root selection changes', async () => {
   vi.useFakeTimers();
   let finish!: (data: never) => void;
-  vi.spyOn(api, 'GET')
+  spyApi('GET')
     .mockReturnValueOnce(
       new Promise((resolve) => {
         finish = resolve;

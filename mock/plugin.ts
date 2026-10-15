@@ -531,7 +531,7 @@ route('POST', '/v1/apps', ({ body, req }) => {
     runtime: (body.runtime as db.App['runtime']) ?? 'node24',
     ram_mb: Number(body.ram_mb ?? 256),
     min_instances: 0,
-    status: 'pending',
+    status: 'active',
     ...(worker
       ? {
           workload_class: undefined,
@@ -589,8 +589,6 @@ route('POST', '/v1/apps/{slug}/deployments', ({ params, body, req }) => {
     kind: 'image',
     status: 'imaging',
     build_id: null,
-    rollback_on_5xx: false,
-    first_5xx_count: 0,
     created_at: new Date().toISOString(),
   };
   db.deployments.unshift(deployment);
@@ -690,11 +688,11 @@ route('DELETE', '/v1/apps/{slug}', ({ params }) => {
   return NO_CONTENT;
 });
 route('POST', '/v1/apps/{slug}/wake', ({ params }) => {
-  app(params.slug).status = 'active';
+  db.setScenario(app(params.slug), 'healthy');
   return NO_CONTENT;
 });
 route('POST', '/v1/apps/{slug}/park', ({ params }) => {
-  app(params.slug).status = 'parked';
+  db.setScenario(app(params.slug), 'parked');
   return NO_CONTENT;
 });
 const PATCHABLE = [
@@ -788,12 +786,10 @@ route('POST', '/v1/apps/{slug}/deployments/source-ref', ({ params, body }) => {
     status: 'building',
     created_at: db.iso(0),
     traffic_percent: 0,
-    rollback_on_5xx: false,
-    first_5xx_count: 0,
     scan: null,
   };
   db.deployments.unshift(dep);
-  a.status = 'deploying';
+  db.setScenario(a, 'deploying');
   return status(202, dep);
 });
 route('POST', '/v1/apps/{slug}/rollback', ({ params }) => {
@@ -830,13 +826,21 @@ route('PUT', '/v1/apps/{slug}/secrets/{key}', ({ params }) => {
   const existing = list.find((s) => s.key === params.key);
   const now = db.iso(0);
   if (existing) {
+    // A new value is a new delivery version; the mock delivers it at once.
     existing.updated_at = now;
+    existing.delivery_version += 1;
+    existing.delivered_version = existing.delivery_version;
+    existing.delivery_status = 'delivered';
     return existing;
   }
-  const created = {
+  const created: (typeof list)[number] = {
     key: params.key,
     scope: 'default',
+    secret_class: 'persistent',
     kid: db.id().slice(0, 8),
+    delivery_version: 1,
+    delivered_version: 1,
+    delivery_status: 'delivered',
     created_at: now,
     updated_at: now,
   };
@@ -1189,6 +1193,7 @@ route('POST', '/v1/apps/{slug}/mirrors', ({ params, body }) => {
     percent,
     enabled: true,
     include_body: body.include_body === true,
+    allow_unsafe_methods: body.allow_unsafe_methods === true,
     redact_headers: Array.isArray(body.redact_headers) ? body.redact_headers.map(String) : [],
     always_stripped_headers: ['Authorization', 'Cookie'],
     created_at: db.iso(0),
@@ -1825,6 +1830,11 @@ const ANALYTICS_GROUPS: Record<AnalyticsGroupBy, string[]> = {
   referrer_host: ['acme.example', 'news.example', '(direct)'],
   ua_family: ['Chrome', 'Safari', 'curl', 'Googlebot'],
   status: ['200', '404', '500'],
+  consumer_id: [
+    '3f6c2a1e-8b4d-4c7a-9e21-5d0f7b3a6c48',
+    'a91d4e07-2c5b-4f8e-b3a6-7e14c9d02f5b',
+    'c2e8f5b3-6a1d-4e9c-8f07-1b4d3a7e9c26',
+  ],
 };
 const ANALYTICS_METHODS = new Set<AnalyticsMethod>([
   'GET',
@@ -1896,6 +1906,7 @@ route('GET', '/v1/apps/{slug}/analytics', ({ params, query }) => {
     routes: ANALYTICS_GROUPS.route.map(group),
     routes_limit: 50,
     routes_truncated: false,
+    dependencies_truncated: false,
     as_of: analyticsIso(0),
   };
 });
@@ -2940,6 +2951,7 @@ route('POST', '/v1/apps/{slug}/webhooks', ({ params, body }) => {
       ? (body.event_filter as (typeof list)[number]['event_filter'])
       : [],
     retry_policy: (body.retry_policy ?? 'default') as (typeof list)[number]['retry_policy'],
+    delivery_format: body.delivery_format === 'cloudevents' ? 'cloudevents' : 'json',
     enabled: body.enabled !== false,
     created_at: db.iso(0),
     updated_at: db.iso(0),
@@ -3513,7 +3525,7 @@ route('GET', '/v1/apps/{slug}/logs', ({ params, query, req, res }) => {
   }
 
   // A parked app has nothing to say; the stream ends the way the real one does.
-  if (a.status === 'parked') {
+  if (db.scenarioOf(a) === 'parked') {
     send(
       'log',
       JSON.stringify({
@@ -4636,6 +4648,7 @@ route('POST', '/v1/crons', ({ body }) => {
   const cron = {
     id: db.id(),
     app_id: a.id,
+    kind: 'http' as const,
     schedule,
     path: String(body.path ?? '/'),
     enabled: body.enabled !== false,
@@ -4781,6 +4794,10 @@ route('POST', '/v1/apps/{slug}/edge-rules', ({ params, body }) => {
     match_host: String(body.match_host ?? ''),
     match_path: String(body.match_path ?? '/*'),
     match_methods: Array.isArray(body.match_methods) ? (body.match_methods as string[]) : [],
+    match_headers:
+      body.match_headers && typeof body.match_headers === 'object'
+        ? (body.match_headers as Record<string, string>)
+        : {},
     priority: Number(body.priority ?? 100),
     enabled: body.enabled !== false,
     kind: kind as (typeof db.edgeRules)[number]['kind'],
@@ -5045,11 +5062,10 @@ route('DELETE', '/v1/orgs/{slug}/members/{user_id}', ({ params }) => {
   members.splice(i, 1);
   return NO_CONTENT;
 });
-route('DELETE', '/v1/orgs/{slug}/invitations/{token}', ({ params }) => {
+route('DELETE', '/v1/orgs/{slug}/invitations/{invitation_id}', ({ params }) => {
   requireOrgRole(params.slug, ['owner', 'admin']);
-  const hash = createHash('sha256').update(Buffer.from(params.token, 'base64url')).digest('hex');
   const inv = db.invitations.find(
-    (x) => invitationTokenHashes.get(x.id) === hash && x.org_slug === params.slug
+    (x) => x.id === params.invitation_id && x.org_slug === params.slug
   );
   if (!inv || inv.status !== 'pending' || Date.parse(inv.expires_at) <= Date.now())
     throw new Problem(410, 'org_invitation_invalid');
@@ -5471,7 +5487,7 @@ route('GET', '/v1/cron-fire-now-requests/{request_id}', ({ params }) => {
 const ERR_FP = 'fp_5c1a9b2e77d34fa0';
 route('GET', '/v1/apps/{slug}/errors/summary', ({ params }) => {
   const a = db.apps.find((x) => x.slug === params.slug);
-  const failing = a?.status === 'error';
+  const failing = a !== undefined && db.scenarioOf(a) === 'failing';
   return {
     generated_at: new Date().toISOString(),
     app_id: a?.id ?? 'unknown',

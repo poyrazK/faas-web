@@ -13,6 +13,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import { api } from '@/lib/api/client';
 import { Route as Plans } from './dashboard.plans';
 import { Route as Usage } from './dashboard.usage';
+import { mockedApi, spyApi } from '@/test/api';
 
 vi.mock('@/lib/auth', () => ({
   useAuth: () => ({
@@ -34,7 +35,7 @@ let readFails: boolean;
 beforeEach(() => {
   cap = 1000;
   readFails = false;
-  vi.spyOn(api, 'GET').mockImplementation(async (path) => {
+  spyApi('GET').mockImplementation(async (path) => {
     if (path === '/v1/account/overage-cap') {
       if (readFails) throw new Error('Cap read unavailable');
       return { data: { overage_cap_cents: cap }, response: new Response() } as never;
@@ -47,7 +48,7 @@ beforeEach(() => {
       response: new Response(),
     } as never;
   });
-  vi.spyOn(api, 'POST').mockImplementation(async (path, options) => {
+  spyApi('POST').mockImplementation(async (path, options) => {
     if (path !== '/v1/account/overage-cap') throw new Error('Unexpected write');
     cap = (options as unknown as { body: { overage_cap_cents: number | null } }).body
       .overage_cap_cents;
@@ -161,7 +162,7 @@ it('keeps the saved cap and draft unchanged when saving fails', async () => {
   const input = await screen.findByRole('spinbutton', { name: 'Cap (EUR)' });
   await userEvent.clear(input);
   await userEvent.type(input, '5.50');
-  vi.mocked(api.POST).mockRejectedValueOnce(new Error('Save unavailable'));
+  mockedApi('POST').mockRejectedValueOnce(new Error('Save unavailable'));
   await userEvent.click(screen.getByRole('button', { name: 'Set cap' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('Save unavailable');
   expect(screen.getByText('€10.00')).toBeInTheDocument();

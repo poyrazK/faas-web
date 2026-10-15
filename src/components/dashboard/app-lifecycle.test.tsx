@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/lib/api/errors';
 import { api } from '@/lib/api/client';
 import { status } from '@/test/runtime-policy';
+import { spyApi } from '@/test/api';
 
 const restart = vi.fn();
 const purge = vi.fn();
@@ -35,7 +36,7 @@ beforeEach(() => {
   capability.state = 'available';
   capability.accountId = 'account';
   capability.plan = 'hobby';
-  vi.spyOn(api, 'GET').mockResolvedValue({ data: status, response: new Response() } as never);
+  spyApi('GET').mockResolvedValue({ data: status, response: new Response() } as never);
 });
 
 describe('RestartAppButton', () => {
@@ -149,7 +150,7 @@ describe('PurgeCacheControl', () => {
 
   it('drops a write after a delayed policy baseline read and plan downgrade', async () => {
     let finish!: (value: never) => void;
-    vi.spyOn(api, 'GET').mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    spyApi('GET').mockReturnValue(new Promise((resolve) => (finish = resolve)));
     const view = render(<PurgeCacheControl slug="api" appId="app-1" />);
     await userEvent.click(screen.getByRole('button', { name: /purge/i }));
     await waitFor(() => expect(api.GET).toHaveBeenCalled());
