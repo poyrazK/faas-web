@@ -104,9 +104,10 @@ function attentionClient() {
       id: 'app-api',
       slug: 'api',
       visibility: 'public',
-      status: 'failed',
+      status: 'active',
       type: 'app',
       ram_mb: 256,
+      vcpu: 1,
       cpu_millicores: 250,
       configured_resources: { memory_mb: 256, cpu_millicores: 250 },
       max_concurrency: 1,
@@ -122,20 +123,37 @@ function attentionClient() {
         cpu_weight: 100,
         max_instances: 1,
         concurrency_per_instance: 80,
+        concurrency_queue_depth: 10,
+        concurrency_queue_wait_ms: 5000,
         app_request_rate_rps: 10,
         app_request_burst: 20,
         account_request_rate_rpm: 100,
         request_budget_ms: 30000,
         request_budget_max_ms: 30000,
         response_write_timeout_s: 30,
+        request_body_max_bytes: 10_485_760,
       },
+      build_cache_hit_rate_pct: 0,
       url: 'https://api.example.test',
       manifest: { entrypoint: ['node', 'server.js'], head_wakes: false, crawler_policy: 'wake' },
       autoscale_target_rps: 0,
       autoscale_target_cpu_pct: 0,
     },
   ]);
-  client.setQueryData([...keys.deployments, 50], { items: [] });
+  // App status is a lifecycle state with no failure value, so the live check
+  // that needs attention here is the app's recent failed deployment.
+  client.setQueryData<components['schemas']['DeploymentListResponse']>([...keys.deployments, 50], {
+    items: [
+      {
+        id: 'dep-api',
+        app_id: 'app-api',
+        image_digest: 'sha256:0123',
+        kind: 'github',
+        status: 'failed',
+        created_at: new Date(Date.now() - 60 * 60_000).toISOString(),
+      },
+    ],
+  });
   client.setQueryData<components['schemas']['UsageSummaryResponse']>(keys.usageSummary, {
     month: '2026-10',
     used_gb_hours: 45,
@@ -157,9 +175,9 @@ describe('global Needs Attention dropdown', () => {
     expect(dialog).not.toHaveAttribute('aria-modal', 'true');
     expect(document.body.style.overflow).not.toBe('hidden');
     expect(screen.queryByRole('button', { name: 'Close dialog' })).not.toBeInTheDocument();
-    expect(within(dialog).getByRole('link', { name: 'View logs for api' })).toHaveAttribute(
+    expect(within(dialog).getByRole('link', { name: 'View deployment dep-api' })).toHaveAttribute(
       'href',
-      '/dashboard/apps/api?tab=Logs'
+      '/dashboard/releases?deployment=dep-api'
     );
     expect(within(dialog).getByRole('link', { name: 'Review usage' })).toBeInTheDocument();
     await user.keyboard('{Escape}');
@@ -169,12 +187,14 @@ describe('global Needs Attention dropdown', () => {
     expect(trigger).toHaveFocus();
   });
 
-  it('dismisses the dropdown when an investigation link navigates to app logs', async () => {
+  it('dismisses the dropdown when an investigation link navigates to the failed deployment', async () => {
     const user = userEvent.setup();
     const router = await renderShell('/dashboard', undefined, attentionClient());
     await user.click(screen.getByRole('button', { name: 'Needs Attention' }));
-    await user.click(screen.getByRole('link', { name: 'View logs for api' }));
-    await waitFor(() => expect(router.state.location.href).toBe('/dashboard/apps/api?tab=Logs'));
+    await user.click(screen.getByRole('link', { name: 'View deployment dep-api' }));
+    await waitFor(() =>
+      expect(router.state.location.href).toBe('/dashboard/releases?deployment=dep-api')
+    );
     await waitFor(() =>
       expect(screen.queryByRole('dialog', { name: 'Needs Attention' })).not.toBeInTheDocument()
     );

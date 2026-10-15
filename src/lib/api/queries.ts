@@ -12,11 +12,6 @@ import {
 import { api, issueCSRF, unwrap } from './client';
 import { ApiError } from './errors';
 import { isDeploymentTerminal } from '../deployment-status';
-import {
-  restoreAcknowledgment,
-  restoreReviewedApp,
-  type RestoreIntent,
-} from './deleted-app-restores';
 import type { components, paths } from './schema';
 
 /**
@@ -2871,10 +2866,12 @@ export function useUpdateAlert(slug: string) {
 export function useRotateAlertSecret(slug: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
+    // The caller supplies the replacement; apid seals it and never returns it.
+    mutationFn: ({ id, webhookSecret }: { id: string; webhookSecret: string }) =>
       unwrap(
         api.POST('/v1/apps/{slug}/alerts/{id}/rotate-secret', {
           params: { path: { slug, id } },
+          body: { webhook_secret: webhookSecret },
         })
       ),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.appAlerts(slug) }),
@@ -2916,10 +2913,12 @@ export function useDeleteWebhook(slug: string) {
 export function useRotateWebhookSecret(slug: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
+    // The caller supplies the replacement; apid seals it and never returns it.
+    mutationFn: ({ id, webhookSecret }: { id: string; webhookSecret: string }) =>
       unwrap(
         api.POST('/v1/apps/{slug}/webhooks/{id}/rotate-secret', {
           params: { path: { slug, id } },
+          body: { webhook_secret: webhookSecret },
         })
       ),
     onSuccess: () => qc.invalidateQueries({ queryKey: webhookKey(slug) }),
@@ -2991,10 +2990,11 @@ export function useRemoveMember(org: string) {
 export function useRevokeInvitation(org: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (token: string) =>
+    // Revoked by the list's invitation id; the one-time token is never stored.
+    mutationFn: (invitationId: string) =>
       unwrap(
-        api.DELETE('/v1/orgs/{slug}/invitations/{token}', {
-          params: { path: { slug: org, token } },
+        api.DELETE('/v1/orgs/{slug}/invitations/{invitation_id}', {
+          params: { path: { slug: org, invitation_id: invitationId } },
         })
       ),
     onSuccess: () => qc.invalidateQueries({ queryKey: orgKey(org, 'invitations') }),
@@ -3323,27 +3323,24 @@ export function useRestartApp(slug: string) {
   });
 }
 
-/** Undo a delete inside the grace window. */
+/**
+ * Undo a delete inside the grace window, by slug. Only `id`, `slug` and
+ * `status` are kept from the response, so nothing secret-bearing lingers in
+ * the mutation cache.
+ */
 export function useRestoreApp() {
   const qc = useQueryClient();
   return useMutation({
     retry: false,
-    mutationFn: async (intent: string | RestoreIntent) =>
-      typeof intent === 'string'
-        ? restoreAcknowledgment(
-            await unwrap(
-              api.POST('/v1/apps/{slug}/restore', { params: { path: { slug: intent } } })
-            )
-          )
-        : restoreReviewedApp(intent),
-    onSuccess: (_result, intent) => {
+    mutationFn: async (slug: string) => {
+      const app = await unwrap(api.POST('/v1/apps/{slug}/restore', { params: { path: { slug } } }));
+      return { id: app.id, slug: app.slug, status: app.status };
+    },
+    onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.apps });
       void qc.invalidateQueries({ queryKey: keys.deployments });
       void qc.invalidateQueries({ queryKey: ['projects'] });
-      void qc.invalidateQueries({
-        queryKey:
-          typeof intent === 'string' ? keys.account : ['account', intent.accountId, 'deleted-apps'],
-      });
+      void qc.invalidateQueries({ queryKey: keys.account });
     },
   });
 }

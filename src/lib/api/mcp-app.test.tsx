@@ -1,11 +1,11 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { api } from './client';
 import { readMcpApp } from './mcp-app';
+import { spyApi } from '@/test/api';
 
 afterEach(() => vi.restoreAllMocks());
 function wire(accountAfter = 'account-a', url = 'https://app.example.test') {
   let accounts = 0;
-  return vi.spyOn(api, 'GET').mockImplementation(
+  return spyApi('GET').mockImplementation(
     async (path) =>
       ({
         data:
@@ -61,7 +61,7 @@ it.each([
   expect((await readMcpApp('account-a', 'api-gateway')).publicUrl).toBeUndefined();
 });
 it('fails closed when the returned app identity differs', async () => {
-  vi.spyOn(api, 'GET').mockImplementation(
+  spyApi('GET').mockImplementation(
     async (path) =>
       ({
         data: path === '/v1/account' ? { id: 'account-a' } : { id: 'app-a', slug: 'another-app' },

@@ -253,16 +253,28 @@ use `/dashboard/invocations?invocation=<id>`, including IDs outside loaded histo
 refresh and browser navigation retain that selection. Invalid filters are ignored,
 and unavailable or denied records remain explicit error states.
 
-Environment transfer is available on Env vars and the app Env tab. File/paste
+Environment import is available on Env vars and the app Env tab. File/paste
 imports show additions, overwrites, and redacted invalid/duplicate diagnostics
 before one confirmation. The current API applies keys individually and reports
 partial success; only failed entries remain for a reviewed retry. Quotas count
 all scopes; unmentioned keys are preserved. The selected scope is explicit.
-Downloads warn about sensitive plaintext and use a dedicated authorized POST
-endpoint. They include mutable plaintext env only, excluding sealed secrets,
-manifest/image defaults. Imported/exported values never enter query/mutation
-caches or persistent browser storage. The export requires backend PR
-[poyrazK/faas#3936](https://github.com/poyrazK/faas/pull/3936).
+Imported values never enter query/mutation caches or persistent browser storage.
+There is no export: apid has never served an env-export endpoint, and
+`GET /v1/apps/{slug}/env` never returns plaintext, so the console does not offer
+one.
+
+### Waiting on the backend
+
+Two features were built against API work that has not reached `poyrazK/faas`
+main, and were taken out of the console with the spec refresh rather than kept
+calling endpoints that do not exist. Each is one revertable commit away:
+
+- **Deleted-app recovery** (a "Recently deleted" inventory with reviewed
+  restore) — needs [poyrazK/faas#4614](https://github.com/poyrazK/faas/pull/4614)
+  and [poyrazK/faas#4632](https://github.com/poyrazK/faas/pull/4632). Restore by
+  slug, which apid does serve, is kept as `useRestoreApp`.
+- **Companions** (declared helper workloads on the app's Configure tab) — needs
+  [poyrazK/faas#4733](https://github.com/poyrazK/faas/pull/4733).
 
 The command palette searches account-scoped deployment, domain, API-key,
 and invocation metadata while a query is entered. Search results are grouped

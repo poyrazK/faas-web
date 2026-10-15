@@ -10,8 +10,8 @@ import {
 } from '@tanstack/react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api } from '@/lib/api/client';
 import { Route as Domains } from './dashboard.domains';
+import { spyApi } from '@/test/api';
 
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn() }));
@@ -21,7 +21,7 @@ let noApps: boolean;
 let appFails: boolean;
 beforeEach(() => {
   empty = doctorFails = noApps = appFails = false;
-  vi.spyOn(api, 'GET').mockImplementation(async (path) => {
+  spyApi('GET').mockImplementation(async (path) => {
     if (path === '/v1/domains/{domain}/doctor' && doctorFails) throw new Error('DNS probe offline');
     if (path === '/v1/apps' && appFails) throw new Error('App lookup offline');
     const data =

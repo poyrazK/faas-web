@@ -1,11 +1,12 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { api } from './client';
 import { createImageApp, deployImage } from './image-deployments';
+import { spyApi } from '@/test/api';
 afterEach(() => vi.restoreAllMocks());
 it('replays the exact app creation with its explicit original key', async () => {
-  const post = vi
-    .spyOn(api, 'POST')
-    .mockResolvedValue({ data: { id: 'app' }, response: new Response() } as never);
+  const post = spyApi('POST').mockResolvedValue({
+    data: { id: 'app' },
+    response: new Response(),
+  } as never);
   const body = { slug: 'api', type: 'app' as const };
   await createImageApp(body, 'create-key');
   await createImageApp(body, 'create-key');
@@ -16,7 +17,7 @@ it('replays the exact app creation with its explicit original key', async () => 
   expect(post.mock.calls[1]).toEqual(post.mock.calls[0]);
 });
 it('never automatically repeats an ambiguous image POST', async () => {
-  const post = vi.spyOn(api, 'POST').mockRejectedValue(new TypeError('Connection lost'));
+  const post = spyApi('POST').mockRejectedValue(new TypeError('Connection lost'));
   await expect(
     deployImage('api', { image: `r/x@sha256:${'a'.repeat(64)}` }, 'deploy-key')
   ).rejects.toThrow('Connection lost');

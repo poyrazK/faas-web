@@ -53,7 +53,7 @@ it('offers env vars and secrets as one Environment page', () => {
     within(pages('Configure'))
       .getAllByRole('button')
       .map((b) => b.textContent)
-  ).toEqual(['Environment', 'Configuration', 'Companions']);
+  ).toEqual(['Environment', 'Configuration']);
 });
 
 it('resolves retired tab names so old links still land', () => {

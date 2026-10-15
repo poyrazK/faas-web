@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { RotateSecretDialog } from '@/components/dashboard/rotate-secret-dialog';
 import { createFileRoute } from '@tanstack/react-router';
 import { List, Plus, Refresh, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
@@ -25,6 +26,7 @@ import { useAuth } from '@/lib/auth';
 import { InboundWebhooks } from '@/components/dashboard/inbound-webhooks';
 import { formatRelative } from '@/lib/mock-data';
 import { consoleHead } from '@/lib/seo';
+import type { components } from '@/lib/api/schema';
 
 export function validateWebhookSearch(search: Record<string, unknown>): {
   direction?: 'inbound' | 'outbound';
@@ -96,6 +98,15 @@ const EVENTS = [
   'budget.threshold',
 ] as const;
 type Event = (typeof EVENTS)[number];
+/**
+ * The spec's `event_filter` enum is narrower than apid's canonical list
+ * (`state.AllAppWebhookEvents`): every event above is accepted by the server,
+ * but 11 of them, `app.created` among them, are missing from the spec. The
+ * server is the authority here, so the cast happens once, at the request.
+ */
+type SpecEventFilter = NonNullable<
+  components['schemas']['CreateAppWebhookRequest']['event_filter']
+>;
 type RetryPolicy = 'default' | 'aggressive' | 'none';
 
 function isHttpsUrl(value: string): boolean {
@@ -224,6 +235,7 @@ export function WebhooksBody({ slug }: { slug: string }) {
   const [events, setEvents] = useState<Event[]>([]);
   const [retryPolicy, setRetryPolicy] = useState<RetryPolicy>('default');
   const [viewing, setViewing] = useState<WebhookRow | null>(null);
+  const [rotating, setRotating] = useState<WebhookRow | null>(null);
   const validation = useFormValidation<'target' | 'secret'>();
   const targetError =
     target.trim().length > 2048
@@ -306,27 +318,7 @@ export function WebhooksBody({ slug }: { slug: string }) {
           <button
             type="button"
             aria-label={`Rotate secret for ${w.target}`}
-            onClick={async () => {
-              if (
-                !(await confirm({
-                  title: 'Rotate this webhook secret?',
-                  description:
-                    'A new HMAC secret is minted server-side. Deliveries signed with the old one stop verifying immediately — update the receiver first.',
-                  confirmLabel: 'Rotate secret',
-                }))
-              )
-                return;
-              void rotate
-                .mutateAsync(w.id)
-                .then(() => toast({ kind: 'success', title: 'Secret rotated' }))
-                .catch((err: unknown) =>
-                  toast({
-                    kind: 'error',
-                    title: 'Could not rotate',
-                    description: errorMessage(err),
-                  })
-                );
-            }}
+            onClick={() => setRotating(w)}
             className="text-muted-foreground transition-colors hover:text-foreground"
           >
             <Refresh className="h-3.5 w-3.5" />
@@ -385,7 +377,7 @@ export function WebhooksBody({ slug }: { slug: string }) {
               .mutateAsync({
                 target_url: target.trim(),
                 webhook_secret: secret,
-                event_filter: events,
+                event_filter: events as SpecEventFilter,
                 retry_policy: retryPolicy,
                 enabled: true,
               })
@@ -494,6 +486,17 @@ export function WebhooksBody({ slug }: { slug: string }) {
       />
 
       <Deliveries slug={slug} hook={viewing} onClose={() => setViewing(null)} />
+      {rotating && (
+        <RotateSecretDialog
+          name={rotating.target}
+          onClose={() => setRotating(null)}
+          onRotate={(webhookSecret) =>
+            rotate
+              .mutateAsync({ id: rotating.id, webhookSecret })
+              .then(() => toast({ kind: 'success', title: 'Secret rotated' }))
+          }
+        />
+      )}
     </div>
   );
 }

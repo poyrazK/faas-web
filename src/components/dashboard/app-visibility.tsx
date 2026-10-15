@@ -25,7 +25,7 @@ export function AppVisibility({
 }) {
   const capability = useCapability('private-apps');
   const cache = useQueryClient();
-  const [desired, setDesired] = useState<'public' | 'internal'>(app.visibility);
+  const [desired, setDesired] = useState<'public' | 'internal'>(app.visibility ?? 'public');
   const [review, setReview] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
