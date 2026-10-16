@@ -130,7 +130,7 @@ export function AppVisibility({
         {!available && (
           <p role="status">Visibility changes require confirmed private-app capability access.</p>
         )}
-        <label className="block space-y-1">
+        <label className="flex flex-col gap-1.5">
           <span>Visibility</span>
           <select
             aria-label="App visibility"
