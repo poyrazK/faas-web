@@ -157,7 +157,7 @@ beforeEach(() => {
   mocks.readPrivate.mockResolvedValue(undefined);
   mocks.scan.mockReturnValue({ plan: undefined, error: null, scanning: false });
   mocks.capabilityState = 'available';
-  mocks.apps = [{ id: 'app-1', slug: 'demo-app' }];
+  mocks.apps = [{ id: 'app-0', slug: 'existing-app' }];
 });
 
 afterEach(() => vi.restoreAllMocks());
@@ -257,6 +257,22 @@ describe('NewAppWizard repository prefill', () => {
     await user.type(repository, 'gregale/second');
     await user.click(screen.getByRole('button', { name: /continue/i }));
     expect(await screen.findByLabelText('App name')).toHaveValue('my-own-name');
+  });
+
+  it('flags a prefilled name the account already uses before Deploy', async () => {
+    mocks.apps = [{ id: 'app-0', slug: 'webhook-router' }];
+    const user = userEvent.setup();
+    render(<NewAppWizard onboarding />);
+    await user.type(screen.getByLabelText('Repository'), 'acme/webhook-router');
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    const name = await screen.findByLabelText('App name');
+    expect(name).toHaveValue('webhook-router');
+    await user.click(screen.getByRole('button', { name: 'Review' }));
+    expect(name).toHaveFocus();
+    expect(name).toHaveAccessibleDescription(
+      'You already have an app named webhook-router. Choose another name.'
+    );
+    expect(screen.queryByRole('button', { name: 'Deploy app' })).not.toBeInTheDocument();
   });
 
   it('scans the chosen repository at its ref and prefills what one service reports', async () => {

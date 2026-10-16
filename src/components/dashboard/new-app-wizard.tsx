@@ -306,7 +306,14 @@ function CreateAppWizard({
     onboarding ? '/onboarding' : '/dashboard/apps/new'
   );
 
-  const nameError = appNameError(name);
+  // A name prefilled from a repository can easily match an app the account
+  // already has; say so on Configure rather than as a 409 after Deploy.
+  const knownApps = useApps();
+  const nameError =
+    appNameError(name) ??
+    ((knownApps.data ?? []).some((app) => app.slug === name)
+      ? `You already have an app named ${name}. Choose another name.`
+      : undefined);
   const nameValid = !nameError;
   const normalizedRef = ref.trim() || 'main';
   const repoValid = isValidGitHubRepo(repo);
@@ -420,7 +427,6 @@ function CreateAppWizard({
 
   // The platform names the app's URL after its slug, so review can show it
   // before create; the zone comes from an app the account already has.
-  const knownApps = useApps();
   const predictedUrl = nameValid ? predictedAppUrl(name, knownApps.data ?? []) : undefined;
 
   // A disabled Deploy always says why. The plan-limit case already has its
