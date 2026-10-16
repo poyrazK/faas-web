@@ -643,7 +643,7 @@ function ImageJourney({
               <p className="text-sm">
                 Your app is saved. Re-enter credentials to finish this deployment.
               </p>
-              <label className="text-sm">
+              <label className="flex flex-col gap-1.5 text-sm">
                 Registry username
                 <Input
                   autoComplete="off"
@@ -651,7 +651,7 @@ function ImageJourney({
                   onChange={(e) => setUsername(e.target.value)}
                 />
               </label>
-              <label className="text-sm">
+              <label className="flex flex-col gap-1.5 text-sm">
                 Registry password
                 <Input
                   type="password"
@@ -805,7 +805,7 @@ function ImageJourney({
             </p>
           )}
           {!fixedApp && (
-            <label className="text-sm">
+            <label className="flex flex-col gap-1.5 text-sm">
               App name
               <Input
                 disabled={reviewing || frozen}
@@ -816,7 +816,7 @@ function ImageJourney({
             </label>
           )}
           {!fixedApp && kind === 'http' && (
-            <label className="text-sm">
+            <label className="flex flex-col gap-1.5 text-sm">
               App visibility
               <select
                 aria-label="App visibility"
@@ -830,7 +830,7 @@ function ImageJourney({
               </select>
             </label>
           )}
-          <label className="text-sm">
+          <label className="flex flex-col gap-1.5 text-sm">
             Image reference
             <Input
               disabled={reviewing}
@@ -841,7 +841,7 @@ function ImageJourney({
             />
           </label>
           {!fixedApp && (
-            <label className="text-sm">
+            <label className="flex flex-col gap-1.5 text-sm">
               Memory (MB)
               <Input
                 type="number"
@@ -857,7 +857,7 @@ function ImageJourney({
           {kind === 'worker' && !fixedApp && (
             <div className="space-y-3 rounded border border-border p-3 text-sm">
               <p>Worker lifecycle</p>
-              <label className="block space-y-1">
+              <label className="flex flex-col gap-1.5">
                 <span>Restart policy</span>
                 <select
                   className="block rounded border border-border bg-background px-2 py-1"
@@ -871,7 +871,7 @@ function ImageJourney({
                   <option value="no">Never</option>
                 </select>
               </label>
-              <label className="block space-y-1">
+              <label className="flex flex-col gap-1.5">
                 <span>Startup deadline (seconds)</span>
                 <Input
                   type="number"
@@ -881,7 +881,7 @@ function ImageJourney({
                   onChange={(event) => setStartupDeadline(Number(event.target.value))}
                 />
               </label>
-              <label className="block space-y-1">
+              <label className="flex flex-col gap-1.5">
                 <span>Max restart retries</span>
                 <Input
                   type="number"
@@ -906,7 +906,7 @@ function ImageJourney({
                     Omit overrides to use the image defaults. A health path is readiness
                     configuration, not proof that the app is healthy.
                   </p>
-                  <label className="text-sm">
+                  <label className="flex flex-col gap-1.5 text-sm">
                     Port override
                     <Input
                       disabled={reviewing}
@@ -915,7 +915,7 @@ function ImageJourney({
                       inputMode="numeric"
                     />
                   </label>
-                  <label className="text-sm">
+                  <label className="flex flex-col gap-1.5 text-sm">
                     Health path override
                     <Input
                       disabled={reviewing}
@@ -967,7 +967,7 @@ function ImageJourney({
           )}
           {privateRegistry && (
             <>
-              <label className="text-sm">
+              <label className="flex flex-col gap-1.5 text-sm">
                 Registry username
                 <Input
                   autoComplete="off"
@@ -976,7 +976,7 @@ function ImageJourney({
                   onChange={(e) => setUsername(e.target.value)}
                 />
               </label>
-              <label className="text-sm">
+              <label className="flex flex-col gap-1.5 text-sm">
                 Registry password
                 <Input
                   type="password"

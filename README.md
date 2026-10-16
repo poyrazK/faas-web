@@ -263,6 +263,23 @@ There is no export: apid has never served an env-export endpoint, and
 `GET /v1/apps/{slug}/env` never returns plaintext, so the console does not offer
 one.
 
+**API monetization** (capability `api-monetization`, preview) has two homes.
+The app's **Monetize** tab holds **Consumers** — the stable identities of the
+customers calling the app, with keys (plaintext shown once through
+`OneTimeSecret` and never cached), plan assignment from a UTC minute, durable
+usage with a quote that is labelled an estimate, crossed usage alerts, and
+usage statements (snapshot a UTC month, confirmed finalize, handoff receipt
+read) — and **Consumer plans**, whose limits and alert thresholds are the only
+plan fields the API has. Account-level **Customers** (`/dashboard/customers`,
+under Operate) are platform tenants: register idempotently by external
+reference, link existing consumers and surfaces, suspend or resume (which
+blocks linked credentials and hostnames), set immutable tenant prices, and
+read cross-app usage, statements and credential metadata. Every page shows
+`CapabilityNotice` and reads nothing while the capability is unavailable.
+App rate cards, graduated tiers and recording a billing handoff are API-only:
+the console shows them where they appear but does not author them. Hooks live
+in `lib/api/monetization.ts`; the dev mock in `mock/monetization.ts`.
+
 ### Waiting on the backend
 
 Two features were built against API work that has not reached `poyrazK/faas`
@@ -320,8 +337,32 @@ publication revision, so the UI states that limit.
 Mock mode includes these screens; `MOCK_AUTOMATIONS_DISABLED=1` exercises the
 runtime-disabled presentation. No mock data ships in the preview build.
 
-App detail navigation has six tabs — Overview, Delivery, Observe, Connect,
-Automate, and Configure — and a segmented control for the pages inside the
+**Events** (`/dashboard/events`, under Operate) reads the account's event
+router: waiting consumers with exact counts and their dominant waiting reason,
+retained storage against plan limits, and retention health. A consumer opens
+its oldest waiting recipients, each with a fresh routing-blocker read. Receipt
+lookup takes a source and event ID, or an app producer key, and shows
+acceptance, routing, and execution per recipient; recipients still routing get
+their blockers in one batch read, and a missing receipt says so. **Preview
+routing** posts only to `/v1/events:preview` and publishes nothing; **Publish**
+(account event or app producer key) asks for confirmation first and prefills a
+stable event ID so a retry deduplicates. Recovery actions the receipt lists are
+shown, not submitted.
+
+**Integrations** (`/dashboard/integrations`) lists managed outbound
+integrations with credential state and today's requests against the daily
+budget. A row opens its overview and usage, credential set/rotate/revoke, the daily
+limit and request policy, the probe policy, and delete. Credentials are
+write-only: a direct PUT (no TanStack mutation, so nothing is cached), cleared
+on success, never rendered back. Operator-provisioned integrations are
+read-only. The **AI gateway** tab (usage by model for one UTC day, budget
+alerts, fallback routes) renders only when capability `ai-gateway` is
+available, and otherwise explains why without calling the AI endpoints. Hooks
+live in `lib/api/events.ts` and `lib/api/outbound.ts`; the dev mock answers both
+from `mock/events.ts`.
+
+App detail navigation has seven tabs — Overview, Delivery, Observe, Connect,
+Monetize, Automate, and Configure — and a segmented control for the pages inside the
 selected one, which remembers the last page opened in each. Env vars and
 secrets share one **Environment** page; `?tab=Secrets` and `?tab=Env vars`
 still resolve to it, and every other existing `?tab=` link is unchanged.
