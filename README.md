@@ -26,7 +26,11 @@ API_ORIGIN=http://localhost:8081 npm run dev
 boots with a password already set (`mock-current-password`), `MOCK_MFA=1` boots
 MFA-enrolled so set-password demands a step-up (any six digits verify), and
 `MOCK_MFA=required` boots with the policy on and nothing enrolled, so it demands
-enrolment first.
+enrolment first. `MOCK_EMPTY=1` boots with GitHub disconnected, and "Connect
+GitHub" connects it and returns with `?github=connected`. Deployments created in
+the mock go `pending → building → imaging → snapshotting → live` over about ten
+seconds; `MOCK_BUILD_FAIL=1` makes new source builds fail at the dependency
+install instead.
 
 ## Scripts
 

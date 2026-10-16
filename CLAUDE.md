@@ -11,7 +11,7 @@ npm run check      # typecheck + lint + format check
 npm run build      # the real gate; `build` runs tsc first
 ```
 
-`npm run lint` currently reports **7 warnings and 0 errors**. Those warnings are
+`npm run lint` currently reports **4 warnings and 0 errors**. Those warnings are
 known and deliberate (see the comment block in `eslint.config.js`) — a change
 should not add to that count, and does not need to reduce it. The script now
 enforces the ceiling (`--max-warnings 8`), so the soft ratchet fails loudly
@@ -70,6 +70,14 @@ paths are checked against `api/openapi.yaml` by `src/lib/mock-spec-drift.test.ts
   (`mock-current-password`); `MOCK_MFA=1` boots MFA-enrolled so set-password
   demands a step-up (any six digits verify); `MOCK_MFA=required` boots with the
   policy on and nothing enrolled, so it demands enrolment first.
+  `MOCK_EMPTY=1` also starts with GitHub disconnected; the "Connect GitHub" form
+  post marks it connected and 303s back to the form's `return_to` with
+  `?github=connected`, after which the repo picker lists seeded repos.
+  Deployments created through the mock (deploy, redeploy, retry, image) walk
+  `pending → building → imaging → snapshotting → live` over ~10 s, computed from
+  their age on each request (`mock/deploy-lifecycle.ts`); seeded rows never move.
+  `MOCK_BUILD_FAIL=1` makes new source builds fail installing dependencies
+  (`dep_install_failed`) after ~4.5 s, for first-deployment recovery.
 - **`npm run tour` walks the console and fails on what a unit test cannot see** —
   an error boundary, a spinner nothing resolves, a path the mock does not
   answer, a page that threw. Point it at a running dev server
