@@ -7,6 +7,7 @@ import { NewAppWizard } from './new-app-wizard';
 import { ApiError } from '@/lib/api/errors';
 
 const mocks = vi.hoisted(() => ({
+  workspace: { org: null as string | null, label: 'Personal' },
   addWorkflow: vi.fn(),
   bindRepo: vi.fn(),
   deployFromRef: vi.fn(),
@@ -55,6 +56,10 @@ vi.mock('@/components/ui/toast', () => ({
   useToast: () => ({ toast: mocks.toast }),
 }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => mocks.confirm }));
+vi.mock('@/lib/api/workspace-apps', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/api/workspace-apps')>()),
+  useWorkspaceTarget: () => mocks.workspace,
+}));
 vi.mock('@/lib/store', () => ({
   useData: () => ({ addWorkflow: mocks.addWorkflow }),
 }));
@@ -112,6 +117,7 @@ async function submitGitApp(onDeploymentAccepted = vi.fn()) {
 }
 
 beforeEach(() => {
+  mocks.workspace = { org: null, label: 'Personal' };
   vi.clearAllMocks();
   mocks.account.id = 'account-1';
   mocks.account.plan = 'hobby';

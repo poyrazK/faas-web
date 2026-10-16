@@ -2,13 +2,22 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, unwrap } from './client';
 import type { components } from './schema';
 import { keys } from './queries';
+import { createWorkspaceApp } from './workspace-apps';
 import type { ImageCreateRequest } from '../image-operation';
-export function createImageApp(body: ImageCreateRequest, idempotencyKey: string) {
-  return unwrap(
-    api.POST('/v1/apps', {
-      body: { cpu_millicores: 1000, head_wakes: false, crawler_policy: 'wake', ...body },
-      headers: { 'Idempotency-Key': idempotencyKey },
-    })
+/**
+ * `org` is the workspace recorded with the operation when it was reviewed, so
+ * a replay with the same key goes to the same endpoint whatever the switcher
+ * says by then.
+ */
+export function createImageApp(
+  body: ImageCreateRequest,
+  idempotencyKey: string,
+  org: string | null = null
+) {
+  return createWorkspaceApp(
+    org,
+    { cpu_millicores: 1000, head_wakes: false, crawler_policy: 'wake', ...body },
+    idempotencyKey
   );
 }
 export function deployImage(

@@ -1176,15 +1176,6 @@ export type RetryStage = components['schemas']['RetryDeploymentRequest']['from_s
  * hand-patched cache is how a console starts lying about state.
  * ------------------------------------------------------------------ */
 
-export function useCreateApp() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: components['schemas']['CreateAppRequest']) =>
-      unwrap(api.POST('/v1/apps', { body })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: keys.apps }),
-  });
-}
-
 export function useDeleteApp() {
   const qc = useQueryClient();
   return useMutation({
@@ -2757,10 +2748,11 @@ export function useAccountSlo(window: AppSLOWindow = '24h') {
  * Organisations
  * ------------------------------------------------------------------ */
 
-export function useOrgs() {
+export function useOrgs(options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ['orgs'],
     queryFn: () => unwrap(api.GET('/v1/orgs', {})),
+    enabled: options.enabled ?? true,
   });
 }
 

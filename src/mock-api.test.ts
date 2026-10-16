@@ -895,3 +895,31 @@ describe('automation deletion mock contract', () => {
     ).toMatchObject({ source: 'manifest' });
   });
 });
+
+describe('workspace app mock contract', () => {
+  it('attributes an app created through the workspace URL to that workspace only', async () => {
+    const created = await fetch(`${origin}/v1/orgs/acme-corp/apps`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug: 'workspace-contract', type: 'function', runtime: 'node22' }),
+    });
+    expect(created.status).toBe(201);
+    expect(await created.json()).toMatchObject({ slug: 'workspace-contract' });
+    const shared = (await get('/v1/orgs/acme-corp/apps')).body.apps as Array<{ slug: string }>;
+    expect(shared[0]).toMatchObject({ slug: 'workspace-contract', type: 'function' });
+    expect(Object.keys(shared[0]).sort()).toEqual(
+      ['created_at', 'id', 'runtime', 'slug', 'status', 'type'].sort()
+    );
+    const personal = (await get('/v1/orgs/design/apps')).body.apps as Array<{ slug: string }>;
+    expect(personal.map((app) => app.slug)).not.toContain('workspace-contract');
+    // The creator still sees it in their own list.
+    const own = (await get('/v1/apps')).body as Array<{ slug: string }>;
+    expect(own.map((app) => app.slug)).toContain('workspace-contract');
+    const unknown = await fetch(`${origin}/v1/orgs/no-such-org/apps`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug: 'nowhere-app' }),
+    });
+    expect(unknown.status).toBe(404);
+  });
+});

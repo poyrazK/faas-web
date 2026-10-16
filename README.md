@@ -328,6 +328,13 @@ still resolve to it, and every other existing `?tab=` link is unchanged.
 App creation and configuration share a memory selector that disables sizes
 above the account's reported RAM limit.
 
+**Workspaces** are organizations, chosen in the breadcrumb switcher. With a
+shared one selected, New app (including image deploys) creates through
+`POST /v1/orgs/{slug}/apps` and names the workspace in review, and Projects adds
+an **In this workspace** inventory from `GET /v1/orgs/{slug}/apps`. The full app
+list and projects stay the signed-in account's, and app routes stay with each
+app's creator, so the inventory links only apps the account created.
+
 ### Where the UI and the API disagreed
 
 Several pages showed things the platform does not have. They now show what it

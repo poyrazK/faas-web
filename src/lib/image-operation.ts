@@ -24,6 +24,8 @@ export interface ImageOperation {
   createdAt: number;
   attemptAt: number;
   createRequest: CreateRequest;
+  /** Shared workspace the app is created in; absent for the personal one. */
+  org?: string;
   deployRequest: components['schemas']['CreateDeploymentRequest'];
   stage:
     | 'create-pending'
@@ -112,6 +114,7 @@ function sanitized(operation: ImageOperation): ImageOperation {
         ? { execution_mode, restart_policy, startup_deadline_s, max_retries }
         : {}),
     },
+    ...(typeof operation.org === 'string' && operation.org ? { org: operation.org } : {}),
     deployRequest,
     stage: operation.stage,
     appId: operation.appId,
@@ -155,6 +158,8 @@ export function readImageOperation(
         'accepted',
       ].includes(operation.stage) ||
       !/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(operation.createRequest.slug) ||
+      (operation.org !== undefined &&
+        (typeof operation.org !== 'string' || !/^[a-z0-9][a-z0-9-]*$/.test(operation.org))) ||
       (operation.createRequest.visibility !== undefined &&
         !['public', 'internal'].includes(operation.createRequest.visibility)) ||
       (workloadKind === 'worker' &&

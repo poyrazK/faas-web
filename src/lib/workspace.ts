@@ -9,8 +9,11 @@ import { useSyncExternalStore } from 'react';
  * kept here, per account, and the API client attaches it. No choice means the
  * personal organization, which is also what apid assumes without a header.
  *
- * Today `/v1/apps` and `/v1/projects` stay account-scoped whatever the header
- * says; the switcher says so rather than implying the lists are filtered.
+ * `/v1/apps` and `/v1/projects` stay account-scoped whatever the header says;
+ * the switcher says so rather than implying the lists are filtered. Apps reach
+ * a workspace through its URL instead: `POST /v1/orgs/{slug}/apps` attributes a
+ * new app to it and `GET /v1/orgs/{slug}/apps` lists what it has
+ * (`lib/api/workspace-apps.ts`).
  */
 
 const KEY = (accountId: string) => `gregale.active-org.${accountId}`;

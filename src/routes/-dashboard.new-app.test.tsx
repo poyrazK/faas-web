@@ -15,6 +15,7 @@ import { Route as ImportRoute } from './dashboard.import';
 import type { ProjectPlan } from '@/lib/api/queries';
 
 const mocks = vi.hoisted(() => ({
+  workspace: { org: null as string | null, label: 'Personal' },
   create: vi.fn(),
   bind: vi.fn(),
   deploy: vi.fn(),
@@ -34,6 +35,10 @@ vi.mock('@/lib/auth', () => ({
       limits: { ram_mb: 512, deployed_apps: 10 },
     },
   }),
+}));
+vi.mock('@/lib/api/workspace-apps', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/api/workspace-apps')>()),
+  useWorkspaceTarget: () => mocks.workspace,
 }));
 vi.mock('@/lib/store', () => ({ useData: () => ({ addWorkflow: mocks.create }) }));
 vi.mock('@/lib/api/capabilities', () => ({
@@ -118,6 +123,7 @@ async function mount(entry = '/dashboard/apps/new') {
 }
 
 beforeEach(() => {
+  mocks.workspace = { org: null, label: 'Personal' };
   vi.clearAllMocks();
   mocks.templateRead = 'ready';
   vi.spyOn(window, 'confirm').mockReturnValue(false);
@@ -173,9 +179,51 @@ describe('New App source flow', () => {
       memoryMb: 128,
       type: 'function',
       visibility: 'public',
+      org: null,
     });
     expect(mocks.bind).not.toHaveBeenCalled();
     expect(mocks.deploy).not.toHaveBeenCalled();
+  });
+
+  it('names the shared workspace in review and creates the app in it', async () => {
+    mocks.workspace = { org: 'acme-corp', label: 'Acme Corp' };
+    const user = userEvent.setup();
+    await mount('/dashboard/apps/new?source=empty');
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.type(await screen.findByLabelText('App name'), 'team-api');
+    await user.click(screen.getByRole('button', { name: 'Review' }));
+    const workspace = (await screen.findByText('Workspace')).parentElement!;
+    expect(workspace).toHaveTextContent('Acme Corp');
+    expect(
+      screen.getByText(/Created in Acme Corp, so it is listed in that workspace/)
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Create app' }));
+    await waitFor(() =>
+      expect(mocks.create).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'team-api', org: 'acme-corp' })
+      )
+    );
+  });
+
+  it('explains a workspace role that cannot create apps', async () => {
+    mocks.workspace = { org: 'acme-corp', label: 'Acme Corp' };
+    const { ApiError } = await import('@/lib/api/errors');
+    mocks.create.mockRejectedValueOnce(
+      new ApiError({ status: 403, code: 'org_role_forbidden', title: 'Forbidden' })
+    );
+    const user = userEvent.setup();
+    await mount('/dashboard/apps/new?source=empty');
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.type(await screen.findByLabelText('App name'), 'team-api');
+    await user.click(screen.getByRole('button', { name: 'Review' }));
+    await user.click(await screen.findByRole('button', { name: 'Create app' }));
+    await waitFor(() =>
+      expect(mocks.toast).toHaveBeenCalledWith({
+        kind: 'error',
+        title: 'Could not create the app',
+        description: expect.stringMatching(/^Your role in Acme Corp cannot create apps/),
+      })
+    );
   });
 
   it('restores the selected source from a bookmark and browser Back/Forward without losing configuration', async () => {
