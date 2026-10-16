@@ -63,6 +63,7 @@ import { ServiceBindings } from '@/components/dashboard/service-bindings';
 import { McpGuidance } from '@/components/dashboard/mcp-guidance';
 import { validateIssueSearch, type IssueSearch } from '@/components/dashboard/issues-search';
 import { AppConfiguration } from '@/components/dashboard/app-configuration';
+import { PrewarmPanel } from '@/components/dashboard/prewarm';
 import { InvokePanel, SloPanel } from '@/components/dashboard/app-core-panels';
 import { AppUsagePanel, WakeTimelinePanel } from '@/components/dashboard/app-insights';
 import { AppAnalyticsPanel } from '@/components/dashboard/app-analytics';
@@ -721,7 +722,12 @@ function FunctionDetailPage() {
             {tab === 'Tenant surfaces' && <TenantSurfacesBody slug={fn.id} />}
             {tab === 'OpenAPI' && <OpenAPIBody slug={fn.id} />}
 
-            {tab === 'Configuration' && <AppConfiguration slug={fn.id} />}
+            {tab === 'Configuration' && (
+              <>
+                <AppConfiguration slug={fn.id} />
+                <PrewarmPanel slug={fn.id} />
+              </>
+            )}
           </div>
         </Swap>
       </div>
