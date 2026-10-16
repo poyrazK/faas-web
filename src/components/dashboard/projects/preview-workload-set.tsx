@@ -54,8 +54,8 @@ export function PreviewWorkloadSet({ accountId, app }: { accountId: string; app:
         </div>
         {app.preview_of_slug && (
           <Link
-            to="/dashboard/workflows/$workflowId"
-            params={{ workflowId: app.preview_of_slug }}
+            to="/dashboard/apps/$appSlug"
+            params={{ appSlug: app.preview_of_slug }}
             className="text-brand hover:underline"
           >
             Production parent

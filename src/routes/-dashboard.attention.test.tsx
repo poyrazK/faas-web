@@ -56,10 +56,10 @@ async function mount() {
   const router = createRouter({
     routeTree: root.addChildren([
       overview,
-      leaf('/dashboard/workflows'),
-      leaf('/dashboard/workflows/$workflowId'),
-      leaf('/dashboard/workflows/new'),
-      leaf('/dashboard/deployments'),
+      leaf('/dashboard/apps'),
+      leaf('/dashboard/apps/$appSlug'),
+      leaf('/dashboard/apps/new'),
+      leaf('/dashboard/releases'),
       leaf('/dashboard/usage'),
     ]),
     history: createMemoryHistory({ initialEntries: ['/dashboard/'] }),

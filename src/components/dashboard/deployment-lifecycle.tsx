@@ -217,7 +217,7 @@ function RecoveryActions({
       )}
       {(uncertain || (accepted && !resultId && availability.kind === 'retry')) && (
         <Link
-          to="/dashboard/deployments"
+          to="/dashboard/releases"
           search={{}}
           className="mt-2 inline-block text-sm text-brand underline-offset-4 hover:underline"
         >
@@ -228,7 +228,7 @@ function RecoveryActions({
         <div role="status" className="mt-3 rounded-md border border-brand/25 p-3 text-sm">
           <p>The retry was accepted as a new deployment. This failed record is unchanged.</p>
           <Link
-            to="/dashboard/deployments"
+            to="/dashboard/releases"
             search={{ deployment: resultId, releaseSection: 'overview' }}
             className="mt-2 inline-block text-brand underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-brand"
           >

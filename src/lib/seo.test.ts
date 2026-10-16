@@ -76,7 +76,7 @@ describe('titles across the app', () => {
       pageHead({ title: 'New workflow' }),
       consoleHead('logs'),
       consoleHead('metrics'),
-      consoleHead('workflows'),
+      consoleHead('apps'),
     ].map(titleOf);
 
     expect(new Set(titles).size).toBe(titles.length);

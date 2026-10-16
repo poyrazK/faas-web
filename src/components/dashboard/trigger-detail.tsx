@@ -25,6 +25,7 @@ import {
   StatTile,
 } from '@/components/dashboard/primitives';
 import { Pill } from '@/components/dashboard/resource-table';
+import { SegmentedControl } from '@/components/dashboard/tabs';
 import { TriggerRecords } from './trigger-records';
 import { TriggerDeadLetter } from './trigger-dlq';
 import { TriggerSourceFields } from './trigger-source-fields';
@@ -419,22 +420,13 @@ export function TriggerDetail({
         title="Record activity"
         description="Inspect delivery outcomes and recover individual failures."
       >
-        <div className="mb-4 flex gap-2" role="tablist" aria-label="Trigger activity">
-          <Button
-            size="xs"
-            variant={tab === 'records' ? 'default' : 'secondary'}
-            onClick={() => setTab('records')}
-          >
-            Records
-          </Button>
-          <Button
-            size="xs"
-            variant={tab === 'dlq' ? 'default' : 'secondary'}
-            onClick={() => setTab('dlq')}
-          >
-            Dead letter
-          </Button>
-        </div>
+        <SegmentedControl
+          label="Trigger activity"
+          value={tab}
+          options={TRIGGER_ACTIVITY}
+          onChange={setTab}
+          className="mb-4"
+        />
         {tab === 'records' ? (
           <TriggerRecords triggerId={triggerId} />
         ) : (
@@ -444,5 +436,10 @@ export function TriggerDetail({
     </div>
   );
 }
+
+const TRIGGER_ACTIVITY = [
+  { key: 'records', label: 'Records' },
+  { key: 'dlq', label: 'Dead letter' },
+] as const;
 
 export type { Trigger };

@@ -22,7 +22,7 @@ export function PlatformCapabilities() {
       description="Availability for this account and installation. This is not a runtime health report."
     >
       <div className="flex flex-col gap-4 p-4">
-        <label className="text-sm">
+        <label className="flex flex-col gap-1.5 text-sm">
           Search capabilities
           <input
             value={search}

@@ -34,8 +34,8 @@ export function ProjectWorkloads({ workloads }: Pick<ProjectDetail, 'workloads'>
                   </th>
                   <td className="px-4 py-3">
                     <Link
-                      to="/dashboard/workflows/$workflowId"
-                      params={{ workflowId: workload.slug }}
+                      to="/dashboard/apps/$appSlug"
+                      params={{ appSlug: workload.slug }}
                       className="text-brand hover:underline"
                     >
                       {workload.slug}
@@ -53,8 +53,8 @@ export function ProjectWorkloads({ workloads }: Pick<ProjectDetail, 'workloads'>
                   ))}
                   <td className="px-4 py-3">
                     <Link
-                      to="/dashboard/workflows/$workflowId"
-                      params={{ workflowId: workload.slug }}
+                      to="/dashboard/apps/$appSlug"
+                      params={{ appSlug: workload.slug }}
                       search={{ tab: 'Deployments' }}
                       className="text-brand hover:underline"
                     >

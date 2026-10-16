@@ -8,6 +8,7 @@ import { Switch } from '@/components/ui/switch';
 import { Modal } from '@/components/ui/modal';
 import { InlinePhase, PageHeader, Panel, queryPhase } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
+import { SegmentedControl } from '@/components/dashboard/tabs';
 import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
 import { useToast } from '@/components/ui/toast';
 import { useConfirm } from '@/components/ui/confirm';
@@ -52,24 +53,15 @@ export function WebhooksHub({
 }) {
   return (
     <div className="flex flex-col gap-5">
-      <div role="group" aria-label="Webhook direction" className="flex gap-2">
-        <Button
-          size="sm"
-          variant={direction === 'outbound' ? 'default' : 'outline'}
-          aria-pressed={direction === 'outbound'}
-          onClick={() => onDirection('outbound')}
-        >
-          Outbound
-        </Button>
-        <Button
-          size="sm"
-          variant={direction === 'inbound' ? 'default' : 'outline'}
-          aria-pressed={direction === 'inbound'}
-          onClick={() => onDirection('inbound')}
-        >
-          Inbound
-        </Button>
-      </div>
+      <SegmentedControl
+        label="Webhook direction"
+        value={direction}
+        options={[
+          { key: 'outbound', label: 'Outbound' },
+          { key: 'inbound', label: 'Inbound' },
+        ]}
+        onChange={onDirection}
+      />
       {direction === 'inbound' ? (
         <InboundWebhooks accountId={accountId} slug={slug} />
       ) : (

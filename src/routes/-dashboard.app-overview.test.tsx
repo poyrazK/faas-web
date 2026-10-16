@@ -10,7 +10,7 @@ import {
 } from '@tanstack/react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Route as AppRoute } from './dashboard.workflows.$workflowId';
+import { Route as AppRoute } from './dashboard.apps.$appSlug';
 import { toWorkflow } from '@/lib/api/adapters';
 import type { App, AppMetrics, Deployment } from '@/lib/api/queries';
 
@@ -119,11 +119,11 @@ vi.mock('@/lib/api/queries', async (original) => ({
   }),
 }));
 
-async function mount(entry = '/dashboard/workflows/alpha') {
+async function mount(entry = '/dashboard/apps/alpha') {
   const root = createRootRoute({ component: Outlet });
   const app = createRoute({
     getParentRoute: () => root,
-    path: '/dashboard/workflows/$workflowId',
+    path: '/dashboard/apps/$appSlug',
     component: AppRoute.options.component,
     validateSearch: AppRoute.options.validateSearch,
   });
@@ -164,12 +164,8 @@ describe('App Overview', () => {
   it('opens a useful overview for Free accounts without fetching per-release builds', async () => {
     await mount();
     expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('region', { name: 'App status' })).toHaveTextContent('Running');
+    expect(screen.getByRole('group', { name: 'App status' })).toHaveTextContent('Running');
     expect(screen.getByRole('region', { name: 'Latest release' })).toHaveTextContent('release-new');
-    expect(screen.getByRole('link', { name: 'Open app' })).toHaveAttribute(
-      'href',
-      'https://alpha.example.test/'
-    );
     expect(screen.getByRole('link', { name: 'Endpoint alpha.example.test' })).toHaveAttribute(
       'href',
       'https://alpha.example.test/'
@@ -183,8 +179,8 @@ describe('App Overview', () => {
       deployment({ status: 'failed', error_why: 'The start command was not found.' }),
       deployment({ id: 'release-live', created_at: '2026-09-11T12:00:00Z' }),
     ];
-    const router = await mount('/dashboard/workflows/alpha?keep=yes#context');
-    expect(screen.getByRole('region', { name: 'App status' })).toHaveTextContent('Running');
+    const router = await mount('/dashboard/apps/alpha?keep=yes#context');
+    expect(screen.getByRole('group', { name: 'App status' })).toHaveTextContent('Running');
     const attention = screen.getByRole('region', { name: 'Needs attention' });
     expect(attention).toHaveTextContent('The start command was not found.');
     await userEvent.click(within(attention).getByRole('button', { name: 'Inspect failure' }));
@@ -208,15 +204,15 @@ describe('App Overview', () => {
       await mount();
       expect(screen.getByRole('region', { name: 'Latest release' })).toHaveTextContent(status);
       expect(screen.queryByRole('button', { name: 'Inspect failure' })).not.toBeInTheDocument();
-      expect(screen.queryByRole('link', { name: 'Open app' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: /^Endpoint / })).not.toBeInTheDocument();
     }
   );
 
   it('offers first deployment instead of implying that an empty app is running', async () => {
     fixtures.deployments = [];
     await mount();
-    expect(screen.getByRole('region', { name: 'App status' })).toHaveTextContent('Not deployed');
-    expect(screen.queryByRole('link', { name: 'Open app' })).not.toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'App status' })).toHaveTextContent('Not deployed');
+    expect(screen.queryByRole('link', { name: /^Endpoint / })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Deploy your app' }));
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
   });
@@ -233,7 +229,7 @@ describe('App Overview', () => {
         state === 'loading' ? 'Loading' : state === 'stale' ? 'Last known' : 'unavailable'
       );
       expect(screen.queryByRole('button', { name: 'Deploy your app' })).not.toBeInTheDocument();
-      expect(screen.queryByRole('link', { name: 'Open app' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: /^Endpoint / })).not.toBeInTheDocument();
       if (state !== 'loading') {
         await userEvent.click(within(release).getByRole('button', { name: 'Retry releases' }));
         expect(fixtures.retry).toHaveBeenCalledOnce();
@@ -285,7 +281,7 @@ describe('App Overview', () => {
   it('preserves an unknown server status rather than claiming the app is idle', async () => {
     fixtures.status = 'maintenance_pending';
     await mount();
-    const status = screen.getByRole('region', { name: 'App status' });
+    const status = screen.getByRole('group', { name: 'App status' });
     expect(status).toHaveTextContent('maintenance_pending');
     expect(status).not.toHaveTextContent('Idle');
   });
@@ -293,7 +289,7 @@ describe('App Overview', () => {
   it('does not offer unsafe endpoint URLs', async () => {
     fixtures.url = 'javascript:alert(1)';
     await mount();
-    expect(screen.queryByRole('link', { name: 'Open app' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /^Endpoint / })).not.toBeInTheDocument();
   });
 
   it('renders an unfamiliar source kind as text without interpreting object properties', async () => {
@@ -303,12 +299,14 @@ describe('App Overview', () => {
   });
 
   it('preserves explicit Metrics links and supports keyboard access to Overview', async () => {
-    await mount('/dashboard/workflows/alpha?tab=Metrics');
-    const metricsTab = screen.getByRole('tab', { name: 'Metrics' });
-    expect(metricsTab).toHaveAttribute('aria-selected', 'true');
-    metricsTab.focus();
-    await userEvent.keyboard('{Home}');
-    expect(screen.getByRole('tab', { name: 'Overview' })).toHaveFocus();
+    await mount('/dashboard/apps/alpha?tab=Metrics');
+    const pages = screen.getByRole('group', { name: 'Overview pages' });
+    expect(within(pages).getByRole('button', { name: 'Metrics' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
+    within(pages).getByRole('button', { name: 'Overview' }).focus();
+    await userEvent.keyboard('{Enter}');
     expect(await screen.findByRole('region', { name: 'Latest release' })).toBeInTheDocument();
   });
 });
@@ -318,7 +316,7 @@ describe('App log investigation links', () => {
     fixtures.plan = 'pro';
     const instance = 'd'.repeat(32);
     const router = await mount(
-      `/dashboard/workflows/alpha?tab=Logs&mode=archive&instance=${instance}&date=2026-09-28&level=error&q=timeout&request=req-1&keep=yes#context`
+      `/dashboard/apps/alpha?tab=Logs&mode=archive&instance=${instance}&date=2026-09-28&level=error&q=timeout&request=req-1&keep=yes#context`
     );
     expect(screen.getByLabelText('Instance to read')).toHaveValue(instance);
     expect(fixtures.stream).toHaveBeenLastCalledWith(
@@ -346,13 +344,13 @@ describe('App log investigation links', () => {
       router.history.back();
     });
     await waitFor(() => expect(screen.getByLabelText('Instance to read')).toHaveValue(instance));
-    await userEvent.click(screen.getByRole('button', { name: 'Overview app section' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Observe app section' }));
+    await userEvent.click(screen.getByRole('tab', { name: 'Overview' }));
+    await userEvent.click(screen.getByRole('tab', { name: 'Observe' }));
     expect(screen.getByLabelText('Archive date')).toHaveValue('2026-09-28');
   });
   it('rejects invalid log parameters even when another tab validator preserves unknown context', async () => {
     const router = await mount(
-      '/dashboard/workflows/alpha?tab=Logs&mode=bad&level=debug&instance=bad%2Fid&date=2026-02-30&q=hello&keep=yes'
+      '/dashboard/apps/alpha?tab=Logs&mode=bad&level=debug&instance=bad%2Fid&date=2026-02-30&q=hello&keep=yes'
     );
     expect(router.state.location.search).toMatchObject({ keep: 'yes', q: 'hello' });
     for (const key of ['mode', 'level', 'instance', 'date'])
@@ -365,10 +363,49 @@ describe('App log investigation links', () => {
   it('pins archive date and instance without losing a linked deployment', async () => {
     fixtures.plan = 'pro';
     const router = await mount(
-      '/dashboard/workflows/alpha?tab=Logs&mode=archive&deployment=release-new'
+      '/dashboard/apps/alpha?tab=Logs&mode=archive&deployment=release-new'
     );
     await waitFor(() => expect(router.state.location.search.instance).toBe('c'.repeat(32)));
     expect(router.state.location.search.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(router.state.location.search.deployment).toBe('release-new');
+  });
+});
+
+describe('App header', () => {
+  it.each(['Overview', 'Logs', 'Metrics'])('is the same on the %s tab', async (tab) => {
+    await mount(`/dashboard/apps/alpha?tab=${tab}`);
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('alpha');
+    expect(screen.getByRole('group', { name: 'App status' })).toHaveTextContent('Running');
+    expect(screen.getByRole('link', { name: 'Endpoint alpha.example.test' })).toHaveAttribute(
+      'href',
+      'https://alpha.example.test/'
+    );
+    expect(screen.getAllByRole('link', { name: /alpha\.example\.test/ })).toHaveLength(1);
+    expect(screen.queryByRole('region', { name: 'App status' })).not.toBeInTheDocument();
+  });
+
+  it('never links an unsafe address, on any tab', async () => {
+    fixtures.url = 'javascript:alert(1)';
+    await mount('/dashboard/apps/alpha?tab=Logs');
+    for (const link of screen.getAllByRole('link'))
+      expect(link.getAttribute('href') ?? '').not.toMatch(/^javascript:/i);
+  });
+
+  it('keeps Deploy as the one header button and the rest in the actions menu', async () => {
+    fixtures.deployments = [
+      deployment(),
+      deployment({ id: 'release-old', created_at: '2026-09-11T12:00:00Z' }),
+    ];
+    await mount();
+    expect(screen.getByRole('button', { name: 'Deploy' })).toBeInTheDocument();
+    for (const name of ['Park', 'Restart', 'Roll back'])
+      expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'More app actions' }));
+    const menu = await screen.findByRole('menu');
+    expect(
+      within(menu)
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent)
+    ).toEqual(['Park', 'Restart', 'Roll back']);
   });
 });

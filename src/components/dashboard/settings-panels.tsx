@@ -27,23 +27,22 @@ import type { SettingsSection } from './settings-search';
  * they are just per-app, because that is where the API keeps them — and the
  * third ("Agent API access") had no endpoint behind it at all.
  */
-const ELSEWHERE: { label: string; description: string; to: '/dashboard/workflows'; cta: string }[] =
-  [
-    {
-      label: 'Scale to zero',
-      description:
-        'How long an app idles before it snapshots, and how many instances stay resident. Set per app, since a queue consumer and a public API want different answers.',
-      to: '/dashboard/workflows',
-      cta: 'Open an app',
-    },
-    {
-      label: 'Deployment alerts',
-      description:
-        'Threshold rules that POST to a webhook when an app breaches them. Set per app, on its Alerts tab.',
-      to: '/dashboard/workflows',
-      cta: 'Open an app',
-    },
-  ];
+const ELSEWHERE: { label: string; description: string; to: '/dashboard/apps'; cta: string }[] = [
+  {
+    label: 'Scale to zero',
+    description:
+      'How long an app idles before it snapshots, and how many instances stay resident. Set per app, since a queue consumer and a public API want different answers.',
+    to: '/dashboard/apps',
+    cta: 'Open an app',
+  },
+  {
+    label: 'Deployment alerts',
+    description:
+      'Threshold rules that POST to a webhook when an app breaches them. Set per app, on its Alerts tab.',
+    to: '/dashboard/apps',
+    cta: 'Open an app',
+  },
+];
 
 /** Type-to-confirm dialog for the staged server-side deletion. */
 function DeleteAccountDialog({

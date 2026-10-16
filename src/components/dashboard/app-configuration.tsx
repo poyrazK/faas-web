@@ -625,8 +625,8 @@ function RenamePanel({ app }: { app: App }) {
             .then(() => {
               toast({ kind: 'success', title: `Renamed to ${next}` });
               void navigate({
-                to: '/dashboard/workflows/$workflowId',
-                params: { workflowId: next },
+                to: '/dashboard/apps/$appSlug',
+                params: { appSlug: next },
                 search: { tab: 'Configuration' },
               });
             })
@@ -697,7 +697,7 @@ function DangerZone({ app }: { app: App }) {
                   title: 'App deletion scheduled',
                   description: `${app.slug} can be restored through the API within 7 days.`,
                 });
-                void navigate({ to: '/dashboard/workflows' });
+                void navigate({ to: '/dashboard/apps' });
               })
               .catch((err: unknown) =>
                 toast({ kind: 'error', title: 'Could not delete', description: errorMessage(err) })

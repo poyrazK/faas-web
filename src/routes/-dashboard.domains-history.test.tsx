@@ -199,7 +199,7 @@ describe('Domains operational state', () => {
     await mount();
     expect(await screen.findByRole('link', { name: 'Create an app' })).toHaveAttribute(
       'href',
-      '/dashboard/workflows/new'
+      '/dashboard/apps/new'
     );
     expect(screen.getByRole('button', { name: 'Add domain' })).toBeDisabled();
   });

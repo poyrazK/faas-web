@@ -177,7 +177,7 @@ describe('global Needs Attention dropdown', () => {
     expect(screen.queryByRole('button', { name: 'Close dialog' })).not.toBeInTheDocument();
     expect(within(dialog).getByRole('link', { name: 'View deployment dep-api' })).toHaveAttribute(
       'href',
-      '/dashboard/deployments?deployment=dep-api'
+      '/dashboard/releases?deployment=dep-api'
     );
     expect(within(dialog).getByRole('link', { name: 'Review usage' })).toBeInTheDocument();
     await user.keyboard('{Escape}');
@@ -193,7 +193,7 @@ describe('global Needs Attention dropdown', () => {
     await user.click(screen.getByRole('button', { name: 'Needs Attention' }));
     await user.click(screen.getByRole('link', { name: 'View deployment dep-api' }));
     await waitFor(() =>
-      expect(router.state.location.href).toBe('/dashboard/deployments?deployment=dep-api')
+      expect(router.state.location.href).toBe('/dashboard/releases?deployment=dep-api')
     );
     await waitFor(() =>
       expect(screen.queryByRole('dialog', { name: 'Needs Attention' })).not.toBeInTheDocument()
@@ -297,9 +297,9 @@ function sectionsNav(hub: string) {
 const GROUPS = [
   {
     hub: 'Apps',
-    anchor: '/dashboard/workflows',
+    anchor: '/dashboard/apps',
     links: [
-      ['All apps', '/dashboard/workflows'],
+      ['All apps', '/dashboard/apps'],
       ['Templates', '/dashboard/templates'],
       ['Import', '/dashboard/import'],
     ],
@@ -317,7 +317,7 @@ const GROUPS = [
     anchor: '/dashboard/debug',
     links: [
       ['Debugger', '/dashboard/debug'],
-      ['Invocations', '/dashboard/traces'],
+      ['Invocations', '/dashboard/invocations'],
       ['Audit Log', '/dashboard/audit'],
     ],
   },
@@ -459,8 +459,8 @@ describe('dashboard navigation foundation', () => {
     const sections = screen.getByRole('navigation', { name: 'App sections' });
     for (const [label, path] of [
       ['Logs', 'logs'],
-      ['Routes', 'apis'],
-      ['Upstreams', 'databases'],
+      ['Routes', 'routes'],
+      ['Upstreams', 'upstreams'],
       ['Edge rules', 'edge-rules'],
       ['OpenAPI', 'openapi'],
     ]) {
@@ -557,24 +557,31 @@ describe('dashboard navigation foundation', () => {
   });
 
   it('identifies only the current page in a hub anchor breadcrumb', async () => {
-    await renderShell('/dashboard/deployments');
+    await renderShell('/dashboard/debug');
     const breadcrumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
-    expect(within(breadcrumb).getByText('Releases')).toBeInTheDocument();
-    expect(within(breadcrumb).getByText('Deployments')).toHaveAttribute('aria-current', 'page');
+    expect(within(breadcrumb).getByText('Observe')).toBeInTheDocument();
+    expect(within(breadcrumb).getByText('Debugger')).toHaveAttribute('aria-current', 'page');
     expect(breadcrumb.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
   });
 
+  it('names the Releases page once, as its own title does', async () => {
+    await renderShell('/dashboard/releases');
+    const breadcrumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    expect(within(breadcrumb).getByText('Releases')).toHaveAttribute('aria-current', 'page');
+    expect(within(breadcrumb).queryByText('Deployments')).not.toBeInTheDocument();
+  });
+
   it('preserves an Apps list bookmark when its primary destination is reselected', async () => {
-    const router = await renderShell('/dashboard/workflows?q=api&state=running#list');
+    const router = await renderShell('/dashboard/apps?q=api&state=running#list');
     const link = within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', {
       name: 'All apps',
     });
-    expect(link).toHaveAttribute('href', '/dashboard/workflows?q=api&state=running#list');
+    expect(link).toHaveAttribute('href', '/dashboard/apps?q=api&state=running#list');
     await userEvent.click(link);
-    expect(router.state.location.href).toBe('/dashboard/workflows?q=api&state=running#list');
+    expect(router.state.location.href).toBe('/dashboard/apps?q=api&state=running#list');
   });
 
-  it.each(['/dashboard/workflows', '/dashboard/workflows/'])(
+  it.each(['/dashboard/apps', '/dashboard/apps/'])(
     'omits app sections from the All apps page at %s',
     async (path) => {
       await renderShell(path);
@@ -693,11 +700,11 @@ describe('dashboard navigation foundation', () => {
   });
 
   it.each([
-    ['/dashboard/builds', 'Releases', 'Builds', '/dashboard/deployments'],
+    ['/dashboard/builds', 'Releases', 'Builds', '/dashboard/releases'],
     ['/dashboard/team', 'Settings', 'Team', '/dashboard/settings'],
-    ['/dashboard/workflows/api', 'Apps', 'Public API', '/dashboard/workflows'],
-    ['/dashboard/workflows/missing', 'Apps', 'App', '/dashboard/workflows'],
-    ['/dashboard/workflows/new', 'Apps', 'New app', '/dashboard/workflows'],
+    ['/dashboard/apps/api', 'Apps', 'Public API', '/dashboard/apps'],
+    ['/dashboard/apps/missing', 'Apps', 'App', '/dashboard/apps'],
+    ['/dashboard/apps/new', 'Apps', 'New app', '/dashboard/apps'],
   ])(
     'shows a linked parent hub and meaningful current breadcrumb at %s',
     async (path, hub, current, anchor) => {
@@ -727,12 +734,12 @@ describe('dashboard navigation foundation', () => {
       .find((option) => option.textContent === 'Tail logs — Public API');
     expect(command).toBeDefined();
     await user.click(command!);
-    await waitFor(() => expect(router.state.location.pathname).toBe('/dashboard/workflows/api'));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/dashboard/apps/api'));
     expect(router.state.location.search).toEqual({ tab: 'Logs' });
   });
 
   it.each([
-    ['Releases', '/dashboard/deployments'],
+    ['Releases', '/dashboard/releases'],
     ['Analytics', '/dashboard/analytics'],
     ['Builds', '/dashboard/builds'],
     ['Data', '/dashboard/storage'],

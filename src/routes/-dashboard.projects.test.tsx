@@ -142,7 +142,7 @@ it('links an empty inventory to import, not empty project creation', async () =>
   expect(await screen.findByText('No projects yet.')).toBeInTheDocument();
   expect(screen.getByRole('link', { name: 'Import a project' })).toHaveAttribute(
     'href',
-    '/dashboard/workflows/new?source=import'
+    '/dashboard/apps/new?source=import'
   );
 });
 it('loads a direct detail URL with actual partial status, not invented Ready', async () => {
@@ -153,7 +153,7 @@ it('loads a direct detail URL with actual partial status, not invented Ready', a
   expect(within(table).getByText('Unknown')).toBeInTheDocument();
   expect(within(table).getByRole('link', { name: 'api' })).toHaveAttribute(
     'href',
-    '/dashboard/workflows/api'
+    '/dashboard/apps/api'
   );
   expect(screen.queryByText('Ready')).not.toBeInTheDocument();
   expect(

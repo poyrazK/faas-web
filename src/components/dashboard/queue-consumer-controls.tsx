@@ -339,7 +339,7 @@ function QueueConsumerControlsInner({
           )}
           {open && (
             <div className="space-y-3">
-              <label className="block space-y-1">
+              <label className="flex flex-col gap-1.5">
                 <span>Binding name</span>
                 <input
                   className={FIELD}
@@ -348,7 +348,7 @@ function QueueConsumerControlsInner({
                   onChange={(event) => setName(event.target.value)}
                 />
               </label>
-              <label className="block space-y-1">
+              <label className="flex flex-col gap-1.5">
                 <span>Queue name</span>
                 <input
                   className={FIELD}
@@ -357,7 +357,7 @@ function QueueConsumerControlsInner({
                   onChange={(event) => setQueueName(event.target.value)}
                 />
               </label>
-              <label className="block space-y-1">
+              <label className="flex flex-col gap-1.5">
                 <span>Delivery mode</span>
                 <select
                   className={FIELD}
@@ -369,7 +369,7 @@ function QueueConsumerControlsInner({
                   <option value="push">Push</option>
                 </select>
               </label>
-              <label className="block space-y-1">
+              <label className="flex flex-col gap-1.5">
                 <span>Max concurrency</span>
                 <input
                   className={FIELD}

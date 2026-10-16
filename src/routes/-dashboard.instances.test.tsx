@@ -12,7 +12,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/lib/api/errors';
 import type { components } from '@/lib/api/schema';
-import { Route as Instances } from './dashboard.workers';
+import { Route as Instances } from './dashboard.instances';
 import { spyApi } from '@/test/api';
 
 type Instance = components['schemas']['InstanceResponse'];
@@ -41,7 +41,7 @@ let wakeState: 'ready' | 'pending' | 'error' | 'empty';
 let paginationState: boolean;
 let reads: string[];
 
-async function mount(entry = '/dashboard/workers', previousEntry?: string) {
+async function mount(entry = '/dashboard/instances', previousEntry?: string) {
   const root = createRootRoute({ component: Outlet });
   const dashboard = createRoute({
     getParentRoute: () => root,
@@ -50,7 +50,7 @@ async function mount(entry = '/dashboard/workers', previousEntry?: string) {
   });
   const route = createRoute({
     getParentRoute: () => dashboard,
-    path: 'workers',
+    path: 'instances',
     component: Instances.options.component,
     validateSearch: Instances.options.validateSearch,
   });
@@ -139,7 +139,7 @@ describe('Instance details', () => {
     rows.push({ ...instance, id: 'vm-2', app_id: 'app-2', state: 'running', resident: true });
     apps.push({ id: 'app-2', slug: 'bravo' });
     const router = await mount(
-      '/dashboard/workers?q=alpha&campaign=handoff#lifecycle',
+      '/dashboard/instances?q=alpha&campaign=handoff#lifecycle',
       '/dashboard'
     );
     const filter = screen.getByRole('searchbox');
@@ -191,7 +191,7 @@ describe('Instance details', () => {
 
   it('restores the full returned record and wake frames from a copied URL', async () => {
     vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-09-11T10:10:30Z'));
-    await mount('/dashboard/workers?instance=vm-1');
+    await mount('/dashboard/instances?instance=vm-1');
     const detail = await screen.findByRole('region', { name: 'Instance details' });
     const view = within(detail);
     for (const value of [
@@ -226,7 +226,7 @@ describe('Instance details', () => {
     async (input) => {
       rows = Array.from({ length: 50 }, (_, n) => ({ ...instance, id: `vm-${n + 1}` }));
       const reveal = vi.spyOn(Element.prototype, 'scrollIntoView');
-      const router = await mount('/dashboard/workers?keep=yes#anchor');
+      const router = await mount('/dashboard/instances?keep=yes#anchor');
       const row = await screen.findByRole('button', { name: /vm-1$/ });
       const select = async () => {
         if (input === 'pointer') await userEvent.click(row);
@@ -263,7 +263,7 @@ describe('Instance details', () => {
     'reopens with %s and retains focus, scroll and URL context after Escape/backdrop dismissal',
     async (input) => {
       const reveal = vi.spyOn(Element.prototype, 'scrollIntoView');
-      const router = await mount('/dashboard/workers?keep=yes#anchor');
+      const router = await mount('/dashboard/instances?keep=yes#anchor');
       const row = await screen.findByRole('button', { name: /vm-1$/ });
       const activate = async () => {
         row.focus();
@@ -293,7 +293,7 @@ describe('Instance details', () => {
     async (state) => {
       appState = state;
       rows = [{ ...instance, wake_id: undefined }];
-      await mount('/dashboard/workers?instance=vm-1');
+      await mount('/dashboard/instances?instance=vm-1');
       const view = within(await screen.findByRole('region', { name: 'Instance details' }));
       expect(await view.findByText(/no wake ID was returned/i)).toBeInTheDocument();
       if (state === 'pending') expect(view.getByText(/resolving the app/i)).toBeInTheDocument();
@@ -304,7 +304,7 @@ describe('Instance details', () => {
         await userEvent.click(view.getByRole('button', { name: 'Retry app lookup' }));
         expect(await view.findByRole('link', { name: 'Open app' })).toHaveAttribute(
           'href',
-          '/dashboard/workflows/alpha'
+          '/dashboard/apps/alpha'
         );
         expect(view.getByRole('link', { name: 'App logs' })).toHaveAttribute(
           'href',
@@ -317,15 +317,15 @@ describe('Instance details', () => {
   );
 
   it('offers only receiving route contracts for app, release, logs and debugger', async () => {
-    await mount('/dashboard/workers?instance=vm-1');
+    await mount('/dashboard/instances?instance=vm-1');
     const view = within(await screen.findByRole('region', { name: 'Instance details' }));
     expect(await view.findByRole('link', { name: 'Open app' })).toHaveAttribute(
       'href',
-      '/dashboard/workflows/alpha'
+      '/dashboard/apps/alpha'
     );
     expect(view.getByRole('link', { name: 'Open release' })).toHaveAttribute(
       'href',
-      '/dashboard/deployments?deployment=dep-1'
+      '/dashboard/releases?deployment=dep-1'
     );
     expect(view.getByRole('link', { name: 'App logs' })).toHaveAttribute(
       'href',
@@ -333,7 +333,7 @@ describe('Instance details', () => {
     );
     expect(view.getByRole('link', { name: 'App debugger' })).toHaveAttribute(
       'href',
-      '/dashboard/workflows/alpha?tab=Debugger'
+      '/dashboard/apps/alpha?tab=Debugger'
     );
     expect(view.queryByRole('link', { name: /request|wake/i })).not.toBeInTheDocument();
   });
@@ -341,7 +341,7 @@ describe('Instance details', () => {
   it.each(['missing', 'blank'])(
     'does not fetch nested resources for a %s selection',
     async (kind) => {
-      await mount(`/dashboard/workers?instance=${kind === 'missing' ? 'unknown' : '%20%20'}`);
+      await mount(`/dashboard/instances?instance=${kind === 'missing' ? 'unknown' : '%20%20'}`);
       await screen.findByText('vm-1');
       if (kind === 'missing') {
         expect(await screen.findByText(/not in the current instance list/i)).toBeInTheDocument();
@@ -367,11 +367,11 @@ describe('Instance details', () => {
   });
 
   it('drops previous instance evidence when history selects an unknown ID', async () => {
-    const router = await mount('/dashboard/workers?instance=vm-1');
+    const router = await mount('/dashboard/instances?instance=vm-1');
     await screen.findByText('vm.ready');
     reads = [];
     await act(async () =>
-      router.navigate({ to: '/dashboard/workers', search: { instance: 'unknown' } })
+      router.navigate({ to: '/dashboard/instances', search: { instance: 'unknown' } })
     );
     const view = within(await screen.findByRole('region', { name: 'Instance details' }));
     expect(view.getByText(/not in the current instance list/i)).toBeInTheDocument();
@@ -383,7 +383,7 @@ describe('Instance details', () => {
   it('omits unavailable links and does not treat an app ID as a wake slug', async () => {
     apps = [];
     rows = [{ ...instance, deployment_id: '' }];
-    await mount('/dashboard/workers?instance=vm-1');
+    await mount('/dashboard/instances?instance=vm-1');
     const view = within(await screen.findByRole('region', { name: 'Instance details' }));
     expect(await view.findByText(/app could not be resolved/i)).toBeInTheDocument();
     expect(view.queryAllByRole('link')).toHaveLength(0);
@@ -401,7 +401,7 @@ describe('Instance details', () => {
         state: 'waking',
       },
     ];
-    await mount('/dashboard/workers?instance=vm-1');
+    await mount('/dashboard/instances?instance=vm-1');
     const view = within(await screen.findByRole('region', { name: 'Instance details' }));
     expect(await view.findByText(/no wake ID was returned/i)).toBeInTheDocument();
     expect(view.getByText('Age since start').nextElementSibling).toHaveTextContent('Not reported');
@@ -415,7 +415,7 @@ describe('Instance details', () => {
     'keeps a selected URL directional while the list is %s',
     async (state) => {
       instanceState = state;
-      await mount('/dashboard/workers?instance=vm-1');
+      await mount('/dashboard/instances?instance=vm-1');
       const view = within(await screen.findByRole('region', { name: 'Instance details' }));
       if (state === 'pending') expect(view.getByText(/loading instances/i)).toBeInTheDocument();
       else {
@@ -432,7 +432,7 @@ describe('Instance details', () => {
     'shows a directional %s wake timeline',
     async (state) => {
       wakeState = state;
-      await mount('/dashboard/workers?instance=vm-1');
+      await mount('/dashboard/instances?instance=vm-1');
       const view = within(await screen.findByRole('region', { name: 'Instance details' }));
       if (state === 'pending')
         expect(await view.findByText('Reading the timeline…')).toBeInTheDocument();
@@ -453,7 +453,7 @@ describe('Instance details', () => {
     expect(await screen.findByText(/everything is parked/i)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'View apps' })).toHaveAttribute(
       'href',
-      '/dashboard/workflows'
+      '/dashboard/apps'
     );
   });
 

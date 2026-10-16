@@ -1,4 +1,4 @@
-import { CheckCircle, Circle, OpenNewWindow, WarningTriangle } from 'iconoir-react';
+import { CheckCircle, WarningTriangle } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import type { Workflow } from '@/lib/mock-data';
 import { formatCompact, formatMs } from '@/lib/mock-data';
@@ -6,7 +6,6 @@ import type { AppMetrics, Deployment } from '@/lib/api/queries';
 import { deploymentPhase } from '@/lib/deployment-status';
 import { ReleaseStatusLabel } from './release-status-label';
 import { failureSummary } from './failure-summary';
-import { publicAppUrl } from '@/lib/app-url';
 
 type Read<T> = { data?: T; isPending: boolean; error: unknown };
 type Destination = 'Metrics' | 'Deployments' | 'Logs' | 'Errors' | 'Configuration';
@@ -21,75 +20,6 @@ interface AppOverviewProps {
   onRetryReleases: () => void;
   onRetryMetrics: () => void;
 }
-
-const APP_STATES: Record<string, { label: string; detail: string; tone: string }> = {
-  active: {
-    label: 'Running',
-    detail: 'Your app is active. Check traffic below for recent request health.',
-    tone: 'var(--status-good)',
-  },
-  running: {
-    label: 'Running',
-    detail: 'Your app is active. Check traffic below for recent request health.',
-    tone: 'var(--status-good)',
-  },
-  // apid's own word for a parked app: its VM is snapshotted and released.
-  evicted_cold: {
-    label: 'Idle',
-    detail: 'Your app is parked. Idle is a normal part of scale-to-zero.',
-    tone: 'var(--muted-foreground)',
-  },
-  undeployed: {
-    label: 'Not deployed',
-    detail: 'Your app is created. Deploy code to give it a running release.',
-    tone: 'var(--muted-foreground)',
-  },
-  parked: {
-    label: 'Idle',
-    detail: 'Your app is parked. Idle is a normal part of scale-to-zero.',
-    tone: 'var(--muted-foreground)',
-  },
-  stopped: {
-    label: 'Stopped',
-    detail: 'The platform reports this app as stopped.',
-    tone: 'var(--muted-foreground)',
-  },
-  idle: {
-    label: 'Idle',
-    detail: 'No running state is reported. Check the latest release for context.',
-    tone: 'var(--muted-foreground)',
-  },
-  deploying: {
-    label: 'Deploying',
-    detail: 'A deployment is in progress. Follow its status below.',
-    tone: 'var(--status-warning)',
-  },
-  pending: {
-    label: 'Pending',
-    detail: 'The app is waiting for its next state.',
-    tone: 'var(--status-warning)',
-  },
-  building: {
-    label: 'Building',
-    detail: 'A deployment is being built. Follow its status below.',
-    tone: 'var(--status-warning)',
-  },
-  error: {
-    label: 'App error',
-    detail: 'The app reports an error. Inspect its logs and latest release.',
-    tone: 'var(--status-critical)',
-  },
-  failed: {
-    label: 'App error',
-    detail: 'The app reports a failure. Inspect its logs and latest release.',
-    tone: 'var(--status-critical)',
-  },
-  crashed: {
-    label: 'App crashed',
-    detail: 'The app reports a crash. Inspect its logs and latest release.',
-    tone: 'var(--status-critical)',
-  },
-};
 
 const SOURCE_LABELS = new Map([
   ['github', 'GitHub'],
@@ -131,36 +61,11 @@ export function AppOverview({
   const releasesReady = !releases.isPending && !releases.error;
   const empty = releasesReady && !latest;
   const rawState = app.reportedStatus?.trim() || app.state;
-  const state = empty
-    ? {
-        label: 'Not deployed',
-        detail: 'Your app is created. Deploy code to give it a running release.',
-        tone: 'var(--muted-foreground)',
-      }
-    : !latest && !releasesReady
-      ? {
-          label: 'Status unconfirmed',
-          detail: 'Deployment history is needed to confirm whether this app has been deployed.',
-          tone: 'var(--muted-foreground)',
-        }
-      : Object.hasOwn(APP_STATES, rawState.toLowerCase())
-        ? APP_STATES[rawState.toLowerCase()]
-        : {
-            label: rawState,
-            detail: 'This is the app state reported by the platform.',
-            tone: 'var(--muted-foreground)',
-          };
   const failed =
     latest &&
     deploymentPhase(latest.status) === 'failed' &&
     latest.status.toLowerCase() !== 'cancelled';
   const appError = ['error', 'failed', 'crashed'].includes(rawState.toLowerCase());
-  const url = publicAppUrl(app.url);
-  const canOpen =
-    app.visibility !== 'internal' &&
-    url &&
-    releasesReady &&
-    releases.data?.some((release) => deploymentPhase(release.status) === 'live');
   const observed =
     metricsAccess === 'available' &&
     !metrics.isPending &&
@@ -176,72 +81,6 @@ export function AppOverview({
 
   return (
     <div className="flex min-w-0 flex-col gap-5">
-      <section
-        aria-label="App status"
-        className="overflow-hidden rounded-xl border border-border bg-card"
-      >
-        <div className="flex flex-col items-start justify-between gap-5 p-5 sm:flex-row sm:items-center sm:p-6">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Circle
-                aria-hidden
-                className="h-3 w-3 shrink-0 fill-current"
-                style={{ color: state.tone }}
-              />
-              App status
-            </div>
-            <h2 className="mt-2 text-2xl font-medium tracking-tight [overflow-wrap:anywhere]">
-              {state.label}
-            </h2>
-            <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">
-              {state.detail}
-            </p>
-          </div>
-          {canOpen && (
-            <a
-              href={url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex shrink-0 items-center gap-2 rounded-md border border-brand/30 px-3 py-2 text-sm font-medium text-brand transition-colors hover:bg-brand/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-            >
-              Open app <OpenNewWindow aria-hidden className="h-4 w-4" />
-            </a>
-          )}
-        </div>
-        <dl className="grid grid-cols-2 gap-4 border-t border-border px-5 py-4 text-xs sm:grid-cols-[1fr_1fr_2fr] sm:px-6">
-          <div>
-            <dt className="text-muted-foreground">Runtime</dt>
-            <dd className="mt-1.5 font-medium">{app.runtime}</dd>
-          </div>
-          <div>
-            <dt className="text-muted-foreground">Memory</dt>
-            <dd className="mt-1.5 font-medium">{app.memoryMb} MB</dd>
-          </div>
-          <div className="col-span-2 min-w-0 sm:col-span-1">
-            <dt className="text-muted-foreground">Endpoint</dt>
-            <dd className="mt-1.5 [overflow-wrap:anywhere]">
-              {url && canOpen ? (
-                <a
-                  href={url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label={`Endpoint ${url.replace(/^https?:\/\//, '').replace(/\/$/, '')}`}
-                  className="text-brand underline-offset-2 hover:underline focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-                >
-                  {url.replace(/^https?:\/\//, '').replace(/\/$/, '')}
-                </a>
-              ) : app.visibility === 'internal' ? (
-                'Internal only'
-              ) : url ? (
-                url.replace(/^https?:\/\//, '').replace(/\/$/, '')
-              ) : (
-                'Not available'
-              )}
-            </dd>
-          </div>
-        </dl>
-      </section>
-
       <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
         <section
           aria-label="Latest release"

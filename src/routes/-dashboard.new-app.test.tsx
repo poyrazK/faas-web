@@ -9,7 +9,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { Route as NewAppRoute } from './dashboard.workflows.new';
+import { Route as NewAppRoute } from './dashboard.apps.new';
 import { Route as TemplatesRoute } from './dashboard.templates';
 import { Route as ImportRoute } from './dashboard.import';
 import type { ProjectPlan } from '@/lib/api/queries';
@@ -77,7 +77,7 @@ const plan: ProjectPlan = {
   plan_token: 'scanned-plan-token',
 };
 
-async function mount(entry = '/dashboard/workflows/new') {
+async function mount(entry = '/dashboard/apps/new') {
   const root = createRootRoute({ component: Outlet });
   const dashboard = createRoute({
     getParentRoute: () => root,
@@ -86,7 +86,7 @@ async function mount(entry = '/dashboard/workflows/new') {
   });
   const newApp = createRoute({
     getParentRoute: () => dashboard,
-    path: 'workflows/new',
+    path: 'apps/new',
     validateSearch: NewAppRoute.options.validateSearch,
     component: NewAppRoute.options.component,
   });
@@ -129,7 +129,7 @@ beforeEach(() => {
 describe('New App source flow', () => {
   it('continues to an empty app when the template catalog has no starters', async () => {
     mocks.templateRead = 'empty';
-    const router = await mount('/dashboard/workflows/new?source=template');
+    const router = await mount('/dashboard/apps/new?source=template');
     await userEvent.click(screen.getByRole('button', { name: 'Continue with an empty app' }));
     expect(router.state.location.search.source).toBe('empty');
     expect(mocks.create).not.toHaveBeenCalled();
@@ -138,7 +138,7 @@ describe('New App source flow', () => {
   });
   it('preserves the template read failure and provides retry', async () => {
     mocks.templateRead = 'error';
-    await mount('/dashboard/workflows/new?source=template');
+    await mount('/dashboard/apps/new?source=template');
     expect(screen.getByRole('alert')).toHaveTextContent('Template catalog offline');
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(mocks.templateRetry).toHaveBeenCalledOnce();
@@ -180,7 +180,7 @@ describe('New App source flow', () => {
 
   it('restores the selected source from a bookmark and browser Back/Forward without losing configuration', async () => {
     const user = userEvent.setup();
-    const router = await mount('/dashboard/workflows/new?source=empty');
+    const router = await mount('/dashboard/apps/new?source=empty');
     expect(screen.getByRole('button', { name: /^Empty app/ })).toHaveAttribute(
       'aria-pressed',
       'true'
@@ -212,7 +212,7 @@ describe('New App source flow', () => {
     'preserves direct template launches for %s through configuration, review and scaffold completion',
     async (slug, runtime) => {
       const user = userEvent.setup();
-      await mount(`/dashboard/workflows/new?template=${slug}`);
+      await mount(`/dashboard/apps/new?template=${slug}`);
       expect(screen.getByRole('button', { name: /^Template/ })).toHaveAttribute(
         'aria-pressed',
         'true'
@@ -230,7 +230,7 @@ describe('New App source flow', () => {
 
   it('normalizes an incomplete restored review URL and waits for explicit Review after editing or browser Back', async () => {
     const user = userEvent.setup();
-    const router = await mount('/dashboard/workflows/new?source=empty&step=review');
+    const router = await mount('/dashboard/apps/new?source=empty&step=review');
     await user.type(await screen.findByLabelText('App name'), 'restored-app');
     expect(screen.getByLabelText('App name')).toHaveValue('restored-app');
     expect(router.state.location.search).toMatchObject({ source: 'empty', step: 'configure' });
@@ -254,7 +254,7 @@ describe('New App source flow', () => {
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
     const card = screen.getByRole('heading', { name: 'hello-python' }).closest('article')!;
     await user.click(within(card).getByRole('button', { name: 'Use template' }));
-    expect(router.state.location.pathname).toBe('/dashboard/workflows/new');
+    expect(router.state.location.pathname).toBe('/dashboard/apps/new');
     expect(router.state.location.search).toMatchObject({
       source: 'template',
       template: 'hello-python',
@@ -270,7 +270,7 @@ describe('New App source flow', () => {
 
   it('keeps the created app scaffold tied to its submitted template after browser Back', async () => {
     const user = userEvent.setup();
-    const router = await mount('/dashboard/workflows/new?source=template');
+    const router = await mount('/dashboard/apps/new?source=template');
     await user.click(screen.getByRole('button', { name: 'Use template' }));
     await user.click(screen.getByRole('button', { name: 'Continue' }));
     await user.click(await screen.findByRole('button', { name: 'Review' }));
@@ -286,7 +286,7 @@ describe('New App source flow', () => {
 
   it('scans, reviews and applies an import within New App using the existing project endpoint contract', async () => {
     const user = userEvent.setup();
-    const router = await mount('/dashboard/workflows/new?source=import&slug=sample&branch=develop');
+    const router = await mount('/dashboard/apps/new?source=import&slug=sample&branch=develop');
     expect(screen.getByRole('button', { name: /^Import/ })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByLabelText('Project slug')).toHaveValue('sample');
     expect(screen.getByLabelText('Branch')).toHaveValue('develop');
@@ -299,7 +299,7 @@ describe('New App source flow', () => {
     await user.click(screen.getByRole('button', { name: 'Apply plan' }));
     expect(await screen.findByRole('link', { name: 'sample-api' })).toHaveAttribute(
       'href',
-      '/dashboard/workflows/sample-api'
+      '/dashboard/apps/sample-api'
     );
     expect(mocks.scan).toHaveBeenCalledWith({ file, slug: 'sample', branch: 'develop' });
     expect(mocks.apply).toHaveBeenCalledWith({
@@ -310,14 +310,14 @@ describe('New App source flow', () => {
     });
     expect(mocks.create).not.toHaveBeenCalled();
     expect(mocks.deploy).not.toHaveBeenCalled();
-    expect(router.state.location.pathname).toBe('/dashboard/workflows/new');
+    expect(router.state.location.pathname).toBe('/dashboard/apps/new');
   });
 
   it.each(['Project slug', 'Branch'])(
     'requires a fresh import scan after changing %s',
     async (field) => {
       const user = userEvent.setup();
-      await mount('/dashboard/workflows/new?source=import');
+      await mount('/dashboard/apps/new?source=import');
       await user.upload(
         screen.getByLabelText('Choose a .tar.gz'),
         new File(['tarball'], 'repo.tar.gz', { type: 'application/gzip' })
@@ -332,7 +332,7 @@ describe('New App source flow', () => {
 
   it('retains an import draft when switching sources and returning with browser Back', async () => {
     const user = userEvent.setup();
-    const router = await mount('/dashboard/workflows/new?source=import');
+    const router = await mount('/dashboard/apps/new?source=import');
     await user.upload(
       screen.getByLabelText('Choose a .tar.gz'),
       new File(['tarball'], 'repo.tar.gz', { type: 'application/gzip' })
@@ -347,14 +347,14 @@ describe('New App source flow', () => {
 
   it('guards an uploaded import draft when leaving New App', async () => {
     const user = userEvent.setup();
-    const router = await mount('/dashboard/workflows/new?source=import');
+    const router = await mount('/dashboard/apps/new?source=import');
     await user.upload(
       screen.getByLabelText('Choose a .tar.gz'),
       new File(['tarball'], 'repo.tar.gz', { type: 'application/gzip' })
     );
     await user.click(screen.getByRole('link', { name: 'All apps' }));
     expect(window.confirm).toHaveBeenCalledWith('Discard unsaved changes?');
-    expect(router.state.location.pathname).toBe('/dashboard/workflows/new');
+    expect(router.state.location.pathname).toBe('/dashboard/apps/new');
   });
 
   it('retains the uploaded import and scanned plan through a failed submission from another source', async () => {
@@ -365,7 +365,7 @@ describe('New App source flow', () => {
         rejectCreate = reject;
       })
     );
-    await mount('/dashboard/workflows/new?source=import');
+    await mount('/dashboard/apps/new?source=import');
     const file = new File(['tarball'], 'repo.tar.gz', { type: 'application/gzip' });
     await user.upload(screen.getByLabelText('Choose a .tar.gz'), file);
     await user.type(screen.getByLabelText('Project slug'), 'sample');
@@ -421,7 +421,7 @@ describe('New App source flow', () => {
     'redirects legacy bookmark %s into the selected source while preserving applicable state',
     async (entry, source, search, hash) => {
       const router = await mount(entry);
-      await waitFor(() => expect(router.state.location.pathname).toBe('/dashboard/workflows/new'));
+      await waitFor(() => expect(router.state.location.pathname).toBe('/dashboard/apps/new'));
       expect(router.state.location.search).toMatchObject({ source, ...search });
       expect(router.state.location.hash).toBe(hash.replace(/^#/, ''));
       expect(screen.getByRole('heading', { name: 'New app' })).toBeInTheDocument();

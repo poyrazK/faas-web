@@ -144,9 +144,9 @@ function AppsColumn({ workflows }: { workflows: Workflow[] }) {
   const shown = workflows.slice(0, 4);
   return (
     <section className="flex min-w-0 flex-col gap-1">
-      <ColumnHeader label="Apps" to="/dashboard/workflows" />
+      <ColumnHeader label="Apps" to="/dashboard/apps" />
       <Link
-        to="/dashboard/workflows/new"
+        to="/dashboard/apps/new"
         className="pressable relative mt-2 flex items-center justify-center gap-1.5 overflow-hidden rounded-lg border border-border bg-card py-2 text-sm text-muted-foreground hover:border-border-secondary hover:text-foreground"
       >
         <PointerGlow />
@@ -157,8 +157,8 @@ function AppsColumn({ workflows }: { workflows: Workflow[] }) {
         {shown.map((w) => (
           <li key={w.id}>
             <Link
-              to="/dashboard/workflows/$workflowId"
-              params={{ workflowId: w.id }}
+              to="/dashboard/apps/$appSlug"
+              params={{ appSlug: w.id }}
               className="pressable group flex items-center gap-2.5 rounded py-2.5"
             >
               <span
@@ -189,7 +189,7 @@ const DEPLOY_STATE: Record<string, { label: string; color: string; live?: boolea
 function DeploymentsColumn({ recent }: { recent: Deployment[] }) {
   return (
     <section className="flex min-w-0 flex-col gap-1">
-      <ColumnHeader label="Deployments" to="/dashboard/deployments" />
+      <ColumnHeader label="Deployments" to="/dashboard/releases" />
       {recent.length === 0 ? (
         <p className="mt-2 text-xs text-muted-foreground">Nothing deployed yet.</p>
       ) : (
@@ -463,7 +463,7 @@ function OverviewPage() {
           <p role={verdict.trouble ? 'alert' : 'status'} className="contents">
             <Magnetic range={60} strength={0.2}>
               <Link
-                to={verdict.trouble ? '/dashboard/workflows' : '/dashboard/usage'}
+                to={verdict.trouble ? '/dashboard/apps' : '/dashboard/usage'}
                 className="glass pressable label-mono inline-flex items-center gap-2 rounded-full border border-border px-3.5 py-1.5 text-muted-foreground hover:border-border-secondary hover:text-foreground"
               >
                 <LiveDot color={verdict.color} />
@@ -493,8 +493,8 @@ function OverviewPage() {
               {failing.slice(0, 4).map((app) => (
                 <Link
                   key={app.id}
-                  to="/dashboard/workflows/$workflowId"
-                  params={{ workflowId: app.id }}
+                  to="/dashboard/apps/$appSlug"
+                  params={{ appSlug: app.id }}
                   search={{ tab: 'Logs' }}
                   className="pressable inline-flex items-center gap-1.5 rounded font-mono text-xs hover:text-foreground"
                 >

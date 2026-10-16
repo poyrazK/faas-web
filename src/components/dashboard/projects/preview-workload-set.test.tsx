@@ -13,7 +13,7 @@ vi.mock('@tanstack/react-router', () => ({
     to: string;
     params?: Record<string, string>;
     children: React.ReactNode;
-  }) => <a href={to.replace('$workflowId', params?.workflowId ?? '')}>{children}</a>,
+  }) => <a href={to.replace('$appSlug', params?.appSlug ?? '')}>{children}</a>,
 }));
 afterEach(() => vi.restoreAllMocks());
 const app = {
@@ -73,7 +73,7 @@ it('uses the exact recorded root and returned preview links, not guessed hosts',
   expect(screen.getByText('new-head')).toBeInTheDocument();
   expect(screen.getByRole('link', { name: 'Production parent' })).toHaveAttribute(
     'href',
-    '/dashboard/workflows/api'
+    '/dashboard/apps/api'
   );
 });
 it('does not imply a whole legacy set is ready when no set was recorded', async () => {

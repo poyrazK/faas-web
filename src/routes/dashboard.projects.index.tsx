@@ -75,7 +75,7 @@ export function ProjectInventory() {
         description="Repository-backed projects and the workloads they own. Console labels are separate from this inventory."
         actions={
           <Button asChild size="sm" variant="outline">
-            <Link to="/dashboard/workflows/new" search={{ source: 'import' }}>
+            <Link to="/dashboard/apps/new" search={{ source: 'import' }}>
               Import a project
             </Link>
           </Button>

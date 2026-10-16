@@ -183,7 +183,7 @@ export function DeploymentProgress({
                 deployment.status === 'failed' && !hideRetryOptions
                   ? () => {
                       void navigate({
-                        to: '/dashboard/deployments',
+                        to: '/dashboard/releases',
                         search: { deployment: deployment.id, releaseSection: 'lifecycle' },
                       });
                     }
@@ -252,7 +252,7 @@ export function DeploymentProgress({
           </p>
           {deploymentId && (
             <Link
-              to="/dashboard/deployments"
+              to="/dashboard/releases"
               search={{ deployment: deploymentId, releaseSection: 'overview' }}
               className="text-xs text-brand underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-brand"
             >

@@ -209,8 +209,8 @@ function ActivityTimeline({
       )}
       {appSlug && deploymentId && (
         <Link
-          to="/dashboard/workflows/$workflowId"
-          params={{ workflowId: appSlug }}
+          to="/dashboard/apps/$appSlug"
+          params={{ appSlug: appSlug }}
           search={{ tab: 'Activity' }}
           className="inline-block text-sm text-brand hover:underline"
         >
@@ -248,7 +248,7 @@ function ActivityRow({ row, appSlug }: { row: ResourceActivity; appSlug?: string
       </p>
       {release ? (
         <Link
-          to="/dashboard/deployments"
+          to="/dashboard/releases"
           search={{ deployment: row.deployment_id, releaseSection: 'audit' }}
           className="inline-block text-xs text-brand hover:underline"
         >
@@ -264,9 +264,9 @@ function ActivityRow({ row, appSlug }: { row: ResourceActivity; appSlug?: string
         </Link>
       ) : appSlug && (row.kind.startsWith('env.') || row.kind === 'app.config_updated') ? (
         <Link
-          to="/dashboard/workflows/$workflowId"
-          params={{ workflowId: appSlug }}
-          search={{ tab: row.kind.startsWith('env.') ? 'Env vars' : 'Configuration' }}
+          to="/dashboard/apps/$appSlug"
+          params={{ appSlug: appSlug }}
+          search={{ tab: row.kind.startsWith('env.') ? 'Environment' : 'Configuration' }}
           className="inline-block text-xs text-brand hover:underline"
         >
           View affected configuration

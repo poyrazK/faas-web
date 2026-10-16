@@ -10,7 +10,7 @@ import {
 } from '@tanstack/react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/lib/api/errors';
-import { Route as Traces } from './dashboard.traces';
+import { Route as Traces } from './dashboard.invocations';
 
 const listedId = 'a'.repeat(32);
 const olderId = 'b'.repeat(32);
@@ -80,7 +80,7 @@ async function mount(entry: string) {
   });
   const traces = createRoute({
     getParentRoute: () => dashboard,
-    path: 'traces',
+    path: 'invocations',
     component: Traces.options.component,
     validateSearch: Traces.options.validateSearch,
   });
@@ -98,12 +98,12 @@ async function mount(entry: string) {
 
 describe('invocation detail links', () => {
   it('opens an ID directly even when it is not in the loaded list', async () => {
-    await mount(`/dashboard/traces?invocation=${olderId}`);
+    await mount(`/dashboard/invocations?invocation=${olderId}`);
     expect(await screen.findByRole('dialog', { name: 'POST /work' })).toHaveTextContent(olderId);
     expect(mocks.read).toHaveBeenCalledWith(olderId);
   });
   it('writes row selection to the URL and follows back/forward navigation', async () => {
-    const { router, history } = await mount('/dashboard/traces');
+    const { router, history } = await mount('/dashboard/invocations');
     await userEvent.click(screen.getByText(listedId));
     await waitFor(() => expect(router.state.location.search.invocation).toBe(listedId));
     await act(async () => {
@@ -117,12 +117,12 @@ describe('invocation detail links', () => {
     expect(screen.getByRole('dialog')).toHaveTextContent(listedId);
   });
   it('removes the selected ID when the drawer closes', async () => {
-    const { router } = await mount(`/dashboard/traces?invocation=${olderId}`);
+    const { router } = await mount(`/dashboard/invocations?invocation=${olderId}`);
     await userEvent.keyboard('{Escape}');
     await waitFor(() => expect(router.state.location.search.invocation).toBeUndefined());
   });
   it('ignores invalid IDs without requesting them', async () => {
-    await mount('/dashboard/traces?invocation=invalid%2Fpath');
+    await mount('/dashboard/invocations?invocation=invalid%2Fpath');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(mocks.read).not.toHaveBeenCalledWith('invalid/path');
   });
@@ -130,7 +130,7 @@ describe('invocation detail links', () => {
     'keeps a denied or stale ID visible without substituting list data (%s)',
     async (status) => {
       mocks.errorStatus = status;
-      const { router } = await mount(`/dashboard/traces?invocation=${olderId}`);
+      const { router } = await mount(`/dashboard/invocations?invocation=${olderId}`);
       expect(screen.getByRole('dialog')).toHaveTextContent(olderId);
       expect(screen.getByRole('dialog')).toHaveTextContent('This invocation is unavailable.');
       expect(screen.getByRole('dialog')).not.toHaveTextContent('POST /work');
@@ -139,7 +139,7 @@ describe('invocation detail links', () => {
   );
   it('handles an unavailable linked invocation without selecting another record', async () => {
     mocks.missing = true;
-    await mount(`/dashboard/traces?invocation=${olderId}`);
+    await mount(`/dashboard/invocations?invocation=${olderId}`);
     expect(screen.getByRole('dialog')).toHaveTextContent('This invocation has no recorded detail.');
     expect(mocks.read).toHaveBeenCalledWith(olderId);
   });

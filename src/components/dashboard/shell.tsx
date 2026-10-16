@@ -480,9 +480,9 @@ function Breadcrumbs() {
   if (hub && (hub.label !== pageLabel || detail)) {
     trail.push({ label: hub.label, to: hub.to });
   }
-  if (!(['workflows', 'projects'].includes(section) && detail)) trail.push({ label: pageLabel });
+  if (!(['apps', 'projects'].includes(section) && detail)) trail.push({ label: pageLabel });
   if (section === 'projects' && detail) trail.push({ label: detail });
-  if (section === 'workflows' && detail) {
+  if (section === 'apps' && detail) {
     trail.push({
       label: detail === 'new' ? 'New app' : (workflows.find((w) => w.id === detail)?.name ?? 'App'),
     });
@@ -697,10 +697,10 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     // section is one line away from a shortcut.
     const CHORDS = {
       o: '/dashboard',
-      a: '/dashboard/workflows',
+      a: '/dashboard/apps',
       t: '/dashboard/templates',
       i: '/dashboard/import',
-      d: '/dashboard/deployments',
+      d: '/dashboard/releases',
       b: '/dashboard/builds',
       c: '/dashboard/crons',
       q: '/dashboard/queues',

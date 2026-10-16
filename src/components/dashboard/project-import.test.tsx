@@ -24,7 +24,7 @@ vi.mock('@tanstack/react-router', () => ({
     <a
       href={to
         .replace('$projectSlug', params?.projectSlug ?? '')
-        .replace('$workflowId', params?.workflowId ?? '')}
+        .replace('$appSlug', params?.appSlug ?? '')}
     >
       {children}
     </a>

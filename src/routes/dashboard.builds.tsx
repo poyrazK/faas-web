@@ -5,7 +5,7 @@ export const Route = createFileRoute('/dashboard/builds')({
   validateSearch: validateReleasesSearch,
   beforeLoad: ({ search, location }) => {
     throw redirect({
-      to: '/dashboard/deployments',
+      to: '/dashboard/releases',
       search: { ...search, view: 'builds' },
       hash: location.hash,
       replace: true,

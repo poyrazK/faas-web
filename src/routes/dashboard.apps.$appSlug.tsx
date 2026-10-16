@@ -1,14 +1,14 @@
 import {
   AppTabNavigation,
-  APP_DETAIL_TABS,
+  appTabPanelLabel,
+  resolveAppTab,
   type AppTab,
 } from '@/components/dashboard/app-tab-navigation';
 import { AutomationsBody } from '@/components/dashboard/automations-body';
 import { automationSearchPatch, validateJobsSearch } from '@/components/dashboard/jobs-search';
-import { RESTORE_TARGET, RESTORE_CONTEXT } from '@/lib/platform-claims';
 import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
-import { createFileRoute, Link, useParams } from '@tanstack/react-router';
-import { ArrowLeft, OpenNewWindow, Pause, Play, Refresh, Rocket } from 'iconoir-react';
+import { createFileRoute, useParams } from '@tanstack/react-router';
+import { Rocket } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import {
   EmptyState,
@@ -18,7 +18,6 @@ import {
   Panel,
   RangeSelector,
   StatTile,
-  StateBadge,
   UnreachableState,
   queryPhase,
 } from '@/components/dashboard/primitives';
@@ -29,18 +28,14 @@ import {
   useBindRepo,
   useBuildRecords,
   useDeployFromRef,
-  useParkApp,
-  useWakeApp,
   type MetricsRange,
 } from '@/lib/api/queries';
 import { toDeployment } from '@/lib/api/adapters';
 import { useData } from '@/lib/store';
 import { useToast } from '@/components/ui/toast';
-import { useConfirm } from '@/components/ui/confirm';
 import { errorMessage } from '@/lib/api/errors';
 import { useAuth } from '@/lib/auth';
 import { isPaidPlan } from '@/lib/plan';
-import { cn } from '@/lib/utils';
 import { LogsBody } from './dashboard.logs';
 import {
   logFilters,
@@ -49,11 +44,11 @@ import {
   validateLogsSearch,
   type LogsSearch,
 } from '@/components/dashboard/logs-search';
-import { RoutesBody } from './dashboard.apis';
+import { RoutesBody } from './dashboard.routes';
 import { SecretsBody } from './dashboard.secrets';
 import { EnvBody } from './dashboard.env';
 import { QueuesBody } from './dashboard.queues';
-import { UpstreamsBody } from './dashboard.databases';
+import { UpstreamsBody } from './dashboard.upstreams';
 import { AlertsBody } from './dashboard.alerts';
 import { DebugBody } from '@/components/dashboard/debug-body';
 import { validateDebugSearch, type DebugSearch } from '@/components/dashboard/debug-search';
@@ -73,10 +68,10 @@ import { AppUsagePanel, WakeTimelinePanel } from '@/components/dashboard/app-ins
 import { AppAnalyticsPanel } from '@/components/dashboard/app-analytics';
 import { AppOverview } from '@/components/dashboard/app-overview';
 import { PreviewDiscovery } from '@/components/dashboard/projects/preview-workload-set';
-import { RestartAppButton } from '@/components/dashboard/app-lifecycle';
+import { AppHeader } from '@/components/dashboard/app-header';
+import { AppActionsMenu } from '@/components/dashboard/app-actions-menu';
 import { TarballDeploy } from '@/components/dashboard/tarball-deploy';
 import { ImageDeploymentPanel } from '@/components/dashboard/image-deploy-form';
-import { TearDownPreviewButton } from '@/components/dashboard/preview-actions';
 import { Swap } from '@/components/dashboard/motion';
 import { RepoPicker } from '@/components/dashboard/repo-picker';
 import { DeploymentProgress } from '@/components/dashboard/deployment-progress';
@@ -105,8 +100,28 @@ const METRIC_RANGES: MetricsRange[] = ['5m', '15m', '1h', '6h', '24h', '7d', '15
  * here, so the question is asked once and a shared link lands on the right
  * app and the right tab.
  */
-const TABS = APP_DETAIL_TABS;
 type Tab = AppTab;
+
+/** One half of the Environment page — env vars and secrets share it. */
+function EnvironmentSection({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <section aria-label={title} className="flex flex-col gap-4">
+      <div>
+        <h2 className="text-base font-medium">{title}</h2>
+        <p className="text-sm text-muted-foreground">{description}</p>
+      </div>
+      {children}
+    </section>
+  );
+}
 
 function DeploymentCapability({
   slug,
@@ -132,7 +147,7 @@ function DeploymentCapability({
   return <>{children}</>;
 }
 
-export const Route = createFileRoute('/dashboard/workflows/$workflowId')({
+export const Route = createFileRoute('/dashboard/apps/$appSlug')({
   head: () => pageHead({ title: 'App' }),
   // Tab lives in the URL, so a refresh or a shared link lands on the same one.
   // Optional, so links elsewhere need not pass it and the default tab leaves
@@ -152,7 +167,7 @@ export const Route = createFileRoute('/dashboard/workflows/$workflowId')({
     ...automationSearchPatch(validateJobsSearch(search)),
     ...logsSearchPatch(validateLogsSearch(search)),
     ...validateIssueSearch(search),
-    tab: TABS.includes(search.tab as Tab) ? (search.tab as Tab) : undefined,
+    tab: resolveAppTab(search.tab),
     deployment:
       typeof search.deployment === 'string' && search.deployment ? search.deployment : undefined,
     releaseSection: validateReleasesSearch({ ...search, build: undefined }).releaseSection,
@@ -162,7 +177,7 @@ export const Route = createFileRoute('/dashboard/workflows/$workflowId')({
 });
 
 function FunctionDetailPage() {
-  const { workflowId } = useParams({ from: '/dashboard/workflows/$workflowId' });
+  const { appSlug } = useParams({ from: '/dashboard/apps/$appSlug' });
   const search = Route.useSearch();
   const { tab = 'Overview', deployment: selectedDeploymentId, releaseSection } = search;
   const navigate = Route.useNavigate();
@@ -180,14 +195,12 @@ function FunctionDetailPage() {
   }, [search, navigate]);
   const tabsId = useId();
   const [range, setRange] = useState<MetricsRange>('24h');
-  const { getWorkflow, redeploy, loading, error, refresh } = useData();
+  const { getWorkflow, loading, error, refresh } = useData();
   const { account, loading: authLoading } = useAuth();
   const { toast } = useToast();
-  const park = useParkApp();
-  const wake = useWakeApp();
-  const deployFromRef = useDeployFromRef(workflowId);
-  const bindRepo = useBindRepo(workflowId);
-  const appDeploymentQuery = useAppDeployments(workflowId);
+  const deployFromRef = useDeployFromRef(appSlug);
+  const bindRepo = useBindRepo(appSlug);
+  const appDeploymentQuery = useAppDeployments(appSlug);
   const [deployOpen, setDeployOpen] = useState(false);
   const [deployRepo, setDeployRepo] = useState('');
   const [deployRef, setDeployRef] = useState('main');
@@ -197,17 +210,16 @@ function FunctionDetailPage() {
     ref: string;
   } | null>(null);
   const [deploySubmissionError, setDeploySubmissionError] = useState<string | null>(null);
-  const confirm = useConfirm();
 
-  const fn = getWorkflow(workflowId);
+  const fn = getWorkflow(appSlug);
   // The route's `head` can only name the id, so the real name is applied here
   // once the store resolves it. Above the early return — it is a hook.
   useDocumentTitle(fn?.name ?? 'App not found');
 
   // Real per-app aggregates for the Metrics tab. Called with the slug, which is
-  // what `workflowId` is.
+  // what `appSlug` is.
   const paidAccess = account !== null && isPaidPlan(account.plan);
-  const metrics = useAppMetrics(workflowId, tab === 'Overview' ? '24h' : range, {
+  const metrics = useAppMetrics(appSlug, tab === 'Overview' ? '24h' : range, {
     enabled: paidAccess && (tab === 'Overview' || tab === 'Metrics'),
   });
   const metricsDegraded = Boolean(metrics.data && metrics.data.source !== 'prometheus');
@@ -267,9 +279,9 @@ function FunctionDetailPage() {
 
   const deployments = useMemo(() => {
     const appId = deploymentItems[0]?.app_id;
-    const slugById = appId ? new Map([[appId, workflowId]]) : new Map<string, string>();
+    const slugById = appId ? new Map([[appId, appSlug]]) : new Map<string, string>();
     return deploymentItems.map((deployment) => toDeployment(deployment, slugById));
-  }, [deploymentItems, workflowId]);
+  }, [deploymentItems, appSlug]);
   // Keep a stale loaded page usable while a later page is being fetched, but
   // never turn an initial deployment read failure into an undeployed gate.
   const deploymentError = deployments.length === 0 ? appDeploymentQuery.error : undefined;
@@ -285,7 +297,7 @@ function FunctionDetailPage() {
   if (error) {
     return (
       <div className="flex flex-col gap-6">
-        <PageHeader title={workflowId} />
+        <PageHeader title={appSlug} />
         <ErrorState error={error} onRetry={refresh} />
       </div>
     );
@@ -294,7 +306,7 @@ function FunctionDetailPage() {
   if (loading) {
     return (
       <div className="flex flex-col gap-6">
-        <PageHeader title={workflowId} />
+        <PageHeader title={appSlug} />
         <LoadingState />
       </div>
     );
@@ -309,6 +321,11 @@ function FunctionDetailPage() {
     );
   }
 
+  const releases = {
+    data: deploymentItems,
+    isPending: appDeploymentQuery.isPending,
+    error: appDeploymentQuery.error,
+  };
   const hasRunnable = hasRunnableDeployment(deployments);
   const canRollback = hasRollbackTarget(deployments);
   const isDeploying =
@@ -316,85 +333,11 @@ function FunctionDetailPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <Link
-        to="/dashboard/workflows"
-        className="inline-flex w-fit items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
-      >
-        <ArrowLeft className="h-3 w-3" />
-        All apps
-      </Link>
-
-      <PageHeader
-        title={fn.name}
-        description={
-          tab === 'Overview'
-            ? undefined
-            : [
-                fn.runtime,
-                `${fn.memoryMb} MB`,
-                fn.visibility === 'internal' ? 'Internal only' : fn.url,
-              ]
-                .filter(Boolean)
-                .join(' · ')
-        }
+      <AppHeader
+        app={fn}
+        releases={releases}
         actions={
           <>
-            {tab !== 'Overview' && <StateBadge state={fn.state} />}
-            {/* Park and wake were two of the unused hooks: the API has had
-                both for as long as the console has existed. */}
-            {fn.state === 'running' ? (
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5"
-                disabled={park.isPending}
-                onClick={async () => {
-                  if (
-                    !(await confirm({
-                      title: `Park ${fn.name}?`,
-                      description: `Running instances snapshot and release now. The next request pays the wake cost. ${RESTORE_TARGET}. ${RESTORE_CONTEXT}`,
-                      confirmLabel: 'Park',
-                    }))
-                  )
-                    return;
-                  void park
-                    .mutateAsync(fn.id)
-                    .then(() => toast({ kind: 'success', title: `Parked ${fn.name}` }))
-                    .catch((err: unknown) =>
-                      toast({
-                        kind: 'error',
-                        title: 'Could not park',
-                        description: errorMessage(err),
-                      })
-                    );
-                }}
-              >
-                <Pause className="h-3.5 w-3.5" />
-                Park
-              </Button>
-            ) : fn.state === 'idle' ? (
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5"
-                disabled={wake.isPending}
-                onClick={() =>
-                  void wake
-                    .mutateAsync(fn.id)
-                    .then(() => toast({ kind: 'success', title: `Waking ${fn.name}` }))
-                    .catch((err: unknown) =>
-                      toast({
-                        kind: 'error',
-                        title: 'Could not wake',
-                        description: errorMessage(err),
-                      })
-                    )
-                }
-              >
-                <Play className="h-3.5 w-3.5" />
-                Wake
-              </Button>
-            ) : null}
             <Button
               size="sm"
               className="gap-1.5"
@@ -405,63 +348,12 @@ function FunctionDetailPage() {
               }}
             >
               <Rocket className="h-3.5 w-3.5" />
-              Deploy
+              {isDeploying ? 'Deploying…' : 'Deploy'}
             </Button>
-            <RestartAppButton slug={fn.id} />
-            <TearDownPreviewButton slug={fn.id} />
-            {canRollback && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5"
-                disabled={isDeploying}
-                onClick={async () => {
-                  if (
-                    !(await confirm({
-                      title: `Roll back ${fn.name}?`,
-                      description:
-                        'Traffic moves to the previous successful deployment. The current one stays available to roll forward to.',
-                      confirmLabel: 'Roll back',
-                    }))
-                  )
-                    return;
-                  // `POST /v1/apps/{slug}/rollback` — a real write, so the toast
-                  // reports what happened rather than announcing it up front.
-                  void redeploy(fn.id)
-                    .then(() =>
-                      toast({
-                        kind: 'success',
-                        title: 'Rolled back',
-                        description: `${fn.name} is serving its previous deployment.`,
-                      })
-                    )
-                    .catch((err: unknown) =>
-                      toast({
-                        kind: 'error',
-                        title: 'Rollback failed',
-                        description: errorMessage(err),
-                      })
-                    );
-                }}
-              >
-                <Refresh className={cn('h-3.5 w-3.5', isDeploying && 'animate-spin')} />
-                {isDeploying ? 'Deploying…' : 'Roll back'}
-              </Button>
-            )}
+            <AppActionsMenu app={fn} canRollback={canRollback} isDeploying={isDeploying} />
           </>
         }
       />
-
-      {tab !== 'Overview' && fn.url && fn.visibility !== 'internal' && (
-        <a
-          href={fn.url}
-          className="inline-flex w-fit items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 font-mono text-xs text-muted-foreground transition-colors hover:border-brand/40 hover:text-foreground"
-        >
-          {fn.url}
-          <OpenNewWindow className="h-3 w-3" />
-        </a>
-      )}
-
       {activeDeployment && (
         <DeploymentProgress
           appCreated
@@ -479,14 +371,18 @@ function FunctionDetailPage() {
         panelId={`${tabsId}-panel`}
       />
 
-      <div role="tabpanel" id={`${tabsId}-panel`} aria-labelledby={`${tabsId}-panel-tab-${tab}`}>
+      <div
+        role="tabpanel"
+        id={`${tabsId}-panel`}
+        aria-labelledby={appTabPanelLabel(`${tabsId}-panel`, tab)}
+      >
         {/* Keyed by tab, so switching cross-fades the panel in rather than
             hard-swapping — the tab strip above stays put either way. */}
         <Swap id={tab}>
           <div className="flex flex-col gap-6">
             {tab === 'Automations' && (
               <AutomationsBody
-                fixedSlug={workflowId}
+                fixedSlug={appSlug}
                 search={search}
                 onSelection={(patch) => {
                   void navigate({
@@ -499,15 +395,11 @@ function FunctionDetailPage() {
                 }}
               />
             )}
-            {tab === 'Overview' && <PreviewDiscovery slug={workflowId} />}
+            {tab === 'Overview' && <PreviewDiscovery slug={appSlug} />}
             {tab === 'Overview' && (
               <AppOverview
                 app={fn}
-                releases={{
-                  data: deploymentItems,
-                  isPending: appDeploymentQuery.isPending,
-                  error: appDeploymentQuery.error,
-                }}
+                releases={releases}
                 metrics={metrics}
                 metricsAccess={
                   authLoading || account === null
@@ -643,7 +535,7 @@ function FunctionDetailPage() {
 
             {tab === 'Deployments' && (
               <>
-                <ImageDeploymentPanel key={workflowId} slug={workflowId} />
+                <ImageDeploymentPanel key={appSlug} slug={appSlug} />
                 <DeploymentHistoryPanel
                   slug={fn.id}
                   selectedDeploymentId={selectedDeploymentId}
@@ -761,12 +653,26 @@ function FunctionDetailPage() {
                 baseUrl={fn.visibility === 'internal' ? undefined : fn.url}
               />
             )}
-            {tab === 'Secrets' && <SecretsBody slug={fn.id} />}
-            {tab === 'Env vars' && <EnvBody slug={fn.id} />}
+            {tab === 'Environment' && (
+              <>
+                <EnvironmentSection
+                  title="Variables"
+                  description="Plain configuration the app reads at start. Values are visible to anyone with access to this app."
+                >
+                  <EnvBody slug={fn.id} />
+                </EnvironmentSection>
+                <EnvironmentSection
+                  title="Secrets"
+                  description="Sealed at rest and write-only: once saved, a value can be replaced or rotated but never read back."
+                >
+                  <SecretsBody slug={fn.id} />
+                </EnvironmentSection>
+              </>
+            )}
             {tab === 'Queues' && <QueuesBody slug={fn.id} />}
             {tab === 'Upstreams' && <UpstreamsBody slug={fn.id} />}
             {tab === 'Services' && <ServiceBindings slug={fn.id} />}
-            {tab === 'MCP' && <McpGuidance key={workflowId} slug={workflowId} />}
+            {tab === 'MCP' && <McpGuidance key={appSlug} slug={appSlug} />}
             {tab === 'Alerts' && <AlertsBody slug={fn.id} />}
             {tab === 'Webhooks' && (
               <WebhooksHub

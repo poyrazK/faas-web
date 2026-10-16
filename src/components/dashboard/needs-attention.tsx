@@ -243,7 +243,7 @@ export function NeedsAttentionContent({
                     >
                       <Link
                         onClick={onNavigate}
-                        to="/dashboard/deployments"
+                        to="/dashboard/releases"
                         search={{ deployment: deployment.id }}
                         aria-label={`View deployment ${deployment.id}`}
                         title={deployment.id}
@@ -293,7 +293,7 @@ export function NeedsAttentionContent({
           <span>
             Deployment checks cover at most the latest 50 deployments, not the full history.
           </span>
-          <Link onClick={onNavigate} to="/dashboard/deployments" className={ACTION_CLASS}>
+          <Link onClick={onNavigate} to="/dashboard/releases" className={ACTION_CLASS}>
             Open deployment history
           </Link>
         </p>

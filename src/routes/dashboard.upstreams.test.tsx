@@ -29,7 +29,7 @@ vi.mock('@/components/dashboard/app-select', () => ({
   useSelectedApp: () => ({ slug: 'api', apps: [], select: vi.fn() }),
 }));
 
-const { UpstreamsBody } = await import('./dashboard.databases');
+const { UpstreamsBody } = await import('./dashboard.upstreams');
 
 beforeEach(() => {
   addUpstream

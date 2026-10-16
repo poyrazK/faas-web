@@ -29,7 +29,8 @@ import { usePolicyOperation } from './policy-operation';
  * confirmation says so instead of claiming the cache is empty.
  */
 
-export function RestartAppButton({ slug }: { slug: string }) {
+/** Restart with its confirmation and outcome toasts, for a button or a menu item. */
+export function useRestartAction(slug: string) {
   const { toast } = useToast();
   const confirm = useConfirm();
   const restart = useRestartApp(slug);
@@ -73,13 +74,18 @@ export function RestartAppButton({ slug }: { slug: string }) {
     }
   };
 
+  return { run: onRestart, pending: restart.isPending };
+}
+
+export function RestartAppButton({ slug }: { slug: string }) {
+  const restart = useRestartAction(slug);
   return (
     <Button
       variant="outline"
       size="sm"
       className="gap-1.5"
-      onClick={() => void onRestart()}
-      disabled={restart.isPending}
+      onClick={() => void restart.run()}
+      disabled={restart.pending}
     >
       <Refresh className="h-3.5 w-3.5" />
       Restart
