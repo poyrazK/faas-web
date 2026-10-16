@@ -345,7 +345,7 @@ function Editor({ accountId, plan, slug, binding }: Props) {
             </div>
           ) : (
             <div className="space-y-2">
-              <label className="block space-y-1">
+              <label className="flex flex-col gap-1.5">
                 <span>Queue name</span>
                 <input
                   className={FIELD}
@@ -354,7 +354,7 @@ function Editor({ accountId, plan, slug, binding }: Props) {
                   onChange={(event) => setQueueName(event.target.value)}
                 />
               </label>
-              <label className="block space-y-1">
+              <label className="flex flex-col gap-1.5">
                 <span>Delivery mode</span>
                 <select
                   className={FIELD}
@@ -366,7 +366,7 @@ function Editor({ accountId, plan, slug, binding }: Props) {
                   <option value="push">Push</option>
                 </select>
               </label>
-              <label className="block space-y-1">
+              <label className="flex flex-col gap-1.5">
                 <span>Max concurrency</span>
                 <input
                   className={FIELD}

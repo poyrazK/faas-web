@@ -149,7 +149,7 @@ export function CompanionsSummary({
           ) : (
             choices.data && (
               <>
-                <label className="block space-y-1">
+                <label className="flex flex-col gap-1.5">
                   <span>Deployment</span>
                   <select
                     aria-label="Deployment"
