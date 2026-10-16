@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { SegmentedControl, Tabs, tabId } from './tabs';
 
 /**
- * The app page's pages, in six groups.
+ * The app page's pages, in seven groups.
  *
  * The groups are the tabs; a group's pages are a segmented control beneath
  * them, shown only when the group has more than one. It used to be the other
@@ -27,6 +27,10 @@ export const APP_TAB_GROUPS = [
       'OpenAPI',
     ],
   },
+  // Who pays for this API, and how much: consumers with their keys, plans and
+  // statements. Not under Connect — that group is how traffic reaches the app,
+  // this one is the commercial relationship with whoever sends it.
+  { label: 'Monetize', tabs: ['Consumers', 'Consumer plans'] },
   { label: 'Automate', tabs: ['Automations', 'Queues', 'Webhooks'] },
   { label: 'Configure', tabs: ['Environment', 'Configuration'] },
 ] as const;
