@@ -9,7 +9,8 @@ const entries: Capability[] = [
     key: 'ai-gateway',
     name: 'AI gateway',
     category: 'data',
-    description: 'LLM provider calls through managed outbound integrations with token and cost caps.',
+    description:
+      'LLM provider calls through managed outbound integrations with token and cost caps.',
     maturity: 'preview',
     plans: PAID,
     docs_url: '/docs/ai-gateway',
