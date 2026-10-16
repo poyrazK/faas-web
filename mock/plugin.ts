@@ -4,6 +4,7 @@ import type { Plugin } from 'vite';
 import type { components } from '../src/lib/api/schema';
 import * as db from './data';
 import * as automationMock from './automations';
+import * as logDrainMock from './log-drains';
 import { mockCapabilities } from './capabilities';
 import { mockOpenAPIPreview } from './openapi-preview';
 import { isDigestPinnedImage } from '../src/lib/oci-image';
@@ -2324,6 +2325,62 @@ route('GET', '/v1/apps/{slug}/debug/dependencies', ({ params, query }) => {
     edges: [],
   };
 });
+
+// --- Log drains ---
+function drainOf(slug: string, id: string) {
+  app(slug);
+  const drain = logDrainMock.drains.get(slug)?.find((d) => d.id === id);
+  if (!drain) throw new Problem(404, 'log_drain_not_found');
+  return drain;
+}
+route('GET', '/v1/apps/{slug}/log-drains', ({ params }) => {
+  app(params.slug);
+  return logDrainMock.drains.get(params.slug) ?? [];
+});
+route('POST', '/v1/apps/{slug}/log-drains', ({ params, body }) => {
+  const a = app(params.slug);
+  const url = String(body.target_url ?? '');
+  if (!/^https?:\/\//.test(url))
+    throw new Problem(400, 'validation_failed', 'target_url must be an http(s) URL.');
+  const drain: components['schemas']['AppLogDrainResponse'] = {
+    id: db.id(),
+    app_id: a.id,
+    account_id: db.ACCOUNT_ID,
+    kind: body.kind === 'otlp' ? 'otlp' : 'http_json',
+    target_url: url,
+    auth_header_masked: body.auth_header ? '***' : '',
+    enabled: body.enabled !== false,
+    created_at: db.iso(0),
+    updated_at: db.iso(0),
+  };
+  logDrainMock.drains.set(a.slug, [...(logDrainMock.drains.get(a.slug) ?? []), drain]);
+  return status(201, drain);
+});
+route('GET', '/v1/apps/{slug}/log-drains/{id}', ({ params }) => drainOf(params.slug, params.id));
+route('PATCH', '/v1/apps/{slug}/log-drains/{id}', ({ params, body }) => {
+  const drain = drainOf(params.slug, params.id);
+  if (typeof body.enabled === 'boolean') drain.enabled = body.enabled;
+  if (typeof body.target_url === 'string') drain.target_url = body.target_url;
+  if (body.kind === 'otlp' || body.kind === 'http_json') drain.kind = body.kind;
+  if (typeof body.auth_header === 'string')
+    drain.auth_header_masked = body.auth_header ? '***' : '';
+  drain.updated_at = db.iso(0);
+  return drain;
+});
+route('DELETE', '/v1/apps/{slug}/log-drains/{id}', ({ params }) => {
+  drainOf(params.slug, params.id);
+  logDrainMock.drains.set(
+    params.slug,
+    (logDrainMock.drains.get(params.slug) ?? []).filter((d) => d.id !== params.id)
+  );
+  return NO_CONTENT;
+});
+route('GET', '/v1/apps/{slug}/log-drains/{id}/health', ({ params }) =>
+  logDrainMock.healthFor(drainOf(params.slug, params.id))
+);
+route('GET', '/v1/apps/{slug}/log-drains/{id}/analytics', ({ params, query }) =>
+  logDrainMock.analyticsFor(drainOf(params.slug, params.id), query.get('window') ?? '24h')
+);
 
 route('GET', '/v1/apps/{slug}/upstreams/history', ({ params, query }) => {
   const a = app(params.slug);

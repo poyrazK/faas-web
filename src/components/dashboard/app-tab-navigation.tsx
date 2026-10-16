@@ -13,7 +13,7 @@ import { SegmentedControl, Tabs, tabId } from './tabs';
 export const APP_TAB_GROUPS = [
   { label: 'Overview', tabs: ['Overview', 'Metrics', 'Invoke'] },
   { label: 'Delivery', tabs: ['Deployments', 'Activity'] },
-  { label: 'Observe', tabs: ['Logs', 'Errors', 'Issues', 'Alerts', 'Debugger'] },
+  { label: 'Observe', tabs: ['Logs', 'Log drains', 'Errors', 'Issues', 'Alerts', 'Debugger'] },
   {
     label: 'Connect',
     tabs: [
