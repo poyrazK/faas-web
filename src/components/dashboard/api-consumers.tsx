@@ -36,6 +36,7 @@ import { Pill, ResourceTable, type Column } from './resource-table';
 import { SegmentedControl } from './tabs';
 import { ConsumerStatements } from './api-consumer-statements';
 import {
+  DetailRegion,
   Facts,
   MonetizationGate,
   STATUS_COLOR,
@@ -165,13 +166,14 @@ function ConsumersPanel({ slug }: { slug: string }) {
         />
       </Panel>
       {selected && (
-        <ConsumerDetail
-          key={selected.id}
-          slug={slug}
-          consumer={selected}
-          plans={plans.data?.plans}
-          onClose={() => setSelectedId('')}
-        />
+        <DetailRegion key={selected.id} label={`Consumer ${selected.name}`}>
+          <ConsumerDetail
+            slug={slug}
+            consumer={selected}
+            plans={plans.data?.plans}
+            onClose={() => setSelectedId('')}
+          />
+        </DetailRegion>
       )}
       <RegisterConsumer
         slug={slug}

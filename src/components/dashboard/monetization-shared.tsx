@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { useCapability } from '@/lib/api/capabilities';
 import { useApps } from '@/lib/api/queries';
 import { ApiError, errorMessage } from '@/lib/api/errors';
@@ -222,4 +222,22 @@ export function Facts({ items }: { items: [string, ReactNode][] }) {
 export function useAppNames() {
   const apps = useApps();
   return useMemo(() => new Map((apps.data ?? []).map((a) => [a.id, a.slug] as const)), [apps.data]);
+}
+
+/**
+ * A detail pane opened from a row below a long list: bring it into view and
+ * move focus to it once, on mount, so keyboard and screen-reader users land
+ * on what they opened. Callers key the pane by the selected id.
+ */
+export function DetailRegion({ label, children }: { label: string; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    ref.current?.focus({ preventScroll: true });
+    ref.current?.scrollIntoView({ block: 'nearest' });
+  }, []);
+  return (
+    <div ref={ref} tabIndex={-1} role="region" aria-label={label} className="outline-none">
+      {children}
+    </div>
+  );
 }

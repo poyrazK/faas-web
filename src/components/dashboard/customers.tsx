@@ -25,6 +25,7 @@ import { Pill, ResourceTable, type Column } from './resource-table';
 import { SegmentedControl } from './tabs';
 import { TenantRateCards, TenantStatements, TenantUsage } from './customer-billing';
 import {
+  DetailRegion,
   Facts,
   MonetizationGate,
   STATUS_COLOR,
@@ -126,7 +127,9 @@ function CustomersBody() {
         </div>
       </Panel>
       {selectedId && (
-        <CustomerDetail key={selectedId} id={selectedId} onClose={() => setSelectedId('')} />
+        <DetailRegion key={selectedId} label="Customer details">
+          <CustomerDetail id={selectedId} onClose={() => setSelectedId('')} />
+        </DetailRegion>
       )}
       <RegisterCustomer
         open={registering}
