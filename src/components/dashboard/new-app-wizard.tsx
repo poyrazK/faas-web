@@ -38,6 +38,7 @@ import { useWorkspaceTarget, workspaceCreateError } from '@/lib/api/workspace-ap
 import {
   useBindRepoFor,
   useDeployFromRefFor,
+  useApps,
   useSourceRefScan,
   useTemplates,
   useUpdateAppFor,
@@ -52,6 +53,7 @@ import {
   residentInstancesAllowed,
 } from '@/lib/plan';
 import { cn } from '@/lib/utils';
+import { predictedAppUrl } from '@/lib/app-url';
 import { FirstDeploymentRecovery } from './first-deployment-recovery';
 
 type SourceField = 'source-git' | 'source-template' | 'repository' | 'ref';
@@ -415,6 +417,11 @@ function CreateAppWizard({
     quotaExceeded ||
     !memoryAllowed(account, selectedMemoryMb) ||
     (visibility === 'internal' && !privateAvailable);
+
+  // The platform names the app's URL after its slug, so review can show it
+  // before create; the zone comes from an app the account already has.
+  const knownApps = useApps();
+  const predictedUrl = nameValid ? predictedAppUrl(name, knownApps.data ?? []) : undefined;
 
   // A disabled Deploy always says why. The plan-limit case already has its
   // own alert in the review panel, so it is not repeated here.
@@ -1227,12 +1234,11 @@ function CreateAppWizard({
                     'Scale to zero',
                     effectiveScaleToZero ? 'Parks when idle' : 'One instance kept resident',
                   ],
-                  // Assigned by the API on create, so it is not known until then.
                   [
-                    'Endpoint',
+                    'Public URL',
                     visibility === 'internal'
-                      ? 'No public endpoint'
-                      : (createdUrl ?? 'Assigned on create'),
+                      ? 'None (internal service only)'
+                      : (predictedUrl ?? 'Assigned on create'),
                   ],
                 ].map(([label, value]) => (
                   <div key={label} className="flex flex-col gap-1 border-b border-border pb-3">
@@ -1241,6 +1247,11 @@ function CreateAppWizard({
                   </div>
                 ))}
               </dl>
+              <p className="mt-4 text-xs text-muted-foreground">
+                {visibility === 'internal'
+                  ? 'Internal apps get no public URL; other apps in this account call them through service routing.'
+                  : 'The URL follows the app name; the platform confirms it when the app is created.'}
+              </p>
               {workspace.org && (
                 <p className="mt-4 text-xs text-muted-foreground">
                   Created in {workspace.label}, so it is listed in that workspace. You stay its

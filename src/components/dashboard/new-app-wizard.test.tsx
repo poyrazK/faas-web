@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   confirm: vi.fn(),
   scan: vi.fn(),
   capabilityState: 'available',
+  apps: [] as { id: string; slug: string; url?: string }[],
   account: {
     id: 'account-1',
     plan: 'hobby' as 'free' | 'hobby' | 'pro' | 'scale',
@@ -94,7 +95,7 @@ vi.mock('@/lib/api/queries', () => ({
     isPending: false,
     isError: false,
   }),
-  useApps: () => ({ data: [{ id: 'app-1', slug: 'demo-app' }] }),
+  useApps: () => ({ data: mocks.apps }),
   useRetryDeployment: () => ({ mutateAsync: mocks.retry, isPending: false }),
   useCancelDeployment: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useDeployment: (id: string) => ({
@@ -156,6 +157,7 @@ beforeEach(() => {
   mocks.readPrivate.mockResolvedValue(undefined);
   mocks.scan.mockReturnValue({ plan: undefined, error: null, scanning: false });
   mocks.capabilityState = 'available';
+  mocks.apps = [{ id: 'app-1', slug: 'demo-app' }];
 });
 
 afterEach(() => vi.restoreAllMocks());
@@ -406,6 +408,54 @@ describe('NewAppWizard validation', () => {
   });
 });
 
+describe('NewAppWizard review', () => {
+  async function reviewGit(user: ReturnType<typeof userEvent.setup>) {
+    render(<NewAppWizard onboarding />);
+    await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await nameApp(user, 'orders-api');
+  }
+
+  it('shows the public URL the app will get, under the zone its siblings use', async () => {
+    mocks.apps = [
+      { id: 'a', slug: 'private-thing' },
+      { id: 'b', slug: 'storefront', url: 'https://storefront.gregale.app' },
+    ];
+    const user = userEvent.setup();
+    await reviewGit(user);
+    await user.click(screen.getByRole('button', { name: 'Review' }));
+    await screen.findByRole('button', { name: 'Deploy app' });
+    expect(screen.getByText('Public URL').nextElementSibling).toHaveTextContent(
+      'https://orders-api.gregale.app'
+    );
+    expect(screen.queryByText('Assigned on create')).not.toBeInTheDocument();
+  });
+
+  it('falls back to the documented platform zone for a first app', async () => {
+    mocks.apps = [];
+    const user = userEvent.setup();
+    await reviewGit(user);
+    await user.click(screen.getByRole('button', { name: 'Review' }));
+    await screen.findByRole('button', { name: 'Deploy app' });
+    expect(screen.getByText('Public URL').nextElementSibling).toHaveTextContent(
+      'https://orders-api.gregale.dev'
+    );
+  });
+
+  it('says an internal app has no public URL', async () => {
+    mocks.apps = [{ id: 'b', slug: 'storefront', url: 'https://storefront.gregale.app' }];
+    const user = userEvent.setup();
+    await reviewGit(user);
+    await user.selectOptions(screen.getByLabelText('App visibility'), 'internal');
+    await user.click(screen.getByRole('button', { name: 'Review' }));
+    await screen.findByRole('button', { name: 'Deploy app' });
+    expect(screen.getByText('Public URL').nextElementSibling).toHaveTextContent(
+      'None (internal service only)'
+    );
+    expect(screen.queryByText(/gregale\.app/)).not.toBeInTheDocument();
+  });
+});
+
 describe('NewAppWizard Git submission', () => {
   it('keeps a restored internal deployment endpoint non-clickable after it becomes live', () => {
     mocks.appVisibility = 'internal';
@@ -429,7 +479,10 @@ describe('NewAppWizard Git submission', () => {
     await user.selectOptions(screen.getByLabelText('App visibility'), 'internal');
     await user.click(screen.getByRole('button', { name: 'Review' }));
     const deploy = await screen.findByRole('button', { name: 'Deploy app' });
-    expect(screen.getByText('No public endpoint')).toBeInTheDocument();
+    expect(screen.getByText('Public URL').nextElementSibling).toHaveTextContent(
+      'None (internal service only)'
+    );
+    expect(screen.getByText(/Internal apps get no public URL/)).toBeInTheDocument();
     await user.click(deploy);
     await waitFor(() => expect(mocks.readPrivate).toHaveBeenCalledTimes(1));
     await waitFor(() =>

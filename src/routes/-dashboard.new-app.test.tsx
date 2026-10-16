@@ -68,6 +68,7 @@ vi.mock('@/lib/api/queries', () => ({
   useDeployFromRefFor: () => ({ mutateAsync: mocks.deploy }),
   useUpdateAppFor: () => ({ mutateAsync: vi.fn() }),
   useSourceRefScan: () => mocks.sourceScan,
+  useApps: () => ({ data: [] }),
   useTemplates: () => ({
     data:
       mocks.templateRead === 'ready'
