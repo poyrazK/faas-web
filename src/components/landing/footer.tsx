@@ -20,9 +20,8 @@ import { FloorGlow } from './floor-glow';
  * here), and the OpenAPI document the API serves on this origin. A column is
  * short when the material is short.
  *
- * Still absent: Privacy and Terms, which remain unwritten; social accounts,
- * which the site does not have; and a language selector, because there is one
- * language. Each of those is a link this footer would have to invent.
+ * Social accounts and a language selector remain absent because the site does
+ * not have them. Privacy, Terms, and Support have public routes below.
  */
 interface FooterLink {
   label: string;
@@ -32,7 +31,7 @@ interface FooterLink {
   /** An app route rather than an anchor, so the router handles it. */
   route?: '/login' | '/signup' | '/dashboard';
   /** A public app route without the marketing-to-product sweep. */
-  publicRoute?: '/status';
+  publicRoute?: '/status' | '/privacy' | '/terms' | '/support';
   /** A docs page. `true` is the docs index; a string is that page's slug. */
   doc?: true | string;
 }
@@ -87,6 +86,8 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
     title: 'Trust & safety',
     links: [
       { label: 'Status', href: '/status', publicRoute: '/status' },
+      { label: 'Privacy', href: '/privacy', publicRoute: '/privacy' },
+      { label: 'Terms of Service', href: '/terms', publicRoute: '/terms' },
       { label: 'Compliance', href: '/docs/compliance', doc: 'compliance' },
       { label: 'Data Processing Agreement', href: '/docs/dpa', doc: 'dpa' },
       { label: 'Sub-processors', href: '/docs/subprocessors', doc: 'subprocessors' },
@@ -103,6 +104,7 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
       { label: 'Console', href: '/dashboard', route: '/dashboard' },
       { label: 'Join the beta', href: '/signup', route: '/signup' },
       { label: 'Sign in', href: '/login', route: '/login' },
+      { label: 'Support', href: '/support', publicRoute: '/support' },
     ],
   },
 ];
