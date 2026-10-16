@@ -14,7 +14,8 @@ import { NeedsAttentionContent, type NeedsAttentionProps } from './needs-attenti
 
 const now = new Date('2026-10-10T10:00:00Z');
 const ready = <T,>(data: T) => ({ data, isPending: false, error: null, refetch: vi.fn() });
-const app = (slug: string, status: string) => ({ id: `app-${slug}`, slug, status });
+type AppStatus = 'active' | 'evicted_cold' | 'deleted' | 'undeployed';
+const app = (slug: string, status: AppStatus = 'active') => ({ id: `app-${slug}`, slug, status });
 const deployment = (id: string, status = 'failed', created_at = '2026-10-10T09:00:00Z') => ({
   id,
   app_id: 'app-alpha',
@@ -58,40 +59,22 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
-describe('app failures', () => {
-  it('links reported failures to the exact app logs, not parked or unknown states', async () => {
+describe('app status', () => {
+  it('reads failures from deployments, never from app status', async () => {
+    // apid's app statuses (active, evicted_cold, deleted, undeployed) carry no
+    // failure, so a parked or undeployed app is not an issue to review.
     const props = inputs();
-    props.apps.data = [
-      app('alpha', 'failed'),
-      app('beta', 'ERROR'),
-      app('gamma', 'crashed'),
-      app('parked', 'parked'),
-      app('unknown', 'new_status'),
-      { ...app('deleted', 'failed'), deleted_at: '2026-10-09T09:00:00Z' },
-    ];
+    props.apps.data = [app('alpha'), app('parked', 'evicted_cold'), app('new', 'undeployed')];
     await mount(props);
-    expect(panel().getByRole('link', { name: 'View logs for alpha' })).toHaveAttribute(
-      'href',
-      '/dashboard/workflows/alpha?tab=Logs'
-    );
-    expect(panel().getByRole('link', { name: 'View logs for beta' })).toHaveAttribute(
-      'href',
-      '/dashboard/workflows/beta?tab=Logs'
-    );
-    expect(panel().getByRole('link', { name: 'View logs for gamma' })).toBeInTheDocument();
-    expect(panel().getAllByRole('link', { name: /View logs/ })).toHaveLength(3);
+    expect(panel().getByText('No reported issues in the checked data.')).toBeInTheDocument();
+    expect(panel().queryByText('App failures')).not.toBeInTheDocument();
   });
 
-  it('limits the list without concealing that more apps need attention', async () => {
+  it('names a failed deployment by its app when the app list is readable', async () => {
     const props = inputs();
-    props.apps.data = ['delta', 'gamma', 'beta', 'alpha'].map((slug) => app(slug, 'failed'));
+    props.deployments.data = { items: [deployment('recent')] };
     await mount(props);
-    expect(panel().getAllByRole('link', { name: /View logs/ })).toHaveLength(3);
-    expect(panel().getByText('Showing 3 of 4 failing apps.')).toBeInTheDocument();
-    expect(panel().getByRole('link', { name: 'View all apps' })).toHaveAttribute(
-      'href',
-      '/dashboard/workflows'
-    );
+    expect(panel().getByText(/Deployment failed · alpha/)).toBeInTheDocument();
   });
 });
 
@@ -149,13 +132,10 @@ describe('recent failed deployments', () => {
     const props = inputs();
     const slug = 'an-app-with-a-long-but-valid-name-that-still-needs-investigation';
     const id = 'a37b02b7893dd248ba1e7ebb9e6a81ef';
-    props.apps.data = [app(slug, 'failed')];
-    props.deployments.data = { items: [deployment(id)] };
+    props.apps.data = [app(slug)];
+    props.deployments.data = { items: [{ ...deployment(id), app_id: `app-${slug}` }] };
     await mount(props);
     expect(panel().getByRole('link', { name: `View deployment ${id}` })).not.toHaveTextContent(id);
-    expect(panel().getByRole('link', { name: `View logs for ${slug}` })).not.toHaveTextContent(
-      slug
-    );
   });
 
   it('expires old notices while the page remains open', async () => {
@@ -241,31 +221,28 @@ describe('compute allowance', () => {
 describe('independent read states', () => {
   it('keeps known failures while usage is pending, without claiming all clear', async () => {
     const props = inputs();
-    props.apps.data = [app('alpha', 'failed')];
+    props.deployments.data = { items: [deployment('recent')] };
     props.usage = { ...props.usage, data: undefined, isPending: true };
     await mount(props);
-    expect(panel().getByRole('link', { name: 'View logs for alpha' })).toBeInTheDocument();
+    expect(panel().getByRole('link', { name: 'View deployment recent' })).toBeInTheDocument();
     expect(panel().getByText('Checking compute allowance…')).toBeInTheDocument();
     expect(panel().queryByText('No reported issues in the checked data.')).not.toBeInTheDocument();
   });
 
-  it.each(['apps', 'deployments', 'usage'] as const)(
+  it.each(['deployments', 'usage'] as const)(
     'suppresses stale %s data after a read failure and offers retry',
     async (source) => {
       const props = inputs();
-      props.apps.data = [app('alpha', 'failed')];
       props.deployments.data = { items: [deployment('stale')] };
       props.usage.data!.used_gb_hours = 50;
       props[source].error = new Error('Read failed');
       await mount(props);
       const labels = {
-        apps: 'App status',
         deployments: 'Deployment history',
         usage: 'Compute allowance',
       };
       expect(panel().getByText(`${labels[source]} unavailable.`)).toBeInTheDocument();
       const staleLink = {
-        apps: 'View logs for alpha',
         deployments: 'View deployment stale',
         usage: 'Review usage',
       };
@@ -280,15 +257,23 @@ describe('independent read states', () => {
     }
   );
 
-  it('distinguishes an unreachable API from an empty app list', async () => {
+  it('distinguishes an unreachable API from an empty deployment history', async () => {
     const props = inputs();
-    props.apps = {
-      ...props.apps,
+    props.deployments = {
+      ...props.deployments,
       data: undefined,
       error: new ApiError({ status: 502, code: 'http_502', title: 'Bad gateway' }),
     };
     await mount(props);
-    expect(panel().getByText('App status unreachable.')).toBeInTheDocument();
+    expect(panel().getByText('Deployment history unreachable.')).toBeInTheDocument();
     expect(panel().queryByText('No reported issues in the checked data.')).not.toBeInTheDocument();
+  });
+
+  it('only loses app names, not the checks, when the app list cannot be read', async () => {
+    const props = inputs();
+    props.apps = { ...props.apps, data: undefined, error: new Error('Apps read failed') };
+    props.deployments.data = { items: [deployment('recent')] };
+    await mount(props);
+    expect(panel().getByText(/Deployment failed · app-alpha/)).toBeInTheDocument();
   });
 });

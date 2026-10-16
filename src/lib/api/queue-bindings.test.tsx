@@ -2,7 +2,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
-import { api } from './client';
 import {
   createQueueBinding,
   queueBindingsKey,
@@ -16,6 +15,7 @@ import {
   useQueueBindings,
   useStageQueueBindings,
 } from './queue-bindings';
+import { spyApi } from '@/test/api';
 
 afterEach(() => vi.restoreAllMocks());
 const ok = (data: unknown) => ({ data, response: new Response() }) as never;
@@ -28,13 +28,11 @@ function setup() {
 }
 
 it('keeps production binding and status reads scoped to account and app without a stage selector', async () => {
-  const get = vi
-    .spyOn(api, 'GET')
-    .mockImplementation(async (path) =>
-      path === '/v1/apps/{slug}/queue-bindings/{id}/status'
-        ? ok({ binding_id: 'binding-1', consumer_state: 'active', consumer_liveness: 'stale' })
-        : ok([])
-    );
+  const get = spyApi('GET').mockImplementation(async (path) =>
+    path === '/v1/apps/{slug}/queue-bindings/{id}/status'
+      ? ok({ binding_id: 'binding-1', consumer_state: 'active', consumer_liveness: 'stale' })
+      : ok([])
+  );
   const { wrapper } = setup();
   const list = renderHook(() => useQueueBindings('account-1', 'worker-1'), { wrapper });
   const status = renderHook(() => useQueueBindingStatus('account-1', 'worker-1', 'binding-1'), {
@@ -59,7 +57,7 @@ it('keeps production binding and status reads scoped to account and app without 
 });
 
 it('uses a separate project/environment/workload key and path for desired stage settings', async () => {
-  const get = vi.spyOn(api, 'GET').mockResolvedValue(ok({ activation_state: 'unavailable' }));
+  const get = spyApi('GET').mockResolvedValue(ok({ activation_state: 'unavailable' }));
   const { wrapper } = setup();
   const hook = renderHook(() => useStageQueueBindings('account-1', 'shop', 'stage', 'worker-1'), {
     wrapper,
@@ -78,7 +76,7 @@ it('uses a separate project/environment/workload key and path for desired stage 
 });
 
 it('sends a caller-owned idempotency key for an explicit production binding create', async () => {
-  const post = vi.spyOn(api, 'POST').mockResolvedValue(ok({ id: 'binding-1' }));
+  const post = spyApi('POST').mockResolvedValue(ok({ id: 'binding-1' }));
   await createQueueBinding(
     'worker-1',
     {
@@ -106,7 +104,7 @@ it('sends a caller-owned idempotency key for an explicit production binding crea
 });
 
 it('rejects stale account or capability context before a queue mutation review', async () => {
-  const get = vi.spyOn(api, 'GET').mockImplementation(async (path) => {
+  const get = spyApi('GET').mockImplementation(async (path) => {
     if (path === '/v1/account') return ok({ id: 'account-2', plan: 'hobby' });
     if (path === '/v1/apps/{slug}') return ok({ id: 'app-1', slug: 'worker-1' });
     if (path === '/v1/capabilities')
@@ -123,7 +121,7 @@ it('rejects stale account or capability context before a queue mutation review',
 });
 
 it('reads the affected production binding by ID with an abort signal before writes', async () => {
-  const get = vi.spyOn(api, 'GET').mockResolvedValue(ok({ id: 'binding-1', name: 'orders' }));
+  const get = spyApi('GET').mockResolvedValue(ok({ id: 'binding-1', name: 'orders' }));
   const signal = new AbortController().signal;
   await readQueueBinding('worker-1', 'binding-1', signal);
   expect(get).toHaveBeenCalledWith('/v1/apps/{slug}/queue-bindings/{id}', {
@@ -133,7 +131,7 @@ it('reads the affected production binding by ID with an abort signal before writ
 });
 
 it('reads an uninitialized stage collection revision from its explicit 409 header', async () => {
-  const get = vi.spyOn(api, 'GET').mockResolvedValue({
+  const get = spyApi('GET').mockResolvedValue({
     error: { status: 409, code: 'environment_queue_collection_unavailable', title: 'Unavailable' },
     response: new Response(null, { status: 409, headers: { 'X-Gregale-Workload-Revision': '0' } }),
   } as never);
@@ -149,7 +147,7 @@ it('reads an uninitialized stage collection revision from its explicit 409 heade
 });
 
 it('never treats a missing stage revision or production path as an initializable collection', async () => {
-  vi.spyOn(api, 'GET').mockResolvedValue({
+  spyApi('GET').mockResolvedValue({
     error: { status: 409, code: 'environment_queue_collection_unavailable', title: 'Unavailable' },
     response: new Response(null, { status: 409 }),
   } as never);
@@ -160,7 +158,7 @@ it('never treats a missing stage revision or production path as an initializable
 });
 
 it('fences a stage write by account, registered environment and exact project workload', async () => {
-  const get = vi.spyOn(api, 'GET').mockImplementation(async (path) => {
+  const get = spyApi('GET').mockImplementation(async (path) => {
     if (path === '/v1/account') return ok({ id: 'account-1', plan: 'hobby' });
     if (path === '/v1/capabilities')
       return ok({

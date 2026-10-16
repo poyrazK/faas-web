@@ -33,6 +33,17 @@ const APP_STATES: Record<string, { label: string; detail: string; tone: string }
     detail: 'Your app is active. Check traffic below for recent request health.',
     tone: 'var(--status-good)',
   },
+  // apid's own word for a parked app: its VM is snapshotted and released.
+  evicted_cold: {
+    label: 'Idle',
+    detail: 'Your app is parked. Idle is a normal part of scale-to-zero.',
+    tone: 'var(--muted-foreground)',
+  },
+  undeployed: {
+    label: 'Not deployed',
+    detail: 'Your app is created. Deploy code to give it a running release.',
+    tone: 'var(--muted-foreground)',
+  },
   parked: {
     label: 'Idle',
     detail: 'Your app is parked. Idle is a normal part of scale-to-zero.',

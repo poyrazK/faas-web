@@ -1,12 +1,12 @@
 import { beforeEach, expect, it, vi } from 'vitest';
-import { api } from './client';
 import { readWorkerCreateContext } from './worker-create';
+import { spyApi } from '@/test/api';
 
 const ok = (data: unknown) => ({ data, response: new Response() }) as never;
 beforeEach(() => vi.restoreAllMocks());
 
 it('requires fresh same-account worker, image and private-app availability', async () => {
-  const get = vi.spyOn(api, 'GET').mockImplementation(async (path) =>
+  const get = spyApi('GET').mockImplementation(async (path) =>
     path === '/v1/account'
       ? ok({ id: 'account-1', plan: 'hobby' })
       : ok({
@@ -27,7 +27,7 @@ it('requires fresh same-account worker, image and private-app availability', asy
 });
 
 it('rejects missing image availability before a worker write', async () => {
-  vi.spyOn(api, 'GET').mockImplementation(async (path) =>
+  spyApi('GET').mockImplementation(async (path) =>
     path === '/v1/account'
       ? ok({ id: 'account-1', plan: 'hobby' })
       : ok({

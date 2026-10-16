@@ -8,11 +8,11 @@ function Navigation({ initial }: { initial: AppTab }) {
   const [tab, select] = useState(initial);
   return <AppTabNavigation tab={tab} onSelect={select} panelId="panel" />;
 }
-it('opens Companions in Configure and reaches it with the keyboard', async () => {
+it('wraps around Configure with the keyboard', async () => {
   render(<Navigation initial="Configuration" />);
   screen.getByRole('tab', { name: 'Configuration' }).focus();
   await userEvent.keyboard('{ArrowRight}');
-  expect(screen.getByRole('tab', { name: 'Companions' })).toHaveFocus();
+  expect(screen.getByRole('tab', { name: 'Secrets' })).toHaveFocus();
   expect(screen.getByRole('button', { name: 'Configure app section' })).toHaveAttribute(
     'aria-pressed',
     'true'

@@ -10,10 +10,10 @@ import {
 } from '@tanstack/react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api } from '@/lib/api/client';
 import { ApiError } from '@/lib/api/errors';
 import type { components } from '@/lib/api/schema';
 import { Route as Instances } from './dashboard.workers';
+import { spyApi } from '@/test/api';
 
 type Instance = components['schemas']['InstanceResponse'];
 const instance: Instance = {
@@ -23,6 +23,7 @@ const instance: Instance = {
   state: 'parked',
   host_ip: '10.0.1.2',
   ram_mb: 512,
+  resident: false,
   wake_id: 'wake-1',
   execution_mode: 'service',
   started_at: '2026-09-11T10:00:00Z',
@@ -81,7 +82,7 @@ beforeEach(() => {
   appState = 'ready';
   wakeState = 'ready';
   paginationState = false;
-  vi.spyOn(api, 'GET').mockImplementation(async (path, options) => {
+  spyApi('GET').mockImplementation(async (path, options) => {
     const request = options as {
       params?: {
         path?: Record<string, string>;
@@ -135,7 +136,7 @@ afterEach(() => {
 
 describe('Instance details', () => {
   it('skips sequential text edits on Back while preserving instance selection and copied URLs', async () => {
-    rows.push({ ...instance, id: 'vm-2', app_id: 'app-2', state: 'running' });
+    rows.push({ ...instance, id: 'vm-2', app_id: 'app-2', state: 'running', resident: true });
     apps.push({ id: 'app-2', slug: 'bravo' });
     const router = await mount(
       '/dashboard/workers?q=alpha&campaign=handoff#lifecycle',
@@ -390,7 +391,16 @@ describe('Instance details', () => {
   });
 
   it('shows missing optional evidence without inventing durations or starting a wake read', async () => {
-    rows = [{ id: 'vm-1', app_id: 'app-1', deployment_id: '', ram_mb: 256, state: 'waking' }];
+    rows = [
+      {
+        id: 'vm-1',
+        app_id: 'app-1',
+        deployment_id: '',
+        ram_mb: 256,
+        resident: true,
+        state: 'waking',
+      },
+    ];
     await mount('/dashboard/workers?instance=vm-1');
     const view = within(await screen.findByRole('region', { name: 'Instance details' }));
     expect(await view.findByText(/no wake ID was returned/i)).toBeInTheDocument();

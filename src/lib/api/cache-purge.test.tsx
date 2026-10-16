@@ -2,15 +2,15 @@ import { act, renderHook } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
-import { api } from './client';
 import { usePurgeAppCache } from './queries';
+import { spyApi } from '@/test/api';
 
 afterEach(() => vi.restoreAllMocks());
 
 it('sends exactly the selected cache purge scope', async () => {
-  const send = vi
-    .spyOn(api, 'DELETE')
-    .mockResolvedValue({ response: new Response(null, { status: 204 }) } as never);
+  const send = spyApi('DELETE').mockResolvedValue({
+    response: new Response(null, { status: 204 }),
+  } as never);
   const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
   const hook = renderHook(() => usePurgeAppCache('api'), {
     wrapper: ({ children }: { children: ReactNode }) => (

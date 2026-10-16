@@ -6,7 +6,6 @@ import type { App, Deployment } from '@/lib/api/queries';
 import { useApps, useDeployments, useUsageSummary } from '@/lib/api/queries';
 import { Tooltip } from '@/components/ui/tooltip';
 import type { components } from '@/lib/api/schema';
-import { toRunState } from '@/lib/api/adapters';
 import { formatUsageNumber } from '@/lib/usage-format';
 import { formatRelative } from '@/lib/mock-data';
 import { queryPhase, type QueryPhase } from './primitives';
@@ -126,12 +125,6 @@ export function NeedsAttentionContent({
     )
   );
   // A failed refresh must not present cached issues as current observations.
-  const appFailures =
-    appsPhase === 'ready'
-      ? (apps.data ?? [])
-          .filter((app) => !app.deleted_at && toRunState(app.status) === 'error')
-          .sort((a, b) => a.slug.localeCompare(b.slug))
-      : [];
   const failedDeployments =
     deploymentsPhase === 'ready'
       ? (deployments.data?.items ?? [])
@@ -152,11 +145,12 @@ export function NeedsAttentionContent({
     allowance && allowance.used_gb_hours >= allowance.included_gb_hours * 0.8
   );
   const exhausted = Boolean(allowance && allowance.used_gb_hours >= allowance.included_gb_hours);
+  // apid reports no failed state for an app (its statuses are active,
+  // evicted_cold, deleted and undeployed), so failures are read from
+  // deployments. The app list only names them.
   const noIssues =
-    appsPhase === 'ready' &&
     deploymentsPhase === 'ready' &&
     usagePhase === 'ready' &&
-    appFailures.length === 0 &&
     failedDeployments.length === 0 &&
     !lowAllowance;
   // Resolve names only from a successful accessible app inventory. A deleted
@@ -164,10 +158,10 @@ export function NeedsAttentionContent({
   const appNames = new Map(
     appsPhase === 'ready' ? (apps.data ?? []).map((app) => [app.id, app.slug]) : []
   );
-  const issueCount = appFailures.length + failedDeployments.length + Number(lowAllowance);
+  const issueCount = failedDeployments.length + Number(lowAllowance);
   const SummaryIcon = noIssues ? CheckCircle : WarningTriangle;
   const summaryColor = noIssues ? 'var(--status-good)' : 'var(--status-warning)';
-  const checksUnavailable = [appsPhase, deploymentsPhase, usagePhase].some(
+  const checksUnavailable = [deploymentsPhase, usagePhase].some(
     (phase) => phase === 'error' || phase === 'unreachable'
   );
 
@@ -201,17 +195,7 @@ export function NeedsAttentionContent({
             </p>
           </div>
         </div>
-        <dl className="mt-5 grid grid-cols-3 gap-3 border-t border-border pt-4 text-xs">
-          <div>
-            <dt className="text-muted-foreground">App failures</dt>
-            <dd className="mt-1 font-medium">
-              {appsPhase === 'ready'
-                ? appFailures.length
-                : appsPhase === 'loading'
-                  ? 'Checking…'
-                  : 'Unavailable'}
-            </dd>
-          </div>
+        <dl className="mt-5 grid grid-cols-2 gap-3 border-t border-border pt-4 text-xs">
           <div>
             <dt className="text-muted-foreground">Failed in 24h</dt>
             <dd className="mt-1 font-medium">
@@ -237,45 +221,6 @@ export function NeedsAttentionContent({
         </dl>
       </div>
       <div className="flex flex-col gap-6">
-        {(appsPhase !== 'ready' || appFailures.length > 0) && (
-          <section aria-label="App failures">
-            <h3 className="mb-3 text-xs font-medium text-muted-foreground">App failures</h3>
-            {appsPhase !== 'ready' ? (
-              <ReadNotice label="App status" phase={appsPhase} retry={apps.refetch} />
-            ) : (
-              <>
-                <ul className="divide-y divide-border">
-                  {appFailures.slice(0, DISPLAY_LIMIT).map((app) => (
-                    <AttentionRow
-                      key={app.id}
-                      title={app.slug}
-                      detail={`Reported status: ${app.status}. Inspect the app logs.`}
-                    >
-                      <Link
-                        onClick={onNavigate}
-                        to="/dashboard/workflows/$workflowId"
-                        params={{ workflowId: app.slug }}
-                        search={{ tab: 'Logs' }}
-                        aria-label={`View logs for ${app.slug}`}
-                        className={ACTION_CLASS}
-                      >
-                        View logs
-                      </Link>
-                    </AttentionRow>
-                  ))}
-                </ul>
-                {appFailures.length > DISPLAY_LIMIT && (
-                  <p className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                    <span>Showing 3 of {appFailures.length} failing apps.</span>
-                    <Link onClick={onNavigate} to="/dashboard/workflows" className={ACTION_CLASS}>
-                      View all apps
-                    </Link>
-                  </p>
-                )}
-              </>
-            )}
-          </section>
-        )}
         {(deploymentsPhase !== 'ready' || failedDeployments.length > 0) && (
           <section aria-label="Recent failed deployments">
             <h3 className="mb-3 text-xs font-medium text-muted-foreground">

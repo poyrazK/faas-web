@@ -1,9 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
-import { api } from '@/lib/api/client';
 import { ApiError } from '@/lib/api/errors';
 import { PlatformCapabilities } from './platform-capabilities';
+import { spyApi } from '@/test/api';
 vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { id: 'account', plan: 'scale' } }) }));
 afterEach(() => vi.restoreAllMocks());
 const entry = {
@@ -28,7 +28,7 @@ function show() {
   );
 }
 it('separates Preview from runtime availability and omits internal entries', async () => {
-  vi.spyOn(api, 'GET').mockResolvedValue({
+  spyApi('GET').mockResolvedValue({
     data: {
       registry_version: 1,
       plan: 'scale',
@@ -49,8 +49,7 @@ it('separates Preview from runtime availability and omits internal entries', asy
   expect(screen.getByText('No matching capabilities.')).toBeInTheDocument();
 });
 it('shows a retryable registry failure, not an empty feature list', async () => {
-  const get = vi
-    .spyOn(api, 'GET')
+  const get = spyApi('GET')
     .mockRejectedValueOnce(
       new ApiError({ status: 403, code: 'forbidden', title: 'Permission denied' })
     )

@@ -86,8 +86,10 @@ export function readQueueBindingOperation(
       !request ||
       typeof request.name !== 'string' ||
       typeof request.queue_name !== 'string' ||
-      !['pull', 'push'].includes(request.mode) ||
-      !['worker', 'job', 'http'].includes(request.workload_class) ||
+      // Omitted means the server default (pull, worker), not a corrupt record.
+      (request.mode !== undefined && !['pull', 'push'].includes(request.mode)) ||
+      (request.workload_class !== undefined &&
+        !['worker', 'job', 'http'].includes(request.workload_class)) ||
       typeof request.enabled !== 'boolean' ||
       !Number.isInteger(request.max_concurrency)
     )

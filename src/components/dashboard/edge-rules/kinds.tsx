@@ -82,17 +82,8 @@ function def<K extends Kind>(d: KindDef<K>): KindDef<K> {
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as const;
 const CACHE_METHODS = ['GET', 'HEAD'] as const;
 const CACHE_VARY = ['Accept-Language', 'Accept-Encoding'] as const;
-const ALGORITHMS = [
-  'RS256',
-  'RS384',
-  'RS512',
-  'ES256',
-  'ES384',
-  'ES512',
-  'HS256',
-  'HS384',
-  'HS512',
-] as const;
+// Asymmetric only: apid rejects HS* (shared-secret) algorithms for JWT rules.
+const ALGORITHMS = ['RS256', 'RS384', 'RS512', 'ES256', 'ES384', 'ES512'] as const;
 
 const required = (value: string | undefined, field: string, message: string) =>
   value?.trim() ? {} : { [field]: message };
@@ -322,7 +313,7 @@ export const KINDS = {
               <ToggleRow
                 label="Allow credentials"
                 hint="Lets the browser send cookies and Authorization. Not valid with a wildcard origin."
-                checked={value.allow_credentials}
+                checked={value.allow_credentials ?? false}
                 onChange={(allow_credentials) => onChange({ ...value, allow_credentials })}
               />
             </div>
@@ -436,17 +427,23 @@ export const KINDS = {
     label: 'Validate the body',
     desc: 'Reject requests whose JSON body does not match a schema.',
     empty: () => ({ schema: { type: 'object' }, validate_mode: 'block' }),
+    // A rule may carry `parameters` instead of a body schema (set outside this
+    // form); it is shown and kept, never replaced with an empty schema.
     summary: (a) =>
-      `${Object.keys((a.schema.properties as object) ?? {}).length || '—'} properties${a.reject_on_unknown_fields ? ' · strict' : ''}`,
+      a.schema
+        ? `${Object.keys((a.schema.properties as object) ?? {}).length || '—'} properties${a.reject_on_unknown_fields ? ' · strict' : ''}`
+        : 'Parameter rules only',
     validate: (a): Record<string, string> =>
-      a.schema && typeof a.schema === 'object' ? {} : { schema: 'A JSON object is required.' },
+      (a.schema && typeof a.schema === 'object') || a.parameters
+        ? {}
+        : { schema: 'A JSON object is required.' },
     Form: ({ value, onChange, errors }) => (
       <div className="flex flex-col gap-4">
         <JsonField
           label="JSON Schema"
           hint="Applied to the request body. Draft 2020-12."
           error={errors.schema}
-          value={value.schema}
+          value={value.schema ?? {}}
           onChange={(schema) => onChange({ ...value, schema: schema ?? value.schema })}
         />
         <div className="grid gap-4 sm:grid-cols-2">

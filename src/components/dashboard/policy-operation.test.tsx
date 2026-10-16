@@ -1,12 +1,12 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
-import { api } from '@/lib/api/client';
 import { status } from '@/test/runtime-policy';
 import { usePolicyOperation } from './policy-operation';
+import { spyApi } from '@/test/api';
 afterEach(() => vi.restoreAllMocks());
 const ok = (data: unknown) => ({ data, response: new Response() }) as never;
 it('retains an accepted save after an optional baseline read fails, without inventing revision evidence', async () => {
-  vi.spyOn(api, 'GET').mockRejectedValue(new Error('Offline'));
+  spyApi('GET').mockRejectedValue(new Error('Offline'));
   const write = vi.fn().mockResolvedValue('accepted');
   const hook = renderHook(() => usePolicyOperation('account', 'api', 'app-1', 'configuration'));
   await act(async () => {
@@ -18,7 +18,7 @@ it('retains an accepted save after an optional baseline read fails, without inve
 });
 it('never starts a write for an old account when its pre-save read resolves after a switch', async () => {
   let finish!: (value: never) => void;
-  vi.spyOn(api, 'GET').mockReturnValue(
+  spyApi('GET').mockReturnValue(
     new Promise((resolve) => {
       finish = resolve;
     })
@@ -41,7 +41,7 @@ it('never starts a write for an old account when its pre-save read resolves afte
   expect(hook.result.current.receipt).toBeUndefined();
 });
 it('keeps an accepted purge pending until a post-request read advances beyond its baseline', async () => {
-  vi.spyOn(api, 'GET').mockResolvedValue(ok(status));
+  spyApi('GET').mockResolvedValue(ok(status));
   const hook = renderHook(() => usePolicyOperation('account', 'api', 'app-1', 'purge'));
   await act(async () => {
     await hook.result.current.run(['response_cache'], vi.fn().mockResolvedValue(undefined));
@@ -52,7 +52,7 @@ it('keeps an accepted purge pending until a post-request read advances beyond it
   });
 });
 it('refuses to write when the read positively identifies a different app under the slug', async () => {
-  vi.spyOn(api, 'GET').mockResolvedValue(ok({ ...status, app_id: 'replacement-app' }));
+  spyApi('GET').mockResolvedValue(ok({ ...status, app_id: 'replacement-app' }));
   const write = vi.fn();
   const hook = renderHook(() => usePolicyOperation('account', 'api', 'app-1', 'configuration'));
   await act(async () => {

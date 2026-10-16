@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { RotateSecretDialog } from '@/components/dashboard/rotate-secret-dialog';
 import { createFileRoute } from '@tanstack/react-router';
 import { ListSelect, Plus, Refresh, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
@@ -82,6 +83,7 @@ export function AlertsBody({ slug }: { slug: string }) {
   const deleteAlert = useDeleteAlert(slug);
   const updateAlert = useUpdateAlert(slug);
   const rotateSecret = useRotateAlertSecret(slug);
+  const [rotating, setRotating] = useState<AlertRow | null>(null);
   const createAlert = useCreateAlert(slug);
 
   const [name, setName] = useState('');
@@ -207,27 +209,7 @@ export function AlertsBody({ slug }: { slug: string }) {
           <button
             type="button"
             aria-label={`Rotate secret for ${a.name}`}
-            onClick={async () => {
-              if (
-                !(await confirm({
-                  title: `Rotate the secret for ${a.name}?`,
-                  description:
-                    'A new HMAC secret is minted server-side. Deliveries signed with the old one stop verifying immediately — update the receiver first.',
-                  confirmLabel: 'Rotate secret',
-                }))
-              )
-                return;
-              void rotateSecret
-                .mutateAsync(a.id)
-                .then(() => toast({ kind: 'success', title: 'Secret rotated' }))
-                .catch((err: unknown) =>
-                  toast({
-                    kind: 'error',
-                    title: 'Could not rotate',
-                    description: errorMessage(err),
-                  })
-                );
-            }}
+            onClick={() => setRotating(a)}
             className="text-muted-foreground transition-colors hover:text-foreground"
           >
             <Refresh className="h-3.5 w-3.5" />
@@ -461,6 +443,18 @@ export function AlertsBody({ slug }: { slug: string }) {
         error={error}
         onRetry={() => void refetch()}
       />
+
+      {rotating && (
+        <RotateSecretDialog
+          name={rotating.name}
+          onClose={() => setRotating(null)}
+          onRotate={(webhookSecret) =>
+            rotateSecret
+              .mutateAsync({ id: rotating.id, webhookSecret })
+              .then(() => toast({ kind: 'success', title: 'Secret rotated' }))
+          }
+        />
+      )}
 
       {deliveriesFor && (
         <Panel

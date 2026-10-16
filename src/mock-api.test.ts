@@ -44,30 +44,6 @@ async function get(path: string) {
   const response = await fetch(`${origin}${path}`);
   return { response, body: await response.json() };
 }
-it('serves companion declaration identity and known empty metadata without health or secrets', async () => {
-  const list = await get('/v1/apps/api-gateway/deployments?limit=25');
-  const id = list.body.items[0].id;
-  const view = await get(`/v1/deployments/${id}/companions`);
-  expect(view.response.status).toBe(200);
-  expect(view.body).toMatchObject({
-    app_slug: 'api-gateway',
-    deployment_id: id,
-    scope: 'default',
-    state: 'available',
-    companions: [
-      expect.objectContaining({
-        name: 'metrics',
-        environment_keys: ['OTEL_EXPORTER_OTLP_ENDPOINT', 'TOKEN'],
-      }),
-    ],
-  });
-  expect(view.body.companions[0]).not.toHaveProperty('env');
-  expect(view.body.companions[0]).not.toHaveProperty('health');
-  expect((await get(`/v1/deployments/${id}/companions?environment=staging`)).response.status).toBe(
-    400
-  );
-  expect((await get('/v1/deployments/missing/companions')).response.status).toBe(404);
-});
 it('serves worker consumer state and reviewed default push replacement without stage selectors', async () => {
   const slug = 'search-indexer';
   const list = await get(`/v1/apps/${slug}/queue-bindings`);
@@ -707,7 +683,7 @@ describe('mock API', () => {
       );
     }
   });
-  it('requires the one-time token for invitation revocation and never returns it in lists', async () => {
+  it('revokes invitations by row ID, not by token, and never returns the token in lists', async () => {
     const plugin = mockApi();
     let middleware: Connect.NextHandleFunction | undefined;
     if (typeof plugin.configureServer !== 'function') throw new Error('Missing server hook');
@@ -739,7 +715,8 @@ describe('mock API', () => {
       });
       expect(created.status).toBe(201);
       const invitation = (await created.json()) as { id: string; token: string };
-      const invalid = await fetch(`${base}/v1/orgs/${org.slug}/invitations/${invitation.id}`, {
+      // Revocation is keyed by the stable row ID; the one-time token is not an ID.
+      const invalid = await fetch(`${base}/v1/orgs/${org.slug}/invitations/${invitation.token}`, {
         method: 'DELETE',
       });
       expect(invalid.status).toBe(410);
@@ -752,13 +729,13 @@ describe('mock API', () => {
       });
       expect(JSON.stringify(listed)).not.toContain(invitation.token);
       expect(listed.invitations.every((i) => i.token === undefined)).toBe(true);
-      const revoked = await fetch(`${base}/v1/orgs/${org.slug}/invitations/${invitation.token}`, {
+      const revoked = await fetch(`${base}/v1/orgs/${org.slug}/invitations/${invitation.id}`, {
         method: 'DELETE',
       });
       expect(revoked.status).toBe(204);
       expect(
         (
-          await fetch(`${base}/v1/orgs/${org.slug}/invitations/${invitation.token}`, {
+          await fetch(`${base}/v1/orgs/${org.slug}/invitations/${invitation.id}`, {
             method: 'DELETE',
           })
         ).status
