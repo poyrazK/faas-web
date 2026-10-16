@@ -867,7 +867,7 @@ function ImageJourney({
             </>
           )}
           {!fixedApp && kind === 'http' && (
-            <label className="text-sm">
+            <label className="flex flex-col gap-1.5 text-sm">
               App visibility
               <select
                 aria-label="App visibility"
@@ -912,7 +912,7 @@ function ImageJourney({
           {kind === 'worker' && !fixedApp && (
             <div className="space-y-3 rounded border border-border p-3 text-sm">
               <p>Worker lifecycle</p>
-              <label className="block space-y-1">
+              <label className="flex flex-col gap-1.5">
                 <span>Restart policy</span>
                 <select
                   className="block rounded border border-border bg-background px-2 py-1"
@@ -926,7 +926,7 @@ function ImageJourney({
                   <option value="no">Never</option>
                 </select>
               </label>
-              <label className="block space-y-1">
+              <label className="flex flex-col gap-1.5">
                 <span>Startup deadline (seconds)</span>
                 <Input
                   type="number"
@@ -936,7 +936,7 @@ function ImageJourney({
                   onChange={(event) => setStartupDeadline(Number(event.target.value))}
                 />
               </label>
-              <label className="block space-y-1">
+              <label className="flex flex-col gap-1.5">
                 <span>Max restart retries</span>
                 <Input
                   type="number"
@@ -1026,7 +1026,7 @@ function ImageJourney({
           )}
           {privateRegistry && (
             <>
-              <label className="text-sm">
+              <label className="flex flex-col gap-1.5 text-sm">
                 Registry username
                 <Input
                   autoComplete="off"
@@ -1035,7 +1035,7 @@ function ImageJourney({
                   onChange={(e) => setUsername(e.target.value)}
                 />
               </label>
-              <label className="text-sm">
+              <label className="flex flex-col gap-1.5 text-sm">
                 Registry password
                 <Input
                   type="password"

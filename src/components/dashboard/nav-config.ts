@@ -4,9 +4,11 @@ import {
   Activity,
   Antenna,
   Coins,
+  DataTransferBoth,
   Database,
   Folder,
   CreditCard,
+  Community,
   Cube,
   GitFork as WorkflowIcon,
   Github,
@@ -16,6 +18,7 @@ import {
   HardDrive,
   Journal,
   Key,
+  Network,
   Package,
   Play,
   Rocket,
@@ -128,6 +131,16 @@ export const NAV_HUBS: NavHub[] = [
     sidebarIconClassName: 'text-cat-network/80',
   },
   {
+    // Your end customers across apps (platform tenants). Operate rather than
+    // Account: they are resources you run — consumers, hostnames, prices —
+    // next to Domains, not settings of your own Gregale account, and Billing
+    // there is what Gregale charges you, not what you charge them.
+    to: '/dashboard/customers',
+    label: 'Customers',
+    icon: Community,
+    sidebarIconClassName: 'text-cat-network/80',
+  },
+  {
     to: '/dashboard/storage',
     label: 'Data',
     icon: HardDrive,
@@ -136,6 +149,22 @@ export const NAV_HUBS: NavHub[] = [
       { to: '/dashboard/storage', label: 'Storage', icon: HardDrive },
       { to: '/dashboard/postgres', label: 'Postgres', icon: Database },
     ],
+  },
+  {
+    // Account-wide: the event router has no per-app read for its backlog,
+    // storage, or receipts, so this is its own hub rather than an app tab.
+    to: '/dashboard/events',
+    label: 'Events',
+    icon: DataTransferBoth,
+    sidebarIconClassName: 'text-cat-network/80',
+  },
+  {
+    // Outbound integrations are account-owned; apps bind to them, but the
+    // integration, its credential, and its budget exist once per account.
+    to: '/dashboard/integrations',
+    label: 'Integrations',
+    icon: Network,
+    sidebarIconClassName: 'text-cat-network/80',
   },
   {
     to: '/dashboard/analytics',
@@ -200,7 +229,10 @@ export const NAV_HUBS: NavHub[] = [
 const SIDEBAR_GROUPS: { title?: string; hubs: string[] }[] = [
   { hubs: ['Overview'] },
   { title: 'Build', hubs: ['Projects', 'Jobs', 'Releases'] },
-  { title: 'Operate', hubs: ['Domains', 'Data', 'Analytics', 'Observe'] },
+  {
+    title: 'Operate',
+    hubs: ['Domains', 'Customers', 'Data', 'Events', 'Integrations', 'Analytics', 'Observe'],
+  },
   { title: 'Account', hubs: ['Billing', 'Settings'] },
 ];
 

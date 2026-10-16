@@ -16,13 +16,16 @@
 /dashboard/audit    /index.html   200
 /dashboard/builds    /index.html   200
 /dashboard/crons    /index.html   200
+/dashboard/customers    /index.html   200
 /dashboard/databases    /index.html   200
 /dashboard/debug    /index.html   200
 /dashboard/deployments    /index.html   200
 /dashboard/domains    /index.html   200
 /dashboard/edge-rules    /index.html   200
 /dashboard/env    /index.html   200
+/dashboard/events    /index.html   200
 /dashboard/import    /index.html   200
+/dashboard/integrations    /index.html   200
 /dashboard/instances    /index.html   200
 /dashboard/invocations    /index.html   200
 /dashboard/invoices    /index.html   200

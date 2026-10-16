@@ -23,6 +23,7 @@ import { LogView } from './log-view';
 import { failureSummary } from './failure-summary';
 import { FailurePanel } from './failure-panel';
 import { ReleaseProcess } from './release-process';
+import { CanaryHealth } from './canary-health';
 import { releaseProcess } from '@/lib/release-process';
 
 function relativeTime(value?: string): string {
@@ -199,6 +200,12 @@ export function ReleaseDetailPanel({
                     <section aria-label="Process" className="rounded-lg border border-border p-4">
                       <ReleaseProcess phases={releaseProcess(deployment)} />
                     </section>
+                    {/* Only a canary has a stable release to be compared against. */}
+                    {slug && deployment.canary_total_steps ? (
+                      <div className="rounded-lg border border-border p-4">
+                        <CanaryHealth slug={slug} deploymentId={deployment.id} />
+                      </div>
+                    ) : null}
                     <EvidenceFields
                       values={[
                         ['Deployment ID', deployment.id],
