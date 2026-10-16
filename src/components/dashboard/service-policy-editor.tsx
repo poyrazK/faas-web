@@ -189,7 +189,7 @@ export function ServicePolicyEditor({
             Account apps: {choices.data.map((item) => item.slug).join(', ') || 'none'}
           </p>
         )}
-        <label className="block space-y-1">
+        <label className="flex flex-col gap-1.5">
           <span>Allowed callers</span>
           <select
             aria-label="Allowed callers"
@@ -206,7 +206,7 @@ export function ServicePolicyEditor({
           </select>
         </label>
         {draft.callerMode === 'allow' && (
-          <label className="block space-y-1">
+          <label className="flex flex-col gap-1.5">
             <span>Caller app slugs, one per line</span>
             <textarea
               className={FIELD}
@@ -216,7 +216,7 @@ export function ServicePolicyEditor({
             />
           </label>
         )}
-        <label className="block space-y-1">
+        <label className="flex flex-col gap-1.5">
           <span>Method and path grants</span>
           <select
             aria-label="Method and path grants"
@@ -233,7 +233,7 @@ export function ServicePolicyEditor({
           </select>
         </label>
         {draft.scopeMode === 'rules' && (
-          <label className="block space-y-1">
+          <label className="flex flex-col gap-1.5">
             <span>Caller scopes JSON</span>
             <textarea
               className={FIELD}
@@ -247,7 +247,7 @@ export function ServicePolicyEditor({
             </span>
           </label>
         )}
-        <label className="block space-y-1">
+        <label className="flex flex-col gap-1.5">
           <span>Outbound target app slugs, one per line</span>
           <textarea
             aria-label="Outbound target app slugs"
@@ -266,7 +266,7 @@ export function ServicePolicyEditor({
           />
           Allow reviewed future target names that are not yet account apps
         </label>
-        <label className="block space-y-1">
+        <label className="flex flex-col gap-1.5">
           <span>Outbound reachability</span>
           <select
             className={FIELD}
@@ -278,7 +278,7 @@ export function ServicePolicyEditor({
             <option value="declared">Declared targets only</option>
           </select>
         </label>
-        <label className="block space-y-1">
+        <label className="flex flex-col gap-1.5">
           <span>Canonical binding transport</span>
           <select
             className={FIELD}
