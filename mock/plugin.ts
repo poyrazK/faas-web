@@ -2325,6 +2325,116 @@ route('GET', '/v1/apps/{slug}/debug/dependencies', ({ params, query }) => {
   };
 });
 
+// --- Canary route health: candidate vs stable per critical route ---
+function routeHealthFor(a: db.App, deploymentId: string): S_['RouteHealthReport'] {
+  const deployment = db.deployments.find((d) => d.id === deploymentId);
+  const stable = db.deployments.find(
+    (d) => d.app_id === a.id && d.id !== deploymentId && d.status === 'superseded'
+  );
+  const counts = (requests: number, errors: number, p95: number) => ({
+    requests,
+    server_errors: errors,
+    error_rate: requests ? errors / requests : 0,
+    p95_latency_ms: p95,
+  });
+  const route = (
+    method: string,
+    path: string,
+    canaryErrors: number,
+    delta: number
+  ): S_['RouteHealthFinding'] => ({
+    method,
+    path,
+    status: canaryErrors > 3 ? 'regressed' : 'healthy',
+    reason:
+      canaryErrors > 3
+        ? 'Candidate 5xx rate exceeds stable by more than the allowed margin.'
+        : 'Within the error and latency budget.',
+    check_latency: true,
+    windows: [
+      {
+        start: db.iso(120_000),
+        end: db.iso(60_000),
+        candidate: counts(180, canaryErrors, 120 + delta),
+        stable: counts(1620, 2, 120),
+        status: canaryErrors > 3 ? 'regressed' : 'healthy',
+        reason: '',
+        latency_delta_ms: delta,
+        latency_factor: (120 + delta) / 120,
+      },
+    ],
+  });
+  return {
+    app_id: a.id,
+    deployment_id: deploymentId,
+    candidate_commit_sha: 'a1b2c3d',
+    stable_deployment_id: stable?.id ?? '',
+    stable_commit_sha: stable ? 'e4f5a6b' : '',
+    canary_step: deployment?.canary_step ?? 1,
+    mode: 'enforce',
+    on_regression: 'hold',
+    revision: 3,
+    checked_at: db.iso(20_000),
+    coverage: 'observed_only',
+    status: 'healthy',
+    reason: 'Every critical route met its budget in both windows.',
+    minimum_requests: 50,
+    routes: [route('POST', '/v1/orders', 1, 8), route('GET', '/v1/orders/{id}', 0, -3)],
+  };
+}
+route('GET', '/v1/apps/{slug}/route-health/deployments/{deployment}', ({ params }) =>
+  routeHealthFor(app(params.slug), params.deployment)
+);
+route('GET', '/v1/apps/{slug}/route-health/deployments/{deployment}/history', ({ params }) => {
+  const a = app(params.slug);
+  const report = routeHealthFor(a, params.deployment);
+  const decision = (
+    status: S_['RouteHealthDecision']['status'],
+    reason: string
+  ): S_['RouteHealthDecision'] => ({
+    mode: 'enforce',
+    on_regression: 'hold',
+    revision: 3,
+    deployment_id: params.deployment,
+    stable_deployment_id: report.stable_deployment_id,
+    status,
+    reason,
+    checked_at: db.iso(25 * 60_000),
+  });
+  return {
+    app_id: a.id,
+    deployment_id: params.deployment,
+    entries: [
+      {
+        version: 1,
+        id: 'rh-2',
+        checked_at: db.iso(20 * 60_000),
+        source: 'worker',
+        traffic_percent: 1,
+        requested_traffic_percent: 10,
+        policy: {
+          version: 1,
+          windows: 2,
+          window_seconds: 60,
+          ingestion_lag_seconds: 15,
+          minimum_requests: 50,
+          minimum_errors: 3,
+          error_rate_floor: 0.01,
+          error_rate_delta: 0.01,
+          error_rate_factor: 2,
+          minimum_latency_requests: 50,
+          latency_quantile: 0.95,
+          latency_factor: 1.5,
+          latency_delta_ms: 100,
+          comparison_epsilon: 0.0001,
+        },
+        decision: decision('allowed', 'Both windows healthy at 1%; advancing to 10%.'),
+        report,
+      },
+    ],
+  } satisfies S_['RouteHealthHistoryPage'];
+});
+
 route('GET', '/v1/apps/{slug}/upstreams/history', ({ params, query }) => {
   const a = app(params.slug);
   const bucket = query.get('bucket') ?? '5m';
