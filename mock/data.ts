@@ -287,6 +287,17 @@ export const scenarioOf = (app: Pick<App, 'slug'>): Scenario =>
   scenarios.get(app.slug) ?? 'healthy';
 
 /** Moves an app into a scenario and keeps its API `status` consistent with it. */
+/**
+ * The public URL a new app gets: the platform domain the account's apps
+ * already use, or the documented `gregale.dev` in an empty workspace — the
+ * same rule the console uses to predict it on review.
+ */
+export function appUrlFor(slug: string): string {
+  const known = apps.find((app) => app.url)?.url;
+  const domain = known ? new URL(known).host.split('.').slice(1).join('.') : 'gregale.dev';
+  return `https://${slug}.${domain}`;
+}
+
 export function setScenario(app: App, scenario: Scenario) {
   scenarios.set(app.slug, scenario);
   app.status = statusFor(scenario);
@@ -1571,6 +1582,9 @@ if (EMPTY) {
   for (const map of [secrets, env, upstreams, alerts, webhooks]) map.clear();
   account.app_count = 0;
   account.usage_gb_hours = 0;
+  // A first sign-in has not connected GitHub yet; the mock's
+  // POST /dashboard/install/connect grants the installation on demand.
+  account.github_install_id = null;
   Object.assign(usage, {
     used_gb_hours: 0,
     overage_gb_hours: 0,
