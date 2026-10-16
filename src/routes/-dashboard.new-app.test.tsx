@@ -24,6 +24,11 @@ const mocks = vi.hoisted(() => ({
   toast: vi.fn(),
   templateRead: 'ready',
   templateRetry: vi.fn(),
+  sourceScan: { plan: undefined, error: null, scanning: false } as {
+    plan?: ProjectPlan;
+    error: unknown;
+    scanning: boolean;
+  },
 }));
 vi.mock('@/lib/auth', () => ({
   useAuth: () => ({
@@ -54,6 +59,7 @@ vi.mock('@/lib/api/queries', () => ({
   useBindRepoFor: () => ({ mutateAsync: mocks.bind }),
   useDeployFromRefFor: () => ({ mutateAsync: mocks.deploy }),
   useUpdateAppFor: () => ({ mutateAsync: vi.fn() }),
+  useSourceRefScan: () => mocks.sourceScan,
   useTemplates: () => ({
     data:
       mocks.templateRead === 'ready'
@@ -126,6 +132,7 @@ beforeEach(() => {
   mocks.workspace = { org: null, label: 'Personal' };
   vi.clearAllMocks();
   mocks.templateRead = 'ready';
+  mocks.sourceScan = { plan: undefined, error: null, scanning: false };
   vi.spyOn(window, 'confirm').mockReturnValue(false);
   mocks.create.mockResolvedValue({ id: 'sample', url: 'https://sample.example' });
   mocks.scan.mockResolvedValue(plan);
@@ -331,6 +338,27 @@ describe('New App source flow', () => {
       screen.getByText(/gregale init --template hello-python && gregale deploy --app hello-python/)
     ).toBeInTheDocument();
     expect(mocks.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('hands a multi-service repository to Import with its project slug and branch', async () => {
+    const user = userEvent.setup();
+    const router = await mount();
+    mocks.sourceScan = {
+      plan: { ...plan, workloads: [...plan.workloads, { ...plan.workloads[0], name: 'worker' }] },
+      error: null,
+      scanning: false,
+    };
+    await user.type(screen.getByLabelText('Repository'), 'acme/Checkout_Service');
+    await user.clear(screen.getByLabelText('Ref'));
+    await user.type(screen.getByLabelText('Ref'), 'develop');
+    await user.click(screen.getByRole('button', { name: 'Import as a project' }));
+    expect(router.state.location.search).toMatchObject({
+      source: 'import',
+      slug: 'checkout-service',
+      branch: 'develop',
+    });
+    expect(screen.getByLabelText('Project slug')).toHaveValue('checkout-service');
+    expect(screen.getByLabelText('Branch')).toHaveValue('develop');
   });
 
   it('scans, reviews and applies an import within New App using the existing project endpoint contract', async () => {

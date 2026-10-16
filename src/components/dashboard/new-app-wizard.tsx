@@ -13,7 +13,8 @@ import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/field';
 import { FormField } from '@/components/ui/form-field';
-import { appNameError } from './new-app-validation';
+import { appNameError, appNameFromRepo } from './new-app-validation';
+import { SCAN_SOURCE_LABEL, scanUnavailableReason } from './scan-source';
 import { useToast } from '@/components/ui/toast';
 import { DeploymentProgress } from '@/components/dashboard/deployment-progress';
 import { PageHeader, Panel } from '@/components/dashboard/primitives';
@@ -37,6 +38,7 @@ import { useWorkspaceTarget, workspaceCreateError } from '@/lib/api/workspace-ap
 import {
   useBindRepoFor,
   useDeployFromRefFor,
+  useSourceRefScan,
   useTemplates,
   useUpdateAppFor,
 } from '@/lib/api/queries';
@@ -233,11 +235,14 @@ function CreateAppWizard({
   const [nameTouched, setNameTouched] = useState(false);
   const [configureSubmitted, setConfigureSubmitted] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
-  const name = nameDraft ?? initialName;
+  // A chosen repository names the app until the customer types a name of
+  // their own; their typing (even clearing the field) always wins.
+  const repoName = source === 'git' ? appNameFromRepo(repo) : '';
+  const name = nameDraft ?? (repoName || initialName);
   const bindRepo = useBindRepoFor();
   const deployFromRef = useDeployFromRefFor();
   const updateApp = useUpdateAppFor();
-  const [appType, setAppType] = useState<'function' | 'app'>('function');
+  const [appTypeDraft, setAppType] = useState<'function' | 'app' | null>(null);
   const [visibility, setVisibility] = useState<'public' | 'internal'>('public');
   const [runtimeDraft, setRuntime] = useState<Runtime | null>(null);
   const runtime = runtimeDraft ?? template?.runtime ?? (picked ? catalogRuntime : null) ?? 'node22';
@@ -301,6 +306,46 @@ function CreateAppWizard({
   const repoValid = isValidGitHubRepo(repo);
   const refValid = isValidGitRef(normalizedRef);
   const gitSourceValid = source !== 'git' || (repoValid && refValid);
+  const installId = Number(account?.github_install_id) || null;
+  const scanProjectSlug = appNameFromRepo(repo) || 'app';
+  const scan = useSourceRefScan({
+    repo: repo.trim(),
+    ref: normalizedRef,
+    installId,
+    projectSlug: scanProjectSlug,
+    enabled: source === 'git' && githubConnected && repoValid && refValid,
+  });
+  const scannedWorkloads = scan.plan?.workloads ?? [];
+  const scannedService = scannedWorkloads.length === 1 ? scannedWorkloads[0] : undefined;
+  // The plan reports no runtime, so the only wizard field it can answer is
+  // Type: a Dockerfile means the repository builds its own container image.
+  const detectedType = scannedService?.dockerfile ? ('app' as const) : undefined;
+  const appType = appTypeDraft ?? detectedType ?? 'function';
+  const detectedFrom = scan.plan ? SCAN_SOURCE_LABEL[scan.plan.scan_source] : '';
+  const scannedRootDir =
+    scannedService && !['', '.', './'].includes(scannedService.root_dir.trim())
+      ? scannedService.root_dir.trim()
+      : '';
+  // Import uploads an archive, so the repository cannot travel with it; the
+  // project slug and branch it asks for can. Import keeps its own draft, so a
+  // hand-off remounts it with these values rather than waiting on the URL.
+  const [importHandoff, setImportHandoff] = useState<{
+    seed: number;
+    slug: string;
+    branch: string;
+  } | null>(null);
+  const switchToImport = () => {
+    setImportHandoff((prev) => ({
+      seed: (prev?.seed ?? 0) + 1,
+      slug: scanProjectSlug,
+      branch: normalizedRef,
+    }));
+    changeSearch({
+      source: 'import',
+      slug: scanProjectSlug,
+      branch: normalizedRef,
+    });
+  };
   const sourceValid =
     Boolean(source) &&
     source !== 'import' &&
@@ -609,6 +654,57 @@ function CreateAppWizard({
     );
   }
 
+  // The scan only ever adds a hint below the repository; nothing waits on it.
+  function renderScanHint() {
+    if (scan.scanning)
+      return (
+        <p role="status" className="text-[13px] leading-5 text-muted-foreground sm:col-span-2">
+          Scanning {repo.trim()}@{normalizedRef} for services…
+        </p>
+      );
+    if (scan.error)
+      return (
+        <p className="text-[13px] leading-5 text-muted-foreground sm:col-span-2">
+          {scanUnavailableReason(scan.error)}
+        </p>
+      );
+    if (!scan.plan) return null;
+    const count = scannedWorkloads.length;
+    if (count > 1 || scannedRootDir)
+      return (
+        <div
+          role="status"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card p-3 sm:col-span-2"
+        >
+          <p className="min-w-0 flex-1 basis-64 text-sm">
+            {count > 1 ? (
+              <>
+                This repository has {count} services. Import it as a project to create them
+                together.
+              </>
+            ) : (
+              <>
+                The scan found this service in <code className="font-mono">{scannedRootDir}</code>.
+                This form deploys the repository as one app; import it as a project to build from
+                that directory.
+              </>
+            )}
+          </p>
+          <Button type="button" variant="outline" size="sm" onClick={switchToImport}>
+            Import as a project
+          </Button>
+        </div>
+      );
+    if (count === 1)
+      return (
+        <p className="text-[13px] leading-5 text-muted-foreground sm:col-span-2">
+          One service detected ({detectedFrom})
+          {detectedType ? '; it builds its own container image.' : '.'}
+        </p>
+      );
+    return null;
+  }
+
   // A card is named by its title alone and described by its sentence, so a
   // screen reader announces "Git repository, toggle button" and then the
   // detail, rather than one run-on name.
@@ -804,6 +900,7 @@ function CreateAppWizard({
                   Choose a repository your connected GitHub account has granted Gregale access to.
                   The ref can be a branch, tag, or commit SHA.
                 </p>
+                {renderScanHint()}
               </div>
             ) : null}
 
@@ -884,9 +981,14 @@ function CreateAppWizard({
                   )}
                 </FormField>
 
-                <label className="flex flex-col gap-1.5">
-                  <span className={LABEL}>Type</span>
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor={`${uid}-type`} className={LABEL}>
+                    Type
+                  </label>
                   <Select
+                    id={`${uid}-type`}
+                    name="type"
+                    aria-describedby={`${uid}-type-hint`}
                     value={appType}
                     onChange={(e) => setAppType(e.target.value as 'function' | 'app')}
                     className={CONTROL}
@@ -897,10 +999,16 @@ function CreateAppWizard({
                       </option>
                     ))}
                   </Select>
-                  <span className="text-[13px] leading-5 text-muted-foreground">
+                  <span
+                    id={`${uid}-type-hint`}
+                    className="text-[13px] leading-5 text-muted-foreground"
+                  >
                     {APP_TYPES.find((t) => t.id === appType)?.desc}
+                    {detectedType && appTypeDraft === null && (
+                      <> Detected from {detectedFrom} — change it if that is wrong.</>
+                    )}
                   </span>
-                </label>
+                </div>
 
                 <label className="flex flex-col gap-1.5">
                   <span className={LABEL}>Runtime</span>
@@ -1130,7 +1238,11 @@ function CreateAppWizard({
           submission/completion, including a failed attempt from another source. */}
       {!onboarding && (
         <div hidden={deploying || source !== 'import'} className="mx-auto mt-6 w-full max-w-5xl">
-          <ProjectImport initialSlug={search.slug} initialBranch={search.branch} />
+          <ProjectImport
+            key={importHandoff?.seed ?? 0}
+            initialSlug={importHandoff?.slug ?? search.slug}
+            initialBranch={importHandoff?.branch ?? search.branch}
+          />
         </div>
       )}
     </>

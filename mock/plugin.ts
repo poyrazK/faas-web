@@ -6042,6 +6042,102 @@ const MOCK_PLAN = {
 };
 
 route('POST', '/v1/projects/scan', () => MOCK_PLAN);
+
+type PlanWorkload = components['schemas']['PlanWorkload'];
+
+/**
+ * What a scan of each installable repo (`/v1/install/repos/list`) finds, so
+ * the new-app wizard's hints can be seen: storefront builds its own
+ * Dockerfile, webhook-router and nightly-etl are single runtime services, and
+ * checkout is a Compose repository with several services.
+ */
+const SOURCE_REF_SCANS: Record<
+  string,
+  { scan_source: components['schemas']['PlanResponse']['scan_source']; workloads: PlanWorkload[] }
+> = {
+  'acme-corp/storefront': {
+    scan_source: 'single',
+    workloads: [
+      {
+        name: 'storefront',
+        root_dir: '',
+        dockerfile: 'Dockerfile',
+        command: [],
+        class: 'http',
+        ports: [8080],
+        source: 'Dockerfile',
+        tier: 'single',
+      },
+    ],
+  },
+  'acme-corp/webhook-router': {
+    scan_source: 'procfile',
+    workloads: [
+      {
+        name: 'web',
+        root_dir: '',
+        command: ['node', 'server.js'],
+        class: 'http',
+        ports: [],
+        source: 'Procfile: web',
+        tier: 'convention',
+        detected_by: { detector: 'procfile', marker: 'Procfile', priority: 40 },
+      },
+    ],
+  },
+  'acme-corp/nightly-etl': {
+    scan_source: 'single',
+    workloads: [
+      {
+        name: 'nightly-etl',
+        root_dir: '',
+        command: ['python', '-m', 'etl'],
+        class: 'http',
+        ports: [8080],
+        source: 'pyproject.toml',
+        tier: 'single',
+      },
+    ],
+  },
+  'acme-corp/checkout': {
+    scan_source: 'compose',
+    workloads: ['api', 'worker', 'web'].map((name) => ({
+      name,
+      root_dir: name === 'web' ? 'frontend' : '',
+      dockerfile: 'Dockerfile',
+      command: name === 'worker' ? ['node', 'worker.js'] : [],
+      class: name === 'worker' ? ('worker' as const) : ('http' as const),
+      ports: name === 'worker' ? [] : [8080],
+      source: `compose.yaml: ${name}`,
+      tier: 'compose' as const,
+      detected_by: { detector: 'compose' as const, marker: 'compose.yaml', priority: 80 },
+    })),
+  },
+};
+
+route('POST', '/v1/projects/scan/source-ref', async ({ body }) => {
+  const repo = String(body.repo ?? '');
+  const ref = String(body.ref ?? '');
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo) || !ref)
+    throw new Problem(400, 'validation_failed', 'repo and ref are required.');
+  const scan = SOURCE_REF_SCANS[repo];
+  if (!scan) throw new Problem(404, 'not_found', 'The installation cannot read that repository.');
+  return {
+    project_slug: String(body.project_slug ?? ''),
+    repo_full_name: repo,
+    scan_source: scan.scan_source,
+    tier: db.account.plan,
+    workloads: scan.workloads,
+    managed: [],
+    crons: [],
+    observed_apps: db.apps.length,
+    observed_crons: 0,
+    limit_apps: 25,
+    limit_crons: 20,
+    can_apply: true,
+    plan_token: `mock-source-ref-${hex(8)}`,
+  } satisfies components['schemas']['PlanResponse'];
+});
 route('GET', '/v1/projects', () => projectSummaries());
 route('GET', '/v1/projects/{slug}', ({ params }) => {
   const project = projects.find((item) => item.slug === params.slug);

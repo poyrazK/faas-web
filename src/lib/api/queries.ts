@@ -9,6 +9,7 @@ import {
   type QueryFilters,
   type UseQueryOptions,
 } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import { api, issueCSRF, unwrap } from './client';
 import { ApiError } from './errors';
 import { isDeploymentTerminal } from '../deployment-status';
@@ -700,6 +701,68 @@ export function useProjectScan() {
         })
       ),
   });
+}
+
+/** How long the repository/ref pair must hold still before it is scanned. */
+export const SOURCE_REF_SCAN_DEBOUNCE_MS = 600;
+
+/**
+ * Read-only scan of a connected repository at a ref
+ * (`POST /v1/projects/scan/source-ref`), for the new-app wizard's hints.
+ *
+ * Debounced so typing a ref does not fan out a scan per keystroke; keyed by
+ * installation, repo and ref so a pair scanned once is answered from cache
+ * for the session; and the signal is handed to fetch, so a pair the user has
+ * moved away from is aborted rather than left to finish. It is advisory —
+ * nothing waits on it, and it never retries: a failed scan just means no
+ * hint.
+ */
+export function useSourceRefScan({
+  repo,
+  ref,
+  installId,
+  projectSlug,
+  enabled,
+}: {
+  repo: string;
+  ref: string;
+  installId: number | null;
+  projectSlug: string;
+  enabled: boolean;
+}) {
+  const wanted = enabled ? `${installId ?? ''}:${repo}@${ref}` : '';
+  const [settled, setSettled] = useState(wanted);
+  useEffect(() => {
+    if (wanted === settled) return;
+    const timer = setTimeout(() => setSettled(wanted), SOURCE_REF_SCAN_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [wanted, settled]);
+  const ready = enabled && settled === wanted;
+  const query = useQuery({
+    queryKey: ['projects', 'scan', 'source-ref', installId, repo, ref],
+    queryFn: ({ signal }) =>
+      unwrap(
+        api.POST('/v1/projects/scan/source-ref', {
+          body: {
+            repo,
+            ref,
+            project_slug: projectSlug,
+            ...(installId ? { install_id: installId } : {}),
+          },
+          signal,
+        })
+      ),
+    enabled: ready,
+    staleTime: Infinity,
+    gcTime: 30 * 60_000,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  return {
+    plan: enabled ? query.data : undefined,
+    error: enabled && !query.data ? query.error : null,
+    scanning: enabled && !query.data && !query.error && (!ready || query.isFetching),
+  };
 }
 
 /** Apply the plan in one transaction. Echoes the dry-run's plan_token so the
