@@ -5,6 +5,7 @@ import type { components } from '../src/lib/api/schema';
 import * as db from './data';
 import * as automationMock from './automations';
 import { mockCapabilities } from './capabilities';
+import { registerEventMocks } from './events';
 import { mockOpenAPIPreview } from './openapi-preview';
 import { isDigestPinnedImage } from '../src/lib/oci-image';
 import { advancePolicy, mockRuntimePolicy } from './runtime-policy';
@@ -6301,6 +6302,8 @@ route('GET', '/v1/workflows/runs/{id}/steps/{step}/attempts', ({ params }) => {
       : [],
   };
 });
+
+registerEventMocks(route, Problem, NO_CONTENT);
 
 // --- Plumbing ------------------------------------------------------------------
 
