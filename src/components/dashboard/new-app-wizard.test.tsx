@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import type { NewAppSearch } from './new-app-source';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NewAppWizard } from './new-app-wizard';
 import { ApiError } from '@/lib/api/errors';
@@ -108,7 +108,7 @@ vi.mock('@/lib/api/client', () => ({ issueCSRF: mocks.issueCSRF }));
 async function submitGitApp(onDeploymentAccepted = vi.fn()) {
   const user = userEvent.setup();
   const view = render(<NewAppWizard onboarding onDeploymentAccepted={onDeploymentAccepted} />);
-  await user.type(screen.getByLabelText(/repository/i), 'gregale/demo');
+  await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
   await user.click(screen.getByRole('button', { name: /continue/i }));
   await user.type(await screen.findByLabelText(/app name/i), 'demo-app');
   await user.click(screen.getByRole('button', { name: /review/i }));
@@ -139,6 +139,57 @@ beforeEach(() => {
 
 afterEach(() => vi.restoreAllMocks());
 
+describe('NewAppWizard source picker', () => {
+  it('groups sources with the Git path first and names each card by its title', () => {
+    render(<NewAppWizard />);
+    const groups = screen.getAllByRole('group');
+    expect(groups).toHaveLength(3);
+    const [code, image, project] = groups;
+    const expectCards = (group: HTMLElement, names: string[]) => {
+      const cards = within(group).getAllByRole('button');
+      expect(cards).toHaveLength(names.length);
+      cards.forEach((card, index) => expect(card).toHaveAccessibleName(names[index]));
+    };
+    expect(code).toHaveAccessibleName('From code');
+    expectCards(code, ['Git repository', 'Template', 'Empty app']);
+    expect(image).toHaveAccessibleName('From an image');
+    expectCards(image, ['Container image', 'Long-lived worker']);
+    expect(project).toHaveAccessibleName('Bring an existing project');
+    const importCard = within(project).getByRole('button', { name: 'Import' });
+    expect(importCard).toHaveAccessibleDescription(
+      /several services \(Compose, Procfile, k8s, Render, Fly, or serverless\), scanned and created together as a project/
+    );
+    expect(screen.getByRole('button', { name: 'Git repository' })).toHaveAccessibleDescription(
+      /one service from a branch, tag, or commit/
+    );
+  });
+
+  it('preselects Git when GitHub is connected', () => {
+    render(<NewAppWizard />);
+    expect(screen.getByRole('button', { name: 'Git repository' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
+    expect(screen.getByLabelText('Repository')).toBeInTheDocument();
+  });
+
+  it('leaves the choice open without a GitHub connection', () => {
+    mocks.account.github_install_id = '';
+    render(<NewAppWizard />);
+    expect(screen.getAllByRole('button', { pressed: false })).toHaveLength(6);
+    expect(screen.queryByRole('button', { pressed: true })).not.toBeInTheDocument();
+  });
+
+  it('keeps the container images and isolated runs disclosure', async () => {
+    render(<NewAppWizard />);
+    const toggle = screen.getByRole('button', { name: 'Container images and isolated runs' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('heading', { name: 'Isolated runs' })).toBeInTheDocument();
+  });
+});
+
 describe('NewAppWizard Git submission', () => {
   it('keeps a restored internal deployment endpoint non-clickable after it becomes live', () => {
     mocks.appVisibility = 'internal';
@@ -156,7 +207,7 @@ describe('NewAppWizard Git submission', () => {
   it('reviews internal-only creation and rechecks private-app capability before POST', async () => {
     const user = userEvent.setup();
     render(<NewAppWizard onboarding />);
-    await user.type(screen.getByLabelText(/repository/i), 'gregale/demo');
+    await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
     await user.click(screen.getByRole('button', { name: /continue/i }));
     await user.type(await screen.findByLabelText('App name'), 'demo-app');
     await user.selectOptions(screen.getByLabelText('App visibility'), 'internal');
@@ -182,7 +233,7 @@ describe('NewAppWizard Git submission', () => {
     );
     const user = userEvent.setup();
     const view = render(<NewAppWizard onboarding />);
-    await user.type(screen.getByLabelText(/repository/i), 'gregale/demo');
+    await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
     await user.click(screen.getByRole('button', { name: /continue/i }));
     await user.type(await screen.findByLabelText('App name'), 'demo-app');
     await user.selectOptions(screen.getByLabelText('App visibility'), 'internal');
@@ -202,9 +253,9 @@ describe('NewAppWizard Git submission', () => {
   it('offers container setup without a GitHub installation', async () => {
     mocks.account.github_install_id = '';
     render(<NewAppWizard />);
-    await userEvent.click(
-      screen.getByRole('button', { name: /Container image.*Deploy an immutable/ })
-    );
+    const container = screen.getByRole('button', { name: 'Container image' });
+    expect(container).toHaveAccessibleDescription(/Deploy an immutable HTTP image/);
+    await userEvent.click(container);
     expect(await screen.findByText('HTTP image setup')).toBeInTheDocument();
     expect(screen.queryByText('Connect GitHub first')).not.toBeInTheDocument();
   });
@@ -434,7 +485,7 @@ describe('NewAppWizard Git submission', () => {
       );
     }
     render(<Journey />);
-    await user.type(screen.getByLabelText(/repository/i), 'gregale/demo');
+    await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
     await user.click(screen.getByRole('button', { name: /continue/i }));
     await user.type(await screen.findByLabelText(/app name/i), 'demo-app');
     await user.click(screen.getByRole('button', { name: /review/i }));
@@ -505,7 +556,7 @@ describe('NewAppWizard Git submission', () => {
   it('keeps resource defaults available behind a named disclosure', async () => {
     const user = userEvent.setup();
     render(<NewAppWizard onboarding />);
-    await user.type(screen.getByLabelText(/repository/i), 'gregale/demo');
+    await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
     await user.click(screen.getByRole('button', { name: /continue/i }));
     const summary = await screen.findByText('Resource settings');
     const details = summary.closest('details');
@@ -521,7 +572,7 @@ describe('NewAppWizard Git submission', () => {
   it('preserves chosen resources through review and back', async () => {
     const user = userEvent.setup();
     render(<NewAppWizard onboarding />);
-    await user.type(screen.getByLabelText(/repository/i), 'gregale/demo');
+    await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
     await user.click(screen.getByRole('button', { name: /continue/i }));
     await user.type(await screen.findByLabelText('App name'), 'demo-app');
     await user.click(screen.getByText('Resource settings'));
@@ -546,7 +597,7 @@ describe('NewAppWizard Git submission', () => {
     mocks.account.app_count = 10;
     const user = userEvent.setup();
     render(<NewAppWizard onboarding />);
-    await user.type(screen.getByLabelText(/repository/i), 'gregale/demo');
+    await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
     await user.click(screen.getByRole('button', { name: /continue/i }));
     await user.type(await screen.findByLabelText('App name'), 'demo-app');
     await user.click(screen.getByRole('button', { name: 'Review' }));
@@ -558,7 +609,7 @@ describe('NewAppWizard Git submission', () => {
   it('does not present a made-up per-invocation cost on review', async () => {
     const user = userEvent.setup();
     render(<NewAppWizard onboarding />);
-    await user.type(screen.getByLabelText(/repository/i), 'gregale/demo');
+    await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
     await user.click(screen.getByRole('button', { name: /continue/i }));
     await user.type(await screen.findByLabelText('App name'), 'demo-app');
     await user.click(screen.getByRole('button', { name: 'Review' }));
@@ -570,7 +621,7 @@ describe('NewAppWizard Git submission', () => {
   it('lets a user reach Configure without an immediate name error', async () => {
     const user = userEvent.setup();
     render(<NewAppWizard onboarding />);
-    await user.type(screen.getByLabelText(/repository/i), 'gregale/demo');
+    await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
     await user.click(screen.getByRole('button', { name: /continue/i }));
     const name = await screen.findByLabelText('App name');
     expect(name).not.toHaveAttribute('aria-invalid');
@@ -586,7 +637,7 @@ describe('NewAppWizard Git submission', () => {
   it('validates on blur and submits Configure with Enter without creating an app', async () => {
     const user = userEvent.setup();
     render(<NewAppWizard onboarding />);
-    await user.type(screen.getByLabelText(/repository/i), 'gregale/demo');
+    await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
     await user.click(screen.getByRole('button', { name: /continue/i }));
     const name = await screen.findByLabelText('App name');
     await user.type(name, '-ab');
@@ -621,7 +672,7 @@ describe('NewAppWizard Git submission', () => {
     mocks.account.limits = { ram_mb: 128, deployed_apps: 3 };
     const user = userEvent.setup();
     render(<NewAppWizard onboarding />);
-    await user.type(screen.getByLabelText(/repository/i), 'gregale/demo');
+    await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
     await user.click(screen.getByRole('button', { name: /continue/i }));
 
     await user.click(await screen.findByText('Resource settings'));

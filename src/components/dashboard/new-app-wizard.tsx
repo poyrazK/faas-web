@@ -1,7 +1,7 @@
 import { MemorySelect } from './memory-select';
 import { RestoreTarget } from '@/components/restore-target';
 import { RESTORE_CONTEXT } from '@/lib/platform-claims';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { useUnsavedGuard } from '@/lib/use-unsaved-guard';
 import { RepoPicker } from '@/components/dashboard/repo-picker';
 import { GitHubConnectForm } from '@/components/dashboard/github-connect-form';
@@ -59,6 +59,24 @@ const STEPS = ['Source', 'Configure', 'Review'] as const;
  * Import keeps the existing project scan/apply contract inside this flow. */
 const SOURCES = [
   {
+    id: 'git',
+    name: 'Git repository',
+    desc: 'Build and deploy one service from a branch, tag, or commit, right from the console.',
+    icon: Github,
+  },
+  {
+    id: 'template',
+    name: 'Template',
+    desc: 'Start with sample code. Create the app here, then deploy it with the CLI.',
+    icon: Page,
+  },
+  {
+    id: 'empty',
+    name: 'Empty app',
+    desc: 'Create the app without a deployment. Add code from the CLI or CI later.',
+    icon: Package,
+  },
+  {
     id: 'container',
     name: 'Container image',
     desc: 'Deploy an immutable HTTP image by digest. No GitHub connection required.',
@@ -71,30 +89,20 @@ const SOURCES = [
     icon: Package,
   },
   {
-    id: 'git',
-    name: 'Git repository',
-    desc: 'Build and deploy a branch, tag, or commit directly from the console.',
-    icon: Github,
-  },
-  {
-    id: 'empty',
-    name: 'Empty app',
-    desc: 'Create the app without a deployment. Add code from the CLI or CI later.',
-    icon: Package,
-  },
-  {
-    id: 'template',
-    name: 'Template',
-    desc: 'Start with sample code. Create the app here, then deploy it with the CLI.',
-    icon: Page,
-  },
-  {
     id: 'import',
     name: 'Import',
-    desc: 'Scan a repository archive and apply its project plan to create apps.',
+    desc: 'A repository with several services (Compose, Procfile, k8s, Render, Fly, or serverless), scanned and created together as a project.',
     icon: Upload,
   },
 ] as const;
+
+/** The common path first: most people arrive with code, not an image or a
+ * multi-service repository. The order inside a group is the order shown. */
+const SOURCE_GROUPS: { title: string; sources: AppSource[] }[] = [
+  { title: 'From code', sources: ['git', 'template', 'empty'] },
+  { title: 'From an image', sources: ['container', 'worker'] },
+  { title: 'Bring an existing project', sources: ['import'] },
+];
 
 /** The set `apid` accepts on `POST /v1/apps`; anything else is a 400. */
 const RUNTIMES: { id: Runtime; label: string }[] = [
@@ -176,7 +184,11 @@ function CreateAppWizard({
   const [submittedSearch, setSubmittedSearch] = useState<NewAppSearch | null>(null);
   const search = submittedSearch ?? urlSearch ?? localSearch;
   const changeSearch = onSearchChange ?? setLocalSearch;
-  const source = search.source ?? (search.template ? 'template' : undefined);
+  const githubConnected = Boolean(account?.github_install_id);
+  // With GitHub connected the common path is already chosen; an explicit
+  // source (or a template link) in the URL always wins.
+  const source =
+    search.source ?? (search.template ? 'template' : githubConnected ? 'git' : undefined);
   const templateSlug = source === 'template' ? search.template : undefined;
   const setSource = (next: AppSource) =>
     changeSearch({
@@ -186,7 +198,12 @@ function CreateAppWizard({
       step: undefined,
     });
   const setStep = (next: number) =>
-    changeSearch({ ...search, step: next === 2 ? 'review' : next === 1 ? 'configure' : undefined });
+    changeSearch({
+      ...search,
+      source,
+      step: next === 2 ? 'review' : next === 1 ? 'configure' : undefined,
+    });
+  const uid = useId();
   // A template prefills runtime, memory and name; its scaffold is deployed
   // from the CLI once the app exists.
   const template = templateBySlug(templateSlug);
@@ -229,7 +246,6 @@ function CreateAppWizard({
   const [memoryDraft, setMemoryMb] = useState<number | null>(null);
   const memoryMb = memoryDraft ?? template?.memoryMb ?? 128;
   const [scaleToZero, setScaleToZero] = useState(true);
-  const githubConnected = Boolean(account?.github_install_id);
   const canKeepResident = residentInstancesAllowed(account);
   const effectiveScaleToZero = scaleToZero || !canKeepResident;
 
@@ -593,6 +609,40 @@ function CreateAppWizard({
     );
   }
 
+  // A card is named by its title alone and described by its sentence, so a
+  // screen reader announces "Git repository, toggle button" and then the
+  // detail, rather than one run-on name.
+  function renderSourceCard(id: AppSource) {
+    const s = SOURCES.find((option) => option.id === id)!;
+    const Icon = s.icon;
+    return (
+      <button
+        key={s.id}
+        type="button"
+        onClick={() => setSource(s.id)}
+        aria-pressed={source === s.id}
+        aria-labelledby={`${uid}-${s.id}-name`}
+        aria-describedby={`${uid}-${s.id}-desc`}
+        className={cn(
+          'flex items-start gap-3 rounded-lg border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
+          source === s.id
+            ? 'border-brand bg-brand/5'
+            : 'border-border bg-card hover:border-border-secondary'
+        )}
+      >
+        <Icon aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-brand" />
+        <span className="min-w-0">
+          <span id={`${uid}-${s.id}-name`} className="block text-sm font-medium">
+            {s.name}
+          </span>
+          <span id={`${uid}-${s.id}-desc`} className="mt-0.5 block text-xs text-muted-foreground">
+            {s.desc}
+          </span>
+        </span>
+      </button>
+    );
+  }
+
   const containerForm = (
     <div className="mx-auto flex max-w-2xl flex-col gap-6">
       <button
@@ -682,33 +732,28 @@ function CreateAppWizard({
             transition={{ duration: reduce ? 0 : 0.25, ease: EASE }}
             className="flex flex-col gap-4"
           >
-            <div className="flex flex-col gap-2">
-              {SOURCES.filter((sourceOption) => !onboarding || sourceOption.id === 'git').map(
-                (s) => {
-                  const Icon = s.icon;
-                  return (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => setSource(s.id)}
-                      aria-pressed={source === s.id}
-                      className={cn(
-                        'flex items-start gap-3 rounded-lg border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
-                        source === s.id
-                          ? 'border-brand bg-brand/5'
-                          : 'border-border bg-card hover:border-border-secondary'
-                      )}
+            {onboarding ? (
+              <div className="flex flex-col gap-2">{renderSourceCard('git')}</div>
+            ) : (
+              <div className="flex flex-col gap-5">
+                {SOURCE_GROUPS.map((group, index) => (
+                  <div
+                    key={group.title}
+                    role="group"
+                    aria-labelledby={`${uid}-group-${index}`}
+                    className="flex flex-col gap-2"
+                  >
+                    <h2
+                      id={`${uid}-group-${index}`}
+                      className="text-xs font-medium text-muted-foreground"
                     >
-                      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-brand" />
-                      <span className="min-w-0">
-                        <span className="block text-sm font-medium">{s.name}</span>
-                        <span className="mt-0.5 block text-xs text-muted-foreground">{s.desc}</span>
-                      </span>
-                    </button>
-                  );
-                }
-              )}
-            </div>
+                      {group.title}
+                    </h2>
+                    {group.sources.map(renderSourceCard)}
+                  </div>
+                ))}
+              </div>
+            )}
 
             {!onboarding && <NewAppCapabilities />}
             {source === 'git' && !githubConnected ? (

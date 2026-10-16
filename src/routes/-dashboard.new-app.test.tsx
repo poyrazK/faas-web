@@ -152,17 +152,18 @@ describe('New App source flow', () => {
       screen.queryByRole('button', { name: 'Continue with an empty app' })
     ).not.toBeInTheDocument();
   });
-  it('requires a source choice before configuration and exposes all four sources', async () => {
+  it('starts on Git when GitHub is connected and lets another source take over', async () => {
     const user = userEvent.setup();
     const router = await mount();
     expect(screen.getByRole('heading', { name: 'New app' })).toBeInTheDocument();
-    for (const name of ['Git repository', 'Empty app', 'Template', 'Import']) {
-      expect(screen.getByRole('button', { name: new RegExp(`^${name}`) })).toHaveAttribute(
-        'aria-pressed',
-        'false'
-      );
+    expect(screen.getByRole('button', { name: 'Git repository' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
+    for (const name of ['Empty app', 'Template', 'Import']) {
+      expect(screen.getByRole('button', { name })).toHaveAttribute('aria-pressed', 'false');
     }
-    expect(screen.queryByLabelText('Repository')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Repository')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
     await user.click(screen.getByRole('button', { name: /^Empty app/ }));
     expect(router.state.location.search).toMatchObject({ source: 'empty' });
