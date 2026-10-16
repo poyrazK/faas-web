@@ -17,6 +17,14 @@ import {
 } from './environment-readiness';
 import { getStageQueueRecord, putStageQueueRecord } from './stage-queues';
 import {
+  advanceDeployments,
+  buildLogAt,
+  stagesAt,
+  startDeployment,
+  trackedDeployment,
+} from './deploy-lifecycle';
+import { CONNECT_FORBIDDEN, MOCK_INSTALL_ID, connectReturnTarget } from './github-connect';
+import {
   environmentInventory,
   environmentState,
   environmentDiff,
@@ -474,6 +482,54 @@ function app(slug: string) {
   return found;
 }
 
+/** A blank deployment row for `a`; `startDeployment` sets its t=0 status. */
+function newDeployment(a: db.App, kind: string): db.Deployment {
+  return {
+    id: db.id(),
+    app_id: a.id,
+    build_id: null,
+    image_digest: `sha256:${db.id()}${db.id()}`,
+    kind,
+    status: 'pending',
+    created_at: new Date().toISOString(),
+    traffic_percent: 0,
+    scan: null,
+  };
+}
+
+/**
+ * A deployment that builds from source, with its build row, on the timed
+ * lifecycle in `deploy-lifecycle.ts`. `MOCK_BUILD_FAIL=1` (read per request,
+ * so it can be flipped in a test) makes the build fail installing dependencies.
+ */
+function startSourceDeployment(
+  a: db.App,
+  kind: 'github' | 'tarball',
+  source: string,
+  extra: Partial<db.Deployment> = {}
+): db.Deployment {
+  const deployment: db.Deployment = { ...newDeployment(a, kind), ...extra, build_id: db.id() };
+  const build: db.Build = {
+    id: deployment.build_id!,
+    deployment_id: deployment.id,
+    kind: kind === 'github' ? 'railpack' : 'tarball',
+    source_bytes: 1_843_200,
+    status: 'queued',
+    enqueued_at: deployment.created_at,
+  };
+  db.deployments.unshift(deployment);
+  db.builds.unshift(build);
+  startDeployment({
+    deployment,
+    app: a,
+    build,
+    fail: process.env.MOCK_BUILD_FAIL === '1',
+    now: Date.now(),
+    source,
+  });
+  return deployment;
+}
+
 route('GET', '/v1/apps', () => db.apps);
 route('GET', '/v1/apps/metrics', ({ query }) => {
   const range = query.get('range') ?? '24h';
@@ -599,6 +655,9 @@ route('POST', '/v1/apps/{slug}/deployments', ({ params, body, req }) => {
     created_at: new Date().toISOString(),
   };
   db.deployments.unshift(deployment);
+  // Worker images keep their read-count characterization in GET /v1/deployments/{id}.
+  if (a.manifest?.execution_mode !== 'worker')
+    startDeployment({ deployment, app: a, now: Date.now() });
   imageDeployReceipts.set(key, deployment);
   return status(202, deployment);
 });
@@ -784,20 +843,10 @@ route('POST', '/v1/apps/{slug}/deployments/source-ref', ({ params, body }) => {
   const a = app(params.slug);
   if (!body.repo || !body.ref)
     throw new Problem(400, 'missing_field', 'repo and ref are required.');
-  const dep: db.Deployment = {
-    id: db.id(),
-    app_id: a.id,
-    build_id: db.id(),
-    image_digest: `sha256:${db.id()}${db.id()}`,
-    kind: 'github',
-    status: 'building',
-    created_at: db.iso(0),
-    traffic_percent: 0,
-    scan: null,
-  };
-  db.deployments.unshift(dep);
-  db.setScenario(a, 'deploying');
-  return status(202, dep);
+  return status(
+    202,
+    startSourceDeployment(a, 'github', `${String(body.repo)}@${String(body.ref)}`)
+  );
 });
 route('POST', '/v1/apps/{slug}/rollback', ({ params }) => {
   const a = app(params.slug);
@@ -2400,19 +2449,7 @@ route('POST', '/v1/apps/{slug}/deployments/source-tarball', ({ params, req }) =>
   const type = String(req.headers['content-type'] ?? '');
   if (!type.startsWith('multipart/form-data'))
     throw new Problem(400, 'validation_failed', 'the body must be multipart/form-data.');
-  const template = db.deployments.find((d) => d.app_id === a.id);
-  const deployment = {
-    ...(template ?? db.deployments[0]),
-    id: db.id(),
-    app_id: a.id,
-    kind: 'tarball',
-    status: 'building',
-    error: null,
-    error_code: null,
-    created_at: new Date().toISOString(),
-  };
-  db.deployments.unshift(deployment);
-  return status(202, deployment);
+  return status(202, startSourceDeployment(a, 'tarball', `${a.slug} (uploaded archive)`));
 });
 
 route('GET', '/v1/account/object-storage-usage', () => ({
@@ -3235,9 +3272,22 @@ route('POST', '/v1/deployments/{id}/retry', ({ params, body }) => {
     'readiness',
   ];
   if (!stages.includes(String(body.from_stage ?? ''))) throw new Problem(400, 'invalid_from_stage');
-  const copy = { ...d, id: db.id(), status: 'building', created_at: new Date().toISOString() };
-  db.deployments.unshift(copy);
-  return copy;
+  const a = db.apps.find((x) => x.id === d.app_id);
+  if (!a) throw new Problem(404, 'app_not_found');
+  const carried = { min_instances: d.min_instances, scope: d.scope };
+  if (!d.build_id) {
+    const copy: db.Deployment = {
+      ...newDeployment(a, d.kind),
+      ...carried,
+      image_digest: d.image_digest,
+      build_id: null,
+    };
+    db.deployments.unshift(copy);
+    startDeployment({ deployment: copy, app: a, now: Date.now() });
+    return copy;
+  }
+  const source = trackedDeployment(d.id)?.source ?? a.slug;
+  return startSourceDeployment(a, d.kind === 'tarball' ? 'tarball' : 'github', source, carried);
 });
 
 // Deployment control (ADR-117 stages, ADR-122 canary + audit + preview URL,
@@ -3279,6 +3329,8 @@ function deploymentById(id: string) {
 
 route('GET', '/v1/deployments/{id}/stages', ({ params }) => {
   const d = deploymentById(params.id);
+  const rec = trackedDeployment(d.id);
+  if (rec && rec.written === d.status) return stagesAt(rec, Date.now());
   const started = Date.parse(d.created_at);
   const at = (i: number) => STAGE_MS.slice(0, i).reduce((sum, ms) => sum + ms, 0);
   const row = (i: number, stageStatus: 'completed' | 'failed', reason?: string) => ({
@@ -3935,6 +3987,29 @@ route('GET', '/v1/deployments/{id}/logs', ({ params, query, req, res }) => {
   res.write(': mock build log\n\n');
   const send = (event: string, data: string) => res.write(`event: ${event}\ndata: ${data}\n\n`);
 
+  // A deployment created through the mock writes its output as it goes.
+  const rec = trackedDeployment(dep.id);
+  if (rec?.build) {
+    const first = buildLogAt(rec, Date.now());
+    const limit = Number(query.get('limit') ?? 0);
+    for (const frame of limit > 0 ? first.frames.slice(-limit) : first.frames)
+      send('log', JSON.stringify(frame));
+    let sent = first.frames.length;
+    const flush = () => {
+      const { frames, done } = buildLogAt(rec, Date.now());
+      for (const frame of frames.slice(sent)) send('log', JSON.stringify(frame));
+      sent = frames.length;
+      if (!done && rec.deployment.status !== 'cancelled') return false;
+      send('end', '');
+      res.end();
+      return true;
+    };
+    if (flush()) return undefined;
+    const poll = setInterval(() => flush() && clearInterval(poll), 400);
+    req.on('close', () => clearInterval(poll));
+    return undefined;
+  }
+
   const lines = db.buildLog(
     app?.slug ?? 'app',
     build?.status ?? dep.status,
@@ -4011,7 +4086,7 @@ route('GET', '/v1/builds/{id}/sbom', ({ params, res }) => {
 route('GET', '/v1/deployments/{id}/scan', ({ params }) => {
   const d = db.deployments.find((x) => x.id === params.id);
   if (!d) throw new Problem(404, 'deployment_not_found');
-  if (d.status === 'building')
+  if (d.status === 'pending' || d.status === 'building')
     return {
       status: 'pending',
       severity_counts: { critical: 0, high: 0, medium: 0, low: 0, unknown: 0 },
@@ -5300,17 +5375,41 @@ const hex = (n: number) =>
   Array.from({ length: n }, () => Math.floor(Math.random() * 16).toString(16)).join('');
 
 // --- GitHub installation repos + app binding ---
-route('POST', '/v1/install/repos/list', () => [
-  { id: 1001, full_name: 'acme-corp/storefront', default_branch: 'main', private: true },
-  { id: 1002, full_name: 'acme-corp/checkout', default_branch: 'main', private: true },
-  { id: 1003, full_name: 'acme-corp/webhook-router', default_branch: 'master', private: false },
-  { id: 1004, full_name: 'acme-corp/nightly-etl', default_branch: 'main', private: true },
-]);
-route('POST', '/v1/apps/{slug}/install/bind', async ({ body }) => ({
-  binding_id: hex(32),
-  repo_full_name: String(body.repo_full_name ?? ''),
-  production_branch: String(body.production_branch ?? 'main'),
-}));
+function requireGitHub() {
+  if (!db.account.github_install_id)
+    throw new Problem(403, 'github_login_required', 'Connect GitHub before choosing a repository.');
+}
+// The native form post apid answers with a redirect to GitHub. The mock grants
+// the installation and redirects to where GitHub's callback would land.
+route('POST', '/dashboard/install/connect', ({ body, req, res }) => {
+  if (body.csrf_token !== 'mock-csrf') {
+    res.setHeader('Location', CONNECT_FORBIDDEN);
+    return status(303, '');
+  }
+  db.account.github_install_id = MOCK_INSTALL_ID;
+  res.setHeader(
+    'Location',
+    connectReturnTarget(body.return_to, req.headers.referer, req.headers.host)
+  );
+  return status(303, '');
+});
+route('POST', '/v1/install/repos/list', () => {
+  requireGitHub();
+  return [
+    { id: 1001, full_name: 'acme-corp/storefront', default_branch: 'main', private: true },
+    { id: 1002, full_name: 'acme-corp/checkout', default_branch: 'main', private: true },
+    { id: 1003, full_name: 'acme-corp/webhook-router', default_branch: 'master', private: false },
+    { id: 1004, full_name: 'acme-corp/nightly-etl', default_branch: 'main', private: true },
+  ];
+});
+route('POST', '/v1/apps/{slug}/install/bind', async ({ body }) => {
+  requireGitHub();
+  return {
+    binding_id: hex(32),
+    repo_full_name: String(body.repo_full_name ?? ''),
+    production_branch: String(body.production_branch ?? 'main'),
+  };
+});
 
 // --- Organisations, org keys, invitations ---
 route('GET', '/v1/orgs/{slug}', ({ params }) => mockOrg(params.slug));
@@ -6509,6 +6608,7 @@ const MOCKED_PREFIXES = [
   '/login',
   '/signup',
   '/dashboard/account/set-password',
+  '/dashboard/install/connect',
 ];
 
 export function mockApi(): Plugin {
@@ -6549,6 +6649,8 @@ export function mockApi(): Plugin {
         void (async () => {
           const body = method === 'GET' ? {} : await readBody(req);
           await new Promise((r) => setTimeout(r, latency()));
+          // Deployments created here move along their lifecycle as time passes.
+          advanceDeployments(Date.now());
           try {
             const out = await match.handler({ params, query: url.searchParams, body, req, res });
             if (res.writableEnded || res.headersSent) return; // streaming handlers own the response

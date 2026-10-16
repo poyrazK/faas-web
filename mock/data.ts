@@ -1571,6 +1571,9 @@ if (EMPTY) {
   for (const map of [secrets, env, upstreams, alerts, webhooks]) map.clear();
   account.app_count = 0;
   account.usage_gb_hours = 0;
+  // A first sign-in has not connected GitHub yet; the mock's
+  // POST /dashboard/install/connect grants the installation on demand.
+  account.github_install_id = null;
   Object.assign(usage, {
     used_gb_hours: 0,
     overage_gb_hours: 0,
