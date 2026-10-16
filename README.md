@@ -263,6 +263,23 @@ There is no export: apid has never served an env-export endpoint, and
 `GET /v1/apps/{slug}/env` never returns plaintext, so the console does not offer
 one.
 
+**API monetization** (capability `api-monetization`, preview) has two homes.
+The app's **Monetize** tab holds **Consumers** — the stable identities of the
+customers calling the app, with keys (plaintext shown once through
+`OneTimeSecret` and never cached), plan assignment from a UTC minute, durable
+usage with a quote that is labelled an estimate, crossed usage alerts, and
+usage statements (snapshot a UTC month, confirmed finalize, handoff receipt
+read) — and **Consumer plans**, whose limits and alert thresholds are the only
+plan fields the API has. Account-level **Customers** (`/dashboard/customers`,
+under Operate) are platform tenants: register idempotently by external
+reference, link existing consumers and surfaces, suspend or resume (which
+blocks linked credentials and hostnames), set immutable tenant prices, and
+read cross-app usage, statements and credential metadata. Every page shows
+`CapabilityNotice` and reads nothing while the capability is unavailable.
+App rate cards, graduated tiers and recording a billing handoff are API-only:
+the console shows them where they appear but does not author them. Hooks live
+in `lib/api/monetization.ts`; the dev mock in `mock/monetization.ts`.
+
 ### Waiting on the backend
 
 Two features were built against API work that has not reached `poyrazK/faas`
@@ -340,8 +357,8 @@ available, and otherwise explains why without calling the AI endpoints. Hooks
 live in `lib/api/events.ts` and `lib/api/outbound.ts`; the dev mock answers both
 from `mock/events.ts`.
 
-App detail navigation has six tabs — Overview, Delivery, Observe, Connect,
-Automate, and Configure — and a segmented control for the pages inside the
+App detail navigation has seven tabs — Overview, Delivery, Observe, Connect,
+Monetize, Automate, and Configure — and a segmented control for the pages inside the
 selected one, which remembers the last page opened in each. Env vars and
 secrets share one **Environment** page; `?tab=Secrets` and `?tab=Env vars`
 still resolve to it, and every other existing `?tab=` link is unchanged.

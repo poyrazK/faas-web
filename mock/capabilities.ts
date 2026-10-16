@@ -161,6 +161,17 @@ const entries: Capability[] = [
     enabled: true,
   },
   {
+    key: 'api-monetization',
+    name: 'API monetization',
+    category: 'commerce',
+    description: 'API consumers, keys, plans, durable usage, quotes and statements.',
+    maturity: 'preview',
+    plans: PAID,
+    docs_url: '/docs',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
+  {
     key: 'worker-pools',
     name: 'Worker pools',
     category: 'async',

@@ -35,7 +35,7 @@ function BindingRow({
   return (
     <li className="space-y-3 rounded border border-border p-3">
       <div className="grid gap-3 sm:grid-cols-2">
-        <label className="text-sm">
+        <label className="flex flex-col gap-1.5 text-sm">
           Binding name {index + 1}
           <input
             className={fieldClass}
@@ -44,7 +44,7 @@ function BindingRow({
             onChange={(event) => onChange({ ...binding, name: event.target.value })}
           />
         </label>
-        <label className="text-sm">
+        <label className="flex flex-col gap-1.5 text-sm">
           Queue name {index + 1}
           <input
             className={fieldClass}
@@ -53,7 +53,7 @@ function BindingRow({
             onChange={(event) => onChange({ ...binding, queue_name: event.target.value })}
           />
         </label>
-        <label className="text-sm">
+        <label className="flex flex-col gap-1.5 text-sm">
           Delivery mode {title}
           <select
             className={fieldClass}
@@ -67,7 +67,7 @@ function BindingRow({
             <option value="push">Platform push</option>
           </select>
         </label>
-        <label className="text-sm">
+        <label className="flex flex-col gap-1.5 text-sm">
           Workload class {title}
           <select
             className={fieldClass}
@@ -85,7 +85,7 @@ function BindingRow({
             <option value="http">HTTP function</option>
           </select>
         </label>
-        <label className="text-sm">
+        <label className="flex flex-col gap-1.5 text-sm">
           Max concurrency {title}
           <input
             className={fieldClass}

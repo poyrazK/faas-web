@@ -258,6 +258,7 @@ const RAIL = [
   'Jobs',
   'Releases',
   'Domains',
+  'Customers',
   'Storage',
   'Postgres',
   'Events',

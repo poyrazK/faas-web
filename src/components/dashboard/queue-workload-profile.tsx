@@ -376,7 +376,7 @@ function Profile({ accountId, plan, slug, bindings, app }: Props & { app?: App }
                 : 'Not set')}{' '}
             {app?.scaling_policy?.target?.value ?? ''}.
           </p>
-          <label className="block space-y-1">
+          <label className="flex flex-col gap-1.5">
             <span>Profile queue</span>
             <input
               className={FIELD}
@@ -385,7 +385,7 @@ function Profile({ accountId, plan, slug, bindings, app }: Props & { app?: App }
               onChange={(event) => setQueueName(event.target.value)}
             />
           </label>
-          <label className="block space-y-1">
+          <label className="flex flex-col gap-1.5">
             <span>Max concurrency</span>
             <input
               className={FIELD}
@@ -397,7 +397,7 @@ function Profile({ accountId, plan, slug, bindings, app }: Props & { app?: App }
               onChange={(event) => setMaxConcurrency(Number(event.target.value))}
             />
           </label>
-          <label className="block space-y-1">
+          <label className="flex flex-col gap-1.5">
             <span>Target queue depth</span>
             <input
               className={FIELD}
