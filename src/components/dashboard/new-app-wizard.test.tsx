@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   retry: vi.fn(),
   confirm: vi.fn(),
   scan: vi.fn(),
+  capabilityState: 'available',
   account: {
     id: 'account-1',
     plan: 'hobby' as 'free' | 'hobby' | 'pro' | 'scale',
@@ -46,13 +47,17 @@ vi.mock('@/lib/api/logs', () => ({
   useLogStream: () => ({ lines: [], status: 'streaming', reason: null }),
 }));
 vi.mock('@/components/dashboard/repo-picker', () => ({
-  RepoPicker: ({ value, onChange }: { value: string; onChange: (value: string) => void }) => (
-    <input
-      aria-label="Repository"
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-    />
-  ),
+  // The real picker forwards id/name/form/ARIA to its control; so does this,
+  // so label association is asserted through the wizard's own <label>.
+  RepoPicker: ({
+    onChange,
+    className: _className,
+    ...control
+  }: {
+    value: string;
+    onChange: (value: string) => void;
+    className?: string;
+  }) => <input {...control} onChange={(event) => onChange(event.target.value)} />,
 }));
 vi.mock('@/components/ui/toast', () => ({
   useToast: () => ({ toast: mocks.toast }),
@@ -69,7 +74,11 @@ vi.mock('@/lib/auth', () => ({
   useAuth: () => ({ loading: false, account: mocks.account }),
 }));
 vi.mock('@/lib/api/capabilities', () => ({
-  useCapability: () => ({ accountId: mocks.account.id, state: 'available', refresh: vi.fn() }),
+  useCapability: () => ({
+    accountId: mocks.account.id,
+    state: mocks.capabilityState,
+    refresh: vi.fn(),
+  }),
 }));
 vi.mock('@/lib/api/bindings', () => ({ readPrivateAppCreateContext: mocks.readPrivate }));
 vi.mock('@/lib/api/queries', () => ({
@@ -146,6 +155,7 @@ beforeEach(() => {
   mocks.issueCSRF.mockResolvedValue('wizard-proof');
   mocks.readPrivate.mockResolvedValue(undefined);
   mocks.scan.mockReturnValue({ plan: undefined, error: null, scanning: false });
+  mocks.capabilityState = 'available';
 });
 
 afterEach(() => vi.restoreAllMocks());
@@ -317,6 +327,82 @@ describe('NewAppWizard repository prefill', () => {
     await user.click(screen.getByRole('button', { name: /continue/i }));
     expect(await screen.findByLabelText('Type')).toHaveValue('function');
     expect(mocks.toast).not.toHaveBeenCalled();
+  });
+});
+
+describe('NewAppWizard validation', () => {
+  it('explains an empty Continue with no source and focuses the first source', async () => {
+    mocks.account.github_install_id = '';
+    const user = userEvent.setup();
+    render(<NewAppWizard />);
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    const git = screen.getByRole('button', { name: 'Git repository' });
+    expect(git).toHaveFocus();
+    expect(git).toHaveAccessibleDescription(/Choose where the code comes from to continue\./);
+    expect(screen.queryByLabelText('App name')).not.toBeInTheDocument();
+  });
+
+  it('asks for a GitHub connection instead of doing nothing', async () => {
+    mocks.account.github_install_id = '';
+    const user = userEvent.setup();
+    render(<NewAppWizard />);
+    await user.click(screen.getByRole('button', { name: 'Git repository' }));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(screen.getByText(/Connect GitHub to deploy from a repository/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Git repository' })).toHaveFocus();
+  });
+
+  it('shows an inline error on the repository and focuses it', async () => {
+    const user = userEvent.setup();
+    render(<NewAppWizard onboarding />);
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    const repository = screen.getByLabelText('Repository');
+    expect(repository).toHaveFocus();
+    expect(repository).toHaveAttribute('aria-invalid', 'true');
+    expect(repository).toHaveAccessibleDescription('Choose a repository to deploy.');
+    await user.type(repository, 'not a repo');
+    expect(repository).toHaveAccessibleDescription('Use owner/name, like acme/api.');
+    expect(screen.queryByLabelText('App name')).not.toBeInTheDocument();
+  });
+
+  it('focuses an invalid ref once the repository is fine', async () => {
+    const user = userEvent.setup();
+    render(<NewAppWizard onboarding />);
+    await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
+    const ref = screen.getByLabelText('Ref');
+    await user.clear(ref);
+    await user.type(ref, 'bad..ref');
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(ref).toHaveFocus();
+    expect(ref).toHaveAccessibleDescription(/Use a valid branch, tag, or commit SHA/);
+  });
+
+  it('labels every Git and Configure field by its visible label', async () => {
+    const user = userEvent.setup();
+    render(<NewAppWizard onboarding />);
+    expect(screen.getByLabelText('Repository')).toHaveAttribute('name', 'repository');
+    expect(screen.getByLabelText('Ref')).toHaveValue('main');
+    await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(await screen.findByLabelText('App name')).toHaveValue('demo');
+    expect(screen.getByLabelText('Type')).toHaveValue('function');
+    expect(screen.getByLabelText('Runtime')).toHaveValue('node22');
+    expect(screen.getByLabelText('App visibility')).toHaveAccessibleDescription(
+      /Internal apps have no public platform URL/
+    );
+  });
+
+  it('says why Deploy is unavailable on review', async () => {
+    mocks.capabilityState = 'unavailable';
+    const user = userEvent.setup();
+    render(<NewAppWizard onboarding />);
+    await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.selectOptions(await screen.findByLabelText('App visibility'), 'internal');
+    await user.click(screen.getByRole('button', { name: 'Review' }));
+    const deploy = await screen.findByRole('button', { name: 'Deploy app' });
+    expect(deploy).toBeDisabled();
+    expect(deploy).toHaveAccessibleDescription(/Internal-only apps are not confirmed/);
   });
 });
 

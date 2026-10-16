@@ -11,7 +11,7 @@ import { ArrowLeft, ArrowRight, Check, Github, Package, Page, Upload } from 'ico
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
-import { Select } from '@/components/ui/field';
+import { FieldError, Select, fieldErrorProps, useFormValidation } from '@/components/ui/field';
 import { FormField } from '@/components/ui/form-field';
 import { appNameError, appNameFromRepo } from './new-app-validation';
 import { SCAN_SOURCE_LABEL, scanUnavailableReason } from './scan-source';
@@ -53,6 +53,8 @@ import {
 } from '@/lib/plan';
 import { cn } from '@/lib/utils';
 import { FirstDeploymentRecovery } from './first-deployment-recovery';
+
+type SourceField = 'source-git' | 'source-template' | 'repository' | 'ref';
 
 const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
 const STEPS = ['Source', 'Configure', 'Review'] as const;
@@ -192,13 +194,17 @@ function CreateAppWizard({
   const source =
     search.source ?? (search.template ? 'template' : githubConnected ? 'git' : undefined);
   const templateSlug = source === 'template' ? search.template : undefined;
-  const setSource = (next: AppSource) =>
+  const sourceValidation = useFormValidation<SourceField>();
+  const configureValidation = useFormValidation<'name'>();
+  const setSource = (next: AppSource) => {
+    sourceValidation.resetValidation();
     changeSearch({
       ...search,
       source: next,
       template: next === 'template' ? templateSlug : undefined,
       step: undefined,
     });
+  };
   const setStep = (next: number) =>
     changeSearch({
       ...search,
@@ -233,8 +239,6 @@ function CreateAppWizard({
   const [ref, setRef] = useState('main');
   const [nameDraft, setName] = useState<string | null>(null);
   const [nameTouched, setNameTouched] = useState(false);
-  const [configureSubmitted, setConfigureSubmitted] = useState(false);
-  const nameInputRef = useRef<HTMLInputElement>(null);
   // A chosen repository names the app until the customer types a name of
   // their own; their typing (even clearing the field) always wins.
   const repoName = source === 'git' ? appNameFromRepo(repo) : '';
@@ -352,6 +356,36 @@ function CreateAppWizard({
     (source !== 'template' || picked) &&
     gitSourceValid &&
     (source !== 'git' || githubConnected);
+  // Each reason Continue cannot go on, keyed by the control that fixes it.
+  // Source-level reasons focus the card the customer most likely meant.
+  const sourceErrors: Partial<Record<SourceField, string>> = {
+    'source-git': !source
+      ? 'Choose where the code comes from to continue.'
+      : source === 'git' && !githubConnected
+        ? 'Connect GitHub to deploy from a repository, or choose another source.'
+        : undefined,
+    'source-template':
+      source === 'template' && !picked
+        ? 'Choose a starter template below, or another source.'
+        : undefined,
+    repository:
+      source === 'git' && githubConnected && !repoValid
+        ? repo.trim()
+          ? 'Use owner/name, like acme/api.'
+          : 'Choose a repository to deploy.'
+        : undefined,
+    ref:
+      source === 'git' && githubConnected && !refValid
+        ? 'Use a valid branch, tag, or commit SHA of at most 200 characters.'
+        : undefined,
+  };
+  const sourceShown = sourceValidation.submitAttempted;
+  const sourceLevelError = sourceShown
+    ? (sourceErrors['source-git'] ?? sourceErrors['source-template'])
+    : undefined;
+  const repoError = sourceShown ? sourceErrors.repository : undefined;
+  // The ref was already checked as it was typed; keep that.
+  const refError = sourceErrors.ref;
   // Reloaded URLs restore the source; missing in-memory fields return to the
   // earliest incomplete step instead of exposing an invalid review/create.
   const step = !sourceValid ? 0 : search.step === 'review' && nameValid ? 2 : search.step ? 1 : 0;
@@ -381,6 +415,18 @@ function CreateAppWizard({
     quotaExceeded ||
     !memoryAllowed(account, selectedMemoryMb) ||
     (visibility === 'internal' && !privateAvailable);
+
+  // A disabled Deploy always says why. The plan-limit case already has its
+  // own alert in the review panel, so it is not repeated here.
+  const blockedReason = limitsLoading
+    ? 'Checking your plan limits before creating the app…'
+    : quotaExceeded
+      ? undefined
+      : !memoryAllowed(account, selectedMemoryMb)
+        ? `${selectedMemoryMb} MB is above your plan's per-app memory. Lower it in Resource settings.`
+        : visibility === 'internal' && !privateAvailable
+          ? 'Internal-only apps are not confirmed for this account yet. Choose public visibility, or try again shortly.'
+          : undefined;
 
   async function submitGitSource(slug: string) {
     sourceRequested.current = false;
@@ -715,10 +761,12 @@ function CreateAppWizard({
       <button
         key={s.id}
         type="button"
+        name={`source-${s.id}`}
+        form={`${uid}-source-form`}
         onClick={() => setSource(s.id)}
         aria-pressed={source === s.id}
         aria-labelledby={`${uid}-${s.id}-name`}
-        aria-describedby={`${uid}-${s.id}-desc`}
+        aria-describedby={cn(`${uid}-${s.id}-desc`, sourceLevelError && `${uid}-source-error`)}
         className={cn(
           'flex items-start gap-3 rounded-lg border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
           source === s.id
@@ -828,6 +876,17 @@ function CreateAppWizard({
             transition={{ duration: reduce ? 0 : 0.25, ease: EASE }}
             className="flex flex-col gap-4"
           >
+            {/* The step holds GitHub's own connect form, so its controls join
+                this form by id rather than by nesting. */}
+            <form
+              id={`${uid}-source-form`}
+              noValidate
+              aria-label="Choose a source"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (sourceValidation.validate(sourceErrors, event.currentTarget)) setStep(1);
+              }}
+            />
             {onboarding ? (
               <div className="flex flex-col gap-2">{renderSourceCard('git')}</div>
             ) : (
@@ -850,6 +909,9 @@ function CreateAppWizard({
                 ))}
               </div>
             )}
+            {sourceLevelError && (
+              <FieldError id={`${uid}-source-error`}>{sourceLevelError}</FieldError>
+            )}
 
             {!onboarding && <NewAppCapabilities />}
             {source === 'git' && !githubConnected ? (
@@ -868,9 +930,15 @@ function CreateAppWizard({
               </div>
             ) : source === 'git' ? (
               <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
-                <label className="flex flex-col gap-1.5">
-                  <span className={LABEL}>Repository</span>
+                <div className="flex min-w-0 flex-col gap-1.5">
+                  <label htmlFor={`${uid}-repository`} className={LABEL}>
+                    Repository
+                  </label>
                   <RepoPicker
+                    id={`${uid}-repository`}
+                    name="repository"
+                    form={`${uid}-source-form`}
+                    {...fieldErrorProps(repoError, `${uid}-repository-error`)}
                     value={repo}
                     onChange={(nextRepo, defaultBranch) => {
                       setRepo(nextRepo);
@@ -878,24 +946,26 @@ function CreateAppWizard({
                     }}
                     className={CONTROL}
                   />
-                </label>
-                <label className="flex flex-col gap-1.5 sm:w-40">
-                  <span className={LABEL}>Ref</span>
+                  {repoError && <FieldError id={`${uid}-repository-error`}>{repoError}</FieldError>}
+                </div>
+                <div className="flex flex-col gap-1.5 sm:w-40">
+                  <label htmlFor={`${uid}-ref`} className={LABEL}>
+                    Ref
+                  </label>
                   <Input
+                    id={`${uid}-ref`}
+                    name="ref"
+                    form={`${uid}-source-form`}
+                    {...fieldErrorProps(refError, `${uid}-ref-error`)}
                     value={ref}
                     onChange={(e) => setRef(e.target.value)}
                     placeholder="main"
                     maxLength={200}
                     spellCheck={false}
-                    aria-invalid={!refValid || undefined}
                     className={cn(CONTROL, 'font-mono')}
                   />
-                  {!refValid && (
-                    <span className="text-xs" style={{ color: 'var(--status-critical)' }}>
-                      Use a valid branch, tag, or commit SHA of at most 200 characters.
-                    </span>
-                  )}
-                </label>
+                  {refError && <FieldError id={`${uid}-ref-error`}>{refError}</FieldError>}
+                </div>
                 <p className="text-[13px] leading-5 text-muted-foreground sm:col-span-2">
                   Choose a repository your connected GitHub account has granted Gregale access to.
                   The ref can be a branch, tag, or commit SHA.
@@ -931,8 +1001,8 @@ function CreateAppWizard({
               <div className="flex justify-end">
                 <Button
                   variant="cta"
-                  disabled={!sourceValid}
-                  onClick={() => setStep(1)}
+                  type="submit"
+                  form={`${uid}-source-form`}
                   className="h-10 gap-2 rounded-lg"
                 >
                   Continue
@@ -948,13 +1018,10 @@ function CreateAppWizard({
             key="configure"
             onSubmit={(event) => {
               event.preventDefault();
-              setConfigureSubmitted(true);
-              if (nameError) {
-                nameInputRef.current?.focus();
-                return;
-              }
-              setStep(2);
+              if (configureValidation.validate({ name: nameError }, event.currentTarget))
+                setStep(2);
             }}
+            noValidate
             initial={reduce ? false : { opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={reduce ? { opacity: 1 } : { opacity: 0, y: -10 }}
@@ -967,12 +1034,12 @@ function CreateAppWizard({
                   id="new-app-name"
                   label="App name"
                   error={nameError}
-                  showError={nameTouched || configureSubmitted}
+                  showError={nameTouched || configureValidation.submitAttempted}
                 >
                   {(props) => (
                     <Input
                       {...props}
-                      ref={nameInputRef}
+                      name="name"
                       value={name}
                       onChange={(e) => setName(e.target.value.toLowerCase())}
                       onBlur={() => setNameTouched(true)}
@@ -1010,9 +1077,13 @@ function CreateAppWizard({
                   </span>
                 </div>
 
-                <label className="flex flex-col gap-1.5">
-                  <span className={LABEL}>Runtime</span>
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor={`${uid}-runtime`} className={LABEL}>
+                    Runtime
+                  </label>
                   <Select
+                    id={`${uid}-runtime`}
+                    name="runtime"
                     value={runtime}
                     onChange={(e) => setRuntime(e.target.value as Runtime)}
                     className={CONTROL}
@@ -1023,12 +1094,16 @@ function CreateAppWizard({
                       </option>
                     ))}
                   </Select>
-                </label>
+                </div>
 
-                <label className="flex flex-col gap-1.5">
-                  <span className={LABEL}>App visibility</span>
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor={`${uid}-visibility`} className={LABEL}>
+                    App visibility
+                  </label>
                   <Select
-                    aria-label="App visibility"
+                    id={`${uid}-visibility`}
+                    name="visibility"
+                    aria-describedby={`${uid}-visibility-hint`}
                     value={visibility}
                     onChange={(event) => setVisibility(event.target.value as 'public' | 'internal')}
                     className={CONTROL}
@@ -1036,14 +1111,17 @@ function CreateAppWizard({
                     <option value="public">Public edge and internal service</option>
                     <option value="internal">Internal service only</option>
                   </Select>
-                  <span className="text-[13px] leading-5 text-muted-foreground">
+                  <span
+                    id={`${uid}-visibility-hint`}
+                    className="text-[13px] leading-5 text-muted-foreground"
+                  >
                     Internal apps have no public platform URL or custom-domain route. Authenticated
                     same-account service calls remain subject to caller policy.
                     {visibility === 'internal' && !privateAvailable
                       ? ' Checking private-app availability before creation.'
                       : ''}
                   </span>
-                </label>
+                </div>
 
                 {/* No region picker: this is a one-box platform and the API
                     exposes no region to choose. */}
@@ -1201,6 +1279,15 @@ function CreateAppWizard({
               )}
             </Panel>
 
+            {blockedReason && (
+              <p
+                id={`${uid}-blocked`}
+                role="status"
+                className="text-right text-[13px] leading-5 text-muted-foreground"
+              >
+                {blockedReason}
+              </p>
+            )}
             <div className="flex items-center justify-between">
               <Button variant="ghost" onClick={() => setStep(1)} className="gap-2">
                 <ArrowLeft className="h-4 w-4" />
@@ -1214,6 +1301,7 @@ function CreateAppWizard({
                   !gitSourceValid ||
                   (source === 'git' && !githubConnected)
                 }
+                aria-describedby={blockedReason ? `${uid}-blocked` : undefined}
                 onClick={() => void createFunction()}
                 className="h-10 gap-2 rounded-lg px-6"
               >

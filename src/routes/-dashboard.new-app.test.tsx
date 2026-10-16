@@ -51,9 +51,17 @@ vi.mock('@/lib/api/capabilities', () => ({
 }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: mocks.toast }) }));
 vi.mock('@/components/dashboard/repo-picker', () => ({
-  RepoPicker: ({ value, onChange }: { value: string; onChange: (value: string) => void }) => (
-    <input aria-label="Repository" value={value} onChange={(e) => onChange(e.target.value)} />
-  ),
+  // The real picker forwards id/name/form/ARIA to its control; so does this,
+  // so label association is asserted through the wizard's own <label>.
+  RepoPicker: ({
+    onChange,
+    className: _className,
+    ...control
+  }: {
+    value: string;
+    onChange: (value: string) => void;
+    className?: string;
+  }) => <input {...control} onChange={(event) => onChange(event.target.value)} />,
 }));
 vi.mock('@/lib/api/queries', () => ({
   useBindRepoFor: () => ({ mutateAsync: mocks.bind }),
@@ -171,7 +179,12 @@ describe('New App source flow', () => {
       expect(screen.getByRole('button', { name })).toHaveAttribute('aria-pressed', 'false');
     }
     expect(screen.getByLabelText('Repository')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(screen.getByLabelText('Repository')).toHaveFocus();
+    expect(screen.getByLabelText('Repository')).toHaveAccessibleDescription(
+      'Choose a repository to deploy.'
+    );
+    expect(router.state.location.search.step).toBeUndefined();
     await user.click(screen.getByRole('button', { name: /^Empty app/ }));
     expect(router.state.location.search).toMatchObject({ source: 'empty' });
     await user.click(screen.getByRole('button', { name: 'Continue' }));
@@ -307,7 +320,12 @@ describe('New App source flow', () => {
     const user = userEvent.setup();
     const router = await mount();
     await user.click(screen.getByRole('button', { name: /^Template/ }));
-    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(screen.getByRole('button', { name: 'Template' })).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'Template' })).toHaveAccessibleDescription(
+      /Choose a starter template below, or another source\./
+    );
+    expect(router.state.location.search.step).toBeUndefined();
     const card = screen.getByRole('heading', { name: 'hello-python' }).closest('article')!;
     await user.click(within(card).getByRole('button', { name: 'Use template' }));
     expect(router.state.location.pathname).toBe('/dashboard/apps/new');
