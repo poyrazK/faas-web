@@ -4,6 +4,7 @@ import type { Plugin } from 'vite';
 import type { components } from '../src/lib/api/schema';
 import * as db from './data';
 import * as automationMock from './automations';
+import { registerMonetizationMock } from './monetization';
 import { mockCapabilities } from './capabilities';
 import { mockOpenAPIPreview } from './openapi-preview';
 import { isDigestPinnedImage } from '../src/lib/oci-image';
@@ -6345,6 +6346,8 @@ function problem(res: ServerResponse, p: Problem) {
     })
   );
 }
+
+registerMonetizationMock({ route, Problem, status });
 
 const MOCKED_PREFIXES = [
   '/v1/',
