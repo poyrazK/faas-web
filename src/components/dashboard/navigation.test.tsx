@@ -261,6 +261,7 @@ const RAIL = [
   'Storage',
   'Postgres',
   'Events',
+  'Integrations',
   'Analytics',
   'Debugger',
   'Invocations',

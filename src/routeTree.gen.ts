@@ -34,6 +34,7 @@ import { Route as DashboardEnvRouteImport } from './routes/dashboard.env'
 import { Route as DashboardEventsRouteImport } from './routes/dashboard.events'
 import { Route as DashboardImportRouteImport } from './routes/dashboard.import'
 import { Route as DashboardInstancesRouteImport } from './routes/dashboard.instances'
+import { Route as DashboardIntegrationsRouteImport } from './routes/dashboard.integrations'
 import { Route as DashboardInvocationsRouteImport } from './routes/dashboard.invocations'
 import { Route as DashboardInvoicesRouteImport } from './routes/dashboard.invoices'
 import { Route as DashboardJobsRouteImport } from './routes/dashboard.jobs'
@@ -199,6 +200,11 @@ const DashboardImportRoute = DashboardImportRouteImport.update({
 const DashboardInstancesRoute = DashboardInstancesRouteImport.update({
   id: '/instances',
   path: '/instances',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardIntegrationsRoute = DashboardIntegrationsRouteImport.update({
+  id: '/integrations',
+  path: '/integrations',
   getParentRoute: () => DashboardRoute,
 } as any)
 const DashboardInvocationsRoute = DashboardInvocationsRouteImport.update({
@@ -434,6 +440,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/events': typeof DashboardEventsRoute
   '/dashboard/import': typeof DashboardImportRoute
   '/dashboard/instances': typeof DashboardInstancesRoute
+  '/dashboard/integrations': typeof DashboardIntegrationsRoute
   '/dashboard/invocations': typeof DashboardInvocationsRoute
   '/dashboard/invoices': typeof DashboardInvoicesRoute
   '/dashboard/jobs': typeof DashboardJobsRoute
@@ -499,6 +506,7 @@ export interface FileRoutesByTo {
   '/dashboard/events': typeof DashboardEventsRoute
   '/dashboard/import': typeof DashboardImportRoute
   '/dashboard/instances': typeof DashboardInstancesRoute
+  '/dashboard/integrations': typeof DashboardIntegrationsRoute
   '/dashboard/invocations': typeof DashboardInvocationsRoute
   '/dashboard/invoices': typeof DashboardInvoicesRoute
   '/dashboard/jobs': typeof DashboardJobsRoute
@@ -567,6 +575,7 @@ export interface FileRoutesById {
   '/dashboard/events': typeof DashboardEventsRoute
   '/dashboard/import': typeof DashboardImportRoute
   '/dashboard/instances': typeof DashboardInstancesRoute
+  '/dashboard/integrations': typeof DashboardIntegrationsRoute
   '/dashboard/invocations': typeof DashboardInvocationsRoute
   '/dashboard/invoices': typeof DashboardInvoicesRoute
   '/dashboard/jobs': typeof DashboardJobsRoute
@@ -637,6 +646,7 @@ export interface FileRouteTypes {
     | '/dashboard/events'
     | '/dashboard/import'
     | '/dashboard/instances'
+    | '/dashboard/integrations'
     | '/dashboard/invocations'
     | '/dashboard/invoices'
     | '/dashboard/jobs'
@@ -702,6 +712,7 @@ export interface FileRouteTypes {
     | '/dashboard/events'
     | '/dashboard/import'
     | '/dashboard/instances'
+    | '/dashboard/integrations'
     | '/dashboard/invocations'
     | '/dashboard/invoices'
     | '/dashboard/jobs'
@@ -769,6 +780,7 @@ export interface FileRouteTypes {
     | '/dashboard/events'
     | '/dashboard/import'
     | '/dashboard/instances'
+    | '/dashboard/integrations'
     | '/dashboard/invocations'
     | '/dashboard/invoices'
     | '/dashboard/jobs'
@@ -1000,6 +1012,13 @@ declare module '@tanstack/react-router' {
       path: '/instances'
       fullPath: '/dashboard/instances'
       preLoaderRoute: typeof DashboardInstancesRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/integrations': {
+      id: '/dashboard/integrations'
+      path: '/integrations'
+      fullPath: '/dashboard/integrations'
+      preLoaderRoute: typeof DashboardIntegrationsRouteImport
       parentRoute: typeof DashboardRoute
     }
     '/dashboard/invocations': {
@@ -1335,6 +1354,7 @@ interface DashboardRouteChildren {
   DashboardEventsRoute: typeof DashboardEventsRoute
   DashboardImportRoute: typeof DashboardImportRoute
   DashboardInstancesRoute: typeof DashboardInstancesRoute
+  DashboardIntegrationsRoute: typeof DashboardIntegrationsRoute
   DashboardInvocationsRoute: typeof DashboardInvocationsRoute
   DashboardInvoicesRoute: typeof DashboardInvoicesRoute
   DashboardJobsRoute: typeof DashboardJobsRoute
@@ -1387,6 +1407,7 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardEventsRoute: DashboardEventsRoute,
   DashboardImportRoute: DashboardImportRoute,
   DashboardInstancesRoute: DashboardInstancesRoute,
+  DashboardIntegrationsRoute: DashboardIntegrationsRoute,
   DashboardInvocationsRoute: DashboardInvocationsRoute,
   DashboardInvoicesRoute: DashboardInvoicesRoute,
   DashboardJobsRoute: DashboardJobsRoute,

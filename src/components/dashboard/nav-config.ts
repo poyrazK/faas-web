@@ -17,6 +17,7 @@ import {
   HardDrive,
   Journal,
   Key,
+  Network,
   Package,
   Play,
   Rocket,
@@ -147,6 +148,14 @@ export const NAV_HUBS: NavHub[] = [
     sidebarIconClassName: 'text-cat-network/80',
   },
   {
+    // Outbound integrations are account-owned; apps bind to them, but the
+    // integration, its credential, and its budget exist once per account.
+    to: '/dashboard/integrations',
+    label: 'Integrations',
+    icon: Network,
+    sidebarIconClassName: 'text-cat-network/80',
+  },
+  {
     to: '/dashboard/analytics',
     label: 'Analytics',
     icon: GraphUp,
@@ -209,7 +218,7 @@ export const NAV_HUBS: NavHub[] = [
 const SIDEBAR_GROUPS: { title?: string; hubs: string[] }[] = [
   { hubs: ['Overview'] },
   { title: 'Build', hubs: ['Projects', 'Jobs', 'Releases'] },
-  { title: 'Operate', hubs: ['Domains', 'Data', 'Events', 'Analytics', 'Observe'] },
+  { title: 'Operate', hubs: ['Domains', 'Data', 'Events', 'Integrations', 'Analytics', 'Observe'] },
   { title: 'Account', hubs: ['Billing', 'Settings'] },
 ];
 
