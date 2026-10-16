@@ -41,11 +41,12 @@ export function PrewarmPanel({ slug }: { slug: string }) {
   const confirm = useConfirm();
   const { toast } = useToast();
   const id = useId();
-  const inAnHour = new Date(Date.now() + 3600_000);
   const [count, setCount] = useState('1');
-  const [start, setStart] = useState(() => toLocalInput(inAnHour));
-  const [end, setEnd] = useState(() => toLocalInput(new Date(inAnHour.getTime() + 3600_000)));
+  const [start, setStart] = useState(() => toLocalInput(new Date(Date.now() + 3600_000)));
+  const [end, setEnd] = useState(() => toLocalInput(new Date(Date.now() + 7200_000)));
   const [attempted, setAttempted] = useState(false);
+  // "Now" is read when the form is submitted, never during render.
+  const [startedInPast, setStartedInPast] = useState(false);
   const wakeAt = localInputToIso(start);
   const expiresAt = localInputToIso(end);
   const countValue = Number(count);
@@ -56,13 +57,15 @@ export function PrewarmPanel({ slug }: { slug: string }) {
         ? 'Enter a start and an end.'
         : Date.parse(expiresAt) <= Date.parse(wakeAt)
           ? 'The window must end after it starts.'
-          : Date.parse(wakeAt) < Date.now()
+          : startedInPast
             ? 'The window must start in the future.'
             : undefined;
 
   const submit = async () => {
     setAttempted(true);
-    if (error || !wakeAt || !expiresAt) return;
+    const past = !!wakeAt && Date.parse(wakeAt) < Date.now();
+    setStartedInPast(past);
+    if (past || (error && !startedInPast) || !wakeAt || !expiresAt) return;
     try {
       await schedule.mutateAsync({ count: countValue, wake_at: wakeAt, expires_at: expiresAt });
       setAttempted(false);
@@ -102,7 +105,10 @@ export function PrewarmPanel({ slug }: { slug: string }) {
           <input
             type="datetime-local"
             value={start}
-            onChange={(event) => setStart(event.target.value)}
+            onChange={(event) => {
+              setStart(event.target.value);
+              setStartedInPast(false);
+            }}
             className={cn(FIELD, 'w-56')}
           />
         </label>

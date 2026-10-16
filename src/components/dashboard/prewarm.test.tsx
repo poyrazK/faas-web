@@ -50,6 +50,19 @@ describe('PrewarmPanel', () => {
     expect(state.schedule).not.toHaveBeenCalled();
   });
 
+  it('refuses a window that has already started', async () => {
+    render(<PrewarmPanel slug="api" />);
+    const from = screen.getByLabelText('From');
+    await userEvent.clear(from);
+    await userEvent.type(from, '2020-01-01T00:00');
+    const until = screen.getByLabelText('Until');
+    await userEvent.clear(until);
+    await userEvent.type(until, '2020-01-01T02:00');
+    await userEvent.click(screen.getByRole('button', { name: 'Schedule prewarm' }));
+    expect(screen.getByText('The window must start in the future.')).toBeInTheDocument();
+    expect(state.schedule).not.toHaveBeenCalled();
+  });
+
   it('shows admitted against requested and cancels only pending windows', async () => {
     state.items = [
       {
