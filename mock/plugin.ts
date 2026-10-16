@@ -607,7 +607,7 @@ function createMockApp(body: Record<string, unknown>, req: IncomingMessage) {
         }
       : {}),
     visibility: body.visibility === 'internal' ? 'internal' : 'public',
-    url: body.visibility === 'internal' ? '' : `https://${slug}.gregale.app`,
+    url: body.visibility === 'internal' ? '' : db.appUrlFor(slug),
     service_bindings: Array.isArray(body.service_binding_targets)
       ? body.service_binding_targets
           .filter((value): value is string => typeof value === 'string')
@@ -799,7 +799,7 @@ route('PATCH', '/v1/apps/{slug}', ({ params, body }) => {
     if (k in body && body[k] !== null) (a as Record<string, unknown>)[k] = body[k];
   if (body.visibility === 'internal' || body.visibility === 'public') {
     a.visibility = body.visibility;
-    a.url = body.visibility === 'internal' ? '' : `https://${a.slug}.gregale.app`;
+    a.url = body.visibility === 'internal' ? '' : db.appUrlFor(a.slug);
   }
   if ('allowed_service_callers' in body) {
     if (body.allowed_service_callers === null) delete a.allowed_service_callers;

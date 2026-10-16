@@ -1,4 +1,4 @@
-import { deployments, scenarioOf, scenarios, setScenario, type Scenario } from './data';
+import { appUrlFor, deployments, scenarioOf, scenarios, setScenario, type Scenario } from './data';
 import type { App, Build, Deployment, LogFrame } from './data';
 
 /**
@@ -324,7 +324,7 @@ function apply(rec: Tracked, phase: Phase) {
     }
     liveByApp.set(app.id, d);
     setScenario(app, 'healthy');
-    if (app.visibility !== 'internal' && !app.url) app.url = `https://${app.slug}.gregale.app`;
+    if (app.visibility !== 'internal' && !app.url) app.url = appUrlFor(app.slug);
   } else if (phase.status === 'failed') {
     rec.settled = true;
     const tc = toolchain(String(app.runtime ?? ''));

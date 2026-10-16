@@ -151,7 +151,7 @@ describe('a deployment created through the mock', () => {
     expect((await json(`/v1/builds/${dep.build_id}`)).body.status).toBe('succeeded');
     expect((await json('/v1/apps/first-live')).body).toMatchObject({
       status: 'active',
-      url: 'https://first-live.gregale.app',
+      url: 'https://first-live.gregale.dev',
     });
     const latest = (await json('/v1/deployments/latest-by-app')).body.items;
     expect(latest.find((row: { id: string }) => row.id === dep.id)?.status).toBe('live');

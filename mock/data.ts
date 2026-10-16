@@ -287,6 +287,17 @@ export const scenarioOf = (app: Pick<App, 'slug'>): Scenario =>
   scenarios.get(app.slug) ?? 'healthy';
 
 /** Moves an app into a scenario and keeps its API `status` consistent with it. */
+/**
+ * The public URL a new app gets: the platform domain the account's apps
+ * already use, or the documented `gregale.dev` in an empty workspace — the
+ * same rule the console uses to predict it on review.
+ */
+export function appUrlFor(slug: string): string {
+  const known = apps.find((app) => app.url)?.url;
+  const domain = known ? new URL(known).host.split('.').slice(1).join('.') : 'gregale.dev';
+  return `https://${slug}.${domain}`;
+}
+
 export function setScenario(app: App, scenario: Scenario) {
   scenarios.set(app.slug, scenario);
   app.status = statusFor(scenario);
