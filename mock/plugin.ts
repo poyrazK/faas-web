@@ -6206,6 +6206,45 @@ route('PUT', '/v1/apps/{slug}/automations/{name}/enabled', ({ params, body }) =>
   item.version += 1;
   return item;
 });
+route('DELETE', '/v1/apps/{slug}/automations/{name}', ({ params, query }) => {
+  const item = mockAutomation(params.slug, params.name);
+  assertAutomationVersion(item, Number(query.get('expected_version')));
+  if (item.source === 'manifest')
+    throw new Problem(
+      409,
+      'automation_ownership_conflict',
+      'The app manifest owns this automation.'
+    );
+  const key = `${params.slug}/${params.name}`;
+  const yaml = automationMock.manifest.get(key);
+  if (yaml && query.get('restore_manifest') !== 'true')
+    throw new Problem(
+      409,
+      'automation_ownership_conflict',
+      'The app manifest also defines this automation. Confirm returning ownership to it.'
+    );
+  const rest = (automationMock.definitions.get(params.slug) ?? []).filter(
+    (row) => row.name !== params.name
+  );
+  automationMock.definitions.set(
+    params.slug,
+    yaml
+      ? [
+          ...rest,
+          {
+            name: params.name,
+            version: item.version + 1,
+            source: 'manifest',
+            draft: yaml,
+            published: yaml,
+            enabled: item.enabled,
+            updated_at: new Date().toISOString(),
+          },
+        ]
+      : rest
+  );
+  return NO_CONTENT;
+});
 route('GET', '/v1/apps/{slug}/automations/{name}/health', ({ params }) =>
   automationMock.health(params.slug, params.name)
 );

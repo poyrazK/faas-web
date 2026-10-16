@@ -864,3 +864,34 @@ describe('logout CSRF contract', () => {
     expect(response.headers.get('set-cookie')).toContain('faas_sid=;');
   });
 });
+
+describe('automation deletion mock contract', () => {
+  const remove = (slug: string, name: string, query: string) =>
+    fetch(`${origin}/v1/apps/${slug}/automations/${name}?${query}`, { method: 'DELETE' });
+
+  it('deletes a draft at the observed revision and refuses a stale one', async () => {
+    const [app] = (await get('/v1/apps')).body as Array<{ slug: string }>;
+    const stale = await remove(app.slug, 'daily-summary', 'expected_version=99');
+    expect(stale.status).toBe(409);
+    expect((await stale.json()).code).toBe('automation_version_conflict');
+    expect((await remove(app.slug, 'daily-summary', 'expected_version=1')).status).toBe(204);
+    const { body } = await get(`/v1/apps/${app.slug}/automations`);
+    expect(body.automations.map((row: { name: string }) => row.name)).not.toContain(
+      'daily-summary'
+    );
+  });
+
+  it('returns a taken-over definition to the manifest only when asked', async () => {
+    const [, app] = (await get('/v1/apps')).body as Array<{ slug: string }>;
+    const refused = await remove(app.slug, 'process-request', 'expected_version=3');
+    expect(refused.status).toBe(409);
+    expect((await refused.json()).code).toBe('automation_ownership_conflict');
+    expect(
+      (await remove(app.slug, 'process-request', 'expected_version=3&restore_manifest=true')).status
+    ).toBe(204);
+    const { body } = await get(`/v1/apps/${app.slug}/automations`);
+    expect(
+      body.automations.find((row: { name: string }) => row.name === 'process-request')
+    ).toMatchObject({ source: 'manifest' });
+  });
+});

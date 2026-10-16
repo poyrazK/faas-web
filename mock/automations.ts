@@ -7,6 +7,12 @@ export const definitions = new Map<string, S['AutomationResponse'][]>();
 export const runs = new Map<string, S['WorkflowRunResponse'][]>();
 export const revisions = new Map<string, S['AutomationRevisionResponse'][]>();
 export const steps = new Map<string, S['WorkflowStepResponse'][]>();
+/**
+ * YAML definitions keyed `slug/name`. One seeded API publication took over a
+ * manifest definition, so deleting it needs the explicit restore_manifest
+ * confirmation the real API asks for.
+ */
+export const manifest = new Map<string, S['WorkflowSpec']>();
 const publishedAt = new Date(db.NOW - 3_600_000).toISOString();
 const finishedAt = new Date(db.NOW - 3_540_000).toISOString();
 
@@ -64,6 +70,7 @@ for (const app of db.apps) {
           },
         ]
   );
+  manifest.set(`${app.slug}/${definition.name}`, definition);
   revisions.set(`${app.slug}/${definition.name}`, [
     {
       version: 2,

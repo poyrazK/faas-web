@@ -1,5 +1,5 @@
-import { useId, useState } from 'react';
-import { Pause, Play, Plus, WarningTriangle } from 'iconoir-react';
+import { useEffect, useId, useRef, useState } from 'react';
+import { Pause, Play, Plus, Trash, WarningTriangle } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { useConfirm } from '@/components/ui/confirm';
@@ -14,11 +14,12 @@ import { AutomationRuns } from './automation-runs';
 import { availabilityMessage, jsonValue } from './automation-definition';
 import { useAuth } from '@/lib/auth';
 import { useCapability } from '@/lib/api/capabilities';
-import { errorMessage } from '@/lib/api/errors';
+import { ApiError, errorMessage } from '@/lib/api/errors';
 import {
   useAutomations,
   useAutomationHealth,
   useAutomationRevisions,
+  useDeleteAutomation,
   useWriteAutomation,
   useStartAutomationRun,
   type Automation,
@@ -131,6 +132,10 @@ function AppAutomations({
   const maturity =
     capability?.maturity === 'preview' ? 'preview' : capability?.maturity === 'beta' ? 'beta' : '';
   const [reloadKey, setReloadKey] = useState(0);
+  // Set once a delete succeeds. The workspace (and the editor's unsaved-edits
+  // guard with it) unmounts first, then the effect below returns to the list,
+  // so leaving does not ask to discard edits to a definition that is gone.
+  const [deleted, setDeleted] = useState('');
   const phase = queryPhase({ loading: q.isPending, error: q.error });
   const rows = (q.data?.automations ?? []).map((automation) => ({
     ...automation,
@@ -138,26 +143,49 @@ function AppAutomations({
     trigger: automation.published?.trigger?.type ?? automation.draft.trigger?.type ?? 'manual',
     publication: automation.published ? 'published' : 'draft',
   }));
-  const selected = q.data?.automations.find((automation) => automation.name === search.automation);
+  const selected = q.data?.automations.find(
+    (automation) => automation.name === search.automation && automation.name !== deleted
+  );
+  const left = useRef('');
+  useEffect(() => {
+    if (!deleted || search.automation !== deleted || left.current === deleted) return;
+    left.current = deleted;
+    onSelection({
+      automation: undefined,
+      automationView: undefined,
+      automationRun: undefined,
+      automationNew: undefined,
+    });
+  }, [deleted, search.automation, onSelection]);
   const isNew = search.automationNew === true;
   const blocked = q.data
     ? availabilityMessage(q.data.runtime_enabled, q.data.unavailable_reason)
     : undefined;
   const atLimit = Boolean(q.data && rows.length >= q.data.max_definitions);
-  const create = () =>
+  // Choosing anything again forgets the deletion, so a new definition reusing
+  // the name is shown.
+  const forget = () => {
+    setDeleted('');
+    left.current = '';
+  };
+  const create = () => {
+    forget();
     onSelection({
       automation: undefined,
       automationView: undefined,
       automationRun: undefined,
       automationNew: true,
     });
-  const select = (name: string, view?: 'editor' | 'runs' | 'revisions', run?: string) =>
+  };
+  const select = (name: string, view?: 'editor' | 'runs' | 'revisions', run?: string) => {
+    forget();
     onSelection({
       automation: name,
       automationView: view,
       automationRun: run,
       automationNew: undefined,
     });
+  };
   type Row = (typeof rows)[number];
   const columns: Column<Row>[] = [
     {
@@ -292,13 +320,17 @@ function AppAutomations({
           }}
         />
       )}
-      {phase === 'ready' && search.automation && !isNew && !selected && (
-        <Panel title="Automation unavailable">
-          <p className="text-sm text-muted-foreground">
-            This definition is no longer in the app inventory.
-          </p>
-        </Panel>
-      )}
+      {phase === 'ready' &&
+        search.automation &&
+        !isNew &&
+        !selected &&
+        search.automation !== deleted && (
+          <Panel title="Automation unavailable">
+            <p className="text-sm text-muted-foreground">
+              This definition is no longer in the app inventory.
+            </p>
+          </Panel>
+        )}
       {phase === 'ready' && selected && (
         <AutomationWorkspace
           key={selected.name}
@@ -313,6 +345,16 @@ function AppAutomations({
           onReload={() => {
             void q.refetch().then((result) => {
               if (!result.error) setReloadKey((key) => key + 1);
+            });
+          }}
+          onDeleted={(name, restoredManifest) => {
+            setDeleted(name);
+            toast({
+              kind: 'success',
+              title: `${name} deleted`,
+              description: restoredManifest
+                ? 'The app manifest owns this automation again.'
+                : undefined,
             });
           }}
         />
@@ -331,6 +373,7 @@ function AutomationWorkspace({
   onSelection,
   reloadKey,
   onReload,
+  onDeleted,
 }: JobsSelectionProps & {
   account: string;
   slug: string;
@@ -339,10 +382,13 @@ function AutomationWorkspace({
   blocked?: string;
   reloadKey: number;
   onReload: () => void;
+  onDeleted: (name: string, restoredManifest: boolean) => void;
 }) {
   const confirm = useConfirm();
   const { toast } = useToast();
   const write = useWriteAutomation(account, slug);
+  const remove = useDeleteAutomation(account, slug);
+  const [deleteError, setDeleteError] = useState('');
   const health = useAutomationHealth(account, slug, automation.name);
   const [runOpen, setRunOpen] = useState(false);
   const view = search.automationView ?? 'editor';
@@ -373,6 +419,53 @@ function AutomationWorkspace({
       });
     }
   };
+  const manifestOwned = automation.source === 'manifest';
+  const deleteAutomation = async () => {
+    const { name, version } = automation;
+    if (!(await confirm(deleteConfirmation(automation, slug)))) return;
+    setDeleteError('');
+    const attempt = async (restoreManifest: boolean): Promise<void> => {
+      try {
+        await remove.mutateAsync({ name, expectedVersion: version, restoreManifest });
+        onDeleted(name, restoreManifest);
+      } catch (err) {
+        const code = err instanceof ApiError ? err.code : '';
+        if (code === 'automation_not_found') {
+          onDeleted(name, false);
+          return;
+        }
+        if (code === 'automation_ownership_conflict' && !restoreManifest) {
+          if (
+            await confirm({
+              title: `Return ${name} to the app manifest?`,
+              description: `${name} is also defined in ${slug}'s YAML manifest. Deleting the dashboard definition hands ownership back to that YAML definition, and future runs use it.`,
+              confirmLabel: 'Delete and restore YAML',
+              destructive: true,
+            })
+          )
+            return attempt(true);
+          return;
+        }
+        if (code === 'automation_version_conflict') {
+          setDeleteError(
+            `${name} was not deleted: it changed after you opened it. The latest revision is loaded — review it, then delete again if you still want to.`
+          );
+          onReload();
+          return;
+        }
+        // A lost response may have deleted it; read again before anything else.
+        if (!(err instanceof ApiError) || err.isRetryable) {
+          setDeleteError(
+            `The delete outcome is unknown. The list was refreshed — check whether ${name} is still there before trying again.`
+          );
+          onReload();
+          return;
+        }
+        setDeleteError(errorMessage(err));
+      }
+    };
+    await attempt(false);
+  };
   return (
     <>
       <Panel
@@ -401,9 +494,30 @@ function AutomationWorkspace({
               <Play className="h-4 w-4" />
               Run now
             </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-[color:var(--status-critical)]"
+              busy={remove.isPending}
+              disabled={manifestOwned}
+              title={
+                manifestOwned
+                  ? 'Defined in the app manifest. Remove it from the YAML and deploy to delete it.'
+                  : undefined
+              }
+              onClick={() => void deleteAutomation()}
+            >
+              <Trash className="h-4 w-4" />
+              Delete automation
+            </Button>
           </>
         }
       >
+        {deleteError && (
+          <p role="alert" className="mb-3 text-sm" style={{ color: 'var(--status-critical)' }}>
+            {deleteError}
+          </p>
+        )}
         <HealthSummary health={health} />
         <Tabs
           label="Automation views"
@@ -464,6 +578,29 @@ function AutomationWorkspace({
       )}
     </>
   );
+}
+
+/** Says what goes: a never-published draft affects nothing, a publication stops future starts. */
+export function deleteConfirmation(automation: Automation, slug: string) {
+  const { name, version } = automation;
+  if (!automation.published)
+    return {
+      title: `Delete ${name}?`,
+      description: `This deletes the saved draft (revision ${version}) from ${slug}. It was never published, so no starts or runs depend on it.`,
+      confirmLabel: 'Delete draft',
+      destructive: true,
+    };
+  return {
+    title: `Delete ${name}?`,
+    description: `This deletes the saved draft and the published definition${
+      automation.published_version === undefined
+        ? ''
+        : ` (revision ${automation.published_version})`
+    } from ${slug}. It stops starting — on schedule, from events, or by hand. Runs that already started keep their captured definition.`,
+    confirmLabel: 'Delete automation',
+    destructive: true,
+    typeToConfirm: name,
+  };
 }
 
 const VIEWS = [

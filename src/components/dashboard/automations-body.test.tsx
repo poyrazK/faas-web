@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, expect, it, vi } from 'vitest';
-import { AutomationsBody } from './automations-body';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { AutomationsBody, deleteConfirmation } from './automations-body';
+import { ApiError } from '@/lib/api/errors';
 
 const state = vi.hoisted(() => ({
   apps: [{ id: 'app-1', slug: 'alpha' }],
@@ -11,6 +12,10 @@ const state = vi.hoisted(() => ({
   empty: false,
   toast: vi.fn(),
   maturity: 'preview' as string | undefined,
+  confirm: vi.fn(),
+  remove: vi.fn(),
+  refetch: vi.fn(),
+  source: 'dashboard',
 }));
 vi.mock('@/lib/api/capabilities', () => ({
   useCapability: () => ({
@@ -26,7 +31,7 @@ vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { id: 'account-1' } })
 vi.mock('@/lib/api/queries', () => ({
   useApps: () => ({ data: state.apps, isPending: false, error: null, refetch: vi.fn() }),
 }));
-vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn() }));
+vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => state.confirm }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: state.toast }) }));
 vi.mock('./automation-editor', async () => {
   const { Modal } = await import('@/components/ui/modal');
@@ -81,13 +86,14 @@ vi.mock('@/lib/api/automations', () => ({
                 published: definition,
                 published_version: 2,
                 version: 3,
-                source: 'dashboard',
+                source: state.source,
                 enabled: true,
               },
             ],
       },
       isPending: false,
       error: null,
+      refetch: state.refetch,
     };
   },
   useAutomationHealth: () => ({
@@ -103,6 +109,7 @@ vi.mock('@/lib/api/automations', () => ({
     error: null,
   }),
   useWriteAutomation: () => ({ isPending: false }),
+  useDeleteAutomation: () => ({ mutateAsync: state.remove, isPending: false }),
   useStartAutomationRun: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 beforeEach(() => {
@@ -112,6 +119,10 @@ beforeEach(() => {
   state.read.mockClear();
   state.toast.mockClear();
   state.maturity = 'preview';
+  state.confirm.mockReset().mockResolvedValue(true);
+  state.remove.mockReset().mockResolvedValue(undefined);
+  state.refetch.mockReset().mockResolvedValue({ error: null });
+  state.source = 'dashboard';
 });
 it('keeps authoring discoverable while runtime execution is disabled', () => {
   render(<AutomationsBody search={{ app: 'alpha', automation: 'orders' }} onSelection={vi.fn()} />);
@@ -235,4 +246,100 @@ it.each([
   state.maturity = maturity;
   render(<AutomationsBody search={{ app: 'alpha' }} onSelection={vi.fn()} />);
   expect(screen.getByText(/definitions used/)).toHaveTextContent(new RegExp(`^${text}$`));
+});
+
+describe('deleting an automation', () => {
+  const open = (onSelection = vi.fn()) => {
+    render(
+      <AutomationsBody search={{ app: 'alpha', automation: 'orders' }} onSelection={onSelection} />
+    );
+    return onSelection;
+  };
+  const conflict = (code: string) =>
+    new ApiError({ status: 409, code, title: 'Conflict', detail: 'Server prose' });
+
+  it('names the published automation, deletes at the observed revision, and returns to the list', async () => {
+    const onSelection = open();
+    await userEvent.click(screen.getByRole('button', { name: 'Delete automation' }));
+    expect(state.confirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Delete orders?',
+        description: expect.stringMatching(/published definition \(revision 2\) from alpha/),
+        destructive: true,
+        typeToConfirm: 'orders',
+      })
+    );
+    expect(state.remove).toHaveBeenCalledWith({
+      name: 'orders',
+      expectedVersion: 3,
+      restoreManifest: false,
+    });
+    expect(onSelection).toHaveBeenCalledWith({
+      automation: undefined,
+      automationView: undefined,
+      automationRun: undefined,
+      automationNew: undefined,
+    });
+    expect(state.toast).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'success', title: 'orders deleted' })
+    );
+  });
+
+  it('does nothing when the confirmation is cancelled', async () => {
+    state.confirm.mockResolvedValue(false);
+    const onSelection = open();
+    await userEvent.click(screen.getByRole('button', { name: 'Delete automation' }));
+    expect(state.remove).not.toHaveBeenCalled();
+    expect(onSelection).not.toHaveBeenCalled();
+  });
+
+  it('keeps the automation open and explains a version conflict', async () => {
+    state.remove.mockRejectedValue(conflict('automation_version_conflict'));
+    const onSelection = open();
+    await userEvent.click(screen.getByRole('button', { name: 'Delete automation' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'orders was not deleted: it changed after you opened it. The latest revision is loaded'
+    );
+    expect(state.refetch).toHaveBeenCalled();
+    expect(onSelection).not.toHaveBeenCalled();
+  });
+
+  it('asks again before returning a taken-over definition to the manifest', async () => {
+    state.remove
+      .mockRejectedValueOnce(conflict('automation_ownership_conflict'))
+      .mockResolvedValueOnce(undefined);
+    const onSelection = open();
+    await userEvent.click(screen.getByRole('button', { name: 'Delete automation' }));
+    expect(state.confirm).toHaveBeenLastCalledWith(
+      expect.objectContaining({ title: 'Return orders to the app manifest?' })
+    );
+    expect(state.remove).toHaveBeenLastCalledWith({
+      name: 'orders',
+      expectedVersion: 3,
+      restoreManifest: true,
+    });
+    expect(onSelection).toHaveBeenCalledWith(expect.objectContaining({ automation: undefined }));
+  });
+});
+
+it('says a never-published draft affects nothing, without asking for the name', () => {
+  const options = deleteConfirmation(
+    {
+      name: 'nightly',
+      version: 1,
+      source: 'draft',
+      enabled: false,
+      draft: { name: 'nightly', steps: [] },
+    } as never,
+    'alpha'
+  );
+  expect(options).toMatchObject({ title: 'Delete nightly?', confirmLabel: 'Delete draft' });
+  expect(options.description).toMatch(/draft \(revision 1\) from alpha. It was never published/);
+  expect(options).not.toHaveProperty('typeToConfirm');
+});
+
+it('does not offer deletion of a manifest-owned definition', () => {
+  state.source = 'manifest';
+  render(<AutomationsBody search={{ app: 'alpha', automation: 'orders' }} onSelection={vi.fn()} />);
+  expect(screen.getByRole('button', { name: 'Delete automation' })).toBeDisabled();
 });

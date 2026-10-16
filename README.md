@@ -306,6 +306,10 @@ matching no step. Advanced trigger and step settings, Advanced JSON (which
 preserves other workflow fields), and side-effect-free simulation stay
 collapsed until needed. Writes use the observed version, and conflicts or
 uncertain responses require a fresh read. Manifest takeover is explicit.
+**Delete automation** removes a draft, or a dashboard publication, at the
+observed revision and returns to the list; a definition the YAML manifest also
+declares asks again before ownership returns to the manifest, and a
+manifest-owned one is removed from the YAML rather than from the console.
 Pausing automatic starts leaves accepted work running. Real manual starts
 carry a stable idempotency key for retries with the same input; the run input
 defaults to `{}` and stays collapsed. The workspace shows a one-line health
