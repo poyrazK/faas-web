@@ -242,7 +242,7 @@ export function EnvironmentReadiness({
         description="Inspect existing operations without restarting or rolling them back."
       >
         <div className="space-y-4 p-4 text-sm">
-          <label className="block space-y-1">
+          <label className="flex flex-col gap-1.5">
             Recorded status
             <select
               aria-label="Recorded status"
