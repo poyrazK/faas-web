@@ -97,7 +97,8 @@ export function toWorkflow(app: App, metrics?: AppsMetrics, latest?: ApiDeployme
     // keyed by, and it makes a shareable console URL readable.
     id: app.slug,
     name: app.slug,
-    runtime: app.runtime ?? app.type,
+    // Older clients persisted managed runtime values on container Apps.
+    runtime: app.type === 'app' ? 'app' : (app.runtime ?? app.type),
     memoryMb: app.ram_mb,
     state,
     reportedStatus: app.status,

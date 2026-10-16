@@ -147,6 +147,20 @@ describe('toWorkflow', () => {
     expect(toWorkflow(app({ type: 'app', runtime: undefined })).runtime).toBe('app');
   });
 
+  it.each(['node22', 'python312', 'go124'] as const)(
+    'keeps legacy container Apps classified as App when runtime is %s',
+    (runtime) => {
+      expect(toWorkflow(app({ type: 'app', runtime })).runtime).toBe('app');
+    }
+  );
+
+  it.each(['node22', 'python312', 'go124'] as const)(
+    'preserves the managed runtime %s for a Function',
+    (runtime) => {
+      expect(toWorkflow(app({ type: 'function', runtime })).runtime).toBe(runtime);
+    }
+  );
+
   it('preserves internal visibility so app views do not advertise a public endpoint', () => {
     expect(toWorkflow(app({ visibility: 'internal' })).visibility).toBe('internal');
   });
