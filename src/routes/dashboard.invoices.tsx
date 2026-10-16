@@ -8,6 +8,7 @@ import { useToast } from '@/components/ui/toast';
 import { useBillingPortal, useInfiniteInvoices } from '@/lib/api/queries';
 import { errorMessage } from '@/lib/api/errors';
 import { consoleHead } from '@/lib/seo';
+import { FocusExport } from '@/components/dashboard/focus-export';
 
 export const Route = createFileRoute('/dashboard/invoices')({
   component: InvoicesPage,
@@ -184,6 +185,7 @@ function InvoicesPage() {
           </Button>
         </div>
       )}
+      <FocusExport />
     </div>
   );
 }

@@ -5573,6 +5573,20 @@ route('GET', '/v1/billing/forecast', () => {
     missing_bill_components: ['egress_gb', 'tax'],
   };
 });
+// The dev mock answers JSON for every format; apid serves ZIP/CSV/JSON.
+route('GET', '/v1/billing/focus', ({ query }) => {
+  const month = query.get('month') ?? '';
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month))
+    throw new Problem(400, 'validation_failed', 'month must be YYYY-MM.');
+  return {
+    focus_version: '1.4',
+    dataset: 'invoice_detail',
+    month,
+    partial: true,
+    invoices_included: 1,
+    invoices_excluded_draft_or_void: 0,
+  };
+});
 route('POST', '/v1/billing/cancel', () => ({
   cancel_scheduled: true,
   effective_at: new Date(Date.now() + 19 * 86400e3).toISOString(),
