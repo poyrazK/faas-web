@@ -436,8 +436,8 @@ function ConfigForm({ app }: { app: App }) {
             onChange={(on) => set('maintenance_mode', on)}
           />
           <Toggle
-            label="Require deploy tokens"
-            hint="Every deployment call must carry a deploy token. Pro and Scale."
+            label="Require API key for app requests"
+            hint="Require an API key to call the app's public URL. Pro and Scale."
             checked={draft.require_authn}
             onChange={(on) => set('require_authn', on)}
           />

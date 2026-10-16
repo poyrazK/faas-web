@@ -6,9 +6,11 @@ import { errorMessage } from '@/lib/api/errors';
 
 export function GitHubConnectForm({
   disabled = false,
+  refresh = false,
   onConnect,
 }: {
   disabled?: boolean;
+  refresh?: boolean;
   onConnect?: () => void;
 }) {
   const tokenInput = useRef<HTMLInputElement>(null);
@@ -51,13 +53,13 @@ export function GitHubConnectForm({
       <Button
         type="submit"
         size="sm"
-        variant="cta"
+        variant={refresh ? 'outline' : 'cta'}
         className="gap-1.5"
         disabled={disabled}
         busy={pending}
       >
         <Github className="h-3.5 w-3.5" />
-        Connect GitHub
+        {refresh ? 'Refresh GitHub connection' : 'Connect GitHub'}
       </Button>
       {error && (
         <p role="alert" className="max-w-md text-sm text-destructive">
