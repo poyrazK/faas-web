@@ -53,6 +53,19 @@ export function validateJobsSearch(raw: Record<string, unknown>): JobsSearch {
   return search;
 }
 
+/**
+ * The section to show. An explicit `?section=` wins; otherwise a selection in
+ * the URL (a workload, schedule, or trigger link written before the default
+ * changed) names its own section; otherwise the first tab, Automations.
+ */
+export function jobsSection(search: JobsSearch): JobsSection {
+  if (search.section) return search.section;
+  if (search.job || search.run || search.task !== undefined) return 'workloads';
+  if (search.schedule || search.execution) return 'scheduled';
+  if (search.trigger || search.triggerView) return 'triggers';
+  return 'automations';
+}
+
 export function automationSearchPatch(
   search: JobsSearch
 ): Pick<JobsSearch, 'automation' | 'automationView' | 'automationRun' | 'automationNew'> {
