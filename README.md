@@ -316,6 +316,30 @@ publication revision, so the UI states that limit.
 Mock mode includes these screens; `MOCK_AUTOMATIONS_DISABLED=1` exercises the
 runtime-disabled presentation. No mock data ships in the preview build.
 
+**Events** (`/dashboard/events`, under Operate) reads the account's event
+router: waiting consumers with exact counts and their dominant waiting reason,
+retained storage against plan limits, and retention health. A consumer opens
+its oldest waiting recipients, each with a fresh routing-blocker read. Receipt
+lookup takes a source and event ID, or an app producer key, and shows
+acceptance, routing, and execution per recipient; recipients still routing get
+their blockers in one batch read, and a missing receipt says so. **Preview
+routing** posts only to `/v1/events:preview` and publishes nothing; **Publish**
+(account event or app producer key) asks for confirmation first and prefills a
+stable event ID so a retry deduplicates. Recovery actions the receipt lists are
+shown, not submitted.
+
+**Integrations** (`/dashboard/integrations`) lists managed outbound
+integrations with credential state and today's requests against the daily
+budget. A row opens its overview and usage, credential set/rotate/revoke, the daily
+limit and request policy, the probe policy, and delete. Credentials are
+write-only: a direct PUT (no TanStack mutation, so nothing is cached), cleared
+on success, never rendered back. Operator-provisioned integrations are
+read-only. The **AI gateway** tab (usage by model for one UTC day, budget
+alerts, fallback routes) renders only when capability `ai-gateway` is
+available, and otherwise explains why without calling the AI endpoints. Hooks
+live in `lib/api/events.ts` and `lib/api/outbound.ts`; the dev mock answers both
+from `mock/events.ts`.
+
 App detail navigation has six tabs — Overview, Delivery, Observe, Connect,
 Automate, and Configure — and a segmented control for the pages inside the
 selected one, which remembers the last page opened in each. Env vars and
