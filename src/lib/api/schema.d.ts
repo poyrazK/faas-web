@@ -27490,7 +27490,9 @@ export interface operations {
                 };
             };
             /**
-             * @description `github_install_not_owned` if the exact installation is not
+             * @description Repository binding refused. A valid account-bound
+             *     `bind_app_to_repo` CSRF token and named cookie are required.
+             *     `github_install_not_owned` if the exact installation is not
              *     connected to the signed-in Gregale account; `forged` if the
              *     live GitHub installation verification fails. Unknown and foreign
              *     installation IDs have the same response.
