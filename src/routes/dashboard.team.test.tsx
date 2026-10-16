@@ -171,15 +171,17 @@ describe('invitation disclosure and one-time evidence', () => {
     expect(region).not.toBeInTheDocument();
   });
 
-  it('explains unavailable invitation revocation while keeping member management functional', async () => {
+  it('revokes a pending invitation by id while keeping member management functional', async () => {
     render(<TeamPage />);
     expect(
       screen.queryByRole('button', { name: 'Remove owner@example.com' })
     ).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Revoke invitation/ })).not.toBeInTheDocument();
-    expect(screen.getByText(/Invitation revocation is unavailable here/)).toHaveTextContent(
-      /requires the original invitation token/i
+    expect(screen.queryByText(/Invitation revocation is unavailable here/)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /^Revoke the invitation for / }));
+    expect(confirm).toHaveBeenCalledWith(
+      expect.objectContaining({ confirmLabel: 'Revoke invitation', destructive: true })
     );
+    await waitFor(() => expect(revoke).toHaveBeenCalledWith('invite1'));
     await userEvent.selectOptions(
       screen.getByRole('combobox', { name: 'Role for member@example.com' }),
       'billing'

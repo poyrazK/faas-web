@@ -58,6 +58,7 @@ import { OpenAPIBody } from './dashboard.openapi';
 import { WebhooksHub } from './dashboard.webhooks';
 import { EdgeRulesBody } from './dashboard.edge-rules';
 import { ErrorsBody } from '@/components/dashboard/errors-body';
+import { LogDrainsBody } from '@/components/dashboard/log-drains';
 import { IssuesBody } from '@/components/dashboard/issues-body';
 import { ServiceBindings } from '@/components/dashboard/service-bindings';
 import { McpGuidance } from '@/components/dashboard/mcp-guidance';
@@ -646,6 +647,7 @@ function FunctionDetailPage() {
                 />
               </DeploymentCapability>
             )}
+            {tab === 'Log drains' && <LogDrainsBody slug={fn.id} />}
             {tab === 'Errors' && <ErrorsBody slug={fn.id} />}
             {tab === 'Issues' && (
               <IssuesBody
