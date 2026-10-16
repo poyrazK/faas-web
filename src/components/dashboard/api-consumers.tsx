@@ -464,7 +464,8 @@ function ConsumerKeys({ slug, consumer }: { slug: string; consumer: Consumer }) 
       setExpires('');
       setAttempted(false);
     } catch (err) {
-      receive(null);
+      // A failed issue leaves any key still on screen in place, uncopied
+      // plaintext included; there is nothing new to show.
       toast(explainWrite(err, 'issue the key'));
     } finally {
       setBusy(false);
