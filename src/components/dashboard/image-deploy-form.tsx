@@ -7,6 +7,7 @@ import { api, unwrap } from '@/lib/api/client';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import { keys, retryPolicy, useApp } from '@/lib/api/queries';
 import { createImageApp, deployImage } from '@/lib/api/image-deployments';
+import { orgAppsKey, useWorkspaceTarget } from '@/lib/api/workspace-apps';
 import { useCapability } from '@/lib/api/capabilities';
 import { readPrivateAppCreateContext } from '@/lib/api/bindings';
 import { readWorkerCreateContext } from '@/lib/api/worker-create';
@@ -128,6 +129,9 @@ function ImageJourney({
     accountId
   );
   const cache = useQueryClient();
+  const workspace = useWorkspaceTarget();
+  // Only a new app is created anywhere; a recovered operation keeps its own.
+  const creatingIn = editingApp ? editingApp.org : slug ? undefined : workspace.org || undefined;
   const active = useRef(true);
   const lock = useRef(false);
   const currentAvailability = useRef({
@@ -328,7 +332,7 @@ function ImageJourney({
     }
     let app;
     try {
-      app = await createImageApp(current.createRequest, current.createKey);
+      app = await createImageApp(current.createRequest, current.createKey, current.org ?? null);
     } catch (error) {
       // An old ambiguous creation may already have created its app. A later
       // refusal after account changes is not proof about that earlier attempt.
@@ -355,6 +359,7 @@ function ImageJourney({
       stage: current.needsCredentials ? 'credentials' : 'app-created',
     });
     void cache.invalidateQueries({ queryKey: keys.apps });
+    if (current.org) void cache.invalidateQueries({ queryKey: orgAppsKey(current.org) });
     if (current.needsCredentials) await saveCredentialAndDeploy(current);
     else await submitDeployment(current);
   }
@@ -405,6 +410,8 @@ function ImageJourney({
         editingApp?.existingSlug ?? slug,
         kind
       ),
+      // Fixed at review: a replay of this creation must reach the same workspace.
+      ...(creatingIn ? { org: creatingIn } : {}),
       needsCredentials: privateRegistry,
       ...(editingApp
         ? {
@@ -988,7 +995,8 @@ function ImageJourney({
           {reviewing ? (
             <>
               <p className="text-sm">
-                Review: {fixedApp || name} · {memory} MB ·{' '}
+                Review: {fixedApp || name}
+                {!fixedApp && ` · in the ${workspace.label} workspace`} · {memory} MB ·{' '}
                 {kind === 'worker'
                   ? `Worker execution · ${reviewedRestartPolicy} restart · startup deadline ${reviewedStartupDeadline || 'plan default'} · retry cap ${reviewedMaxRetries || 'plan default'} · internal only · no public endpoint · `
                   : !fixedApp &&

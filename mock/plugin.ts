@@ -490,7 +490,11 @@ route('GET', '/v1/apps/metrics', ({ query }) => {
 const imageAppReceipts = new Map<string, { body: string; app: db.App; at: number }>();
 const imageDeployReceipts = new Map<string, db.Deployment>();
 const workerImageReads = new Map<string, number>();
-route('POST', '/v1/apps', ({ body, req }) => {
+/**
+ * Shared by `POST /v1/apps` and `POST /v1/orgs/{slug}/apps`: the request body
+ * is the same CreateAppRequest, and only the attribution differs.
+ */
+function createMockApp(body: Record<string, unknown>, req: IncomingMessage) {
   const key = String(req.headers['idempotency-key'] ?? '');
   const receipt = key && imageAppReceipts.get(key);
   if (receipt && Date.now() - receipt.at < 24 * 60 * 60 * 1000) {
@@ -571,10 +575,13 @@ route('POST', '/v1/apps', ({ body, req }) => {
         }
       : {}),
   };
+  // Newest first in a workspace inventory, like apid.
+  Object.assign(created, { created_at: new Date().toISOString() });
   db.apps.push(created);
   if (key) imageAppReceipts.set(key, { body: JSON.stringify(body), app: created, at: Date.now() });
   return status(201, created);
-});
+}
+route('POST', '/v1/apps', ({ body, req }) => createMockApp(body, req));
 route('POST', '/v1/apps/{slug}/deployments', ({ params, body, req }) => {
   const a = app(params.slug);
   if (a.type !== 'app')
@@ -5348,24 +5355,38 @@ route('GET', '/v1/orgs', () => ({
     .sort((a, b) => a.slug.localeCompare(b.slug)),
 }));
 
+/** App slug → workspace slug, for apps created through `POST /v1/orgs/{slug}/apps`. */
+const appWorkspace = new Map<string, string>();
 function inventoryForOrg(slug: string) {
   const org = requireOrgRole(slug, ['owner', 'admin', 'developer', 'viewer', 'billing']);
-  return db.apps.filter((app) =>
-    org.personal
+  return db.apps.filter((app) => {
+    const attributed = appWorkspace.get(app.slug);
+    if (attributed) return attributed === slug;
+    return org.personal
       ? app.slug !== 'search-indexer'
-      : slug === 'acme-corp' && app.slug === 'search-indexer'
-  );
+      : slug === 'acme-corp' && app.slug === 'search-indexer';
+  });
 }
+const createdAt = (app: db.App) =>
+  (app as { created_at?: string }).created_at ?? new Date(Date.UTC(2026, 8, 1)).toISOString();
 route('GET', '/v1/orgs/{slug}/apps', ({ params }) => ({
-  apps: inventoryForOrg(params.slug).map(({ id, slug, type, runtime, status }) => ({
-    id,
-    slug,
-    type,
-    runtime,
-    status,
-    created_at: new Date(Date.UTC(2026, 8, 1)).toISOString(),
-  })),
+  apps: inventoryForOrg(params.slug)
+    .map((app) => ({
+      id: app.id,
+      slug: app.slug,
+      type: app.type,
+      runtime: app.runtime,
+      status: app.status,
+      created_at: createdAt(app),
+    }))
+    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at)),
 }));
+route('POST', '/v1/orgs/{slug}/apps', ({ params, body, req }) => {
+  requireOrgRole(params.slug, ['owner', 'admin', 'developer']);
+  const result = createMockApp(body, req);
+  appWorkspace.set((result.body as db.App).slug, params.slug);
+  return result;
+});
 route('GET', '/v1/orgs/{slug}/activity', ({ params, query }) => {
   const apps = new Set(inventoryForOrg(params.slug).map((app) => app.id));
   const identity = (value: string) => value.replaceAll('-', '').toLowerCase();
@@ -6422,6 +6443,45 @@ route('PUT', '/v1/apps/{slug}/automations/{name}/enabled', ({ params, body }) =>
   item.enabled = Boolean(body.enabled);
   item.version += 1;
   return item;
+});
+route('DELETE', '/v1/apps/{slug}/automations/{name}', ({ params, query }) => {
+  const item = mockAutomation(params.slug, params.name);
+  assertAutomationVersion(item, Number(query.get('expected_version')));
+  if (item.source === 'manifest')
+    throw new Problem(
+      409,
+      'automation_ownership_conflict',
+      'The app manifest owns this automation.'
+    );
+  const key = `${params.slug}/${params.name}`;
+  const yaml = automationMock.manifest.get(key);
+  if (yaml && query.get('restore_manifest') !== 'true')
+    throw new Problem(
+      409,
+      'automation_ownership_conflict',
+      'The app manifest also defines this automation. Confirm returning ownership to it.'
+    );
+  const rest = (automationMock.definitions.get(params.slug) ?? []).filter(
+    (row) => row.name !== params.name
+  );
+  automationMock.definitions.set(
+    params.slug,
+    yaml
+      ? [
+          ...rest,
+          {
+            name: params.name,
+            version: item.version + 1,
+            source: 'manifest',
+            draft: yaml,
+            published: yaml,
+            enabled: item.enabled,
+            updated_at: new Date().toISOString(),
+          },
+        ]
+      : rest
+  );
+  return NO_CONTENT;
 });
 route('GET', '/v1/apps/{slug}/automations/{name}/health', ({ params }) =>
   automationMock.health(params.slug, params.name)

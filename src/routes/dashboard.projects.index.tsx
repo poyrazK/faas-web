@@ -4,6 +4,8 @@ import { Upload } from 'iconoir-react';
 import { useAuth } from '@/lib/auth';
 import { useData } from '@/lib/store';
 import { useProjectMembership, type ProjectDetail } from '@/lib/api/projects';
+import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
+import { WorkspaceAppInventory } from '@/components/dashboard/workspace-app-inventory';
 import type { Workflow } from '@/lib/mock-data';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -146,6 +148,7 @@ export function ProjectInventory() {
   const { account } = useAuth();
   const membership = useProjectMembership(account?.id ?? '');
   const { workflows, loading: appsLoading, error: appsError, refresh } = useData();
+  const workspace = useWorkspaceTarget();
   const { q = '' } = ProjectsRoute.useSearch();
   const navigate = ProjectsRoute.useNavigate();
   const [limit, setLimit] = useState(PAGE);
@@ -181,6 +184,16 @@ export function ProjectInventory() {
           </>
         }
       />
+
+      {/* A shared workspace was chosen in the switcher, so its own inventory
+          comes first; projects and standalone apps below stay the signed-in
+          account's. */}
+      {workspace.org && (
+        <WorkspaceAppInventory
+          workspace={{ ...workspace, org: workspace.org }}
+          ownSlugs={new Set(workflows.map((app) => app.id))}
+        />
+      )}
 
       {!account || (membership.list.isPending && !membership.list.isError) ? (
         <LoadingState message="Loading projects…" />

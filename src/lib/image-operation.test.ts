@@ -110,3 +110,16 @@ it('never persists HTTP port or health overrides for a worker operation', () => 
   saveImageOperation(worker);
   expect(readImageOperation('a', '', 'worker')?.deployRequest.overrides).toBeUndefined();
 });
+it('keeps the reviewed workspace so a replayed creation reaches the same endpoint', () => {
+  const operation = {
+    ...newImageOperation('account-a', { slug: 'team-api', type: 'app' }, request),
+    org: 'acme-corp',
+  };
+  saveImageOperation(operation);
+  expect(readImageOperation('account-a', '')?.org).toBe('acme-corp');
+  localStorage.setItem(
+    'gregale.image-operation:account-a:new',
+    JSON.stringify({ ...operation, org: { slug: 'acme-corp' } })
+  );
+  expect(() => readImageOperation('account-a', '')).toThrow(/cannot be read/);
+});

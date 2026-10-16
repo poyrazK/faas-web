@@ -24,3 +24,21 @@ it('never automatically repeats an ambiguous image POST', async () => {
   expect(post).toHaveBeenCalledTimes(1);
   expect(post.mock.calls[0]?.[1]).toMatchObject({ headers: { 'Idempotency-Key': 'deploy-key' } });
 });
+it('creates in the workspace recorded with the operation, with the same key', async () => {
+  const post = spyApi('POST').mockResolvedValue({
+    data: { id: 'app' },
+    response: new Response(),
+  } as never);
+  await createImageApp({ slug: 'api', type: 'app' }, 'create-key', 'acme-corp');
+  expect(post).toHaveBeenCalledWith('/v1/orgs/{slug}/apps', {
+    params: { path: { slug: 'acme-corp' } },
+    body: {
+      cpu_millicores: 1000,
+      head_wakes: false,
+      crawler_policy: 'wake',
+      slug: 'api',
+      type: 'app',
+    },
+    headers: { 'Idempotency-Key': 'create-key' },
+  });
+});

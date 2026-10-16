@@ -9,13 +9,14 @@ import {
   Outlet,
   RouterProvider,
 } from '@tanstack/react-router';
-import { beforeEach, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Route as Projects } from './dashboard.projects';
 import { Route as Index } from './dashboard.projects.index';
 import { Route as Detail } from './dashboard.projects.$projectSlug';
 import { DashboardShell } from '@/components/dashboard/shell';
 import { ApiError } from '@/lib/api/errors';
 import { spyApi } from '@/test/api';
+import { bindWorkspaceAccount, setActiveOrg } from '@/lib/workspace';
 vi.mock('@/lib/auth', () => ({
   useAuth: () => ({
     account: { id: 'a', plan: 'free' },
@@ -43,9 +44,14 @@ const summary = {
   repo_full_name: 'team/shop',
   production_branch: 'main',
 };
+/** Extra GET answers by path; an Error is answered as that failure. */
+const extraGet: Record<string, unknown> = {};
 beforeEach(() => {
   vi.restoreAllMocks();
   store.workflows = [];
+  for (const key of Object.keys(extraGet)) delete extraGet[key];
+  bindWorkspaceAccount('a');
+  setActiveOrg(null);
 });
 const ok = (data: unknown) => ({ data, response: new Response() }) as never;
 async function mount(
@@ -77,6 +83,11 @@ async function mount(
         ],
         exclusions: [],
       });
+    if (path in extraGet) {
+      const answer = extraGet[path];
+      if (answer instanceof ApiError) throw answer;
+      return ok(answer);
+    }
     return ok([]);
   });
   const root = createRootRoute({ component: Outlet });
@@ -215,4 +226,79 @@ it('keeps the search in the URL across detail and return navigation', async () =
   expect(pageBack).toHaveAttribute('href', '/dashboard/projects?q=shop');
   await userEvent.click(pageBack!);
   expect(await screen.findByLabelText('Search projects and apps')).toHaveValue('shop');
+});
+
+describe('the selected shared workspace', () => {
+  const acme = {
+    id: 'org-1',
+    slug: 'acme-corp',
+    name: 'Acme Corp',
+    personal: false,
+    plan: 'pro',
+    status: 'active',
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+  };
+  beforeEach(() => {
+    extraGet['/v1/orgs'] = { orgs: [acme] };
+    setActiveOrg('acme-corp');
+  });
+
+  it('lists its apps even when the account has nothing, linking only apps the account created', async () => {
+    store.workflows = [{ id: 'mine', name: 'mine', runtime: 'node22', state: 'idle' }];
+    extraGet['/v1/orgs/{slug}/apps'] = {
+      apps: [
+        {
+          id: 'a1',
+          slug: 'mine',
+          type: 'function',
+          runtime: 'node22',
+          status: 'active',
+          created_at: new Date().toISOString(),
+        },
+        {
+          id: 'a2',
+          slug: 'theirs',
+          type: 'app',
+          status: 'active',
+          created_at: '2026-09-01T00:00:00Z',
+        },
+      ],
+    };
+    const { get } = await mount('/dashboard/projects', []);
+    expect(await screen.findByText('In this workspace')).toBeInTheDocument();
+    expect(await screen.findByText('theirs')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'theirs' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: 'mine' })[0]).toHaveAttribute(
+      'href',
+      '/dashboard/apps/mine'
+    );
+    expect(screen.getByText(/stay with each app's creator/)).toBeInTheDocument();
+    expect(get).toHaveBeenCalledWith(
+      '/v1/orgs/{slug}/apps',
+      expect.objectContaining({
+        params: { path: { slug: 'acme-corp' } },
+      })
+    );
+  });
+
+  it('says when the account may not view the workspace apps', async () => {
+    extraGet['/v1/orgs/{slug}/apps'] = new ApiError({
+      status: 403,
+      code: 'org_role_forbidden',
+      title: 'Forbidden',
+    });
+    await mount('/dashboard/projects', []);
+    expect(
+      await screen.findByText(/not an active member of Acme Corp with permission to view its apps/)
+    ).toBeInTheDocument();
+  });
+
+  it('is absent for the personal workspace', async () => {
+    setActiveOrg(null);
+    const { get } = await mount('/dashboard/projects', []);
+    await screen.findByText(/Nothing deployed yet/);
+    expect(screen.queryByText('In this workspace')).not.toBeInTheDocument();
+    expect(get).not.toHaveBeenCalledWith('/v1/orgs/{slug}/apps', expect.anything());
+  });
 });

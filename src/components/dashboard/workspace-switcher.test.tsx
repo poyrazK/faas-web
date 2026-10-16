@@ -58,13 +58,16 @@ describe('WorkspaceSwitcher', () => {
     expect(await screen.findByRole('button', { name: /Workspace: Team A/ })).toBeInTheDocument();
   });
 
-  it('says plainly that apps and projects are not filtered by workspace', async () => {
+  it('says what follows the workspace and what stays with the account', async () => {
     orgs.list = [org('me', 'me', true)];
     mount();
     await userEvent.click(await screen.findByRole('button', { name: /Workspace:/ }));
-    expect(
-      await screen.findByText(/Apps and projects are still listed for your whole account/)
-    ).toBeInTheDocument();
+    const note = await screen.findByText(
+      /The full app list and projects stay your signed-in account's/
+    );
+    expect(note).toHaveTextContent(
+      "the workspace's app inventory on Projects, and new apps follow the selected workspace"
+    );
   });
 
   it('drops a stored workspace the account no longer belongs to', async () => {

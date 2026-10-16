@@ -33,6 +33,7 @@ import { templateBySlug } from '@/lib/templates';
 import { type Runtime } from '@/lib/mock-data';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import { useData } from '@/lib/store';
+import { useWorkspaceTarget, workspaceCreateError } from '@/lib/api/workspace-apps';
 import {
   useBindRepoFor,
   useDeployFromRefFor,
@@ -163,6 +164,7 @@ function CreateAppWizard({
   const { toast } = useToast();
   const { addWorkflow } = useData();
   const { account, loading: authLoading } = useAuth();
+  const workspace = useWorkspaceTarget();
   const privateCapability = useCapability('private-apps');
   const reduce = useReducedMotion();
   const [localSearch, setLocalSearch] = useState<NewAppSearch>({
@@ -234,12 +236,24 @@ function CreateAppWizard({
   const [deploying, setDeploying] = useState(false);
   const [deploymentId, setDeploymentId] = useState<string | null>(null);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
-  const creationContext = useRef({ accountId: account?.id ?? '', name, visibility, source });
+  const creationContext = useRef({
+    accountId: account?.id ?? '',
+    name,
+    visibility,
+    source,
+    workspace: workspace.org,
+  });
   const createController = useRef<AbortController | null>(null);
   const mounted = useRef(true);
   useLayoutEffect(() => {
-    creationContext.current = { accountId: account?.id ?? '', name, visibility, source };
-  }, [account?.id, name, visibility, source]);
+    creationContext.current = {
+      accountId: account?.id ?? '',
+      name,
+      visibility,
+      source,
+      workspace: workspace.org,
+    };
+  }, [account?.id, name, visibility, source, workspace.org]);
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -356,6 +370,7 @@ function CreateAppWizard({
         memoryMb: selectedMemoryMb,
         type: appType,
         visibility,
+        org: workspace.org,
       });
       setCreatedId(created.id);
       setCreatedUrl(visibility === 'internal' ? null : created.url);
@@ -426,7 +441,7 @@ function CreateAppWizard({
       toast({
         kind: 'error',
         title: 'Could not create the app',
-        description: errorMessage(err),
+        description: workspaceCreateError(err, workspace),
       });
     }
   }
@@ -962,6 +977,7 @@ function CreateAppWizard({
               <dl className="grid gap-x-8 gap-y-4 sm:grid-cols-2">
                 {[
                   ['Name', name],
+                  ['Workspace', workspace.label],
                   ['Source', SOURCES.find((option) => option.id === source)?.name ?? ''],
                   ['Type', APP_TYPES.find((t) => t.id === appType)?.label ?? ''],
                   [
@@ -994,6 +1010,12 @@ function CreateAppWizard({
                   </div>
                 ))}
               </dl>
+              {workspace.org && (
+                <p className="mt-4 text-xs text-muted-foreground">
+                  Created in {workspace.label}, so it is listed in that workspace. You stay its
+                  owner: its settings, quota, and billing remain with your account.
+                </p>
+              )}
 
               {account && (
                 <div

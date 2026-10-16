@@ -21,8 +21,9 @@ import { cn } from '@/lib/utils';
  * It replaced a free-text "workspace" label kept in this browser (it read
  * `acme-corp` until someone typed over it), which named nothing the API knew.
  * These are the account's real organizations from `GET /v1/orgs`; choosing one
- * sends `X-Active-Org` on every request. A stored choice the account no longer
- * belongs to is dropped as soon as the list says so.
+ * sends `X-Active-Org` on every request, and new apps are created through
+ * `POST /v1/orgs/{slug}/apps` so they are attributed to it. A stored choice the
+ * account no longer belongs to is dropped as soon as the list says so.
  */
 export function WorkspaceSwitcher() {
   const { account } = useAuth();
@@ -105,8 +106,9 @@ export function WorkspaceSwitcher() {
           </Link>
         </DropdownMenuItem>
         <p className="px-2.5 pb-2 pt-1 text-xs leading-relaxed text-muted-foreground">
-          Team settings, members and keys follow the selected workspace. Apps and projects are still
-          listed for your whole account.
+          Organization settings, members, keys, the workspace's app inventory on Projects, and new
+          apps follow the selected workspace. The full app list and projects stay your signed-in
+          account's.
         </p>
       </DropdownMenuContent>
     </DropdownMenu>

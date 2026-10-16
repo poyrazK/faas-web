@@ -48,8 +48,13 @@ paths are checked against `api/openapi.yaml` by `src/lib/mock-spec-drift.test.ts
   `/usage` return scalars, so a line chart over them would be fabricated.
 - **The workspace is an organization.** The breadcrumb switcher stores the
   choice per account (`lib/workspace.ts`) and the API client sends it as
-  `X-Active-Org`. `/v1/apps` and `/v1/projects` ignore it today, and the UI
-  says so.
+  `X-Active-Org`, which org settings, members, and keys follow. `/v1/apps` and
+  `/v1/projects` ignore it: they stay the signed-in account's, and the UI says
+  so. Apps reach a shared workspace through its URL (ADR-061) — new apps are
+  created with `POST /v1/orgs/{slug}/apps` and Projects shows that workspace's
+  inventory from `GET /v1/orgs/{slug}/apps` (`lib/api/workspace-apps.ts`); the
+  personal workspace keeps `POST /v1/apps`. Every `/v1/apps/{slug}/…` route is
+  still creator-scoped, so never link a workspace app the account did not create.
 - **Per-app resources need an app picker.** Secrets, env, alerts, webhooks,
   queues, upstreams, routes, and logs are all `/v1/apps/{slug}/…` with no
   account-wide read. Use `useSelectedApp` + `AppSelect`.
