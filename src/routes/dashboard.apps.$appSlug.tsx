@@ -69,6 +69,7 @@ import { AppAnalyticsPanel } from '@/components/dashboard/app-analytics';
 import { AppOverview } from '@/components/dashboard/app-overview';
 import { PreviewDiscovery } from '@/components/dashboard/projects/preview-workload-set';
 import { AppHeader } from '@/components/dashboard/app-header';
+import { useProjectMembership } from '@/lib/api/projects';
 import { AppActionsMenu } from '@/components/dashboard/app-actions-menu';
 import { TarballDeploy } from '@/components/dashboard/tarball-deploy';
 import { ImageDeploymentPanel } from '@/components/dashboard/image-deploy-form';
@@ -197,6 +198,7 @@ function FunctionDetailPage() {
   const [range, setRange] = useState<MetricsRange>('24h');
   const { getWorkflow, loading, error, refresh } = useData();
   const { account, loading: authLoading } = useAuth();
+  const membership = useProjectMembership(account?.id ?? '');
   const { toast } = useToast();
   const deployFromRef = useDeployFromRef(appSlug);
   const bindRepo = useBindRepo(appSlug);
@@ -336,6 +338,7 @@ function FunctionDetailPage() {
       <AppHeader
         app={fn}
         releases={releases}
+        project={membership.projectOfApp.get(appSlug)}
         actions={
           <>
             <Button

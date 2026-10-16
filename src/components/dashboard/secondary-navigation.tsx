@@ -57,8 +57,9 @@ export function DashboardSecondaryNavigation() {
   const hub = findNavHub(pathname);
   if (!hub?.sections || hub.pageOwnsNavigation) return null;
   const appSection = APP_SECTIONS.some((item) => matchesNavPath(pathname, item));
-  // Keep this navigation scoped to standalone app pages, not the All apps list.
-  const showAppSections = hub.label === 'Apps' && appSection;
+  // Standalone per-app pages (logs, routes, …) keep their strip; the app list
+  // and app detail pages are not among them.
+  const showAppSections = appSection;
   // A hub whose sections are nested rows in the rail must not restate them as
   // a tab strip: two controls for one choice, one of which silently scrolls
   // away. Settings keeps its strip — its eight `?section=` panels are the

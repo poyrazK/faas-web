@@ -38,10 +38,18 @@ paths are checked against `api/openapi.yaml` by `src/lib/mock-spec-drift.test.ts
   a couple of types; `lib/mock-resources.ts` is unused by routes. Do not add
   fixture data back — if an endpoint cannot answer something, say so in the UI
   rather than inventing a plausible number.
-- **The API has no projects, no regions, and no time-series metrics.** All were
-  removed from the UI rather than faked. Do not reintroduce any of them, and in
-  particular do not add charts to the console: `/v1/apps/{slug}/metrics` returns
-  scalars, so a line chart there would be fabricated.
+- **Projects are the way in; regions do not exist.** A project is one imported
+  repository and its apps (`/v1/projects`). Apps do not report their project,
+  so membership comes from project details via `useProjectMembership`, and
+  apps outside every project are shown as standalone — never guessed. There
+  are no regions (it is one box); do not reintroduce them.
+- **Chart only real series.** `/v1/apps/{slug}/analytics/timeseries` returns
+  hourly buckets and may be charted. `/v1/apps/{slug}/metrics`, `/slo` and
+  `/usage` return scalars, so a line chart over them would be fabricated.
+- **The workspace is an organization.** The breadcrumb switcher stores the
+  choice per account (`lib/workspace.ts`) and the API client sends it as
+  `X-Active-Org`. `/v1/apps` and `/v1/projects` ignore it today, and the UI
+  says so.
 - **Per-app resources need an app picker.** Secrets, env, alerts, webhooks,
   queues, upstreams, routes, and logs are all `/v1/apps/{slug}/…` with no
   account-wide read. Use `useSelectedApp` + `AppSelect`.

@@ -1,6 +1,7 @@
 import createClient, { type Middleware } from 'openapi-fetch';
 import type { paths } from './schema';
 import { ApiError, toApiError } from './errors';
+import { activeOrgHeader } from '../workspace';
 
 /**
  * The one HTTP client. Typed end to end against `api/openapi.yaml`, so a
@@ -51,6 +52,10 @@ const sessionMiddleware: Middleware = {
     if (request.method === 'POST' && !request.headers.has('Idempotency-Key')) {
       request.headers.set('Idempotency-Key', crypto.randomUUID());
     }
+    // The chosen organization rides on every request; apid applies it to
+    // org-scoped routes and ignores it elsewhere. See lib/workspace.ts.
+    const org = activeOrgHeader();
+    if (org && !request.headers.has('X-Active-Org')) request.headers.set('X-Active-Org', org);
     return request;
   },
 

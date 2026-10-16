@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import { Panel } from '@/components/dashboard/primitives';
 import { FIELD, FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
-import { clearWorkspace, readWorkspace, saveWorkspace, useAuth } from '@/lib/auth';
+import { clearWorkspace, useAuth } from '@/lib/auth';
+import { setActiveOrg } from '@/lib/workspace';
 import {
   useAccountExport,
   useDeleteAccount,
@@ -300,28 +301,16 @@ export function SettingsPanels({ section }: { section: SettingsSection }) {
   const navigate = useNavigate();
   const deleteAccount = useDeleteAccount();
 
-  const [workspace, setWorkspace] = useState(readWorkspace);
   const [showDeleteAccount, setShowDeleteAccount] = useState(false);
   const [deletionPending, setDeletionPending] = useState(account?.status === 'deleted_pending');
 
-  // The workspace name is a label this console shows in its own chrome; the
-  // API has no account-name field to put it in. Stored where it is used, and
-  // described as what it is rather than dressed up as an account setting.
-  const handleSave = () => {
-    saveWorkspace(workspace);
-    toast({
-      kind: 'success',
-      title: 'Workspace name saved',
-      description: 'Stored in this browser. It labels the console, not the account.',
-    });
-  };
-
   const handleLocalReset = () => {
+    setActiveOrg(null);
     clearWorkspace();
     void signOut();
     toast({
       kind: 'info',
-      title: 'Local workspace settings cleared',
+      title: 'Browser data cleared',
       description: 'You have been signed out. Your account was not deleted.',
     });
     navigate({ to: '/' });
@@ -365,26 +354,6 @@ export function SettingsPanels({ section }: { section: SettingsSection }) {
 
       {section === 'general' && (
         <>
-          <Panel
-            title="Console label"
-            description="The name this console shows in its own chrome. Stored in this browser — the API has no account name to sync it to."
-          >
-            <div className="grid gap-5 sm:grid-cols-2">
-              <label className="flex flex-col gap-1.5">
-                <span className="label-mono text-muted-foreground">Console label</span>
-                <input
-                  value={workspace}
-                  onChange={(e) => setWorkspace(e.target.value)}
-                  className="h-9 rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-brand/50"
-                />
-              </label>
-            </div>
-            <div className="mt-5 flex justify-end">
-              <Button size="sm" onClick={handleSave}>
-                Save name
-              </Button>
-            </div>
-          </Panel>
           <AccountDetails />
         </>
       )}
@@ -430,8 +399,8 @@ export function SettingsPanels({ section }: { section: SettingsSection }) {
                 <div>
                   <p className="text-sm font-medium">Clear this browser</p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Clears the local workspace label and signs out. Your account and resources stay
-                    intact.
+                    Forgets the workspace selected in this browser and signs out. Your account and
+                    resources stay intact.
                   </p>
                 </div>
                 <Button variant="outline" size="sm" onClick={handleLocalReset}>

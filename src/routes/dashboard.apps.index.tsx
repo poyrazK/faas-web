@@ -134,8 +134,9 @@ function FunctionsPage() {
       replace: true,
       hash: true,
     });
-  // Was a project filter. The API has no projects — apps are flat per account —
-  // so this filters on the one grouping that is real: the runtime.
+  // Apps report no project (`AppResponse` has no project_id), so this list
+  // filters on what each row carries: the runtime. Grouping by project lives
+  // on the Projects page.
   const setRuntime = (next: string) =>
     routeNavigate({
       search: (prev) => ({ ...prev, runtime: next === 'all' ? undefined : next }),

@@ -43,8 +43,8 @@ export interface Workflow {
   /** The app slug — what `/v1/apps/{slug}` is keyed by, and what the URL shows. */
   id: string;
   /**
-   * Optional because the API has no project concept: apps are flat per
-   * account. Only the remaining fixtures still set it.
+   * Unset by the adapter: `AppResponse` carries no project. Membership is read
+   * from project details (`useProjectMembership`). Only fixtures set it.
    */
   projectId?: string;
   name: string;

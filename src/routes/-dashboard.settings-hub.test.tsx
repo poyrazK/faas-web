@@ -248,21 +248,22 @@ describe('canonical Settings', () => {
     expect(await screen.findByRole('tooltip')).toHaveTextContent(label);
   });
 
-  it('defaults invalid sections to General with only browser-local labeling and read-only account details', async () => {
+  it('defaults invalid sections to General with read-only account details and no browser-only label', async () => {
     await mount('/dashboard/settings?section=garbage&scope=bad');
-    expect(screen.getByRole('textbox', { name: 'Console label' })).toBeInTheDocument();
-    expect(screen.getByText(/stored in this browser/i)).toBeInTheDocument();
+    // The workspace is a real organization now, chosen in the breadcrumb.
+    expect(screen.queryByRole('textbox', { name: 'Console label' })).not.toBeInTheDocument();
     expect(screen.getByText('owner@example.com')).toBeInTheDocument();
     expect(screen.queryByRole('textbox', { name: 'Email' })).not.toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Schedule account deletion' })
     ).not.toBeInTheDocument();
     expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument();
+    // Feature availability is shown where each feature is used, not as a list.
     expect(
-      within(screen.getByRole('navigation', { name: 'Settings sections' })).getByRole('link', {
+      within(screen.getByRole('navigation', { name: 'Settings sections' })).queryByRole('link', {
         name: 'Platform capabilities',
       })
-    ).toHaveAttribute('href', '/dashboard/settings?section=platform-capabilities');
+    ).not.toBeInTheDocument();
   });
 
   it('restores sections, organization and key scopes through history and copied URLs', async () => {

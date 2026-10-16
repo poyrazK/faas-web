@@ -252,19 +252,18 @@ describe('global Needs Attention dropdown', () => {
  */
 const RAIL = [
   'Overview',
-  'All apps',
+  'All projects',
   'Templates',
   'Import',
-  'Projects',
   'Jobs',
   'Releases',
-  'Instances',
   'Domains',
   'Storage',
   'Postgres',
   'Analytics',
   'Debugger',
   'Invocations',
+  'Instances',
   'Audit Log',
   'Usage',
   'Invoices',
@@ -280,7 +279,7 @@ const RAIL = [
  * `aria-current="page"` last and unconditionally, so a second link to the same
  * URL would be a second current page that no prop can suppress.
  */
-const RAIL_PARENTS = ['Apps', 'Data', 'Observe', 'Billing'];
+const RAIL_PARENTS = ['Projects', 'Data', 'Observe', 'Billing'];
 
 /** The group headings that give the rail its scent. */
 const RAIL_GROUPS = ['Build', 'Operate', 'Account'];
@@ -296,10 +295,10 @@ function sectionsNav(hub: string) {
 }
 const GROUPS = [
   {
-    hub: 'Apps',
-    anchor: '/dashboard/apps',
+    hub: 'Projects',
+    anchor: '/dashboard/projects',
     links: [
-      ['All apps', '/dashboard/apps'],
+      ['All projects', '/dashboard/projects'],
       ['Templates', '/dashboard/templates'],
       ['Import', '/dashboard/import'],
     ],
@@ -318,6 +317,7 @@ const GROUPS = [
     links: [
       ['Debugger', '/dashboard/debug'],
       ['Invocations', '/dashboard/invocations'],
+      ['Instances', '/dashboard/instances'],
       ['Audit Log', '/dashboard/audit'],
     ],
   },
@@ -476,7 +476,9 @@ describe('dashboard navigation foundation', () => {
     // Edge rules is an app section with no rail row of its own, so the rail
     // shows the branch rather than claiming a current page it does not have.
     expect(
-      within(screen.getByRole('navigation', { name: 'Main' })).getByRole('button', { name: 'Apps' })
+      within(screen.getByRole('navigation', { name: 'Main' })).getByRole('button', {
+        name: 'Projects',
+      })
     ).toBeInTheDocument();
     expect(
       within(screen.getByRole('navigation', { name: 'App sections' })).getByRole('link', {
@@ -571,14 +573,22 @@ describe('dashboard navigation foundation', () => {
     expect(within(breadcrumb).queryByText('Deployments')).not.toBeInTheDocument();
   });
 
-  it('preserves an Apps list bookmark when its primary destination is reselected', async () => {
-    const router = await renderShell('/dashboard/apps?q=api&state=running#list');
+  it('preserves a Projects bookmark when its primary destination is reselected', async () => {
+    const router = await renderShell('/dashboard/projects?q=api#list');
     const link = within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', {
-      name: 'All apps',
+      name: 'All projects',
     });
-    expect(link).toHaveAttribute('href', '/dashboard/apps?q=api&state=running#list');
+    expect(link).toHaveAttribute('href', '/dashboard/projects?q=api#list');
     await userEvent.click(link);
-    expect(router.state.location.href).toBe('/dashboard/apps?q=api&state=running#list');
+    expect(router.state.location.href).toBe('/dashboard/projects?q=api#list');
+  });
+
+  it('files apps under Projects: no Apps row, and app pages light Projects', async () => {
+    await renderShell('/dashboard/apps/api');
+    const main = screen.getByRole('navigation', { name: 'Main' });
+    expect(within(main).queryByRole('link', { name: 'All apps' })).toBeNull();
+    expect(within(main).queryByRole('button', { name: 'Apps' })).toBeNull();
+    expect(within(main).getByRole('button', { name: 'Projects' })).toBeInTheDocument();
   });
 
   it.each(['/dashboard/apps', '/dashboard/apps/'])(
@@ -702,9 +712,9 @@ describe('dashboard navigation foundation', () => {
   it.each([
     ['/dashboard/builds', 'Releases', 'Builds', '/dashboard/releases'],
     ['/dashboard/team', 'Settings', 'Team', '/dashboard/settings'],
-    ['/dashboard/apps/api', 'Apps', 'Public API', '/dashboard/apps'],
-    ['/dashboard/apps/missing', 'Apps', 'App', '/dashboard/apps'],
-    ['/dashboard/apps/new', 'Apps', 'New app', '/dashboard/apps'],
+    ['/dashboard/apps/api', 'Projects', 'Public API', '/dashboard/projects'],
+    ['/dashboard/apps/missing', 'Projects', 'App', '/dashboard/projects'],
+    ['/dashboard/apps/new', 'Projects', 'New app', '/dashboard/projects'],
   ])(
     'shows a linked parent hub and meaningful current breadcrumb at %s',
     async (path, hub, current, anchor) => {

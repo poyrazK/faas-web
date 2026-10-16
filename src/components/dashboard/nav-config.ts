@@ -5,6 +5,7 @@ import {
   Antenna,
   Coins,
   Database,
+  Folder,
   CreditCard,
   Cube,
   GitFork as WorkflowIcon,
@@ -70,20 +71,25 @@ export const NAV_HUBS: NavHub[] = [
     sidebarIconClassName: 'text-brand/80',
   },
   {
-    to: '/dashboard/apps',
-    label: 'Apps',
-    icon: WorkflowIcon,
+    // Projects are the way in: apps live inside them (standalone apps are a
+    // group on the Projects page), so there is no separate Apps row. The app
+    // list and app pages still resolve and belong to this hub.
+    to: '/dashboard/projects',
+    label: 'Projects',
+    icon: Folder,
     sidebarIconClassName: 'text-cat-compute/80',
     sections: [
-      { to: '/dashboard/apps', label: 'Apps', icon: WorkflowIcon },
+      { to: '/dashboard/projects', label: 'Projects', icon: Folder },
       { to: '/dashboard/templates', label: 'Templates', icon: Cube },
       { to: '/dashboard/import', label: 'Import', icon: Upload },
     ],
   },
   {
-    to: '/dashboard/projects',
-    label: 'Projects',
-    icon: Cube,
+    // Not in the rail. Kept as a hub so `/dashboard/apps` keeps its title,
+    // breadcrumb and ⌘K entry.
+    to: '/dashboard/apps',
+    label: 'Apps',
+    icon: WorkflowIcon,
     sidebarIconClassName: 'text-cat-compute/80',
   },
   {
@@ -116,12 +122,6 @@ export const NAV_HUBS: NavHub[] = [
     ],
   },
   {
-    to: '/dashboard/instances',
-    label: 'Instances',
-    icon: Server,
-    sidebarIconClassName: 'text-cat-compute/80',
-  },
-  {
     to: '/dashboard/domains',
     label: 'Domains',
     icon: Globe,
@@ -151,6 +151,7 @@ export const NAV_HUBS: NavHub[] = [
     sections: [
       { to: '/dashboard/debug', label: 'Debugger', icon: Search },
       { to: '/dashboard/invocations', label: 'Invocations', icon: Activity },
+      { to: '/dashboard/instances', label: 'Instances', icon: Server },
       { to: '/dashboard/audit', label: 'Audit Log', icon: Journal },
     ],
   },
@@ -198,7 +199,7 @@ export const NAV_HUBS: NavHub[] = [
  */
 const SIDEBAR_GROUPS: { title?: string; hubs: string[] }[] = [
   { hubs: ['Overview'] },
-  { title: 'Build', hubs: ['Apps', 'Projects', 'Jobs', 'Releases', 'Instances'] },
+  { title: 'Build', hubs: ['Projects', 'Jobs', 'Releases'] },
   { title: 'Operate', hubs: ['Domains', 'Data', 'Analytics', 'Observe'] },
   { title: 'Account', hubs: ['Billing', 'Settings'] },
 ];
@@ -307,12 +308,13 @@ export function findNavHub(pathname: string): NavHub | undefined {
       matchesNavPath(pathname, item) ||
       item.sections?.some((section) => matchesNavPath(pathname, section))
   );
-  // Debugger belongs to Observe globally, even though it also has an app tab.
+  // Apps live under Projects: the app list, app pages and standalone app
+  // sections all light the Projects row. Debugger belongs to Observe
+  // globally, even though it also has an app tab.
+  const projects = NAV_HUBS.find((item) => item.label === 'Projects');
+  if (hub?.label === 'Apps') return projects;
   return (
-    hub ??
-    (APP_SECTIONS.some((item) => matchesNavPath(pathname, item))
-      ? NAV_HUBS.find((item) => item.label === 'Apps')
-      : undefined)
+    hub ?? (APP_SECTIONS.some((item) => matchesNavPath(pathname, item)) ? projects : undefined)
   );
 }
 
