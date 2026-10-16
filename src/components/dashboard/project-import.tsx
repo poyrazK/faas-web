@@ -11,6 +11,7 @@ import { useProjectApply, useProjectScan, type ProjectPlan } from '@/lib/api/que
 import { errorMessage } from '@/lib/api/errors';
 import { cn } from '@/lib/utils';
 import { useUnsavedGuard } from '@/lib/use-unsaved-guard';
+import { SCAN_SOURCE_LABEL } from './scan-source';
 
 /**
  * Repository import — `/v1/projects/scan` + `/v1/projects`.
@@ -23,19 +24,6 @@ import { useUnsavedGuard } from '@/lib/use-unsaved-guard';
  * transaction. The scan is a dry run; nothing exists until Apply, and the
  * plan token means the server does not extract the tarball twice.
  */
-
-const SOURCE_LABEL: Record<ProjectPlan['scan_source'], string> = {
-  k8s: 'Kubernetes manifests',
-  compose: 'Docker Compose',
-  procfile: 'Procfile',
-  render: 'render.yaml',
-  fly: 'fly.toml',
-  serverless: 'serverless.yml',
-  workspace: 'Workspace config',
-  convention: 'Convention scan',
-  single: 'Single service',
-  unknown: 'Unknown layout',
-};
 
 const SLUG_RULE = /^[a-z0-9][a-z0-9-]*$/;
 
@@ -197,7 +185,7 @@ export function ProjectImport({
           <div className="flex flex-col gap-6">
             <Panel
               title={`Plan — ${plan.project_slug}`}
-              description={`Detected from ${SOURCE_LABEL[plan.scan_source]}.`}
+              description={`Detected from ${SCAN_SOURCE_LABEL[plan.scan_source]}.`}
               actions={
                 <Button
                   size="sm"

@@ -13,16 +13,16 @@ export function isDigestPinnedImage(reference: string): boolean {
       .every((part) => part !== '' && part !== '.' && part !== '..')
   );
 }
-export function imageRequest(
-  image: string,
-  port: string,
-  path: string,
-  allowAuto: boolean
-): ImageRequest {
+/** Per-field preflight, so a form can put each complaint beside its field. */
+export function imageReferenceError(image: string): string | undefined {
   if (!isDigestPinnedImage(image))
-    throw new Error('Use a repository@sha256: reference with a 64-character lowercase digest.');
+    return 'Use a repository@sha256: reference with a 64-character lowercase digest.';
+}
+export function portOverrideError(port: string): string | undefined {
   if (port && (!/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535))
-    throw new Error('Port must be an integer from 1 to 65535.');
+    return 'Port must be an integer from 1 to 65535.';
+}
+export function healthPathError(path: string): string | undefined {
   if (
     path &&
     (!path.startsWith('/') ||
@@ -31,7 +31,16 @@ export function imageRequest(
         (character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127
       ))
   )
-    throw new Error('Health path must start with / and contain no whitespace.');
+    return 'Health path must start with / and contain no whitespace.';
+}
+export function imageRequest(
+  image: string,
+  port: string,
+  path: string,
+  allowAuto: boolean
+): ImageRequest {
+  const problem = imageReferenceError(image) ?? portOverrideError(port) ?? healthPathError(path);
+  if (problem) throw new Error(problem);
   return {
     image,
     ...(port || path

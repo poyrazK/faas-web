@@ -1,3 +1,4 @@
+import type * as React from 'react';
 import { Select } from '@/components/ui/field';
 import { FIELD } from '@/components/ui/field';
 import { useAuth } from '@/lib/auth';
@@ -10,16 +11,25 @@ import { cn } from '@/lib/utils';
  * owner/name. Picking a repo also reports its default branch, so callers
  * can pre-fill the ref. Without an installation — or when the list cannot
  * be read — it degrades to the plain text input it replaces.
+ *
+ * Either way the caller's `id`, `name`, `form` and ARIA wiring land on the
+ * one control, so a `<label htmlFor>` names it and validation can focus it.
  */
+type ControlProps = Pick<
+  React.ComponentProps<'input'>,
+  'id' | 'name' | 'form' | 'aria-invalid' | 'aria-describedby'
+>;
+
 export function RepoPicker({
   value,
   onChange,
   className,
+  ...control
 }: {
   value: string;
   onChange: (repo: string, defaultBranch?: string) => void;
   className?: string;
-}) {
+} & ControlProps) {
   const { account } = useAuth();
   const installId = account?.github_install_id ? Number(account.github_install_id) : null;
   const repos = useInstallRepos(installId);
@@ -28,6 +38,7 @@ export function RepoPicker({
   if (!installId || repos.error || (!repos.isPending && list.length === 0)) {
     return (
       <input
+        {...control}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder="owner/repo"
@@ -39,6 +50,7 @@ export function RepoPicker({
 
   return (
     <Select
+      {...control}
       value={value}
       disabled={repos.isPending}
       onChange={(e) => {

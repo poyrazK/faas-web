@@ -90,6 +90,7 @@ export function FirstDeploymentRecovery({
           repo={recovery.repo}
           sourceRef={recovery.ref}
           endpoint={app.data.visibility === 'internal' ? null : app.data.url}
+          appSlug={app.data.slug}
           hideRetryOptions
         />
       ) : (

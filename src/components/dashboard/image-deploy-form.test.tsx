@@ -658,3 +658,30 @@ it('removes a stale public endpoint when a recovered app is now internal', async
   expect(readImageOperation('a', '')?.endpoint).toBeUndefined();
   expect(screen.queryByRole('link', { name: /Open app/i })).not.toBeInTheDocument();
 });
+it('puts each review complaint beside its field and focuses the first', async () => {
+  const post = spyApi('POST');
+  mount();
+  await userEvent.click(screen.getByRole('button', { name: 'Review image deployment' }));
+  const name = screen.getByLabelText('App name');
+  expect(name).toHaveFocus();
+  expect(name).toHaveAttribute('aria-invalid', 'true');
+  expect(name).toHaveAccessibleDescription('Enter an app name.');
+  expect(screen.getByLabelText('Image reference')).toHaveAccessibleDescription(
+    /repository@sha256: reference/
+  );
+  expect(screen.queryByText(/Review:/)).not.toBeInTheDocument();
+  expect(post).not.toHaveBeenCalled();
+});
+it('opens advanced settings to focus an invalid port override', async () => {
+  mount();
+  await userEvent.type(screen.getByLabelText('App name'), 'my-api');
+  await userEvent.type(screen.getByLabelText('Image reference'), reference);
+  await userEvent.click(screen.getByText('Advanced settings'));
+  await userEvent.type(screen.getByLabelText('Port override'), '70000');
+  await userEvent.click(screen.getByText('Advanced settings'));
+  await userEvent.click(screen.getByRole('button', { name: 'Review image deployment' }));
+  const port = screen.getByLabelText('Port override');
+  expect(port).toBeVisible();
+  expect(port).toHaveFocus();
+  expect(port).toHaveAccessibleDescription('Port must be an integer from 1 to 65535.');
+});
