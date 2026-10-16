@@ -28,7 +28,7 @@ export const APP_TAB_GROUPS = [
     ],
   },
   { label: 'Automate', tabs: ['Automations', 'Queues', 'Webhooks'] },
-  { label: 'Configure', tabs: ['Environment', 'Configuration', 'Companions'] },
+  { label: 'Configure', tabs: ['Environment', 'Configuration'] },
 ] as const;
 export type AppTab = (typeof APP_TAB_GROUPS)[number]['tabs'][number];
 type AppTabGroup = (typeof APP_TAB_GROUPS)[number];

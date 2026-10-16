@@ -2,7 +2,6 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
-import { api } from './client';
 import {
   readPromotionPreview,
   readPromotionHistory,
@@ -13,6 +12,7 @@ import {
   usePromotionReceipt,
   useApprovalReceipt,
 } from './environment-readiness';
+import { spyApi } from '@/test/api';
 afterEach(() => vi.restoreAllMocks());
 const identity = { accountId: 'a', projectId: 'p', project: 'shop', target: 'production' };
 const hash = 'a'.repeat(64);
@@ -65,7 +65,7 @@ const preview = {
   },
 };
 function mock(result: unknown) {
-  return vi.spyOn(api, 'GET').mockImplementation(
+  return spyApi('GET').mockImplementation(
     async (path) =>
       ({
         data:
@@ -106,7 +106,7 @@ it.each(['project_slug', 'from_environment', 'to_environment'])(
 );
 it('rejects an account change after a read and forwards cancellation', async () => {
   let reads = 0;
-  vi.spyOn(api, 'GET').mockImplementation(
+  spyApi('GET').mockImplementation(
     async (path) =>
       ({
         data:
@@ -214,7 +214,7 @@ function useApprovalFailure() {
 it.each(['preview', 'history', 'operation', 'approval'] as const)(
   'excludes raw Problem details and unexpected credentials from the %s error cache',
   async (kind) => {
-    vi.spyOn(api, 'GET').mockResolvedValue({
+    spyApi('GET').mockResolvedValue({
       error: {
         status: 403,
         code: 'forbidden',

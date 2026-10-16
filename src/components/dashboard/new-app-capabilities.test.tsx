@@ -1,11 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
-import { api } from '@/lib/api/client';
 import { NewAppCapabilities } from './new-app-capabilities';
+import { spyApi } from '@/test/api';
 vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { id: 'account', plan: 'scale' } }) }));
 it('loads isolated-run discovery only on request and explains runtime denial without an upgrade', async () => {
-  const get = vi.spyOn(api, 'GET').mockResolvedValue({
+  const get = spyApi('GET').mockResolvedValue({
     data: {
       registry_version: 1,
       plan: 'scale',

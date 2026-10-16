@@ -2,7 +2,6 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
-import { api } from './client';
 import {
   bindingInventoryKey,
   patchServicePolicy,
@@ -11,6 +10,7 @@ import {
   useAppPolicyOwnership,
   useBindingInventory,
 } from './bindings';
+import { spyApi } from '@/test/api';
 
 afterEach(() => vi.restoreAllMocks());
 function setup() {
@@ -22,7 +22,7 @@ function setup() {
 }
 
 it('keys a partial binding inventory by account, app, scope and evidence selector', async () => {
-  const get = vi.spyOn(api, 'GET').mockResolvedValue({
+  const get = spyApi('GET').mockResolvedValue({
     data: {
       app: 'app-a',
       generated_at: '2026-10-10T00:00:00Z',
@@ -72,7 +72,7 @@ it('keys a partial binding inventory by account, app, scope and evidence selecto
 });
 
 it('requires the current account and capability before a service policy review', async () => {
-  const get = vi.spyOn(api, 'GET').mockImplementation(async (path) => {
+  const get = spyApi('GET').mockImplementation(async (path) => {
     const data =
       path === '/v1/account'
         ? { id: 'account-2', plan: 'free' }
@@ -91,9 +91,10 @@ it('requires the current account and capability before a service policy review',
 });
 
 it('preserves caller null, empty and omitted PATCH meanings without a generic adapter', async () => {
-  const patch = vi
-    .spyOn(api, 'PATCH')
-    .mockResolvedValue({ data: { slug: 'app-a' }, response: new Response() } as never);
+  const patch = spyApi('PATCH').mockResolvedValue({
+    data: { slug: 'app-a' },
+    response: new Response(),
+  } as never);
   await patchServicePolicy('app-a', { allowed_service_callers: null });
   await patchServicePolicy('app-a', { allowed_service_callers: [] });
   await patchServicePolicy('app-a', {
@@ -115,8 +116,7 @@ it('preserves caller null, empty and omitted PATCH meanings without a generic ad
 });
 
 it('blocks standalone edits when an authoritative project workload owns this app', async () => {
-  const get = vi
-    .spyOn(api, 'GET')
+  const get = spyApi('GET')
     .mockResolvedValueOnce({
       data: [
         { id: 'p0', slug: 'empty', workload_count: 0 },

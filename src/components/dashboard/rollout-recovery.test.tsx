@@ -24,8 +24,6 @@ function deployment(over: Partial<Deployment> = {}): Deployment {
     kind: 'github',
     status: 'live',
     created_at: '2026-09-08T09:00:00Z',
-    rollback_on_5xx: false,
-    first_5xx_count: 0,
     rollout_state: 'rolling_out',
     canary_step: 1,
     canary_total_steps: 3,

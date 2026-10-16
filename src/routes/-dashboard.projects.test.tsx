@@ -14,8 +14,8 @@ import { Route as Projects } from './dashboard.projects';
 import { Route as Index } from './dashboard.projects.index';
 import { Route as Detail } from './dashboard.projects.$projectSlug';
 import { DashboardShell } from '@/components/dashboard/shell';
-import { api } from '@/lib/api/client';
 import { ApiError } from '@/lib/api/errors';
+import { spyApi } from '@/test/api';
 vi.mock('@/lib/auth', () => ({
   readWorkspace: () => 'console label',
   useAuth: () => ({
@@ -54,7 +54,7 @@ async function mount(
     },
   ]
 ) {
-  const get = vi.spyOn(api, 'GET').mockImplementation(async (path) => {
+  const get = spyApi('GET').mockImplementation(async (path) => {
     if (path === '/v1/projects') return ok(data);
     if (path === '/v1/projects/{slug}')
       return ok({

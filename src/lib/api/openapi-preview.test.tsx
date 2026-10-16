@@ -2,8 +2,8 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
-import { api } from './client';
 import { openAPIPreviewKey, previewObservation, useOpenAPIPreview } from './openapi-preview';
+import { spyApi } from '@/test/api';
 
 const preview = {
   app_id: 'app-1',
@@ -48,7 +48,7 @@ function setup() {
   return { client, wrapper };
 }
 function mockReads() {
-  return vi.spyOn(api, 'GET').mockImplementation(
+  return spyApi('GET').mockImplementation(
     async (path) =>
       ({
         data:

@@ -2,8 +2,8 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { api } from './client';
 import { useCancelDeployment, useRetryDeployment } from './queries';
+import { spyApi } from '@/test/api';
 const setup = () => {
   const client = new QueryClient({ defaultOptions: { mutations: { retry: 3, retryDelay: 0 } } });
   for (const key of [
@@ -21,9 +21,10 @@ const setup = () => {
 afterEach(() => vi.restoreAllMocks());
 describe('deployment recovery mutations', () => {
   it('cancels the exact app/id and invalidates app history as well as global detail', async () => {
-    const post = vi
-      .spyOn(api, 'POST')
-      .mockResolvedValue({ data: { status: 'cancelled' }, response: new Response() } as never);
+    const post = spyApi('POST').mockResolvedValue({
+      data: { status: 'cancelled' },
+      response: new Response(),
+    } as never);
     const { client, wrapper } = setup();
     const hook = renderHook(() => useCancelDeployment(), { wrapper });
     await act(async () => {
@@ -40,7 +41,7 @@ describe('deployment recovery mutations', () => {
     ).toBe(true);
   });
   it('posts only the original release ID and requested stage, without recreating configuration', async () => {
-    const post = vi.spyOn(api, 'POST').mockResolvedValue({
+    const post = spyApi('POST').mockResolvedValue({
       data: { id: 'new-id' },
       response: new Response(null, { status: 202 }),
     } as never);
@@ -63,9 +64,7 @@ describe('deployment recovery mutations', () => {
   it.each(['cancel', 'retry'])(
     'does not automatically replay %s on a dropped response and refreshes stale evidence',
     async (action) => {
-      const post = vi
-        .spyOn(api, 'POST')
-        .mockRejectedValue(new TypeError('Network connection lost'));
+      const post = spyApi('POST').mockRejectedValue(new TypeError('Network connection lost'));
       const { client, wrapper } = setup();
       const hook = renderHook(
         () => (action === 'cancel' ? useCancelDeployment() : useRetryDeployment()),

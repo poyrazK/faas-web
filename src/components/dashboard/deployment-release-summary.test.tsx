@@ -26,8 +26,6 @@ function deployment(id: string, createdAt: string): Deployment {
     kind: 'github',
     status: 'superseded',
     created_at: createdAt,
-    rollback_on_5xx: false,
-    first_5xx_count: 0,
   };
 }
 

@@ -2,9 +2,9 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
-import { api } from './client';
 import { ApiError } from './errors';
 import { useCapabilities } from './capabilities';
+import { spyApi } from '@/test/api';
 
 afterEach(() => vi.restoreAllMocks());
 function setup() {
@@ -19,7 +19,7 @@ function setup() {
 const reply = (plan = 'scale') =>
   ({ data: { registry_version: 1, plan, capabilities: [] }, response: new Response() }) as never;
 it('never reads without verified account identity', () => {
-  const get = vi.spyOn(api, 'GET').mockResolvedValue(reply());
+  const get = spyApi('GET').mockResolvedValue(reply());
   const { wrapper } = setup();
   const hook = renderHook(() => useCapabilities(''), { wrapper });
   expect(hook.result.current.fetchStatus).toBe('idle');
@@ -27,7 +27,7 @@ it('never reads without verified account identity', () => {
 });
 it('keeps delayed account reads isolated', async () => {
   let finish!: (value: never) => void;
-  vi.spyOn(api, 'GET')
+  spyApi('GET')
     .mockReturnValueOnce(
       new Promise((resolve) => {
         finish = resolve;
@@ -46,7 +46,7 @@ it('keeps delayed account reads isolated', async () => {
   expect(client.getQueryData(['account', 'new', 'capabilities'])).toMatchObject({ plan: 'free' });
 });
 it('exposes a refetch failure even with retained registry data', async () => {
-  vi.spyOn(api, 'GET')
+  spyApi('GET')
     .mockResolvedValueOnce(reply())
     .mockRejectedValue(new ApiError({ status: 401, code: 'unauthorized', title: 'Sign in' }));
   const { wrapper } = setup();
@@ -58,8 +58,7 @@ it('exposes a refetch failure even with retained registry data', async () => {
   await waitFor(() => expect(hook.result.current.isError).toBe(true));
 });
 it.each([429, 503])('retries a temporary %s failure through the shared policy', async (status) => {
-  const get = vi
-    .spyOn(api, 'GET')
+  const get = spyApi('GET')
     .mockRejectedValueOnce(new ApiError({ status, code: 'unavailable', title: 'Try again' }))
     .mockResolvedValue(reply());
   const { wrapper } = setup();
