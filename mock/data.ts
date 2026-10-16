@@ -379,6 +379,35 @@ const digest = () => `sha256:${hex(64)}`;
 export const deployments: Deployment[] = [];
 export const builds: Build[] = [];
 
+/**
+ * deployments.stage_state as apid records it (the spec leaves the field
+ * untyped on DeploymentResponse; GET /v1/deployments/{id}/stages types it).
+ */
+function stageStateFor(status: string, error: string | null): Deployment['stage_state'] {
+  const done = (name: string, ms: number) => ({ name, status: 'completed', duration_ms: ms });
+  const prep = [
+    done('source_download', 1800),
+    done('dependency_restore', 9200),
+    done('image_build', 41_000),
+    done('security_scan', 3100),
+    done('snapshot_prepare', 6400),
+  ];
+  const state =
+    status === 'building'
+      ? { current: 'image_build', history: prep.slice(0, 2) }
+      : status === 'pending'
+        ? undefined
+        : status === 'failed'
+          ? {
+              history: [
+                ...prep,
+                { name: 'readiness', status: 'failed', duration_ms: 30_000, reason: error ?? '' },
+              ],
+            }
+          : { history: [...prep, done('readiness', 900)] };
+  return state as Deployment['stage_state'];
+}
+
 for (const app of apps) {
   const n = int(3, 6);
   for (let k = 0; k < n; k++) {
@@ -421,6 +450,7 @@ for (const app of apps) {
       traffic_percent: latest ? 100 : 0,
       scan: null,
     };
+    dep.stage_state = stageStateFor(status, dep.error ?? null);
     deployments.push(dep);
     const dur = int(38, 260);
     builds.push({

@@ -319,9 +319,14 @@ describe('Releases hub', () => {
       'hidden',
       'md:table-cell'
     );
-    expect(screen.getByRole('columnheader', { name: 'Deployment state' })).not.toHaveClass(
-      'hidden'
-    );
+    expect(screen.getByRole('columnheader', { name: 'Process' })).not.toHaveClass('hidden');
+  });
+
+  it('shows each release as a process with its current phase', async () => {
+    await mount();
+    const processes = await screen.findAllByRole('list', { name: 'Release process' });
+    expect(processes.length).toBeGreaterThan(0);
+    expect(processes[0].querySelectorAll('li')).toHaveLength(5);
   });
 
   it.each(['error', 'pending'])(
