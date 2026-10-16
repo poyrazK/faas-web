@@ -4294,7 +4294,8 @@ const triggerSeed = [
 
 // Typed as the API's read shape so a created trigger can join the seeded ones
 // without a cast fighting the literal types inferred from the seed.
-const triggers: Record<string, unknown>[] = triggerSeed.map((t, i) => ({
+// An empty workspace (MOCK_EMPTY=1) has no apps to attach a trigger to.
+const triggers: Record<string, unknown>[] = (db.EMPTY ? [] : triggerSeed).map((t, i) => ({
   id: db.id(),
   account_id: 'acct-1',
   app_id: db.apps[i % db.apps.length].id,
