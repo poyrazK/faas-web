@@ -838,6 +838,21 @@ describe('NewAppWizard Git submission', () => {
     expect(posted?.get('return_to')).toBe('/dashboard/settings?section=integrations');
   });
 
+  it('returns a GitHub connection started from New app to the Git source', async () => {
+    mocks.account.github_install_id = '';
+    let posted: FormData | undefined;
+    const submit = vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(function (
+      this: HTMLFormElement
+    ) {
+      posted = new FormData(this);
+    });
+    render(<NewAppWizard search={{ source: 'git' }} />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Connect GitHub' }));
+    await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    expect(posted?.get('return_to')).toBe('/dashboard/apps/new?source=git');
+  });
+
   it('keeps resource defaults available behind a named disclosure', async () => {
     const user = userEvent.setup();
     render(<NewAppWizard onboarding />);
