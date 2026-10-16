@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type Ref } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type Ref } from 'react';
 import { CheckCircle, Plus, Trash, WarningTriangle } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { FIELD, Select } from '@/components/ui/field';
@@ -7,6 +7,7 @@ import { Modal } from '@/components/ui/modal';
 import { Panel } from './primitives';
 import { ScheduleField } from './schedule-field';
 import { useUnsavedGuard } from '@/lib/use-unsaved-guard';
+import { useAppRoutes } from '@/lib/api/queries';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import {
   useValidateAutomation,
@@ -27,9 +28,12 @@ import {
   jsonValue,
   stepKind,
   changeStepKind,
+  observedRoutes,
+  renameStep,
   AUTOMATION_TEMPLATES,
   type AutomationTemplate,
   type DefinitionDraft,
+  type ObservedRoute,
   type StepDraft,
   type StepKind,
 } from './automation-definition';
@@ -51,6 +55,8 @@ function TextField({
   disabled,
   placeholder,
   inputRef,
+  list,
+  hint,
 }: {
   label: string;
   value: string;
@@ -58,8 +64,12 @@ function TextField({
   disabled?: boolean;
   placeholder?: string;
   inputRef?: Ref<HTMLInputElement>;
+  /** Id of a `<datalist>` offering suggestions; free text still works. */
+  list?: string;
+  hint?: string;
 }) {
-  return (
+  const hintId = useId();
+  const field = (
     <label className="flex flex-col gap-1.5">
       <span className="label-mono text-muted-foreground">{label}</span>
       <input
@@ -68,9 +78,21 @@ function TextField({
         value={value}
         disabled={disabled}
         placeholder={placeholder}
+        list={list}
+        autoComplete={list ? 'off' : undefined}
+        aria-describedby={hint ? hintId : undefined}
         onChange={(event) => onChange(event.target.value)}
       />
     </label>
+  );
+  if (!hint) return field;
+  return (
+    <div className="flex flex-col gap-1.5">
+      {field}
+      <p id={hintId} className="text-xs text-muted-foreground">
+        {hint}
+      </p>
+    </div>
   );
 }
 
@@ -102,20 +124,93 @@ export function JsonField({
   );
 }
 
+/**
+ * "Runs after" as a checkbox list over the other steps. Names already in the
+ * definition that match no step stay listed (checked) so saving never drops
+ * them silently; unchecking removes them.
+ */
+/** The runtime's IANA zones, when it can list them; free text works either way. */
+const timeZones: readonly string[] =
+  typeof Intl.supportedValuesOf === 'function'
+    ? ['UTC', ...Intl.supportedValuesOf('timeZone').filter((zone) => zone !== 'UTC')]
+    : [];
+
+function DependencyPicker({
+  index,
+  value,
+  others,
+  onChange,
+}: {
+  index: number;
+  value: string[];
+  others: string[];
+  onChange: (value: string[]) => void;
+}) {
+  const unknown = value.filter((name) => !others.includes(name));
+  const options = [...new Set(others)];
+  if (options.length === 0 && unknown.length === 0) return null;
+  const toggle = (name: string, checked: boolean) =>
+    onChange(checked ? [...value, name] : value.filter((current) => current !== name));
+  return (
+    <fieldset className="flex flex-col gap-2 sm:col-span-2">
+      <legend className="label-mono mb-1.5 text-muted-foreground">
+        Runs after (step {index + 1})
+      </legend>
+      <div className="flex flex-wrap gap-2">
+        {options.map((name) => (
+          <label
+            key={name}
+            className="flex items-center gap-2 rounded-md border border-border px-2.5 py-1.5 text-sm has-checked:border-brand/50 has-checked:bg-brand/5"
+          >
+            <input
+              type="checkbox"
+              checked={value.includes(name)}
+              onChange={(event) => toggle(name, event.target.checked)}
+            />
+            <span className="font-mono">{name}</span>
+          </label>
+        ))}
+        {unknown.map((name) => (
+          <label
+            key={`unknown-${name}`}
+            className="flex items-center gap-2 rounded-md border border-dashed border-border px-2.5 py-1.5 text-sm"
+          >
+            <input type="checkbox" checked onChange={() => toggle(name, false)} />
+            <span className="font-mono">{name}</span>
+            <span className="text-xs text-muted-foreground">not a step in this definition</span>
+          </label>
+        ))}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {value.length === 0
+          ? 'No dependencies: this step can start as soon as the run starts.'
+          : 'This step starts after every checked step succeeds.'}
+      </p>
+    </fieldset>
+  );
+}
+
 function StepFields({
   step,
   index,
   onChange,
+  onRename,
   onRemove,
-  compact,
+  others,
+  routes,
 }: {
   step: StepDraft;
   index: number;
   onChange: (step: StepDraft) => void;
+  onRename: (name: string) => void;
   onRemove: () => void;
-  compact: boolean;
+  /** Names of the other steps, for the dependency picker. */
+  others: string[];
+  /** Observed app routes and the `<datalist>` that offers them. */
+  routes: { list: string; observed: ObservedRoute[] };
 }) {
   const kind = stepKind(step.spec);
+  const observed = routes.observed.find((route) => route.path === step.spec.path);
   const patch = (value: Partial<StepDraft['spec']>) =>
     onChange({ ...step, spec: { ...step.spec, ...value } });
   return (
@@ -134,7 +229,7 @@ function StepFields({
         </Button>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
-        <TextField label="Step name" value={step.spec.name} onChange={(name) => patch({ name })} />
+        <TextField label="Step name" value={step.spec.name} onChange={onRename} />
         <label className="flex flex-col gap-1.5">
           <span className="label-mono text-muted-foreground">Action</span>
           <Select
@@ -161,6 +256,14 @@ function StepFields({
               value={step.spec.path ?? ''}
               onChange={(path) => patch({ path })}
               placeholder="/process"
+              list={routes.observed.length ? routes.list : undefined}
+              hint={
+                observed
+                  ? `Observed as ${observed.methods.join(', ')}.`
+                  : routes.observed.length
+                    ? 'Choose an observed route or type any path.'
+                    : undefined
+              }
             />
             <label className="flex flex-col gap-1.5">
               <span className="label-mono text-muted-foreground">HTTP method</span>
@@ -192,24 +295,21 @@ function StepFields({
             onChange={(wait_for_event) => patch({ wait_for_event })}
           />
         )}
+        <DependencyPicker
+          index={index}
+          value={step.dependencies}
+          others={others}
+          onChange={(dependencies) => onChange({ ...step, dependencies })}
+        />
       </div>
       <details
         className="mt-4 rounded-md border border-border p-3"
-        open={
-          !compact ||
-          Boolean(step.dependencies || step.input || step.spec.timeout || step.spec.retry)
-        }
+        open={Boolean(step.input || step.spec.timeout || step.spec.retry)}
       >
         <summary className="cursor-pointer text-sm text-muted-foreground">
           Advanced step settings
         </summary>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <TextField
-            label="Dependencies (comma separated)"
-            value={step.dependencies}
-            onChange={(dependencies) => onChange({ ...step, dependencies })}
-            placeholder="lookup, charge"
-          />
           {kind !== 'duration' && (
             <TextField
               label="Timeout"
@@ -279,6 +379,54 @@ function StepFields({
   );
 }
 
+export type SaveOutcome = { published?: boolean; error?: string };
+
+/** Says exactly which writes a publish will make, and what they change. */
+function publishConfirmation({
+  name,
+  isNew,
+  saving,
+  takeOver,
+  version,
+  trigger,
+}: {
+  name: string;
+  isNew: boolean;
+  saving: boolean;
+  takeOver: boolean;
+  version: number;
+  trigger?: string;
+}) {
+  const effect = `It becomes the definition for future runs; runs that already started keep their captured definition.${
+    trigger === 'schedule'
+      ? ' Scheduled starts use it while automatic starts are enabled.'
+      : trigger === 'event'
+        ? ' Matching events start it while automatic starts are enabled.'
+        : ''
+  }`;
+  if (isNew)
+    return {
+      title: `Create and publish ${name}?`,
+      description: `This saves ${name} as a new draft, then publishes that draft. ${effect}`,
+      confirmLabel: 'Create and publish',
+    };
+  const what = saving
+    ? `Your unsaved edits are saved as a new draft over revision ${version}, then published.`
+    : `Saved draft revision ${version} is published.`;
+  return {
+    title: saving ? `Save and publish ${name}?` : `Publish ${name}?`,
+    description: takeOver
+      ? `This takes ownership from the app manifest. Future deployments will preserve this API publication. ${what}`
+      : `${what} ${effect}`,
+    confirmLabel: takeOver
+      ? 'Take over and publish'
+      : saving
+        ? 'Save and publish'
+        : 'Publish draft',
+    typeToConfirm: takeOver ? name : undefined,
+  };
+}
+
 export function AutomationEditor({
   account,
   slug,
@@ -290,7 +438,8 @@ export function AutomationEditor({
   account: string;
   slug: string;
   automation?: Automation;
-  onSaved: (automation: Automation) => void;
+  /** `outcome` reports a publication, or a saved draft whose publication failed. */
+  onSaved: (automation: Automation, outcome?: SaveOutcome) => void;
   onReload: () => void;
   /** New definitions can be authored in a dialog; existing drafts stay inline. */
   onClose?: () => void;
@@ -318,7 +467,20 @@ export function AutomationEditor({
   const write = useWriteAutomation(account, slug);
   const validate = useValidateAutomation(slug);
   const simulate = useSimulateAutomation(slug);
-  const busy = write.isPending || validate.isPending || simulate.isPending;
+  const appRoutes = useAppRoutes(slug);
+  const timeZoneList = useId();
+  const routeList = useId();
+  const routes = useMemo(
+    () => ({ list: routeList, observed: observedRoutes(appRoutes.data?.routes) }),
+    [routeList, appRoutes.data?.routes]
+  );
+  const [progress, setProgress] = useState<{
+    step: 'saving' | 'publishing';
+    publish: boolean;
+    /** Whether a publish was preceded by a save in the same action. */
+    twoStep?: boolean;
+  }>();
+  const busy = write.isPending || validate.isPending || simulate.isPending || Boolean(progress);
   const inDialog = Boolean(onClose);
   const dirty = JSON.stringify(draft) !== baseline || rawOpen;
   const discardEdits = () =>
@@ -364,20 +526,29 @@ export function AutomationEditor({
     setMessage('');
     setError('');
   };
-  const failure = (err: unknown) => {
+  /**
+   * `saved` is set when a save-then-publish saved the draft but the publish
+   * did not succeed, so the message says what did happen.
+   */
+  const failure = (err: unknown, saved?: Automation) => {
     const conflict = err instanceof ApiError && err.code === 'automation_version_conflict';
     // A lost write response needs a fresh read before sending another publication.
     const uncertain = !(err instanceof ApiError) || err.isRetryable;
     setReloadRequired(conflict || uncertain);
-    setError(
-      conflict
-        ? 'Another editor changed this automation. Reload the saved definition before writing again.'
-        : uncertain
-          ? 'The write outcome is unknown. Reload the saved definition before writing again.'
-          : errorMessage(err)
-    );
+    const text = conflict
+      ? 'Another editor changed this automation. Reload the saved definition before writing again.'
+      : uncertain
+        ? `The ${saved ? 'publish' : 'write'} outcome is unknown. Reload the saved definition before writing again.`
+        : errorMessage(err);
+    const message = !saved
+      ? text
+      : uncertain && !conflict
+        ? `Draft revision ${saved.version} was saved. ${text}`
+        : `Draft revision ${saved.version} was saved but not published. ${text}`;
+    setError(message);
+    return message;
   };
-  const accept = (next: Automation) => {
+  const adopt = (next: Automation) => {
     const model = definitionDraft(next.draft);
     bypassGuard.current = true;
     setDraft(model);
@@ -388,7 +559,10 @@ export function AutomationEditor({
     setError('');
     setValidation(undefined);
     setSimulation(undefined);
-    onSaved(next);
+  };
+  const accept = (next: Automation, outcome?: SaveOutcome) => {
+    adopt(next);
+    onSaved(next, outcome);
   };
   const candidate = () => {
     if (rawOpen) throw new Error('Apply or cancel your Advanced JSON edits first.');
@@ -398,16 +572,20 @@ export function AutomationEditor({
       throw new Error('An existing automation cannot be renamed.');
     return definition;
   };
-  const save = async () => {
+  /** Clears old feedback and builds the definition, or reports why it cannot. */
+  const prepare = (): Definition | undefined => {
     setError('');
     setMessage('');
-    let definition: Definition;
     try {
-      definition = candidate();
+      return candidate();
     } catch (err) {
       setError(errorMessage(err));
-      return;
     }
+  };
+  const save = async () => {
+    const definition = prepare();
+    if (!definition) return;
+    setProgress({ step: 'saving', publish: false });
     try {
       accept(
         await write.mutateAsync({
@@ -419,34 +597,75 @@ export function AutomationEditor({
       setMessage('Draft saved. Publish it to change future runs.');
     } catch (err) {
       failure(err);
+    } finally {
+      setProgress(undefined);
     }
   };
+  /**
+   * Publish in one action: unsaved edits (or a definition that does not exist
+   * yet) are saved first against the observed version, then the revision that
+   * save returned is published. Nothing is written before confirmation.
+   */
   const publish = async () => {
+    const saving = dirty || !savedName;
+    const definition = saving ? prepare() : undefined;
+    if (saving && !definition) return;
+    if (!saving) {
+      setError('');
+      setMessage('');
+    }
+    const name = savedName || definition!.name;
     const takeOver = automation?.source === 'manifest';
     if (
-      !(await confirm({
-        title: `Publish ${savedName}?`,
-        description: takeOver
-          ? `This takes ownership from the app manifest. Future deployments will preserve this API publication. Publish saved draft revision ${version}?`
-          : `Saved draft revision ${version} will become the definition for future runs. Existing runs keep their captured definition.`,
-        confirmLabel: takeOver ? 'Take over and publish' : 'Publish draft',
-        typeToConfirm: takeOver ? savedName : undefined,
-      }))
+      !(await confirm(
+        publishConfirmation({
+          name,
+          isNew: !savedName,
+          saving,
+          takeOver,
+          version,
+          trigger: (definition ?? draft.spec).trigger?.type,
+        })
+      ))
     )
       return;
-    setError('');
-    setMessage('');
+    let expected = version;
+    let saved: Automation | undefined;
+    if (definition) {
+      setProgress({ step: 'saving', publish: true, twoStep: true });
+      try {
+        saved = await write.mutateAsync({
+          kind: 'save',
+          name,
+          body: { expected_version: version, definition },
+        });
+      } catch (err) {
+        setProgress(undefined);
+        failure(err);
+        return;
+      }
+      adopt(saved);
+      expected = saved.version;
+    }
+    setProgress({ step: 'publishing', publish: true, twoStep: Boolean(saved) });
     try {
       accept(
         await write.mutateAsync({
           kind: 'publish',
-          name: savedName,
-          body: { expected_version: version, take_over_manifest: takeOver },
-        })
+          name,
+          body: { expected_version: expected, take_over_manifest: takeOver },
+        }),
+        { published: true }
       );
-      setMessage('Draft published for future runs.');
+      setMessage(
+        saved ? 'Saved and published for future runs.' : 'Draft published for future runs.'
+      );
     } catch (err) {
-      failure(err);
+      const message = failure(err, saved);
+      // The draft exists now; a new-automation dialog hands over to its workspace.
+      if (saved) onSaved(saved, { error: message });
+    } finally {
+      setProgress(undefined);
     }
   };
   const reload = async () => {
@@ -550,41 +769,40 @@ export function AutomationEditor({
             </label>
             {draft.spec.trigger?.type === 'schedule' && (
               <>
-                {(draft.spec.trigger.timezone ?? 'UTC') === 'UTC' ? (
-                  <ScheduleField
-                    value={draft.spec.trigger.schedule ?? ''}
-                    onChange={(schedule) =>
-                      edit({
-                        ...draft,
-                        spec: { ...draft.spec, trigger: { ...draft.spec.trigger!, schedule } },
-                      })
-                    }
-                  />
-                ) : (
-                  <TextField
-                    label="Cron expression"
-                    value={draft.spec.trigger.schedule ?? ''}
-                    onChange={(schedule) =>
-                      edit({
-                        ...draft,
-                        spec: { ...draft.spec, trigger: { ...draft.spec.trigger!, schedule } },
-                      })
-                    }
-                  />
-                )}
-                <TextField
-                  label="Timezone"
-                  value={draft.spec.trigger.timezone ?? 'UTC'}
-                  onChange={(timezone) =>
+                <ScheduleField
+                  value={draft.spec.trigger.schedule ?? ''}
+                  timezone={draft.spec.trigger.timezone ?? 'UTC'}
+                  onChange={(schedule) =>
                     edit({
                       ...draft,
-                      spec: { ...draft.spec, trigger: { ...draft.spec.trigger!, timezone } },
+                      spec: { ...draft.spec, trigger: { ...draft.spec.trigger!, schedule } },
                     })
                   }
                 />
+                <div className="flex flex-col gap-1.5">
+                  <TextField
+                    label="Timezone"
+                    value={draft.spec.trigger.timezone ?? 'UTC'}
+                    list={timeZones.length ? timeZoneList : undefined}
+                    hint="IANA name, such as Europe/Istanbul. The schedule runs in this zone."
+                    onChange={(timezone) =>
+                      edit({
+                        ...draft,
+                        spec: { ...draft.spec, trigger: { ...draft.spec.trigger!, timezone } },
+                      })
+                    }
+                  />
+                  {timeZones.length > 0 && (
+                    <datalist id={timeZoneList}>
+                      {timeZones.map((zone) => (
+                        <option key={zone} value={zone} />
+                      ))}
+                    </datalist>
+                  )}
+                </div>
                 <details
                   className="rounded-md border border-border p-3 sm:col-span-2"
-                  open={!inDialog}
+                  open={draft.spec.trigger.overlap === 'allow' || draft.scheduledInput !== 'null'}
                 >
                   <summary className="cursor-pointer text-sm text-muted-foreground">
                     Advanced trigger settings
@@ -644,7 +862,7 @@ export function AutomationEditor({
                 />
                 <details
                   className="rounded-md border border-border p-3 sm:col-span-2"
-                  open={!inDialog || draft.eventFilter !== '{}'}
+                  open={draft.eventFilter !== '{}'}
                 >
                   <summary className="cursor-pointer text-sm text-muted-foreground">
                     Advanced event filter
@@ -671,7 +889,7 @@ export function AutomationEditor({
                   ...draft,
                   steps: [
                     ...draft.steps,
-                    { spec: { name, path: '/', method: 'POST' }, input: '', dependencies: '' },
+                    { spec: { name, path: '/', method: 'POST' }, input: '', dependencies: [] },
                   ],
                 });
               }}
@@ -688,7 +906,12 @@ export function AutomationEditor({
               key={index}
               step={step}
               index={index}
-              compact={inDialog}
+              others={draft.steps
+                .filter((_, i) => i !== index)
+                .map((other) => other.spec.name)
+                .filter(Boolean)}
+              routes={routes}
+              onRename={(name) => edit({ ...draft, steps: renameStep(draft.steps, index, name) })}
               onChange={(next) =>
                 edit({
                   ...draft,
@@ -698,56 +921,73 @@ export function AutomationEditor({
               onRemove={() => edit({ ...draft, steps: draft.steps.filter((_, i) => i !== index) })}
             />
           ))}
-          <div className="flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={async () => {
-                setError('');
-                setMessage('');
-                try {
-                  setValidation(await validate.mutateAsync(candidate()));
-                } catch (err) {
-                  setError(errorMessage(err));
-                }
-              }}
-            >
-              Validate definition
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                try {
-                  bypassGuard.current = false;
-                  setRaw(jsonText(candidate()));
-                  setRawOpen(true);
-                } catch (err) {
-                  setError(errorMessage(err));
-                }
-              }}
-            >
-              Advanced JSON
-            </Button>
+          {routes.observed.length > 0 && (
+            <datalist id={routes.list}>
+              {routes.observed.map((route) => (
+                <option key={route.path} value={route.path}>
+                  {route.methods.join(', ')}
+                </option>
+              ))}
+            </datalist>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
             {!onClose && (
               <>
                 <Button
                   size="sm"
-                  disabled={reloadRequired || (!dirty && Boolean(savedName))}
-                  onClick={() => void save()}
+                  disabled={!savedName || reloadRequired}
+                  onClick={() => void publish()}
                 >
-                  Save draft
+                  {progress?.publish
+                    ? progress.step === 'saving'
+                      ? 'Saving draft…'
+                      : 'Publishing…'
+                    : dirty
+                      ? 'Save and publish'
+                      : 'Publish draft'}
                 </Button>
                 <Button
                   size="sm"
                   variant="outline"
-                  disabled={!savedName || dirty || reloadRequired}
-                  onClick={() => void publish()}
+                  disabled={reloadRequired || (!dirty && Boolean(savedName))}
+                  onClick={() => void save()}
                 >
-                  Publish draft
+                  {progress && !progress.publish ? 'Saving…' : 'Save draft'}
                 </Button>
               </>
             )}
+            <div className="flex flex-wrap gap-2 sm:ml-auto">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={async () => {
+                  setError('');
+                  setMessage('');
+                  try {
+                    setValidation(await validate.mutateAsync(candidate()));
+                  } catch (err) {
+                    setError(errorMessage(err));
+                  }
+                }}
+              >
+                Validate definition
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  try {
+                    bypassGuard.current = false;
+                    setRaw(jsonText(candidate()));
+                    setRawOpen(true);
+                  } catch (err) {
+                    setError(errorMessage(err));
+                  }
+                }}
+              >
+                Advanced JSON
+              </Button>
+            </div>
           </div>
         </fieldset>
         {rawOpen && (
@@ -783,6 +1023,15 @@ export function AutomationEditor({
               </Button>
             </div>
           </div>
+        )}
+        {progress?.publish && (
+          <p role="status" className="mt-4 text-sm text-muted-foreground">
+            {progress.step === 'saving'
+              ? 'Step 1 of 2: saving the draft…'
+              : progress.twoStep
+                ? 'Step 2 of 2: publishing…'
+                : 'Publishing the saved draft…'}
+          </p>
         )}
         {error && (
           <p
@@ -840,13 +1089,10 @@ export function AutomationEditor({
           </div>
         )}
       </Panel>
-      <details open={!inDialog} className="rounded-lg border border-border p-4">
+      <details className="rounded-lg border border-border p-4">
         <summary className="cursor-pointer text-sm font-medium">Simulate with sample data</summary>
         <div className="mt-4">
-          <Panel
-            title={inDialog ? undefined : 'Simulate with sample data'}
-            description="Test data flow with hypothetical handler outputs. Simulation does not invoke the app or create a run."
-          >
+          <Panel description="Test data flow with hypothetical handler outputs. Simulation does not invoke the app or create a run.">
             <div className="grid gap-4 sm:grid-cols-2">
               <JsonField
                 disabled={busy}
@@ -934,7 +1180,7 @@ export function AutomationEditor({
       open
       onClose={() => void close()}
       title="New automation"
-      description={`App: ${slug} · Create a draft, then publish it when you're ready.`}
+      description={`App: ${slug} · Publish now, or save a draft to publish later.`}
       width="max-w-3xl"
       footer={
         <>
@@ -943,10 +1189,22 @@ export function AutomationEditor({
           </Button>
           <Button
             size="sm"
+            variant="outline"
             disabled={busy || reloadRequired || rawOpen}
             onClick={() => void save()}
           >
-            {write.isPending ? 'Creating…' : 'Create draft'}
+            {progress && !progress.publish ? 'Saving…' : 'Save as draft'}
+          </Button>
+          <Button
+            size="sm"
+            disabled={busy || reloadRequired || rawOpen}
+            onClick={() => void publish()}
+          >
+            {progress?.publish
+              ? progress.step === 'saving'
+                ? 'Saving draft…'
+                : 'Publishing…'
+              : 'Create and publish'}
           </Button>
         </>
       }

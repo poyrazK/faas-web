@@ -288,18 +288,31 @@ The dedicated operations console is deployed separately at
 `https://operations.gregale.dev`; the CLI device-code flow, OAuth callbacks,
 and the Stripe webhook receiver remain non-UI surfaces in this project.
 
-**Automations** is available in Jobs and the app's Automate group. It reads
-drafts, publications, execution availability, and definition quotas from the
-automation API. The editor supports manual, scheduled, and event starts,
-handler steps, dependencies, retries, and durable waits. Advanced JSON preserves
-other workflow fields. Validation and sample simulation have no execution side
-effects; saving a draft and publishing it are separate actions. Writes use the
-observed version, and conflicts or uncertain responses require a fresh read.
-Manifest takeover is explicit. Pausing automatic starts leaves accepted work
-running. Real manual starts carry a stable idempotency key for retries with the
-same input. Health, paginated runs, step attempts, and immutable publication
-history come from the API; restoring a revision creates a draft. The run API
-does not expose its pinned publication revision, so the UI states that limit.
+**Automations** is available in Jobs — the section `/dashboard/jobs` opens on
+unless `?section=` or a workload, schedule, or trigger selection in the link
+names another — and in the app's Automate group. It reads drafts,
+publications, execution availability, definition quotas, and the capability's
+preview/beta stage from the API. The create dialog starts from a template and
+offers **Create and publish** next to **Save as draft**; in an existing
+automation, Publish saves unsaved edits first (**Save and publish**). Either
+way one confirmation names the writes before any happen, the publish targets
+the revision the save returned, and a failed publish after a successful save
+says the draft was kept. The editor opens on name, trigger, schedule, and
+steps: schedule presets work in any timezone, UTC schedules preview their next
+starts live (other zones show the description and defer to Validate), handler
+paths suggest the app's observed routes while accepting any path, and
+dependencies are a "Runs after" picker over the other steps that keeps names
+matching no step. Advanced trigger and step settings, Advanced JSON (which
+preserves other workflow fields), and side-effect-free simulation stay
+collapsed until needed. Writes use the observed version, and conflicts or
+uncertain responses require a fresh read. Manifest takeover is explicit.
+Pausing automatic starts leaves accepted work running. Real manual starts
+carry a stable idempotency key for retries with the same input; the run input
+defaults to `{}` and stays collapsed. The workspace shows a one-line health
+summary and Definition / Run history / Published revisions tabs; health tiles,
+paginated runs, and step attempts sit under Run history, and restoring an
+immutable revision creates a draft. The run API does not expose its pinned
+publication revision, so the UI states that limit.
 Mock mode includes these screens; `MOCK_AUTOMATIONS_DISABLED=1` exercises the
 runtime-disabled presentation. No mock data ships in the preview build.
 
