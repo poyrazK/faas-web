@@ -1,5 +1,6 @@
-import type { ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { useCapability } from '@/lib/api/capabilities';
+import { useApps } from '@/lib/api/queries';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import type { UsageWindow } from '@/lib/api/monetization';
 import { CapabilityNotice } from './capability-notice';
@@ -215,4 +216,10 @@ export function Facts({ items }: { items: [string, ReactNode][] }) {
       ))}
     </dl>
   );
+}
+
+/** App id → slug, from the account's app list; consumers and surfaces carry only the id. */
+export function useAppNames() {
+  const apps = useApps();
+  return useMemo(() => new Map((apps.data ?? []).map((a) => [a.id, a.slug] as const)), [apps.data]);
 }

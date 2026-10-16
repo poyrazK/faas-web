@@ -7,6 +7,7 @@ import {
   Database,
   Folder,
   CreditCard,
+  Community,
   Cube,
   GitFork as WorkflowIcon,
   Github,
@@ -128,6 +129,16 @@ export const NAV_HUBS: NavHub[] = [
     sidebarIconClassName: 'text-cat-network/80',
   },
   {
+    // Your end customers across apps (platform tenants). Operate rather than
+    // Account: they are resources you run — consumers, hostnames, prices —
+    // next to Domains, not settings of your own Gregale account, and Billing
+    // there is what Gregale charges you, not what you charge them.
+    to: '/dashboard/customers',
+    label: 'Customers',
+    icon: Community,
+    sidebarIconClassName: 'text-cat-network/80',
+  },
+  {
     to: '/dashboard/storage',
     label: 'Data',
     icon: HardDrive,
@@ -200,7 +211,7 @@ export const NAV_HUBS: NavHub[] = [
 const SIDEBAR_GROUPS: { title?: string; hubs: string[] }[] = [
   { hubs: ['Overview'] },
   { title: 'Build', hubs: ['Projects', 'Jobs', 'Releases'] },
-  { title: 'Operate', hubs: ['Domains', 'Data', 'Analytics', 'Observe'] },
+  { title: 'Operate', hubs: ['Domains', 'Customers', 'Data', 'Analytics', 'Observe'] },
   { title: 'Account', hubs: ['Billing', 'Settings'] },
 ];
 
