@@ -31,6 +31,28 @@ vi.mock('@tanstack/react-router', () => ({
   ),
 }));
 afterEach(() => vi.clearAllMocks());
+it('renders null empty lists and ports from older scan responses without crashing', async () => {
+  scan.mockResolvedValue({
+    project_slug: 'imgpipe',
+    plan_token: 'token',
+    scan_source: 'compose',
+    can_apply: true,
+    workloads: [{ name: 'gateway', root_dir: '', ports: null }],
+    managed: null,
+    crons: null,
+    warnings: null,
+  });
+  const user = userEvent.setup();
+  const { container } = render(<ProjectImport />);
+  await user.upload(
+    container.querySelector('input[type=file]') as HTMLInputElement,
+    new File(['archive'], 'repo.tar.gz', { type: 'application/gzip' })
+  );
+  await user.click(screen.getByRole('button', { name: 'Scan' }));
+  expect(await screen.findByText('gateway')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Apply plan' })).toBeEnabled();
+  expect(apply).not.toHaveBeenCalled();
+});
 it('links the applied project using the reviewed server plan identity', async () => {
   scan.mockResolvedValue({
     project_slug: 'shop',

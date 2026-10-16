@@ -1459,6 +1459,8 @@ export interface paths {
          *     the cookie is `faas_csrf_github_connect` and clients send the
          *     token as a form field in a native browser POST to
          *     `/dashboard/install/connect`, which redirects to GitHub.
+         *     For `bind_app_to_repo`, the cookie is `faas_csrf_github_bind`;
+         *     send the token in the JSON body of `POST /v1/apps/{slug}/install/bind`.
          *     This route remains reachable while the session is `mfa_pending` so the dashboard
          *     can complete MFA enrollment or recovery.
          */
@@ -10770,6 +10772,8 @@ export interface components {
          *     `default_branch` from `/installations/{id}`.
          */
         InstallBindRequest: {
+            /** @description Action-bound CSRF token required by the browser bind mutation; not required for repository listing. */
+            csrf_token?: string;
             /** Format: int64 */
             installation_id: number;
             repo_full_name: string;
@@ -11539,6 +11543,11 @@ export interface components {
         };
         /** @description An app: slug, type, runtime (for functions), RAM/cpu/idle-timeout config, current state, last-deploy pointer, per-app outbound CIDR allowlist (ADR-031 + ADR-032), and reactive scale-up trigger targets (issue #169 / #172). */
         AppResponse: {
+            /**
+             * @description Present on app list/detail reads. Reports whether any deployment is currently live; this is independent from the app lifecycle status and does not assert that a historical artifact is safe to restore.
+             * @enum {string}
+             */
+            deployment_availability?: "live" | "no_live_deployment";
             /** @example 0123456789abcdef0123456789abcdef */
             id: string;
             /** @example hello-world */
@@ -24263,7 +24272,7 @@ export interface operations {
         parameters: {
             query: {
                 /** @description Exact mutation action the token will authorize. */
-                action: "auth.logout" | "auth.session.revoke" | "auth.sessions.revoke_all" | "mfa_confirm" | "mfa_recover" | "mfa_disable" | "mfa_disable_email" | "mfa_disable_email_confirm" | "set_password" | "connect_github";
+                action: "auth.logout" | "auth.session.revoke" | "auth.sessions.revoke_all" | "mfa_confirm" | "mfa_recover" | "mfa_disable" | "mfa_disable_email" | "mfa_disable_email_confirm" | "set_password" | "connect_github" | "bind_app_to_repo";
             };
             header?: never;
             path?: never;

@@ -2320,6 +2320,8 @@ paths:
         the cookie is `faas_csrf_github_connect` and clients send the
         token as a form field in a native browser POST to
         `/dashboard/install/connect`, which redirects to GitHub.
+        For `bind_app_to_repo`, the cookie is `faas_csrf_github_bind`;
+        send the token in the JSON body of `POST /v1/apps/{slug}/install/bind`.
         This route remains reachable while the session is `mfa_pending` so the dashboard
         can complete MFA enrollment or recovery.
       parameters:
@@ -2329,7 +2331,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [auth.logout, auth.session.revoke, auth.sessions.revoke_all, mfa_confirm, mfa_recover, mfa_disable, mfa_disable_email, mfa_disable_email_confirm, set_password, connect_github]
+            enum: [auth.logout, auth.session.revoke, auth.sessions.revoke_all, mfa_confirm, mfa_recover, mfa_disable, mfa_disable_email, mfa_disable_email_confirm, set_password, connect_github, bind_app_to_repo]
           description: Exact mutation action the token will authorize.
       responses:
         '200':
@@ -16534,6 +16536,7 @@ components:
       type: object
       required: [installation_id, repo_full_name]
       properties:
+        csrf_token: { type: string, description: "Action-bound CSRF token required by the browser bind mutation; not required for repository listing." }
         installation_id: { type: integer, format: int64, minimum: 1 }
         repo_full_name: { type: string, pattern: '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' }
         production_branch: { type: string, maxLength: 256 }
@@ -17392,6 +17395,10 @@ components:
       type: object
       required: [id, slug, type, ram_mb, cpu_millicores, configured_resources, max_concurrency, concurrency_per_vm, effective_limits, min_instances, status, url, manifest, autoscale_target_rps, autoscale_target_cpu_pct]
       properties:
+        deployment_availability:
+          type: string
+          enum: [live, no_live_deployment]
+          description: "Present on app list/detail reads. Reports whether any deployment is currently live; this is independent from the app lifecycle status and does not assert that a historical artifact is safe to restore."
         id: { type: string, pattern: '^[a-f0-9]{32}$', example: "0123456789abcdef0123456789abcdef" }
         slug: { type: string, pattern: '^[a-z0-9]([a-z0-9-]{1,38})[a-z0-9]$', example: "hello-world" }
         type: { type: string, enum: [app, function] , example: "app"}

@@ -134,6 +134,44 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('NewAppWizard Git submission', () => {
+  it('omits the function runtime when a Git source is configured as an App', async () => {
+    const user = userEvent.setup();
+    render(<NewAppWizard onboarding />);
+    await user.type(screen.getByLabelText(/repository/i), 'poyrazK/imgpipe');
+    await user.click(screen.getByRole('button', { name: /continue/i }));
+    await user.type(await screen.findByLabelText('App name'), 'imgpipe-gateway');
+    await user.selectOptions(screen.getByLabelText('Runtime'), 'go124');
+    await user.selectOptions(screen.getByRole('combobox', { name: /^Type/ }), 'app');
+    expect(screen.queryByLabelText('Runtime')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /review/i }));
+    expect(screen.queryByText('go124')).not.toBeInTheDocument();
+    await user.click(await screen.findByRole('button', { name: /deploy app/i }));
+    await waitFor(() => expect(mocks.addWorkflow).toHaveBeenCalledOnce());
+    const input = mocks.addWorkflow.mock.calls[0][0];
+    expect(input).toMatchObject({ name: 'imgpipe-gateway', type: 'app' });
+    expect(input).not.toHaveProperty('runtime');
+    await waitFor(() => expect(mocks.deployFromRef).toHaveBeenCalledOnce());
+  });
+
+  it('retains the selected function runtime when switching back from App', async () => {
+    const user = userEvent.setup();
+    render(<NewAppWizard onboarding />);
+    await user.type(screen.getByLabelText(/repository/i), 'team/function');
+    await user.click(screen.getByRole('button', { name: /continue/i }));
+    await user.type(await screen.findByLabelText('App name'), 'go-function');
+    await user.selectOptions(screen.getByLabelText('Runtime'), 'go124');
+    await user.selectOptions(screen.getByRole('combobox', { name: /^Type/ }), 'app');
+    await user.selectOptions(screen.getByRole('combobox', { name: /^Type/ }), 'function');
+    expect(screen.getByLabelText('Runtime')).toHaveValue('go124');
+    await user.click(screen.getByRole('button', { name: /review/i }));
+    await user.click(await screen.findByRole('button', { name: /deploy app/i }));
+    await waitFor(() =>
+      expect(mocks.addWorkflow).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'function', runtime: 'go124' })
+      )
+    );
+  });
+
   it('keeps a restored internal deployment endpoint non-clickable after it becomes live', () => {
     mocks.appVisibility = 'internal';
     mocks.deploymentStatus = 'live';

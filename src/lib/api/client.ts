@@ -75,15 +75,9 @@ export const api = createClient<paths>({
 
 api.use(sessionMiddleware);
 
-export type CSRFAction =
-  | 'auth.logout'
-  | 'auth.session.revoke'
-  | 'auth.sessions.revoke_all'
-  | 'mfa_confirm'
-  | 'mfa_recover'
-  | 'mfa_disable'
-  | 'set_password'
-  | 'connect_github';
+export type CSRFAction = NonNullable<
+  paths['/v1/auth/csrf']['get']['parameters']['query']
+>['action'];
 
 /**
  * Narrows an `openapi-fetch` result to its data, throwing `ApiError` otherwise.

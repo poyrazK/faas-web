@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, setUnauthorizedHandler, unwrap } from './api/client';
 import { ApiError } from './api/errors';
 import { endServerSessionBestEffort } from './api/logout';
@@ -236,28 +237,51 @@ interface AuthValue {
 const AuthContext = createContext<AuthValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [user, setUser] = useState<User | null>(() => readSession());
-  const [account, setAccount] = useState<Account | null>(null);
+  const sessionGeneration = useRef(0);
   const [apiReachable, setReachable] = useState(true);
   // Only the boot check blocks; later refreshes happen behind the current UI.
   const [loading, setLoading] = useState<boolean>(
     () => readSession() !== null || hasOAuthPending()
   );
+  // App mutations already invalidate this family. Keeping a separate auth
+  // snapshot left quota and connection state stale until a full page reload.
+  const accountQuery = useQuery({
+    queryKey: ['account'],
+    queryFn: ({ signal }) => unwrap(api.GET('/v1/account', { signal })),
+    enabled: Boolean(user) && !loading,
+    staleTime: 30_000,
+    retry: false,
+  });
+  const account = user ? (accountQuery.data ?? null) : null;
 
-  const setSession = useCallback((next: User | null) => {
-    writeSession(next);
-    setUser(next);
-    if (!next) setAccount(null);
-  }, []);
+  const setSession = useCallback(
+    (next: User | null) => {
+      writeSession(next);
+      setUser(next);
+      if (!next) {
+        sessionGeneration.current++;
+        void queryClient.cancelQueries({ queryKey: ['account'] });
+        queryClient.removeQueries({ queryKey: ['account'] });
+      }
+    },
+    [queryClient]
+  );
 
   const refreshAccount = useCallback(async () => {
-    const next = await unwrap(api.GET('/v1/account', {}));
+    const generation = sessionGeneration.current;
+    const next = await queryClient.fetchQuery({
+      queryKey: ['account'],
+      queryFn: ({ signal }) => unwrap(api.GET('/v1/account', { signal })),
+      staleTime: 0,
+    });
+    if (generation !== sessionGeneration.current) return;
     setReachable(true);
-    setAccount(next);
     // The server is authoritative on the address; a hint written from a typo'd
     // or since-changed email gets corrected here.
     if (next.email) setSession(userFor(next.email));
-  }, [setSession]);
+  }, [queryClient, setSession]);
 
   /**
    * Any 401 from anywhere means the cookie is gone or expired. Drop the hint so
@@ -269,12 +293,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // With no backend there is no cookie, so every call is a 401; under the
       // dev bypass that must not bounce the designer back to sign-in.
       if (isDevBypass()) return;
+      sessionGeneration.current++;
       writeSession(null);
       setUser(null);
-      setAccount(null);
+      // Preserve the rejecting request's ApiError so OAuth recovery can
+      // distinguish an expired session from a transport failure.
+      queryClient.setQueryData(['account'], null);
     });
     return () => setUnauthorizedHandler(null);
-  }, []);
+  }, [queryClient]);
 
   // Verify the hint once on mount. StrictMode double-invokes effects in dev, and
   // this one is a network call, so it is guarded.

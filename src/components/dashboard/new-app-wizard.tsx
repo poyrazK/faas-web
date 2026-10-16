@@ -352,9 +352,8 @@ function CreateAppWizard({
       // status after the API returns the actual deployment id.
       const created = await addWorkflow({
         name,
-        runtime,
         memoryMb: selectedMemoryMb,
-        type: appType,
+        ...(appType === 'function' ? { type: 'function', runtime } : { type: 'app' }),
         visibility,
       });
       setCreatedId(created.id);
@@ -712,9 +711,12 @@ function CreateAppWizard({
               </div>
             ) : source === 'git' ? (
               <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
-                <label className="flex flex-col gap-1.5">
-                  <span className={LABEL}>Repository</span>
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor="new-app-repository" className={LABEL}>
+                    Repository
+                  </label>
                   <RepoPicker
+                    id="new-app-repository"
                     value={repo}
                     onChange={(nextRepo, defaultBranch) => {
                       setRepo(nextRepo);
@@ -722,7 +724,7 @@ function CreateAppWizard({
                     }}
                     className={CONTROL}
                   />
-                </label>
+                </div>
                 <label className="flex flex-col gap-1.5 sm:w-40">
                   <span className={LABEL}>Ref</span>
                   <Input
@@ -842,20 +844,22 @@ function CreateAppWizard({
                   </span>
                 </label>
 
-                <label className="flex flex-col gap-1.5">
-                  <span className={LABEL}>Runtime</span>
-                  <Select
-                    value={runtime}
-                    onChange={(e) => setRuntime(e.target.value as Runtime)}
-                    className={CONTROL}
-                  >
-                    {RUNTIMES.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.label}
-                      </option>
-                    ))}
-                  </Select>
-                </label>
+                {appType === 'function' && (
+                  <label className="flex flex-col gap-1.5">
+                    <span className={LABEL}>Runtime</span>
+                    <Select
+                      value={runtime}
+                      onChange={(e) => setRuntime(e.target.value as Runtime)}
+                      className={CONTROL}
+                    >
+                      {RUNTIMES.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </label>
+                )}
 
                 <label className="flex flex-col gap-1.5">
                   <span className={LABEL}>App visibility</span>
@@ -970,7 +974,7 @@ function CreateAppWizard({
                       ? `${repo}@${normalizedRef}, right after create`
                       : 'Later, from the CLI',
                   ],
-                  ['Runtime', runtime],
+                  ...(appType === 'function' ? [['Runtime', runtime]] : []),
                   [
                     'Visibility',
                     visibility === 'internal' ? 'Internal service only' : 'Public edge',

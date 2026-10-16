@@ -50,6 +50,63 @@ afterEach(() => {
 });
 
 describe('analytics query contracts', () => {
+  it('fetches a fresh action-bound CSRF token before binding the first Git deployment', async () => {
+    const fetchMock = vi.fn(async (request: Request) => {
+      const url = new URL(request.url);
+      if (url.pathname === '/v1/auth/csrf') {
+        expect(url.searchParams.get('action')).toBe('bind_app_to_repo');
+        return new Response(JSON.stringify({ csrf_token: 'bind-proof' }), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      expect(request.method).toBe('POST');
+      expect(url.pathname).toBe('/v1/apps/imgpipe-gateway/install/bind');
+      expect(await request.json()).toMatchObject({
+        installation_id: 42,
+        repo_full_name: 'poyrazK/imgpipe',
+        production_branch: 'master',
+        csrf_token: 'bind-proof',
+      });
+      return response();
+    });
+    stubApiFetch(fetchMock);
+    const { useBindRepoFor } = await import('./queries');
+    const hook = renderHook(() => useBindRepoFor(), { wrapper: queryWrapper(new QueryClient()) });
+    await act(async () => {
+      await hook.result.current.mutateAsync({
+        slug: 'imgpipe-gateway',
+        installationId: 42,
+        repo: 'poyrazK/imgpipe',
+        branch: 'master',
+      });
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not submit a repository binding when CSRF issuance fails', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ code: 'capacity', title: 'Could not issue CSRF token', status: 503 }),
+          { status: 503, headers: { 'Content-Type': 'application/problem+json' } }
+        )
+      );
+    stubApiFetch(fetchMock);
+    const { useBindRepoFor } = await import('./queries');
+    const hook = renderHook(() => useBindRepoFor(), { wrapper: queryWrapper(new QueryClient()) });
+    await act(async () => {
+      await expect(
+        hook.result.current.mutateAsync({
+          slug: 'imgpipe-gateway',
+          installationId: 42,
+          repo: 'poyrazK/imgpipe',
+          branch: 'master',
+        })
+      ).rejects.toMatchObject({ code: 'capacity' });
+    });
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
   it.each(['scan', 'apply'])('sends a real multipart source for project %s', async (kind) => {
     // Match Node's real Request encoder rather than mixing jsdom FormData
     // with Node File (which jsdom otherwise converts to a string).

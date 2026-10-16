@@ -34,14 +34,11 @@ import { NOW, type Deployment, type Runtime, type Workflow } from './mock-data';
  *   caller has to await them and show what happened.
  */
 
-export interface NewWorkflowInput {
+export type NewWorkflowInput = {
   name: string;
-  runtime: Runtime;
   memoryMb: number;
-  /** `function` runs a runtime; `app` runs a container image. */
-  type?: 'app' | 'function';
   visibility?: 'public' | 'internal';
-}
+} & ({ type: 'app'; runtime?: never } | { type?: 'function'; runtime: Runtime });
 
 interface DataValue {
   workflows: Workflow[];
@@ -133,7 +130,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const app = await createApp.mutateAsync({
           slug: input.name,
           type: input.type ?? 'function',
-          runtime: input.runtime,
+          ...(input.type === 'app' ? {} : { runtime: input.runtime }),
           ram_mb: input.memoryMb,
           // Defaulted in the spec, but openapi-typescript makes defaulted
           // properties required, so the API defaults are sent explicitly.
