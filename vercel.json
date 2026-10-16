@@ -96,7 +96,7 @@
       }
     },
     {
-      "src": "^/dashboard(?:/(?:account|alerts|analytics|apis|apps(?:/[^/]+)?|audit|builds|crons|databases|debug|deployments|domains|edge-rules|env|import|instances|invocations|invoices|jobs|keys|logs|metrics|mirrors|openapi|plans|postgres|projects(?:/[^/]+)?|queues|releases|routes|secrets|security|settings|storage|team|templates|tenant-surfaces|traces|triggers(?:/[^/]+)?|upstreams|usage|webhooks|workers|workflows(?:/[^/]+)?))?/?$",
+      "src": "^/dashboard(?:/(?:account|alerts|analytics|apis|apps(?:/[^/]+)?|audit|builds|crons|databases|debug|deployments|domains|edge-rules|env|events|import|instances|invocations|invoices|jobs|keys|logs|metrics|mirrors|openapi|plans|postgres|projects(?:/[^/]+)?|queues|releases|routes|secrets|security|settings|storage|team|templates|tenant-surfaces|traces|triggers(?:/[^/]+)?|upstreams|usage|webhooks|workers|workflows(?:/[^/]+)?))?/?$",
       "dest": "/index.html"
     },
     {

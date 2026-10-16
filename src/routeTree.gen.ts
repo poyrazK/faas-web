@@ -31,6 +31,7 @@ import { Route as DashboardDeploymentsRouteImport } from './routes/dashboard.dep
 import { Route as DashboardDomainsRouteImport } from './routes/dashboard.domains'
 import { Route as DashboardEdgeRulesRouteImport } from './routes/dashboard.edge-rules'
 import { Route as DashboardEnvRouteImport } from './routes/dashboard.env'
+import { Route as DashboardEventsRouteImport } from './routes/dashboard.events'
 import { Route as DashboardImportRouteImport } from './routes/dashboard.import'
 import { Route as DashboardInstancesRouteImport } from './routes/dashboard.instances'
 import { Route as DashboardInvocationsRouteImport } from './routes/dashboard.invocations'
@@ -183,6 +184,11 @@ const DashboardEdgeRulesRoute = DashboardEdgeRulesRouteImport.update({
 const DashboardEnvRoute = DashboardEnvRouteImport.update({
   id: '/env',
   path: '/env',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardEventsRoute = DashboardEventsRouteImport.update({
+  id: '/events',
+  path: '/events',
   getParentRoute: () => DashboardRoute,
 } as any)
 const DashboardImportRoute = DashboardImportRouteImport.update({
@@ -425,6 +431,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/domains': typeof DashboardDomainsRoute
   '/dashboard/edge-rules': typeof DashboardEdgeRulesRoute
   '/dashboard/env': typeof DashboardEnvRoute
+  '/dashboard/events': typeof DashboardEventsRoute
   '/dashboard/import': typeof DashboardImportRoute
   '/dashboard/instances': typeof DashboardInstancesRoute
   '/dashboard/invocations': typeof DashboardInvocationsRoute
@@ -489,6 +496,7 @@ export interface FileRoutesByTo {
   '/dashboard/domains': typeof DashboardDomainsRoute
   '/dashboard/edge-rules': typeof DashboardEdgeRulesRoute
   '/dashboard/env': typeof DashboardEnvRoute
+  '/dashboard/events': typeof DashboardEventsRoute
   '/dashboard/import': typeof DashboardImportRoute
   '/dashboard/instances': typeof DashboardInstancesRoute
   '/dashboard/invocations': typeof DashboardInvocationsRoute
@@ -556,6 +564,7 @@ export interface FileRoutesById {
   '/dashboard/domains': typeof DashboardDomainsRoute
   '/dashboard/edge-rules': typeof DashboardEdgeRulesRoute
   '/dashboard/env': typeof DashboardEnvRoute
+  '/dashboard/events': typeof DashboardEventsRoute
   '/dashboard/import': typeof DashboardImportRoute
   '/dashboard/instances': typeof DashboardInstancesRoute
   '/dashboard/invocations': typeof DashboardInvocationsRoute
@@ -625,6 +634,7 @@ export interface FileRouteTypes {
     | '/dashboard/domains'
     | '/dashboard/edge-rules'
     | '/dashboard/env'
+    | '/dashboard/events'
     | '/dashboard/import'
     | '/dashboard/instances'
     | '/dashboard/invocations'
@@ -689,6 +699,7 @@ export interface FileRouteTypes {
     | '/dashboard/domains'
     | '/dashboard/edge-rules'
     | '/dashboard/env'
+    | '/dashboard/events'
     | '/dashboard/import'
     | '/dashboard/instances'
     | '/dashboard/invocations'
@@ -755,6 +766,7 @@ export interface FileRouteTypes {
     | '/dashboard/domains'
     | '/dashboard/edge-rules'
     | '/dashboard/env'
+    | '/dashboard/events'
     | '/dashboard/import'
     | '/dashboard/instances'
     | '/dashboard/invocations'
@@ -967,6 +979,13 @@ declare module '@tanstack/react-router' {
       path: '/env'
       fullPath: '/dashboard/env'
       preLoaderRoute: typeof DashboardEnvRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/events': {
+      id: '/dashboard/events'
+      path: '/events'
+      fullPath: '/dashboard/events'
+      preLoaderRoute: typeof DashboardEventsRouteImport
       parentRoute: typeof DashboardRoute
     }
     '/dashboard/import': {
@@ -1313,6 +1332,7 @@ interface DashboardRouteChildren {
   DashboardDomainsRoute: typeof DashboardDomainsRoute
   DashboardEdgeRulesRoute: typeof DashboardEdgeRulesRoute
   DashboardEnvRoute: typeof DashboardEnvRoute
+  DashboardEventsRoute: typeof DashboardEventsRoute
   DashboardImportRoute: typeof DashboardImportRoute
   DashboardInstancesRoute: typeof DashboardInstancesRoute
   DashboardInvocationsRoute: typeof DashboardInvocationsRoute
@@ -1364,6 +1384,7 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardDomainsRoute: DashboardDomainsRoute,
   DashboardEdgeRulesRoute: DashboardEdgeRulesRoute,
   DashboardEnvRoute: DashboardEnvRoute,
+  DashboardEventsRoute: DashboardEventsRoute,
   DashboardImportRoute: DashboardImportRoute,
   DashboardInstancesRoute: DashboardInstancesRoute,
   DashboardInvocationsRoute: DashboardInvocationsRoute,

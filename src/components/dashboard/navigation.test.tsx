@@ -260,6 +260,7 @@ const RAIL = [
   'Domains',
   'Storage',
   'Postgres',
+  'Events',
   'Analytics',
   'Debugger',
   'Invocations',

@@ -4,6 +4,7 @@ import {
   Activity,
   Antenna,
   Coins,
+  DataTransferBoth,
   Database,
   Folder,
   CreditCard,
@@ -138,6 +139,14 @@ export const NAV_HUBS: NavHub[] = [
     ],
   },
   {
+    // Account-wide: the event router has no per-app read for its backlog,
+    // storage, or receipts, so this is its own hub rather than an app tab.
+    to: '/dashboard/events',
+    label: 'Events',
+    icon: DataTransferBoth,
+    sidebarIconClassName: 'text-cat-network/80',
+  },
+  {
     to: '/dashboard/analytics',
     label: 'Analytics',
     icon: GraphUp,
@@ -200,7 +209,7 @@ export const NAV_HUBS: NavHub[] = [
 const SIDEBAR_GROUPS: { title?: string; hubs: string[] }[] = [
   { hubs: ['Overview'] },
   { title: 'Build', hubs: ['Projects', 'Jobs', 'Releases'] },
-  { title: 'Operate', hubs: ['Domains', 'Data', 'Analytics', 'Observe'] },
+  { title: 'Operate', hubs: ['Domains', 'Data', 'Events', 'Analytics', 'Observe'] },
   { title: 'Account', hubs: ['Billing', 'Settings'] },
 ];
 

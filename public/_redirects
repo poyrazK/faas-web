@@ -22,6 +22,7 @@
 /dashboard/domains    /index.html   200
 /dashboard/edge-rules    /index.html   200
 /dashboard/env    /index.html   200
+/dashboard/events    /index.html   200
 /dashboard/import    /index.html   200
 /dashboard/instances    /index.html   200
 /dashboard/invocations    /index.html   200
