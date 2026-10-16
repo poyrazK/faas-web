@@ -17,7 +17,8 @@ export function jsonObject(text: string, label: string): Record<string, unknown>
   return value as Record<string, unknown>;
 }
 
-export type StepDraft = { spec: AutomationStep; input: string; dependencies: string };
+/** `dependencies` keeps names verbatim, including ones that match no step in this definition. */
+export type StepDraft = { spec: AutomationStep; input: string; dependencies: string[] };
 export type DefinitionDraft = {
   spec: Definition;
   steps: StepDraft[];
@@ -31,7 +32,7 @@ export function definitionDraft(spec: Definition): DefinitionDraft {
     steps: spec.steps.map((step) => ({
       spec: step,
       input: step.input === undefined ? '' : jsonText(step.input),
-      dependencies: (step.depends_on ?? []).join(', '),
+      dependencies: [...(step.depends_on ?? [])],
     })),
     scheduledInput: jsonText(spec.trigger?.input),
     eventFilter: jsonText(spec.trigger?.filter ?? {}),
@@ -55,13 +56,32 @@ export function candidateDefinition(draft: DefinitionDraft): Definition {
       else delete spec.input;
       return {
         ...spec,
-        depends_on: step.dependencies
-          .split(',')
-          .map((name) => name.trim())
-          .filter(Boolean),
+        depends_on: step.dependencies.filter((name) => name.trim()),
       };
     }),
   };
+}
+
+/**
+ * Renaming a step keeps the steps that ran after it pointing at it. Only a
+ * name that identified exactly one step is followed, so an ambiguous rename
+ * never rewrites another step's dependencies.
+ */
+export function renameStep(steps: StepDraft[], index: number, name: string): StepDraft[] {
+  const previous = steps[index].spec.name;
+  const unique = previous && steps.filter((step) => step.spec.name === previous).length === 1;
+  return steps.map((step, i) =>
+    i === index
+      ? { ...step, spec: { ...step.spec, name } }
+      : unique && step.dependencies.includes(previous)
+        ? {
+            ...step,
+            dependencies: step.dependencies.map((dependency) =>
+              dependency === previous ? name : dependency
+            ),
+          }
+        : step
+  );
 }
 
 export function parseDefinition(text: string): Definition {
@@ -168,4 +188,24 @@ export function availabilityMessage(runtimeEnabled: boolean, reason?: string): s
   };
   if (reason) return reasons[reason] ?? `Execution is unavailable: ${reason}.`;
   return runtimeEnabled ? undefined : reasons.runtime_disabled;
+}
+
+export type ObservedRoute = { path: string; methods: string[] };
+
+/**
+ * Handler-path suggestions from `/v1/apps/{slug}/routes`, whose items are
+ * `"<METHOD> <PATH>"` plus the reserved `__route_other__` overflow bucket.
+ * Anything that does not parse is skipped rather than guessed at.
+ */
+export function observedRoutes(routes: readonly string[] | undefined): ObservedRoute[] {
+  const byPath = new Map<string, Set<string>>();
+  for (const route of routes ?? []) {
+    const match = /^([A-Z]+)\s+(\/\S*)$/.exec(route.trim());
+    if (!match) continue;
+    const [, method, path] = match;
+    byPath.set(path, (byPath.get(path) ?? new Set()).add(method));
+  }
+  return [...byPath]
+    .map(([path, methods]) => ({ path, methods: [...methods].sort() }))
+    .sort((a, b) => a.path.localeCompare(b.path));
 }

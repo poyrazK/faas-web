@@ -40,13 +40,29 @@ beforeEach(() => {
       if (readFails) throw new Error('Cap read unavailable');
       return { data: { overage_cap_cents: cap }, response: new Response() } as never;
     }
-    return {
-      data:
-        path === '/v1/usage/summary'
-          ? { month: '2026-09', used_gb_hours: 1, included_gb_hours: 100, overage_gb_hours: 0 }
-          : [],
-      response: new Response(),
-    } as never;
+    const data =
+      path === '/v1/usage/summary'
+        ? {
+            month: '2026-09',
+            used_gb_hours: 1,
+            included_gb_hours: 100,
+            overage_gb_hours: 0,
+            overage_cents: 0,
+          }
+        : path === '/v1/billing/forecast'
+          ? {
+              period_start: '2026-09-01T00:00:00Z',
+              period_end: '2026-10-01T00:00:00Z',
+              as_of: '2026-09-15T00:00:00Z',
+              currency: 'EUR',
+              meters: [],
+              bill_estimate_available: false,
+              missing_bill_components: [],
+            }
+          : path === '/v1/audit-events'
+            ? { events: [], limit: 20 }
+            : [];
+    return { data, response: new Response() } as never;
   });
   spyApi('POST').mockImplementation(async (path, options) => {
     if (path !== '/v1/account/overage-cap') throw new Error('Unexpected write');
@@ -86,11 +102,12 @@ async function mount(
   });
   return router;
 }
-it('keeps Usage compact and opens the current cap in a modal', async () => {
+it('shows the cap standing on Usage and edits the cap in a modal', async () => {
   await mount();
-  expect(await screen.findByText('€10.00')).toBeInTheDocument();
+  expect(await screen.findByText('€0.00 of €10.00 overage used.')).toBeInTheDocument();
+  expect(screen.getByText('Within the cap')).toBeInTheDocument();
   expect(screen.queryByRole('spinbutton', { name: 'Cap (EUR)' })).not.toBeInTheDocument();
-  const manage = screen.getByRole('button', { name: 'Manage spend cap' });
+  const manage = screen.getByRole('button', { name: 'Change cap' });
   await userEvent.click(manage);
   expect(
     within(screen.getByRole('dialog', { name: 'Spend cap' })).getByRole('spinbutton', {
@@ -116,15 +133,15 @@ it('edits the same cap on Plans and reflects it back on Usage', async () => {
   await act(async () => {
     await router.navigate({ to: '/dashboard/usage' });
   });
-  expect(await screen.findByText('€12.50')).toBeInTheDocument();
+  expect(await screen.findByText('€0.00 of €12.50 overage used.')).toBeInTheDocument();
 });
 it('distinguishes zero overage from no cap and updates after clearing', async () => {
   cap = 0;
   await mount();
-  expect(await screen.findByText('€0.00 · No overage allowed')).toBeInTheDocument();
-  await userEvent.click(screen.getByRole('button', { name: 'Manage spend cap' }));
+  expect(await screen.findByText('Overage not allowed')).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Change cap' }));
   await userEvent.click(screen.getByRole('button', { name: 'Clear cap' }));
-  expect(await screen.findByText('No cap set')).toBeInTheDocument();
+  expect(await screen.findByText('No cap')).toBeInTheDocument();
   expect(api.POST).toHaveBeenCalledWith('/v1/account/overage-cap', {
     body: { overage_cap_cents: null },
   });
@@ -133,10 +150,10 @@ it('does not claim there is no cap when reading fails and permits retry', async 
   readFails = true;
   await mount();
   expect(await screen.findByRole('alert')).toHaveTextContent('Cap read unavailable');
-  expect(screen.queryByText('No cap set')).not.toBeInTheDocument();
+  expect(screen.queryByText('No cap')).not.toBeInTheDocument();
   readFails = false;
   await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
-  expect(await screen.findByText('€10.00')).toBeInTheDocument();
+  expect(await screen.findByText('€0.00 of €10.00 overage used.')).toBeInTheDocument();
 });
 
 it('refreshes a pristine cached editor but preserves an unsaved draft', async () => {

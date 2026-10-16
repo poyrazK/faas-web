@@ -26,7 +26,7 @@ function inputs(): NeedsAttentionProps {
   return {
     apps: ready([app('alpha', 'active')]),
     deployments: ready({ items: [] }),
-    usage: ready({ month: '2026-10', used_gb_hours: 10, included_gb_hours: 50 }),
+    usage: ready({ month: '2026-10', used_gb_hours: 10, included_gb_hours: 50, overage_cents: 0 }),
   };
 }
 async function mount(props = inputs()) {
@@ -196,7 +196,12 @@ describe('compute allowance', () => {
     'handles zero included allowance with %s used without dividing by zero',
     async (used) => {
       const props = inputs();
-      props.usage.data = { month: '2026-10', used_gb_hours: used, included_gb_hours: 0 };
+      props.usage.data = {
+        month: '2026-10',
+        used_gb_hours: used,
+        included_gb_hours: 0,
+        overage_cents: 0,
+      };
       await mount(props);
       expect(panel().getByText('No compute allowance included')).toBeInTheDocument();
       expect(panel().getByRole('link', { name: 'Review usage' })).toBeInTheDocument();
@@ -275,5 +280,53 @@ describe('independent read states', () => {
     props.deployments.data = { items: [deployment('recent')] };
     await mount(props);
     expect(panel().getByText(/Deployment failed · app-alpha/)).toBeInTheDocument();
+  });
+});
+
+describe('spend cap', () => {
+  it('reports a reached cap as critical and links to Usage', async () => {
+    const props = inputs();
+    props.usage.data = {
+      month: '2026-10',
+      used_gb_hours: 80,
+      included_gb_hours: 50,
+      overage_cents: 2500,
+    };
+    props.spendCap = ready({ overage_cap_cents: 2000 });
+    await mount(props);
+    expect(panel().getByText('Spend cap reached')).toBeInTheDocument();
+    expect(panel().getByRole('link', { name: 'Review spend cap' })).toHaveAttribute(
+      'href',
+      '/dashboard/usage'
+    );
+  });
+
+  it('treats a €0 cap as reached only once the allowance is gone', async () => {
+    const props = inputs();
+    props.spendCap = ready({ overage_cap_cents: 0 });
+    await mount(props);
+    expect(panel().queryByText('Spend cap reached')).not.toBeInTheDocument();
+    expect(panel().getByText('No reported issues in the checked data.')).toBeInTheDocument();
+  });
+
+  it('does not flag an uncapped account, and never claims all clear when the cap is unreadable', async () => {
+    const uncapped = inputs();
+    uncapped.usage.data!.overage_cents = 9000;
+    uncapped.spendCap = ready({ overage_cap_cents: null });
+    await mount(uncapped);
+    expect(panel().queryByText('Spend cap reached')).not.toBeInTheDocument();
+  });
+
+  it('shows an unreadable cap as unavailable rather than fine', async () => {
+    const props = inputs();
+    props.spendCap = {
+      data: undefined,
+      isPending: false,
+      error: new Error('nope'),
+      refetch: vi.fn(),
+    };
+    await mount(props);
+    expect(panel().getByText('Spend cap unavailable.')).toBeInTheDocument();
+    expect(panel().queryByText('No reported issues in the checked data.')).not.toBeInTheDocument();
   });
 });
