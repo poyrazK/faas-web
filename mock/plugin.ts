@@ -2326,6 +2326,40 @@ route('GET', '/v1/apps/{slug}/debug/dependencies', ({ params, query }) => {
   };
 });
 
+// --- Prewarm intents ---
+const prewarms = new Map<string, components['schemas']['PrewarmIntentResponse'][]>();
+route('GET', '/v1/apps/{slug}/prewarms', ({ params }) => {
+  app(params.slug);
+  return prewarms.get(params.slug) ?? [];
+});
+route('POST', '/v1/apps/{slug}/prewarm', ({ params, body }) => {
+  const a = app(params.slug);
+  const count = Number(body.count);
+  const wakeAt = Date.parse(String(body.wake_at ?? ''));
+  const expiresAt = Date.parse(String(body.expires_at ?? ''));
+  if (!Number.isInteger(count) || count < 1)
+    throw new Problem(400, 'validation_failed', 'count must be a positive integer.');
+  if (Number.isNaN(wakeAt) || Number.isNaN(expiresAt) || expiresAt <= wakeAt)
+    throw new Problem(400, 'validation_failed', 'expires_at must be after wake_at.');
+  const intent: components['schemas']['PrewarmIntentResponse'] = {
+    id: db.id(),
+    app_id: a.id,
+    count,
+    wake_at: new Date(wakeAt).toISOString(),
+    expires_at: new Date(expiresAt).toISOString(),
+    trigger: 'calendar',
+    status: 'pending',
+    created_at: db.iso(0),
+  };
+  prewarms.set(a.slug, [...(prewarms.get(a.slug) ?? []), intent]);
+  return status(202, intent);
+});
+route('DELETE', '/v1/apps/{slug}/prewarms/{id}', ({ params }) => {
+  const intent = prewarms.get(params.slug)?.find((p) => p.id === params.id);
+  if (!intent) throw new Problem(404, 'prewarm_not_found');
+  intent.status = 'cancelled';
+  return NO_CONTENT;
+});
 // --- Log drains ---
 function drainOf(slug: string, id: string) {
   app(slug);
