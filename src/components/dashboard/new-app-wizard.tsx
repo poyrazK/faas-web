@@ -940,7 +940,12 @@ function CreateAppWizard({
                     exact ref you deploy.
                   </p>
                 </div>
-                <GitHubConnectForm onConnect={onConnectGitHub} />
+                {/* Connecting from New app comes straight back to the Git source.
+                    Onboarding keeps the Settings landing its return flag expects. */}
+                <GitHubConnectForm
+                  onConnect={onConnectGitHub}
+                  returnTo={onConnectGitHub ? undefined : '/dashboard/apps/new?source=git'}
+                />
               </div>
             ) : source === 'git' ? (
               <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
