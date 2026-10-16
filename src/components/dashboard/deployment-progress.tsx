@@ -9,6 +9,7 @@ import { useLogStream } from '@/lib/api/logs';
 import { LogView } from './log-view';
 import { FailurePanel } from './failure-panel';
 import { failureSummary } from './failure-summary';
+import { AppCallIt } from './call-it';
 
 // These are server states, not a simulated percentage or a timed sequence.
 const ACTIVE_STATES: Record<string, [string, string]> = {
@@ -38,6 +39,7 @@ export function DeploymentProgress({
   onLive,
   onTerminal,
   hideRetryOptions = false,
+  appSlug,
 }: {
   appCreated: boolean;
   appName: string;
@@ -50,6 +52,8 @@ export function DeploymentProgress({
   onLive?: (deployment: Deployment) => void;
   onTerminal?: (deployment: Deployment) => void;
   hideRetryOptions?: boolean;
+  /** Once live, shows how to call the app and tail its logs. */
+  appSlug?: string;
 }) {
   const navigate = useNavigate();
   const outputRef = useRef<HTMLDetailsElement>(null);
@@ -240,6 +244,8 @@ export function DeploymentProgress({
             )}
           </div>
         )}
+
+        {live && appSlug && <AppCallIt slug={appSlug} />}
 
         <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
           <p className="min-w-0 break-all text-xs text-muted-foreground">

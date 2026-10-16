@@ -801,6 +801,7 @@ function ImageJourney({
               <DeploymentProgress
                 appCreated
                 appName={operation.createRequest.slug}
+                appSlug={operation.createRequest.slug}
                 deploymentId={operation.deploymentId ?? null}
                 source={{ kind: 'image', reference: operation.deployRequest.image! }}
                 endpoint={

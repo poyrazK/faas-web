@@ -930,12 +930,16 @@ describe('NewAppWizard Git submission', () => {
       screen.queryByRole('link', { name: 'https://demo-app.example' })
     ).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Open app' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Call it' })).not.toBeInTheDocument();
     mocks.deploymentStatus = 'live';
     rerender(<NewAppWizard onboarding onDeploymentAccepted={onDeploymentAccepted} />);
     expect(screen.getByRole('link', { name: 'Open app' })).toHaveAttribute(
       'href',
       'https://demo-app.example'
     );
+    const callIt = screen.getByRole('region', { name: 'Call it' });
+    expect(callIt).toHaveTextContent('curl -i https://demo-app.example');
+    expect(callIt).toHaveTextContent('gregale logs demo-app --follow');
   });
 
   it('prevents Free accounts from requesting a resident instance', async () => {

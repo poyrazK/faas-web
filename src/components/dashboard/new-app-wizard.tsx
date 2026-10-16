@@ -592,6 +592,7 @@ function CreateAppWizard({
             sourceRef={ref}
             submissionError={submissionError}
             endpoint={visibility === 'internal' ? null : createdUrl}
+            appSlug={createdId ?? undefined}
           />
         ) : !createdId ? (
           <Panel title="Creating app">
