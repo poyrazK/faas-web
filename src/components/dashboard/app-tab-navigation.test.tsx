@@ -18,7 +18,7 @@ it('opens the right group from a deep linked page', () => {
     'aria-pressed',
     'true'
   );
-  expect(screen.getAllByRole('tab')).toHaveLength(6);
+  expect(screen.getAllByRole('tab')).toHaveLength(7);
 });
 
 it('moves between groups with the arrow keys and lands on the first page', async () => {
@@ -62,4 +62,14 @@ it('resolves retired tab names so old links still land', () => {
   expect(resolveAppTab('Logs')).toBe('Logs');
   expect(resolveAppTab('nope')).toBeUndefined();
   expect(resolveAppTab(3)).toBeUndefined();
+});
+
+it('groups the consumer pages under Monetize', () => {
+  render(<Navigation initial="Consumer plans" />);
+  expect(screen.getByRole('tab', { name: 'Monetize' })).toHaveAttribute('aria-selected', 'true');
+  expect(
+    within(pages('Monetize'))
+      .getAllByRole('button')
+      .map((b) => b.textContent)
+  ).toEqual(['Consumers', 'Consumer plans']);
 });

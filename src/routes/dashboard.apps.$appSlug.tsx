@@ -54,6 +54,8 @@ import { DebugBody } from '@/components/dashboard/debug-body';
 import { validateDebugSearch, type DebugSearch } from '@/components/dashboard/debug-search';
 import { MirrorsBody } from './dashboard.mirrors';
 import { TenantSurfacesBody } from './dashboard.tenant-surfaces';
+import { ApiConsumers } from '@/components/dashboard/api-consumers';
+import { ApiConsumerPlans } from '@/components/dashboard/api-consumer-plans';
 import { OpenAPIBody } from './dashboard.openapi';
 import { WebhooksHub } from './dashboard.webhooks';
 import { EdgeRulesBody } from './dashboard.edge-rules';
@@ -720,6 +722,8 @@ function FunctionDetailPage() {
             {tab === 'Mirrors' && <MirrorsBody slug={fn.id} />}
             {tab === 'Tenant surfaces' && <TenantSurfacesBody slug={fn.id} />}
             {tab === 'OpenAPI' && <OpenAPIBody slug={fn.id} />}
+            {tab === 'Consumers' && <ApiConsumers slug={fn.id} />}
+            {tab === 'Consumer plans' && <ApiConsumerPlans slug={fn.id} />}
 
             {tab === 'Configuration' && <AppConfiguration slug={fn.id} />}
           </div>
