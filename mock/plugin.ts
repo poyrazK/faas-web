@@ -5,6 +5,7 @@ import type { components } from '../src/lib/api/schema';
 import * as db from './data';
 import * as automationMock from './automations';
 import { registerMonetizationMock } from './monetization';
+import * as logDrainMock from './log-drains';
 import { mockCapabilities } from './capabilities';
 import { mockOpenAPIPreview } from './openapi-preview';
 import { isDigestPinnedImage } from '../src/lib/oci-image';
@@ -2324,6 +2325,205 @@ route('GET', '/v1/apps/{slug}/debug/dependencies', ({ params, query }) => {
     ],
     edges: [],
   };
+});
+
+// --- Prewarm intents ---
+const prewarms = new Map<string, components['schemas']['PrewarmIntentResponse'][]>();
+route('GET', '/v1/apps/{slug}/prewarms', ({ params }) => {
+  app(params.slug);
+  return prewarms.get(params.slug) ?? [];
+});
+route('POST', '/v1/apps/{slug}/prewarm', ({ params, body }) => {
+  const a = app(params.slug);
+  const count = Number(body.count);
+  const wakeAt = Date.parse(String(body.wake_at ?? ''));
+  const expiresAt = Date.parse(String(body.expires_at ?? ''));
+  if (!Number.isInteger(count) || count < 1)
+    throw new Problem(400, 'validation_failed', 'count must be a positive integer.');
+  if (Number.isNaN(wakeAt) || Number.isNaN(expiresAt) || expiresAt <= wakeAt)
+    throw new Problem(400, 'validation_failed', 'expires_at must be after wake_at.');
+  const intent: components['schemas']['PrewarmIntentResponse'] = {
+    id: db.id(),
+    app_id: a.id,
+    count,
+    wake_at: new Date(wakeAt).toISOString(),
+    expires_at: new Date(expiresAt).toISOString(),
+    trigger: 'calendar',
+    status: 'pending',
+    created_at: db.iso(0),
+  };
+  prewarms.set(a.slug, [...(prewarms.get(a.slug) ?? []), intent]);
+  return status(202, intent);
+});
+route('DELETE', '/v1/apps/{slug}/prewarms/{id}', ({ params }) => {
+  const intent = prewarms.get(params.slug)?.find((p) => p.id === params.id);
+  if (!intent) throw new Problem(404, 'prewarm_not_found');
+  intent.status = 'cancelled';
+  return NO_CONTENT;
+});
+// --- Log drains ---
+function drainOf(slug: string, id: string) {
+  app(slug);
+  const drain = logDrainMock.drains.get(slug)?.find((d) => d.id === id);
+  if (!drain) throw new Problem(404, 'log_drain_not_found');
+  return drain;
+}
+route('GET', '/v1/apps/{slug}/log-drains', ({ params }) => {
+  app(params.slug);
+  return logDrainMock.drains.get(params.slug) ?? [];
+});
+route('POST', '/v1/apps/{slug}/log-drains', ({ params, body }) => {
+  const a = app(params.slug);
+  const url = String(body.target_url ?? '');
+  if (!/^https?:\/\//.test(url))
+    throw new Problem(400, 'validation_failed', 'target_url must be an http(s) URL.');
+  const drain: components['schemas']['AppLogDrainResponse'] = {
+    id: db.id(),
+    app_id: a.id,
+    account_id: db.ACCOUNT_ID,
+    kind: body.kind === 'otlp' ? 'otlp' : 'http_json',
+    target_url: url,
+    auth_header_masked: body.auth_header ? '***' : '',
+    enabled: body.enabled !== false,
+    created_at: db.iso(0),
+    updated_at: db.iso(0),
+  };
+  logDrainMock.drains.set(a.slug, [...(logDrainMock.drains.get(a.slug) ?? []), drain]);
+  return status(201, drain);
+});
+route('GET', '/v1/apps/{slug}/log-drains/{id}', ({ params }) => drainOf(params.slug, params.id));
+route('PATCH', '/v1/apps/{slug}/log-drains/{id}', ({ params, body }) => {
+  const drain = drainOf(params.slug, params.id);
+  if (typeof body.enabled === 'boolean') drain.enabled = body.enabled;
+  if (typeof body.target_url === 'string') drain.target_url = body.target_url;
+  if (body.kind === 'otlp' || body.kind === 'http_json') drain.kind = body.kind;
+  if (typeof body.auth_header === 'string')
+    drain.auth_header_masked = body.auth_header ? '***' : '';
+  drain.updated_at = db.iso(0);
+  return drain;
+});
+route('DELETE', '/v1/apps/{slug}/log-drains/{id}', ({ params }) => {
+  drainOf(params.slug, params.id);
+  logDrainMock.drains.set(
+    params.slug,
+    (logDrainMock.drains.get(params.slug) ?? []).filter((d) => d.id !== params.id)
+  );
+  return NO_CONTENT;
+});
+route('GET', '/v1/apps/{slug}/log-drains/{id}/health', ({ params }) =>
+  logDrainMock.healthFor(drainOf(params.slug, params.id))
+);
+route('GET', '/v1/apps/{slug}/log-drains/{id}/analytics', ({ params, query }) =>
+  logDrainMock.analyticsFor(drainOf(params.slug, params.id), query.get('window') ?? '24h')
+);
+// --- Canary route health: candidate vs stable per critical route ---
+function routeHealthFor(a: db.App, deploymentId: string): S_['RouteHealthReport'] {
+  const deployment = db.deployments.find((d) => d.id === deploymentId);
+  const stable = db.deployments.find(
+    (d) => d.app_id === a.id && d.id !== deploymentId && d.status === 'superseded'
+  );
+  const counts = (requests: number, errors: number, p95: number) => ({
+    requests,
+    server_errors: errors,
+    error_rate: requests ? errors / requests : 0,
+    p95_latency_ms: p95,
+  });
+  const route = (
+    method: string,
+    path: string,
+    canaryErrors: number,
+    delta: number
+  ): S_['RouteHealthFinding'] => ({
+    method,
+    path,
+    status: canaryErrors > 3 ? 'regressed' : 'healthy',
+    reason:
+      canaryErrors > 3
+        ? 'Candidate 5xx rate exceeds stable by more than the allowed margin.'
+        : 'Within the error and latency budget.',
+    check_latency: true,
+    windows: [
+      {
+        start: db.iso(120_000),
+        end: db.iso(60_000),
+        candidate: counts(180, canaryErrors, 120 + delta),
+        stable: counts(1620, 2, 120),
+        status: canaryErrors > 3 ? 'regressed' : 'healthy',
+        reason: '',
+        latency_delta_ms: delta,
+        latency_factor: (120 + delta) / 120,
+      },
+    ],
+  });
+  return {
+    app_id: a.id,
+    deployment_id: deploymentId,
+    candidate_commit_sha: 'a1b2c3d',
+    stable_deployment_id: stable?.id ?? '',
+    stable_commit_sha: stable ? 'e4f5a6b' : '',
+    canary_step: deployment?.canary_step ?? 1,
+    mode: 'enforce',
+    on_regression: 'hold',
+    revision: 3,
+    checked_at: db.iso(20_000),
+    coverage: 'observed_only',
+    status: 'healthy',
+    reason: 'Every critical route met its budget in both windows.',
+    minimum_requests: 50,
+    routes: [route('POST', '/v1/orders', 1, 8), route('GET', '/v1/orders/{id}', 0, -3)],
+  };
+}
+route('GET', '/v1/apps/{slug}/route-health/deployments/{deployment}', ({ params }) =>
+  routeHealthFor(app(params.slug), params.deployment)
+);
+route('GET', '/v1/apps/{slug}/route-health/deployments/{deployment}/history', ({ params }) => {
+  const a = app(params.slug);
+  const report = routeHealthFor(a, params.deployment);
+  const decision = (
+    status: S_['RouteHealthDecision']['status'],
+    reason: string
+  ): S_['RouteHealthDecision'] => ({
+    mode: 'enforce',
+    on_regression: 'hold',
+    revision: 3,
+    deployment_id: params.deployment,
+    stable_deployment_id: report.stable_deployment_id,
+    status,
+    reason,
+    checked_at: db.iso(25 * 60_000),
+  });
+  return {
+    app_id: a.id,
+    deployment_id: params.deployment,
+    entries: [
+      {
+        version: 1,
+        id: 'rh-2',
+        checked_at: db.iso(20 * 60_000),
+        source: 'worker',
+        traffic_percent: 1,
+        requested_traffic_percent: 10,
+        policy: {
+          version: 1,
+          windows: 2,
+          window_seconds: 60,
+          ingestion_lag_seconds: 15,
+          minimum_requests: 50,
+          minimum_errors: 3,
+          error_rate_floor: 0.01,
+          error_rate_delta: 0.01,
+          error_rate_factor: 2,
+          minimum_latency_requests: 50,
+          latency_quantile: 0.95,
+          latency_factor: 1.5,
+          latency_delta_ms: 100,
+          comparison_epsilon: 0.0001,
+        },
+        decision: decision('allowed', 'Both windows healthy at 1%; advancing to 10%.'),
+        report,
+      },
+    ],
+  } satisfies S_['RouteHealthHistoryPage'];
 });
 
 route('GET', '/v1/apps/{slug}/upstreams/history', ({ params, query }) => {
@@ -5572,6 +5772,20 @@ route('GET', '/v1/billing/forecast', () => {
     ],
     bill_estimate_available: false,
     missing_bill_components: ['egress_gb', 'tax'],
+  };
+});
+// The dev mock answers JSON for every format; apid serves ZIP/CSV/JSON.
+route('GET', '/v1/billing/focus', ({ query }) => {
+  const month = query.get('month') ?? '';
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month))
+    throw new Problem(400, 'validation_failed', 'month must be YYYY-MM.');
+  return {
+    focus_version: '1.4',
+    dataset: 'invoice_detail',
+    month,
+    partial: true,
+    invoices_included: 1,
+    invoices_excluded_draft_or_void: 0,
   };
 });
 route('POST', '/v1/billing/cancel', () => ({
