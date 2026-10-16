@@ -66,6 +66,11 @@ import { AppConfiguration } from '@/components/dashboard/app-configuration';
 import { InvokePanel, SloPanel } from '@/components/dashboard/app-core-panels';
 import { AppUsagePanel, WakeTimelinePanel } from '@/components/dashboard/app-insights';
 import { AppAnalyticsPanel } from '@/components/dashboard/app-analytics';
+import {
+  AppHealthPanel,
+  AwakeRoutesPanel,
+  DependencyLatencyPanel,
+} from '@/components/dashboard/app-observability';
 import { AppOverview } from '@/components/dashboard/app-overview';
 import { PreviewDiscovery } from '@/components/dashboard/projects/preview-workload-set';
 import { AppHeader } from '@/components/dashboard/app-header';
@@ -516,8 +521,13 @@ function FunctionDetailPage() {
                       </div>
                     )}
                   </Panel>
+                  <AppHealthPanel slug={fn.id} />
                   <SloPanel slug={fn.id} />
                   <AppAnalyticsPanel slug={fn.id} />
+                  <div className="grid gap-4 xl:grid-cols-2">
+                    <AwakeRoutesPanel slug={fn.id} since="7d" />
+                    <DependencyLatencyPanel slug={fn.id} since="24h" />
+                  </div>
                   <WakeTimelinePanel slug={fn.id} />
                   <AppUsagePanel slug={fn.id} />
                 </div>

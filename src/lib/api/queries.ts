@@ -3265,6 +3265,66 @@ export function useAppAnalytics(slug: string, since: string, groupBy: AnalyticsG
   });
 }
 
+/** apid's current health assessment: status, checks, capacity, request signal. */
+export function useAppHealth(slug: string) {
+  return useQuery({
+    queryKey: ['apps', slug, 'health'],
+    queryFn: ({ signal }) =>
+      unwrap(api.GET('/v1/apps/{slug}/health', { params: { path: { slug } }, signal })),
+    enabled: Boolean(slug),
+    retry: retryPolicy,
+    refetchInterval: 30_000,
+  });
+}
+
+/** Recorded health changes and evidence gaps, newest first. */
+export function useAppHealthHistory(slug: string) {
+  return useQuery({
+    queryKey: ['apps', slug, 'health', 'history'],
+    queryFn: ({ signal }) =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/health/history', {
+          params: { path: { slug }, query: { limit: 10 } },
+          signal,
+        })
+      ),
+    enabled: Boolean(slug),
+    retry: retryPolicy,
+  });
+}
+
+/** Which routes keep a scale-to-zero app awake, and what each costs in GB-hours. */
+export function useRouteAwake(slug: string, since: string) {
+  return useQuery({
+    queryKey: ['apps', slug, 'routes', 'awake', since],
+    queryFn: ({ signal }) =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/routes/awake', {
+          params: { path: { slug }, query: { since } },
+          signal,
+        })
+      ),
+    enabled: Boolean(slug),
+    retry: retryPolicy,
+  });
+}
+
+/** Latency and errors per downstream dependency, against a baseline window. */
+export function useDependencyLatency(slug: string, since: string) {
+  return useQuery({
+    queryKey: ['apps', slug, 'debug', 'dependencies', since],
+    queryFn: ({ signal }) =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/debug/dependencies', {
+          params: { path: { slug }, query: { since } },
+          signal,
+        })
+      ),
+    enabled: Boolean(slug),
+    retry: retryPolicy,
+  });
+}
+
 /** Hourly buckets, zero-filled by the API — a real series, so a line is honest. */
 export function useAppAnalyticsTimeseries(
   slug: string,

@@ -2124,6 +2124,207 @@ route('POST', '/v1/apps/{slug}/restore', ({ params }) => {
   return restoreDeleted(deleted);
 });
 
+// --- App observability: health, awake routes, dependency latency ---
+type S_ = components['schemas'];
+function healthFor(a: db.App): S_['AppHealthResponse'] {
+  const scenario = db.scenarioOf(a);
+  const status =
+    scenario === 'failing' ? 'unhealthy' : scenario === 'deploying' ? 'degraded' : 'healthy';
+  const phase = scenario === 'parked' ? 'idle' : scenario === 'deploying' ? 'deploying' : 'serving';
+  const failing = scenario === 'failing';
+  return {
+    app_id: a.id,
+    status,
+    phase,
+    summary: failing
+      ? 'The latest deployment fails readiness; no healthy instance serves traffic.'
+      : scenario === 'parked'
+        ? 'Parked at zero instances; the next request wakes it.'
+        : scenario === 'deploying'
+          ? 'A new release is starting alongside the serving one.'
+          : 'Serving normally.',
+    scope: 'app',
+    evaluated_at: db.iso(30_000),
+    valid_for_seconds: 60,
+    serving_deployment_ids: [],
+    capacity: {
+      known: true,
+      required: scenario === 'parked' ? 0 : 1,
+      ready: failing || scenario === 'parked' ? 0 : 1,
+      starting: scenario === 'deploying' ? 1 : 0,
+      unready: failing ? 1 : 0,
+      unknown: 0,
+    },
+    checks: [
+      {
+        code: 'readiness',
+        status: failing ? 'fail' : 'pass',
+        detail: failing
+          ? 'Readiness probe on :8080/health timed out after 30 s.'
+          : 'Readiness probe passing.',
+        ...(failing ? { action: 'logs' as const } : {}),
+      },
+      {
+        code: 'requests',
+        status: failing ? 'warning' : 'pass',
+        detail: failing
+          ? '7.1% of requests returned 5xx in the last 15 minutes.'
+          : 'Error rate normal.',
+      },
+    ],
+  };
+}
+route('GET', '/v1/apps/{slug}/health', ({ params }) => healthFor(app(params.slug)));
+route('GET', '/v1/apps/{slug}/health/history', ({ params }) => {
+  const a = app(params.slug);
+  const now = healthFor(a);
+  const entries: S_['AppHealthHistoryEntry'][] = [
+    {
+      id: 'h3',
+      kind: 'transition',
+      observed_at: db.iso(40 * 60_000),
+      previous_status: 'healthy',
+      assessment: now,
+    },
+    {
+      id: 'h2',
+      kind: 'gap',
+      observed_at: db.iso(5 * 3600_000),
+      assessment: { ...now, status: 'unknown' },
+    },
+    {
+      id: 'h1',
+      kind: 'baseline',
+      observed_at: db.iso(26 * 3600_000),
+      assessment: { ...now, status: 'healthy' },
+    },
+  ];
+  return {
+    app_id: a.id,
+    scope: 'app',
+    entries: db.scenarioOf(a) === 'healthy' ? entries.slice(1) : entries,
+    collector_fresh: true,
+    interval_seconds: 60,
+  };
+});
+route('GET', '/v1/apps/{slug}/routes/awake', ({ params, query }) => {
+  const a = app(params.slug);
+  const since = query.get('since') ?? '168h';
+  const windowSeconds = since.endsWith('d') ? Number(since.slice(0, -1)) * 86400 : 7 * 86400;
+  const routes = [
+    {
+      method: 'GET',
+      route: '/health',
+      requests: 10_080,
+      share: 0.62,
+      wakes: 2,
+      pattern: 'periodic',
+      interval: 60,
+    },
+    {
+      method: 'POST',
+      route: '/v1/orders',
+      requests: 4_210,
+      share: 0.21,
+      wakes: 31,
+      pattern: 'bursty',
+    },
+    {
+      method: 'GET',
+      route: '/v1/orders/{id}',
+      requests: 9_884,
+      share: 0.12,
+      wakes: 4,
+      pattern: 'steady',
+    },
+  ];
+  const gbPerShare = (a.ram_mb / 1024) * (windowSeconds / 3600);
+  return {
+    slug: a.slug,
+    from: db.iso(windowSeconds * 1000),
+    until: db.iso(0),
+    idle_timeout_seconds: 60,
+    window_seconds: windowSeconds,
+    awake_seconds: Math.round(windowSeconds * 0.95),
+    awake_share: 0.95,
+    mb_seconds: Math.round(a.ram_mb * windowSeconds * 0.95),
+    gb_hours: gbPerShare * 0.95,
+    wakes: 37,
+    unattributed_seconds: 0,
+    other_routes_seconds: 0,
+    routes_limit: 20,
+    routes: routes.map((r) => ({
+      method: r.method,
+      route: r.route,
+      requests: r.requests,
+      wakes: r.wakes,
+      awake_seconds: Math.round(windowSeconds * r.share),
+      awake_share: r.share,
+      gb_hours: gbPerShare * r.share,
+      pattern: r.pattern,
+      ...(r.interval ? { interval_seconds: r.interval } : {}),
+      if_removed: {
+        awake_seconds_saved: Math.round(windowSeconds * r.share * 0.8),
+        gb_hours_saved: gbPerShare * r.share * 0.8,
+        wakes_change: r.pattern === 'periodic' ? 140 : 3,
+      },
+      ...(r.pattern === 'periodic'
+        ? {
+            suggestion: {
+              kind: 'exclude_from_idle',
+              message:
+                'An uptime probe keeps the app awake. Point it at a route your edge answers, or exclude it from the idle timer.',
+            },
+          }
+        : {}),
+    })),
+  };
+});
+route('GET', '/v1/apps/{slug}/debug/dependencies', ({ params, query }) => {
+  const a = app(params.slug);
+  const dep = (
+    type: string,
+    name: string,
+    calls: number,
+    errors: number,
+    p95: number,
+    base: number
+  ): S_['DebugDependencyLatencyItem'] => ({
+    type: type as S_['DebugDependencyLatencyItem']['type'],
+    kind: name.split(' ')[0].replace(/[^a-z0-9]/g, ''),
+    name,
+    calls,
+    error_calls: errors,
+    error_rate_pct: (errors / calls) * 100,
+    p50_ms: Math.round(p95 * 0.4),
+    p95_ms: p95,
+    p99_ms: Math.round(p95 * 1.6),
+    baseline_p95_ms: base,
+    current_p95_ms: p95,
+    p95_delta_ms: p95 - base,
+    regression: p95 > base * 1.5,
+    failure_regression: false,
+  });
+  return {
+    app_id: a.id,
+    since: query.get('since') ?? '24h',
+    window_start: db.iso(86400_000),
+    window_end: db.iso(0),
+    retention_clamped: false,
+    complete: true,
+    truncated: false,
+    telemetry_rows: 4_200,
+    represented_requests: 18_400,
+    span_samples: 9_100,
+    dependencies: [
+      dep('app_dependency', 'postgres orders', 12_400, 3, 412, 140),
+      dep('app_dependency', 'api.stripe.com', 2_100, 12, 380, 360),
+      dep('managed_binding', 'redis sessions', 30_200, 0, 4, 3),
+    ],
+    edges: [],
+  };
+});
+
 route('GET', '/v1/apps/{slug}/upstreams/history', ({ params, query }) => {
   const a = app(params.slug);
   const bucket = query.get('bucket') ?? '5m';
