@@ -6,6 +6,7 @@ import { ScheduledRequestsBody } from '@/components/dashboard/jobs-scheduled';
 import { TriggersBody } from '@/components/dashboard/jobs-triggers';
 import { AutomationsBody } from '@/components/dashboard/automations-body';
 import {
+  jobsSection,
   validateJobsSearch,
   type JobsSearch,
   type JobsSection,
@@ -28,9 +29,13 @@ const sections: { value: JobsSection; label: string }[] = [
 function JobsPage() {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
-  const section = search.section ?? 'workloads';
+  const section = jobsSection(search);
   const onSelection = (patch: Partial<JobsSearch>) => {
-    void navigate({ search: (current) => ({ ...current, ...patch }), hash: true });
+    // Pin the section a legacy link implied, so closing its selection stays put.
+    void navigate({
+      search: (current) => ({ ...current, section: jobsSection(current), ...patch }),
+      hash: true,
+    });
   };
   return (
     <div className="flex flex-col gap-6">

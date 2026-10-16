@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { AutomationsBody } from './automations-body';
@@ -9,6 +9,15 @@ const state = vi.hoisted(() => ({
   read: vi.fn(),
   runtime: false,
   empty: false,
+  toast: vi.fn(),
+  maturity: 'preview' as string | undefined,
+}));
+vi.mock('@/lib/api/capabilities', () => ({
+  useCapability: () => ({
+    capability: state.maturity
+      ? { key: 'workflows-and-jobs', maturity: state.maturity }
+      : undefined,
+  }),
 }));
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children }: { children: ReactNode }) => <a>{children}</a>,
@@ -18,14 +27,29 @@ vi.mock('@/lib/api/queries', () => ({
   useApps: () => ({ data: state.apps, isPending: false, error: null, refetch: vi.fn() }),
 }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn() }));
-vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
+vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: state.toast }) }));
 vi.mock('./automation-editor', async () => {
   const { Modal } = await import('@/components/ui/modal');
   return {
-    AutomationEditor: ({ onClose }: { onClose?: () => void }) =>
+    AutomationEditor: ({
+      onClose,
+      onSaved,
+    }: {
+      onClose?: () => void;
+      onSaved: (next: { name: string }, outcome?: { published?: boolean; error?: string }) => void;
+    }) =>
       onClose ? (
         <Modal open title="New automation" onClose={onClose}>
           <div>Draft editor</div>
+          <button type="button" onClick={() => onSaved({ name: 'reports' }, { published: true })}>
+            Finish publish
+          </button>
+          <button
+            type="button"
+            onClick={() => onSaved({ name: 'reports' }, { error: 'Draft revision 1 was saved.' })}
+          >
+            Finish partially
+          </button>
         </Modal>
       ) : (
         <div>Draft editor</div>
@@ -68,7 +92,7 @@ vi.mock('@/lib/api/automations', () => ({
   },
   useAutomationHealth: () => ({
     data: {
-      run_count: 0,
+      run_count: 4,
       completed_run_count: 0,
       success_rate: 0,
       active_run_count: 0,
@@ -79,12 +103,15 @@ vi.mock('@/lib/api/automations', () => ({
     error: null,
   }),
   useWriteAutomation: () => ({ isPending: false }),
+  useStartAutomationRun: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 beforeEach(() => {
   state.apps = [{ id: 'app-1', slug: 'alpha' }];
   state.runtime = false;
   state.empty = false;
   state.read.mockClear();
+  state.toast.mockClear();
+  state.maturity = 'preview';
 });
 it('keeps authoring discoverable while runtime execution is disabled', () => {
   render(<AutomationsBody search={{ app: 'alpha', automation: 'orders' }} onSelection={vi.fn()} />);
@@ -138,4 +165,74 @@ it('offers an app-scoped first-automation action without an empty search', async
     automationRun: undefined,
     automationNew: true,
   });
+});
+
+it('opens the new automation and reports a create-and-publish outcome', async () => {
+  const onSelection = vi.fn();
+  render(
+    <AutomationsBody search={{ app: 'alpha', automationNew: true }} onSelection={onSelection} />
+  );
+  await userEvent.click(screen.getByRole('button', { name: 'Finish publish' }));
+  expect(state.toast).toHaveBeenLastCalledWith(
+    expect.objectContaining({ kind: 'success', title: 'reports published' })
+  );
+  expect(onSelection).toHaveBeenLastCalledWith({
+    automation: 'reports',
+    automationView: undefined,
+    automationRun: undefined,
+    automationNew: undefined,
+  });
+  await userEvent.click(screen.getByRole('button', { name: 'Finish partially' }));
+  expect(state.toast).toHaveBeenLastCalledWith({
+    kind: 'error',
+    title: 'reports: draft saved',
+    description: 'Draft revision 1 was saved.',
+  });
+});
+
+it('keeps the workspace to a summary and view tabs, with run input collapsed', async () => {
+  state.runtime = true;
+  const onSelection = vi.fn();
+  render(
+    <AutomationsBody search={{ app: 'alpha', automation: 'orders' }} onSelection={onSelection} />
+  );
+  expect(screen.getByText('4 runs in the last 7 days')).toBeInTheDocument();
+  expect(screen.queryByText('Runs · last 7 days')).not.toBeInTheDocument();
+  const tabs = screen.getByRole('tablist', { name: 'Automation views' });
+  expect(within(tabs).getByRole('tab', { name: 'Definition' })).toHaveAttribute(
+    'aria-selected',
+    'true'
+  );
+  expect(screen.getByRole('tabpanel', { name: 'Definition' })).toHaveTextContent('Draft editor');
+  await userEvent.click(within(tabs).getByRole('tab', { name: 'Run history' }));
+  expect(onSelection).toHaveBeenLastCalledWith({ automationView: 'runs' });
+
+  await userEvent.click(screen.getByRole('button', { name: 'Run now' }));
+  const dialog = screen.getByRole('dialog', { name: 'Run orders' });
+  const input = within(dialog)
+    .getByText(/Run input · empty object/)
+    .closest('details')!;
+  expect(input).not.toHaveAttribute('open');
+});
+
+it('shows health tiles with the run history', () => {
+  render(
+    <AutomationsBody
+      search={{ app: 'alpha', automation: 'orders', automationView: 'runs' }}
+      onSelection={vi.fn()}
+    />
+  );
+  expect(screen.getByText('Runs · last 7 days')).toBeInTheDocument();
+  expect(screen.getByRole('tab', { name: 'Run history' })).toHaveAttribute('aria-selected', 'true');
+});
+
+it.each([
+  ['preview', '1 of 10 definitions used · Automations preview'],
+  ['beta', '1 of 10 definitions used · Automations beta'],
+  ['ga', '1 of 10 definitions used'],
+  [undefined, '1 of 10 definitions used'],
+])('labels the automation stage from the capability registry (%s)', (maturity, text) => {
+  state.maturity = maturity;
+  render(<AutomationsBody search={{ app: 'alpha' }} onSelection={vi.fn()} />);
+  expect(screen.getByText(/definitions used/)).toHaveTextContent(new RegExp(`^${text}$`));
 });
