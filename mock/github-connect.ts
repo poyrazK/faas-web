@@ -13,7 +13,7 @@
 export const MOCK_INSTALL_ID = '48213377';
 
 /** Where a connect with no usable return target lands: the Git deploy wizard. */
-export const CONNECT_FALLBACK = '/dashboard/workflows/new?source=git';
+export const CONNECT_FALLBACK = '/dashboard/apps/new?source=git';
 
 /** Where apid sends a connect whose CSRF token did not verify. */
 export const CONNECT_FORBIDDEN = '/dashboard/account?github=connect-forbidden';

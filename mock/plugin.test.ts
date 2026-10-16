@@ -110,7 +110,7 @@ describe('POST /dashboard/install/connect', () => {
       { Referer: 'https://elsewhere.example/x' }
     );
     expect(foreign.headers.get('location')).toBe(
-      '/dashboard/workflows/new?source=git&github=connected&default_branch=main'
+      '/dashboard/apps/new?source=git&github=connected&default_branch=main'
     );
   });
 });
