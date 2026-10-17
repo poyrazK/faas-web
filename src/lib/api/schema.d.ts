@@ -5886,6 +5886,8 @@ export interface paths {
          *     the cookie is `faas_csrf_github_connect` and clients send the
          *     token as a form field in a native browser POST to
          *     `/dashboard/install/connect`, which redirects to GitHub.
+         *     For `bind_app_to_repo`, the cookie is `faas_csrf_github_bind`;
+         *     send the token in the JSON body of `POST /v1/apps/{slug}/install/bind`.
          *     This route remains reachable while the session is `mfa_pending` so the dashboard
          *     can complete MFA enrollment or recovery.
          */
@@ -7135,6 +7137,26 @@ export interface paths {
          * @description Requires account read scope and MFA. Resync_required instructs clients to refresh status when the watermark or event retention is stale. This operator endpoint returns JSON; customer SSE authorization remains separate.
          */
         get: operations["getAccountOperationEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/operations/{id}/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read one chronological history of an operation.
+         * @description Requires account read scope and MFA. Merges operation events, HTTP execution attempts, workflow step attempts and completion delivery attempts by time (ADR-1195). Each source pages after its own position, so pages never skip or repeat a record while the operation runs. Attempt entries are snapshots at read time. HTTP attempts carry an instance log window for the archived log route; workflow step attempts do not. Platform tenants read events instead.
+         */
+        get: operations["getOperationTimeline"];
         put?: never;
         post?: never;
         delete?: never;
@@ -13216,9 +13238,10 @@ export interface paths {
          *     visible to the user's GitHub App installation — githubd
          *     resolves the per-install token from the session's account.
          *
-         *     §11 anti-takeover: the handler re-runs
-         *     githubd.VerifyInstallation with the session's github_login
-         *     as `expected_login` before listing. Mismatch → 403 forged.
+         *     ADR-1345 / §11: the exact installation must be durably connected to
+         *     the session's Gregale account before any GitHub call. A separate
+         *     GitHub sign-in claim is not required. Live installation verification
+         *     and account-scoped repository access checks still apply.
          */
         post: operations["listInstallableRepos"];
         delete?: never;
@@ -13424,10 +13447,11 @@ export interface paths {
          *     writes through to pkg/state.PgStore.UpsertGithubInstallBinding
          *     per PR-B).
          *
-         *     §11 anti-takeover: the handler re-runs
-         *     githubd.VerifyInstallation with the session's github_login
-         *     as `expected_login` before persisting. Mismatch → 403 forged.
-         *     Empty github_login → 403 github_login_required.
+         *     ADR-1345 / §11: the exact installation must be durably connected to
+         *     the session's Gregale account. Requires the named, account-bound
+         *     bind_app_to_repo CSRF proof. A separate GitHub sign-in claim is not
+         *     required. Live installation verification and githubd's current
+         *     repository access check still run before persistence.
          *
          *     On success emits `auth.install.bound` for the audit trail.
          */
@@ -20512,6 +20536,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/apps/{slug}/inbound-webhooks/{id}/operation-binding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Endpoint whose future verified events start a customer operation. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Inspect an endpoint's customer operation binding.
+         * @description Returns the bound operation, owner, event selection and revision.
+         */
+        get: operations["getOperationWebhookBinding"];
+        /**
+         * Route a verified endpoint to a customer operation (ADR-1193).
+         * @description One binding per endpoint, owned by the same app. The platform tenant is
+         *     the operation owner; it must be active and linked to the app through an
+         *     active tenant surface, and it is never derived from provider payload.
+         *     The named operation must exist on the environment's live deployment;
+         *     every event resolves it again and admission pins it. expected_version is
+         *     zero for creation and the returned version for updates.
+         *     take_over_delivery must be true. Automation and managed exclusive
+         *     operation bindings must be removed first. An empty event_types list
+         *     admits every verified event; other types are acknowledged as ignored.
+         */
+        put: operations["putOperationWebhookBinding"];
+        post?: never;
+        /**
+         * Stop starting customer operations from future webhook events.
+         * @description Operations already admitted through the endpoint, and their event receipts, are retained.
+         */
+        delete: operations["deleteOperationWebhookBinding"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/apps/{slug}/inbound-webhooks/{id}/automation-receipts/{event_id}": {
         parameters: {
             query?: never;
@@ -20560,6 +20625,11 @@ export interface paths {
          *     fanout work. Paused, unpublished or type-unmatched events are durably ignored;
          *     content filters are evaluated by the scheduler. Provider retries return the
          *     original receipt; changed content for the same event ID returns 409.
+         *     An operation-bound endpoint (ADR-1193) admits one customer operation per
+         *     provider event, owned by the binding's platform tenant, with input
+         *     {webhook: {endpoint, provider, event_id, event_type}, payload}. Closed
+         *     preview admission or an unavailable operation returns 503 with
+         *     Retry-After so the provider retries.
          */
         post: operations["receiveInboundWebhook"];
         delete?: never;
@@ -25091,6 +25161,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/service-map": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Account service map of caller → target app edges.
+         * @description ADR-1131 internal preview, enabled by `FAAS_SERVICE_MAP_ENABLED=1`;
+         *     otherwise 503 `service_map_unavailable`.
+         *
+         *     Built from the unsampled service-proxy edge series. Both the
+         *     caller and the target are constrained to the account's apps.
+         *     Edges are ranked by call volume and capped at 500
+         *     (`truncated: true`). Latency percentiles cover successful calls
+         *     only. Prometheus failure returns 200 with null `nodes`/`edges`
+         *     and `source: "degraded: <reason>"`, as `/v1/apps/metrics` does.
+         */
+        get: operations["getServiceMap"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/invocations/{id}": {
         parameters: {
             query?: never;
@@ -28505,6 +28603,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/apps/{slug}/operations/{id}/signals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Deliver a named event to an operation that waits for it.
+         * @description Requires deploy:write and MFA (ADR-1197). The event must be one the operation's workflow waits for. signal_id makes delivery idempotent per operation; a repeat with the same event and payload returns the original receipt, a different event or payload under it conflicts. A signal that arrives before its wait is held until the wait starts. Settled operations take no new signals.
+         */
+        post: operations["signalOperation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/operation-signals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Deliver a named event to every active operation about one business subject.
+         * @description Requires deploy:write and MFA (ADR-1197). Reaches at most 16 active operations of the named definition in the scope whose subject matches, oldest first; more is a limit error. Operations that settle during delivery are skipped. Each delivery is idempotent per operation by signal_id.
+         */
+        post: operations["signalOperationsBySubject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/apps/{slug}/operations/{id}/cancel": {
         parameters: {
             query?: never;
@@ -28519,6 +28657,26 @@ export interface paths {
          * @description Requires deploy:write. Expected generation prevents cancelling a recovered execution. Pending work can be cancelled; dispatching work may finish successfully or require reconciliation. A cancellation request does not prove an external effect was undone.
          */
         post: operations["cancelOperation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/operations/{id}/approvals/{step}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decide an account approval on waiting work (ADR-1194).
+         * @description Requires deploy:write and MFA. Only a step whose definition names the account approver. The same decision is idempotent; a different one conflicts. Rejection settles the operation failed with approval_rejected.
+         */
+        post: operations["decideOperationApproval"];
         delete?: never;
         options?: never;
         head?: never;
@@ -28643,6 +28801,26 @@ export interface paths {
          * @description Requires platform_tenant:operations:manage. Only authenticated ownership authorizes cancellation. Expected generation is required. Running side effects can still succeed or need reconciliation.
          */
         post: operations["cancelPlatformTenantSelfOperation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/platform-tenant-self/customer-operations/{id}/approvals/{step}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decide this customer's approval on its waiting operation (ADR-1194).
+         * @description Requires platform_tenant:operations:manage. Only a step whose definition names the customer approver, on the customer's own operation. The same decision is idempotent; a different one conflicts.
+         */
+        post: operations["decidePlatformTenantSelfOperationApproval"];
         delete?: never;
         options?: never;
         head?: never;
@@ -31044,7 +31222,7 @@ export interface components {
             operation_id: string;
             generation: number;
             /** @enum {string} */
-            state: "accepted" | "running" | "succeeded" | "failed" | "cancelled" | "requires_reconciliation";
+            state: "accepted" | "running" | "waiting" | "succeeded" | "failed" | "cancelled" | "requires_reconciliation";
             failure_code?: string;
             cancellation_requested: boolean;
             /** @enum {string} */
@@ -33115,8 +33293,11 @@ export interface components {
             /** @description Opaque application identifier, compared exactly. Maximum 256 UTF-8 bytes; ASCII controls are rejected. Use a public stable ID appropriate for customer-visible history. */
             id: string;
         };
-        /** @description Resolved immutable contract for an HTTP handler or a named linear HTTP workflow from the same deployment. Workflow definitions require POST ingress, reconciliation recovery and stages matching the steps. Ownership comes from verified authentication. Production admission remains disabled pending qualification. */
+        /** @description Resolved immutable contract for an HTTP handler or a named linear workflow from the same deployment. Workflow definitions require POST ingress, reconciliation recovery and stages matching the steps; steps are HTTP actions, fixed timers or declared approvals, ending with an HTTP action. Ownership comes from verified authentication. Production admission remains disabled pending qualification. */
         OperationDefinitionSpec: {
+            /** @description ADR-1194 approvals for a workflow definition. Every wait_for_callback step must be listed and decided by the named approver. */
+            approvals?: components["schemas"]["OperationApprovalSpec"][];
+            limits?: components["schemas"]["OperationLimits"];
             /** @description Declared public milestone names mapped to bundled JSON Schemas. Requires http_transaction_version 1. At most 16 names, with an aggregate 16384 schema bytes. */
             milestones?: {
                 [key: string]: unknown;
@@ -33223,7 +33404,7 @@ export interface components {
             /** Format: uuid */
             operation_id: string;
             /** @enum {string} */
-            business_state: "accepted" | "running" | "succeeded" | "failed" | "cancelled" | "requires_reconciliation";
+            business_state: "accepted" | "running" | "waiting" | "succeeded" | "failed" | "cancelled" | "requires_reconciliation";
             /** Format: date-time */
             operation_expires_at: string;
             /** Format: date-time */
@@ -33268,6 +33449,60 @@ export interface components {
             delivery_id: string;
             attempts: components["schemas"]["OperationDeliveryAttempt"][];
             next_cursor?: string;
+        };
+        /** @description Chronological page merged from operation events, attempts and completion deliveries. */
+        OperationTimelineResponse: {
+            /** Format: uuid */
+            operation_id: string;
+            /** @enum {string} */
+            state: "accepted" | "running" | "succeeded" | "failed" | "cancelled" | "requires_reconciliation";
+            generation: number;
+            entries: components["schemas"]["OperationTimelineEntry"][];
+            /** @description Event history was pruned before the operation; attempts and deliveries remain. */
+            events_expired?: boolean;
+            next_cursor?: string;
+        };
+        /** @description One timeline record; kind selects which of event, attempt or delivery is present. */
+        OperationTimelineEntry: {
+            /** Format: date-time */
+            at: string;
+            /** @enum {string} */
+            kind: "event" | "attempt" | "step_attempt" | "delivery_attempt";
+            event?: components["schemas"]["OperationEvent"];
+            attempt?: components["schemas"]["OperationTimelineAttempt"];
+            delivery?: components["schemas"]["OperationDeliveryAttempt"];
+        };
+        /** @description One HTTP execution or workflow step attempt as read; a running attempt is not re-emitted when it ends. */
+        OperationTimelineAttempt: {
+            /** @description Execution generation of an HTTP attempt. Step attempts omit it because recovery resumes the same workflow run. */
+            generation?: number;
+            /** Format: uuid */
+            execution_id: string;
+            step?: string;
+            attempt: number;
+            /** @enum {string} */
+            outcome: "running" | "succeeded" | "retry" | "failed" | "dead_letter" | "cancelled" | "unknown";
+            http_status?: number;
+            error?: string;
+            /** Format: date-time */
+            started_at: string;
+            /** Format: date-time */
+            finished_at?: string;
+            /** Format: date-time */
+            next_attempt_at?: string;
+            logs?: components["schemas"]["OperationAttemptLogs"];
+        };
+        /** @description Instance log window of an HTTP attempt. Lines other requests wrote on the same instance during the window interleave. */
+        OperationAttemptLogs: {
+            /** Format: uuid */
+            instance_id: string;
+            /** Format: date-time */
+            since: string;
+            /** Format: date-time */
+            until?: string;
+            archive_dates: string[];
+            /** @enum {string} */
+            correlation: "instance_window";
         };
         /** @description Stable retry identity and the observed dead delivery generation; explicit generation zero is valid. */
         OperationDeliveryRetryRequest: {
@@ -33384,6 +33619,79 @@ export interface components {
             /** Format: date-time */
             next_attempt_at?: string;
         };
+        /** @description Declares a workflow callback step as an approval decided by the account or the operation's customer. */
+        OperationApprovalSpec: {
+            step: string;
+            /** @enum {string} */
+            approver: "account" | "customer";
+        };
+        /** @description Why a waiting operation holds no execution. until is the timer's wake time or the approval deadline. */
+        OperationWaitingState: {
+            /** @enum {string} */
+            kind: "timer" | "approval" | "event";
+            step: string;
+            /** Format: date-time */
+            since: string;
+            /** Format: date-time */
+            until?: string;
+            /** @enum {string} */
+            approver?: "account" | "customer";
+            /** @description The event an event wait expects (ADR-1197). */
+            event?: string;
+        };
+        /** @description One named event for an operation (ADR-1197). */
+        OperationSignalRequest: {
+            /** @description Idempotency key for this delivery */
+            signal_id: string;
+            event: string;
+            /** @description JSON delivered as the wait step's output; at most 64 KiB. */
+            payload?: unknown;
+        };
+        /** @description One named event for every active operation of a definition about one business subject (ADR-1197). */
+        OperationSubjectSignalRequest: {
+            scope: string;
+            operation: string;
+            subject: components["schemas"]["OperationSubject"];
+            signal_id: string;
+            event: string;
+            /** @description JSON each reached operation's wait step receives as its output; at most 64 KiB. */
+            payload?: unknown;
+        };
+        /** @description One signal delivery. waiting reports whether the operation was waiting for this event; otherwise the run holds it for a later wait. */
+        OperationSignalReceipt: {
+            /** Format: uuid */
+            operation_id: string;
+            signal_id: string;
+            event: string;
+            duplicate: boolean;
+            waiting: boolean;
+        };
+        /** @description Receipts for the operations a subject signal reached. */
+        OperationSubjectSignalResponse: {
+            delivered: components["schemas"]["OperationSignalReceipt"][];
+        };
+        /** @description One approval decision for the operation's current generation. */
+        OperationApprovalRequest: {
+            expected_generation: number;
+            /** @enum {string} */
+            decision: "approved" | "rejected";
+            /** @description Recorded with the decision in the operation history. */
+            comment?: string;
+        };
+        /** @description ADR-1196 bounds fixed onto each accepted Operation. Every field is optional and bounded by the plan; workflow definitions take only a deadline, and job definitions take none. */
+        OperationLimits: {
+            /** @description Wall clock from acceptance, including waits, retries and recovery. */
+            deadline_seconds?: number;
+            /** @description Automatic attempts of one HTTP execution. */
+            max_attempts?: number;
+            /** @description HTTP attempt runtime summed across generations. */
+            max_execution_seconds?: number;
+        };
+        /** @description What an Operation with limits has consumed. A running attempt is added when it ends. */
+        OperationUsage: {
+            execution_ms: number;
+            attempts: number;
+        };
         /** @description Customer business work; execution recovery and delivery retain independent semantics. */
         OperationResponse: {
             subject?: components["schemas"]["OperationSubject"];
@@ -33392,14 +33700,23 @@ export interface components {
             name: string;
             generation: number;
             /** @enum {string} */
-            state: "accepted" | "running" | "succeeded" | "failed" | "cancelled" | "requires_reconciliation";
+            state: "accepted" | "running" | "waiting" | "succeeded" | "failed" | "cancelled" | "requires_reconciliation";
             progress?: components["schemas"]["OperationProgress"];
             /** @description Pinned-schema-validated business result, when confirmed successful. */
             result?: unknown;
             artifacts?: components["schemas"]["OperationResultArtifact"][];
             completion_delivery: components["schemas"]["OperationDeliveryResponse"];
             cancellation_requested: boolean;
+            /** @description Stable failure reason. deadline_exceeded and budget_exhausted mean the operation's own limits settled it (ADR-1196). */
             failure_code?: string;
+            waiting?: components["schemas"]["OperationWaitingState"];
+            limits?: components["schemas"]["OperationLimits"];
+            /**
+             * Format: date-time
+             * @description Absolute deadline fixed at acceptance; waits, retries and recovery count against it.
+             */
+            deadline_at?: string;
+            usage?: components["schemas"]["OperationUsage"];
             latest_sequence: number;
             /** Format: date-time */
             created_at: string;
@@ -33421,7 +33738,7 @@ export interface components {
             name: string;
             generation: number;
             /** @enum {string} */
-            state: "accepted" | "running" | "succeeded" | "failed" | "cancelled" | "requires_reconciliation";
+            state: "accepted" | "running" | "waiting" | "succeeded" | "failed" | "cancelled" | "requires_reconciliation";
             progress?: components["schemas"]["OperationProgress"];
             completion_delivery: components["schemas"]["OperationDeliverySummary"];
             cancellation_requested: boolean;
@@ -40058,11 +40375,15 @@ export interface components {
          *     the dashboard's bind picker commits. `production_branch` is
          *     optional — when omitted, githubd uses the install's
          *     `default_branch` from `/installations/{id}`.
+         *     Binding requires a `csrf_token` issued for `bind_app_to_repo`
+         *     by `GET /v1/auth/csrf` and its matching HttpOnly cookie.
          */
         InstallBindRequest: {
             /** Format: int64 */
             installation_id: number;
             repo_full_name: string;
+            /** @description Action-bound CSRF token required by the browser bind mutation; not required for repository listing. */
+            csrf_token?: string;
             production_branch?: string;
             /** @description GitHub branch names mapped to deployment environment scopes. An empty object clears existing rules. */
             deploy_branches?: {
@@ -41065,6 +41386,89 @@ export interface components {
          * @enum {string}
          */
         ServiceBindingTransport: "http" | "https";
+        /**
+         * @description Account service map for `GET /v1/service-map` (ADR-1131). `nodes` are
+         *     the apps on at least one returned edge, sorted by slug; `edges` are
+         *     sorted by `calls` descending. Degraded responses carry null `nodes`
+         *     and `edges`.
+         */
+        ServiceMapResponse: {
+            range: string;
+            /** @description "prometheus" or "degraded: <reason>". */
+            source: string;
+            /** Format: date-time */
+            as_of: string;
+            truncated: boolean;
+            nodes: components["schemas"]["ServiceMapNode"][] | null;
+            edges: components["schemas"]["ServiceMapEdge"][] | null;
+        };
+        /** @description One app that appears on at least one service map edge. */
+        ServiceMapNode: {
+            app_id: string;
+            app_slug: string;
+            /** @description The app's opt-in to restore the services it calls while it wakes (ADR-977). */
+            wake_ahead_enabled: boolean;
+        };
+        /**
+         * @description Unsampled calls for one caller → target pair. `errors` are final 5xx
+         *     responses after proxy retries; identity and authorization failures
+         *     are excluded. Latency covers successful calls, including routing,
+         *     wake, and forwarding time. Private TCP sessions on the same pair are
+         *     reported in the `tcp_*` fields; a pair with only TCP traffic has zero
+         *     `calls` and zero latency.
+         */
+        ServiceMapEdge: {
+            caller_app_id: string;
+            caller_app_slug: string;
+            target_app_id: string;
+            target_app_slug: string;
+            /** Format: int64 */
+            calls: number;
+            /** Format: int64 */
+            errors: number;
+            error_rate_pct: number;
+            latency_p50_ms: number;
+            latency_p95_ms: number;
+            /**
+             * Format: int64
+             * @description Calls that found the target parked and waited for it to restore (ADR-196).
+             */
+            cold_calls: number;
+            /** @description `cold_calls` as a percentage of `calls`. */
+            cold_call_pct: number;
+            /**
+             * @description The caller has not opted into wake-ahead (ADR-977) and its calls
+             *     mostly wake the target: at least 20 cold calls in the window,
+             *     making up at least half of the edge's calls. Private TCP sessions
+             *     count as calls (ADR-1134).
+             */
+            suggest_wake_ahead: boolean;
+            /**
+             * Format: int64
+             * @description Wake-aheads (ADR-977) the caller's wakes started for this target in the window.
+             */
+            wake_ahead_started: number;
+            /**
+             * Format: int64
+             * @description Of those, the wake-aheads whose target was called while they were fresh.
+             */
+            wake_ahead_used: number;
+            /**
+             * Format: int64
+             * @description Private TCP sessions (ADR-576) from the caller to the target in the window, excluding identity, authorization and plan session-limit refusals.
+             */
+            tcp_sessions: number;
+            /**
+             * Format: int64
+             * @description Of those, the sessions that failed after authorization (no replica, wake failure, unreachable guest, or an error while connected).
+             */
+            tcp_errors: number;
+            /**
+             * Format: int64
+             * @description Of those, the sessions that found the target parked and waited for it to restore.
+             */
+            tcp_cold_sessions: number;
+        };
         /** @description Caller-owned timeout and retry settings for one declared internal dependency. Omitted numeric fields inherit gateway defaults; max_attempts=1 disables retry. POST/PATCH replay also requires an Idempotency-Key honored by the target. */
         ServiceReliabilityPolicy: {
             timeout_ms?: number;
@@ -43086,7 +43490,7 @@ export interface components {
              */
             target_fallback?: number;
         };
-        /** @description App creation payload: slug, type (app|function), runtime (only for function), RAM MB, max concurrency, idle timeout, and optional manifest. */
+        /** @description App creation payload: slug, type (app|function), runtime (required for function; must be omitted for app), RAM MB, max concurrency, idle timeout, and optional manifest. */
         CreateAppRequest: {
             profiling?: components["schemas"]["ProfilingConfig"];
             tracing?: components["schemas"]["TracingConfig"];
@@ -55309,6 +55713,12 @@ export interface components {
              *     field is populated and the IDs are empty.
              */
             builds?: components["schemas"]["AppliedBuild"][];
+            /**
+             * @description Slugs in apps that this apply did not rebuild: nothing in them
+             *     changed, or --only left them out. apps is the whole project
+             *     membership, so a client compares it with builds plus unchanged.
+             */
+            unchanged?: string[];
         };
         /**
          * @description Per-workload build result from the apply-time build-enqueue loop.
@@ -63877,6 +64287,42 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
+        /** @description Bind a verified provider endpoint to a customer operation with revision control (ADR-1193). */
+        PutOperationWebhookBindingRequest: {
+            /** Format: int64 */
+            expected_version: number;
+            /** @description Environment scope; defaults to default. */
+            scope?: string;
+            /** @description Operation name resolved on the scope's live deployment for each event. */
+            operation: string;
+            /**
+             * Format: uuid
+             * @description Operation owner fixed by this binding.
+             */
+            platform_tenant_id: string;
+            /** @description Exact event types to admit; empty admits every verified event. */
+            event_types?: string[];
+            /** @enum {boolean} */
+            take_over_delivery: true;
+        };
+        /** @description Bound operation, owner, event selection and current endpoint binding revision. */
+        OperationWebhookBindingResponse: {
+            /** Format: uuid */
+            endpoint_id: string;
+            /** Format: uuid */
+            app_id: string;
+            scope: string;
+            operation: string;
+            /** Format: uuid */
+            platform_tenant_id: string;
+            event_types: string[];
+            /** Format: int64 */
+            version: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
         /** @description Durable provider event routing decision and automation admission progress. */
         WebhookAutomationReceiptResponse: {
             /** Format: uuid */
@@ -63898,12 +64344,17 @@ export interface components {
             /** Format: uuid */
             run_id?: string;
         };
-        /** @description Returned only after the verified event has a committed durable invocation row. */
+        /**
+         * @description Returned only after the verified event has a committed durable invocation
+         *     row or, for an operation-bound endpoint, a committed operation and event
+         *     receipt; receipt_id is then the operation ID. ignored means a verified
+         *     event outside the operation binding's event_types created no work.
+         */
         InboundWebhookReceiptResponse: {
             /** Format: uuid */
             receipt_id: string;
             /** @enum {string} */
-            status: "accepted";
+            status: "accepted" | "ignored";
             /** @description True when this endpoint already accepted the same provider event ID. */
             duplicate: boolean;
             /** Format: date-time */
@@ -84821,7 +85272,7 @@ export interface operations {
         parameters: {
             query: {
                 /** @description Exact mutation action the token will authorize. */
-                action: "auth.logout" | "auth.session.revoke" | "auth.sessions.revoke_all" | "mfa_confirm" | "mfa_recover" | "mfa_disable" | "mfa_disable_email" | "mfa_disable_email_confirm" | "set_password" | "connect_github";
+                action: "auth.logout" | "auth.session.revoke" | "auth.sessions.revoke_all" | "mfa_confirm" | "mfa_recover" | "mfa_disable" | "mfa_disable_email" | "mfa_disable_email_confirm" | "set_password" | "connect_github" | "bind_app_to_repo";
             };
             header?: never;
             path?: never;
@@ -87121,6 +87572,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OperationEventsResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["OperationConflict"];
+            410: components["responses"]["OperationGone"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getOperationTimeline: {
+        parameters: {
+            query?: {
+                /** @description Maximum timeline entries in this page. */
+                limit?: number;
+                /** @description Operation-bound continuation cursor from next_cursor. */
+                cursor?: string;
+            };
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Stable logical operation identity. */
+                id: components["parameters"]["OperationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Chronological timeline page with a continuation cursor while records remain. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationTimelineResponse"];
                 };
             };
             400: components["responses"]["ValidationFailed"];
@@ -97492,11 +97981,10 @@ export interface operations {
                 };
             };
             /**
-             * @description `forged` if the install's account.login differs from
-             *     the session's github_login; `github_login_required` if
-             *     the user hasn't completed /v1/auth/github. Returned for
-             *     POST /v1/install/repos/list — the bind picker refuses
-             *     to list repos of an install the user can't prove they own.
+             * @description `github_install_not_owned` if the exact installation is not
+             *     connected to the signed-in Gregale account; `forged` if the
+             *     live GitHub installation verification fails. Unknown and foreign
+             *     installation IDs have the same response.
              */
             403: {
                 headers: {
@@ -97886,11 +98374,12 @@ export interface operations {
                 };
             };
             /**
-             * @description `forged` if the install's account.login differs from
-             *     the session's github_login; `github_login_required` if
-             *     the user hasn't completed /v1/auth/github. Returned for
-             *     POST /v1/apps/{slug}/install/bind — the bind refuses to
-             *     persist a row for an install the user can't prove they own.
+             * @description Repository binding refused. A valid account-bound
+             *     `bind_app_to_repo` CSRF token and named cookie are required.
+             *     `github_install_not_owned` if the exact installation is not
+             *     connected to the signed-in Gregale account; `forged` if the
+             *     live GitHub installation verification fails. Unknown and foreign
+             *     installation IDs have the same response.
              */
             403: {
                 headers: {
@@ -110166,6 +110655,143 @@ export interface operations {
             503: components["responses"]["CapacityUnavailable"];
         };
     };
+    getOperationWebhookBinding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Endpoint whose future verified events start a customer operation. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current operation binding for this endpoint. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationWebhookBindingResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    putOperationWebhookBinding: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description Idempotency key for the POST. Stored for 24h. On replay the server
+                 *     returns the original response with `Idempotent-Replayed: true`.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Endpoint whose future verified events start a customer operation. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** @description Explicit delivery takeover, operation, owner and event selection. */
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutOperationWebhookBindingRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved operation binding with its new revision. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationWebhookBindingResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            /** @description The platform tenant is suspended. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description Binding revision (operation_webhook_binding_conflict) or routing mode conflict (inbound_webhook_routing_conflict). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request body exceeds 4 KiB. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    deleteOperationWebhookBinding: {
+        parameters: {
+            query: {
+                /** @description Current operation binding revision returned by a previous read or update. */
+                expected_version: number;
+            };
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Endpoint whose future verified events start a customer operation. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Operation binding removed; future events use ordinary delivery. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description Binding revision conflict (operation_webhook_binding_conflict). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
     getWebhookAutomationReceipt: {
         parameters: {
             query?: never;
@@ -120687,6 +121313,75 @@ export interface operations {
             429: components["responses"]["TooManyRequests"];
         };
     };
+    getServiceMap: {
+        parameters: {
+            query?: {
+                /** @description Observation window. Default `1h`. */
+                range?: "5m" | "15m" | "1h" | "6h" | "24h" | "7d" | "15d";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The service map. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "range": "1h",
+                     *       "source": "prometheus",
+                     *       "as_of": "2026-10-08T13:00:00Z",
+                     *       "truncated": false,
+                     *       "nodes": [
+                     *         {
+                     *           "app_id": "0f8fad5b-d9cb-469f-a165-70867728950e",
+                     *           "app_slug": "billing",
+                     *           "wake_ahead_enabled": false
+                     *         },
+                     *         {
+                     *           "app_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+                     *           "app_slug": "public-api",
+                     *           "wake_ahead_enabled": false
+                     *         }
+                     *       ],
+                     *       "edges": [
+                     *         {
+                     *           "caller_app_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+                     *           "caller_app_slug": "public-api",
+                     *           "target_app_id": "0f8fad5b-d9cb-469f-a165-70867728950e",
+                     *           "target_app_slug": "billing",
+                     *           "calls": 12040,
+                     *           "errors": 48,
+                     *           "error_rate_pct": 0.4,
+                     *           "latency_p50_ms": 11.2,
+                     *           "latency_p95_ms": 38,
+                     *           "cold_calls": 9030,
+                     *           "cold_call_pct": 75,
+                     *           "suggest_wake_ahead": true,
+                     *           "wake_ahead_started": 0,
+                     *           "wake_ahead_used": 0,
+                     *           "tcp_sessions": 0,
+                     *           "tcp_errors": 0,
+                     *           "tcp_cold_sessions": 0
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ServiceMapResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanPerAppMetricsNotAllowed"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
     getInvocation: {
         parameters: {
             query?: never;
@@ -126768,7 +127463,7 @@ export interface operations {
                 /** @description Operation definition name. */
                 name?: string;
                 /** @description Business state filter. */
-                state?: "accepted" | "running" | "succeeded" | "failed" | "cancelled" | "requires_reconciliation";
+                state?: "accepted" | "running" | "waiting" | "succeeded" | "failed" | "cancelled" | "requires_reconciliation";
                 /** @description Business reference type for this account-owned app. Requires subject_id; supply both selectors together. */
                 subject_type?: string;
                 /** @description Exact public entity identifier within the account app and environment. Requires subject_type. Maximum 256 UTF-8 bytes; ASCII controls are rejected. */
@@ -127395,6 +128090,82 @@ export interface operations {
             503: components["responses"]["ServiceUnavailable"];
         };
     };
+    signalOperation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Stable logical operation identity. */
+                id: components["parameters"]["OperationId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OperationSignalRequest"];
+            };
+        };
+        responses: {
+            /** @description The delivery receipt; duplicate marks a repeat of an earlier signal. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationSignalReceipt"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["OperationConflict"];
+            410: components["responses"]["OperationGone"];
+            413: components["responses"]["PayloadTooLarge"];
+            422: components["responses"]["ValidationFailed"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    signalOperationsBySubject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OperationSubjectSignalRequest"];
+            };
+        };
+        responses: {
+            /** @description One receipt per operation reached. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationSubjectSignalResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["OperationConflict"];
+            410: components["responses"]["OperationGone"];
+            413: components["responses"]["PayloadTooLarge"];
+            422: components["responses"]["ValidationFailed"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
     cancelOperation: {
         parameters: {
             query?: never;
@@ -127433,6 +128204,45 @@ export interface operations {
             503: components["responses"]["ServiceUnavailable"];
         };
     };
+    decideOperationApproval: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Stable logical operation identity. */
+                id: components["parameters"]["OperationId"];
+                /** @description Approval step declared by the operation definition. */
+                step: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OperationApprovalRequest"];
+            };
+        };
+        responses: {
+            /** @description The decision is recorded; the operation resumes or settles approval_rejected. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["OperationConflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
     listPlatformTenantSelfOperations: {
         parameters: {
             query: {
@@ -127447,7 +128257,7 @@ export interface operations {
                 /** @description Exact business reference ID, within the authenticated owner/app/environment. Requires subject_type. Maximum 256 UTF-8 bytes; ASCII controls are rejected. */
                 subject_id?: string;
                 /** @description Current business state filter, independent of delivery. */
-                state?: "accepted" | "running" | "succeeded" | "failed" | "cancelled" | "requires_reconciliation";
+                state?: "accepted" | "running" | "waiting" | "succeeded" | "failed" | "cancelled" | "requires_reconciliation";
                 /** @description Maximum summaries in this page. */
                 limit?: number;
                 /** @description Opaque continuation from the same identity and filters. */
@@ -127672,6 +128482,43 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["OperationConflict"];
             410: components["responses"]["OperationGone"];
+            413: components["responses"]["PayloadTooLarge"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    decidePlatformTenantSelfOperationApproval: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Stable logical operation identity. */
+                id: components["parameters"]["OperationId"];
+                /** @description Approval step that the definition assigns to the customer. */
+                step: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OperationApprovalRequest"];
+            };
+        };
+        responses: {
+            /** @description The customer's decision is recorded; its operation resumes or settles approval_rejected. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["OperationConflict"];
             413: components["responses"]["PayloadTooLarge"];
             429: components["responses"]["TooManyRequests"];
             503: components["responses"]["ServiceUnavailable"];

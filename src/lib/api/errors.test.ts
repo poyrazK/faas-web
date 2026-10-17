@@ -16,6 +16,24 @@ function problemResponse(status: number, body: unknown): Response {
 }
 
 describe('toApiError', () => {
+  it('shows secret finding locations without including credential snippets', () => {
+    const error = new ApiError({
+      code: 'secret_scan_strict',
+      status: 422,
+      title: 'Source contains a possible secret',
+      secret_findings: [
+        {
+          file: 'scripts/smoke.sh',
+          line: 40,
+          provider: 'high_entropy',
+          severity: 'medium',
+          snippet: 'DO_NOT_DISPLAY',
+        },
+      ],
+    });
+    expect(errorMessage(error)).toContain('scripts/smoke.sh:40 (high_entropy)');
+    expect(errorMessage(error)).not.toContain('DO_NOT_DISPLAY');
+  });
   it('reads the stable code out of an RFC 7807 body', async () => {
     const error = await toApiError(
       problemResponse(401, {

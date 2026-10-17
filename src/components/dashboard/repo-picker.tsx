@@ -1,8 +1,10 @@
 import type * as React from 'react';
 import { Select } from '@/components/ui/field';
 import { FIELD } from '@/components/ui/field';
+import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/auth';
 import { useInstallRepos } from '@/lib/api/queries';
+import { ApiError, errorMessage } from '@/lib/api/errors';
 import { cn } from '@/lib/utils';
 
 /**
@@ -32,25 +34,51 @@ export function RepoPicker({
 } & ControlProps) {
   const { account } = useAuth();
   const installId = account?.github_install_id ? Number(account.github_install_id) : null;
-  const repos = useInstallRepos(installId);
+  const repos = useInstallRepos(installId, account?.id);
   const list = repos.data ?? [];
 
   if (!installId || repos.error || (!repos.isPending && list.length === 0)) {
     return (
-      <input
-        {...control}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder="owner/repo"
-        spellCheck={false}
-        className={cn(FIELD, 'font-mono', className)}
-      />
+      <div className="flex flex-col gap-2">
+        <input
+          {...control}
+          aria-label={control.id ? undefined : 'Repository'}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="owner/repo"
+          spellCheck={false}
+          className={cn(FIELD, 'font-mono', className)}
+        />
+        {installId && (
+          <>
+            <p role={repos.error ? 'alert' : 'status'} className="text-xs text-muted-foreground">
+              {repos.error instanceof ApiError && repos.error.code === 'github_login_required'
+                ? 'Refresh your GitHub connection in account settings to load repositories.'
+                : repos.error
+                  ? `Could not load repositories. ${errorMessage(repos.error)}`
+                  : 'GitHub returned no accessible repositories. Check repository access in account settings.'}{' '}
+              You can enter owner/repo manually.
+            </p>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="self-start"
+              busy={repos.isFetching}
+              onClick={() => void repos.refetch()}
+            >
+              Reload repositories
+            </Button>
+          </>
+        )}
+      </div>
     );
   }
 
   return (
     <Select
       {...control}
+      aria-label={control.id ? undefined : 'Repository'}
       value={value}
       disabled={repos.isPending}
       onChange={(e) => {

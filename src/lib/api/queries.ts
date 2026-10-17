@@ -102,9 +102,9 @@ type Options<T> = Omit<UseQueryOptions<T, Error>, 'queryKey' | 'queryFn'>;
 
 /** The repos the GitHub App installation can reach — so pickers can list
  * real repos instead of trusting a typed owner/name. */
-export function useInstallRepos(installationId: number | null) {
+export function useInstallRepos(installationId: number | null, accountId?: string) {
   return useQuery({
-    queryKey: ['install', 'repos', installationId],
+    queryKey: ['install', 'repos', accountId, installationId],
     queryFn: () =>
       unwrap(
         api.POST('/v1/install/repos/list', {
@@ -119,11 +119,13 @@ export function useInstallRepos(installationId: number | null) {
 type BindRepoInput = { installationId: number; repo: string; branch: string };
 
 /** Persist the (account, app, installation, repo, branch) binding. */
-function bindRepo(slug: string, input: BindRepoInput) {
+async function bindRepo(slug: string, input: BindRepoInput) {
+  const csrf_token = await issueCSRF('bind_app_to_repo');
   return unwrap(
     api.POST('/v1/apps/{slug}/install/bind', {
       params: { path: { slug } },
       body: {
+        csrf_token,
         installation_id: input.installationId,
         repo_full_name: input.repo,
         production_branch: input.branch,
@@ -779,6 +781,7 @@ export function useProjectApply() {
       ),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['projects'] });
+      void qc.invalidateQueries({ queryKey: keys.account });
       void qc.invalidateQueries({ queryKey: keys.apps });
       void qc.invalidateQueries({ queryKey: keys.deployments });
       void qc.invalidateQueries({ queryKey: keys.crons });
@@ -1244,7 +1247,10 @@ export function useDeleteApp() {
   return useMutation({
     mutationFn: (slug: string) =>
       unwrap(api.DELETE('/v1/apps/{slug}', { params: { path: { slug } } })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: keys.apps }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.account });
+      void qc.invalidateQueries({ queryKey: keys.apps });
+    },
   });
 }
 

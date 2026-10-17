@@ -26,6 +26,7 @@ const org = (slug: string, name: string, personal: boolean) => ({
 const body = {
   slug: 'team-api',
   type: 'function' as const,
+  runtime: 'node22' as const,
   cpu_millicores: 1000 as const,
   head_wakes: false,
   crawler_policy: 'wake' as const,
@@ -81,7 +82,7 @@ it('names a selected shared workspace, and treats a personal slug as personal', 
   expect(result.current).toEqual({ org: null, label: 'Personal' });
 });
 
-it('refreshes the account list and the workspace inventory after creating in it', async () => {
+it('refreshes quota, the account app list, and the workspace inventory after creation', async () => {
   spyApi('POST').mockResolvedValue({
     data: { id: 'app' },
     response: new Response(null, { status: 201 }),
@@ -90,6 +91,7 @@ it('refreshes the account list and the workspace inventory after creating in it'
   const invalidate = vi.spyOn(client, 'invalidateQueries');
   const { result } = renderHook(() => useCreateWorkspaceApp(), { wrapper: Wrapper });
   await act(() => result.current.mutateAsync({ org: 'acme-corp', body }));
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: ['account'] });
   expect(invalidate).toHaveBeenCalledWith({ queryKey: ['apps'] });
   expect(invalidate).toHaveBeenCalledWith({ queryKey: orgAppsKey('acme-corp') });
 });

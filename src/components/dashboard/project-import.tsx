@@ -216,7 +216,7 @@ export function ProjectImport({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {plan.workloads.map((w) => (
+                    {(plan.workloads ?? []).map((w) => (
                       <tr key={w.name}>
                         <td className="px-4 py-2.5 font-mono text-xs">{w.name}</td>
                         <td className="px-4 py-2.5">
@@ -226,7 +226,7 @@ export function ProjectImport({
                           {w.root_dir || '/'}
                         </td>
                         <td className="px-4 py-2.5 text-xs [font-variant-numeric:tabular-nums]">
-                          {w.ports.length ? w.ports.join(', ') : '—'}
+                          {w.ports?.length ? w.ports.join(', ') : '—'}
                         </td>
                         <td className="px-4 py-2.5 font-mono text-xs">{w.schedule ?? '—'}</td>
                         <td className="px-4 py-2.5 text-xs text-muted-foreground">
@@ -240,7 +240,7 @@ export function ProjectImport({
 
               <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">
                 {plan.observed_apps} of {plan.limit_apps} apps
-                {plan.crons.length > 0 && (
+                {(plan.crons?.length ?? 0) > 0 && (
                   <>
                     {' · '}
                     {plan.observed_crons} of {plan.limit_crons} crons
@@ -261,13 +261,13 @@ export function ProjectImport({
               </p>
             </Panel>
 
-            {(plan.managed.length > 0 || (plan.warnings?.length ?? 0) > 0) && (
+            {((plan.managed?.length ?? 0) > 0 || (plan.warnings?.length ?? 0) > 0) && (
               <Panel
                 title="Not provisioned"
                 description="Services the repo declares that the platform will not create — wire them via the env hints."
               >
                 <ul className="flex flex-col gap-2">
-                  {plan.managed.map((m) => (
+                  {plan.managed?.map((m) => (
                     <li
                       key={m.name}
                       className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm"

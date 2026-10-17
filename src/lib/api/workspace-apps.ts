@@ -68,6 +68,7 @@ export function useCreateWorkspaceApp() {
     mutationFn: ({ org, body }: { org: string | null; body: CreateAppRequest }) =>
       createWorkspaceApp(org, body),
     onSuccess: (_app, { org }) => {
+      void qc.invalidateQueries({ queryKey: keys.account });
       void qc.invalidateQueries({ queryKey: keys.apps });
       if (org) void qc.invalidateQueries({ queryKey: orgAppsKey(org) });
     },

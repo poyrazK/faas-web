@@ -486,9 +486,8 @@ function CreateAppWizard({
       // status after the API returns the actual deployment id.
       const created = await addWorkflow({
         name,
-        runtime,
         memoryMb: selectedMemoryMb,
-        type: appType,
+        ...(appType === 'function' ? { type: 'function', runtime } : { type: 'app' }),
         visibility,
         org: workspace.org,
       });
@@ -1096,24 +1095,26 @@ function CreateAppWizard({
                   </span>
                 </div>
 
-                <div className="flex flex-col gap-1.5">
-                  <label htmlFor={`${uid}-runtime`} className={LABEL}>
-                    Runtime
-                  </label>
-                  <Select
-                    id={`${uid}-runtime`}
-                    name="runtime"
-                    value={runtime}
-                    onChange={(e) => setRuntime(e.target.value as Runtime)}
-                    className={CONTROL}
-                  >
-                    {RUNTIMES.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.label}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
+                {appType === 'function' && (
+                  <div className="flex flex-col gap-1.5">
+                    <label htmlFor={`${uid}-runtime`} className={LABEL}>
+                      Runtime
+                    </label>
+                    <Select
+                      id={`${uid}-runtime`}
+                      name="runtime"
+                      value={runtime}
+                      onChange={(e) => setRuntime(e.target.value as Runtime)}
+                      className={CONTROL}
+                    >
+                      {RUNTIMES.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                )}
 
                 <div className="flex flex-col gap-1.5">
                   <label htmlFor={`${uid}-visibility`} className={LABEL}>
@@ -1236,7 +1237,7 @@ function CreateAppWizard({
                       ? `${repo}@${normalizedRef}, right after create`
                       : 'Later, from the CLI',
                   ],
-                  ['Runtime', runtime],
+                  ...(appType === 'function' ? [['Runtime', runtime]] : []),
                   [
                     'Visibility',
                     visibility === 'internal' ? 'Internal service only' : 'Public edge',

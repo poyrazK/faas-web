@@ -819,16 +819,19 @@ function FunctionDetailPage() {
               {deploySubmissionError}
             </p>
           )}
-          <label className="flex flex-col gap-1.5">
-            <span className="label-mono text-muted-foreground">Repository</span>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="deploy-git-repository" className="label-mono text-muted-foreground">
+              Repository
+            </label>
             <RepoPicker
+              id="deploy-git-repository"
               value={deployRepo}
               onChange={(repo, defaultBranch) => {
                 setDeployRepo(repo);
                 if (defaultBranch) setDeployRef(defaultBranch);
               }}
             />
-          </label>
+          </div>
           <label className="flex flex-col gap-1.5">
             <span className="label-mono text-muted-foreground">Ref</span>
             <input

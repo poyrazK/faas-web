@@ -123,9 +123,48 @@ describe('toWorkflow', () => {
     expect(toWorkflow(app(), undefined, deployment()).state).toBe('running');
   });
 
+  it.each([
+    ['failed', 'error'],
+    ['cancelled', 'error'],
+    ['building', 'deploying'],
+    ['imaging', 'deploying'],
+    ['unknown', 'undeployed'],
+  ])('does not report Running for a first deployment that is %s', (status, state) => {
+    const workflow = toWorkflow(
+      app({ deployment_availability: 'no_live_deployment' }),
+      undefined,
+      deployment({ status })
+    );
+    expect(workflow.state).toBe(state);
+  });
+
+  it('keeps an existing live release serving after a newer deployment fails', () => {
+    expect(
+      toWorkflow(
+        app({ deployment_availability: 'live' }),
+        undefined,
+        deployment({ status: 'failed' })
+      ).state
+    ).toBe('running');
+  });
+
   it('falls back to the app type when there is no runtime', () => {
     expect(toWorkflow(app({ type: 'app', runtime: undefined })).runtime).toBe('app');
   });
+
+  it.each(['node22', 'python312', 'go124'] as const)(
+    'keeps legacy container Apps classified as App when runtime is %s',
+    (runtime) => {
+      expect(toWorkflow(app({ type: 'app', runtime })).runtime).toBe('app');
+    }
+  );
+
+  it.each(['node22', 'python312', 'go124'] as const)(
+    'preserves the managed runtime %s for a Function',
+    (runtime) => {
+      expect(toWorkflow(app({ type: 'function', runtime })).runtime).toBe(runtime);
+    }
+  );
 
   it('preserves internal visibility so app views do not advertise a public endpoint', () => {
     expect(toWorkflow(app({ visibility: 'internal' })).visibility).toBe('internal');
