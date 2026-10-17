@@ -2112,6 +2112,71 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/consumer-billing/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The app whose consumer key authenticates the request. */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read your own month-to-date usage and spend with your consumer key (ADR-1506).
+         * @description For an app's customers, not operators. Authenticate with a consumer
+         *     key that carries the billing scope. The amount is priced like the
+         *     next statement, but late usage can still change it.
+         */
+        get: operations["getConsumerBillingSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/consumer-billing/{slug}/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The app whose usage is read. */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        /** Read your own daily usage with your consumer key. */
+        get: operations["getConsumerBillingUsage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/consumer-billing/{slug}/statements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The app whose statements are read. */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        /** Read your own finalized statements and invoice status with your consumer key. */
+        get: operations["listConsumerBillingStatements"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/preflight": {
         parameters: {
             query?: never;
@@ -4295,6 +4360,8 @@ export interface paths {
          *     replacement_acceptance or unavailable independently of content status.
          *     Returned receipts describe the currently observed acceptance even on mismatch.
          *     Only expected_accepted_at is accepted as a query parameter; use the status read for consumer evidence.
+         *     An optional expected_app_id in the body returns 409 before comparison if
+         *     the resolved application UUID differs.
          */
         post: operations["verifyAppEventPublication"];
         delete?: never;
@@ -4365,6 +4432,8 @@ export interface paths {
          *     become eligible for pruning after 30 days; holds can extend this window.
          *     After pruning the same key may be accepted again. App renames preserve
          *     identity; replacement apps have a new UUID and a new key namespace.
+         *     Optional expected_app_id must match the resolved canonical app UUID;
+         *     mismatches return 409 before accepting any publication.
          *     No request-wide Idempotency-Key middleware is used. Retry uncertain outcomes
          *     with the same app, key and content. Acceptance does not mean delivery success.
          */
@@ -6961,6 +7030,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/account/platform-tenant-plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the account's tenant plans by name (ADR-1307). */
+        get: operations["listPlatformTenantPlans"];
+        put?: never;
+        /**
+         * Create a reusable tenant plan of rate card terms and a request budget.
+         * @description An account keeps at most 100 tenant plans. A plan changes no tenant until it is assigned.
+         */
+        post: operations["createPlatformTenantPlan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/account/platform-tenant-plans/{plan_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant plan to read or replace. */
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        /** Read one tenant plan. */
+        get: operations["getPlatformTenantPlan"];
+        /**
+         * Replace a tenant plan's name and terms.
+         * @description Tenants already on the plan keep their rate card and budget until the plan is assigned to them again.
+         */
+        put: operations["updatePlatformTenantPlan"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/account/platform-tenants/{id}/plan-assignments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant whose plan is assigned or listed. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** List a tenant's plan assignments, newest first. */
+        get: operations["listPlatformTenantPlanAssignments"];
+        put?: never;
+        /**
+         * Move a tenant onto a plan from the next minute (ADR-1307).
+         * @description Creates the tenant's rate card version from the plan's terms,
+         *     effective the next UTC minute, and sets the plan's request budget at
+         *     once when the plan has one. The tenant's existing currency must match
+         *     the plan's.
+         */
+        post: operations["assignPlatformTenantPlan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/account/platform-tenants/{id}/usage": {
         parameters: {
             query?: never;
@@ -7096,6 +7237,184 @@ export interface paths {
          */
         post: operations["claimPlatformTenantStatement"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/account/platform-tenants/{id}/usage-statements/{statement_id}/invoice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Platform tenant whose statement is exported. */
+                id: string;
+                /** @description Finalized cross-app statement revision to export. */
+                statement_id: string;
+            };
+            cookie?: never;
+        };
+        /** Read the platform tenant statement's invoice export. */
+        get: operations["getPlatformTenantStatementInvoice"];
+        put?: never;
+        /**
+         * Export a finalized platform tenant statement as an invoice in Stripe, Paddle or Lago.
+         * @description Exports one finalized platform tenant statement revision to the
+         *     provider in the body (default stripe; connect it with
+         *     PUT /v1/account/billing-connections/{provider}), ADR-1502 and ADR-1507.
+         *     Stripe gets a draft invoice and Paddle a draft manually collected
+         *     transaction; neither is finalized or sent. Lago issues a one-off
+         *     invoice at once, without charging it. Items are one per rate card and
+         *     unit price plus a rounding item, so the invoice equals the statement
+         *     total rounded to the cent; Paddle and Lago receive one summary item
+         *     when a line is negative. On success the statement's handoff records
+         *     the provider invoice ID. Retrying after a failure resumes the same
+         *     invoice; repeating a completed export returns it. A statement exports
+         *     to one provider only. Two-decimal currencies only; Paddle allows USD,
+         *     EUR and GBP.
+         */
+        post: operations["exportPlatformTenantStatementInvoice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/account/billing-connections/{provider}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Billing provider statements export to (ADR-1507). */
+                provider: components["schemas"]["BillingProvider"];
+            };
+            cookie?: never;
+        };
+        /** Describe the account's key for one billing provider. */
+        get: operations["getBillingConnection"];
+        /**
+         * Store or replace the account's key for one billing provider.
+         * @description Checks the key against the provider, then seals it at rest. Stripe
+         *     takes a restricted key (rk_live_… or rk_test_…) with read and write
+         *     access to invoices and invoice items; Paddle an API key
+         *     (pdl_live_apikey_… or pdl_sdbx_apikey_…) with transaction access; Lago
+         *     an API key and, for the EU region or a self-hosted Lago, api_url. Only
+         *     the last four characters, the mode and the Lago API URL are ever
+         *     returned.
+         */
+        put: operations["putBillingConnection"];
+        post?: never;
+        /** Remove the account's key for one billing provider. */
+        delete: operations["deleteBillingConnection"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/account/statement-invoices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List invoices exported from usage statements, with their payment status (ADR-1504). */
+        get: operations["listStatementInvoices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/account/billing-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the account's month-end billing runs, newest first. */
+        get: operations["listBillingRuns"];
+        put?: never;
+        /**
+         * Bill one ended month for every customer (ADR-1503).
+         * @description Starts a background run for one UTC calendar month that ended at least
+         *     an hour ago. For every app consumer and platform tenant with billable
+         *     usage, it drafts the month's statement, holds consumers whose ledger
+         *     misses requests telemetry saw (`hold_on_gaps`), finalizes it, and with
+         *     `export` set to stripe, paddle or lago exports each statement to that provider. Usage attributed to a
+         *     platform tenant is billed on the tenant's statement. One run per
+         *     account can be queued or running at a time.
+         */
+        post: operations["createBillingRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/account/billing-runs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Billing run ID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** Get a billing run and how many customers reached each outcome. */
+        get: operations["getBillingRun"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/account/billing-runs/{id}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Billing run whose customers are listed. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** List what a billing run did for each customer. */
+        get: operations["listBillingRunItems"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/account/billing-run-schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the account's monthly billing run schedule. */
+        get: operations["getBillingRunSchedule"];
+        /**
+         * Start a billing run automatically after each month ends.
+         * @description A new schedule starts with the current month: its run starts
+         *     `delay_hours` after the month ends. Replacing a schedule keeps its
+         *     next month. If a run is already in progress, the scheduled run
+         *     starts once it completes.
+         */
+        put: operations["putBillingRunSchedule"];
+        post?: never;
+        /** Stop scheduled billing runs; a run already started continues. */
+        delete: operations["deleteBillingRunSchedule"];
         options?: never;
         head?: never;
         patch?: never;
@@ -9166,6 +9485,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/apps/{slug}/consumers/{consumer_id}/usage-statements/{statement_id}/invoice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Consumer whose statement is exported. */
+                consumer_id: string;
+                /** @description Finalized statement revision to export. */
+                statement_id: string;
+            };
+            cookie?: never;
+        };
+        /** Read the app consumer statement's invoice export. */
+        get: operations["getAPIConsumerUsageStatementInvoice"];
+        put?: never;
+        /**
+         * Export a finalized app consumer statement as an invoice in Stripe, Paddle or Lago.
+         * @description Exports one finalized app consumer statement revision to the
+         *     provider in the body (default stripe; connect it with
+         *     PUT /v1/account/billing-connections/{provider}), ADR-1502 and ADR-1507.
+         *     Stripe and Paddle receive drafts that Gregale never finalizes or
+         *     sends; Lago issues its one-off invoice immediately but never charges
+         *     it. One item per rate card and unit price, plus a rounding item, makes
+         *     the invoice equal the statement total rounded to the cent; with a
+         *     negative line, Paddle and Lago get a single summary item instead. The
+         *     statement's handoff records the provider invoice ID on success. A retry
+         *     resumes the same invoice, a completed export is returned as is, and a
+         *     statement exports to one provider only. Two-decimal currencies only;
+         *     Paddle takes USD, EUR and GBP.
+         */
+        post: operations["exportAPIConsumerUsageStatementInvoice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/apps/{slug}/rate-cards": {
         parameters: {
             query?: never;
@@ -9263,6 +9621,172 @@ export interface paths {
          * @description The assignment takes effect from effective_from (default the next minute; never in the past) and requires the target plan to have a rate card in force then. Statements price each minute with the plan in force; monthly allowances and tiers keep counting across the change. An empty plan_id returns the consumer to the default plan.
          */
         post: operations["assignAPIConsumerPlan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/consumers/{consumer_id}/credits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Consumer whose prepaid credit is listed or granted. */
+                consumer_id: string;
+            };
+            cookie?: never;
+        };
+        /** List a consumer's prepaid credit grants, newest first, with the usable balance per currency (ADR-1306). */
+        get: operations["listAPIConsumerCredits"];
+        put?: never;
+        /**
+         * Grant a consumer prepaid credit.
+         * @description Finalized statements in the credit's currency draw it down, the grant
+         *     that expires first before grants that never expire, in the same
+         *     transaction that finalizes them (ADR-1306). Credit never pays more
+         *     than a statement's amount. A consumer holds at most 100 grants with
+         *     credit left.
+         */
+        post: operations["createAPIConsumerCredit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/consumers/{consumer_id}/credits/{credit_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Consumer that holds the credit. */
+                consumer_id: string;
+                /** @description Credit grant to void. */
+                credit_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Void what is left of a prepaid credit grant; credit already applied stays applied. */
+        delete: operations["voidAPIConsumerCredit"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/consumers/{consumer_id}/spend-cap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Consumer whose monthly spend is capped. */
+                consumer_id: string;
+            };
+            cookie?: never;
+        };
+        /** Read a consumer's monthly spend cap and its last check. */
+        get: operations["getAPIConsumerSpendCap"];
+        /**
+         * Set a consumer's monthly spend cap (ADR-1306).
+         * @description Once the month's amount due passes the cap, the gateway answers the
+         *     consumer with 402 `consumer_spend_cap_reached` until the month ends,
+         *     the cap rises or credit is added. The amount due is the month to
+         *     date priced like a statement, minus usable prepaid credit. apid
+         *     checks it every minute and at once when the cap or credit changes,
+         *     so a consumer can overshoot by about two minutes of traffic. A zero
+         *     cap allows prepaid usage only.
+         */
+        put: operations["putAPIConsumerSpendCap"];
+        post?: never;
+        /** Remove a consumer's spend cap. */
+        delete: operations["deleteAPIConsumerSpendCap"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/consumers/{consumer_id}/trial": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Consumer whose free trial is read or changed. */
+                consumer_id: string;
+            };
+            cookie?: never;
+        };
+        /** Read a consumer's free trial (ADR-1314). */
+        get: operations["getAPIConsumerTrial"];
+        /**
+         * Start a consumer's one free trial, or move the end of a running one.
+         * @description Usage in the trial is priced at zero and consumes no included units.
+         *     A new trial starts at the next UTC minute; a running trial's end can
+         *     move, never before the next minute. A consumer whose trial has ended
+         *     cannot get another (409).
+         */
+        put: operations["putAPIConsumerTrial"];
+        post?: never;
+        /** End a consumer's running trial at the next minute. */
+        delete: operations["endAPIConsumerTrial"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/consumer-billing-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /** Read the app's overdue-invoice rule (ADR-1315). */
+        get: operations["getAPIConsumerBillingPolicy"];
+        /**
+         * Refuse consumers whose exported invoice is unpaid some days after its due date.
+         * @description Every 5 minutes apid places a hold on each consumer whose exported
+         *     invoice is open or uncollectible with an amount left at least
+         *     block_overdue_after_days past its due date, and lifts holds that no
+         *     longer apply. The gateway answers a held consumer with 402
+         *     `consumer_invoice_overdue`.
+         */
+        put: operations["putAPIConsumerBillingPolicy"];
+        post?: never;
+        /** Remove the app's overdue rule; holds lift at the next check. */
+        delete: operations["deleteAPIConsumerBillingPolicy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/consumer-overdue-holds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /** List the consumers the gateway refuses because of an overdue invoice. */
+        get: operations["listAPIConsumerOverdueHolds"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -10178,7 +10702,7 @@ export interface paths {
          *     Overage computation: `overage_gb_hours = max(0, gb_hours -
          *     plan_included_gb_hours)`. The included band is echoed from
          *     `acct.Plan.PlanIncludedGBHours()`; the overage figure is the
-         *     integer-rounded float the Stripe pusher bills at €0.01/GB-h.
+         *     integer-rounded float the Stripe pusher bills at $0.01/GB-h.
          *
          *     Source: `usage_minutes` today (after the 30d retention cap).
          *     `usage_daily` / `mixed` land with the trail-period reader
@@ -10550,6 +11074,80 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/apps/{slug}/issue-lifecycle-alert-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read native new-issue and regression alert filters.
+         * @description Unconfigured apps return revision zero, all environments and zero cooldown.
+         */
+        get: operations["getIssueLifecycleAlertPolicy"];
+        /**
+         * Replace native new-issue and regression alert filters.
+         * @description Requires deploy-write and session MFA. Empty environments means all exact environments. The cooldown is shared across created/regressed native Slack alerts per canonical issue, across channels and teams. Zero disables throttling. Only queue admission consumes it; missing routes, capacity failures and previews do not. Edits preserve receipts and affect future events only; queued messages are unchanged. Merge uses the latest member receipt. No events are replayed. Lifecycle audit webhooks, impact/frequency alerts, reminders and tracker notifications retain their independent policies. Stale revisions return 409.
+         */
+        put: operations["setIssueLifecycleAlertPolicy"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/issue-lifecycle-alert-policy/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview a draft lifecycle alert filter without sending.
+         * @description Requires app read access and Issues entitlement. Evaluates the supplied draft's environment filter and shared cooldown for a hypothetical created/regressed event, resolving merged aliases. Reads one database snapshot and returns the saved policy revision at that snapshot. Does not save, reserve cooldown, mutate lifecycle or contact Slack. Allowed means this policy permits the event; actual delivery separately applies native event subscription, ignore/response state, eligible routing, capacity and sender gates.
+         */
+        post: operations["previewIssueLifecycleAlert"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/issue-frequency-alert-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /** Read application issue event-frequency rules. */
+        get: operations["getIssueFrequencyAlertPolicy"];
+        /**
+         * Replace application issue event-frequency rules.
+         * @description Requires the current revision (zero initially). Replaces up to ten named rules; an empty array removes all rules. Stale writes return 409. Counts retained accepted occurrences per canonical issue in (now-window, now]. Only a new capture inside the window evaluates a rule. At or above threshold, the first eligible capture after cooldown alerts again. Active ignore periods suppress alerts while collection continues. Configuration edits do not send notifications. Changing a rule's environment, threshold, window or cooldown starts a fresh cycle on the next capture; unchanged rules and disable/re-enable retain cooldowns. Webhook event is issue.frequency_threshold_reached. This policy does not alter customer-impact alerts.
+         */
+        put: operations["setIssueFrequencyAlertPolicy"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/apps/{slug}/issue-impact-alert-policy": {
         parameters: {
             query?: never;
@@ -10598,6 +11196,408 @@ export interface paths {
          */
         put: operations["setIssueOwnershipRules"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/deployments/{deployment_id}/issue-source-maps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Deployment UUID whose source-map publication is being managed. */
+                deployment_id: string;
+            };
+            cookie?: never;
+        };
+        /** Inspect deployment source-map readiness without downloading mapping artifacts. */
+        get: operations["getIssueSourceMaps"];
+        /**
+         * Publish immutable deployment-local source-map artifacts.
+         * @description Requires deploy-write permission and session MFA. Source contents and extensions are discarded. Matching canonical manifests are idempotent; a different manifest for the deployment conflicts, including after retirement.
+         */
+        put: operations["publishIssueSourceMaps"];
+        post?: never;
+        /**
+         * Retire mapping blobs while preserving their immutable deployment identity.
+         * @description Requires deploy-write permission and session MFA. New symbolicated captures require the same manifest to be restored; retained exact event retries remain idempotent.
+         */
+        delete: operations["retireIssueSourceMaps"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/issue-saved-views": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /** List the app's shared named issue inbox filters. */
+        get: operations["listIssueSavedViews"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/issue-saved-views/{view_key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Stable key of the shared issue query to read, replace or delete. */
+                view_key: string;
+            };
+            cookie?: never;
+        };
+        /** Read the latest shared view definition. */
+        get: operations["getIssueSavedView"];
+        /**
+         * Save or replace a shared named issue inbox view.
+         * @description Requires deploy-write permission and session MFA. Existing keys replace their definition; new keys consume the 20-view app quota. Filters are bounded known fields, not executable queries. UUID assignees must be currently eligible app owners or active organization members. Views confer no additional read permission.
+         */
+        put: operations["putIssueSavedView"];
+        post?: never;
+        /**
+         * Delete a shared view without changing any issues.
+         * @description Requires deploy-write permission and session MFA.
+         */
+        delete: operations["deleteIssueSavedView"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/issue-teams": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /** List app-scoped teams and their members. */
+        get: operations["listIssueTeams"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/issue-teams/{team_key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Stable application team key used to manage its identity and membership. */
+                team_key: string;
+            };
+            cookie?: never;
+        };
+        /** Get a team by its stable key. */
+        get: operations["getIssueTeam"];
+        /**
+         * Create or replace a team name and complete membership roster.
+         * @description Membership grants no app access. Members must already be eligible app owners or active organization members. Mutations require deploy-write permission and session MFA. Teams referenced by issue assignments or routing rules cannot be deleted.
+         */
+        put: operations["putIssueTeam"];
+        post?: never;
+        /**
+         * Delete an unused team.
+         * @description Deletes the unused application team after checking that no issue assignments or routing rules reference it. Requires deploy-write permission and session MFA.
+         */
+        delete: operations["deleteIssueTeam"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/issue-release-comparison": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Compare observed release request health and issue signals over the last 24 hours.
+         * @description Request counts expand telemetry row weights and span all traffic for each deployment. Issue signals use the selected environment. These are independent retained observations, not complete traffic, crash-free sessions, or a controlled experiment. Unknown request rates and deltas are null.
+         */
+        get: operations["compareIssueReleases"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/issues/{issue_id}/native-tickets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Original Gregale issue identity retained across creation retries. */
+                issue_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create or recover a GitHub ticket through the owned app connection.
+         * @description Requires Issues entitlement, deploy-write and session MFA. Pins the owned installation and bound repository identity. Retains a server receipt before dispatch; reusing request_id with different inputs or binding is refused. An unconfirmed dispatch can only recover a marker-verified existing ticket after the 15-second dispatch window. A created result means the ticket exists and attachment must be retried with identical inputs. At most 100 receipts are retained per original issue. Installation Issues write permission is required; credentials remain server-side.
+         */
+        post: operations["createNativeIssueTicket"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/issues/{issue_id}/tracker-links/{link_id}/native-linear-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Gregale issue identity whose current group contains the Linear reference. */
+                issue_id: string;
+                /** @description Stored Linear reference selected for explicit lifecycle synchronization. */
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Preview a linked Linear lifecycle using the stored owner connection.
+         * @description Requires app read access and the app owner with Issues entitlement and deploy eligibility. Verifies the stored workspace/viewer/team and linked ticket identity. Returns status plus connection revision and group fingerprint for an explicit push. Archived and canceled or unfamiliar provider states require manual triage. No credentials are returned.
+         */
+        get: operations["getNativeLinearIssueTrackerStatus"];
+        put?: never;
+        /**
+         * Explicitly push the Gregale lifecycle to its linked Linear ticket.
+         * @description Requires the app owner with Issues entitlement and deploy-write and session MFA. desired_state must match the current open/resolved Gregale lifecycle. Sends a known provider snapshot and preview connection revision/group fingerprint. A changing lifecycle additionally requires an explicit active same-team workflow state UUID of the matching type. Rechecks scope before dispatch and after the provider response. Aligned lifecycles remain unchanged. A provider write already dispatched cannot be recalled and the two systems do not share an atomic transaction.
+         */
+        post: operations["updateNativeLinearIssueTrackerStatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/issues/{issue_id}/native-linear-tickets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Original Gregale issue identity whose current group receives the confirmed Linear reference. */
+                issue_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create or recover a Linear ticket using the owner's stored team connection.
+         * @description Requires the app owner with Issues entitlement and deploy-write and session MFA. Verifies the stored workspace/viewer/team before dispatch. request_id must be UUID v4 and is used as the provider issue ID. A durable receipt fences concurrent dispatch and preserves uncertain outcomes. Retry identical inputs to finish attachment; after an uncertain create use recover=true to query the stable UUID without needing a URL. Same-identity credential replacement preserves recovery. Changed identity or inputs conflict. Responses never include credentials. A provider write already dispatched cannot be recalled by disconnect.
+         */
+        post: operations["createNativeLinearIssueTicket"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/issue-tracker-linear-connection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read the app owner's Linear connection metadata.
+         * @description Requires app read access and the app owner. Returns only non-secret identity and revision. Unconfigured apps return disconnected with revision zero. Inspection remains available after an Issues plan downgrade.
+         */
+        get: operations["getIssueTrackerLinearConnection"];
+        /**
+         * Connect or disconnect an owner-scoped Linear personal API key.
+         * @description Requires the app owner with deploy-write and session MFA. Connecting additionally requires Issues entitlement and an account eligible to deploy. Verifies workspace and viewer and active team before sealing credentials. expected_revision fences competing changes. Disconnect erases credentials without provider access and remains available after a plan downgrade. This does not enable automatic sync or perform provider writes.
+         */
+        put: operations["updateIssueTrackerLinearConnection"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/issues/{issue_id}/tracker-links/{link_id}/auto-sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Gregale issue identity whose current group contains the automatic sync reference. */
+                issue_id: string;
+                /** @description Stored GitHub or Linear reference whose automatic sync policy is inspected or configured. */
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read an automatic native tracker lifecycle policy.
+         * @description Requires app read access and Issues entitlement. Unconfigured references return disabled with revision zero. Conflicts and blocked outcomes pause the worker until an owner explicitly re-enables an aligned policy.
+         */
+        get: operations["getIssueTrackerAutoSync"];
+        /**
+         * Enable or disable future Gregale-to-tracker lifecycle pushes.
+         * @description Requires the app owner, Issues entitlement, deploy-write and session MFA. expected_revision fences competing policy changes. Enabling requires either expected_status for GitHub or expected_linear_status plus distinct linear_open_state_id and linear_resolved_state_id for Linear, and expected_issue_state; the lifecycles must already match. Verifies active Linear workflows in the connected team. Pins the canonical group and owned repository binding or Linear connection revision. The background worker preserves uncertain pending writes and pauses on provider edits or unsupported states or changed groups/connections. Disabling does not require live provider access. Linear pending writes with an unconfirmed outcome are observed without redispatch; explicitly align and re-enable to resume. A provider write already dispatched during disable cannot be recalled.
+         */
+        put: operations["updateIssueTrackerAutoSync"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/issues/{issue_id}/tracker-links/{link_id}/native-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Gregale issue identity whose canonical group owns the tracker reference. */
+                issue_id: string;
+                /** @description Tracker reference identity to read or synchronize through the native connection. */
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read a linked GitHub issue through the app owner's native installation.
+         * @description Requires Issues entitlement and app read access. Verifies the caller-owned installation, pinned bound repository identity, current repository visibility and issue-group reference membership. GitHub installation credentials stay server-side. Linear native connections are unsupported.
+         */
+        get: operations["getNativeIssueTrackerStatus"];
+        put?: never;
+        /**
+         * Push the current Gregale lifecycle through the native GitHub connection.
+         * @description Requires deploy-write and session MFA. desired_state must match the current canonical Gregale issue. expected must be the observed linked GitHub status. Rechecks reference membership, installation ownership, repository identity and visibility before using server credentials. Refuses changed snapshots and unsupported states. Separate APIs cannot provide an atomic cross-provider transaction; preview again after uncertain outcomes.
+         */
+        post: operations["updateNativeIssueTrackerStatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/issues/{issue_id}/tracker-links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Issue group UUID that owns the external tracker references. */
+                issue_id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * List GitHub and Linear references across this canonical issue group.
+         * @description Links remain attached to original issue identities through merges and splits. Returns at most 50 references per page; cursors are bound to the app and canonical issue.
+         */
+        get: operations["listIssueTrackerLinks"];
+        put?: never;
+        /**
+         * Attach an existing tracker issue or update its display title.
+         * @description Requires deploy-write and session MFA. Canonicalizes public GitHub issue and Linear URLs; ignores tracking queries, fragments and Linear title slugs. An existing group reference is reused. New references are capped at 20 per canonical group; existing references survive merges above that limit. Records actor activity. No provider request, ticket creation, access verification or status synchronization occurs.
+         */
+        post: operations["putIssueTrackerLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/issues/{issue_id}/tracker-links/{link_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Issue group UUID whose selected tracker reference will be removed. */
+                issue_id: string;
+                /** @description Stored tracker-reference UUID to detach from the selected issue group. */
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a tracker reference from this issue group.
+         * @description Requires deploy-write and session MFA. Records unlink activity; the provider ticket is unchanged.
+         */
+        delete: operations["deleteIssueTrackerLink"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/issues/bulk-actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Atomically assign, resolve, ignore, or reopen selected issue groups.
+         * @description Requires deploy-write permission and session MFA. Up to 50 distinct issue UUIDs; merged aliases are acted on once and return one canonical issue. Any missing issue or invalid action rolls back the entire batch. Regrouping is excluded. Supports the standard Idempotency-Key header.
+         */
+        post: operations["bulkActOnIssues"];
         delete?: never;
         options?: never;
         head?: never;
@@ -16645,6 +17645,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/apps/{slug}/automations/{name}/tests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation whose reusable test suite is replaced or cleared. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Save or clear reusable test data using the current draft version. */
+        put: operations["saveAutomationTestSuite"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/automations/{name}/tests/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation whose saved test cases are simulated. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Simulate all saved cases against the saved draft and retain safe results. */
+        post: operations["runAutomationTests"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/apps/{slug}/automations/{name}/publish-check": {
         parameters: {
             query?: never;
@@ -18060,9 +19104,12 @@ export interface paths {
         put?: never;
         /**
          * Bulk-create triggers from a gregale.yaml fragment.
-         * @description Dashboard-only shortcut — fires a `triggers:` fragment at the
-         *     server, validates via the same path the CLI uses, and returns
-         *     per-row ids and any per-row RFC 7807 codes.
+         * @description Fires a `triggers:` and `event_triggers:` fragment at the server,
+         *     validates via the same path the CLI uses, and returns per-row ids
+         *     and any per-row RFC 7807 codes. Event triggers for the target app
+         *     are applied the way a source deploy applies them (ADR-1342):
+         *     existing subscriptions are kept, and a failure is one `errors`
+         *     row after its changes are rolled back.
          */
         post: operations["batchCreateTriggers"];
         delete?: never;
@@ -24199,6 +25246,146 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/apps/{slug}/event-subscriptions/{subscriptionID}/delivery-control/deadlines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List pending deliveries by effective deadline.
+         * @description Read-only deadline triage for retained captured pending application recipients of one owned subscription, without payloads. Orders by effective deadline, acceptance time and internal receipt ID ascending; this does not guarantee delivery order. Optional deadline_from is inclusive and deadline_before exclusive. Expired/upcoming filters compare to the first page window_at, which also bounds acceptance time. Each page has a fresh observation and live routing state, so expired flags and waiting reasons use observed_at. Cursor is scoped to account, application, subscription, normalized filters and page size, expires after 15 minutes, and is navigational metadata rather than authorization. Membership and deadlines can change between pages; newly captured or replayed work can appear, disappear, move or be skipped. This is not a frozen snapshot, reservation or deadline-safety certificate. No effective deadline means exclusion. Reads have fixed time budgets; timeout returns no partial page.
+         */
+        get: operations["listEventSubscriptionDeadlines"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/event-subscriptions/{subscriptionID}/delivery-control/deadline-window": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Count upcoming delivery deadlines and observed waiting reasons.
+         * @description Read-only, payload-free full pending summary and deadline cohorts from one Repeatable Read snapshot. Upcoming deadlines are strictly after summary.observed_at and strictly before window_end_at. Already-expired recipients are separate in summary.already_expired_count. Each cohort has an exact partition of observed backlog waiting reasons, including zero keys. Counts have no sample cap and include only retained captured pending application recipients with effective deadlines; processing, future arrivals and recipients without deadlines are excluded from cohorts. Waiting reasons are observations, not unique causes or execution guarantees. Fixed request and statement budgets apply; timeout returns no partial counts. Require summary.complete before interpreting coverage or recovery. This does not predict admissions, change state, reserve capacity or extend deadlines.
+         */
+        get: operations["getEventSubscriptionDeadlineWindow"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/event-subscriptions/{subscriptionID}/delivery-control/pending-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read complete consumer pending counts and effective deadlines.
+         * @description Read-only, payload-free counts and earliest effective deadline across all retained captured pending application recipients for this subscription. One Repeatable Read snapshot includes current controls. Processing work, future arrivals and publications awaiting recipient capture are excluded. No sample cap; request and statement budgets bound scan time. Timeout returns 504 without partial counts. Incomplete or absent evidence is unknown, never zero or a successful recovery. Counts do not model future admission or guarantee deadline safety.
+         */
+        get: operations["getEventSubscriptionPendingSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/event-subscriptions/{subscriptionID}/delivery-control/rate-limit/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview consumer pacing and delivery deadline risk.
+         * @description Read-only advisory preview of proposed interval/burst settings from one owned subscription snapshot. Requires read scope. Returns the reviewed bucket revision for a subsequent guarded command, without allocating a command ID or receipt, consuming tokens, claiming work or reserving capacity. Models the oldest 1000 captured pending recipients in acceptance order, with current scheduled times and the legacy per-second cap. This models admission rather than completion and does not promise scheduler ordering. Pause, circuit, lease and capacity constraints can delay actual admission without bound; inspect constraints and completeness. Deadline-risk identities are limited to 100.
+         */
+        post: operations["previewEventSubscriptionRateLimit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/event-subscriptions/{subscriptionID}/delivery-control/rate-limit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Configure rate bucket.
+         * @description Configure rate bucket: Durable per-subscription pacing shared by admission workers. Mutations require deploy:write or admin and return an applied or rejected receipt; revision mismatch is a recorded rejection with no configuration change. Repeating an unexpired command UUID with identical inputs returns its original receipt. Reads require read scope. Existing pause, circuit, per-second drain caps, attempts and delivery deadlines remain in force. Capacity observations reserve nothing.
+         */
+        put: operations["setEventSubscriptionRateLimit"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/event-subscriptions/{subscriptionID}/delivery-control/rate-limit/commands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List rate history.
+         * @description List rate history: Durable per-subscription pacing shared by admission workers. Mutations require deploy:write or admin and return an applied or rejected receipt; revision mismatch is a recorded rejection with no configuration change. Repeating an unexpired command UUID with identical inputs returns its original receipt. Reads require read scope. Existing pause, circuit, per-second drain caps, attempts and delivery deadlines remain in force. Capacity observations reserve nothing.
+         */
+        get: operations["listEventSubscriptionRateCommands"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/event-subscriptions/{subscriptionID}/delivery-control/rate-limit/commands/{commandID}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Look up rate command.
+         * @description Look up rate command: Durable per-subscription pacing shared by admission workers. Mutations require deploy:write or admin and return an applied or rejected receipt; revision mismatch is a recorded rejection with no configuration change. Repeating an unexpired command UUID with identical inputs returns its original receipt. Reads require read scope. Existing pause, circuit, per-second drain caps, attempts and delivery deadlines remain in force. Capacity observations reserve nothing.
+         */
+        get: operations["getEventSubscriptionRateCommand"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/apps/{slug}/event-subscriptions/{subscriptionID}/delivery-control/capacity": {
         parameters: {
             query?: never;
@@ -26969,6 +28156,22 @@ export interface paths {
          *     operator fat-fingering. Optional `?reason=<slug>` defaults
          *     to `operator_force_park`; values are clamped to the
          *     `[a-z0-9_]{1,64}` shape.
+         *
+         *     ADR-1524: requires an MFA-verified operator session with step-up in
+         *     the last five minutes, admin scope, the operator allowlist and same
+         *     origin. Bearer keys do not satisfy step-up. Requires one
+         *     Idempotency-Key (1-255 visible ASCII characters), an empty body,
+         *     exactly one confirm=true and at most one reason; other query
+         *     parameters are rejected. The key is scoped to the actor across all
+         *     three recovery routes. Intent, exact 202 response and attributed
+         *     request audit handoff commit atomically. Matching retries return
+         *     the original response before reading mutable target state, without
+         *     expiry; changed action, target or reason returns 409
+         *     operator_submission_conflict. Trace changes do not change identity.
+         *     An existing legacy recovery cache/reservation returns 409
+         *     operator_submission_legacy and requires reconciliation. Notification
+         *     after acceptance is best effort; the scheduler safety tick recovers
+         *     a lost notification.
          */
         post: operations["postForceParkInstance"];
         delete?: never;
@@ -27008,6 +28211,22 @@ export interface paths {
          *
          *     Requires `?confirm=true` as a tripwire. Optional
          *     `?reason=<slug>` defaults to `operator_force_cold_boot`.
+         *
+         *     ADR-1524: requires an MFA-verified operator session with step-up in
+         *     the last five minutes, admin scope, the operator allowlist and same
+         *     origin. Bearer keys do not satisfy step-up. Requires one
+         *     Idempotency-Key (1-255 visible ASCII characters), an empty body,
+         *     exactly one confirm=true and at most one reason; other query
+         *     parameters are rejected. The key is scoped to the actor across all
+         *     three recovery routes. Intent, exact 202 response and attributed
+         *     request audit handoff commit atomically. Matching retries return
+         *     the original response before reading mutable target state, without
+         *     expiry; changed action, target or reason returns 409
+         *     operator_submission_conflict. Trace changes do not change identity.
+         *     An existing legacy recovery cache/reservation returns 409
+         *     operator_submission_legacy and requires reconciliation. Notification
+         *     after acceptance is best effort; the scheduler safety tick recovers
+         *     a lost notification.
          */
         post: operations["postForceColdBootApp"];
         delete?: never;
@@ -27064,6 +28283,22 @@ export interface paths {
          *     operator fat-fingering. Optional `?reason=<slug>` defaults
          *     to `operator_force_restart`; values are clamped to the
          *     `[a-z0-9_]{1,64}` shape.
+         *
+         *     ADR-1524: requires an MFA-verified operator session with step-up in
+         *     the last five minutes, admin scope, the operator allowlist and same
+         *     origin. Bearer keys do not satisfy step-up. Requires one
+         *     Idempotency-Key (1-255 visible ASCII characters), an empty body,
+         *     exactly one confirm=true and at most one reason; other query
+         *     parameters are rejected. The key is scoped to the actor across all
+         *     three recovery routes. Intent, exact 202 response and attributed
+         *     request audit handoff commit atomically. Matching retries return
+         *     the original response before reading mutable target state, without
+         *     expiry; changed action, target or reason returns 409
+         *     operator_submission_conflict. Trace changes do not change identity.
+         *     An existing legacy recovery cache/reservation returns 409
+         *     operator_submission_legacy and requires reconciliation. Notification
+         *     after acceptance is best effort; the scheduler safety tick recovers
+         *     a lost notification.
          */
         post: operations["postForceRestartInstance"];
         delete?: never;
@@ -29854,6 +31089,344 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/apps/{slug}/automations/{name}/live-baselines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation whose baseline catalog is being listed. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Discover named baseline heads and current retained evidence health.
+         * @description Read-only coherent snapshot, sorted by baseline name and bounded by the 20-name quota. Requires app read scope. Never runs workflows, checks assertions, repairs evidence or promotes. Evidence availability and renewal readiness are separate observations, not CI gate verdicts: historical baseline targets and baseline age remain allowed by CI. Renewal evaluates original run age and the current target against each promoted policy.
+         */
+        get: operations["listAutomationLiveBaselines"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/automations/{name}/live-baselines/{baseline}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation whose current baseline receipt is being read. */
+                name: string;
+                /** @description Baseline name whose current promotion receipt is requested. */
+                baseline: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read the current named automation baseline promotion receipt.
+         * @description Read-only; requires app read scope. Records the exact suite, revision, actor, promotion time and reviewed coverage/age policy.
+         */
+        get: operations["getAutomationLiveBaseline"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/automations/{name}/live-baselines/{baseline}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation whose baseline audit history is being read. */
+                name: string;
+                /** @description Baseline name whose immutable promotion and retirement history is requested. */
+                baseline: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read the last 100 promotions for a named automation baseline.
+         * @description Newest revision first. History is immutable until bounded retention or automation deletion. Requires app read scope.
+         */
+        get: operations["getAutomationLiveBaselineHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/automations/{name}/live-baselines/{baseline}/promotions/{promotion_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation whose passing suite is being promoted. */
+                name: string;
+                /** @description Release track to promote within this automation; execution routing is unchanged. */
+                baseline: string;
+                /** @description Stable caller-selected UUID. Retry uncertain requests only with the original ID and identical semantic request. */
+                promotion_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Deliberately promote passing retained evidence to a named baseline.
+         * @description Requires deploy write scope. Atomically checks the explicit current target and version 2 required-case/evidence-age policy, compares expected_revision, appends an attributed receipt and changes the head. expected_revision 0 creates. An identical retained promotion ID replays its original receipt without moving the head or rechecking. Never executes or checks assertions. At most 20 active and 100 lifetime names per automation, with 100 receipts per name; active current suite groups are pinned within the existing suite limit, while linked run retention still applies. Retired names cannot be reused; original promotion retries return historical receipts without reactivation.
+         */
+        put: operations["promoteAutomationLiveBaseline"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/automations/{name}/live-baselines/{baseline}/retirements/{retirement_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation whose named baseline is being retired. */
+                name: string;
+                /** @description Baseline name to retire permanently within this automation. */
+                baseline: string;
+                /** @description Stable caller-selected retirement UUID; preserve this ID and expected revision for uncertain retries. */
+                retirement_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Permanently retire a named baseline and release its evidence pin.
+         * @description Requires deploy write scope and verified email. Atomically compares the positive expected revision and records the authenticated actor. Retirement permanently reserves the name, frees an active-name slot and releases its suite pin for normal retention; no evidence is immediately deleted. Promotion history remains available. Exact retries return the original retirement receipt. Old promotion retries never reactivate the name. At most 20 active and 100 lifetime names per automation.
+         */
+        put: operations["retireAutomationLiveBaseline"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/automations/{name}/live-suites/{suite_id}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Saved automation whose managed suite is being started. */
+                name: string;
+                /** @description Fresh UUIDv7 for creation; reuse the original ID for start recovery. */
+                suite_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a durable live suite with explicit real-action confirmation.
+         * @description Creates an immutable ordered selection and admits its first case atomically with the saved run link. Retry this same suite ID and body after a lost response. A retained start replay only reads progress; it never advances later cases. New IDs must be UUIDv7 generated within the last ten minutes. Existing metadata-only suites cannot be taken over.
+         */
+        post: operations["startAutomationLiveSuite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/automations/{name}/live-suites/{suite_id}/advance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Saved automation whose managed suite is being continued. */
+                name: string;
+                /** @description Original retained managed suite ID; missing records are never recreated. */
+                suite_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check retained results and admit at most one next case of a managed suite.
+         * @description Requires explicit real-action confirmation on every call. Checks earlier original run IDs and stops on failed, unavailable, outdated or nonterminal results. The next admission and its immutable link commit together. Never recreates missing suites, replaces runs, resumes workflows or cancels them. Repeat while pending to observe execution; reopening history is read-only.
+         */
+        post: operations["advanceAutomationLiveSuite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/automations/{name}/live-suites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Saved automation whose shared verification suites are accessed. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        /** List recent shared suite identities without executing or checking workflows. */
+        get: operations["listAutomationLiveSuites"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/automations/{name}/live-suites/{suite_id}/compare/{baseline_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation owning both retained suites. */
+                name: string;
+                /** @description Candidate suite UUID; direction is baseline to candidate. */
+                suite_id: string;
+                /** @description Baseline suite UUID within the same app and automation. */
+                baseline_id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Compare recorded results in one read-only snapshot without executing or checking runs.
+         * @description Cases match by name and require equal frozen definition/input/assertion hashes for regression or recovery classification. Historical target drift alone does not invalidate a report. Pending, missing, unchecked and stale reports are unknown. Added and removed refer to the suite selection. No release approval or CI gate is implied.
+         */
+        get: operations["compareAutomationLiveSuites"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/automations/{name}/live-suites/{suite_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation owning the retained shared suite record. */
+                name: string;
+                /** @description Stable caller-selected suite UUID. Retry the same immutable selection and ID to attach progress. */
+                suite_id: string;
+            };
+            cookie?: never;
+        };
+        /** Read current retained suite results in a consistent database snapshot. */
+        get: operations["getAutomationLiveSuite"];
+        /** Save a frozen suite selection and monotonically attach existing run IDs; never execute workflows. */
+        put: operations["saveAutomationLiveSuite"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/automations/{name}/live-verifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation whose recent live verification history is requested. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        /** List recent live verifications and the current published deployment target. */
+        get: operations["listAutomationLiveVerifications"];
+        put?: never;
+        /** Explicitly execute one saved case input with atomic target fences and idempotency. */
+        post: operations["startAutomationLiveVerification"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/automations/{name}/live-verifications/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation containing the retained live verification to read. */
+                name: string;
+                /** @description Specific workflow run whose live provenance is requested. */
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        /** Read one verification without starting a run or evaluating live assertions. */
+        get: operations["getAutomationLiveVerification"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/automations/{name}/live-verifications/{run_id}/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation whose frozen live assertions will be checked. */
+                name: string;
+                /** @description Retained live run whose terminal outcomes will be evaluated. */
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Check terminal run outcomes against frozen live assertions and retain a safe summary. */
+        post: operations["checkAutomationLiveVerification"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{slug}/environments/{environment}/release-sets/verification-runs/{run}/diagnostics": {
         parameters: {
             query?: never;
@@ -30445,6 +32018,170 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/apps/{slug}/event-subscriptions/{subscriptionID}/acknowledgment-history/pages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Page through retained acknowledgment outcome groups.
+         * @description Requires apps:read or admin. Orders immutable first occurrence and identity fields descending so renewals cannot move groups between pages. A fixed first-page cutoff excludes later-created groups. Counts and last_at remain live; deletion, retention and initially uncommitted inserts prevent a database snapshot guarantee. Filters select groups by first_at, not individual occurrences. Repeat all filters and the page size with the cursor. Cursors expire one hour after the cutoff and grant no authority. The existing acknowledgment-history operation keeps its latest-update ordering.
+         */
+        get: operations["listEventAcknowledgmentHistoryPage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/event-subscriptions/{subscriptionID}/acknowledgment-history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Inspect retained deferred acknowledgment outcomes.
+         * @description Requires apps:read or admin. Returns the 100 most recently updated outcome groups for this consumer, optionally restricted to one delivery. Repeated operations coalesce per attempt and kind; occurrences saturates at 2147483647. Retention ends seven days after the attempt deadline, or earlier when the invocation is deleted. Invalid and replaced tokens produce no history. This is diagnostic coverage since rollout, not a complete audit log or a rate denominator.
+         */
+        get: operations["listEventAcknowledgmentHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/event-subscriptions/{subscriptionID}/acknowledgment-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Inspect future delivery acknowledgment policy.
+         * @description Requires apps:read or admin. Tokens are never returned by inspection. Policies affect future acceptances and explicit backfills only. Zero preserves HTTP-success acknowledgment; 1–300 seconds enables a deferred lease after HTTP 202.
+         */
+        get: operations["getEventAcknowledgmentPolicy"];
+        /**
+         * Configure future delivery acknowledgment policy.
+         * @description Requires deploy:write or admin. Writes remain app-scoped; delivery callbacks additionally require the opaque token. Never log tokens. Policies affect future acceptances and explicit backfills only. Zero preserves HTTP-success acknowledgment; 1–300 seconds enables a deferred lease after HTTP 202.
+         */
+        put: operations["setEventAcknowledgmentPolicy"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/event-deliveries/{invocationID}/acknowledgment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Inspect retained delivery processing state.
+         * @description Requires apps:read or admin. Tokens are never returned by inspection. Processing state distinguishes waiting, delivering, processing, expired and terminal invocation states. It does not prove business effects outside the consumer transaction.
+         */
+        get: operations["getEventAcknowledgment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/event-deliveries/{invocationID}/acknowledgment/renew": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Renew a deferred delivery processing lease.
+         * @description Requires deploy:write or admin. Writes remain app-scoped; delivery callbacks additionally require the opaque token. Never log tokens. Renewal requires an unexpired awaiting lease and cannot exceed the one-hour attempt deadline. A 409 during the 202 handoff may be retried with the same token.
+         */
+        post: operations["renewEventAcknowledgment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/event-deliveries/{invocationID}/acknowledgment/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Complete a deferred delivery attempt.
+         * @description Requires deploy:write or admin. Writes remain app-scoped; delivery callbacks additionally require the opaque token. Never log tokens. Complete only after durable business processing. Matching successful repeats return the saved completion state. Replaced attempts and changed results return 409. Completion can precede the scheduler observing 202.
+         */
+        post: operations["completeEventAcknowledgment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/event-deliveries/{invocationID}/acknowledgment/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry a deferred delivery attempt.
+         * @description Requires deploy:write or admin and the current delivery token. Atomically releases the claim and quota and schedules the captured backoff; an exhausted captured attempt budget dead-letters instead. Matching repeats return the saved disposition until the attempt or replay generation is replaced. Changed reason or action returns 409. May precede the scheduler observing 202. Reason is a bounded non-sensitive code. Does not undo consumer effects.
+         */
+        post: operations["retryEventAcknowledgment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/event-deliveries/{invocationID}/acknowledgment/dead-letter": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dead-letter a deferred delivery attempt.
+         * @description Requires deploy:write or admin and the current delivery token. Atomically releases the claim and quota and dead-letters this delivery independently of other consumers. Matching repeats return the saved disposition until replacement; changed reason or action returns 409. May precede the scheduler observing 202. Reason is a bounded non-sensitive code. Does not undo consumer effects.
+         */
+        post: operations["deadLetterEventAcknowledgment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -30594,6 +32331,180 @@ export interface components {
         /** @description Bounded newest-first inventory of saved migrations for the authenticated creator. */
         ProjectMigrationList: {
             migrations: components["schemas"]["ProjectMigration"][];
+        };
+        /** @description Acceptance-time deferred acknowledgment configuration for an application subscription. */
+        EventAcknowledgmentPolicy: {
+            /**
+             * Format: uuid
+             * @description Subscription whose future acceptance policy is configured.
+             */
+            subscription_id: string;
+            /** @description Zero uses ordinary HTTP success; positive values enable deferred HTTP 202 processing. */
+            lease_seconds: number;
+        };
+        /** @description Explicit replacement of a subscription policy for future acceptances. */
+        EventAcknowledgmentPolicyRequest: {
+            /** @description Requested processing lease duration; zero disables deferred acknowledgment for future acceptances. */
+            lease_seconds: number;
+        };
+        /** @description App-authorized negative acknowledgment for the current live attempt; repeat exactly after an uncertain response. */
+        EventAcknowledgmentFailureRequest: {
+            /** @description Secret attempt token; never log it or put it in a URL. */
+            token: string;
+            /** @description Non-sensitive failure code; no payloads or credentials. */
+            reason: string;
+        };
+        /** @description App-authorized callback fenced by the current opaque delivery token. */
+        EventAcknowledgmentRequest: {
+            /** @description Secret attempt token from the authenticated internal delivery; never log or persist in diagnostic artifacts. */
+            token: string;
+            /** @description Optional JSON completion result up to one MiB; omitted means null and renewal forbids this field. */
+            result?: unknown;
+        };
+        /** @description Payload-free coalesced outcome for one deferred delivery attempt. */
+        EventAcknowledgmentOutcome: {
+            /**
+             * Format: uuid
+             * @description Delivery whose attempt produced this outcome.
+             */
+            invocation_id: string;
+            /** @description Fenced invocation attempt number. */
+            attempt: number;
+            /**
+             * Format: int64
+             * @description Replay generation fenced by this outcome.
+             */
+            replay_generation: number;
+            /**
+             * @description Deferred acknowledgment operation or scheduler expiry outcome.
+             * @enum {string}
+             */
+            kind: "accepted" | "renewed" | "renewal_rejected" | "completed" | "expired" | "retry_requested" | "dead_letter_requested";
+            /**
+             * Format: date-time
+             * @description Database time of the first retained occurrence.
+             */
+            first_at: string;
+            /**
+             * Format: date-time
+             * @description Database time of the latest retained occurrence.
+             */
+            last_at: string;
+            /**
+             * Format: int64
+             * @description Coalesced count saturating at the documented maximum.
+             */
+            occurrences: number;
+            /**
+             * Format: date-time
+             * @description Fixed history expiry anchored to the attempt deadline.
+             */
+            retain_until: string;
+        };
+        /** @description Scope-bound page options selecting coalesced groups by first occurrence. */
+        EventAcknowledgmentHistoryQuery: {
+            /**
+             * Format: uuid
+             * @description Delivery filter shared by every continuation request.
+             */
+            invocation_id?: string;
+            /**
+             * @description Outcome kind shared by the page traversal.
+             * @enum {string}
+             */
+            kind?: "accepted" | "renewed" | "renewal_rejected" | "completed" | "expired" | "retry_requested" | "dead_letter_requested";
+            /**
+             * Format: date-time
+             * @description Inclusive first_at bound for the traversal.
+             */
+            from?: string;
+            /**
+             * Format: date-time
+             * @description Exclusive first_at bound for the traversal.
+             */
+            until?: string;
+            /**
+             * @description Page size included in the cursor scope binding.
+             * @default 100
+             */
+            limit?: number;
+            /** @description Previous page continuation retaining its initial cutoff. */
+            cursor?: string;
+        };
+        /** @description Bounded page of coalesced outcomes ordered by immutable group identity. */
+        EventAcknowledgmentHistoryPage: {
+            /** @description Groups ordered by first_at, invocation UUID, attempt, generation and kind descending. */
+            outcomes: components["schemas"]["EventAcknowledgmentOutcome"][];
+            /** @description Another retained matching group existed in this read. */
+            has_more: boolean;
+            /** @description Continuation emitted only when has_more is true. */
+            next_cursor?: string;
+            /**
+             * Format: date-time
+             * @description Fixed initial read time excluding groups with later first occurrences.
+             */
+            cutoff: string;
+            /**
+             * @description Retained diagnostic groups with live aggregate values and no historical snapshot guarantee.
+             * @enum {string}
+             */
+            coverage: "retained_coalesced_deferred_outcomes";
+        };
+        /** @description Most recently updated retained outcome groups for a scoped consumer. */
+        EventAcknowledgmentHistory: {
+            /** @description Outcome groups ordered by latest occurrence descending with stable tie breakers. */
+            outcomes: components["schemas"]["EventAcknowledgmentOutcome"][];
+            /** @description More retained outcome groups existed at the read snapshot. */
+            truncated: boolean;
+            /**
+             * @description Diagnostic retained invocation coverage since the ledger rollout.
+             * @enum {string}
+             */
+            coverage: "retained_coalesced_deferred_outcomes";
+        };
+        /** @description Retained invocation and processing lease observation without secret token material. */
+        EventAcknowledgmentStatus: {
+            /**
+             * @description Requested negative acknowledgment action; retry may exhaust its captured budget and dead-letter.
+             * @enum {string}
+             */
+            disposition?: "retry" | "dead-letter";
+            /** @description Non-sensitive reason code retained for this attempt. */
+            failure_reason?: string;
+            /**
+             * Format: date-time
+             * @description Saved retry due time; absent for a terminal disposition.
+             */
+            next_attempt_at?: string;
+            /**
+             * Format: uuid
+             * @description Durable invocation receiving the deferred processing callback.
+             */
+            invocation_id: string;
+            /** @description Current execution claim number for this processing observation; zero follows an in-place replay reset. */
+            attempt: number;
+            /**
+             * Format: int64
+             * @description Current in-place replay generation fencing old delivery attempts.
+             */
+            replay_generation: number;
+            /** @description Underlying durable invocation lifecycle state. */
+            state: string;
+            /**
+             * @description Processing phase derived from the retained claim and current database clock.
+             * @enum {string}
+             */
+            processing_state: "waiting" | "delivering" | "processing" | "expired" | "completed" | "failed" | "dead_letter" | "cancelled" | "superseded";
+            /**
+             * Format: date-time
+             * @description Current invocation lease expiry; absent after expiry recovery.
+             */
+            lease_expires_at?: string;
+            /**
+             * Format: date-time
+             * @description Absolute one-hour processing deadline of the matching attempt.
+             */
+            deadline_at?: string;
         };
         /** @description Explicit OAuth refresh grant for one app and role; credentials are app default-scope secret references. */
         MCPCatalogObserverOAuthConfig: {
@@ -42313,7 +44224,9 @@ export interface components {
          *     under operator.action.{park_instance, restart_instance,
          *     force_cold_boot} with target_account_id = the instance's /
          *     app's owning account. StatusURL is the relative path;
-         *     clients prepend the apid base URL.
+         *     clients prepend the apid base URL. The exact response is retained for
+         *     matching request-key retries independently of target state and audit
+         *     queue retention (ADR-1524).
          */
         OperatorIntentAcceptedResponse: {
             /** @example true */
@@ -42330,7 +44243,7 @@ export interface components {
             status_url: string;
             /**
              * Format: date-time
-             * @description Recommended horizon to stop polling (UTC, RFC 3339).
+             * @description Advisory horizon for one polling session (UTC, RFC 3339), retained unchanged on replay. This is not receipt expiry.
              */
             expires_at: string;
             /** @enum {string} */
@@ -42344,7 +44257,7 @@ export interface components {
              * @description Populated for force_park and force_restart. Gate-time read of `instances.state`.
              * @enum {string}
              */
-            previous_state?: "RUNNING" | "WAKING" | "COLD_BOOTING";
+            previous_state?: "running" | "waking" | "cold_booting";
             /**
              * Format: uuid
              * @description Populated for force_cold_boot. The app whose deployment was targeted.
@@ -42382,6 +44295,42 @@ export interface components {
             /** @description True when a force-drain targets a node that still has live instances. */
             disruption_warning: boolean;
         };
+        /** @description Verified force-park execution evidence for the original VM generation. */
+        OperatorParkExecutionResponse: {
+            /** @enum {string} */
+            phase: "prepared" | "started" | "acknowledged" | "outcome_unknown" | "completed" | "failed" | "cancelled";
+            node_id: string;
+            wake_id: string;
+            generation: string;
+            /** @enum {string} */
+            action: "capture" | "stop";
+            /** @description Capture and original VM cleanup were durably acknowledged. */
+            capture_completed: boolean;
+            /** Format: date-time */
+            stopped_at?: string;
+            /** @enum {string} */
+            terminal_state?: "parked" | "stopped";
+            /** @description The verified result is stopped and requires a cold boot. */
+            cold_boot_required: boolean;
+            reason?: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /** @description Durable restart evidence. An uncertain teardown is never automatically repeated. A later durable acknowledgement can resume database completion against the original target. */
+        OperatorRestartExecutionResponse: {
+            /** @enum {string} */
+            phase: "prepared" | "started" | "destroyed" | "outcome_unknown" | "completed" | "failed";
+            /** Format: uuid */
+            node_id: string;
+            /** Format: uuid */
+            wake_id: string;
+            generation: string;
+            snapshot_ids: string[];
+            /** Format: date-time */
+            destroyed_at?: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
         /**
          * @description Wire shape for GET /v1/admin/operator-intents/{id}
          *     (admin scope + FAAS_ADMIN_EMAILS allowlist; NO MFA —
@@ -42390,12 +44339,19 @@ export interface components {
          *     from "wrong owner".
          */
         OperatorIntentResponse: {
+            /**
+             * Format: int64
+             * @description Durable recovery generation committed by a successful force_cold_boot intent. Retries retain the original value.
+             */
+            cold_boot_generation?: number;
+            park_execution?: components["schemas"]["OperatorParkExecutionResponse"];
+            restart_execution?: components["schemas"]["OperatorRestartExecutionResponse"];
             /** Format: uuid */
             intent_id: string;
             /** @enum {string} */
             kind: "force_park" | "force_cold_boot" | "force_restart" | "node_drain" | "node_force_drain" | "node_activate";
             /** @enum {string} */
-            status: "pending" | "running" | "succeeded" | "failed" | "cancelled";
+            status: "pending" | "running" | "succeeded" | "failed" | "cancelled" | "outcome_unknown";
             /** @description Instance UUID (force_park or force_restart), deployment UUID (force_cold_boot), or compute-node UUID (node lifecycle intents). */
             target_id: string;
             /**
@@ -42426,7 +44382,7 @@ export interface components {
              * @description Set on terminal status (succeeded/failed/cancelled).
              */
             finished_at?: string;
-            /** @description Bounded dispatch error message (1 KB cap) on failed status. */
+            /** @description Bounded dispatch error message (1 KB cap) on failed or outcome_unknown status. */
             error?: string;
             /** @description Populated for force_cold_boot and force_restart on succeeded status. Empty when no snapshots existed. */
             snap_ids_marked_stale?: string[];
@@ -43007,6 +44963,8 @@ export interface components {
             idle_timeout_s?: number | null;
             /** @description Configured per-app request wall-clock timeout in seconds; 0 means the plan/type default. */
             request_timeout_s?: number;
+            /** @description Requests one Node or Python function worker serves at once (ADR-1342). 0 or 1 keeps one request per worker; the plan's concurrency_per_vm bound caps it. Python runs sync handlers on threads. Takes effect on the next deploy. */
+            function_concurrency?: number;
             min_instances: number;
             /**
              * @description Customer-visible app state. `undeployed` is projected when the app has no deployment rows; its persisted lifecycle remains active until the first deploy.
@@ -43769,11 +45727,27 @@ export interface components {
             included_units_per_month?: number;
             /** @description Optional graduated ladder counted per tenant per UTC calendar month across every attributed app (ADR-975). Replaces price_millicents_per_unit and included_units_per_month; the last step's up_to is null. */
             tiers?: components["schemas"]["APIConsumerRateCardTier"][];
+            /** @description Counts each request on a listed "METHOD /template" route as that many units (1..1000, at most 50 routes; ADR-1307), including surface and JWT-rule requests (ADR-1310). Unlisted routes count 1. Statements for periods it prices must cover one calendar month. */
+            route_weights?: {
+                [key: string]: number;
+            };
             /**
              * Format: date-time
-             * @description UTC minute at which the version starts; omitted means the next UTC minute. Cannot be in the past once any tenant card has included units or tiers.
+             * @description UTC minute at which the version starts; omitted means the next UTC minute. Cannot be in the past once any tenant card has included units, tiers, route weights, or a compute or response-size unit.
              */
             effective_from?: string | null;
+            /**
+             * @description What the card prices (ADR-1310): requests, or the compute seconds or response megabytes of billable requests, rounded per subject minute. Compute and response-size cards take no route weights, are month-priced, cannot be backdated, and a change of unit starts on the 1st of a month at 00:00 UTC.
+             * @default request
+             * @enum {string}
+             */
+            unit?: "request" | "compute_second" | "response_megabyte";
+            /**
+             * @description How the tenant ladder prices a month (ADR-1309): graduated by each unit's position, or volume, every unit of the month at the step the tenant's total reaches. volume needs tiers.
+             * @default graduated
+             * @enum {string}
+             */
+            tier_mode?: "graduated" | "volume";
         };
         /** @description Immutable, versioned customer price shared across every app attributed to one platform tenant. */
         PlatformTenantRateCardResponse: {
@@ -43782,8 +45756,11 @@ export interface components {
             /** Format: uuid */
             tenant_id: string;
             currency: string;
-            /** @enum {string} */
-            unit: "request";
+            /**
+             * @description What the tenant card prices (ADR-1310).
+             * @enum {string}
+             */
+            unit: "request" | "compute_second" | "response_megabyte";
             /** Format: int64 */
             price_millicents_per_unit: number;
             /**
@@ -43791,12 +45768,113 @@ export interface components {
              * @description Free units per tenant per UTC calendar month (ADR-975).
              */
             included_units_per_month: number;
-            /** @description Graduated ladder counted per tenant per UTC calendar month (ADR-975); absent for flat cards. */
+            /** @description Ladder counted per tenant per UTC calendar month (ADR-975); absent for flat cards. */
             tiers?: components["schemas"]["APIConsumerRateCardTier"][];
+            /**
+             * @description How the tenant ladder prices a month (ADR-1309).
+             * @enum {string}
+             */
+            tier_mode?: "graduated" | "volume";
+            /** @description Units per request on a route (ADR-1307, ADR-1310); absent when every request counts 1. */
+            route_weights?: {
+                [key: string]: number;
+            };
             /** Format: date-time */
             effective_from: string;
             /** Format: date-time */
             created_at: string;
+        };
+        /** @description The request budget a tenant plan sets (ADR-240); zero disables a ceiling. */
+        PlatformTenantPlanBudget: {
+            /** Format: int64 */
+            max_requests_per_minute: number;
+            /** Format: int64 */
+            max_requests_per_day: number;
+        };
+        /** @description A reusable tenant plan (ADR-1307): rate card terms and an optional request budget that assigning the plan applies. */
+        PlatformTenantPlanRequest: {
+            name: string;
+            currency: string;
+            /** Format: int64 */
+            price_millicents_per_unit: number;
+            /** Format: int64 */
+            included_units_per_month?: number;
+            tiers?: components["schemas"]["APIConsumerRateCardTier"][];
+            route_weights?: {
+                [key: string]: number;
+            };
+            request_budget?: components["schemas"]["PlatformTenantPlanBudget"];
+            /**
+             * @description What the card a plan assignment creates prices (ADR-1310). Assigning a plan whose unit differs from the tenant's current card starts its card at the next UTC month boundary.
+             * @default request
+             * @enum {string}
+             */
+            unit?: "request" | "compute_second" | "response_megabyte";
+            /**
+             * @description How the plan's ladder prices a tenant's month (ADR-1309); volume needs tiers.
+             * @default graduated
+             * @enum {string}
+             */
+            tier_mode?: "graduated" | "volume";
+        };
+        /** @description One tenant plan. */
+        PlatformTenantPlanResponse: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            currency: string;
+            /** Format: int64 */
+            price_millicents_per_unit: number;
+            /** Format: int64 */
+            included_units_per_month: number;
+            tiers?: components["schemas"]["APIConsumerRateCardTier"][];
+            route_weights?: {
+                [key: string]: number;
+            };
+            request_budget?: components["schemas"]["PlatformTenantPlanBudget"];
+            /**
+             * @description What the plan's card prices (ADR-1310).
+             * @enum {string}
+             */
+            unit?: "request" | "compute_second" | "response_megabyte";
+            /**
+             * @description How the plan's ladder prices a month (ADR-1309).
+             * @enum {string}
+             */
+            tier_mode?: "graduated" | "volume";
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /** @description An account's tenant plans by name. */
+        PlatformTenantPlanListResponse: {
+            plans: components["schemas"]["PlatformTenantPlanResponse"][];
+        };
+        /** @description Moves a tenant onto a plan from the next minute. */
+        AssignPlatformTenantPlanRequest: {
+            /** Format: uuid */
+            plan_id: string;
+        };
+        /** @description One plan assignment and the tenant rate card it created. */
+        PlatformTenantPlanAssignmentResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            tenant_id: string;
+            /** Format: uuid */
+            plan_id: string;
+            plan_name?: string;
+            /** Format: uuid */
+            rate_card_id: string;
+            /** Format: date-time */
+            effective_from: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        /** @description A tenant's plan assignments, newest first. */
+        PlatformTenantPlanAssignmentListResponse: {
+            assignments: components["schemas"]["PlatformTenantPlanAssignmentResponse"][];
         };
         /** @description Chronological immutable tariff versions for one customer. */
         PlatformTenantRateCardListResponse: {
@@ -44194,6 +46272,8 @@ export interface components {
             external_ref: string;
             /** @example Acme */
             name: string;
+            /** @description Starts the consumer's one free trial at the next UTC minute for this many days (ADR-1314). */
+            trial_days?: number;
         };
         /** @description Stable API consumer identity. No credential secret is returned. managed_by_platform_tenant distinguishes tenant-bundle-created identities from pre-existing linked identities. */
         APIConsumerResponse: {
@@ -44222,7 +46302,8 @@ export interface components {
         CreateConsumerKeyRequest: {
             /** @example primary */
             name: string;
-            scopes: ("read" | "write" | "admin")[];
+            /** @description read allows GET, write and admin allow every method; billing lets the consumer read its own billing (ADR-1506) and grants no app access. */
+            scopes: ("read" | "write" | "admin" | "billing")[];
             /** Format: date-time */
             expires_at?: string | null;
         };
@@ -44235,7 +46316,7 @@ export interface components {
             name: string;
             /** @description Public lookup prefix; not secret. */
             prefix: string;
-            scopes: ("read" | "write" | "admin")[];
+            scopes: ("read" | "write" | "admin" | "billing")[];
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -44310,6 +46391,27 @@ export interface components {
              * @description Adds the version to a consumer plan's price history; omitted prices the app default plan. Plan cards cannot be backdated.
              */
             plan_id?: string;
+            /**
+             * @description What the card prices (ADR-1308, ADR-1318): requests; compute_second or response_megabyte, rounded per consumer minute; or app:<meter>, the units the app reports in its Gregale-Usage header. Cards of different units price side by side (ADR-1317); non-request cards take no route weights and cannot be backdated.
+             * @default request
+             */
+            unit?: string;
+            /**
+             * Format: int64
+             * @description Fixed charge per consumer per UTC month while this card is in force when the consumer's month starts (ADR-1316).
+             */
+            base_fee_millicents_per_month?: number;
+            /**
+             * Format: int64
+             * @description Minimum usage charge per consumer per UTC month; statements top up the difference (ADR-1316).
+             */
+            minimum_millicents_per_month?: number;
+            /**
+             * @description How tiers price a consumer's month (ADR-1309): graduated prices each unit at the step its position falls in; volume prices every unit of the month at the step the month's total reaches. volume needs tiers.
+             * @default graduated
+             * @enum {string}
+             */
+            tier_mode?: "graduated" | "volume";
             /**
              * Format: date-time
              * @description UTC minute at which this version starts; omitted means the next UTC minute.
@@ -44408,13 +46510,28 @@ export interface components {
             /** Format: uuid */
             app_id: string;
             currency: string;
-            /** @enum {string} */
-            unit: "request";
+            /** @description What the card prices (ADR-1308, ADR-1318): billable requests, their compute seconds or response megabytes, or the units of an app meter. */
+            unit: string;
+            /**
+             * Format: int64
+             * @description The card's fixed monthly charge per consumer (ADR-1316).
+             */
+            base_fee_millicents_per_month?: number;
+            /**
+             * Format: int64
+             * @description The card's minimum monthly usage charge per consumer (ADR-1316).
+             */
+            minimum_millicents_per_month?: number;
             /** Format: int64 */
             price_millicents_per_unit: number;
             /** Format: int64 */
             included_units_per_month: number;
             tiers?: components["schemas"]["APIConsumerRateCardTier"][];
+            /**
+             * @description How the ladder prices a consumer's month (ADR-1309).
+             * @enum {string}
+             */
+            tier_mode?: "graduated" | "volume";
             /** @description Units charged per request on a listed route; unlisted routes count 1. */
             route_weights?: {
                 [key: string]: number;
@@ -44450,6 +46567,10 @@ export interface components {
             tier_units?: number[];
             /** Format: int64 */
             amount_millicents: number;
+            /** @description A minute of the consumer's free trial, quoted at zero (ADR-1314). */
+            trial?: boolean;
+            /** @description The quoted minute's price stream when it is not request (ADR-1317). */
+            unit?: string;
         };
         /** @description Deterministic estimate from durable API consumer usage and versioned app pricing; not an invoice. */
         APIConsumerUsageQuoteResponse: {
@@ -44544,6 +46665,22 @@ export interface components {
              * @description Exact charge for this minute. Negative only on a tiered adjustment line that re-rates billed units into a cheaper step; a revision's total is never negative.
              */
             amount_millicents: number;
+            /** @description A minute of the consumer's free trial, billed at zero (ADR-1314). */
+            trial?: boolean;
+            /** @description The billed minute's price stream when it is not request: compute_second, response_megabyte or app:<meter> (ADR-1317). */
+            unit?: string;
+        };
+        /** @description A statement's monthly base fee or minimum-spend top-up (ADR-1316). */
+        APIConsumerStatementFeeResponse: {
+            /** @enum {string} */
+            kind: "base_fee" | "minimum";
+            /** Format: uuid */
+            rate_card_id: string;
+            /**
+             * Format: int64
+             * @description Negative only for a minimum top-up an adjustment reduces because late usage covers it.
+             */
+            amount_millicents: number;
         };
         /** @description Immutable, auditable API consumer usage snapshot. One period can hold several revisions: a changed draft is superseded by the next revision, and every revision after a finalized one carries only usage that arrived later. */
         APIConsumerUsageStatementResponse: {
@@ -44567,12 +46704,151 @@ export interface components {
             amount_millicents: number;
             priced: boolean;
             buckets: components["schemas"]["APIConsumerUsageStatementBucketResponse"][];
+            /** @description The month's base fees and minimum top-ups (ADR-1316); amount_millicents includes them. */
+            fees?: components["schemas"]["APIConsumerStatementFeeResponse"][];
             /** Format: date-time */
             as_of: string;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
             finalized_at?: string | null;
+            /**
+             * Format: int64
+             * @description Prepaid credit drawn when the statement was finalized (ADR-1306).
+             */
+            credit_applied_millicents?: number;
+            /**
+             * Format: int64
+             * @description amount_millicents less credit_applied_millicents: what is left to bill.
+             */
+            amount_due_millicents?: number;
+        };
+        /** @description Prepaid credit for one consumer (ADR-1306). */
+        CreateAPIConsumerCreditRequest: {
+            currency: string;
+            /**
+             * Format: int64
+             * @description Credit in millicents; 100000 is 1.00.
+             */
+            amount_millicents: number;
+            /**
+             * Format: date-time
+             * @description When unused credit lapses; omitted, it never does.
+             */
+            expires_at?: string;
+            note?: string;
+        };
+        /** @description One prepaid credit grant. */
+        APIConsumerCreditResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            consumer_id: string;
+            currency: string;
+            /** Format: int64 */
+            amount_millicents: number;
+            /** Format: int64 */
+            remaining_millicents: number;
+            /** @enum {string} */
+            status: "active" | "used" | "expired" | "voided";
+            note?: string;
+            /** Format: date-time */
+            expires_at?: string;
+            /** Format: date-time */
+            voided_at?: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        /** @description Credit a consumer can still use in one currency. */
+        APIConsumerCreditBalance: {
+            currency: string;
+            /** Format: int64 */
+            available_millicents: number;
+        };
+        /** @description A consumer's credit grants, newest first, with balances per currency. */
+        APIConsumerCreditListResponse: {
+            credits: components["schemas"]["APIConsumerCreditResponse"][];
+            balances: components["schemas"]["APIConsumerCreditBalance"][];
+        };
+        /** @description A consumer's trial length in days from its start, or its end (ADR-1314). Set exactly one. */
+        PutAPIConsumerTrialRequest: {
+            days?: number;
+            /**
+             * Format: date-time
+             * @description A UTC minute from the next minute on.
+             */
+            ends_at?: string;
+        };
+        /** @description A consumer's free trial: usage in [starts_at, ends_at) is priced at zero. */
+        APIConsumerTrialResponse: {
+            /** Format: uuid */
+            consumer_id: string;
+            /** Format: date-time */
+            starts_at: string;
+            /** Format: date-time */
+            ends_at: string;
+            /** @description False once the trial has ended. */
+            active: boolean;
+        };
+        /** @description An app's overdue-invoice rule (ADR-1315). */
+        PutAPIConsumerBillingPolicyRequest: {
+            /** @description Days past an invoice's due date before its consumer is refused; 0 refuses at once. */
+            block_overdue_after_days: number;
+        };
+        /** @description An app's stored overdue-invoice rule. */
+        APIConsumerBillingPolicyResponse: {
+            /** Format: uuid */
+            app_id: string;
+            block_overdue_after_days: number;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /** @description A consumer the gateway refuses because of its oldest overdue invoice. */
+        APIConsumerOverdueHoldResponse: {
+            /** Format: uuid */
+            consumer_id: string;
+            /** Format: uuid */
+            export_id: string;
+            /** Format: date-time */
+            due_at: string;
+            /** Format: date-time */
+            since: string;
+        };
+        /** @description An app's consumers held for overdue invoices. */
+        APIConsumerOverdueHoldListResponse: {
+            holds: components["schemas"]["APIConsumerOverdueHoldResponse"][];
+        };
+        /** @description A consumer's monthly spend cap after prepaid credit (ADR-1306). */
+        PutAPIConsumerSpendCapRequest: {
+            currency: string;
+            /**
+             * Format: int64
+             * @description 0 allows prepaid usage only.
+             */
+            monthly_cap_millicents: number;
+        };
+        /** @description A consumer's spend cap and its last check. */
+        APIConsumerSpendCapResponse: {
+            /** Format: uuid */
+            consumer_id: string;
+            currency: string;
+            /** Format: int64 */
+            monthly_cap_millicents: number;
+            /** @description True while the gateway refuses the consumer this month. */
+            capped: boolean;
+            /** @description UTC month of the last check. */
+            month?: string;
+            /**
+             * Format: int64
+             * @description The month's amount due after prepaid credit at the last check.
+             */
+            amount_due_millicents?: number;
+            /** Format: date-time */
+            checked_at?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
         };
         /** @description Durable API consumer usage statements, newest period first. */
         APIConsumerUsageStatementListResponse: {
@@ -44909,6 +47185,8 @@ export interface components {
             idle_timeout_s?: number;
             /** @description Per-app request wall-clock timeout in seconds. 0 inherits the plan/type default; the current platform ceiling is 30 seconds. */
             request_timeout_s?: number;
+            /** @description Requests one Node or Python function worker may serve at once (ADR-1342). Omitted, 0 or 1 keeps one request per worker; the plan's concurrency_per_vm bound caps it. Python runs sync handlers on threads. */
+            function_concurrency?: number;
             /**
              * @description Lifecycle contract for the app. Default is request; service/worker/job are plan-gated.
              * @example service
@@ -45463,6 +47741,8 @@ export interface components {
             retry_policy?: components["schemas"]["RetryPolicyDTO"] | null;
             /** @description Per-app request wall-clock timeout in seconds. 0 inherits the plan/type default. */
             request_timeout_s?: number | null;
+            /** @description Changes how many requests one Node or Python function worker serves at once (ADR-1342). 0 or 1 restores one request per worker; capped by the plan's concurrency_per_vm. Existing functions pick up the change on their next deploy. */
+            function_concurrency?: number | null;
             /** @description Runtime override for the app-wide edge rate-limit refill rate. 0 restores the plan default; positive values may only tighten the plan ceiling. Does not create a deployment. */
             request_rate_limit_rps?: number | null;
             /** @description Runtime override for the app-wide edge rate-limit burst capacity. 0 restores the plan default; positive values may only tighten the plan ceiling. Does not create a deployment. */
@@ -45968,6 +48248,8 @@ export interface components {
             max_retries?: number | null;
             /** @description Runtime request wall-clock timeout in seconds. 0 inherits the plan/type default. */
             request_timeout_s?: number | null;
+            /** @description Per-worker request concurrency imaged stamps into the function's build as FAAS_FUNCTION_CONCURRENCY (ADR-1342). 0 or 1 means one request per worker. */
+            function_concurrency?: number | null;
             service_replicas?: components["schemas"]["ServiceReplicas"];
             worker_replicas?: components["schemas"]["WorkerScaling"];
             /**
@@ -47735,6 +50017,8 @@ export interface components {
         };
         /** @description Saved draft, publication, ownership and opaque revision of one automation. */
         AutomationResponse: {
+            test_suite?: components["schemas"]["AutomationTestSuite"];
+            test_report?: components["schemas"]["AutomationTestReport"];
             /** @description Runtime failure guard blocks automatic admissions independently of configured enabled intent. */
             failure_paused?: boolean;
             name: string;
@@ -47936,8 +50220,408 @@ export interface components {
             attempt_count?: number;
             attempts?: components["schemas"]["AutomationCheckAttempt"][];
         };
+        /** @description Saved test data — Explicitly saved synthetic inputs and mocks. Runs always bind the current saved draft. */
+        AutomationTestInputs: {
+            /** @description Saved test data — Workflow input as any JSON value; omission is equivalent to null. */
+            input?: unknown;
+            /** @description Saved test data — Successful action outputs keyed by root step name; explicit null is a supplied result. */
+            mock_outputs?: {
+                [key: string]: unknown;
+            };
+            /** @description Saved test data — Ordered successful output prefix keyed by for_each root name; waits and controls cannot be mocked. */
+            mock_item_outputs?: {
+                [key: string]: unknown[];
+            };
+            /** @description Saved test data — Per-item attempt outcomes keyed by for_each root name and canonical zero-based item index (0..127). Sparse indexes are allowed but must exist in the materialized collection. Cannot be combined with mock_item_outputs for the same loop. Item timeouts require an action timeout and follow its retry policy. Terminal item failures stop later items unless on_item_failure is continue; the loop remains failed or dead, with null placeholders for failed items when continuing. */
+            mock_item_attempts?: {
+                [key: string]: {
+                    [key: string]: components["schemas"]["AutomationSimulationMockAttempt"][];
+                };
+            };
+            /** @description Saved test data — Ordered per-attempt outcomes keyed by action or wait name. Event and callback waits accept exactly one success with the received payload as output, or one timeout with a configured timeout and on_timeout route. Other waits accept timeout only. Successful wait payloads cannot be the reserved timeout sentinel. Action timeouts require on_timeout. Cannot be combined with mock_outputs for the same step. */
+            mock_attempts?: {
+                [key: string]: components["schemas"]["AutomationSimulationMockAttempt"][];
+            };
+        };
+        /** @description A uniquely named set of definition-free mocks and expected step results. */
+        AutomationTestCase: {
+            /** @description Optional live assertions saved with this case; null disables its live test. */
+            live?: components["schemas"]["AutomationLiveTest"] | null;
+            name: string;
+            simulation: components["schemas"]["AutomationTestInputs"];
+            expectations: components["schemas"]["AutomationCheckExpectation"][];
+        };
+        /** @description A separate assertion against a real terminal workflow step, not a mock trace. */
+        AutomationLiveExpectation: {
+            step: string;
+            loop?: string;
+            item_index?: number;
+            /** @enum {string} */
+            state?: "succeeded" | "failed" | "dead" | "skipped";
+            /** @description Optional expected JSON result; an explicit null is asserted. */
+            output?: unknown;
+            attempt_count?: number;
+        };
+        /** @description Explicit live assertions frozen when a saved case is admitted for execution. */
+        AutomationLiveTest: {
+            /**
+             * @description Desired terminal run state; omitted means succeeded. Cancellation always fails verification.
+             * @enum {string}
+             */
+            expected_run_status?: "succeeded" | "failed" | "dead";
+            expectations: components["schemas"]["AutomationLiveExpectation"][];
+        };
+        /** @description Fenced request to execute one saved case input against a specific published revision and deployment. */
+        StartAutomationLiveVerificationRequest: {
+            expected_version: number;
+            expected_published_version: number;
+            expected_deployment_id: string;
+            case_name: string;
+            /** @description Must be true to authorize real handler and connected-service actions. */
+            confirm_real_actions: boolean;
+        };
+        /** @description Payload-free verdict for the frozen live assertions at one terminal run state. */
+        AutomationLiveReport: {
+            /** Format: date-time */
+            checked_at: string;
+            passed: boolean;
+            issue?: string;
+            run_status: string;
+            resume_count: number;
+            /** Format: date-time */
+            run_updated_at: string;
+            steps: components["schemas"]["AutomationTestStepResult"][];
+        };
+        /** @description At most 16 KiB. Bind an ordered selection of saved live case names to the exact saved version, published revision and deployment, with explicit real-action authorization. */
+        StartAutomationLiveSuiteRequest: {
+            expected_version: number;
+            expected_published_version: number;
+            /** Format: uuid */
+            expected_deployment_id: string;
+            cases: string[];
+            confirm_real_actions: boolean;
+        };
+        /** @description Explicit authorization to inspect existing identities and admit at most one remaining case. No target changes, run replacements or uploaded verdicts are accepted. */
+        AdvanceAutomationLiveSuiteRequest: {
+            confirm_real_actions: boolean;
+        };
+        /** @description At most 16 KiB. Freeze an ordered saved-case selection and attach existing verification run IDs. No assertions, verdicts, keys or payloads are accepted. Saving never executes or checks a run. Existing run links cannot be replaced or removed. */
+        SaveAutomationLiveSuiteRequest: {
+            expected_version: number;
+            expected_published_version: number;
+            /** Format: uuid */
+            expected_deployment_id: string;
+            cases: components["schemas"]["AutomationLiveSuiteMember"][];
+        };
+        /** @description One saved live case and its optional existing verification run identity. */
+        AutomationLiveSuiteMember: {
+            name: string;
+            /** Format: uuid */
+            run_id?: string;
+        };
+        /** @description Version 2 required-case coverage and evidence-age policy reviewed during baseline promotion. */
+        AutomationLiveBaselinePolicy: {
+            /** @enum {integer} */
+            version: 2;
+            required_cases: string[];
+            /** Format: int64 */
+            max_candidate_age_seconds: number;
+        };
+        /** @description Explicit target suite, reviewed policy and expected baseline revision for an audited promotion. */
+        PromoteAutomationLiveBaselineRequest: {
+            /** Format: uuid */
+            suite_id: string;
+            /** Format: int64 */
+            expected_revision: number;
+            /** Format: int64 */
+            expected_version: number;
+            /** Format: int64 */
+            expected_published_version: number;
+            /** Format: uuid */
+            expected_deployment_id: string;
+            policy: components["schemas"]["AutomationLiveBaselinePolicy"];
+        };
+        /** @description Immutable attributed receipt binding a named baseline revision to its retained suite and reviewed policy. */
+        AutomationLiveBaseline: {
+            /** Format: uuid */
+            promotion_id: string;
+            /** Format: uuid */
+            app_id: string;
+            name: string;
+            baseline_name: string;
+            /** Format: int64 */
+            revision: number;
+            /** Format: uuid */
+            previous_promotion_id?: string;
+            /** Format: uuid */
+            actor_account_id: string;
+            /** Format: uuid */
+            actor_api_key_id?: string;
+            /** Format: date-time */
+            promoted_at: string;
+            suite: components["schemas"]["AutomationLiveSuiteSummary"];
+            policy: components["schemas"]["AutomationLiveBaselinePolicy"];
+            policy_hash: string;
+            cases_passed: number;
+            /** Format: date-time */
+            oldest_run_created_at: string;
+            /** Format: double */
+            evidence_age_seconds: number;
+        };
+        /** @description Current retained verification availability and renewal readiness for one promoted suite case. */
+        AutomationLiveBaselineCaseHealth: {
+            name: string;
+            /** Format: uuid */
+            run_id?: string;
+            /** @enum {string} */
+            status: "passed" | "failed" | "pending" | "unavailable" | "not_started";
+        };
+        /** @description Coherent read-only evidence health observations for a named baseline head. */
+        AutomationLiveBaselineHealth: {
+            baseline: components["schemas"]["AutomationLiveBaseline"];
+            /**
+             * @description Availability of current recorded reports; not a gate verdict.
+             * @enum {string}
+             */
+            evidence_status: "usable" | "failed" | "unavailable";
+            /**
+             * @description Whether this same suite qualifies for a new promotion now.
+             * @enum {string}
+             */
+            renewal_status: "passed" | "failed" | "inconclusive";
+            reasons: string[];
+            outdated: boolean;
+            cases: components["schemas"]["AutomationLiveBaselineCaseHealth"][];
+            /** @description Oldest original retained run age. Negative values indicate future timestamps. */
+            age_seconds?: number;
+            /** Format: date-time */
+            oldest_run_created_at?: string;
+            /** Format: int64 */
+            max_age_seconds?: number;
+        };
+        /** @description Bounded sorted catalog of active named baseline heads and their current evidence observations. */
+        ListAutomationLiveBaselinesResponse: {
+            baselines: components["schemas"]["AutomationLiveBaselineHealth"][];
+            /** Format: date-time */
+            observed_at: string;
+        };
+        /** @description Expected positive baseline revision required to permanently retire an active name. */
+        RetireAutomationLiveBaselineRequest: {
+            /** Format: int64 */
+            expected_revision: number;
+        };
+        /** @description Immutable attributed receipt recording permanent retirement and release of the baseline evidence pin. */
+        AutomationLiveBaselineRetirement: {
+            /** Format: uuid */
+            retirement_id: string;
+            /** Format: uuid */
+            app_id: string;
+            name: string;
+            baseline_name: string;
+            /** Format: int64 */
+            revision: number;
+            /** Format: uuid */
+            previous_promotion_id: string;
+            /** Format: uuid */
+            actor_account_id: string;
+            /** Format: uuid */
+            actor_api_key_id?: string;
+            /** Format: date-time */
+            retired_at: string;
+        };
+        /** @description Bounded promotion audit history and optional permanent retirement receipt for one baseline name. */
+        AutomationLiveBaselineHistory: {
+            retirement?: components["schemas"]["AutomationLiveBaselineRetirement"];
+            promotions: components["schemas"]["AutomationLiveBaseline"][];
+        };
+        /** @description Read-only evidence comparison. Outdated identifies target drift, independently of recorded result validity. Contains no inputs, outputs, assertions or admission keys. */
+        AutomationLiveSuiteComparison: {
+            baseline: components["schemas"]["AutomationLiveSuiteSummary"];
+            candidate: components["schemas"]["AutomationLiveSuiteSummary"];
+            baseline_outdated: boolean;
+            candidate_outdated: boolean;
+            /** Format: date-time */
+            observed_at: string;
+            summary: components["schemas"]["AutomationLiveSuiteComparisonCounts"];
+            cases: components["schemas"]["AutomationLiveSuiteCaseComparison"][];
+        };
+        /** @description Disjoint case classifications; all categories sum to total. Zero regressions alone is not evidence that the candidate passed. */
+        AutomationLiveSuiteComparisonCounts: {
+            total: number;
+            regressions: number;
+            recoveries: number;
+            unchanged: number;
+            added: number;
+            removed: number;
+            incompatible: number;
+            unknown: number;
+        };
+        /** @description A missing side means the case was not selected in that suite. A selected case without a run has a not_started observation. */
+        AutomationLiveSuiteCaseComparison: {
+            name: string;
+            /**
+             * @description Equal hashes and current terminal reports are required for regression, recovery or unchanged. Hash mismatch is incompatible even when a report is pending; absent evidence is unknown. Added and removed take precedence when only one suite selected the case.
+             * @enum {string}
+             */
+            change: "regression" | "recovery" | "unchanged" | "added" | "removed" | "incompatible" | "unknown";
+            baseline?: components["schemas"]["AutomationLiveSuiteObservation"];
+            candidate?: components["schemas"]["AutomationLiveSuiteObservation"];
+        };
+        /** @description Safe original run identity, creation time and recorded result only. */
+        AutomationLiveSuiteObservation: {
+            /** Format: uuid */
+            run_id?: string;
+            /**
+             * Format: date-time
+             * @description Original linked verification creation time, when retained. Never refreshed by grouping or checking runs.
+             */
+            created_at?: string;
+            /**
+             * @description Result of the original run independently of target drift. Unavailable includes missing runs and terminal runs without a current assertion report.
+             * @enum {string}
+             */
+            result: "passed" | "failed" | "pending" | "not_started" | "unavailable";
+        };
+        /** @description Retained suite identity and linked-run counts. Listing is not an assertion verdict. */
+        AutomationLiveSuiteSummary: {
+            /** @description True for suites with durable server-managed admission. Metadata PUT cannot change these records; continuation requires explicit execution authorization. */
+            managed?: boolean;
+            /** Format: uuid */
+            id: string;
+            name: string;
+            version: number;
+            published_version: number;
+            /** Format: uuid */
+            deployment_id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            case_count: number;
+            linked_runs: number;
+        };
+        /** @description A server-derived case observation; unavailable records keep their original run identity. */
+        AutomationLiveSuiteCase: {
+            name: string;
+            /** Format: uuid */
+            run_id?: string;
+            /** @enum {string} */
+            outcome: "not_started" | "passed" | "failed" | "pending" | "outdated" | "unavailable";
+            verification?: components["schemas"]["AutomationLiveVerification"];
+        };
+        /** @description Current suite case counts, including unstarted and unverifiable members. */
+        AutomationLiveSuiteCounts: {
+            selected: number;
+            passed: number;
+            failed: number;
+            pending: number;
+            not_started: number;
+            unavailable: number;
+            outdated: number;
+        };
+        /** @description Server-derived observation of retained verification records. GET is read-only and never checks assertions or admits work. Missing records remain unavailable with their known IDs. Passed requires every linked case to have a current passing report and an unchanged saved version, published revision and deployment. Not a publication receipt. */
+        AutomationLiveSuite: {
+            /** @description True when the suite owns durable server-managed execution and can be continued with explicit real-action confirmation. */
+            managed?: boolean;
+            /** Format: uuid */
+            id: string;
+            name: string;
+            version: number;
+            published_version: number;
+            /** Format: uuid */
+            deployment_id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            case_count: number;
+            linked_runs: number;
+            /** @enum {string} */
+            outcome: "passed" | "failed" | "pending" | "incomplete" | "outdated" | "unavailable";
+            outdated: boolean;
+            /** Format: date-time */
+            observed_at: string;
+            summary: components["schemas"]["AutomationLiveSuiteCounts"];
+            cases: components["schemas"]["AutomationLiveSuiteCase"][];
+        };
+        /** @description Twenty most recently created suites. One hundred recent suites are retained per automation; clearing saved test data clears shared suite history. */
+        ListAutomationLiveSuitesResponse: {
+            suites: components["schemas"]["AutomationLiveSuiteSummary"][];
+        };
+        /** @description Safe provenance and status for one explicitly authorized live verification run. */
+        AutomationLiveVerification: {
+            /** Format: uuid */
+            run_id: string;
+            case_name: string;
+            deployment_id: string;
+            inputs_hash: string;
+            run_status: string;
+            version: number;
+            published_version: number;
+            /** Format: date-time */
+            created_at: string;
+            /** @description True when the saved case, published revision, or current default deployment differs from the frozen target. */
+            outdated: boolean;
+            /** @description True when the report still matches this run status, resume count and update time; also require outdated=false for current-target evidence. */
+            report_current: boolean;
+            report?: components["schemas"]["AutomationLiveReport"];
+        };
+        /** @description Current target identities and the twenty most recent retained live verifications. */
+        ListAutomationLiveVerificationsResponse: {
+            deployment_id?: string;
+            published_version: number;
+            verifications: components["schemas"]["AutomationLiveVerification"][];
+        };
+        /** @description At most 32 uniquely named cases; sample up to 3 MiB, cases up to 24 MiB combined, suite up to 27 MiB. Data is explicitly persisted, never captured from real runs. */
+        AutomationTestSuite: {
+            sample: components["schemas"]["AutomationTestInputs"];
+            cases: components["schemas"]["AutomationTestCase"][];
+        };
+        /** @description Versioned suite replacement; explicitly sending null removes saved data and results. */
+        SaveAutomationTestSuiteRequest: {
+            /** Format: int64 */
+            expected_version: number;
+            /** @description Null clears saved tests and the retained report. Saving advances the automation version and invalidates earlier publishing receipts. */
+            suite: components["schemas"]["AutomationTestSuite"] | null;
+        };
+        /** @description Expected current draft version for simulating its saved test cases. */
+        RunAutomationTestsRequest: {
+            /** Format: int64 */
+            expected_version: number;
+        };
+        /** @description Retained observation, not a publishing receipt. Freshness compares definition and suite content; running does not advance the draft version or perform real actions. */
+        AutomationTestReport: {
+            /** Format: int64 */
+            checked_version: number;
+            /** Format: date-time */
+            checked_at: string;
+            inputs_hash: string;
+            passed: boolean;
+            cases: components["schemas"]["AutomationTestCaseResult"][];
+        };
+        /** @description Safe overall case result and bounded per-step assertion summaries. */
+        AutomationTestCaseResult: {
+            name: string;
+            passed: boolean;
+            /** @enum {string} */
+            issue?: "invalid_expectations" | "simulation_rejected" | "definition_invalid" | "simulation_incomplete" | "assertion_failed";
+            steps_truncated?: boolean;
+            steps: components["schemas"]["AutomationTestStepResult"][];
+        };
+        /** @description One assertion result and observed state, excluding input, output and error data. */
+        AutomationTestStepResult: {
+            step: string;
+            loop?: string;
+            item_index?: number;
+            state?: string;
+            passed: boolean;
+            /** @description Failed assertion field names only; expected and observed values are omitted. */
+            mismatches?: ("step" | "state" | "reason" | "when_matched" | "output" | "attempt_count" | "attempts")[];
+        };
         /** @description Named simulation and assertions to evaluate against a saved automation draft. */
         AutomationPublishCheckScenario: {
+            /** @description Live test configuration carried by the case editor; mock publishing checks do not evaluate it. */
+            live?: components["schemas"]["AutomationLiveTest"] | null;
             name: string;
             simulation: components["schemas"]["SimulateAutomationRequest"];
             expectations: components["schemas"]["AutomationCheckExpectation"][];
@@ -48769,6 +51453,11 @@ export interface components {
         };
         /** @description Producer-key event publication with a 1 MiB total body limit. */
         AppPublishEventRequest: {
+            /**
+             * Format: uuid
+             * @description Optional canonical application UUID guard; mismatches return 409 before publication or comparison.
+             */
+            expected_app_id?: string;
             /** @description Stable exact application-scoped producer key; preserve on retry. */
             key: string;
             type: string;
@@ -49077,8 +51766,200 @@ export interface components {
              */
             rate_per_second?: number;
         };
+        /** @description Capability and heartbeat verification against the exhaustive deployment-declared writer roster; not automatic discovery of unlisted processes or proof of metric data integrity. */
+        EventAcknowledgmentRecordingCoverage: {
+            /** @description All declared slots have one live compatible session and a continuous heartbeat watermark. */
+            verified: boolean;
+            /** @description Bounded coverage diagnostic such as verified or missing_writer or inventory_unconfigured or warming_up. */
+            reason: string;
+            /**
+             * Format: date-time
+             * @description Database clock used to assess writer leases in the metric read snapshot.
+             */
+            observed_at: string;
+            /**
+             * Format: date-time
+             * @description Conservative continuity boundary reset by observed membership changes or heartbeat gaps.
+             */
+            continuous_since?: string;
+            /**
+             * Format: date-time
+             * @description Least recent live writer heartbeat; no later minute is considered verified.
+             */
+            verified_through?: string;
+            /** @description Opaque hash of the common canonical declared inventory without exposing slots or sessions. */
+            inventory_revision?: string;
+            /** @description Declared members when a usable inventory is available. */
+            expected_writers: number;
+            /** @description Bounded live session count; 257 denotes evidence exceeding the scan limit. */
+            active_writers: number;
+            /**
+             * @description Required deferred metric recording capability protocol.
+             * @constant
+             */
+            capability_version: 1;
+            /**
+             * @description Writer heartbeat lease horizon assessed using database time.
+             * @constant
+             */
+            heartbeat_lease_seconds: 30;
+        };
+        /** @description Recorded renewal and expiry operations in full UTC minute buckets with optional verification of deployment-declared writer continuity. */
+        EventAcknowledgmentWindowHealth: {
+            /**
+             * Format: date-time
+             * @description Inclusive boundary of full minutes wholly inside the requested processing window.
+             */
+            window_start: string;
+            recording_coverage?: components["schemas"]["EventAcknowledgmentRecordingCoverage"];
+            /**
+             * Format: date-time
+             * @description Exclusive completed-minute boundary capped by the verified writer heartbeat watermark when available.
+             */
+            window_end: string;
+            /**
+             * @description Fixed width of each durable operation bucket.
+             * @constant
+             */
+            bucket_seconds: 60;
+            /**
+             * @description Metric retention measured from bucket start independently of invocation pruning.
+             * @constant
+             */
+            retention_seconds: 172800;
+            /**
+             * @description Only instrumented writers contribute; inspect recording_coverage for declared-inventory continuity and no pre-upgrade activity is reconstructed.
+             * @enum {string}
+             */
+            coverage: "recorded_full_minute_buckets";
+            /**
+             * Format: int64
+             * @description Explicit successful renewals recorded in selected complete buckets.
+             */
+            renewal_successes: number;
+            /**
+             * Format: int64
+             * @description Current-token renewal conflicts recorded after token and attempt verification.
+             */
+            renewal_rejections: number;
+            /**
+             * Format: int64
+             * @description Sum of recorded successful and rejected renewals used as the fraction denominator.
+             */
+            renewal_attempts: number;
+            /**
+             * Format: int64
+             * @description Recorded deferred-awaiting scheduler expiry transitions in these minutes.
+             */
+            lease_expiries: number;
+            /** @description At least one bucket overflowed its saturating counter; totals are lower bounds and rate fields are omitted. */
+            saturated: boolean;
+            /** @description Recorded rejected renewals divided by recorded renewal attempts; absent without samples or complete minutes or after saturation. */
+            renewal_rejection_fraction?: number;
+            /** @description Recorded lease expiry transitions divided by the effective window duration; absent for an empty or saturated window. */
+            lease_expiry_rate_per_second?: number;
+        };
+        /** @description Current retained deferred invocation gauges, retained completion latency and optional durable full-minute renewal metrics with independent coverage. */
+        EventConsumerProcessingHealth: {
+            /**
+             * Format: uuid
+             * @description Application owning this processing summary.
+             */
+            app_id: string;
+            /**
+             * Format: uuid
+             * @description Consumer subscription selected for the retained processing aggregate.
+             */
+            subscription_id: string;
+            /**
+             * Format: date-time
+             * @description Database snapshot clock for processing gauges.
+             */
+            observed_at: string;
+            /**
+             * Format: date-time
+             * @description Start of the retained acknowledgment completion window.
+             */
+            window_start: string;
+            /**
+             * @description Coverage is limited to currently retained opted-in invocations.
+             * @enum {string}
+             */
+            coverage: "retained_deferred_invocations";
+            /** @description All matching retained invocations were aggregated without sampling; this is not historical completeness. */
+            complete: boolean;
+            /**
+             * Format: int64
+             * @description Deferred invocations currently pending dispatch.
+             */
+            waiting: number;
+            /**
+             * Format: int64
+             * @description Live deferred dispatches not yet handed off.
+             */
+            delivering: number;
+            /**
+             * Format: int64
+             * @description Unexpired matching leases handed off after HTTP 202.
+             */
+            processing: number;
+            /**
+             * Format: int64
+             * @description Expired dispatching leases before recovery sweeps.
+             */
+            expired: number;
+            /**
+             * Format: int64
+             * @description Retained opted-in invocations completed by callback or ordinary success.
+             */
+            completed: number;
+            /**
+             * Format: int64
+             * @description Retained deferred invocations in dead letters.
+             */
+            dead_lettered: number;
+            /**
+             * Format: int64
+             * @description Retained deferred invocations permanently failed.
+             */
+            failed: number;
+            /**
+             * Format: int64
+             * @description Other terminal states including cancellation and supersession and work-policy expiry.
+             */
+            other: number;
+            /**
+             * Format: int64
+             * @description Active handed-off leases in their final third; the risk horizon is capped by near_expiry_seconds.
+             */
+            near_expiry: number;
+            /** @description Maximum lease risk horizon in seconds; each claim uses the smaller of this cap and one third of its lease duration. */
+            near_expiry_seconds: number;
+            /**
+             * Format: date-time
+             * @description Oldest token issue time among live handed-off claims; includes initial dispatch time.
+             */
+            oldest_processing_offered_at?: string;
+            /** @description Age since oldest active processing token issue; zero when absent. */
+            oldest_processing_age_seconds: number;
+            /**
+             * Format: int64
+             * @description Retained matching explicit completions whose completion time falls inside the window.
+             */
+            acknowledgment_samples: number;
+            /** @description Maximum token-issue-to-completion seconds among acknowledgment samples; zero requires inspecting sample count. */
+            acknowledgment_latency_max_seconds: number;
+            /**
+             * @deprecated
+             * @description Legacy non-windowed coverage marker retained for older clients; use renewal_window for durable recorded operation counts.
+             * @enum {string}
+             */
+            renewal_failure_coverage: "not_recorded";
+            renewal_window?: components["schemas"]["EventAcknowledgmentWindowHealth"];
+        };
         /** @description Independent live routing, retained execution, and oldest-first pending reads. No overall healthy verdict is inferred from incomplete coverage. */
         EventConsumerDeliveryHealth: {
+            processing?: components["schemas"]["EventConsumerProcessingHealth"];
             capacity_pressure?: components["schemas"]["EventConsumerCapacityPressure"];
             waiting_reasons?: components["schemas"]["EventConsumerWaitingReasons"];
             capacity_waits?: components["schemas"]["EventConsumerCapacityWaits"];
@@ -49982,8 +52863,243 @@ export interface components {
             /** Format: date-time */
             retain_until: string;
         };
+        /** @description Proposed bucket settings for a preview only; this request has no command UUID or mutation guard. */
+        EventSubscriptionRatePreviewRequest: {
+            enabled: boolean;
+            /** Format: int64 */
+            interval_millis: number;
+            /** Format: int64 */
+            burst: number;
+        };
+        /** @description Payload-free identity, effective deadline and observed waiting reason of a retained pending delivery. The expiry flag uses the current page observation, not the fixed status-filter window. */
+        EventSubscriptionDeadlineRecipient: {
+            event_source: string;
+            event_id: string;
+            /** Format: date-time */
+            accepted_at: string;
+            /** Format: date-time */
+            deadline_at: string;
+            expired: boolean;
+            /** @enum {string} */
+            waiting_reason: "circuit_open" | "circuit_probe_wait" | "circuit_recovery_rate_limited" | "subscription_paused" | "subscription_rate_limited" | "ordering_blocked" | "capacity_consumer" | "capacity_app" | "capacity_account" | "routing_in_progress" | "receipt_processing" | "retry_backoff" | "workflow_routing" | "ready";
+            /** Format: date-time */
+            next_attempt_at?: string;
+            /** Format: date-time */
+            lease_until?: string;
+        };
+        /** @description One read-only live page ordered by effective deadline, acceptance time and internal receipt identity. No aggregate health or frozen membership is implied. Empty recipients are not proof of successful delivery. */
+        EventSubscriptionDeadlinePage: {
+            /** @enum {string} */
+            coverage: "retained_captured_pending_application_deadlines";
+            /** Format: uuid */
+            app_id: string;
+            /** Format: uuid */
+            subscription_id: string;
+            /** Format: date-time */
+            observed_at: string;
+            /** Format: date-time */
+            window_at: string;
+            /** @enum {boolean} */
+            read_only: true;
+            recipients: components["schemas"]["EventSubscriptionDeadlineRecipient"][];
+            /** @description A lookahead row existed in this page snapshot; later pages can still be empty as routing state changes. */
+            has_more: boolean;
+            /** @description Present only when has_more is true. Carries no authorization. */
+            next_cursor?: string;
+        };
+        /** @description Complete, disjoint deadline cohorts with the full pending summary from one read-only snapshot. Upcoming means observed_at < deadline < window_end_at; expired means deadline <= observed_at. Incomplete summary coverage invalidates all counts for alert confirmation. */
+        EventSubscriptionDeadlineWindow: {
+            /** @enum {string} */
+            coverage: "all_retained_captured_pending_application_deadline_window";
+            summary: components["schemas"]["EventSubscriptionPendingSummary"];
+            /** Format: int64 */
+            within_millis: number;
+            /** Format: date-time */
+            window_end_at: string;
+            /** Format: int64 */
+            upcoming_recipients: number;
+            /**
+             * Format: date-time
+             * @description Omitted exactly when upcoming_recipients is zero.
+             */
+            earliest_upcoming_deadline_at?: string;
+            /** @description Exact partition of upcoming_recipients over every known backlog waiting reason, including explicit zero keys. Labels do not establish unique causes. */
+            upcoming_waiting_reasons: {
+                [key: string]: number;
+            };
+            /** @description Exact partition of summary.already_expired_count over every known backlog waiting reason, including explicit zero keys. */
+            expired_waiting_reasons: {
+                [key: string]: number;
+            };
+        };
+        /** @description Full retained captured pending application-recipient counts from one read-only snapshot. No payloads, identities or modeled completion estimates. Incomplete evidence cannot establish health or recovery. */
+        EventSubscriptionPendingSummary: {
+            /** @enum {string} */
+            coverage: "all_retained_captured_pending_application_recipients";
+            /** Format: uuid */
+            app_id: string;
+            /** Format: uuid */
+            subscription_id: string;
+            /** Format: date-time */
+            observed_at: string;
+            /** @enum {boolean} */
+            read_only: true;
+            /** @description False for unusable clocks; incomplete counts must not drive alert recovery. */
+            complete: boolean;
+            /** Format: int64 */
+            pending_recipients: number;
+            /** Format: int64 */
+            deadline_recipients: number;
+            /** Format: int64 */
+            already_expired_count: number;
+            /**
+             * Format: date-time
+             * @description Earliest effective deadline, including expired rows; omitted when no pending recipients have deadlines.
+             */
+            earliest_deadline_at?: string;
+            current: components["schemas"]["EventSubscriptionRateLimit"];
+            paused: boolean;
+            legacy_rate_per_second: number;
+            /** @enum {string} */
+            circuit_state: "closed" | "open" | "half_open" | "draining";
+            capacity_blocking_scopes: ("consumer" | "app" | "account")[];
+            constraints: ("subscription_paused" | "legacy_rate_limit" | "circuit_open" | "circuit_half_open" | "circuit_draining" | "capacity_consumer" | "capacity_app" | "capacity_account" | "active_leases" | "scheduled_retries" | "clock_uncertain")[];
+        };
+        /** @description One snapshot of current controls and a hypothetical rate-only admission model. The deterministic oldest-first model is not an ordering guarantee, completion ETA or deadline-safety certificate. Full pending coverage excludes processing, unattributed receipts and future arrivals. */
+        EventSubscriptionRatePreview: {
+            /**
+             * @description Explicit evidence marker for earliest-deadline monitoring; absent on older responses.
+             * @enum {string}
+             */
+            deadline_coverage?: "sampled_effective_pending_deadlines";
+            /** @description Sampled pending recipients with an effective delivery deadline, including expired rows. */
+            deadline_recipients?: number;
+            /**
+             * Format: date-time
+             * @description Earliest effective deadline in the sampled pending rows, independent of modeled admission risk; omitted when deadline_recipients is zero.
+             */
+            earliest_deadline_at?: string;
+            /** @enum {string} */
+            coverage: "retained_captured_pending_application_recipients";
+            /** Format: uuid */
+            app_id: string;
+            /** Format: uuid */
+            subscription_id: string;
+            /** Format: date-time */
+            observed_at: string;
+            /** @enum {boolean} */
+            advisory: true;
+            /** @enum {boolean} */
+            read_only: true;
+            /**
+             * Format: int64
+             * @description Reviewed bucket revision for the subsequent mutation; other controls and backlog can change independently.
+             */
+            expected_revision: number;
+            current: components["schemas"]["EventSubscriptionRateLimit"];
+            /** @description Hypothetical capacity immediately after applying the proposal. Revision remains the reviewed baseline because no mutation occurred. */
+            projected: components["schemas"]["EventSubscriptionRateLimit"];
+            paused: boolean;
+            legacy_rate_per_second: number;
+            circuit_state: string;
+            capacity_blocking_scopes: ("consumer" | "app" | "account")[];
+            /** @description Current pause, circuit, capacity, lease, scheduled-retry, clock and sampling constraints. An empty list does not promise future readiness. */
+            constraints: string[];
+            /** @enum {integer} */
+            sample_limit: 1000;
+            sampled_pending: number;
+            /** @description Captured pending sample is untruncated with usable timestamps; not evidence of eventual delivery. */
+            complete: boolean;
+            truncated: boolean;
+            /**
+             * Format: int64
+             * @description Modeled admission span for the sample, assuming all unexpired sampled recipients are admitted once, no new arrivals, oldest-first order and no blocking from pause/circuit/capacity/leases or execution. Includes scheduled times and legacy pacing. Missing when clocks or duration are unusable. Truncated samples never estimate the full backlog.
+             */
+            rate_only_drain_millis?: number;
+            deadline_risk_count: number;
+            already_expired_count: number;
+            deadline_risks: components["schemas"]["EventSubscriptionRateDeadlineRisk"][];
+            risks_truncated: boolean;
+        };
+        /** @description Payload-free identity of an expired or model-at-risk sampled recipient. Absence from the sample is not evidence that its deadline is safe. */
+        EventSubscriptionRateDeadlineRisk: {
+            event_source: string;
+            event_id: string;
+            /** Format: date-time */
+            accepted_at: string;
+            /** Format: date-time */
+            deadline_at: string;
+            /** Format: date-time */
+            modeled_admission_at?: string;
+            /** @enum {string} */
+            reason: "already_expired" | "modeled_deadline_risk";
+        };
+        /** @description Explicit guarded command for per-subscription token-bucket pacing. Disabled retains configuration without enforcing the bucket. */
+        EventSubscriptionRateRequest: {
+            /**
+             * Format: uuid
+             * @description Nonzero command UUID; retained for 30 days, at most 128 per subscription.
+             */
+            command_id: string;
+            /**
+             * Format: int64
+             * @description Current bucket revision, initially zero. Mismatch records a rejected receipt.
+             */
+            expected_revision: number;
+            enabled: boolean;
+            /** Format: int64 */
+            interval_millis: number;
+            /** Format: int64 */
+            burst: number;
+        };
+        /** @description Projected token-bucket capacity at observed_at. Read-only metadata reserves no tokens. Missing rate_limit on older responses means unknown. */
+        EventSubscriptionRateLimit: {
+            enabled: boolean;
+            /** Format: int64 */
+            revision: number;
+            /** Format: int64 */
+            interval_millis: number;
+            /** Format: int64 */
+            burst: number;
+            /** Format: int64 */
+            available_tokens: number;
+            rate_limited: boolean;
+            /** Format: date-time */
+            next_available_at?: string;
+            /** Format: date-time */
+            observed_at: string;
+        };
+        /** @description Historical idempotent command outcome; rejected commands preserve configuration. Look up after an uncertain mutation before submitting a new UUID. */
+        EventSubscriptionRateCommandReceipt: {
+            /** Format: uuid */
+            command_id: string;
+            /** Format: uuid */
+            app_id: string;
+            /** Format: uuid */
+            subscription_id: string;
+            /** Format: int64 */
+            sequence: number;
+            /** @enum {string} */
+            outcome: "applied" | "rejected";
+            result: components["schemas"]["EventSubscriptionRateLimit"];
+            /** Format: date-time */
+            recorded_at: string;
+            /** Format: date-time */
+            retain_until: string;
+        };
+        /** @description Bounded retained rate command history in increasing sequence order; expiry can leave sequence gaps. Pages are fresh observations. */
+        EventSubscriptionRateCommands: {
+            receipts: components["schemas"]["EventSubscriptionRateCommandReceipt"][];
+            /**
+             * Format: int64
+             * @description Exclusive cursor for the next page when another retained receipt exists.
+             */
+            next_after?: number;
+        };
         /** @description Live operator controls for a captured application subscription. Pending and processing counts include publication and historical backfill recipients retained in the backlog. */
         EventSubscriptionDeliveryControl: {
+            /** @description Optional token-bucket observation; absent on older responses. */
+            rate_limit?: components["schemas"]["EventSubscriptionRateLimit"];
             /** @description Optional complete receipt budget in read-only delivery-control status. Mutation responses may omit it; absence means unknown. */
             capacity_command_budget?: components["schemas"]["EventSubscriptionCapacityCommandBudget"];
             capacity_command_receipt?: components["schemas"]["EventSubscriptionCapacityCommandReceipt"];
@@ -61399,7 +64515,7 @@ export interface components {
          *     rounding). `overage_gb_hours = max(0, gb_hours -
          *     plan_included_gb_hours)` — 0 when the customer is under
          *     their included band, the billable overage above the band
-         *     otherwise. The Stripe pusher bills overage at €0.01/GB-h
+         *     otherwise. The Stripe pusher bills overage at $0.01/GB-h
          *     (CLAUDE.md integer-cents-only rule).
          */
         AppUsageSummaryResponse: {
@@ -62286,7 +65402,7 @@ export interface components {
             overage_gb_hours: number;
             /**
              * Format: int64
-             * @description Integer cents. Includes compute at €0.01/GB-h and configured live egress overage; shadow egress is excluded.
+             * @description Integer cents. Includes compute at $0.01/GB-h and configured live egress overage; shadow egress is excluded.
              */
             overage_cents: number;
             /** @description Per-month CPU-hours (informational; not billed). issue #279 / PR-B. */
@@ -65670,6 +68786,366 @@ export interface components {
             /** @description Per-message preconditions are unsupported. Omit this field or set it to null; use the batch-level expected_sequence to require a channel head. */
             expected_sequence?: null;
         };
+        /**
+         * @description A billing provider statements export to (ADR-1507).
+         * @enum {string}
+         */
+        BillingProvider: "stripe" | "paddle" | "lago";
+        /** @description The account's own key for one billing provider (ADR-1502, ADR-1507). */
+        PutBillingConnectionRequest: {
+            /** @description A Stripe secret or restricted key (sk_… or rk_…), a Paddle API key (pdl_…), or a Lago API key. */
+            secret_key: string;
+            /**
+             * Format: uri
+             * @description Lago only: the API origin for the EU region or a self-hosted Lago, https:// only; default https://api.getlago.com.
+             */
+            api_url?: string;
+            /**
+             * @description What the provider does with exported invoices (ADR-1311): none leaves drafts (Lago issues them without charging); send has Stripe email the invoice; charge has Stripe charge the customer's default payment method, or Lago charge through its payment provider. Paddle supports none only.
+             * @default none
+             * @enum {string}
+             */
+            collection?: "none" | "send" | "charge";
+            /**
+             * @description With collection send, days until a sent invoice is due.
+             * @default 30
+             */
+            days_until_due?: number;
+            /**
+             * @description Stripe only: have Stripe Tax calculate tax on exported invoices (ADR-1313). Needs Stripe Tax and customer addresses.
+             * @default false
+             */
+            automatic_tax?: boolean;
+        };
+        /** @description A stored payment-provider key, identified without revealing it. */
+        BillingConnectionResponse: {
+            provider: components["schemas"]["BillingProvider"];
+            key_last4: string;
+            /** @description False for Stripe test and Paddle sandbox keys; Lago has no test mode. */
+            livemode: boolean;
+            /**
+             * Format: uri
+             * @description The Lago API origin.
+             */
+            api_url?: string;
+            /**
+             * @description What the provider does with exported invoices (ADR-1311).
+             * @enum {string}
+             */
+            collection?: "none" | "send" | "charge";
+            /** @description Days until a sent invoice is due. */
+            days_until_due?: number;
+            /** @description Whether Stripe Tax calculates tax on the connection's exports (ADR-1313). */
+            automatic_tax?: boolean;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /** @description Target of a statement invoice export. */
+        CreateStatementInvoiceRequest: {
+            provider?: components["schemas"]["BillingProvider"];
+            /** @description The provider's customer: a Stripe cus_… ID, a Paddle ctm_… ID, or a Lago external customer ID. Omitted, the consumer's or tenant's external_ref is used when it is one. */
+            customer?: string;
+        };
+        /** @description A finalized statement's invoice in the account's billing provider (ADR-1502, ADR-1507). */
+        StatementInvoiceExportResponse: {
+            /** Format: uuid */
+            statement_id: string;
+            provider: components["schemas"]["BillingProvider"];
+            customer: string;
+            /**
+             * @description creating means an earlier attempt stopped part-way; repeat the export to resume it.
+             * @enum {string}
+             */
+            status: "creating" | "completed";
+            invoice_id?: string;
+            /** Format: uri */
+            dashboard_url?: string;
+            currency: string;
+            /**
+             * Format: int64
+             * @description Invoice total in the currency's minor unit (cents): the statement total rounded to the cent.
+             */
+            amount_minor: number;
+            livemode: boolean;
+            /**
+             * @description What the provider was asked to do with the invoice when the export began (ADR-1311).
+             * @enum {string}
+             */
+            collection?: "none" | "send" | "charge";
+            /** @description Whether Stripe Tax calculated this invoice's tax (ADR-1313). */
+            automatic_tax?: boolean;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            completed_at?: string;
+            /** @enum {string} */
+            source_kind?: "app_consumer" | "platform_tenant";
+            /**
+             * @description The provider invoice's status as last read by Gregale (ADR-1504, ADR-1507); deleted means the provider no longer has it. Absent until the first sync.
+             * @enum {string}
+             */
+            payment_status?: "draft" | "open" | "paid" | "void" | "uncollectible" | "deleted";
+            /** Format: int64 */
+            amount_paid_minor?: number;
+            /** Format: int64 */
+            amount_remaining_minor?: number;
+            /** Format: date-time */
+            due_at?: string;
+            /** Format: date-time */
+            paid_at?: string;
+            /**
+             * Format: uri
+             * @description The provider's customer-facing invoice or checkout page once there is one.
+             */
+            hosted_invoice_url?: string;
+            /** @description Open, past its due date, with an amount remaining. */
+            overdue?: boolean;
+            /** Format: date-time */
+            status_synced_at?: string;
+        };
+        /** @description One page of an account's exported invoices, newest first. */
+        StatementInvoiceListResponse: {
+            invoices: components["schemas"]["StatementInvoiceExportResponse"][];
+            /** @description Pass as cursor for the next invoice page; absent on the last page. */
+            next_cursor?: string;
+        };
+        /** @description The consumer's current plan and its monthly unit cap. */
+        ConsumerBillingPlan: {
+            name: string;
+            /** Format: int64 */
+            max_units_per_month?: number;
+        };
+        /** @description A consumer's own month to date (ADR-1506), priced like its next statement. */
+        ConsumerBillingSummaryResponse: {
+            /** Format: uuid */
+            consumer_id: string;
+            external_ref: string;
+            name: string;
+            /** @description The app's slug. */
+            app: string;
+            month: string;
+            currency?: string;
+            /** Format: int64 */
+            billable_units: number;
+            /** Format: int64 */
+            unpriced_units: number;
+            /**
+             * Format: int64
+             * @description Month-to-date amount; 100000 millicents is 1.00.
+             */
+            amount_millicents: number;
+            /** @description False while some usage has no effective rate card. */
+            priced: boolean;
+            plan?: components["schemas"]["ConsumerBillingPlan"];
+            /** Format: date-time */
+            as_of: string;
+            /** @description Prepaid credit the consumer can still use, per currency (ADR-1306). */
+            credits?: components["schemas"]["APIConsumerCreditBalance"][];
+            spend_cap?: components["schemas"]["ConsumerBillingSpendCap"];
+        };
+        /** @description The consumer's monthly spend cap; once the amount due passes it, requests are refused until the month ends or credit is added. */
+        ConsumerBillingSpendCap: {
+            currency: string;
+            /** Format: int64 */
+            monthly_cap_millicents: number;
+            capped: boolean;
+            /** Format: int64 */
+            amount_due_millicents?: number;
+        };
+        /** @description One UTC day of a consumer's usage. */
+        ConsumerBillingDay: {
+            /** Format: date */
+            date: string;
+            /** Format: int64 */
+            requests: number;
+            /** Format: int64 */
+            billable_units: number;
+        };
+        /** @description A consumer's daily usage over at most 31 days. */
+        ConsumerBillingUsageResponse: {
+            /** Format: date-time */
+            since: string;
+            /** Format: date-time */
+            until: string;
+            days: components["schemas"]["ConsumerBillingDay"][];
+        };
+        /** @description The customer-facing view of a statement's exported invoice (ADR-1504). */
+        ConsumerBillingInvoice: {
+            /** @enum {string} */
+            payment_status?: "draft" | "open" | "paid" | "void" | "uncollectible" | "deleted";
+            /** Format: int64 */
+            amount_minor: number;
+            /** Format: int64 */
+            amount_remaining_minor?: number;
+            /** Format: date-time */
+            due_at?: string;
+            /** Format: date-time */
+            paid_at?: string;
+            /**
+             * Format: uri
+             * @description Stripe's page where the customer views and pays the invoice.
+             */
+            hosted_invoice_url?: string;
+        };
+        /** @description One finalized statement as its consumer sees it. */
+        ConsumerBillingStatement: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            period_start: string;
+            /** Format: date-time */
+            period_end: string;
+            revision: number;
+            currency: string;
+            /** Format: int64 */
+            billable_units: number;
+            /** Format: int64 */
+            amount_millicents: number;
+            /** Format: date-time */
+            finalized_at?: string;
+            invoice?: components["schemas"]["ConsumerBillingInvoice"];
+        };
+        /** @description A consumer's latest finalized statements, newest first. */
+        ConsumerBillingStatementsResponse: {
+            statements: components["schemas"]["ConsumerBillingStatement"][];
+        };
+        /** @description A month-end billing run (ADR-1503). Omitted options bill both sources, finalize, do not export, and hold consumers with completeness gaps. */
+        CreateBillingRunRequest: {
+            /** @description UTC calendar month to bill, YYYY-MM; it must have ended at least an hour ago. */
+            month: string;
+            sources?: components["schemas"]["BillingRunSources"];
+            /** @description Finalize each drafted statement (default true). */
+            finalize?: boolean;
+            export?: components["schemas"]["BillingRunExport"];
+            /** @description Hold an app consumer whose usage ledger misses requests telemetry saw (default true). */
+            hold_on_gaps?: boolean;
+        };
+        /** @description Which customers a run bills. With platform_tenants, a consumer's tenant-attributed usage is billed on the tenant statement and its app item is skipped. */
+        BillingRunSources: ("app_consumers" | "platform_tenants")[];
+        /**
+         * @description Where finalized statements go: none, or invoices in the account's Stripe, Paddle or Lago (ADR-1507; requires finalize and a connected key).
+         * @enum {string}
+         */
+        BillingRunExport: "none" | "stripe" | "paddle" | "lago";
+        /** @description How many of a run's customers reached each outcome. */
+        BillingRunCounts: {
+            pending: number;
+            drafted: number;
+            finalized: number;
+            exported: number;
+            up_to_date: number;
+            held: number;
+            skipped: number;
+            failed: number;
+        };
+        /** @description A billing run and its progress. A run completes when no customer is pending; held and failed customers do not fail it. */
+        BillingRunResponse: {
+            /** Format: uuid */
+            id: string;
+            month: string;
+            /** Format: date-time */
+            period_start: string;
+            /** Format: date-time */
+            period_end: string;
+            sources: components["schemas"]["BillingRunSources"];
+            finalize: boolean;
+            export: components["schemas"]["BillingRunExport"];
+            hold_on_gaps: boolean;
+            /** @enum {string} */
+            trigger: "api" | "schedule";
+            /** @enum {string} */
+            status: "queued" | "running" | "completed";
+            counts: components["schemas"]["BillingRunCounts"];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            started_at?: string;
+            /** Format: date-time */
+            completed_at?: string;
+        };
+        /** @description An account's billing runs, newest first. */
+        BillingRunListResponse: {
+            runs: components["schemas"]["BillingRunResponse"][];
+        };
+        /** @description What a billing run did for one app consumer or platform tenant. */
+        BillingRunItemResponse: {
+            /** @enum {string} */
+            source_kind: "app_consumer" | "platform_tenant";
+            /** Format: uuid */
+            app_id?: string;
+            /** Format: uuid */
+            consumer_id?: string;
+            /** Format: uuid */
+            platform_tenant_id?: string;
+            /** @description The consumer's or tenant's external_ref when the run started. */
+            external_ref: string;
+            /**
+             * @description up_to_date: nothing new to bill or export. held: needs attention, such as unpriced usage or a completeness gap. skipped: billed through a platform tenant, or already invoiced through the other path.
+             * @enum {string}
+             */
+            outcome: "pending" | "drafted" | "finalized" | "exported" | "up_to_date" | "held" | "skipped" | "failed";
+            /** Format: uuid */
+            statement_id?: string;
+            revision?: number;
+            currency?: string;
+            /**
+             * Format: int64
+             * @description The statement revision's amount in millicents.
+             */
+            amount_millicents?: number;
+            /** @enum {string} */
+            completeness?: "verified" | "partial" | "gaps_detected" | "unverifiable";
+            /** @description The last provider invoice this run created for the customer. */
+            invoice_id?: string;
+            /** @description Provider invoices this run created for the customer. */
+            exported_invoices: number;
+            /** @description Why the customer was held, skipped or failed, or why a retry is pending. */
+            reason?: string;
+            attempts: number;
+            /** Format: date-time */
+            updated_at: string;
+            /**
+             * @description Payment status of the invoice exported for the item's statement (ADR-1504).
+             * @enum {string}
+             */
+            payment_status?: "draft" | "open" | "paid" | "void" | "uncollectible" | "deleted";
+        };
+        /** @description One page of a billing run's customers, ordered by kind and ID. */
+        BillingRunItemListResponse: {
+            items: components["schemas"]["BillingRunItemResponse"][];
+            /** @description Pass as cursor to read the next page; absent on the last page. */
+            next_cursor?: string;
+        };
+        /** @description A monthly billing run schedule. Options default like a run's; delay_hours defaults to 24. */
+        PutBillingRunScheduleRequest: {
+            sources?: components["schemas"]["BillingRunSources"];
+            /** @description Finalize each drafted statement in scheduled runs (default true). */
+            finalize?: boolean;
+            export?: components["schemas"]["BillingRunExport"];
+            /** @description Hold app consumers with completeness gaps in scheduled runs (default true). */
+            hold_on_gaps?: boolean;
+            /** @description Hours after month end before the run starts (default 24). */
+            delay_hours?: number;
+        };
+        /** @description The account's billing run schedule and the month it bills next. */
+        BillingRunScheduleResponse: {
+            sources: components["schemas"]["BillingRunSources"];
+            finalize: boolean;
+            export: components["schemas"]["BillingRunExport"];
+            hold_on_gaps: boolean;
+            delay_hours: number;
+            next_month: string;
+            /** Format: date-time */
+            next_run_at: string;
+            /** @description The last month the schedule started a run for. */
+            last_month?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
         /** @description Complete payable usage statement delivered with usage_statement.finalized. */
         APIConsumerUsageStatementFinalizedWebhookPayload: {
             /** Format: uuid */
@@ -65695,6 +69171,16 @@ export interface components {
             as_of: string;
             /** Format: date-time */
             finalized_at: string;
+            /**
+             * Format: int64
+             * @description Prepaid credit drawn at finalization (ADR-1306).
+             */
+            credit_applied_millicents?: number;
+            /**
+             * Format: int64
+             * @description What is left to bill after prepaid credit.
+             */
+            amount_due_millicents?: number;
         } & {
             [key: string]: unknown;
         };
@@ -65991,7 +69477,7 @@ export interface components {
             /** @enum {string} */
             webhook_secret_sealed_masked: "***";
             /** @description Subscribed events; an empty filter selects standard platform events. app.health.changed requires explicit selection. */
-            event_filter: ("operation.effect" | "app.parked" | "app.woken" | "deployment.live" | "deployment.failed" | "rollout.completed" | "rollout.aborted" | "job.finished" | "operation.finished" | "usage_statement.finalized" | "consumer.usage_threshold" | "outbound.ai_budget.threshold" | "issue.created" | "issue.assigned" | "issue.resolved" | "issue.reopened" | "issue.ignored" | "issue.regressed" | "issue.impact_threshold_reached" | "debug.regression.detected" | "debug.regression.resolved" | "routes.requirements.violated" | "routes.requirements.recovered" | "routes.requirements.changed" | "routes.health.blocked" | "routes.health.resumed" | "routes.health.aborted" | "routes.monitor.violated" | "routes.monitor.escalated" | "routes.monitor.recovered" | "workflow.finished" | "automation.paused" | "realtime.inbox.acknowledged" | "realtime.inbox.gap" | "realtime.inbox.fallback_required" | "realtime.message.read" | "realtime.notification.sent" | "realtime.notification.failed" | "realtime.notification.expired" | "realtime.notification.cancelled" | "realtime.notification.superseded" | "realtime.schedule.published" | "realtime.schedule.failed" | "realtime.schedule.skipped" | "app.health.changed" | "event_recovery.completed" | "event_recovery.cancelled" | "event_recovery.expired" | "profile.route_regressed" | "profile.route_recovered" | "event_recovery.execution_finished" | "realtime.channel.published" | "realtime.channel.acknowledged" | "realtime.consumer_group.dead_lettered" | "realtime.consumer_group.dead_letter_expiring" | "realtime.consumer_group.delivery_expired" | "realtime.consumer_group.worker_lost" | "realtime.consumer_group.worker_recovered" | "realtime.consumer_group.circuit_opened" | "realtime.consumer_group.circuit_half_open" | "realtime.consumer_group.circuit_closed" | "realtime.replay_job.completed" | "realtime.replay_job.cancelled" | "realtime.replay_job.processing_failed" | "realtime.consumer_group.lag_exceeded" | "realtime.consumer_group.lag_recovered" | "event_recovery.execution_attention" | "automation.recovery_review_ready" | "automation.recovery_review_finished" | "automation.recovery_policy_paused" | "automation.recovery_queue_blocked" | "automation.recovery_health_alert" | "automation.recovery_health_recovered" | "automation.recovery_polling_status")[];
+            event_filter: ("operation.effect" | "app.parked" | "app.woken" | "deployment.live" | "deployment.failed" | "rollout.completed" | "rollout.aborted" | "job.finished" | "operation.finished" | "usage_statement.finalized" | "consumer.usage_threshold" | "outbound.ai_budget.threshold" | "issue.created" | "issue.assigned" | "issue.resolved" | "issue.reopened" | "issue.ignored" | "issue.regressed" | "issue.impact_threshold_reached" | "issue.frequency_threshold_reached" | "issue.tracker_sync.attention" | "issue.tracker_sync.recovered" | "debug.regression.detected" | "debug.regression.resolved" | "routes.requirements.violated" | "routes.requirements.recovered" | "routes.requirements.changed" | "routes.health.blocked" | "routes.health.resumed" | "routes.health.aborted" | "routes.monitor.violated" | "routes.monitor.escalated" | "routes.monitor.recovered" | "workflow.finished" | "automation.paused" | "realtime.inbox.acknowledged" | "realtime.inbox.gap" | "realtime.inbox.fallback_required" | "realtime.message.read" | "realtime.notification.sent" | "realtime.notification.failed" | "realtime.notification.expired" | "realtime.notification.cancelled" | "realtime.notification.superseded" | "realtime.schedule.published" | "realtime.schedule.failed" | "realtime.schedule.skipped" | "app.health.changed" | "event_recovery.completed" | "event_recovery.cancelled" | "event_recovery.expired" | "profile.route_regressed" | "profile.route_recovered" | "event_recovery.execution_finished" | "realtime.channel.published" | "realtime.channel.acknowledged" | "realtime.consumer_group.dead_lettered" | "realtime.consumer_group.dead_letter_expiring" | "realtime.consumer_group.delivery_expired" | "realtime.consumer_group.worker_lost" | "realtime.consumer_group.worker_recovered" | "realtime.consumer_group.circuit_opened" | "realtime.consumer_group.circuit_half_open" | "realtime.consumer_group.circuit_closed" | "realtime.replay_job.completed" | "realtime.replay_job.cancelled" | "realtime.replay_job.processing_failed" | "realtime.consumer_group.lag_exceeded" | "realtime.consumer_group.lag_recovered" | "event_recovery.execution_attention" | "automation.recovery_review_ready" | "automation.recovery_review_finished" | "automation.recovery_policy_paused" | "automation.recovery_queue_blocked" | "automation.recovery_health_alert" | "automation.recovery_health_recovered" | "automation.recovery_polling_status")[];
             /** @enum {string} */
             retry_policy: "default" | "aggressive" | "none";
             /** @enum {string} */
@@ -66988,7 +70474,7 @@ export interface components {
             target_url: string;
             webhook_secret: string;
             /** @description Events to subscribe to; omit or leave empty for standard platform events. Select app.health.changed explicitly to enable health notifications. */
-            event_filter?: ("operation.effect" | "app.parked" | "app.woken" | "deployment.live" | "deployment.failed" | "rollout.completed" | "rollout.aborted" | "job.finished" | "operation.finished" | "usage_statement.finalized" | "consumer.usage_threshold" | "outbound.ai_budget.threshold" | "issue.created" | "issue.assigned" | "issue.resolved" | "issue.reopened" | "issue.ignored" | "issue.regressed" | "issue.impact_threshold_reached" | "debug.regression.detected" | "debug.regression.resolved" | "routes.requirements.violated" | "routes.requirements.recovered" | "routes.requirements.changed" | "routes.health.blocked" | "routes.health.resumed" | "routes.health.aborted" | "routes.monitor.violated" | "routes.monitor.escalated" | "routes.monitor.recovered" | "workflow.finished" | "automation.paused" | "realtime.inbox.acknowledged" | "realtime.inbox.gap" | "realtime.inbox.fallback_required" | "realtime.message.read" | "realtime.notification.sent" | "realtime.notification.failed" | "realtime.notification.expired" | "realtime.notification.cancelled" | "realtime.notification.superseded" | "realtime.schedule.published" | "realtime.schedule.failed" | "realtime.schedule.skipped" | "app.health.changed" | "event_recovery.completed" | "event_recovery.cancelled" | "event_recovery.expired" | "profile.route_regressed" | "profile.route_recovered" | "event_recovery.execution_finished" | "realtime.channel.published" | "realtime.channel.acknowledged" | "realtime.consumer_group.dead_lettered" | "realtime.consumer_group.dead_letter_expiring" | "realtime.consumer_group.delivery_expired" | "realtime.consumer_group.worker_lost" | "realtime.consumer_group.worker_recovered" | "realtime.consumer_group.circuit_opened" | "realtime.consumer_group.circuit_half_open" | "realtime.consumer_group.circuit_closed" | "realtime.replay_job.completed" | "realtime.replay_job.cancelled" | "realtime.replay_job.processing_failed" | "realtime.consumer_group.lag_exceeded" | "realtime.consumer_group.lag_recovered" | "event_recovery.execution_attention" | "automation.recovery_review_ready" | "automation.recovery_review_finished" | "automation.recovery_policy_paused" | "automation.recovery_queue_blocked" | "automation.recovery_health_alert" | "automation.recovery_health_recovered" | "automation.recovery_polling_status")[];
+            event_filter?: ("operation.effect" | "app.parked" | "app.woken" | "deployment.live" | "deployment.failed" | "rollout.completed" | "rollout.aborted" | "job.finished" | "operation.finished" | "usage_statement.finalized" | "consumer.usage_threshold" | "outbound.ai_budget.threshold" | "issue.created" | "issue.assigned" | "issue.resolved" | "issue.reopened" | "issue.ignored" | "issue.regressed" | "issue.impact_threshold_reached" | "issue.frequency_threshold_reached" | "issue.tracker_sync.attention" | "issue.tracker_sync.recovered" | "debug.regression.detected" | "debug.regression.resolved" | "routes.requirements.violated" | "routes.requirements.recovered" | "routes.requirements.changed" | "routes.health.blocked" | "routes.health.resumed" | "routes.health.aborted" | "routes.monitor.violated" | "routes.monitor.escalated" | "routes.monitor.recovered" | "workflow.finished" | "automation.paused" | "realtime.inbox.acknowledged" | "realtime.inbox.gap" | "realtime.inbox.fallback_required" | "realtime.message.read" | "realtime.notification.sent" | "realtime.notification.failed" | "realtime.notification.expired" | "realtime.notification.cancelled" | "realtime.notification.superseded" | "realtime.schedule.published" | "realtime.schedule.failed" | "realtime.schedule.skipped" | "app.health.changed" | "event_recovery.completed" | "event_recovery.cancelled" | "event_recovery.expired" | "profile.route_regressed" | "profile.route_recovered" | "event_recovery.execution_finished" | "realtime.channel.published" | "realtime.channel.acknowledged" | "realtime.consumer_group.dead_lettered" | "realtime.consumer_group.dead_letter_expiring" | "realtime.consumer_group.delivery_expired" | "realtime.consumer_group.worker_lost" | "realtime.consumer_group.worker_recovered" | "realtime.consumer_group.circuit_opened" | "realtime.consumer_group.circuit_half_open" | "realtime.consumer_group.circuit_closed" | "realtime.replay_job.completed" | "realtime.replay_job.cancelled" | "realtime.replay_job.processing_failed" | "realtime.consumer_group.lag_exceeded" | "realtime.consumer_group.lag_recovered" | "event_recovery.execution_attention" | "automation.recovery_review_ready" | "automation.recovery_review_finished" | "automation.recovery_policy_paused" | "automation.recovery_queue_blocked" | "automation.recovery_health_alert" | "automation.recovery_health_recovered" | "automation.recovery_polling_status")[];
             /**
              * @default default
              * @enum {string}
@@ -67068,7 +70554,7 @@ export interface components {
             target_url?: string;
             webhook_secret?: string;
             /** @description Replacement event selection; an empty array restores standard platform events. Include app.health.changed to opt into health notifications. */
-            event_filter?: ("operation.effect" | "app.parked" | "app.woken" | "deployment.live" | "deployment.failed" | "rollout.completed" | "rollout.aborted" | "job.finished" | "operation.finished" | "usage_statement.finalized" | "consumer.usage_threshold" | "outbound.ai_budget.threshold" | "issue.created" | "issue.assigned" | "issue.resolved" | "issue.reopened" | "issue.ignored" | "issue.regressed" | "issue.impact_threshold_reached" | "debug.regression.detected" | "debug.regression.resolved" | "routes.requirements.violated" | "routes.requirements.recovered" | "routes.requirements.changed" | "routes.health.blocked" | "routes.health.resumed" | "routes.health.aborted" | "routes.monitor.violated" | "routes.monitor.escalated" | "routes.monitor.recovered" | "workflow.finished" | "automation.paused" | "realtime.inbox.acknowledged" | "realtime.inbox.gap" | "realtime.inbox.fallback_required" | "realtime.message.read" | "realtime.notification.sent" | "realtime.notification.failed" | "realtime.notification.expired" | "realtime.notification.cancelled" | "realtime.notification.superseded" | "realtime.schedule.published" | "realtime.schedule.failed" | "realtime.schedule.skipped" | "app.health.changed" | "event_recovery.completed" | "event_recovery.cancelled" | "event_recovery.expired" | "profile.route_regressed" | "profile.route_recovered" | "event_recovery.execution_finished" | "realtime.channel.published" | "realtime.channel.acknowledged" | "realtime.consumer_group.dead_lettered" | "realtime.consumer_group.dead_letter_expiring" | "realtime.consumer_group.delivery_expired" | "realtime.consumer_group.worker_lost" | "realtime.consumer_group.worker_recovered" | "realtime.consumer_group.circuit_opened" | "realtime.consumer_group.circuit_half_open" | "realtime.consumer_group.circuit_closed" | "realtime.replay_job.completed" | "realtime.replay_job.cancelled" | "realtime.replay_job.processing_failed" | "realtime.consumer_group.lag_exceeded" | "realtime.consumer_group.lag_recovered" | "event_recovery.execution_attention" | "automation.recovery_review_ready" | "automation.recovery_review_finished" | "automation.recovery_policy_paused" | "automation.recovery_queue_blocked" | "automation.recovery_health_alert" | "automation.recovery_health_recovered" | "automation.recovery_polling_status")[];
+            event_filter?: ("operation.effect" | "app.parked" | "app.woken" | "deployment.live" | "deployment.failed" | "rollout.completed" | "rollout.aborted" | "job.finished" | "operation.finished" | "usage_statement.finalized" | "consumer.usage_threshold" | "outbound.ai_budget.threshold" | "issue.created" | "issue.assigned" | "issue.resolved" | "issue.reopened" | "issue.ignored" | "issue.regressed" | "issue.impact_threshold_reached" | "issue.frequency_threshold_reached" | "issue.tracker_sync.attention" | "issue.tracker_sync.recovered" | "debug.regression.detected" | "debug.regression.resolved" | "routes.requirements.violated" | "routes.requirements.recovered" | "routes.requirements.changed" | "routes.health.blocked" | "routes.health.resumed" | "routes.health.aborted" | "routes.monitor.violated" | "routes.monitor.escalated" | "routes.monitor.recovered" | "workflow.finished" | "automation.paused" | "realtime.inbox.acknowledged" | "realtime.inbox.gap" | "realtime.inbox.fallback_required" | "realtime.message.read" | "realtime.notification.sent" | "realtime.notification.failed" | "realtime.notification.expired" | "realtime.notification.cancelled" | "realtime.notification.superseded" | "realtime.schedule.published" | "realtime.schedule.failed" | "realtime.schedule.skipped" | "app.health.changed" | "event_recovery.completed" | "event_recovery.cancelled" | "event_recovery.expired" | "profile.route_regressed" | "profile.route_recovered" | "event_recovery.execution_finished" | "realtime.channel.published" | "realtime.channel.acknowledged" | "realtime.consumer_group.dead_lettered" | "realtime.consumer_group.dead_letter_expiring" | "realtime.consumer_group.delivery_expired" | "realtime.consumer_group.worker_lost" | "realtime.consumer_group.worker_recovered" | "realtime.consumer_group.circuit_opened" | "realtime.consumer_group.circuit_half_open" | "realtime.consumer_group.circuit_closed" | "realtime.replay_job.completed" | "realtime.replay_job.cancelled" | "realtime.replay_job.processing_failed" | "realtime.consumer_group.lag_exceeded" | "realtime.consumer_group.lag_recovered" | "event_recovery.execution_attention" | "automation.recovery_review_ready" | "automation.recovery_review_finished" | "automation.recovery_policy_paused" | "automation.recovery_queue_blocked" | "automation.recovery_health_alert" | "automation.recovery_health_recovered" | "automation.recovery_polling_status")[];
             /** @enum {string} */
             retry_policy?: "default" | "aggressive" | "none";
             /**
@@ -68863,6 +72349,8 @@ export interface components {
             file: string;
             function: string;
             line?: number;
+            /** @description One-based generated or original column; omitted when unknown. Excluded from grouping identity. */
+            column?: number;
             in_app: boolean;
         };
         /** @description One sanitized linear cause, ordered immediate to deepest; bounds are UTF-8 bytes. */
@@ -68874,8 +72362,70 @@ export interface components {
             /** @enum {string} */
             frame_order?: "newest-first" | "oldest-first";
         };
+        /** @description One generated bundle and its bounded source-map metadata, without embedded source contents. */
+        IssueSourceMapArtifact: {
+            /** @description Portable relative bundle path from the Node build manifest. */
+            generatedFile: string;
+            /** @description Producer-supplied bundle digest; the server does not retrieve bundle bytes to independently verify it. */
+            sha256: string;
+            /** @description Flat Source Map v3 JSON; byte and decoded limits are enforced before persistence. */
+            payload: string;
+        };
+        /** @description Portable source-map manifest with exact generated-bundle digests and original source locations. */
+        IssueSourceMapManifest: {
+            /** @enum {integer} */
+            version: 1;
+            artifacts: components["schemas"]["IssueSourceMapArtifact"][];
+        };
+        /** @description Deployment source-map publication request containing the deployed directory and portable manifest. */
+        PublishIssueSourceMapsRequest: {
+            /** @description Absolute deployed directory corresponding to the manifest scan root. */
+            directory: string;
+            manifest: components["schemas"]["IssueSourceMapManifest"];
+        };
+        /** @description Read-only publication status, manifest digest and retained map count for one deployment. */
+        IssueSourceMapsMetadata: {
+            /** Format: uuid */
+            deployment_id: string;
+            manifest_sha256: string;
+            map_count: number;
+            ready: boolean;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            retired_at?: string;
+        };
+        /** @description Symbolication outcome and mapped frames for one reported exception in its deployment. */
+        IssueSymbolicationResult: {
+            manifest_sha256: string;
+            mapped_frames: number;
+            unmapped_frames: number;
+        };
+        /** @description Bounded sanitized event context recorded before an issue occurrence. */
+        IssueBreadcrumb: {
+            /** Format: date-time */
+            occurred_at: string;
+            /** @enum {string} */
+            category: "http" | "db" | "cache" | "workflow" | "log" | "custom";
+            /** @enum {string} */
+            level: "debug" | "info" | "warning" | "error";
+            /** @description Sanitized and bounded to 256 UTF-8 bytes. */
+            message: string;
+        };
         /** @description Structured exception evidence; credential-derived account and deployment identity cannot be overridden. */
         IssueEvent: {
+            breadcrumbs?: components["schemas"]["IssueBreadcrumb"][];
+            breadcrumbs_dropped?: number;
+            /** @description Sanitized operational dimensions; unknown keys are discarded. Allowed keys are component, operation, feature_flag, feature_variant, dependency, region, job_type, workflow, state, error_class, release_channel, runtime. */
+            tags?: {
+                [key: string]: string;
+            };
+            /**
+             * @description Opt-in server mapping against this credential's deployment artifacts; requires failure-site-v1 or cause-chain-v1.
+             * @enum {string}
+             */
+            symbolication_strategy?: "deployment-source-maps-v1";
+            symbolication?: components["schemas"]["IssueSymbolicationResult"];
             causes?: components["schemas"]["IssueCause"][];
             /** @description Incomplete or ambiguous chain; version 3 uses outer evidence instead of a partial cause. */
             causes_incomplete?: boolean;
@@ -68945,6 +72495,11 @@ export interface components {
             fixed_deployment_created_at?: string;
             /** Format: date-time */
             ignored_until?: string;
+            /**
+             * Format: uuid
+             * @description Current team assignment within this app, mutually exclusive with the account assignee.
+             */
+            assignee_team_id?: string;
         };
         /** @description Observed retained occurrences, verified distinct customers, and unattributed events from the previous 24 hours. */
         IssueImpactSummary: {
@@ -69037,6 +72592,75 @@ export interface components {
             unattributed_events: number;
             coverage: string;
         };
+        /** @description Native new-issue/regression environment filter and shared per-group cooldown. */
+        IssueLifecycleAlertPolicy: {
+            /** Format: int64 */
+            revision: number;
+            /** @description Environments permitted by the saved policy; an empty array means all. */
+            environments: string[];
+            /** Format: int64 */
+            cooldown_seconds: number;
+        };
+        /** @description Revision-guarded replacement lifecycle alert policy. */
+        UpdateIssueLifecycleAlertPolicyRequest: {
+            /** Format: int64 */
+            expected_revision: number;
+            /** @description Replacement allowlist of exact names; an empty array removes the environment filter. */
+            environments: string[];
+            /** Format: int64 */
+            cooldown_seconds: number;
+        };
+        /** @description Draft policy and hypothetical lifecycle event for an existing issue. */
+        PreviewIssueLifecycleAlertRequest: {
+            /** Format: uuid */
+            issue_id: string;
+            /** @enum {string} */
+            event: "created" | "regressed";
+            /** @description Draft environment allowlist used only for this preview; an empty array matches all. */
+            environments: string[];
+            /** Format: int64 */
+            cooldown_seconds: number;
+        };
+        /** @description Policy-only eligibility; actual Slack delivery has additional subscription, routing and sender gates. */
+        IssueLifecycleAlertPreview: {
+            /** Format: uuid */
+            issue_id: string;
+            /** @enum {string} */
+            event: "created" | "regressed";
+            environment: string;
+            /** Format: int64 */
+            policy_revision: number;
+            allowed: boolean;
+            /** @enum {string} */
+            reason: "eligible" | "environment_excluded" | "cooldown";
+            /** Format: date-time */
+            next_eligible_at?: string;
+        };
+        /** @description Named event-frequency threshold with a bounded observation window, cooldown and optional filters. */
+        IssueFrequencyAlertRule: {
+            key: string;
+            enabled: boolean;
+            /** @description Exact issue environment. Empty string matches all environments. */
+            environment: string;
+            /** Format: int64 */
+            minimum_events: number;
+            /** Format: int64 */
+            window_seconds: number;
+            /** Format: int64 */
+            cooldown_seconds: number;
+        };
+        /** @description Current revision and complete ordered set of application frequency-alert rules. */
+        IssueFrequencyAlertPolicy: {
+            /** Format: int64 */
+            revision: number;
+            rules: components["schemas"]["IssueFrequencyAlertRule"][];
+        };
+        /** @description Replacement frequency-alert rules guarded by the expected policy revision. */
+        UpdateIssueFrequencyAlertPolicyRequest: {
+            /** Format: int64 */
+            expected_revision: number;
+            rules: components["schemas"]["IssueFrequencyAlertRule"][];
+        };
         /** @description App-level customer-impact threshold measured using verified distinct customers in a rolling 24-hour window. */
         IssueImpactAlertPolicy: {
             enabled: boolean;
@@ -69048,16 +72672,401 @@ export interface components {
         UpdateIssueImpactAlertPolicyRequest: {
             minimum_customers: number;
         };
-        /** @description Provide at least one matcher. All populated matchers are ANDed; the first matching rule assigns a new issue to one eligible account. */
+        /** @description Explicit provider ticket URL and optional title to attach to an issue group. */
+        PutIssueTrackerLinkRequest: {
+            /**
+             * Format: uri
+             * @description Public GitHub issue or Linear issue HTTPS URL; maximum 512 UTF-8 bytes.
+             */
+            url: string;
+            /** @description Optional display title; maximum 256 UTF-8 bytes without control characters. */
+            title?: string;
+        };
+        /** @description Explicit content and stable operation identity for native GitHub ticket creation or recovery. */
+        CreateNativeIssueTicketRequest: {
+            /** Format: uuid */
+            request_id: string;
+            repository: string;
+            title: string;
+            description?: string;
+            /** Format: uri */
+            recovery_url?: string;
+        };
+        /** @description Durable GitHub ticket evidence and Gregale attachment state for a native creation operation. */
+        NativeIssueTicketResult: {
+            /** Format: uuid */
+            request_id: string;
+            /** @enum {string} */
+            state: "created" | "linked";
+            /** Format: uri */
+            ticket_url: string;
+            /** Format: uuid */
+            link_id?: string;
+        };
+        /** @description Credential-free Linear lifecycle preview pinned to the current issue group and owner connection. */
+        NativeLinearIssueTrackerStatus: {
+            /**
+             * Format: uuid
+             * @description Current canonical Gregale issue identity.
+             */
+            issue_id: string;
+            /**
+             * Format: uuid
+             * @description Stored Linear reference identity.
+             */
+            link_id: string;
+            /**
+             * Format: int64
+             * @description Verified connection revision used to fence later pushes.
+             */
+            connection_revision: number;
+            /** @description Opaque scope fingerprint tracking canonical membership and grouping rules. */
+            group_fingerprint: string;
+            /**
+             * Format: uuid
+             * @description Verified Linear workspace identity.
+             */
+            workspace_id: string;
+            /**
+             * Format: uuid
+             * @description Verified connected team matching the linked ticket.
+             */
+            team_id: string;
+            /**
+             * Format: uuid
+             * @description Verified identity owning the stored API key.
+             */
+            viewer_id: string;
+            /** @description Supported linked Linear status including ticket and team and workflow UUIDs. */
+            status: components["schemas"]["IssueTrackerProviderStatus"];
+        };
+        /** @description Explicit push against an observed provider snapshot and connection/group scope. */
+        UpdateNativeLinearIssueTrackerStatusRequest: {
+            /**
+             * @description Lifecycle matching the current Gregale issue state.
+             * @enum {string}
+             */
+            desired_state: "open" | "resolved";
+            /** @description Exact Linear status from the native preview. */
+            expected: components["schemas"]["IssueTrackerProviderStatus"];
+            /**
+             * Format: int64
+             * @description Connection revision from the native preview.
+             */
+            expected_connection_revision: number;
+            /** @description Group fingerprint from the native preview. */
+            expected_group_fingerprint: string;
+            /**
+             * Format: uuid
+             * @description Explicit active same-team workflow state UUID required when the lifecycle changes.
+             */
+            linear_state_id?: string;
+        };
+        /** @description Explicit creation or UUID recovery through the app owner's connected Linear team. */
+        CreateNativeLinearIssueTicketRequest: {
+            /**
+             * Format: uuid
+             * @description Stable UUID v4 used as the Linear issue ID and reused across retries.
+             */
+            request_id: string;
+            /**
+             * Format: uuid
+             * @description Verified team UUID matching the stored app connection.
+             */
+            team_id: string;
+            /** @description Explicit ticket title bounded to 256 UTF-8 bytes. */
+            title: string;
+            /** @description Optional description bounded to 16 KiB; no telemetry is copied automatically. */
+            description?: string;
+            /**
+             * @description Explicitly recover an unconfirmed dispatch by its stable request UUID after the dispatch lease expires.
+             * @default false
+             */
+            recover?: boolean;
+            /** @description Optional known Linear issue URL that also requests recovery and must match the UUID lookup. */
+            recovery_url?: string;
+        };
+        /** @description Non-secret owner-scoped Linear connection metadata; disconnected records omit provider identity. */
+        IssueTrackerLinearConnection: {
+            /** @description Stored credential kind (api_key or oauth). */
+            auth_method?: string;
+            /** @description OAuth health (ready, refreshing, reconnect_required or revoking); absent for API keys. */
+            oauth_status?: string;
+            /**
+             * Format: date-time
+             * @description OAuth access token expiry; never includes credentials.
+             */
+            access_token_expires_at?: string;
+            /** @description True when a scoped signing secret is stored for Linear issue callbacks. */
+            webhook_enabled?: boolean;
+            /** @description Provider callback path to append to the Gregale API origin when callbacks are enabled. */
+            callback_path?: string;
+            /** @description Whether a verified API key or OAuth grant is stored. */
+            connected: boolean;
+            /**
+             * Format: int64
+             * @description Configuration revision used to fence concurrent changes.
+             */
+            revision: number;
+            /**
+             * Format: uuid
+             * @description Verified Linear organization identity.
+             */
+            workspace_id?: string;
+            /**
+             * Format: uuid
+             * @description Verified active Linear team identity.
+             */
+            team_id?: string;
+            /**
+             * Format: uuid
+             * @description Verified Linear user identity owning the credential.
+             */
+            viewer_id?: string;
+        };
+        /** @description Explicit connection or disconnection against a known revision. */
+        UpdateIssueTrackerLinearConnectionRequest: {
+            /** @description True connects a verified personal API key; false erases it. */
+            connected: boolean;
+            /**
+             * Format: int64
+             * @description Revision from the latest connection metadata read.
+             */
+            expected_revision: number;
+            /**
+             * Format: uuid
+             * @description Active team UUID required only when connecting.
+             */
+            team_id?: string;
+            /** @description Personal API key required only when connecting; never returned or logged. */
+            api_key?: string;
+            /** @description Optional Linear webhook signing secret stored with the connection. Omission on replacement disables callbacks. Never returned or logged. */
+            webhook_secret?: string;
+        };
+        /** @description Opt-in tracker direction and latest durable worker outcome. Inbound resolutions require explicit fixing-deployment evidence. */
+        IssueTrackerAutoSync: {
+            /**
+             * @description Outbound pushes Gregale lifecycle; inbound applies verified reopenings; both enables both behaviors.
+             * @enum {string}
+             */
+            direction?: "outbound" | "inbound" | "both";
+            /**
+             * @description Last provider lifecycle observed by the worker including changes held for review.
+             * @enum {string}
+             */
+            observed_state?: "open" | "resolved";
+            /** Format: uuid */
+            link_id: string;
+            enabled: boolean;
+            /** Format: int64 */
+            revision: number;
+            /** Format: uuid */
+            source_issue_id: string;
+            /** @enum {string} */
+            source_state?: "open" | "resolved";
+            /** @enum {string} */
+            provider_state?: "open" | "resolved";
+            /** @enum {string} */
+            pending_state?: "open" | "resolved";
+            /** @enum {string} */
+            outcome: "disabled" | "matched" | "pending" | "applied" | "error" | "conflict" | "blocked";
+            reason?: string;
+            /** Format: date-time */
+            last_checked_at?: string;
+            /** Format: date-time */
+            next_check_at?: string;
+            /**
+             * Format: uuid
+             * @description Selected open workflow destination for Linear policies.
+             */
+            linear_open_state_id?: string;
+            /**
+             * Format: uuid
+             * @description Selected resolved workflow destination for Linear policies.
+             */
+            linear_resolved_state_id?: string;
+        };
+        /** @description Explicit direction delegation against a known policy revision and aligned native/source lifecycle snapshot. Inbound closures are held for fixing-deployment review. */
+        UpdateIssueTrackerAutoSyncRequest: {
+            /**
+             * @description Defaults to outbound when omitted. Inbound and both require a fresh source intent baseline.
+             * @enum {string}
+             */
+            direction?: "outbound" | "inbound" | "both";
+            enabled: boolean;
+            /** Format: int64 */
+            expected_revision: number;
+            expected_status?: components["schemas"]["NativeIssueTrackerStatus"];
+            /** @enum {string} */
+            expected_issue_state?: "open" | "resolved";
+            expected_linear_status?: components["schemas"]["NativeLinearIssueTrackerStatus"];
+            /**
+             * Format: uuid
+             * @description Active same-team open workflow required to enable Linear automatic sync.
+             */
+            linear_open_state_id?: string;
+            /**
+             * Format: uuid
+             * @description Active same-team completed workflow required to enable Linear automatic sync.
+             */
+            linear_resolved_state_id?: string;
+        };
+        /** @description Observed lifecycle and identity of an external tracker issue. */
+        IssueTrackerProviderStatus: {
+            /** @enum {string} */
+            provider: "github" | "linear";
+            /** Format: uri */
+            url: string;
+            id: string;
+            /** @enum {string} */
+            state: "open" | "resolved";
+            /** Format: uuid */
+            team_id?: string;
+            /** Format: uuid */
+            state_id?: string;
+        };
+        /** @description Verified native connection and observed status of a linked tracker issue. */
+        NativeIssueTrackerStatus: {
+            /** Format: uuid */
+            issue_id: string;
+            /** Format: uuid */
+            link_id: string;
+            /** Format: int64 */
+            installation_id: number;
+            repository: string;
+            /** Format: int64 */
+            repository_id: number;
+            status: components["schemas"]["IssueTrackerProviderStatus"];
+        };
+        /** @description Expected provider snapshot and current Gregale lifecycle to push through a native connection. */
+        UpdateNativeIssueTrackerStatusRequest: {
+            /** @enum {string} */
+            desired_state: "open" | "resolved";
+            expected: components["schemas"]["IssueTrackerProviderStatus"];
+        };
+        /** @description Stored external ticket reference with provider identity and editor metadata. */
+        IssueTrackerLink: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Original identity owning this reference; retained through merge and split.
+             */
+            original_issue_id: string;
+            /** @enum {string} */
+            provider: "github" | "linear";
+            external_key: string;
+            /** Format: uri */
+            url: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            title?: string;
+            /** Format: uuid */
+            created_by_account_id?: string;
+            /** Format: uuid */
+            updated_by_account_id?: string;
+        };
+        /** @description Cursor-paginated tracker references attached to the selected issue group. */
+        ListIssueTrackerLinksResponse: {
+            items: components["schemas"]["IssueTrackerLink"][];
+            next_cursor?: string;
+        };
+        /** @description Application-scoped team identity, display name, complete member roster and editor metadata. */
+        IssueTeam: {
+            /** Format: uuid */
+            id: string;
+            key: string;
+            name: string;
+            member_account_ids: string[];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: uuid */
+            updated_by_account_id?: string;
+        };
+        /** @description Replacement team display name and eligible account membership roster. */
+        PutIssueTeamRequest: {
+            /** @description Maximum 64 UTF-8 bytes without control characters. */
+            name: string;
+            member_account_ids: string[];
+        };
+        /** @description Teams available for issue assignment and response routing within an application. */
+        ListIssueTeamsResponse: {
+            items: components["schemas"]["IssueTeam"][];
+        };
+        /** @description Supported query filters retained by a shared application issue view. */
+        IssueSavedViewFilters: {
+            /**
+             * @description Omit to include every state.
+             * @enum {string}
+             */
+            state?: "open" | "resolved" | "ignored";
+            /** @description Omit to include every issue environment. */
+            environment?: string;
+            /** @description me, unassigned, or an eligible account UUID. Omit for all owners. me resolves for each authenticated viewer. */
+            assignee?: string;
+            /**
+             * @default recent
+             * @enum {string}
+             */
+            sort?: "recent" | "impact";
+            /**
+             * Format: int64
+             * @default 0
+             */
+            min_customers?: number;
+            /** @description Exact allowlisted operational key=value in retained occurrences over 24h; value is limited to 128 UTF-8 bytes. */
+            tag?: string;
+            /**
+             * Format: uuid
+             * @description App-scoped team inbox; mutually exclusive with assignee.
+             */
+            team?: string;
+        };
+        /** @description Shared issue-view display name and validated replacement filter set. */
+        PutIssueSavedViewRequest: {
+            /** @description Trimmed display name */
+            name: string;
+            filters: components["schemas"]["IssueSavedViewFilters"];
+        };
+        /** @description Named shared issue query with its stable key and creation and editor metadata. */
+        IssueSavedView: {
+            key: string;
+            name: string;
+            filters: components["schemas"]["IssueSavedViewFilters"];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: uuid */
+            updated_by_account_id?: string;
+        };
+        /** @description Shared saved issue queries available within the selected application. */
+        ListIssueSavedViewsResponse: {
+            items: components["schemas"]["IssueSavedView"][];
+        };
+        /** @description Provide at least one matcher. All populated matchers are ANDed; the first matching rule assigns a new issue to one eligible account or team. Exactly one assignment target is required. */
         IssueOwnershipRule: {
+            /** Format: uuid */
+            assignee_account_id?: string;
             /** @description Exact exception type match. */
             exception_type?: string;
             /** @enum {string} */
             source_kind?: "exception" | "http" | "runtime" | "worker";
             /** @description Path prefix; matches only at a path-segment boundary. */
             route_prefix?: string;
-            /** Format: uuid */
-            assignee_account_id: string;
+            /** @description Local source path prefix (256 UTF-8 bytes); matches any application frame in the exception or its causes at a path-segment boundary. Backslashes and dot segments normalize; parent traversal, URLs, queries, and fragments are rejected. No glob or filesystem access. */
+            source_path_prefix?: string;
+            /** @description Exact allowlisted operational key=value matcher against sanitized reported tags; value <=128 UTF-8 bytes. Missing keys do not match an empty value. */
+            tag?: string;
+            /**
+             * Format: uuid
+             * @description Team selected by this ownership rule; cannot be combined with an account assignment.
+             */
+            assignee_team_id?: string;
         };
         /** @description Complete ordered app-level ownership policy. An empty rules list disables automatic assignment. */
         IssueOwnershipRules: {
@@ -69176,6 +73185,83 @@ export interface components {
         IssueSplitRuleUpdate: {
             enabled: boolean;
         };
+        /** @description Observed issue and occurrence counts for one deployment within the requested environment. */
+        IssueReleaseHealth: {
+            /** Format: uuid */
+            deployment_id: string;
+            commit_sha: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: int64 */
+            observed_requests: number;
+            /** Format: int64 */
+            http_5xx_requests: number;
+            /** Format: double */
+            http_5xx_rate: number | null;
+            /** @enum {string} */
+            request_coverage: "observed" | "unknown";
+            /** Format: int64 */
+            observed_issue_events: number;
+            /** Format: int64 */
+            observed_issue_groups: number;
+            /** Format: int64 */
+            new_issue_groups: number;
+            /** Format: int64 */
+            regressed_issue_groups: number;
+            /** Format: int64 */
+            identified_customers: number;
+            /** Format: int64 */
+            unattributed_events: number;
+        };
+        /** @description Baseline and candidate deployment health with newly observed, recurring and resolved issue groups. */
+        IssueReleaseComparison: {
+            /** Format: date-time */
+            window_start: string;
+            /** Format: date-time */
+            window_end: string;
+            environment: string;
+            baseline: components["schemas"]["IssueReleaseHealth"];
+            candidate: components["schemas"]["IssueReleaseHealth"];
+            /**
+             * Format: double
+             * @description Candidate minus baseline observed HTTP 5xx rate, expressed as a fraction. Null if either has no observed requests.
+             */
+            http_5xx_rate_delta: number | null;
+        };
+        /** @description Lifecycle or assignment action applied atomically to the selected canonical issue groups. */
+        BulkIssueLifecycleAction: {
+            /** @enum {string} */
+            action: "assign" | "resolve" | "ignore" | "reopen";
+            /**
+             * Format: uuid
+             * @description Only for assign; omit both assignment targets to unassign.
+             */
+            assignee_account_id?: string;
+            /**
+             * Format: uuid
+             * @description Required only for resolve.
+             */
+            fixed_deployment_id?: string;
+            /**
+             * Format: date-time
+             * @description Required only for ignore; future and within 90 days.
+             */
+            ignored_until?: string;
+            /**
+             * Format: uuid
+             * @description Only for assign; mutually exclusive with assignee_account_id.
+             */
+            assignee_team_id?: string;
+        };
+        /** @description Bounded issue selection and one lifecycle or assignment operation to apply atomically. */
+        BulkIssueActionRequest: {
+            issue_ids: string[];
+            action: components["schemas"]["BulkIssueLifecycleAction"];
+        };
+        /** @description Canonical issue groups updated by the completed atomic bulk action. */
+        BulkIssueActionResponse: {
+            items: components["schemas"]["Issue"][];
+        };
         /** @description Desired ownership, lifecycle, or reversible regrouping action within the app. Merge adopts the destination owner/state; split opens one linked original group. Merge/split responses identify the remaining canonical issue. */
         IssueActionRequest: {
             /** @enum {string} */
@@ -69196,6 +73282,11 @@ export interface components {
             fixed_deployment_id?: string;
             /** Format: date-time */
             ignored_until?: string;
+            /**
+             * Format: uuid
+             * @description Target team for this assignment action; clear the account assignee when selecting a team.
+             */
+            assignee_team_id?: string;
         };
         /** @description Create a short-lived reporting credential for one existing deployment and environment. */
         CreateIssueIngestTokenRequest: {
@@ -80763,6 +84854,138 @@ export interface operations {
             };
         };
     };
+    getConsumerBillingSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The app whose consumer key authenticates the request. */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The consumer's month to date. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsumerBillingSummaryResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description The consumer key lacks the billing scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The key exceeded 60 billing requests per minute (`consumer_billing_rate_limited`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getConsumerBillingUsage: {
+        parameters: {
+            query?: {
+                /** @description RFC 3339 start (default the start of the current UTC month). */
+                since?: string;
+                /** @description RFC 3339 end, at most 31 days after since (default now). */
+                until?: string;
+            };
+            header?: never;
+            path: {
+                /** @description The app whose usage is read. */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Requests and billable units per UTC day. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsumerBillingUsageResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /** @description This consumer key has no billing scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too many billing requests for this key. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listConsumerBillingStatements: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The app whose statements are read. */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The latest 24 finalized statements, newest first, each with its invoice's payment status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsumerBillingStatementsResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description A consumer key without the billing scope cannot list statements. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Statement reads for this key are rate limited. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     getMigrationPreflight: {
         parameters: {
             query: {
@@ -84979,6 +89202,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             413: components["responses"]["ValidationFailed"];
             429: components["responses"]["TooManyRequests"];
             500: components["responses"]["ServerError"];
@@ -89198,6 +93422,178 @@ export interface operations {
             422: components["responses"]["ValidationFailed"];
         };
     };
+    listPlatformTenantPlans: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The account's tenant plans. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformTenantPlanListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createPlatformTenantPlan: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description Idempotency key for the POST. Stored for 24h. On replay the server
+                 *     returns the original response with `Idempotent-Replayed: true`.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlatformTenantPlanRequest"];
+            };
+        };
+        responses: {
+            /** @description The new tenant plan. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformTenantPlanResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    getPlatformTenantPlan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant plan to read or replace. */
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The plan. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformTenantPlanResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updatePlatformTenantPlan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant plan to read or replace. */
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlatformTenantPlanRequest"];
+            };
+        };
+        responses: {
+            /** @description The updated tenant plan. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformTenantPlanResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    listPlatformTenantPlanAssignments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant whose plan is assigned or listed. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The tenant's assignments. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformTenantPlanAssignmentListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    assignPlatformTenantPlan: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description Idempotency key for the POST. Stored for 24h. On replay the server
+                 *     returns the original response with `Idempotent-Replayed: true`.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description Tenant whose plan is assigned or listed. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignPlatformTenantPlanRequest"];
+            };
+        };
+        responses: {
+            /** @description The assignment and the rate card it created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformTenantPlanAssignmentResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
     getPlatformTenantUsage: {
         parameters: {
             query?: {
@@ -89466,6 +93862,432 @@ export interface operations {
             };
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    getPlatformTenantStatementInvoice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Platform tenant whose statement is exported. */
+                id: string;
+                /** @description Finalized cross-app statement revision to export. */
+                statement_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The platform tenant statement's export. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatementInvoiceExportResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    exportPlatformTenantStatementInvoice: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description Idempotency key for the POST. Stored for 24h. On replay the server
+                 *     returns the original response with `Idempotent-Replayed: true`.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description Platform tenant whose statement is exported. */
+                id: string;
+                /** @description Finalized cross-app statement revision to export. */
+                statement_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CreateStatementInvoiceRequest"];
+            };
+        };
+        responses: {
+            /** @description The completed platform tenant statement export. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatementInvoiceExportResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description The platform tenant statement or customer cannot be invoiced, or the provider rejected the request. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The provider could not be reached (`billing_provider_unavailable`); retry to resume the platform tenant statement export. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getBillingConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Billing provider statements export to (ADR-1507). */
+                provider: components["schemas"]["BillingProvider"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The connection; the key itself is never returned. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingConnectionResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    putBillingConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Billing provider statements export to (ADR-1507). */
+                provider: components["schemas"]["BillingProvider"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutBillingConnectionRequest"];
+            };
+        };
+        responses: {
+            /** @description The stored connection. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingConnectionResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description Not a key of this provider, a bad api_url, or the provider rejected the key. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The provider could not be reached (`billing_provider_unavailable`). */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    deleteBillingConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Billing provider statements export to (ADR-1507). */
+                provider: components["schemas"]["BillingProvider"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listStatementInvoices: {
+        parameters: {
+            query?: {
+                /** @description `unpaid` (draft, open or uncollectible), `overdue` (open and past due), or one payment status. */
+                status?: "unpaid" | "overdue" | "draft" | "open" | "paid" | "void" | "uncollectible" | "deleted";
+                /** @description The `next_cursor` of the previous invoice page. */
+                cursor?: string;
+                /** @description Invoices to return (1–200, default 50). */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Exported invoices, newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatementInvoiceListResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listBillingRuns: {
+        parameters: {
+            query?: {
+                /** @description Runs to return (1–100, default 20). */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Billing runs with their item counts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingRunListResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createBillingRun: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description Idempotency key for the POST. Stored for 24h. On replay the server
+                 *     returns the original response with `Idempotent-Replayed: true`.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateBillingRunRequest"];
+            };
+        };
+        responses: {
+            /** @description The queued run; poll it or list its items for progress. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingRunResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /** @description Another run is in progress, or `export` names a provider without a connected key. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The month has not ended, or the options are invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getBillingRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Billing run ID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The billing run. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingRunResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listBillingRunItems: {
+        parameters: {
+            query?: {
+                /** @description Only items with this outcome, such as `held` or `failed`. */
+                outcome?: "pending" | "drafted" | "finalized" | "exported" | "up_to_date" | "held" | "skipped" | "failed";
+                /** @description The previous page's `next_cursor`. */
+                cursor?: string;
+                /** @description Items to return (1–500, default 100). */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Billing run whose customers are listed. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of the run's items. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingRunItemListResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getBillingRunSchedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The schedule and when it next starts a run. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingRunScheduleResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    putBillingRunSchedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutBillingRunScheduleRequest"];
+            };
+        };
+        responses: {
+            /** @description The saved schedule. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingRunScheduleResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /** @description `export` names a provider without a connected key. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid schedule options or delay. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    deleteBillingRunSchedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Schedule removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
         };
     };
     listPlatformTenantWebhooks: {
@@ -93399,6 +98221,93 @@ export interface operations {
             409: components["responses"]["Conflict"];
         };
     };
+    getAPIConsumerUsageStatementInvoice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Consumer whose statement is exported. */
+                consumer_id: string;
+                /** @description Finalized statement revision to export. */
+                statement_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The app consumer statement's export. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatementInvoiceExportResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    exportAPIConsumerUsageStatementInvoice: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description Idempotency key for the POST. Stored for 24h. On replay the server
+                 *     returns the original response with `Idempotent-Replayed: true`.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Consumer whose statement is exported. */
+                consumer_id: string;
+                /** @description Finalized statement revision to export. */
+                statement_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CreateStatementInvoiceRequest"];
+            };
+        };
+        responses: {
+            /** @description The completed app consumer statement export. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatementInvoiceExportResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description The app consumer statement or customer cannot be invoiced, or the provider rejected the request. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The provider could not be reached (`billing_provider_unavailable`); retry to resume the app consumer statement export. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     listAPIConsumerRateCards: {
         parameters: {
             query?: never;
@@ -93621,6 +98530,417 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    listAPIConsumerCredits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Consumer whose prepaid credit is listed or granted. */
+                consumer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The consumer's grants and balances. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIConsumerCreditListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createAPIConsumerCredit: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description Idempotency key for the POST. Stored for 24h. On replay the server
+                 *     returns the original response with `Idempotent-Replayed: true`.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Consumer whose prepaid credit is listed or granted. */
+                consumer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAPIConsumerCreditRequest"];
+            };
+        };
+        responses: {
+            /** @description The new grant. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIConsumerCreditResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description The consumer already holds 100 grants with credit left. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid currency, amount, note or expiry. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    voidAPIConsumerCredit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Consumer that holds the credit. */
+                consumer_id: string;
+                /** @description Credit grant to void. */
+                credit_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The voided grant. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIConsumerCreditResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getAPIConsumerSpendCap: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Consumer whose monthly spend is capped. */
+                consumer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The cap and whether it is reached this month. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIConsumerSpendCapResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    putAPIConsumerSpendCap: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Consumer whose monthly spend is capped. */
+                consumer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutAPIConsumerSpendCapRequest"];
+            };
+        };
+        responses: {
+            /** @description The stored cap, checked at once. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIConsumerSpendCapResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description Invalid currency or cap. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    deleteAPIConsumerSpendCap: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Consumer whose monthly spend is capped. */
+                consumer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The spend cap was removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getAPIConsumerTrial: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Consumer whose free trial is read or changed. */
+                consumer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The consumer's trial. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIConsumerTrialResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    putAPIConsumerTrial: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Consumer whose free trial is read or changed. */
+                consumer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutAPIConsumerTrialRequest"];
+            };
+        };
+        responses: {
+            /** @description The stored trial. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIConsumerTrialResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description Invalid trial length or end. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    endAPIConsumerTrial: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Consumer whose free trial is read or changed. */
+                consumer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The trial ends at the next minute, or was removed before it started. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getAPIConsumerBillingPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The app's overdue rule. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIConsumerBillingPolicyResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    putAPIConsumerBillingPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutAPIConsumerBillingPolicyRequest"];
+            };
+        };
+        responses: {
+            /** @description The stored rule. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIConsumerBillingPolicyResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description Days outside 0 to 365. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    deleteAPIConsumerBillingPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The overdue rule was removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listAPIConsumerOverdueHolds: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The app's held consumers, oldest due date first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIConsumerOverdueHoldListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
         };
     };
     listAPIConsumerUsageAlerts: {
@@ -95572,6 +100892,180 @@ export interface operations {
             503: components["responses"]["CapacityUnavailable"];
         };
     };
+    getIssueLifecycleAlertPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current lifecycle alert policy. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueLifecycleAlertPolicy"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    setIssueLifecycleAlertPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateIssueLifecycleAlertPolicyRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated policy; identical writes preserve its revision. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueLifecycleAlertPolicy"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            /** @description Lifecycle alert policy revision changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    previewIssueLifecycleAlert: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreviewIssueLifecycleAlertRequest"];
+            };
+        };
+        responses: {
+            /** @description Draft policy eligibility at the preview snapshot. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueLifecycleAlertPreview"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    getIssueFrequencyAlertPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current policy. Unconfigured apps return revision zero and no rules. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueFrequencyAlertPolicy"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    setIssueFrequencyAlertPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateIssueFrequencyAlertPolicyRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated policy. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueFrequencyAlertPolicy"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            /** @description Policy revision changed. Read the current policy and retry. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
     getIssueImpactAlertPolicy: {
         parameters: {
             query?: never;
@@ -95694,6 +101188,1008 @@ export interface operations {
             503: components["responses"]["CapacityUnavailable"];
         };
     };
+    getIssueSourceMaps: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Deployment UUID whose source-map publication is being managed. */
+                deployment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Read-only artifact metadata. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueSourceMapsMetadata"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    publishIssueSourceMaps: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Deployment UUID whose source-map publication is being managed. */
+                deployment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublishIssueSourceMapsRequest"];
+            };
+        };
+        responses: {
+            /** @description Artifact readiness and immutable identity. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueSourceMapsMetadata"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            /** @description Immutable manifest conflict or active artifact quota exceeded. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    retireIssueSourceMaps: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Deployment UUID whose source-map publication is being managed. */
+                deployment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Retired metadata, including the preserved manifest digest. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueSourceMapsMetadata"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    listIssueSavedViews: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Up to 20 shared saved views, ordered by name and key. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListIssueSavedViewsResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    getIssueSavedView: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Stable key of the shared issue query to read, replace or delete. */
+                view_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Named filters; me remains relative to the eventual authenticated reader. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueSavedView"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    putIssueSavedView: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Stable key of the shared issue query to read, replace or delete. */
+                view_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutIssueSavedViewRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved definition and editor metadata. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueSavedView"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            /** @description Shared view quota reached. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    deleteIssueSavedView: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Stable key of the shared issue query to read, replace or delete. */
+                view_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Shared view deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    listIssueTeams: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Up to 20 teams, ordered by name and key. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListIssueTeamsResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    getIssueTeam: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Stable application team key used to manage its identity and membership. */
+                team_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Team identity, name, member roster and editor metadata. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueTeam"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    putIssueTeam: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Stable application team key used to manage its identity and membership. */
+                team_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutIssueTeamRequest"];
+            };
+        };
+        responses: {
+            /** @description Team identity and complete member roster. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueTeam"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            /** @description Team quota reached. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    deleteIssueTeam: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Stable application team key used to manage its identity and membership. */
+                team_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Team deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            /** @description Team still owns issues or routing rules. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    compareIssueReleases: {
+        parameters: {
+            query: {
+                /** @description Baseline deployment UUID for the issue health comparison. */
+                baseline: string;
+                /** @description Candidate deployment UUID compared with the selected baseline. */
+                candidate: string;
+                /** @description Issue environment included in both deployment health observations. */
+                environment?: string;
+            };
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Both deployment observations from one consistent database snapshot. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueReleaseComparison"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    createNativeIssueTicket: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Original Gregale issue identity retained across creation retries. */
+                issue_id: string;
+            };
+            cookie?: never;
+        };
+        /** @description Explicit content, target repository and stable request identity for creation or recovery. */
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateNativeIssueTicketRequest"];
+            };
+        };
+        responses: {
+            /** @description Durable ticket evidence and attachment state; created requires retrying attachment. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NativeIssueTicketResult"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            /** @description Request conflict or unconfirmed dispatch or retained receipt quota reached; preserve request inputs and recover the existing ticket. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description GitHub rejected creation or connected credentials are unavailable. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    getNativeLinearIssueTrackerStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Gregale issue identity whose current group contains the Linear reference. */
+                issue_id: string;
+                /** @description Stored Linear reference selected for explicit lifecycle synchronization. */
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Verified linked Linear status and current preview scope. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NativeLinearIssueTrackerStatus"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            /** @description Connection or group changed or provider state requires manual triage. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Provider identity or credential availability could not be confirmed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    updateNativeLinearIssueTrackerStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Gregale issue identity whose current group contains the Linear reference. */
+                issue_id: string;
+                /** @description Stored Linear reference selected for explicit lifecycle synchronization. */
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        /** @description Explicit lifecycle push with observed provider and connection/group scope. */
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateNativeLinearIssueTrackerStatusRequest"];
+            };
+        };
+        responses: {
+            /** @description Confirmed provider lifecycle and unchanged preview scope. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NativeLinearIssueTrackerStatus"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            /** @description Provider snapshot or connection or group changed or the lifecycle is unsupported. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Provider operation or workflow selection could not be confirmed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    createNativeLinearIssueTicket: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Original Gregale issue identity whose current group receives the confirmed Linear reference. */
+                issue_id: string;
+            };
+            cookie?: never;
+        };
+        /** @description Explicit ticket inputs and stable UUID; recovery is an explicit decision after an unconfirmed dispatch. */
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateNativeLinearIssueTicketRequest"];
+            };
+        };
+        responses: {
+            /** @description Durable creation evidence; created means attachment requires retry and linked means the reference is confirmed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NativeIssueTicketResult"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            /** @description Connection or inputs changed or outcome is unconfirmed or request quota is exhausted. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Provider verification or credential availability failed or creation was explicitly rejected. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    getIssueTrackerLinearConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Linear connection metadata without credentials. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueTrackerLinearConnection"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    updateIssueTrackerLinearConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /** @description Explicit connection decision and known revision; personal API key is accepted only when connecting. */
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateIssueTrackerLinearConnectionRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated non-secret connection metadata and revision. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueTrackerLinearConnection"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            /** @description The connection revision changed; read metadata again. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    getIssueTrackerAutoSync: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Gregale issue identity whose current group contains the automatic sync reference. */
+                issue_id: string;
+                /** @description Stored GitHub or Linear reference whose automatic sync policy is inspected or configured. */
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Opt-in policy and latest durable reconciliation outcome. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueTrackerAutoSync"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    updateIssueTrackerAutoSync: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Gregale issue identity whose current group contains the automatic sync reference. */
+                issue_id: string;
+                /** @description Stored GitHub or Linear reference whose automatic sync policy is inspected or configured. */
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        /** @description Explicit delegation decision and observed policy/native snapshot for automatic sync. */
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateIssueTrackerAutoSyncRequest"];
+            };
+        };
+        responses: {
+            /** @description Persisted automatic sync policy with its new configuration revision. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueTrackerAutoSync"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            /** @description Policy or native snapshot changed or lifecycle alignment is required before delegation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Native provider snapshot could not be confirmed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    getNativeIssueTrackerStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Gregale issue identity whose canonical group owns the tracker reference. */
+                issue_id: string;
+                /** @description Tracker reference identity to read or synchronize through the native connection. */
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Canonical issue, reference, connection and observed provider status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NativeIssueTrackerStatus"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            /** @description Native connection missing, unsupported status or changed binding/reference. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Provider status could not be confirmed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    updateNativeIssueTrackerStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Gregale issue identity whose canonical group owns the tracker reference. */
+                issue_id: string;
+                /** @description Tracker reference identity to read or synchronize through the native connection. */
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateNativeIssueTrackerStatusRequest"];
+            };
+        };
+        responses: {
+            /** @description Verified native connection and resulting provider status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NativeIssueTrackerStatus"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            /** @description Native connection missing, unsupported status or changed snapshot. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Provider update could not be confirmed; preview again. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    listIssueTrackerLinks: {
+        parameters: {
+            query?: {
+                /** @description Opaque continuation token from the preceding tracker-reference page. */
+                cursor?: string;
+            };
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Issue group UUID that owns the external tracker references. */
+                issue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description References and an optional continuation cursor. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListIssueTrackerLinksResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    putIssueTrackerLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Issue group UUID that owns the external tracker references. */
+                issue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutIssueTrackerLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description Canonical reference and creation/update metadata. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueTrackerLink"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            /** @description Tracker-reference quota reached. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    deleteIssueTrackerLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Issue group UUID whose selected tracker reference will be removed. */
+                issue_id: string;
+                /** @description Stored tracker-reference UUID to detach from the selected issue group. */
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reference removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    bulkActOnIssues: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkIssueActionRequest"];
+            };
+        };
+        responses: {
+            /** @description Canonical issue groups after the complete batch commits. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkIssueActionResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PlanFeatureGated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AppNotFound"];
+            /** @description Idempotency conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            503: components["responses"]["CapacityUnavailable"];
+        };
+    };
     listIssues: {
         parameters: {
             query?: {
@@ -95701,10 +102197,14 @@ export interface operations {
                 state?: string;
                 /** @description Exact issue environment namespace. */
                 environment?: string;
+                /** @description Shared inbox for a team UUID in this app. Mutually exclusive with assignee. */
+                team?: string;
                 /** @description Filter by me, unassigned, or an owner account UUID. */
                 assignee?: string;
                 /** @description Issue ordering; impact ranks by verified distinct customers in the fixed 24-hour window. */
                 sort?: "recent" | "impact";
+                /** @description Exact allowed operational key=value match on retained occurrences in the fixed 24-hour window. */
+                tag?: string;
                 /** @description Return issues affecting at least this many verified distinct customers in the fixed 24-hour window. */
                 min_customers?: number;
                 /** @description Opaque next_cursor from the previous issue page. */
@@ -105711,6 +112211,82 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AutomationPublishPolicy"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["AutomationConflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            422: components["responses"]["AutomationInvalid"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServerError"];
+        };
+    };
+    saveAutomationTestSuite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation whose reusable test suite is replaced or cleared. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveAutomationTestSuiteRequest"];
+            };
+        };
+        responses: {
+            /** @description Versioned saved test data. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["AutomationConflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            422: components["responses"]["AutomationInvalid"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServerError"];
+        };
+    };
+    runAutomationTests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation whose saved test cases are simulated. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunAutomationTestsRequest"];
+            };
+        };
+        responses: {
+            /** @description Case and assertion summaries without payloads or publishing authority. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationTestReport"];
                 };
             };
             400: components["responses"]["ValidationFailed"];
@@ -121002,6 +127578,377 @@ export interface operations {
             };
         };
     };
+    listEventSubscriptionDeadlines: {
+        parameters: {
+            query?: {
+                /** @description Inclusive effective-deadline bound, normalized to UTC microseconds. */
+                deadline_from?: string;
+                /** @description Exclusive effective-deadline bound, later than deadline_from after normalization. */
+                deadline_before?: string;
+                /** @description Expiry classification at the first page window_at; keep unchanged across pages. */
+                status?: "all" | "expired" | "upcoming";
+                /** @description Opaque continuation; preserve scope, filters and page size. Expires 15 minutes after the first page. */
+                cursor?: string;
+                /** @description Maximum returned recipients; keep unchanged across pages. */
+                limit?: number;
+                /** @description Optional upcoming window strictly after the first page window_at and before window_at plus this horizon. Normalizes all/omitted status to upcoming; expired status is rejected. Keep unchanged across pages. */
+                within_millis?: number;
+                /** @description Optional known observed backlog waiting reason, applied before pagination at each page observation. Keep unchanged across pages; reasons remain live. */
+                waiting_reason?: "circuit_open" | "circuit_probe_wait" | "circuit_recovery_rate_limited" | "subscription_paused" | "subscription_rate_limited" | "ordering_blocked" | "capacity_consumer" | "capacity_app" | "capacity_account" | "routing_in_progress" | "receipt_processing" | "retry_backoff" | "workflow_routing" | "ready";
+            };
+            header?: never;
+            path: {
+                /** @description Application slug for a deadline-ordered pending-delivery listing. */
+                slug: string;
+                /** @description Owned application subscription UUID whose pending deadlines are being investigated. */
+                subscriptionID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A bounded live page of pending deliveries with effective deadlines. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventSubscriptionDeadlinePage"];
+                };
+            };
+            /** @description Subscription UUID, deadline filters, page size or cursor are invalid or expired. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Deadline listing exceeded its read budget; no partial page was returned. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getEventSubscriptionDeadlineWindow: {
+        parameters: {
+            query: {
+                /** @description Positive whole-millisecond horizon from this snapshot observation; upper deadline boundary is exclusive. */
+                within_millis: number;
+            };
+            header?: never;
+            path: {
+                /** @description Application slug for full deadline-window monitoring. */
+                slug: string;
+                /** @description Owned application subscription UUID whose retained pending deadlines are being counted. */
+                subscriptionID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Full pending summary, separate upcoming and expired counts, and exact waiting-reason partitions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventSubscriptionDeadlineWindow"];
+                };
+            };
+            /** @description Subscription UUID or within_millis is invalid, missing, repeated or unsupported. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Deadline-window read exceeded its budget; no partial counts were returned. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getEventSubscriptionPendingSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Application slug for a full pending summary. */
+                slug: string;
+                /** @description Owned application subscription UUID whose retained pending recipients are being counted. */
+                subscriptionID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Complete pending counts, effective deadlines and current controls; inspect complete before monitoring. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventSubscriptionPendingSummary"];
+                };
+            };
+            /** @description Subscription UUID is invalid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Full pending-summary read exceeded its budget; coverage is unknown. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    previewEventSubscriptionRateLimit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Application slug for a read-only consumer pacing preview. */
+                slug: string;
+                /** @description Owned application subscription UUID whose pacing is being reviewed. */
+                subscriptionID: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventSubscriptionRatePreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Advisory rate-only admission model and bounded deadline evidence; completeness does not certify deadline safety. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventSubscriptionRatePreview"];
+                };
+            };
+            /** @description Proposed preview settings or subscription UUID are invalid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Read-only pacing preview exceeded its request deadline; retry with a fresh observation. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    setEventSubscriptionRateLimit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Configure rate bucket: Application slug owning this subscription rate policy. */
+                slug: string;
+                /** @description Configure rate bucket: Application subscription UUID for rate controls. */
+                subscriptionID: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventSubscriptionRateRequest"];
+            };
+        };
+        responses: {
+            /** @description Configure rate bucket: Retained rate command evidence; inspect outcome for applied or rejected. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventSubscriptionRateCommandReceipt"];
+                };
+            };
+            /** @description Configure rate bucket: Invalid rate control input. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Configure rate bucket: Command UUID inputs changed or database clock moved behind the refill anchor. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Configure rate bucket: 128 unexpired receipts retained; known repeats remain available. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Configure rate bucket: Request deadline elapsed; after an uncertain mutation look up or replay the same command UUID. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listEventSubscriptionRateCommands: {
+        parameters: {
+            query?: {
+                /** @description List rate history: Exclusive increasing history sequence; pages contain at most 50 retained receipts and do not freeze history. */
+                after?: number;
+            };
+            header?: never;
+            path: {
+                /** @description List rate history: Application slug owning this subscription rate policy. */
+                slug: string;
+                /** @description List rate history: Application subscription UUID for rate controls. */
+                subscriptionID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List rate history: Retained rate command evidence; inspect outcome for applied or rejected. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventSubscriptionRateCommands"];
+                };
+            };
+            /** @description List rate history: Invalid rate control input. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description List rate history: Request deadline elapsed; after an uncertain mutation look up or replay the same command UUID. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getEventSubscriptionRateCommand: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Look up rate command: Application slug owning this subscription rate policy. */
+                slug: string;
+                /** @description Look up rate command: Application subscription UUID for rate controls. */
+                subscriptionID: string;
+                /** @description Look up rate command: Nonzero UUID of a retained rate command. */
+                commandID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Look up rate command: Retained rate command evidence; inspect outcome for applied or rejected. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventSubscriptionRateCommandReceipt"];
+                };
+            };
+            /** @description Look up rate command: Invalid rate control input. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Look up rate command: Request deadline elapsed; after an uncertain mutation look up or replay the same command UUID. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     setEventSubscriptionCapacity: {
         parameters: {
             query?: never;
@@ -126717,7 +133664,10 @@ export interface operations {
                 /** @description Audit-log slug. Default `operator_force_park`. Clamped to `[a-z0-9_]{1,64}`. */
                 reason?: string;
             };
-            header?: never;
+            header: {
+                /** @description Park request key. Reuse with the original target and reason to recover an uncertain submission. No receipt expiry. */
+                "Idempotency-Key": string;
+            };
             path: {
                 /** @description Instance UUID returned by /v1/apps/{slug}/instances or /v1/admin/obs/instances. */
                 id: string;
@@ -126726,7 +133676,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Intent row written + pg_notify emitted. Poll `status_url` for terminal state. */
+            /** @description Intent, response receipt and request audit handoff committed; notification attempted. Poll `status_url` for terminal state. */
             202: {
                 headers: {
                     [name: string]: unknown;
@@ -126763,7 +133713,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description code: instance_not_parkable — instance state is not in {RUNNING, WAKING, COLD_BOOTING}. */
+            /** @description code: instance_not_parkable — instance state is not in {RUNNING, WAKING, COLD_BOOTING}. Also operator_submission_conflict for changed parameters or operator_submission_legacy for an ambiguous pre-upgrade key. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -126783,16 +133733,19 @@ export interface operations {
                 /** @description Audit-log slug. Default `operator_force_cold_boot`. Clamped to `[a-z0-9_]{1,64}`. */
                 reason?: string;
             };
-            header?: never;
+            header: {
+                /** @description Cold-boot request key. Reuse with the original target and reason to recover an uncertain submission. No receipt expiry. */
+                "Idempotency-Key": string;
+            };
             path: {
-                /** @description App slug (e.g. "my-app"). Resolved to the app's latest deployment by `created_at DESC`. */
+                /** @description App slug (e.g. "my-app"). Resolved once at acceptance by `created_at DESC, id DESC`; retries retain the original deployment. */
                 slug: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Intent row written + pg_notify emitted. Poll `status_url` for terminal state and `snap_ids_marked_stale`. */
+            /** @description Intent, response receipt and request audit handoff committed; notification attempted. Poll `status_url` for terminal state and `snap_ids_marked_stale`. */
             202: {
                 headers: {
                     [name: string]: unknown;
@@ -126829,6 +133782,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description operator_submission_conflict for changed parameters; operator_submission_legacy for an ambiguous pre-upgrade request key. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             429: components["responses"]["TooManyRequests"];
         };
     };
@@ -126840,7 +133802,10 @@ export interface operations {
                 /** @description Audit-log slug. Default `operator_force_restart`. Clamped to `[a-z0-9_]{1,64}`. */
                 reason?: string;
             };
-            header?: never;
+            header: {
+                /** @description Restart request key. Reuse with the original target and reason to recover an uncertain submission. No receipt expiry. */
+                "Idempotency-Key": string;
+            };
             path: {
                 /** @description Force-restart target. Instance UUID returned by /v1/apps/{slug}/instances or /v1/admin/obs/instances. */
                 id: string;
@@ -126849,7 +133814,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Force-restart 202: intent row written + pg_notify emitted. Poll `status_url` for terminal state and `snap_ids_marked_stale`. */
+            /** @description Force-restart 202: intent, response receipt and request audit handoff committed; notification attempted. Poll `status_url` for terminal state and `snap_ids_marked_stale`. */
             202: {
                 headers: {
                     [name: string]: unknown;
@@ -126886,7 +133851,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Force-restart 409: code: instance_not_restartable — instance state is not RUNNING. WAKING / COLD_BOOTING / PARKED / STOPPED all return this code without writing an intent row. */
+            /** @description Force-restart 409: code: instance_not_restartable — instance state is not RUNNING. WAKING / COLD_BOOTING / PARKED / STOPPED all return this code without writing an intent row. Also operator_submission_conflict for changed parameters or operator_submission_legacy for an ambiguous pre-upgrade key. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -132803,6 +139768,587 @@ export interface operations {
             503: components["responses"]["ServiceUnavailable"];
         };
     };
+    listAutomationLiveBaselines: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation whose baseline catalog is being listed. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current heads and current retained evidence observations; historical audit receipts remain immutable. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListAutomationLiveBaselinesResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["AutomationConflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServerError"];
+        };
+    };
+    getAutomationLiveBaseline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation whose current baseline receipt is being read. */
+                name: string;
+                /** @description Baseline name whose current promotion receipt is requested. */
+                baseline: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current immutable promotion receipt; inspect retained evidence separately for current validity. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationLiveBaseline"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["AutomationConflict"];
+            /** @description This baseline name is permanently retired; its retirement audit remains available from history. */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            413: components["responses"]["PayloadTooLarge"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServerError"];
+        };
+    };
+    getAutomationLiveBaselineHistory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation whose baseline audit history is being read. */
+                name: string;
+                /** @description Baseline name whose immutable promotion and retirement history is requested. */
+                baseline: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Bounded immutable promotion history, including the permanent retirement receipt when present. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationLiveBaselineHistory"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["AutomationConflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServerError"];
+        };
+    };
+    promoteAutomationLiveBaseline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation whose passing suite is being promoted. */
+                name: string;
+                /** @description Release track to promote within this automation; execution routing is unchanged. */
+                baseline: string;
+                /** @description Stable caller-selected UUID. Retry uncertain requests only with the original ID and identical semantic request. */
+                promotion_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PromoteAutomationLiveBaselineRequest"];
+            };
+        };
+        responses: {
+            /** @description Attributed promotion receipt for this request, replayed unchanged on an identical retained retry. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationLiveBaseline"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["AutomationConflict"];
+            /** @description Promotion cannot reuse a retired baseline name. Choose a different active name explicitly. */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            413: components["responses"]["PayloadTooLarge"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServerError"];
+        };
+    };
+    retireAutomationLiveBaseline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation whose named baseline is being retired. */
+                name: string;
+                /** @description Baseline name to retire permanently within this automation. */
+                baseline: string;
+                /** @description Stable caller-selected retirement UUID; preserve this ID and expected revision for uncertain retries. */
+                retirement_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RetireAutomationLiveBaselineRequest"];
+            };
+        };
+        responses: {
+            /** @description Attributed immutable retirement receipt. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationLiveBaselineRetirement"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["AutomationConflict"];
+            /** @description The requested baseline was previously retired by another retirement request. Read its audit history. */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            413: components["responses"]["PayloadTooLarge"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServerError"];
+        };
+    };
+    startAutomationLiveSuite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Saved automation whose managed suite is being started. */
+                name: string;
+                /** @description Fresh UUIDv7 for creation; reuse the original ID for start recovery. */
+                suite_id: string;
+            };
+            cookie?: never;
+        };
+        /** @description Frozen target, saved-case names and real-action confirmation. */
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartAutomationLiveSuiteRequest"];
+            };
+        };
+        responses: {
+            /** @description startAutomationLiveSuite returns the original suite identities and current server-derived observations. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationLiveSuite"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["AutomationConflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServerError"];
+        };
+    };
+    advanceAutomationLiveSuite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Saved automation whose managed suite is being continued. */
+                name: string;
+                /** @description Original retained managed suite ID; missing records are never recreated. */
+                suite_id: string;
+            };
+            cookie?: never;
+        };
+        /** @description Explicit authorization to check and continue the original suite. */
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdvanceAutomationLiveSuiteRequest"];
+            };
+        };
+        responses: {
+            /** @description advanceAutomationLiveSuite returns the original suite identities and current server-derived observations. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationLiveSuite"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["AutomationConflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServerError"];
+        };
+    };
+    listAutomationLiveSuites: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Saved automation whose shared verification suites are accessed. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description listAutomationLiveSuites returns safe retained suite metadata and server-derived observations. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListAutomationLiveSuitesResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["AutomationConflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServerError"];
+        };
+    };
+    compareAutomationLiveSuites: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation owning both retained suites. */
+                name: string;
+                /** @description Candidate suite UUID; direction is baseline to candidate. */
+                suite_id: string;
+                /** @description Baseline suite UUID within the same app and automation. */
+                baseline_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Safe comparison of retained evidence, ordered by candidate cases followed by removed baseline cases. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationLiveSuiteComparison"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServerError"];
+        };
+    };
+    getAutomationLiveSuite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation owning the retained shared suite record. */
+                name: string;
+                /** @description Stable caller-selected suite UUID. Retry the same immutable selection and ID to attach progress. */
+                suite_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description getAutomationLiveSuite returns safe retained suite metadata and server-derived observations. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationLiveSuite"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["AutomationConflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServerError"];
+        };
+    };
+    saveAutomationLiveSuite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation owning the retained shared suite record. */
+                name: string;
+                /** @description Stable caller-selected suite UUID. Retry the same immutable selection and ID to attach progress. */
+                suite_id: string;
+            };
+            cookie?: never;
+        };
+        /** @description The frozen selection and existing run links to retain. No execution or verdict fields are accepted. Managed execution records cannot be modified here. */
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveAutomationLiveSuiteRequest"];
+            };
+        };
+        responses: {
+            /** @description saveAutomationLiveSuite returns safe retained suite metadata and server-derived observations. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationLiveSuite"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["AutomationConflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServerError"];
+        };
+    };
+    listAutomationLiveVerifications: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation whose recent live verification history is requested. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description listAutomationLiveVerifications returns safe verification identities and observations. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListAutomationLiveVerificationsResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["AutomationConflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            422: components["responses"]["AutomationInvalid"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServerError"];
+        };
+    };
+    startAutomationLiveVerification: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Stable request key; retry the same key and body to recover the original run. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation whose recent live verification history is requested. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartAutomationLiveVerificationRequest"];
+            };
+        };
+        responses: {
+            /** @description startAutomationLiveVerification returns safe verification identities and observations. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationLiveVerification"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["AutomationConflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            422: components["responses"]["AutomationInvalid"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServerError"];
+        };
+    };
+    getAutomationLiveVerification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation containing the retained live verification to read. */
+                name: string;
+                /** @description Specific workflow run whose live provenance is requested. */
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description getAutomationLiveVerification returns safe verification identities and observations. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationLiveVerification"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["AutomationConflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            422: components["responses"]["AutomationInvalid"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServerError"];
+        };
+    };
+    checkAutomationLiveVerification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Automation whose frozen live assertions will be checked. */
+                name: string;
+                /** @description Retained live run whose terminal outcomes will be evaluated. */
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description checkAutomationLiveVerification returns safe verification identities and observations. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationLiveVerification"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["AutomationConflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            422: components["responses"]["AutomationInvalid"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServerError"];
+        };
+    };
     getProjectBindingVerificationRunDiagnostics: {
         parameters: {
             query?: never;
@@ -133938,6 +141484,519 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listEventAcknowledgmentHistoryPage: {
+        parameters: {
+            query?: {
+                /** @description Restrict all pages to the specified delivery UUID. */
+                invocation_id?: string;
+                /** @description Restrict pages to one deferred outcome kind. */
+                kind?: "accepted" | "renewed" | "renewal_rejected" | "completed" | "expired" | "retry_requested" | "dead_letter_requested";
+                /** @description Inclusive first occurrence lower bound, normalized to UTC microseconds. */
+                from?: string;
+                /** @description Exclusive first occurrence upper bound, normalized to UTC microseconds. */
+                until?: string;
+                /** @description Maximum groups per page, fixed for the cursor traversal. */
+                limit?: number;
+                /** @description Opaque continuation bound to account, application, consumer, filters and page size. */
+                cursor?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Application slug owning the paginated outcome view. */
+                slug: string;
+                /** @description Consumer subscription used to bind page cursors. */
+                subscriptionID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Retained outcome page with stable ordering and an optional continuation cursor. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventAcknowledgmentHistoryPage"];
+                };
+            };
+            /** @description Invalid, expired or mismatched history page cursor or filters. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Paginated acknowledgment read exceeded its request deadline. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listEventAcknowledgmentHistory: {
+        parameters: {
+            query?: {
+                /** @description Optional delivery UUID restricting consumer outcome history. */
+                invocation_id?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Application slug owning acknowledgment history. */
+                slug: string;
+                /** @description Consumer subscription whose retained outcomes are inspected. */
+                subscriptionID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Bounded coalesced acknowledgment history, with explicit truncation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventAcknowledgmentHistory"];
+                };
+            };
+            /** @description Malformed acknowledgment history scope or delivery filter. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Acknowledgment history read exceeded its time budget. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getEventAcknowledgmentPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description slug identifying the target for getEventAcknowledgmentPolicy. */
+                slug: string;
+                /** @description subscriptionID identifying the target for getEventAcknowledgmentPolicy. */
+                subscriptionID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Inspect future delivery acknowledgment policy result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventAcknowledgmentPolicy"];
+                };
+            };
+            /** @description Invalid scope, token or policy for getEventAcknowledgmentPolicy. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Expired lease, replaced attempt or incompatible completion for getEventAcknowledgmentPolicy. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Acknowledgment request timed out for getEventAcknowledgmentPolicy. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    setEventAcknowledgmentPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description slug identifying the target for setEventAcknowledgmentPolicy. */
+                slug: string;
+                /** @description subscriptionID identifying the target for setEventAcknowledgmentPolicy. */
+                subscriptionID: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventAcknowledgmentPolicyRequest"];
+            };
+        };
+        responses: {
+            /** @description Configure future delivery acknowledgment policy result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventAcknowledgmentPolicy"];
+                };
+            };
+            /** @description Invalid scope, token or policy for setEventAcknowledgmentPolicy. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Expired lease, replaced attempt or incompatible completion for setEventAcknowledgmentPolicy. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Acknowledgment request timed out for setEventAcknowledgmentPolicy. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getEventAcknowledgment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description slug identifying the target for getEventAcknowledgment. */
+                slug: string;
+                /** @description invocationID identifying the target for getEventAcknowledgment. */
+                invocationID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Inspect retained delivery processing state result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventAcknowledgmentStatus"];
+                };
+            };
+            /** @description Invalid scope, token or policy for getEventAcknowledgment. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Expired lease, replaced attempt or incompatible completion for getEventAcknowledgment. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Acknowledgment request timed out for getEventAcknowledgment. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    renewEventAcknowledgment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description slug identifying the target for renewEventAcknowledgment. */
+                slug: string;
+                /** @description invocationID identifying the target for renewEventAcknowledgment. */
+                invocationID: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventAcknowledgmentRequest"];
+            };
+        };
+        responses: {
+            /** @description Renew a deferred delivery processing lease result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventAcknowledgmentStatus"];
+                };
+            };
+            /** @description Invalid scope, token or policy for renewEventAcknowledgment. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Expired lease, replaced attempt or incompatible completion for renewEventAcknowledgment. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Acknowledgment request timed out for renewEventAcknowledgment. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    completeEventAcknowledgment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description slug identifying the target for completeEventAcknowledgment. */
+                slug: string;
+                /** @description invocationID identifying the target for completeEventAcknowledgment. */
+                invocationID: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventAcknowledgmentRequest"];
+            };
+        };
+        responses: {
+            /** @description Complete a deferred delivery attempt result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventAcknowledgmentStatus"];
+                };
+            };
+            /** @description Invalid scope, token or policy for completeEventAcknowledgment. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Expired lease, replaced attempt or incompatible completion for completeEventAcknowledgment. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Acknowledgment request timed out for completeEventAcknowledgment. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    retryEventAcknowledgment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description slug identifying the target for retryEventAcknowledgment. */
+                slug: string;
+                /** @description invocationID identifying the target for retryEventAcknowledgment. */
+                invocationID: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventAcknowledgmentFailureRequest"];
+            };
+        };
+        responses: {
+            /** @description Retry a deferred delivery attempt result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventAcknowledgmentStatus"];
+                };
+            };
+            /** @description Invalid scope, token or policy for retryEventAcknowledgment. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Expired lease, replaced attempt or incompatible completion for retryEventAcknowledgment. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Acknowledgment request timed out for retryEventAcknowledgment. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    deadLetterEventAcknowledgment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description slug identifying the target for deadLetterEventAcknowledgment. */
+                slug: string;
+                /** @description invocationID identifying the target for deadLetterEventAcknowledgment. */
+                invocationID: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventAcknowledgmentFailureRequest"];
+            };
+        };
+        responses: {
+            /** @description Dead-letter a deferred delivery attempt result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventAcknowledgmentStatus"];
+                };
+            };
+            /** @description Invalid scope, token or policy for deadLetterEventAcknowledgment. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Expired lease, replaced attempt or incompatible completion for deadLetterEventAcknowledgment. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Acknowledgment request timed out for deadLetterEventAcknowledgment. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
 }
