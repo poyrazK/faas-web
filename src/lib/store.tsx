@@ -4,7 +4,6 @@ import {
   keys,
   useApps,
   useAppsMetrics,
-  useCreateApp,
   useDeployments,
   useLatestAppDeployments,
   useRollback,
@@ -12,6 +11,7 @@ import {
   type MetricsRange,
 } from './api/queries';
 import { slugIndex, toDeployment, toWorkflow } from './api/adapters';
+import { useCreateWorkspaceApp } from './api/workspace-apps';
 import { useAuth } from './auth';
 import { isPaidPlan } from './plan';
 import { isDeploymentTerminal } from './deployment-status';
@@ -38,6 +38,11 @@ export type NewWorkflowInput = {
   name: string;
   memoryMb: number;
   visibility?: 'public' | 'internal';
+  /**
+   * The shared workspace the app is attributed to, as shown to the person
+   * creating it (`useWorkspaceTarget`); null or absent creates it personally.
+   */
+  org?: string | null;
 } & ({ type: 'app'; runtime?: never } | { type?: 'function'; runtime: Runtime });
 
 interface DataValue {
@@ -80,7 +85,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const paidAccess = isPaidPlan(account?.plan);
   const metricsQuery = useAppsMetrics(DEFAULT_RANGE, { enabled: paidAccess });
 
-  const createApp = useCreateApp();
+  const createApp = useCreateWorkspaceApp();
   const rollback = useRollback();
 
   const apps = useMemo(() => appsQuery.data ?? [], [appsQuery.data]);
@@ -128,16 +133,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
       addWorkflow: async (input) => {
         const app = await createApp.mutateAsync({
-          slug: input.name,
-          type: input.type ?? 'function',
-          ...(input.type === 'app' ? {} : { runtime: input.runtime }),
-          ram_mb: input.memoryMb,
-          // Defaulted in the spec, but openapi-typescript makes defaulted
-          // properties required, so the API defaults are sent explicitly.
-          cpu_millicores: 1000,
-          head_wakes: false,
-          crawler_policy: 'wake',
-          visibility: input.visibility ?? 'public',
+          org: input.org ?? null,
+          body: {
+            slug: input.name,
+            type: input.type ?? 'function',
+            ...(input.type === 'app' ? {} : { runtime: input.runtime }),
+            ram_mb: input.memoryMb,
+            // Keep resource and request-policy defaults explicit for both creation paths.
+            cpu_millicores: 1000,
+            head_wakes: false,
+            crawler_policy: 'wake',
+            visibility: input.visibility ?? 'public',
+          },
         });
         return toWorkflow(app);
       },

@@ -4,7 +4,10 @@ import type { Plugin } from 'vite';
 import type { components } from '../src/lib/api/schema';
 import * as db from './data';
 import * as automationMock from './automations';
+import { registerMonetizationMock } from './monetization';
+import * as logDrainMock from './log-drains';
 import { mockCapabilities } from './capabilities';
+import { registerEventMocks } from './events';
 import { mockOpenAPIPreview } from './openapi-preview';
 import { isDigestPinnedImage } from '../src/lib/oci-image';
 import { advancePolicy, mockRuntimePolicy } from './runtime-policy';
@@ -16,7 +19,14 @@ import {
   mockApprovalId,
 } from './environment-readiness';
 import { getStageQueueRecord, putStageQueueRecord } from './stage-queues';
-import { listDeletedRecords, readDeletedRecord, type DeletedRecord } from './deleted-apps';
+import {
+  advanceDeployments,
+  buildLogAt,
+  stagesAt,
+  startDeployment,
+  trackedDeployment,
+} from './deploy-lifecycle';
+import { CONNECT_FORBIDDEN, MOCK_INSTALL_ID, connectReturnTarget } from './github-connect';
 import {
   environmentInventory,
   environmentState,
@@ -453,43 +463,14 @@ route('POST', '/v1/auth/sessions/revoke_all', () => {
 
 // --- Apps --------------------------------------------------------------------
 
-const deletedApps = new Map<string, DeletedRecord & { app: db.App }>();
-// Retained fixtures are independent records; no live mock app is deleted to seed recovery.
-for (let i = 0; i < 29; i++) {
-  const slug = `retained-app-${String(i).padStart(2, '0')}`;
-  const retained = { ...db.apps[0], id: db.id(), slug, status: 'deleted' } as db.App;
-  deletedApps.set(slug, {
-    app: retained,
-    accountId: db.account.id,
-    deletedAt: i === 27 ? null : new Date(Date.now() - i * 60_000).toISOString(),
-    expiresAt: i === 26 ? Date.now() - 1000 : i === 27 ? null : Date.now() + 6 * 86400e3,
-    purgeStarted: i === 28,
-  });
-}
-deletedApps.set('foreign-retained', {
-  app: { ...db.apps[0], id: db.id(), slug: 'foreign-retained' },
-  accountId: 'another-account',
-  deletedAt: new Date().toISOString(),
-  expiresAt: Date.now() + 86400e3,
-});
-
-function deletedQuery(query: URLSearchParams, list = false) {
-  for (const key of query.keys()) {
-    if (!list || !['cursor', 'limit'].includes(key) || query.getAll(key).length !== 1)
-      throw new Problem(400, 'validation_failed', 'Unsupported or repeated inventory parameter.');
-  }
-}
-function restoreDeleted(record: DeletedRecord & { app: db.App }) {
-  const metadata = readDeletedRecord([record], db.account.id, record.app.id, Date.now());
-  if (!metadata) throw new Problem(404, 'app_not_found');
-  if (!metadata.restore_eligible)
-    throw new Problem(409, 'app_not_restorable', metadata.restore_blocker);
+// Deleted apps wait out their grace window here; `POST /v1/apps/{slug}/restore`
+// brings one back. apid has no customer listing of them.
+const deletedApps = new Map<string, { app: db.App; expiresAt: number }>();
+function restoreDeleted(record: { app: db.App; expiresAt: number }) {
+  if (record.expiresAt <= Date.now())
+    throw new Problem(409, 'app_not_restorable', 'the deletion grace window has ended.');
   if (db.appBySlug(record.app.slug))
     throw new Problem(409, 'conflict', 'An active app occupies this slug.');
-  if (process.env.MOCK_RESTORE_FAILURE === 'quota')
-    throw new Problem(402, 'quota_exceeded', 'App quota reached.');
-  if (process.env.MOCK_RESTORE_FAILURE === 'temporary')
-    throw new Problem(503, 'temporarily_unavailable', 'Restore capacity unavailable.');
   record.app.status = db.deployments.some((deployment) => deployment.app_id === record.app.id)
     ? 'active'
     : 'undeployed';
@@ -497,50 +478,59 @@ function restoreDeleted(record: DeletedRecord & { app: db.App }) {
   deletedApps.delete(record.app.slug);
   return record.app;
 }
-route('GET', '/v1/deleted-apps', ({ query }) => {
-  deletedQuery(query, true);
-  try {
-    return listDeletedRecords(
-      [...deletedApps.values()],
-      db.account.id,
-      query.get('cursor') ?? '',
-      Number(query.get('limit') ?? 25),
-      Date.now()
-    );
-  } catch (error) {
-    throw new Problem(
-      400,
-      'validation_failed',
-      error instanceof Error ? error.message : 'Invalid inventory request.'
-    );
-  }
-});
-route('GET', '/v1/deleted-apps/{id}', ({ params, query }) => {
-  deletedQuery(query);
-  const metadata = readDeletedRecord(
-    [...deletedApps.values()],
-    db.account.id,
-    params.id,
-    Date.now()
-  );
-  if (!metadata) throw new Problem(404, 'app_not_found');
-  return metadata;
-});
-route('POST', '/v1/deleted-apps/{id}/restore', ({ params, query, body }) => {
-  deletedQuery(query);
-  if (Object.keys(body).length)
-    throw new Problem(400, 'validation_failed', 'Restore accepts no body intent.');
-  const retained = [...deletedApps.values()].find(
-    (record) => record.app.id === params.id && record.accountId === db.account.id
-  );
-  if (!retained) throw new Problem(404, 'app_not_found');
-  return restoreDeleted(retained);
-});
 
 function app(slug: string) {
   const found = db.appBySlug(slug);
   if (!found) throw new Problem(404, 'app_not_found', `No app named "${slug}".`);
   return found;
+}
+
+/** A blank deployment row for `a`; `startDeployment` sets its t=0 status. */
+function newDeployment(a: db.App, kind: string): db.Deployment {
+  return {
+    id: db.id(),
+    app_id: a.id,
+    build_id: null,
+    image_digest: `sha256:${db.id()}${db.id()}`,
+    kind,
+    status: 'pending',
+    created_at: new Date().toISOString(),
+    traffic_percent: 0,
+    scan: null,
+  };
+}
+
+/**
+ * A deployment that builds from source, with its build row, on the timed
+ * lifecycle in `deploy-lifecycle.ts`. `MOCK_BUILD_FAIL=1` (read per request,
+ * so it can be flipped in a test) makes the build fail installing dependencies.
+ */
+function startSourceDeployment(
+  a: db.App,
+  kind: 'github' | 'tarball',
+  source: string,
+  extra: Partial<db.Deployment> = {}
+): db.Deployment {
+  const deployment: db.Deployment = { ...newDeployment(a, kind), ...extra, build_id: db.id() };
+  const build: db.Build = {
+    id: deployment.build_id!,
+    deployment_id: deployment.id,
+    kind: kind === 'github' ? 'railpack' : 'tarball',
+    source_bytes: 1_843_200,
+    status: 'queued',
+    enqueued_at: deployment.created_at,
+  };
+  db.deployments.unshift(deployment);
+  db.builds.unshift(build);
+  startDeployment({
+    deployment,
+    app: a,
+    build,
+    fail: process.env.MOCK_BUILD_FAIL === '1',
+    now: Date.now(),
+    source,
+  });
+  return deployment;
 }
 
 route('GET', '/v1/apps', () => db.apps);
@@ -556,7 +546,11 @@ route('GET', '/v1/apps/metrics', ({ query }) => {
 const imageAppReceipts = new Map<string, { body: string; app: db.App; at: number }>();
 const imageDeployReceipts = new Map<string, db.Deployment>();
 const workerImageReads = new Map<string, number>();
-route('POST', '/v1/apps', ({ body, req }) => {
+/**
+ * Shared by `POST /v1/apps` and `POST /v1/orgs/{slug}/apps`: the request body
+ * is the same CreateAppRequest, and only the attribution differs.
+ */
+function createMockApp(body: Record<string, unknown>, req: IncomingMessage) {
   const key = String(req.headers['idempotency-key'] ?? '');
   const receipt = key && imageAppReceipts.get(key);
   if (receipt && Date.now() - receipt.at < 24 * 60 * 60 * 1000) {
@@ -600,7 +594,7 @@ route('POST', '/v1/apps', ({ body, req }) => {
     runtime: (body.runtime as db.App['runtime']) ?? 'node24',
     ram_mb: Number(body.ram_mb ?? 256),
     min_instances: 0,
-    status: 'pending',
+    status: 'active',
     ...(worker
       ? {
           workload_class: undefined,
@@ -616,7 +610,7 @@ route('POST', '/v1/apps', ({ body, req }) => {
         }
       : {}),
     visibility: body.visibility === 'internal' ? 'internal' : 'public',
-    url: body.visibility === 'internal' ? '' : `https://${slug}.gregale.app`,
+    url: body.visibility === 'internal' ? '' : db.appUrlFor(slug),
     service_bindings: Array.isArray(body.service_binding_targets)
       ? body.service_binding_targets
           .filter((value): value is string => typeof value === 'string')
@@ -637,10 +631,13 @@ route('POST', '/v1/apps', ({ body, req }) => {
         }
       : {}),
   };
+  // Newest first in a workspace inventory, like apid.
+  Object.assign(created, { created_at: new Date().toISOString() });
   db.apps.push(created);
   if (key) imageAppReceipts.set(key, { body: JSON.stringify(body), app: created, at: Date.now() });
   return status(201, created);
-});
+}
+route('POST', '/v1/apps', ({ body, req }) => createMockApp(body, req));
 route('POST', '/v1/apps/{slug}/deployments', ({ params, body, req }) => {
   const a = app(params.slug);
   if (a.type !== 'app')
@@ -658,11 +655,12 @@ route('POST', '/v1/apps/{slug}/deployments', ({ params, body, req }) => {
     kind: 'image',
     status: 'imaging',
     build_id: null,
-    rollback_on_5xx: false,
-    first_5xx_count: 0,
     created_at: new Date().toISOString(),
   };
   db.deployments.unshift(deployment);
+  // Worker images keep their read-count characterization in GET /v1/deployments/{id}.
+  if (a.manifest?.execution_mode !== 'worker')
+    startDeployment({ deployment, app: a, now: Date.now() });
   imageDeployReceipts.set(key, deployment);
   return status(202, deployment);
 });
@@ -754,21 +752,16 @@ route('GET', '/v1/apps/{slug}/policy/status', ({ params }) =>
 route('DELETE', '/v1/apps/{slug}', ({ params }) => {
   const a = app(params.slug);
   // Active reads hide tombstones; the restore API retains the same app identity.
-  deletedApps.set(a.slug, {
-    app: a,
-    accountId: db.account.id,
-    deletedAt: new Date().toISOString(),
-    expiresAt: Date.now() + 7 * 86400e3,
-  });
+  deletedApps.set(a.slug, { app: a, expiresAt: Date.now() + 7 * 86400e3 });
   db.apps.splice(db.apps.indexOf(a), 1);
   return NO_CONTENT;
 });
 route('POST', '/v1/apps/{slug}/wake', ({ params }) => {
-  app(params.slug).status = 'active';
+  db.setScenario(app(params.slug), 'healthy');
   return NO_CONTENT;
 });
 route('POST', '/v1/apps/{slug}/park', ({ params }) => {
-  app(params.slug).status = 'parked';
+  db.setScenario(app(params.slug), 'parked');
   return NO_CONTENT;
 });
 const PATCHABLE = [
@@ -809,7 +802,7 @@ route('PATCH', '/v1/apps/{slug}', ({ params, body }) => {
     if (k in body && body[k] !== null) (a as Record<string, unknown>)[k] = body[k];
   if (body.visibility === 'internal' || body.visibility === 'public') {
     a.visibility = body.visibility;
-    a.url = body.visibility === 'internal' ? '' : `https://${a.slug}.gregale.app`;
+    a.url = body.visibility === 'internal' ? '' : db.appUrlFor(a.slug);
   }
   if ('allowed_service_callers' in body) {
     if (body.allowed_service_callers === null) delete a.allowed_service_callers;
@@ -853,22 +846,10 @@ route('POST', '/v1/apps/{slug}/deployments/source-ref', ({ params, body }) => {
   const a = app(params.slug);
   if (!body.repo || !body.ref)
     throw new Problem(400, 'missing_field', 'repo and ref are required.');
-  const dep: db.Deployment = {
-    id: db.id(),
-    app_id: a.id,
-    build_id: db.id(),
-    image_digest: `sha256:${db.id()}${db.id()}`,
-    kind: 'github',
-    status: 'building',
-    created_at: db.iso(0),
-    traffic_percent: 0,
-    rollback_on_5xx: false,
-    first_5xx_count: 0,
-    scan: null,
-  };
-  db.deployments.unshift(dep);
-  a.status = 'deploying';
-  return status(202, dep);
+  return status(
+    202,
+    startSourceDeployment(a, 'github', `${String(body.repo)}@${String(body.ref)}`)
+  );
 });
 route('POST', '/v1/apps/{slug}/rollback', ({ params }) => {
   const a = app(params.slug);
@@ -904,13 +885,21 @@ route('PUT', '/v1/apps/{slug}/secrets/{key}', ({ params }) => {
   const existing = list.find((s) => s.key === params.key);
   const now = db.iso(0);
   if (existing) {
+    // A new value is a new delivery version; the mock delivers it at once.
     existing.updated_at = now;
+    existing.delivery_version += 1;
+    existing.delivered_version = existing.delivery_version;
+    existing.delivery_status = 'delivered';
     return existing;
   }
-  const created = {
+  const created: (typeof list)[number] = {
     key: params.key,
     scope: 'default',
+    secret_class: 'persistent',
     kid: db.id().slice(0, 8),
+    delivery_version: 1,
+    delivered_version: 1,
+    delivery_status: 'delivered',
     created_at: now,
     updated_at: now,
   };
@@ -983,19 +972,6 @@ route('DELETE', '/v1/apps/{slug}/env/{key}', ({ params, query }) => {
   envValues.delete(envValueKey(params.slug, scope, params.key));
   return NO_CONTENT;
 });
-route('POST', '/v1/apps/{slug}/env-export', ({ params, query, body }) => {
-  if (body.acknowledge_sensitive_values !== true) throw new Problem(400, 'validation_error');
-  const scope = envScope(query);
-  const rows = listOf(db.env, params.slug).filter((row) => row.scope === scope);
-  return {
-    app_slug: params.slug,
-    scope,
-    values: Object.fromEntries(
-      rows.map((row) => [row.key, envValues.get(envValueKey(params.slug, scope, row.key)) ?? ''])
-    ),
-  };
-});
-
 route('GET', '/v1/apps/{slug}/upstreams', ({ params }) => {
   const upstreams = listOf(db.upstreams, params.slug);
   return { upstreams, quota_max: 16, count: upstreams.length };
@@ -1276,6 +1252,7 @@ route('POST', '/v1/apps/{slug}/mirrors', ({ params, body }) => {
     percent,
     enabled: true,
     include_body: body.include_body === true,
+    allow_unsafe_methods: body.allow_unsafe_methods === true,
     redact_headers: Array.isArray(body.redact_headers) ? body.redact_headers.map(String) : [],
     always_stripped_headers: ['Authorization', 'Cookie'],
     created_at: db.iso(0),
@@ -1912,6 +1889,11 @@ const ANALYTICS_GROUPS: Record<AnalyticsGroupBy, string[]> = {
   referrer_host: ['acme.example', 'news.example', '(direct)'],
   ua_family: ['Chrome', 'Safari', 'curl', 'Googlebot'],
   status: ['200', '404', '500'],
+  consumer_id: [
+    '3f6c2a1e-8b4d-4c7a-9e21-5d0f7b3a6c48',
+    'a91d4e07-2c5b-4f8e-b3a6-7e14c9d02f5b',
+    'c2e8f5b3-6a1d-4e9c-8f07-1b4d3a7e9c26',
+  ],
 };
 const ANALYTICS_METHODS = new Set<AnalyticsMethod>([
   'GET',
@@ -1983,6 +1965,7 @@ route('GET', '/v1/apps/{slug}/analytics', ({ params, query }) => {
     routes: ANALYTICS_GROUPS.route.map(group),
     routes_limit: 50,
     routes_truncated: false,
+    dependencies_truncated: false,
     as_of: analyticsIso(0),
   };
 });
@@ -2191,21 +2174,413 @@ route('POST', '/v1/apps/{slug}/restart', ({ params }) => {
   return status(202, { wake_id: db.id() });
 });
 
-route('POST', '/v1/apps/{slug}/restore', ({ params, body }) => {
+route('POST', '/v1/apps/{slug}/restore', ({ params }) => {
   const deleted = deletedApps.get(params.slug);
   if (!deleted) {
     app(params.slug);
     throw new Problem(409, 'app_not_restorable', 'the app is not pending deletion.');
   }
-  if (
-    Object.keys(body).some((key) => key !== 'expected_app_id') ||
-    ('expected_app_id' in body &&
-      (typeof body.expected_app_id !== 'string' || !body.expected_app_id))
-  )
-    throw new Problem(400, 'validation_failed', 'Invalid restore identity.');
-  if (body.expected_app_id && body.expected_app_id !== deleted.app.id)
-    throw new Problem(409, 'conflict', 'Retained identity changed.');
   return restoreDeleted(deleted);
+});
+
+// --- App observability: health, awake routes, dependency latency ---
+type S_ = components['schemas'];
+function healthFor(a: db.App): S_['AppHealthResponse'] {
+  const scenario = db.scenarioOf(a);
+  const status =
+    scenario === 'failing' ? 'unhealthy' : scenario === 'deploying' ? 'degraded' : 'healthy';
+  const phase = scenario === 'parked' ? 'idle' : scenario === 'deploying' ? 'deploying' : 'serving';
+  const failing = scenario === 'failing';
+  return {
+    app_id: a.id,
+    status,
+    phase,
+    summary: failing
+      ? 'The latest deployment fails readiness; no healthy instance serves traffic.'
+      : scenario === 'parked'
+        ? 'Parked at zero instances; the next request wakes it.'
+        : scenario === 'deploying'
+          ? 'A new release is starting alongside the serving one.'
+          : 'Serving normally.',
+    scope: 'app',
+    evaluated_at: db.iso(30_000),
+    valid_for_seconds: 60,
+    serving_deployment_ids: [],
+    capacity: {
+      known: true,
+      required: scenario === 'parked' ? 0 : 1,
+      ready: failing || scenario === 'parked' ? 0 : 1,
+      starting: scenario === 'deploying' ? 1 : 0,
+      unready: failing ? 1 : 0,
+      unknown: 0,
+    },
+    checks: [
+      {
+        code: 'readiness',
+        status: failing ? 'fail' : 'pass',
+        detail: failing
+          ? 'Readiness probe on :8080/health timed out after 30 s.'
+          : 'Readiness probe passing.',
+        ...(failing ? { action: 'logs' as const } : {}),
+      },
+      {
+        code: 'requests',
+        status: failing ? 'warning' : 'pass',
+        detail: failing
+          ? '7.1% of requests returned 5xx in the last 15 minutes.'
+          : 'Error rate normal.',
+      },
+    ],
+  };
+}
+route('GET', '/v1/apps/{slug}/health', ({ params }) => healthFor(app(params.slug)));
+route('GET', '/v1/apps/{slug}/health/history', ({ params }) => {
+  const a = app(params.slug);
+  const now = healthFor(a);
+  const entries: S_['AppHealthHistoryEntry'][] = [
+    {
+      id: 'h3',
+      kind: 'transition',
+      observed_at: db.iso(40 * 60_000),
+      previous_status: 'healthy',
+      assessment: now,
+    },
+    {
+      id: 'h2',
+      kind: 'gap',
+      observed_at: db.iso(5 * 3600_000),
+      assessment: { ...now, status: 'unknown' },
+    },
+    {
+      id: 'h1',
+      kind: 'baseline',
+      observed_at: db.iso(26 * 3600_000),
+      assessment: { ...now, status: 'healthy' },
+    },
+  ];
+  return {
+    app_id: a.id,
+    scope: 'app',
+    entries: db.scenarioOf(a) === 'healthy' ? entries.slice(1) : entries,
+    collector_fresh: true,
+    interval_seconds: 60,
+  };
+});
+route('GET', '/v1/apps/{slug}/routes/awake', ({ params, query }) => {
+  const a = app(params.slug);
+  const since = query.get('since') ?? '168h';
+  const windowSeconds = since.endsWith('d') ? Number(since.slice(0, -1)) * 86400 : 7 * 86400;
+  const routes = [
+    {
+      method: 'GET',
+      route: '/health',
+      requests: 10_080,
+      share: 0.62,
+      wakes: 2,
+      pattern: 'periodic',
+      interval: 60,
+    },
+    {
+      method: 'POST',
+      route: '/v1/orders',
+      requests: 4_210,
+      share: 0.21,
+      wakes: 31,
+      pattern: 'bursty',
+    },
+    {
+      method: 'GET',
+      route: '/v1/orders/{id}',
+      requests: 9_884,
+      share: 0.12,
+      wakes: 4,
+      pattern: 'steady',
+    },
+  ];
+  const gbPerShare = (a.ram_mb / 1024) * (windowSeconds / 3600);
+  return {
+    slug: a.slug,
+    from: db.iso(windowSeconds * 1000),
+    until: db.iso(0),
+    idle_timeout_seconds: 60,
+    window_seconds: windowSeconds,
+    awake_seconds: Math.round(windowSeconds * 0.95),
+    awake_share: 0.95,
+    mb_seconds: Math.round(a.ram_mb * windowSeconds * 0.95),
+    gb_hours: gbPerShare * 0.95,
+    wakes: 37,
+    unattributed_seconds: 0,
+    other_routes_seconds: 0,
+    routes_limit: 20,
+    routes: routes.map((r) => ({
+      method: r.method,
+      route: r.route,
+      requests: r.requests,
+      wakes: r.wakes,
+      awake_seconds: Math.round(windowSeconds * r.share),
+      awake_share: r.share,
+      gb_hours: gbPerShare * r.share,
+      pattern: r.pattern,
+      ...(r.interval ? { interval_seconds: r.interval } : {}),
+      if_removed: {
+        awake_seconds_saved: Math.round(windowSeconds * r.share * 0.8),
+        gb_hours_saved: gbPerShare * r.share * 0.8,
+        wakes_change: r.pattern === 'periodic' ? 140 : 3,
+      },
+      ...(r.pattern === 'periodic'
+        ? {
+            suggestion: {
+              kind: 'exclude_from_idle',
+              message:
+                'An uptime probe keeps the app awake. Point it at a route your edge answers, or exclude it from the idle timer.',
+            },
+          }
+        : {}),
+    })),
+  };
+});
+route('GET', '/v1/apps/{slug}/debug/dependencies', ({ params, query }) => {
+  const a = app(params.slug);
+  const dep = (
+    type: string,
+    name: string,
+    calls: number,
+    errors: number,
+    p95: number,
+    base: number
+  ): S_['DebugDependencyLatencyItem'] => ({
+    type: type as S_['DebugDependencyLatencyItem']['type'],
+    kind: name.split(' ')[0].replace(/[^a-z0-9]/g, ''),
+    name,
+    calls,
+    error_calls: errors,
+    error_rate_pct: (errors / calls) * 100,
+    p50_ms: Math.round(p95 * 0.4),
+    p95_ms: p95,
+    p99_ms: Math.round(p95 * 1.6),
+    baseline_p95_ms: base,
+    current_p95_ms: p95,
+    p95_delta_ms: p95 - base,
+    regression: p95 > base * 1.5,
+    failure_regression: false,
+  });
+  return {
+    app_id: a.id,
+    since: query.get('since') ?? '24h',
+    window_start: db.iso(86400_000),
+    window_end: db.iso(0),
+    retention_clamped: false,
+    complete: true,
+    truncated: false,
+    telemetry_rows: 4_200,
+    represented_requests: 18_400,
+    span_samples: 9_100,
+    dependencies: [
+      dep('app_dependency', 'postgres orders', 12_400, 3, 412, 140),
+      dep('app_dependency', 'api.stripe.com', 2_100, 12, 380, 360),
+      dep('managed_binding', 'redis sessions', 30_200, 0, 4, 3),
+    ],
+    edges: [],
+  };
+});
+
+// --- Prewarm intents ---
+const prewarms = new Map<string, components['schemas']['PrewarmIntentResponse'][]>();
+route('GET', '/v1/apps/{slug}/prewarms', ({ params }) => {
+  app(params.slug);
+  return prewarms.get(params.slug) ?? [];
+});
+route('POST', '/v1/apps/{slug}/prewarm', ({ params, body }) => {
+  const a = app(params.slug);
+  const count = Number(body.count);
+  const wakeAt = Date.parse(String(body.wake_at ?? ''));
+  const expiresAt = Date.parse(String(body.expires_at ?? ''));
+  if (!Number.isInteger(count) || count < 1)
+    throw new Problem(400, 'validation_failed', 'count must be a positive integer.');
+  if (Number.isNaN(wakeAt) || Number.isNaN(expiresAt) || expiresAt <= wakeAt)
+    throw new Problem(400, 'validation_failed', 'expires_at must be after wake_at.');
+  const intent: components['schemas']['PrewarmIntentResponse'] = {
+    id: db.id(),
+    app_id: a.id,
+    count,
+    wake_at: new Date(wakeAt).toISOString(),
+    expires_at: new Date(expiresAt).toISOString(),
+    trigger: 'calendar',
+    status: 'pending',
+    created_at: db.iso(0),
+  };
+  prewarms.set(a.slug, [...(prewarms.get(a.slug) ?? []), intent]);
+  return status(202, intent);
+});
+route('DELETE', '/v1/apps/{slug}/prewarms/{id}', ({ params }) => {
+  const intent = prewarms.get(params.slug)?.find((p) => p.id === params.id);
+  if (!intent) throw new Problem(404, 'prewarm_not_found');
+  intent.status = 'cancelled';
+  return NO_CONTENT;
+});
+// --- Log drains ---
+function drainOf(slug: string, id: string) {
+  app(slug);
+  const drain = logDrainMock.drains.get(slug)?.find((d) => d.id === id);
+  if (!drain) throw new Problem(404, 'log_drain_not_found');
+  return drain;
+}
+route('GET', '/v1/apps/{slug}/log-drains', ({ params }) => {
+  app(params.slug);
+  return logDrainMock.drains.get(params.slug) ?? [];
+});
+route('POST', '/v1/apps/{slug}/log-drains', ({ params, body }) => {
+  const a = app(params.slug);
+  const url = String(body.target_url ?? '');
+  if (!/^https?:\/\//.test(url))
+    throw new Problem(400, 'validation_failed', 'target_url must be an http(s) URL.');
+  const drain: components['schemas']['AppLogDrainResponse'] = {
+    id: db.id(),
+    app_id: a.id,
+    account_id: db.ACCOUNT_ID,
+    kind: body.kind === 'otlp' ? 'otlp' : 'http_json',
+    target_url: url,
+    auth_header_masked: body.auth_header ? '***' : '',
+    enabled: body.enabled !== false,
+    created_at: db.iso(0),
+    updated_at: db.iso(0),
+  };
+  logDrainMock.drains.set(a.slug, [...(logDrainMock.drains.get(a.slug) ?? []), drain]);
+  return status(201, drain);
+});
+route('GET', '/v1/apps/{slug}/log-drains/{id}', ({ params }) => drainOf(params.slug, params.id));
+route('PATCH', '/v1/apps/{slug}/log-drains/{id}', ({ params, body }) => {
+  const drain = drainOf(params.slug, params.id);
+  if (typeof body.enabled === 'boolean') drain.enabled = body.enabled;
+  if (typeof body.target_url === 'string') drain.target_url = body.target_url;
+  if (body.kind === 'otlp' || body.kind === 'http_json') drain.kind = body.kind;
+  if (typeof body.auth_header === 'string')
+    drain.auth_header_masked = body.auth_header ? '***' : '';
+  drain.updated_at = db.iso(0);
+  return drain;
+});
+route('DELETE', '/v1/apps/{slug}/log-drains/{id}', ({ params }) => {
+  drainOf(params.slug, params.id);
+  logDrainMock.drains.set(
+    params.slug,
+    (logDrainMock.drains.get(params.slug) ?? []).filter((d) => d.id !== params.id)
+  );
+  return NO_CONTENT;
+});
+route('GET', '/v1/apps/{slug}/log-drains/{id}/health', ({ params }) =>
+  logDrainMock.healthFor(drainOf(params.slug, params.id))
+);
+route('GET', '/v1/apps/{slug}/log-drains/{id}/analytics', ({ params, query }) =>
+  logDrainMock.analyticsFor(drainOf(params.slug, params.id), query.get('window') ?? '24h')
+);
+// --- Canary route health: candidate vs stable per critical route ---
+function routeHealthFor(a: db.App, deploymentId: string): S_['RouteHealthReport'] {
+  const deployment = db.deployments.find((d) => d.id === deploymentId);
+  const stable = db.deployments.find(
+    (d) => d.app_id === a.id && d.id !== deploymentId && d.status === 'superseded'
+  );
+  const counts = (requests: number, errors: number, p95: number) => ({
+    requests,
+    server_errors: errors,
+    error_rate: requests ? errors / requests : 0,
+    p95_latency_ms: p95,
+  });
+  const route = (
+    method: string,
+    path: string,
+    canaryErrors: number,
+    delta: number
+  ): S_['RouteHealthFinding'] => ({
+    method,
+    path,
+    status: canaryErrors > 3 ? 'regressed' : 'healthy',
+    reason:
+      canaryErrors > 3
+        ? 'Candidate 5xx rate exceeds stable by more than the allowed margin.'
+        : 'Within the error and latency budget.',
+    check_latency: true,
+    windows: [
+      {
+        start: db.iso(120_000),
+        end: db.iso(60_000),
+        candidate: counts(180, canaryErrors, 120 + delta),
+        stable: counts(1620, 2, 120),
+        status: canaryErrors > 3 ? 'regressed' : 'healthy',
+        reason: '',
+        latency_delta_ms: delta,
+        latency_factor: (120 + delta) / 120,
+      },
+    ],
+  });
+  return {
+    app_id: a.id,
+    deployment_id: deploymentId,
+    candidate_commit_sha: 'a1b2c3d',
+    stable_deployment_id: stable?.id ?? '',
+    stable_commit_sha: stable ? 'e4f5a6b' : '',
+    canary_step: deployment?.canary_step ?? 1,
+    mode: 'enforce',
+    on_regression: 'hold',
+    revision: 3,
+    checked_at: db.iso(20_000),
+    coverage: 'observed_only',
+    status: 'healthy',
+    reason: 'Every critical route met its budget in both windows.',
+    minimum_requests: 50,
+    routes: [route('POST', '/v1/orders', 1, 8), route('GET', '/v1/orders/{id}', 0, -3)],
+  };
+}
+route('GET', '/v1/apps/{slug}/route-health/deployments/{deployment}', ({ params }) =>
+  routeHealthFor(app(params.slug), params.deployment)
+);
+route('GET', '/v1/apps/{slug}/route-health/deployments/{deployment}/history', ({ params }) => {
+  const a = app(params.slug);
+  const report = routeHealthFor(a, params.deployment);
+  const decision = (
+    status: S_['RouteHealthDecision']['status'],
+    reason: string
+  ): S_['RouteHealthDecision'] => ({
+    mode: 'enforce',
+    on_regression: 'hold',
+    revision: 3,
+    deployment_id: params.deployment,
+    stable_deployment_id: report.stable_deployment_id,
+    status,
+    reason,
+    checked_at: db.iso(25 * 60_000),
+  });
+  return {
+    app_id: a.id,
+    deployment_id: params.deployment,
+    entries: [
+      {
+        version: 1,
+        id: 'rh-2',
+        checked_at: db.iso(20 * 60_000),
+        source: 'worker',
+        traffic_percent: 1,
+        requested_traffic_percent: 10,
+        policy: {
+          version: 1,
+          windows: 2,
+          window_seconds: 60,
+          ingestion_lag_seconds: 15,
+          minimum_requests: 50,
+          minimum_errors: 3,
+          error_rate_floor: 0.01,
+          error_rate_delta: 0.01,
+          error_rate_factor: 2,
+          minimum_latency_requests: 50,
+          latency_quantile: 0.95,
+          latency_factor: 1.5,
+          latency_delta_ms: 100,
+          comparison_epsilon: 0.0001,
+        },
+        decision: decision('allowed', 'Both windows healthy at 1%; advancing to 10%.'),
+        report,
+      },
+    ],
+  } satisfies S_['RouteHealthHistoryPage'];
 });
 
 route('GET', '/v1/apps/{slug}/upstreams/history', ({ params, query }) => {
@@ -2276,19 +2651,7 @@ route('POST', '/v1/apps/{slug}/deployments/source-tarball', ({ params, req }) =>
   const type = String(req.headers['content-type'] ?? '');
   if (!type.startsWith('multipart/form-data'))
     throw new Problem(400, 'validation_failed', 'the body must be multipart/form-data.');
-  const template = db.deployments.find((d) => d.app_id === a.id);
-  const deployment = {
-    ...(template ?? db.deployments[0]),
-    id: db.id(),
-    app_id: a.id,
-    kind: 'tarball',
-    status: 'building',
-    error: null,
-    error_code: null,
-    created_at: new Date().toISOString(),
-  };
-  db.deployments.unshift(deployment);
-  return status(202, deployment);
+  return status(202, startSourceDeployment(a, 'tarball', `${a.slug} (uploaded archive)`));
 });
 
 route('GET', '/v1/account/object-storage-usage', () => ({
@@ -3035,6 +3398,7 @@ route('POST', '/v1/apps/{slug}/webhooks', ({ params, body }) => {
       ? (body.event_filter as (typeof list)[number]['event_filter'])
       : [],
     retry_policy: (body.retry_policy ?? 'default') as (typeof list)[number]['retry_policy'],
+    delivery_format: body.delivery_format === 'cloudevents' ? 'cloudevents' : 'json',
     enabled: body.enabled !== false,
     created_at: db.iso(0),
     updated_at: db.iso(0),
@@ -3110,9 +3474,22 @@ route('POST', '/v1/deployments/{id}/retry', ({ params, body }) => {
     'readiness',
   ];
   if (!stages.includes(String(body.from_stage ?? ''))) throw new Problem(400, 'invalid_from_stage');
-  const copy = { ...d, id: db.id(), status: 'building', created_at: new Date().toISOString() };
-  db.deployments.unshift(copy);
-  return copy;
+  const a = db.apps.find((x) => x.id === d.app_id);
+  if (!a) throw new Problem(404, 'app_not_found');
+  const carried = { min_instances: d.min_instances, scope: d.scope };
+  if (!d.build_id) {
+    const copy: db.Deployment = {
+      ...newDeployment(a, d.kind),
+      ...carried,
+      image_digest: d.image_digest,
+      build_id: null,
+    };
+    db.deployments.unshift(copy);
+    startDeployment({ deployment: copy, app: a, now: Date.now() });
+    return copy;
+  }
+  const source = trackedDeployment(d.id)?.source ?? a.slug;
+  return startSourceDeployment(a, d.kind === 'tarball' ? 'tarball' : 'github', source, carried);
 });
 
 // Deployment control (ADR-117 stages, ADR-122 canary + audit + preview URL,
@@ -3154,6 +3531,8 @@ function deploymentById(id: string) {
 
 route('GET', '/v1/deployments/{id}/stages', ({ params }) => {
   const d = deploymentById(params.id);
+  const rec = trackedDeployment(d.id);
+  if (rec && rec.written === d.status) return stagesAt(rec, Date.now());
   const started = Date.parse(d.created_at);
   const at = (i: number) => STAGE_MS.slice(0, i).reduce((sum, ms) => sum + ms, 0);
   const row = (i: number, stageStatus: 'completed' | 'failed', reason?: string) => ({
@@ -3608,7 +3987,7 @@ route('GET', '/v1/apps/{slug}/logs', ({ params, query, req, res }) => {
   }
 
   // A parked app has nothing to say; the stream ends the way the real one does.
-  if (a.status === 'parked') {
+  if (db.scenarioOf(a) === 'parked') {
     send(
       'log',
       JSON.stringify({
@@ -3772,40 +4151,6 @@ route('GET', '/v1/deployments/latest-by-app', () => {
     });
   return { items } satisfies components['schemas']['LatestDeploymentsByAppResponse'];
 });
-route('GET', '/v1/deployments/{id}/companions', ({ params, query }) => {
-  if (query.size)
-    throw new Problem(
-      400,
-      'validation_failed',
-      'Select an exact deployment; query scope is unsupported.'
-    );
-  const deployment = db.deployments.find((row) => row.id === params.id);
-  const owner = db.apps.find((row) => row.id === deployment?.app_id);
-  if (!deployment || !owner) throw new Problem(404, 'not_found');
-  const declaration = {
-    name: 'metrics',
-    type: 'sidecar' as const,
-    image: `registry.example.test/metrics@sha256:${'a'.repeat(64)}`,
-    preset: 'opentelemetry' as const,
-    ram_mb: 128,
-    cpu_millicores: 0,
-    scratch_mb: 0,
-    port: 9090,
-    primary_ingress: false,
-    essential: true,
-    depends_on: [{ name: 'main', condition: 'started' as const }],
-    environment_keys: ['OTEL_EXPORTER_OTLP_ENDPOINT', 'TOKEN'],
-  };
-  return {
-    account_id: db.account.id,
-    app_id: owner.id,
-    app_slug: owner.slug,
-    deployment_id: deployment.id,
-    scope: 'default',
-    state: 'available',
-    companions: owner.slug === 'api-gateway' ? [declaration] : [],
-  } satisfies components['schemas']['DeploymentCompanionsResponse'];
-});
 route('GET', '/v1/deployments/{id}', ({ params }) => {
   const d = db.deployments.find((x) => x.id === params.id);
   if (!d) throw new Problem(404, 'deployment_not_found');
@@ -3843,6 +4188,29 @@ route('GET', '/v1/deployments/{id}/logs', ({ params, query, req, res }) => {
   });
   res.write(': mock build log\n\n');
   const send = (event: string, data: string) => res.write(`event: ${event}\ndata: ${data}\n\n`);
+
+  // A deployment created through the mock writes its output as it goes.
+  const rec = trackedDeployment(dep.id);
+  if (rec?.build) {
+    const first = buildLogAt(rec, Date.now());
+    const limit = Number(query.get('limit') ?? 0);
+    for (const frame of limit > 0 ? first.frames.slice(-limit) : first.frames)
+      send('log', JSON.stringify(frame));
+    let sent = first.frames.length;
+    const flush = () => {
+      const { frames, done } = buildLogAt(rec, Date.now());
+      for (const frame of frames.slice(sent)) send('log', JSON.stringify(frame));
+      sent = frames.length;
+      if (!done && rec.deployment.status !== 'cancelled') return false;
+      send('end', '');
+      res.end();
+      return true;
+    };
+    if (flush()) return undefined;
+    const poll = setInterval(() => flush() && clearInterval(poll), 400);
+    req.on('close', () => clearInterval(poll));
+    return undefined;
+  }
 
   const lines = db.buildLog(
     app?.slug ?? 'app',
@@ -3920,7 +4288,7 @@ route('GET', '/v1/builds/{id}/sbom', ({ params, res }) => {
 route('GET', '/v1/deployments/{id}/scan', ({ params }) => {
   const d = db.deployments.find((x) => x.id === params.id);
   if (!d) throw new Problem(404, 'deployment_not_found');
-  if (d.status === 'building')
+  if (d.status === 'pending' || d.status === 'building')
     return {
       status: 'pending',
       severity_counts: { critical: 0, high: 0, medium: 0, low: 0, unknown: 0 },
@@ -4411,7 +4779,8 @@ const triggerSeed = [
 
 // Typed as the API's read shape so a created trigger can join the seeded ones
 // without a cast fighting the literal types inferred from the seed.
-const triggers: Record<string, unknown>[] = triggerSeed.map((t, i) => ({
+// An empty workspace (MOCK_EMPTY=1) has no apps to attach a trigger to.
+const triggers: Record<string, unknown>[] = (db.EMPTY ? [] : triggerSeed).map((t, i) => ({
   id: db.id(),
   account_id: 'acct-1',
   app_id: db.apps[i % db.apps.length].id,
@@ -4765,6 +5134,7 @@ route('POST', '/v1/crons', ({ body }) => {
   const cron = {
     id: db.id(),
     app_id: a.id,
+    kind: 'http' as const,
     schedule,
     path: String(body.path ?? '/'),
     enabled: body.enabled !== false,
@@ -4910,6 +5280,10 @@ route('POST', '/v1/apps/{slug}/edge-rules', ({ params, body }) => {
     match_host: String(body.match_host ?? ''),
     match_path: String(body.match_path ?? '/*'),
     match_methods: Array.isArray(body.match_methods) ? (body.match_methods as string[]) : [],
+    match_headers:
+      body.match_headers && typeof body.match_headers === 'object'
+        ? (body.match_headers as Record<string, string>)
+        : {},
     priority: Number(body.priority ?? 100),
     enabled: body.enabled !== false,
     kind: kind as (typeof db.edgeRules)[number]['kind'],
@@ -5056,24 +5430,38 @@ route('GET', '/v1/orgs', () => ({
     .sort((a, b) => a.slug.localeCompare(b.slug)),
 }));
 
+/** App slug → workspace slug, for apps created through `POST /v1/orgs/{slug}/apps`. */
+const appWorkspace = new Map<string, string>();
 function inventoryForOrg(slug: string) {
   const org = requireOrgRole(slug, ['owner', 'admin', 'developer', 'viewer', 'billing']);
-  return db.apps.filter((app) =>
-    org.personal
+  return db.apps.filter((app) => {
+    const attributed = appWorkspace.get(app.slug);
+    if (attributed) return attributed === slug;
+    return org.personal
       ? app.slug !== 'search-indexer'
-      : slug === 'acme-corp' && app.slug === 'search-indexer'
-  );
+      : slug === 'acme-corp' && app.slug === 'search-indexer';
+  });
 }
+const createdAt = (app: db.App) =>
+  (app as { created_at?: string }).created_at ?? new Date(Date.UTC(2026, 8, 1)).toISOString();
 route('GET', '/v1/orgs/{slug}/apps', ({ params }) => ({
-  apps: inventoryForOrg(params.slug).map(({ id, slug, type, runtime, status }) => ({
-    id,
-    slug,
-    type,
-    runtime,
-    status,
-    created_at: new Date(Date.UTC(2026, 8, 1)).toISOString(),
-  })),
+  apps: inventoryForOrg(params.slug)
+    .map((app) => ({
+      id: app.id,
+      slug: app.slug,
+      type: app.type,
+      runtime: app.runtime,
+      status: app.status,
+      created_at: createdAt(app),
+    }))
+    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at)),
 }));
+route('POST', '/v1/orgs/{slug}/apps', ({ params, body, req }) => {
+  requireOrgRole(params.slug, ['owner', 'admin', 'developer']);
+  const result = createMockApp(body, req);
+  appWorkspace.set((result.body as db.App).slug, params.slug);
+  return result;
+});
 route('GET', '/v1/orgs/{slug}/activity', ({ params, query }) => {
   const apps = new Set(inventoryForOrg(params.slug).map((app) => app.id));
   const identity = (value: string) => value.replaceAll('-', '').toLowerCase();
@@ -5174,11 +5562,10 @@ route('DELETE', '/v1/orgs/{slug}/members/{user_id}', ({ params }) => {
   members.splice(i, 1);
   return NO_CONTENT;
 });
-route('DELETE', '/v1/orgs/{slug}/invitations/{token}', ({ params }) => {
+route('DELETE', '/v1/orgs/{slug}/invitations/{invitation_id}', ({ params }) => {
   requireOrgRole(params.slug, ['owner', 'admin']);
-  const hash = createHash('sha256').update(Buffer.from(params.token, 'base64url')).digest('hex');
   const inv = db.invitations.find(
-    (x) => invitationTokenHashes.get(x.id) === hash && x.org_slug === params.slug
+    (x) => x.id === params.invitation_id && x.org_slug === params.slug
   );
   if (!inv || inv.status !== 'pending' || Date.parse(inv.expires_at) <= Date.now())
     throw new Problem(410, 'org_invitation_invalid');
@@ -5190,17 +5577,41 @@ const hex = (n: number) =>
   Array.from({ length: n }, () => Math.floor(Math.random() * 16).toString(16)).join('');
 
 // --- GitHub installation repos + app binding ---
-route('POST', '/v1/install/repos/list', () => [
-  { id: 1001, full_name: 'acme-corp/storefront', default_branch: 'main', private: true },
-  { id: 1002, full_name: 'acme-corp/checkout', default_branch: 'main', private: true },
-  { id: 1003, full_name: 'acme-corp/webhook-router', default_branch: 'master', private: false },
-  { id: 1004, full_name: 'acme-corp/nightly-etl', default_branch: 'main', private: true },
-]);
-route('POST', '/v1/apps/{slug}/install/bind', async ({ body }) => ({
-  binding_id: hex(32),
-  repo_full_name: String(body.repo_full_name ?? ''),
-  production_branch: String(body.production_branch ?? 'main'),
-}));
+function requireGitHub() {
+  if (!db.account.github_install_id)
+    throw new Problem(403, 'github_login_required', 'Connect GitHub before choosing a repository.');
+}
+// The native form post apid answers with a redirect to GitHub. The mock grants
+// the installation and redirects to where GitHub's callback would land.
+route('POST', '/dashboard/install/connect', ({ body, req, res }) => {
+  if (body.csrf_token !== 'mock-csrf') {
+    res.setHeader('Location', CONNECT_FORBIDDEN);
+    return status(303, '');
+  }
+  db.account.github_install_id = MOCK_INSTALL_ID;
+  res.setHeader(
+    'Location',
+    connectReturnTarget(body.return_to, req.headers.referer, req.headers.host)
+  );
+  return status(303, '');
+});
+route('POST', '/v1/install/repos/list', () => {
+  requireGitHub();
+  return [
+    { id: 1001, full_name: 'acme-corp/storefront', default_branch: 'main', private: true },
+    { id: 1002, full_name: 'acme-corp/checkout', default_branch: 'main', private: true },
+    { id: 1003, full_name: 'acme-corp/webhook-router', default_branch: 'master', private: false },
+    { id: 1004, full_name: 'acme-corp/nightly-etl', default_branch: 'main', private: true },
+  ];
+});
+route('POST', '/v1/apps/{slug}/install/bind', async ({ body }) => {
+  requireGitHub();
+  return {
+    binding_id: hex(32),
+    repo_full_name: String(body.repo_full_name ?? ''),
+    production_branch: String(body.production_branch ?? 'main'),
+  };
+});
 
 // --- Organisations, org keys, invitations ---
 route('GET', '/v1/orgs/{slug}', ({ params }) => mockOrg(params.slug));
@@ -5401,14 +5812,103 @@ route('POST', '/dashboard/account/set-password', ({ body, res }) => {
 });
 
 // --- Billing & account controls ---
-let overageCapCents: number | null = null;
+let overageCapCents: number | null = 2000;
+// apid audits every cap change (old/new cents, "null" for no cap) and, at most
+// once a day, the cap being reached (pkg/sched/overage.go).
+const overageEvents: components['schemas']['AuditEventResponse'][] = [
+  {
+    id: '2001',
+    at: new Date(Date.now() - 9 * 86400e3).toISOString(),
+    actor: 'design@gregale.dev',
+    kind: 'overage.cap_changed',
+    subject: db.account.id,
+    severity: 'info',
+    data: { old_cents: 'null', new_cents: 2000, actor: 'self' },
+  },
+];
 route('GET', '/v1/account/overage-cap', () => ({ overage_cap_cents: overageCapCents }));
 route('POST', '/v1/account/overage-cap', ({ body }) => {
   const cap = body.overage_cap_cents ?? null;
   if (cap !== null && (typeof cap !== 'number' || !Number.isSafeInteger(cap) || cap < 0))
     throw new Problem(400, 'validation_failed', 'Cap must be non-negative integer cents or null.');
+  overageEvents.unshift({
+    id: String(2002 + overageEvents.length),
+    at: new Date().toISOString(),
+    actor: 'design@gregale.dev',
+    kind: 'overage.cap_changed',
+    subject: db.account.id,
+    severity: 'info',
+    data: { old_cents: overageCapCents ?? 'null', new_cents: cap ?? 'null', actor: 'self' },
+  });
   overageCapCents = cap;
   return { ...db.account, app_count: db.apps.length };
+});
+route('GET', '/v1/billing/forecast', () => {
+  const now = new Date();
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  const meter = (name: string, projected?: number, reason?: string) => ({
+    meter: name,
+    coverage: {
+      complete: !reason,
+      fresh: true,
+      expected_minutes: 1440,
+      complete_minutes: reason ? 900 : 1440,
+      unpriced_quantity: 0,
+      non_billable_quantity: 0,
+      reasons: reason ? [reason] : [],
+    },
+    accrued: {
+      meter: name,
+      quantity: 0,
+      included_quantity: 0,
+      net_millicents: 0,
+      allowance_method: 'monthly',
+      contracts: [],
+    },
+    forecast: {
+      method: 'linear_daily',
+      available: projected !== undefined,
+      ...(reason ? { reason } : {}),
+      account_id: db.account.id,
+      period_start: start.toISOString(),
+      period_end: end.toISOString(),
+      complete_through: now.toISOString(),
+      price_version: 'v1',
+      meter: name,
+      currency: 'EUR',
+      ...(projected !== undefined
+        ? { projected_quantity: 0, projected_net_millicents: projected }
+        : {}),
+    },
+    price_contracts: [],
+  });
+  return {
+    period_start: start.toISOString(),
+    period_end: end.toISOString(),
+    as_of: now.toISOString(),
+    currency: 'EUR',
+    meters: [
+      meter('gb_hours', 1_480_000),
+      meter('egress_gb', undefined, 'egress has less than 7 days of complete history'),
+    ],
+    bill_estimate_available: false,
+    missing_bill_components: ['egress_gb', 'tax'],
+  };
+});
+// The dev mock answers JSON for every format; apid serves ZIP/CSV/JSON.
+route('GET', '/v1/billing/focus', ({ query }) => {
+  const month = query.get('month') ?? '';
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month))
+    throw new Problem(400, 'validation_failed', 'month must be YYYY-MM.');
+  return {
+    focus_version: '1.4',
+    dataset: 'invoice_detail',
+    month,
+    partial: true,
+    invoices_included: 1,
+    invoices_excluded_draft_or_void: 0,
+  };
 });
 route('POST', '/v1/billing/cancel', () => ({
   cancel_scheduled: true,
@@ -5600,7 +6100,7 @@ route('GET', '/v1/cron-fire-now-requests/{request_id}', ({ params }) => {
 const ERR_FP = 'fp_5c1a9b2e77d34fa0';
 route('GET', '/v1/apps/{slug}/errors/summary', ({ params }) => {
   const a = db.apps.find((x) => x.slug === params.slug);
-  const failing = a?.status === 'error';
+  const failing = a !== undefined && db.scenarioOf(a) === 'failing';
   return {
     generated_at: new Date().toISOString(),
     app_id: a?.id ?? 'unknown',
@@ -5775,7 +6275,15 @@ const AUTH_EVENTS = [
     data: { attempts: 3, locked: false },
   },
 ];
-route('GET', '/v1/audit-events', () => ({ events: AUTH_EVENTS, limit: 50 }));
+route('GET', '/v1/audit-events', ({ query }) => {
+  const prefix = query.get('kind_prefix') ?? '';
+  const limit = Math.min(100, Math.max(1, Number(query.get('limit') ?? 50)));
+  const events = [...overageEvents, ...AUTH_EVENTS]
+    .filter((event) => event.kind.startsWith(prefix))
+    .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
+    .slice(0, limit);
+  return { events, limit };
+});
 route('GET', '/v1/audit-events/{id}', ({ params }) => {
   if (!/^[0-9]+$/.test(params.id))
     throw new Problem(400, 'validation_failed', 'id must be a positive integer.');
@@ -5850,6 +6358,102 @@ const MOCK_PLAN = {
 };
 
 route('POST', '/v1/projects/scan', () => MOCK_PLAN);
+
+type PlanWorkload = components['schemas']['PlanWorkload'];
+
+/**
+ * What a scan of each installable repo (`/v1/install/repos/list`) finds, so
+ * the new-app wizard's hints can be seen: storefront builds its own
+ * Dockerfile, webhook-router and nightly-etl are single runtime services, and
+ * checkout is a Compose repository with several services.
+ */
+const SOURCE_REF_SCANS: Record<
+  string,
+  { scan_source: components['schemas']['PlanResponse']['scan_source']; workloads: PlanWorkload[] }
+> = {
+  'acme-corp/storefront': {
+    scan_source: 'single',
+    workloads: [
+      {
+        name: 'storefront',
+        root_dir: '',
+        dockerfile: 'Dockerfile',
+        command: [],
+        class: 'http',
+        ports: [8080],
+        source: 'Dockerfile',
+        tier: 'single',
+      },
+    ],
+  },
+  'acme-corp/webhook-router': {
+    scan_source: 'procfile',
+    workloads: [
+      {
+        name: 'web',
+        root_dir: '',
+        command: ['node', 'server.js'],
+        class: 'http',
+        ports: [],
+        source: 'Procfile: web',
+        tier: 'convention',
+        detected_by: { detector: 'procfile', marker: 'Procfile', priority: 40 },
+      },
+    ],
+  },
+  'acme-corp/nightly-etl': {
+    scan_source: 'single',
+    workloads: [
+      {
+        name: 'nightly-etl',
+        root_dir: '',
+        command: ['python', '-m', 'etl'],
+        class: 'http',
+        ports: [8080],
+        source: 'pyproject.toml',
+        tier: 'single',
+      },
+    ],
+  },
+  'acme-corp/checkout': {
+    scan_source: 'compose',
+    workloads: ['api', 'worker', 'web'].map((name) => ({
+      name,
+      root_dir: name === 'web' ? 'frontend' : '',
+      dockerfile: 'Dockerfile',
+      command: name === 'worker' ? ['node', 'worker.js'] : [],
+      class: name === 'worker' ? ('worker' as const) : ('http' as const),
+      ports: name === 'worker' ? [] : [8080],
+      source: `compose.yaml: ${name}`,
+      tier: 'compose' as const,
+      detected_by: { detector: 'compose' as const, marker: 'compose.yaml', priority: 80 },
+    })),
+  },
+};
+
+route('POST', '/v1/projects/scan/source-ref', async ({ body }) => {
+  const repo = String(body.repo ?? '');
+  const ref = String(body.ref ?? '');
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo) || !ref)
+    throw new Problem(400, 'validation_failed', 'repo and ref are required.');
+  const scan = SOURCE_REF_SCANS[repo];
+  if (!scan) throw new Problem(404, 'not_found', 'The installation cannot read that repository.');
+  return {
+    project_slug: String(body.project_slug ?? ''),
+    repo_full_name: repo,
+    scan_source: scan.scan_source,
+    tier: db.account.plan,
+    workloads: scan.workloads,
+    managed: [],
+    crons: [],
+    observed_apps: db.apps.length,
+    observed_crons: 0,
+    limit_apps: 25,
+    limit_crons: 20,
+    can_apply: true,
+    plan_token: `mock-source-ref-${hex(8)}`,
+  } satisfies components['schemas']['PlanResponse'];
+});
 route('GET', '/v1/projects', () => projectSummaries());
 route('GET', '/v1/projects/{slug}', ({ params }) => {
   const project = projects.find((item) => item.slug === params.slug);
@@ -6035,6 +6639,45 @@ route('PUT', '/v1/apps/{slug}/automations/{name}/enabled', ({ params, body }) =>
   item.version += 1;
   return item;
 });
+route('DELETE', '/v1/apps/{slug}/automations/{name}', ({ params, query }) => {
+  const item = mockAutomation(params.slug, params.name);
+  assertAutomationVersion(item, Number(query.get('expected_version')));
+  if (item.source === 'manifest')
+    throw new Problem(
+      409,
+      'automation_ownership_conflict',
+      'The app manifest owns this automation.'
+    );
+  const key = `${params.slug}/${params.name}`;
+  const yaml = automationMock.manifest.get(key);
+  if (yaml && query.get('restore_manifest') !== 'true')
+    throw new Problem(
+      409,
+      'automation_ownership_conflict',
+      'The app manifest also defines this automation. Confirm returning ownership to it.'
+    );
+  const rest = (automationMock.definitions.get(params.slug) ?? []).filter(
+    (row) => row.name !== params.name
+  );
+  automationMock.definitions.set(
+    params.slug,
+    yaml
+      ? [
+          ...rest,
+          {
+            name: params.name,
+            version: item.version + 1,
+            source: 'manifest',
+            draft: yaml,
+            published: yaml,
+            enabled: item.enabled,
+            updated_at: new Date().toISOString(),
+          },
+        ]
+      : rest
+  );
+  return NO_CONTENT;
+});
 route('GET', '/v1/apps/{slug}/automations/{name}/health', ({ params }) =>
   automationMock.health(params.slug, params.name)
 );
@@ -6131,6 +6774,8 @@ route('GET', '/v1/workflows/runs/{id}/steps/{step}/attempts', ({ params }) => {
   };
 });
 
+registerEventMocks(route, Problem, NO_CONTENT);
+
 // --- Plumbing ------------------------------------------------------------------
 
 // JSON for the `/v1` surface; form-encoded for apid's own dashboard posts
@@ -6175,12 +6820,15 @@ function problem(res: ServerResponse, p: Problem) {
   );
 }
 
+registerMonetizationMock({ route, Problem, status });
+
 const MOCKED_PREFIXES = [
   '/v1/',
   '/status/slo.json',
   '/login',
   '/signup',
   '/dashboard/account/set-password',
+  '/dashboard/install/connect',
 ];
 
 export function mockApi(): Plugin {
@@ -6221,6 +6869,8 @@ export function mockApi(): Plugin {
         void (async () => {
           const body = method === 'GET' ? {} : await readBody(req);
           await new Promise((r) => setTimeout(r, latency()));
+          // Deployments created here move along their lifecycle as time passes.
+          advanceDeployments(Date.now());
           try {
             const out = await match.handler({ params, query: url.searchParams, body, req, res });
             if (res.writableEnded || res.headersSent) return; // streaming handlers own the response

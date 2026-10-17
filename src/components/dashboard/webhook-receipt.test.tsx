@@ -118,7 +118,7 @@ it('links a known run to the existing app automation view', async () => {
   await waitFor(() =>
     expect(screen.getByRole('link', { name: 'Inspect automation run' })).toHaveAttribute(
       'href',
-      '/dashboard/workflows/app?tab=Automations&automation=paid&automationView=runs&automationRun=run-1'
+      '/dashboard/apps/app?tab=Automations&automation=paid&automationView=runs&automationRun=run-1'
     )
   );
 });

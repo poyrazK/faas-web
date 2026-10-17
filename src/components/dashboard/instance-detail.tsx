@@ -105,12 +105,12 @@ export function InstanceDetail({
               className="flex flex-wrap gap-4 text-sm underline underline-offset-4"
             >
               {slug && (
-                <Link to="/dashboard/workflows/$workflowId" params={{ workflowId: slug }}>
+                <Link to="/dashboard/apps/$appSlug" params={{ appSlug: slug }}>
                   Open app
                 </Link>
               )}
               {instance.deployment_id && (
-                <Link to="/dashboard/deployments" search={{ deployment: instance.deployment_id }}>
+                <Link to="/dashboard/releases" search={{ deployment: instance.deployment_id }}>
                   Open release
                 </Link>
               )}
@@ -121,8 +121,8 @@ export function InstanceDetail({
               )}
               {slug && (
                 <Link
-                  to="/dashboard/workflows/$workflowId"
-                  params={{ workflowId: slug }}
+                  to="/dashboard/apps/$appSlug"
+                  params={{ appSlug: slug }}
                   search={{ tab: 'Debugger' }}
                 >
                   App debugger

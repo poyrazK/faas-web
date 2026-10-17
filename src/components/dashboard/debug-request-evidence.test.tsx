@@ -104,11 +104,11 @@ describe('DebugRequestEvidence', () => {
     expect(screen.getByText('2026-09-08T09:00:00Z')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Open release' })).toHaveAttribute(
       'href',
-      '/dashboard/deployments?deployment=dep12345678'
+      '/dashboard/releases?deployment=dep12345678'
     );
     expect(screen.getByRole('link', { name: 'Open build' })).toHaveAttribute(
       'href',
-      '/dashboard/deployments?view=builds&build=build-1'
+      '/dashboard/releases?view=builds&build=build-1'
     );
     expect(screen.getByRole('link', { name: 'App logs' })).toHaveAttribute(
       'href',

@@ -16,6 +16,7 @@ import {
   useOrgMembers,
   useOrgs,
   useRemoveMember,
+  useRevokeInvitation,
 } from '@/lib/api/queries';
 import { isValidEmail, useAuth } from '@/lib/auth';
 import { errorMessage } from '@/lib/api/errors';
@@ -24,8 +25,8 @@ import { formatRelative } from '@/lib/mock-data';
 /**
  * Members and invitations of an organisation.
  *
- * Invitation tokens are returned once and never stored for later row actions.
- * The list's opaque ID cannot be used with the token-based revoke endpoint.
+ * Invitation tokens are returned once and never stored for later row actions;
+ * revoking goes by the list's invitation id.
  */
 
 interface MemberRow {
@@ -81,6 +82,7 @@ export function TeamMembersBody({
   const invite = useInviteMember(active);
   const changeRole = useChangeMemberRole(active);
   const removeMember = useRemoveMember(active);
+  const revokeInvitation = useRevokeInvitation(active);
   const memberRole = members.error
     ? undefined
     : members.data?.members.find((m) => m.email === user?.email)?.role;
@@ -261,6 +263,44 @@ export function TeamMembersBody({
         </span>
       ),
     },
+    {
+      key: 'id',
+      label: '',
+      width: 'w-12',
+      render: (i) =>
+        !canInvite || i.status !== 'pending' ? null : (
+          <IconButton
+            type="button"
+            aria-label={`Revoke the invitation for ${i.email}`}
+            disabled={revokeInvitation.isPending}
+            onClick={async () => {
+              if (
+                !(await confirm({
+                  title: `Revoke the invitation for ${i.email}?`,
+                  description:
+                    'The invitation link stops working immediately. You can invite them again later.',
+                  confirmLabel: 'Revoke invitation',
+                  destructive: true,
+                }))
+              )
+                return;
+              void revokeInvitation
+                .mutateAsync(i.id)
+                .then(() => toast({ kind: 'success', title: `Invitation for ${i.email} revoked` }))
+                .catch((err: unknown) =>
+                  toast({
+                    kind: 'error',
+                    title: 'Could not revoke',
+                    description: errorMessage(err),
+                  })
+                );
+            }}
+            className="text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <Trash className="h-3.5 w-3.5" />
+          </IconButton>
+        ),
+    },
   ];
 
   return (
@@ -388,13 +428,6 @@ export function TeamMembersBody({
       </Panel>
 
       <Panel title="Invitations">
-        {canInvite && (
-          <p className="mb-4 text-sm text-muted-foreground">
-            Invitation revocation is unavailable here. The API requires the original invitation
-            token, which is shown only when an invitation is created and is not available in this
-            list.
-          </p>
-        )}
         <ResourceTable
           rows={inviteRows}
           columns={inviteColumns}

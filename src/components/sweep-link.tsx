@@ -18,7 +18,7 @@ export type SweepTo =
   | '/dashboard'
   // Onboarding can hand off straight into the new-app wizard — the same
   // setup-to-console switch as '/dashboard', landing one page deeper.
-  | '/dashboard/workflows/new'
+  | '/dashboard/apps/new'
   | '/onboarding';
 
 type SweepLinkProps = Omit<ComponentProps<typeof Link>, 'to'> & {

@@ -12,8 +12,15 @@ const api = vi.hoisted(() => ({
   readFailed: false,
   refetch: vi.fn(),
   navigate: vi.fn(),
+  app: {
+    slug: 'hello-app',
+    type: 'app',
+    visibility: 'public',
+    url: 'https://hello-app.gregale.dev',
+  } as Record<string, unknown>,
 }));
 vi.mock('@/lib/api/queries', () => ({
+  useApp: () => ({ data: api.app, isError: false }),
   useDeployment: () => ({
     data: {
       id: 'deploy-1',
@@ -36,7 +43,23 @@ vi.mock('@/lib/api/logs', () => ({
 }));
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => api.navigate,
-  Link: ({ children, to }: { children: ReactNode; to: string }) => <a href={to}>{children}</a>,
+  Link: ({
+    children,
+    to,
+    params,
+    search,
+  }: {
+    children: ReactNode;
+    to: string;
+    params?: { appSlug?: string };
+    search?: Record<string, string>;
+  }) => (
+    <a
+      href={`${to.replace('$appSlug', params?.appSlug ?? '')}${search?.tab ? `?tab=${search.tab}` : ''}`}
+    >
+      {children}
+    </a>
+  ),
 }));
 
 const props = {
@@ -55,6 +78,46 @@ beforeEach(() => {
   api.fix = '';
   api.readFailed = false;
   api.refetch.mockClear();
+  api.app = {
+    slug: 'hello-app',
+    type: 'app',
+    visibility: 'public',
+    url: 'https://hello-app.gregale.dev',
+  };
+});
+
+describe('live deployment', () => {
+  it('shows how to call the app once it is live', () => {
+    api.status = 'live';
+    render(<DeploymentProgress {...props} appSlug="hello-app" />);
+    expect(screen.getByRole('heading', { name: 'Your app is live' })).toBeInTheDocument();
+    const block = screen.getByRole('region', { name: 'Call it' });
+    expect(block).toHaveTextContent('curl -i https://hello-app.gregale.dev');
+    expect(block).toHaveTextContent('gregale logs hello-app --follow');
+    expect(screen.getByRole('link', { name: 'Open the Invoke tab' })).toHaveAttribute(
+      'href',
+      '/dashboard/apps/hello-app?tab=Invoke'
+    );
+    expect(screen.getByRole('link', { name: 'View logs' })).toHaveAttribute(
+      'href',
+      '/dashboard/apps/hello-app?tab=Logs'
+    );
+  });
+
+  it('shows the bearer header form with a placeholder when the app requires authentication', () => {
+    api.status = 'live';
+    api.app = { ...api.app, require_authn: true };
+    render(<DeploymentProgress {...props} appSlug="hello-app" />);
+    expect(screen.getByRole('region', { name: 'Call it' })).toHaveTextContent(
+      `curl -i -H 'Authorization: Bearer <API_KEY>' https://hello-app.gregale.dev`
+    );
+  });
+
+  it('does not offer a request before the deployment is live', () => {
+    api.status = 'building';
+    render(<DeploymentProgress {...props} appSlug="hello-app" />);
+    expect(screen.queryByRole('region', { name: 'Call it' })).not.toBeInTheDocument();
+  });
 });
 
 describe('first deployment progress', () => {
@@ -188,7 +251,7 @@ describe('first deployment progress', () => {
     expect(screen.getByText('Build output')).toHaveFocus();
     await userEvent.click(screen.getByRole('button', { name: 'Retry options' }));
     expect(api.navigate).toHaveBeenCalledWith({
-      to: '/dashboard/deployments',
+      to: '/dashboard/releases',
       search: { deployment: 'deploy-1', releaseSection: 'lifecycle' },
     });
   });

@@ -9,14 +9,10 @@ import {
   type QueryFilters,
   type UseQueryOptions,
 } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import { api, issueCSRF, unwrap } from './client';
 import { ApiError } from './errors';
 import { isDeploymentTerminal } from '../deployment-status';
-import {
-  restoreAcknowledgment,
-  restoreReviewedApp,
-  type RestoreIntent,
-} from './deleted-app-restores';
 import type { components, paths } from './schema';
 
 /**
@@ -299,7 +295,33 @@ export function useSetOverageCap() {
   return useMutation({
     mutationFn: (capCents: number | null) =>
       unwrap(api.POST('/v1/account/overage-cap', { body: { overage_cap_cents: capCents } })),
+    // keys.account prefixes the cap, its history and the forecast.
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.account }),
+  });
+}
+
+/**
+ * Projected charges for the current period, per meter. `available` and
+ * `reason` are per meter; a forecast that cannot be made says why.
+ */
+export function useBillingForecast() {
+  return useQuery({
+    queryKey: [...keys.account, 'billing-forecast'],
+    queryFn: () => unwrap(api.GET('/v1/billing/forecast', {})),
+    retry: retryPolicy,
+    staleTime: 60_000,
+  });
+}
+
+/** Spend cap changes and cap-reached notices, newest first, from the audit log. */
+export function useSpendCapHistory() {
+  return useQuery({
+    queryKey: [...keys.account, 'overage-history'],
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/audit-events', { params: { query: { kind_prefix: 'overage.', limit: 20 } } })
+      ),
+    retry: retryPolicy,
   });
 }
 
@@ -681,6 +703,68 @@ export function useProjectScan() {
         })
       ),
   });
+}
+
+/** How long the repository/ref pair must hold still before it is scanned. */
+export const SOURCE_REF_SCAN_DEBOUNCE_MS = 600;
+
+/**
+ * Read-only scan of a connected repository at a ref
+ * (`POST /v1/projects/scan/source-ref`), for the new-app wizard's hints.
+ *
+ * Debounced so typing a ref does not fan out a scan per keystroke; keyed by
+ * installation, repo and ref so a pair scanned once is answered from cache
+ * for the session; and the signal is handed to fetch, so a pair the user has
+ * moved away from is aborted rather than left to finish. It is advisory —
+ * nothing waits on it, and it never retries: a failed scan just means no
+ * hint.
+ */
+export function useSourceRefScan({
+  repo,
+  ref,
+  installId,
+  projectSlug,
+  enabled,
+}: {
+  repo: string;
+  ref: string;
+  installId: number | null;
+  projectSlug: string;
+  enabled: boolean;
+}) {
+  const wanted = enabled ? `${installId ?? ''}:${repo}@${ref}` : '';
+  const [settled, setSettled] = useState(wanted);
+  useEffect(() => {
+    if (wanted === settled) return;
+    const timer = setTimeout(() => setSettled(wanted), SOURCE_REF_SCAN_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [wanted, settled]);
+  const ready = enabled && settled === wanted;
+  const query = useQuery({
+    queryKey: ['projects', 'scan', 'source-ref', installId, repo, ref],
+    queryFn: ({ signal }) =>
+      unwrap(
+        api.POST('/v1/projects/scan/source-ref', {
+          body: {
+            repo,
+            ref,
+            project_slug: projectSlug,
+            ...(installId ? { install_id: installId } : {}),
+          },
+          signal,
+        })
+      ),
+    enabled: ready,
+    staleTime: Infinity,
+    gcTime: 30 * 60_000,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  return {
+    plan: enabled ? query.data : undefined,
+    error: enabled && !query.data ? query.error : null,
+    scanning: enabled && !query.data && !query.error && (!ready || query.isFetching),
+  };
 }
 
 /** Apply the plan in one transaction. Echoes the dry-run's plan_token so the
@@ -1157,18 +1241,6 @@ export type RetryStage = components['schemas']['RetryDeploymentRequest']['from_s
  * cache by hand — the server is the authority on what a deploy did, and a
  * hand-patched cache is how a console starts lying about state.
  * ------------------------------------------------------------------ */
-
-export function useCreateApp() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: components['schemas']['CreateAppRequest']) =>
-      unwrap(api.POST('/v1/apps', { body })),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: keys.account });
-      void qc.invalidateQueries({ queryKey: keys.apps });
-    },
-  });
-}
 
 export function useDeleteApp() {
   const qc = useQueryClient();
@@ -2745,10 +2817,11 @@ export function useAccountSlo(window: AppSLOWindow = '24h') {
  * Organisations
  * ------------------------------------------------------------------ */
 
-export function useOrgs() {
+export function useOrgs(options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ['orgs'],
     queryFn: () => unwrap(api.GET('/v1/orgs', {})),
+    enabled: options.enabled ?? true,
   });
 }
 
@@ -2880,10 +2953,12 @@ export function useUpdateAlert(slug: string) {
 export function useRotateAlertSecret(slug: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
+    // The caller supplies the replacement; apid seals it and never returns it.
+    mutationFn: ({ id, webhookSecret }: { id: string; webhookSecret: string }) =>
       unwrap(
         api.POST('/v1/apps/{slug}/alerts/{id}/rotate-secret', {
           params: { path: { slug, id } },
+          body: { webhook_secret: webhookSecret },
         })
       ),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.appAlerts(slug) }),
@@ -2925,10 +3000,12 @@ export function useDeleteWebhook(slug: string) {
 export function useRotateWebhookSecret(slug: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
+    // The caller supplies the replacement; apid seals it and never returns it.
+    mutationFn: ({ id, webhookSecret }: { id: string; webhookSecret: string }) =>
       unwrap(
         api.POST('/v1/apps/{slug}/webhooks/{id}/rotate-secret', {
           params: { path: { slug, id } },
+          body: { webhook_secret: webhookSecret },
         })
       ),
     onSuccess: () => qc.invalidateQueries({ queryKey: webhookKey(slug) }),
@@ -3000,10 +3077,11 @@ export function useRemoveMember(org: string) {
 export function useRevokeInvitation(org: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (token: string) =>
+    // Revoked by the list's invitation id; the one-time token is never stored.
+    mutationFn: (invitationId: string) =>
       unwrap(
-        api.DELETE('/v1/orgs/{slug}/invitations/{token}', {
-          params: { path: { slug: org, token } },
+        api.DELETE('/v1/orgs/{slug}/invitations/{invitation_id}', {
+          params: { path: { slug: org, invitation_id: invitationId } },
         })
       ),
     onSuccess: () => qc.invalidateQueries({ queryKey: orgKey(org, 'invitations') }),
@@ -3248,6 +3326,66 @@ export function useAppAnalytics(slug: string, since: string, groupBy: AnalyticsG
   });
 }
 
+/** apid's current health assessment: status, checks, capacity, request signal. */
+export function useAppHealth(slug: string) {
+  return useQuery({
+    queryKey: ['apps', slug, 'health'],
+    queryFn: ({ signal }) =>
+      unwrap(api.GET('/v1/apps/{slug}/health', { params: { path: { slug } }, signal })),
+    enabled: Boolean(slug),
+    retry: retryPolicy,
+    refetchInterval: 30_000,
+  });
+}
+
+/** Recorded health changes and evidence gaps, newest first. */
+export function useAppHealthHistory(slug: string) {
+  return useQuery({
+    queryKey: ['apps', slug, 'health', 'history'],
+    queryFn: ({ signal }) =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/health/history', {
+          params: { path: { slug }, query: { limit: 10 } },
+          signal,
+        })
+      ),
+    enabled: Boolean(slug),
+    retry: retryPolicy,
+  });
+}
+
+/** Which routes keep a scale-to-zero app awake, and what each costs in GB-hours. */
+export function useRouteAwake(slug: string, since: string) {
+  return useQuery({
+    queryKey: ['apps', slug, 'routes', 'awake', since],
+    queryFn: ({ signal }) =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/routes/awake', {
+          params: { path: { slug }, query: { since } },
+          signal,
+        })
+      ),
+    enabled: Boolean(slug),
+    retry: retryPolicy,
+  });
+}
+
+/** Latency and errors per downstream dependency, against a baseline window. */
+export function useDependencyLatency(slug: string, since: string) {
+  return useQuery({
+    queryKey: ['apps', slug, 'debug', 'dependencies', since],
+    queryFn: ({ signal }) =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/debug/dependencies', {
+          params: { path: { slug }, query: { since } },
+          signal,
+        })
+      ),
+    enabled: Boolean(slug),
+    retry: retryPolicy,
+  });
+}
+
 /** Hourly buckets, zero-filled by the API — a real series, so a line is honest. */
 export function useAppAnalyticsTimeseries(
   slug: string,
@@ -3332,27 +3470,24 @@ export function useRestartApp(slug: string) {
   });
 }
 
-/** Undo a delete inside the grace window. */
+/**
+ * Undo a delete inside the grace window, by slug. Only `id`, `slug` and
+ * `status` are kept from the response, so nothing secret-bearing lingers in
+ * the mutation cache.
+ */
 export function useRestoreApp() {
   const qc = useQueryClient();
   return useMutation({
     retry: false,
-    mutationFn: async (intent: string | RestoreIntent) =>
-      typeof intent === 'string'
-        ? restoreAcknowledgment(
-            await unwrap(
-              api.POST('/v1/apps/{slug}/restore', { params: { path: { slug: intent } } })
-            )
-          )
-        : restoreReviewedApp(intent),
-    onSuccess: (_result, intent) => {
+    mutationFn: async (slug: string) => {
+      const app = await unwrap(api.POST('/v1/apps/{slug}/restore', { params: { path: { slug } } }));
+      return { id: app.id, slug: app.slug, status: app.status };
+    },
+    onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.apps });
       void qc.invalidateQueries({ queryKey: keys.deployments });
       void qc.invalidateQueries({ queryKey: ['projects'] });
-      void qc.invalidateQueries({
-        queryKey:
-          typeof intent === 'string' ? keys.account : ['account', intent.accountId, 'deleted-apps'],
-      });
+      void qc.invalidateQueries({ queryKey: keys.account });
     },
   });
 }

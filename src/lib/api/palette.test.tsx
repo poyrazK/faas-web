@@ -2,8 +2,8 @@ import type { ReactNode } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api } from './client';
 import { resourceId, usePaletteKey, usePaletteResources } from './palette';
+import { spyApi } from '@/test/api';
 
 const id = 'a'.repeat(32);
 const deployment = { id, app_id: 'app1', status: 'failed', image_digest: 'sha256:abc' };
@@ -46,11 +46,9 @@ function wrapper({ children }: { children: ReactNode }) {
 }
 beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
-  get = vi
-    .spyOn(api, 'GET')
-    .mockImplementation(
-      async (path) => ({ data: fixture[path], response: new Response() }) as never
-    );
+  get = spyApi('GET').mockImplementation(
+    async (path) => ({ data: fixture[path], response: new Response() }) as never
+  );
 });
 afterEach(() => {
   client.clear();

@@ -4,8 +4,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConfirmProvider } from '@/components/ui/confirm';
 import { AppConfiguration } from './app-configuration';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { api } from '@/lib/api/client';
 import { status } from '@/test/runtime-policy';
+import { spyApi } from '@/test/api';
 
 const mocks = vi.hoisted(() => ({
   remove: vi.fn(),
@@ -70,7 +70,7 @@ beforeEach(() => {
 
 describe('App deletion contract copy', () => {
   it('sends only edited fields and reads a new request-policy revision after an accepted save', async () => {
-    vi.spyOn(api, 'GET')
+    spyApi('GET')
       .mockResolvedValueOnce({ data: status, response: new Response() } as never)
       .mockResolvedValue({
         data: {
@@ -151,6 +151,6 @@ describe('App deletion contract copy', () => {
     expect(mocks.toast).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'App deletion scheduled' })
     );
-    expect(mocks.navigate).toHaveBeenCalledWith({ to: '/dashboard/workflows' });
+    expect(mocks.navigate).toHaveBeenCalledWith({ to: '/dashboard/apps' });
   });
 });

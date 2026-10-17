@@ -159,7 +159,7 @@ export function CommandPalette({
         label: 'New app',
         group: 'Actions',
         icon: Plus,
-        run: go('/dashboard/workflows/new'),
+        run: go('/dashboard/apps/new'),
       },
       {
         id: 'act-template',
@@ -212,8 +212,8 @@ export function CommandPalette({
         run: () => {
           close();
           navigate({
-            to: '/dashboard/workflows/$workflowId',
-            params: { workflowId: fn.id },
+            to: '/dashboard/apps/$appSlug',
+            params: { appSlug: fn.id },
           });
         },
       })),
@@ -234,8 +234,8 @@ export function CommandPalette({
           run: () => {
             close();
             navigate({
-              to: '/dashboard/workflows/$workflowId',
-              params: { workflowId: fn.id },
+              to: '/dashboard/apps/$appSlug',
+              params: { appSlug: fn.id },
               search: { tab },
             });
           },
@@ -248,7 +248,7 @@ export function CommandPalette({
           `Deployment ${row.id}`,
           'Deployments',
           `${resources.appName(row.appId)} · ${row.status} · ${row.digest ?? ''}`,
-          '/dashboard/deployments',
+          '/dashboard/releases',
           { deployment: row.id, releaseSection: 'overview' }
         )
       ),
@@ -281,7 +281,7 @@ export function CommandPalette({
           `Invocation ${row.id}`,
           'Invocations',
           `${resources.appName(row.appId)} · ${row.status}`,
-          '/dashboard/traces',
+          '/dashboard/invocations',
           { invocation: row.id }
         )
       ),
@@ -528,7 +528,7 @@ export function CommandPalette({
                   type="button"
                   onClick={() => {
                     close();
-                    navigate({ to: '/dashboard/workflows/new' });
+                    navigate({ to: '/dashboard/apps/new' });
                   }}
                   className="pressable inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:border-border-secondary hover:text-foreground"
                 >

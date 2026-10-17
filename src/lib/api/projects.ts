@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQueries, useQuery } from '@tanstack/react-query';
 import { api, unwrap } from './client';
 import { retryPolicy } from './queries';
 import type { components } from './schema';
@@ -99,4 +99,55 @@ export function useProject(accountId: string, slug: string) {
     retry: retryPolicy,
     staleTime: 30_000,
   });
+}
+
+/**
+ * Which project each app belongs to.
+ *
+ * Apps do not report their project (`AppResponse` has no `project_id`), and
+ * the project list carries only a workload count, so membership is read from
+ * every project's detail: one request per project, cached with the detail
+ * pages. Until all of them have answered, membership is `pending` — an app
+ * must never be shown as standalone just because its project is slow.
+ */
+export function useProjectMembership(accountId: string) {
+  const list = useProjects(accountId);
+  const details = useQueries({
+    queries: (list.data ?? []).map((project) => ({
+      queryKey: projectKeys.detail(accountId, project.slug),
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        unwrap(
+          api.GET('/v1/projects/{slug}', { params: { path: { slug: project.slug } }, signal })
+        ),
+      enabled: Boolean(accountId),
+      retry: retryPolicy,
+      staleTime: 30_000,
+    })),
+  });
+  const projectOfApp = new Map<string, string>();
+  const workloadsOf = new Map<string, ProjectDetail['workloads']>();
+  details.forEach((detail, index) => {
+    const slug = list.data?.[index]?.slug;
+    if (!slug || !detail.data) return;
+    workloadsOf.set(slug, detail.data.workloads);
+    for (const workload of detail.data.workloads) projectOfApp.set(workload.slug, slug);
+  });
+  const state: 'pending' | 'error' | 'ready' =
+    list.isError || details.some((detail) => detail.isError)
+      ? 'error'
+      : list.isPending || details.some((detail) => detail.isPending)
+        ? 'pending'
+        : 'ready';
+  return {
+    projects: list.data ?? [],
+    list,
+    details,
+    projectOfApp,
+    workloadsOf,
+    state,
+    retry: () => {
+      void list.refetch();
+      for (const detail of details) if (detail.isError) void detail.refetch();
+    },
+  };
 }

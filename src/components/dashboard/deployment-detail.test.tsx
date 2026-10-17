@@ -41,8 +41,6 @@ function deployment(overrides: Partial<Deployment> = {}): Deployment {
     kind: 'github',
     status: 'live',
     created_at: '2026-09-09T10:00:00Z',
-    rollback_on_5xx: false,
-    first_5xx_count: 0,
     ...overrides,
   };
 }

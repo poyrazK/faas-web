@@ -1,4 +1,4 @@
-import { act, render, screen, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
@@ -9,15 +9,15 @@ import {
   Outlet,
   RouterProvider,
 } from '@tanstack/react-router';
-import { beforeEach, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Route as Projects } from './dashboard.projects';
 import { Route as Index } from './dashboard.projects.index';
 import { Route as Detail } from './dashboard.projects.$projectSlug';
 import { DashboardShell } from '@/components/dashboard/shell';
-import { api } from '@/lib/api/client';
 import { ApiError } from '@/lib/api/errors';
+import { spyApi } from '@/test/api';
+import { bindWorkspaceAccount, setActiveOrg } from '@/lib/workspace';
 vi.mock('@/lib/auth', () => ({
-  readWorkspace: () => 'console label',
   useAuth: () => ({
     account: { id: 'a', plan: 'free' },
     apiReachable: true,
@@ -26,7 +26,12 @@ vi.mock('@/lib/auth', () => ({
     user: { email: 'test@example.com', initials: 'TE', name: 'Test' },
   }),
 }));
-vi.mock('@/lib/store', () => ({ useData: () => ({ workflows: [] }) }));
+const store = vi.hoisted(() => ({
+  workflows: [] as { id: string; name: string; runtime: string; state: string }[],
+}));
+vi.mock('@/lib/store', () => ({
+  useData: () => ({ workflows: store.workflows, loading: false, error: null, refresh: vi.fn() }),
+}));
 vi.mock('@/components/sweep-link', () => ({ useSweepNavigate: () => vi.fn() }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 const summary = {
@@ -39,7 +44,15 @@ const summary = {
   repo_full_name: 'team/shop',
   production_branch: 'main',
 };
-beforeEach(() => vi.restoreAllMocks());
+/** Extra GET answers by path; an Error is answered as that failure. */
+const extraGet: Record<string, unknown> = {};
+beforeEach(() => {
+  vi.restoreAllMocks();
+  store.workflows = [];
+  for (const key of Object.keys(extraGet)) delete extraGet[key];
+  bindWorkspaceAccount('a');
+  setActiveOrg(null);
+});
 const ok = (data: unknown) => ({ data, response: new Response() }) as never;
 async function mount(
   entry: string,
@@ -54,7 +67,7 @@ async function mount(
     },
   ]
 ) {
-  const get = vi.spyOn(api, 'GET').mockImplementation(async (path) => {
+  const get = spyApi('GET').mockImplementation(async (path) => {
     if (path === '/v1/projects') return ok(data);
     if (path === '/v1/projects/{slug}')
       return ok({
@@ -70,6 +83,11 @@ async function mount(
         ],
         exclusions: [],
       });
+    if (path in extraGet) {
+      const answer = extraGet[path];
+      if (answer instanceof ApiError) throw answer;
+      return ok(answer);
+    }
     return ok([]);
   });
   const root = createRootRoute({ component: Outlet });
@@ -114,35 +132,51 @@ async function mount(
   });
   return { router, get };
 }
-it('browses multiple projects without GitHub or a paid capability gate', async () => {
+it('lists each project with its apps, without GitHub or a paid capability gate', async () => {
   await mount('/dashboard/projects');
-  const table = await screen.findByRole('table', { name: 'Projects' });
-  expect(within(table).getByRole('link', { name: 'shop' })).toHaveAttribute(
+  const apps = await screen.findByRole('list', { name: 'Apps in shop' });
+  expect(within(apps).getByRole('link', { name: 'api' })).toHaveAttribute(
+    'href',
+    '/dashboard/apps/api'
+  );
+  expect(screen.getByText(/team\/shop/)).toBeInTheDocument();
+  expect(screen.getByText(/No repository connected/)).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Open project shop' })).toHaveAttribute(
     'href',
     '/dashboard/projects/shop'
   );
-  expect(within(table).getByText('team/shop')).toBeInTheDocument();
-  expect(within(table).getByText('Not connected')).toBeInTheDocument();
   expect(
-    within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', { name: 'Projects' })
+    within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', {
+      name: 'All projects',
+    })
   ).toHaveAttribute('aria-current', 'page');
 });
-it('bounds inventory and expands on request', async () => {
+it('lists apps outside every project as standalone, and only once membership is known', async () => {
+  store.workflows = [
+    { id: 'api', name: 'api', runtime: 'node24', state: 'running' },
+    { id: 'scratch', name: 'scratch', runtime: 'python313', state: 'idle' },
+  ];
+  await mount('/dashboard/projects');
+  const standalone = await screen.findByRole('list', { name: 'Standalone apps' });
+  expect(within(standalone).getByRole('link', { name: 'scratch' })).toBeInTheDocument();
+  expect(within(standalone).queryByRole('link', { name: 'api' })).not.toBeInTheDocument();
+});
+it('bounds the project list and expands on request', async () => {
   await mount(
     '/dashboard/projects',
     Array.from({ length: 24 }, (_, i) => ({ ...summary, id: `project-${i}`, slug: `project-${i}` }))
   );
-  const table = await screen.findByRole('table', { name: 'Projects' });
-  expect(within(table).getAllByRole('row')).toHaveLength(11);
+  await screen.findByRole('link', { name: 'Open project project-0' });
+  expect(screen.getAllByRole('link', { name: /^Open project / })).toHaveLength(10);
   await userEvent.click(screen.getByRole('button', { name: 'Show 10 more projects' }));
-  expect(within(table).getAllByRole('row')).toHaveLength(21);
+  expect(screen.getAllByRole('link', { name: /^Open project / })).toHaveLength(20);
 });
-it('links an empty inventory to import, not empty project creation', async () => {
+it('offers an import when nothing is deployed', async () => {
   await mount('/dashboard/projects', []);
-  expect(await screen.findByText('No projects yet.')).toBeInTheDocument();
-  expect(screen.getByRole('link', { name: 'Import a project' })).toHaveAttribute(
+  expect(await screen.findByText(/Nothing deployed yet/)).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Import a repository' })).toHaveAttribute(
     'href',
-    '/dashboard/workflows/new?source=import'
+    '/dashboard/apps/new?source=import'
   );
 });
 it('loads a direct detail URL with actual partial status, not invented Ready', async () => {
@@ -153,7 +187,7 @@ it('loads a direct detail URL with actual partial status, not invented Ready', a
   expect(within(table).getByText('Unknown')).toBeInTheDocument();
   expect(within(table).getByRole('link', { name: 'api' })).toHaveAttribute(
     'href',
-    '/dashboard/workflows/api'
+    '/dashboard/apps/api'
   );
   expect(screen.queryByText('Ready')).not.toBeInTheDocument();
   expect(
@@ -178,13 +212,93 @@ it('shows a read error rather than an empty inventory', async () => {
 });
 it('keeps the search in the URL across detail and return navigation', async () => {
   await mount('/dashboard/projects');
-  await screen.findByRole('table', { name: 'Projects' });
-  await userEvent.type(screen.getByLabelText('Search projects'), 'shop');
-  await userEvent.click(screen.getByRole('link', { name: 'shop' }));
-  expect(await screen.findByRole('link', { name: 'All projects' })).toHaveAttribute(
-    'href',
-    '/dashboard/projects?q=shop'
-  );
-  await userEvent.click(screen.getByRole('link', { name: 'All projects' }));
-  expect(await screen.findByLabelText('Search projects')).toHaveValue('shop');
+  await screen.findByRole('list', { name: 'Apps in shop' });
+  await userEvent.type(screen.getByLabelText('Search projects and apps'), 'shop');
+  await userEvent.click(screen.getByRole('link', { name: 'Open project shop' }));
+  // The detail page's own back link, not the sidebar row of the same name.
+  const pageBack = await waitFor(() => {
+    const link = screen
+      .getAllByRole('link', { name: 'All projects' })
+      .find((item) => !item.closest('nav[aria-label="Main"]'));
+    expect(link).toBeDefined();
+    return link;
+  });
+  expect(pageBack).toHaveAttribute('href', '/dashboard/projects?q=shop');
+  await userEvent.click(pageBack!);
+  expect(await screen.findByLabelText('Search projects and apps')).toHaveValue('shop');
+});
+
+describe('the selected shared workspace', () => {
+  const acme = {
+    id: 'org-1',
+    slug: 'acme-corp',
+    name: 'Acme Corp',
+    personal: false,
+    plan: 'pro',
+    status: 'active',
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+  };
+  beforeEach(() => {
+    extraGet['/v1/orgs'] = { orgs: [acme] };
+    setActiveOrg('acme-corp');
+  });
+
+  it('lists its apps even when the account has nothing, linking only apps the account created', async () => {
+    store.workflows = [{ id: 'mine', name: 'mine', runtime: 'node22', state: 'idle' }];
+    extraGet['/v1/orgs/{slug}/apps'] = {
+      apps: [
+        {
+          id: 'a1',
+          slug: 'mine',
+          type: 'function',
+          runtime: 'node22',
+          status: 'active',
+          created_at: new Date().toISOString(),
+        },
+        {
+          id: 'a2',
+          slug: 'theirs',
+          type: 'app',
+          status: 'active',
+          created_at: '2026-09-01T00:00:00Z',
+        },
+      ],
+    };
+    const { get } = await mount('/dashboard/projects', []);
+    expect(await screen.findByText('In this workspace')).toBeInTheDocument();
+    expect(await screen.findByText('theirs')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'theirs' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: 'mine' })[0]).toHaveAttribute(
+      'href',
+      '/dashboard/apps/mine'
+    );
+    expect(screen.getByText(/stay with each app's creator/)).toBeInTheDocument();
+    expect(get).toHaveBeenCalledWith(
+      '/v1/orgs/{slug}/apps',
+      expect.objectContaining({
+        params: { path: { slug: 'acme-corp' } },
+      })
+    );
+  });
+
+  it('says when the account may not view the workspace apps', async () => {
+    extraGet['/v1/orgs/{slug}/apps'] = new ApiError({
+      status: 403,
+      code: 'org_role_forbidden',
+      title: 'Forbidden',
+    });
+    await mount('/dashboard/projects', []);
+    expect(
+      await screen.findByText(/not an active member of Acme Corp with permission to view its apps/)
+    ).toBeInTheDocument();
+  });
+
+  it('is absent for the personal workspace', async () => {
+    setActiveOrg(null);
+    const { get } = await mount('/dashboard/projects', []);
+    await screen.findByText(/Nothing deployed yet/);
+    expect(screen.queryByText('In this workspace')).not.toBeInTheDocument();
+    expect(get).not.toHaveBeenCalledWith('/v1/orgs/{slug}/apps', expect.anything());
+  });
 });

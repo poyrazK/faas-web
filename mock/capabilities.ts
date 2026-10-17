@@ -6,6 +6,18 @@ const PAID: Plan[] = ['hobby', 'pro', 'scale'];
 /** Synthetic account availability, not evidence of runtime qualification. */
 const entries: Capability[] = [
   {
+    key: 'ai-gateway',
+    name: 'AI gateway',
+    category: 'data',
+    description:
+      'LLM provider calls through managed outbound integrations with token and cost caps.',
+    maturity: 'preview',
+    plans: PAID,
+    docs_url: '/docs/ai-gateway',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
+  {
     key: 'mcp-hosting',
     name: 'MCP hosting',
     category: 'runtime',
@@ -145,6 +157,17 @@ const entries: Capability[] = [
     maturity: 'preview',
     plans: ALL,
     docs_url: '/docs/faas_openapi_spec',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
+  {
+    key: 'api-monetization',
+    name: 'API monetization',
+    category: 'commerce',
+    description: 'API consumers, keys, plans, durable usage, quotes and statements.',
+    maturity: 'preview',
+    plans: PAID,
+    docs_url: '/docs',
     acceptance: 'mock-only',
     enabled: true,
   },

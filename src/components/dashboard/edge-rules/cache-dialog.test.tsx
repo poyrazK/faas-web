@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import type { EdgeRule } from '@/lib/api/queries';
+import { cacheEdgeRule } from '@/test/edge-rules';
 import { ApiError } from '@/lib/api/errors';
 
 const state = vi.hoisted(() => ({
@@ -13,7 +14,7 @@ const state = vi.hoisted(() => ({
   update: vi.fn(),
   toast: vi.fn(),
 }));
-const cacheRule: EdgeRule = {
+const cacheRule: EdgeRule = cacheEdgeRule({
   id: 'cache-1',
   account_id: 'account-a',
   app_id: 'app-1',
@@ -21,6 +22,7 @@ const cacheRule: EdgeRule = {
   match_host: '*',
   match_path: '/products/*',
   match_methods: ['GET'],
+  match_headers: {},
   priority: 10,
   enabled: true,
   validate_mode: 'block',
@@ -33,7 +35,7 @@ const cacheRule: EdgeRule = {
   },
   created_at: '2026-10-10T00:00:00Z',
   updated_at: '2026-10-10T00:00:00Z',
-};
+});
 vi.mock('@/lib/api/queries', () => ({
   useCreateEdgeRule: () => ({ mutateAsync: state.create, isPending: false }),
   useUpdateEdgeRule: () => ({ mutateAsync: state.update, isPending: false }),

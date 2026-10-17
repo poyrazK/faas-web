@@ -5,7 +5,7 @@ export const Route = createFileRoute('/dashboard/import')({
   validateSearch: validateNewAppSearch,
   beforeLoad: ({ search, location }) => {
     throw redirect({
-      to: '/dashboard/workflows/new',
+      to: '/dashboard/apps/new',
       search: { ...search, source: 'import', step: undefined },
       hash: location.hash,
       replace: true,

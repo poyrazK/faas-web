@@ -1,9 +1,9 @@
 import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, expect, it, vi } from 'vitest';
-import { api } from '@/lib/api/client';
 import { apps } from '../../../../mock/data';
 import { PreviewWorkloadSet } from './preview-workload-set';
+import { spyApi } from '@/test/api';
 vi.mock('@tanstack/react-router', () => ({
   Link: ({
     to,
@@ -13,7 +13,7 @@ vi.mock('@tanstack/react-router', () => ({
     to: string;
     params?: Record<string, string>;
     children: React.ReactNode;
-  }) => <a href={to.replace('$workflowId', params?.workflowId ?? '')}>{children}</a>,
+  }) => <a href={to.replace('$appSlug', params?.appSlug ?? '')}>{children}</a>,
 }));
 afterEach(() => vi.restoreAllMocks());
 const app = {
@@ -49,7 +49,7 @@ const member = {
   },
 };
 it('uses the exact recorded root and returned preview links, not guessed hosts', async () => {
-  vi.spyOn(api, 'GET').mockResolvedValue({
+  spyApi('GET').mockResolvedValue({
     data: {
       root_slug: 'preview-api',
       repo_full_name: 'acme/shop',
@@ -73,11 +73,11 @@ it('uses the exact recorded root and returned preview links, not guessed hosts',
   expect(screen.getByText('new-head')).toBeInTheDocument();
   expect(screen.getByRole('link', { name: 'Production parent' })).toHaveAttribute(
     'href',
-    '/dashboard/workflows/api'
+    '/dashboard/apps/api'
   );
 });
 it('does not imply a whole legacy set is ready when no set was recorded', async () => {
-  const get = vi.spyOn(api, 'GET').mockResolvedValue({
+  const get = spyApi('GET').mockResolvedValue({
     error: { status: 404, code: 'preview_environment_not_found', title: 'No set' },
     response: new Response('{}', { status: 404 }),
   } as never);
@@ -88,7 +88,7 @@ it('does not imply a whole legacy set is ready when no set was recorded', async 
   expect(get).toHaveBeenCalledTimes(1);
 });
 it('shows a missing expected sibling instead of an old live artifact', async () => {
-  vi.spyOn(api, 'GET').mockResolvedValue({
+  spyApi('GET').mockResolvedValue({
     data: {
       root_slug: 'preview-api',
       repo_full_name: 'acme/shop',

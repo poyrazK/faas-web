@@ -108,7 +108,7 @@ function WebhookReceiptContext({
           {result.run_id && (
             <a
               className="text-brand underline"
-              href={`/dashboard/workflows/${encodeURIComponent(slug)}?${params.toString()}`}
+              href={`/dashboard/apps/${encodeURIComponent(slug)}?${params.toString()}`}
             >
               Inspect automation run
             </a>

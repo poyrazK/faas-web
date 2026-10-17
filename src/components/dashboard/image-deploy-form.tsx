@@ -1,16 +1,23 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
 import { useAuth } from '@/lib/auth';
 import { api, unwrap } from '@/lib/api/client';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import { keys, retryPolicy, useApp } from '@/lib/api/queries';
 import { createImageApp, deployImage } from '@/lib/api/image-deployments';
+import { orgAppsKey, useWorkspaceTarget } from '@/lib/api/workspace-apps';
 import { useCapability } from '@/lib/api/capabilities';
 import { readPrivateAppCreateContext } from '@/lib/api/bindings';
 import { readWorkerCreateContext } from '@/lib/api/worker-create';
-import { imageRequest } from '@/lib/oci-image';
+import {
+  healthPathError,
+  imageReferenceError,
+  imageRequest,
+  portOverrideError,
+} from '@/lib/oci-image';
 import { workerCreateRequest } from '@/lib/worker-image';
 import {
   clearImageOperation,
@@ -30,6 +37,9 @@ import type { components } from '@/lib/api/schema';
 
 // A new request's settled admission/validation refusal did not accept a release.
 // Conflict and transport/server failures remain ambiguous; never clear those implicitly.
+type ImageField =
+  'app-name' | 'image' | 'memory' | 'port' | 'health' | 'registry-username' | 'registry-password';
+
 function definitivelyRejected(error: unknown) {
   return (
     error instanceof ApiError && [400, 401, 402, 403, 404, 413, 422, 429].includes(error.status)
@@ -115,6 +125,12 @@ function ImageJourney({
   const [reviewing, setReviewing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(recovery.error);
+  // Field-level preflight answers beside the field and focuses it; what is
+  // left (capability checks, worker shape) still reports in the alert above.
+  const fieldsId = useId();
+  const fieldsForm = useRef<HTMLFormElement>(null);
+  const advanced = useRef<HTMLDetailsElement>(null);
+  const fieldValidation = useFormValidation<ImageField>();
   const [conflicted, setConflicted] = useState(false);
   const [inspected, setInspected] = useState(false);
   const [confirmAttempt, setConfirmAttempt] = useState(false);
@@ -128,6 +144,9 @@ function ImageJourney({
     accountId
   );
   const cache = useQueryClient();
+  const workspace = useWorkspaceTarget();
+  // Only a new app is created anywhere; a recovered operation keeps its own.
+  const creatingIn = editingApp ? editingApp.org : slug ? undefined : workspace.org || undefined;
   const active = useRef(true);
   const lock = useRef(false);
   const currentAvailability = useRef({
@@ -328,7 +347,7 @@ function ImageJourney({
     }
     let app;
     try {
-      app = await createImageApp(current.createRequest, current.createKey);
+      app = await createImageApp(current.createRequest, current.createKey, current.org ?? null);
     } catch (error) {
       // An old ambiguous creation may already have created its app. A later
       // refusal after account changes is not proof about that earlier attempt.
@@ -355,6 +374,7 @@ function ImageJourney({
       stage: current.needsCredentials ? 'credentials' : 'app-created',
     });
     void cache.invalidateQueries({ queryKey: keys.apps });
+    if (current.org) void cache.invalidateQueries({ queryKey: orgAppsKey(current.org) });
     if (current.needsCredentials) await saveCredentialAndDeploy(current);
     else await submitDeployment(current);
   }
@@ -405,6 +425,8 @@ function ImageJourney({
         editingApp?.existingSlug ?? slug,
         kind
       ),
+      // Fixed at review: a replay of this creation must reach the same workspace.
+      ...(creatingIn ? { org: creatingIn } : {}),
       needsCredentials: privateRegistry,
       ...(editingApp
         ? {
@@ -531,6 +553,30 @@ function ImageJourney({
     }
   }
   const title = kind === 'worker' ? 'OCI worker image' : slug ? 'Deploy image' : 'Container image';
+  const fieldErrors: Partial<Record<ImageField, string>> = {
+    'app-name': fixedApp ? undefined : appNameError(name),
+    image: imageReferenceError(image),
+    memory:
+      fixedApp || (Number.isInteger(memory) && memory >= 128 && memory <= maxMemory)
+        ? undefined
+        : 'Select memory within your plan limit.',
+    port: kind === 'http' ? portOverrideError(port) : undefined,
+    health: kind === 'http' ? healthPathError(health) : undefined,
+    'registry-username': privateRegistry && !username ? 'Enter the registry username.' : undefined,
+    'registry-password': privateRegistry && !password ? 'Enter the registry password.' : undefined,
+  };
+  const shownError = (field: ImageField) =>
+    fieldValidation.submitAttempted ? fieldErrors[field] : undefined;
+  const fieldProps = (field: ImageField) => ({
+    name: field,
+    form: `${fieldsId}-fields`,
+    ...fieldErrorProps(shownError(field), `${fieldsId}-${field}-error`),
+  });
+  const fieldError = (field: ImageField) => {
+    const message = shownError(field);
+    return message ? <FieldError id={`${fieldsId}-${field}-error`}>{message}</FieldError> : null;
+  };
+
   return (
     <section
       aria-label={title}
@@ -636,23 +682,27 @@ function ImageJourney({
               <p className="text-sm">
                 Your app is saved. Re-enter credentials to finish this deployment.
               </p>
-              <label className="text-sm">
+              <label className="flex flex-col gap-1.5 text-sm">
                 Registry username
                 <Input
+                  {...fieldProps('registry-username')}
                   autoComplete="off"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                 />
               </label>
-              <label className="text-sm">
+              {fieldError('registry-username')}
+              <label className="flex flex-col gap-1.5 text-sm">
                 Registry password
                 <Input
+                  {...fieldProps('registry-password')}
                   type="password"
                   autoComplete="new-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
               </label>
+              {fieldError('registry-password')}
               <Button
                 disabled={!permitted || !username || !password || plan === 'free'}
                 onClick={() => void run(() => saveCredentialAndDeploy(operation))}
@@ -700,7 +750,7 @@ function ImageJourney({
                       <li key={item.id} className="break-all text-sm">
                         <a
                           className="text-brand underline"
-                          href={`/dashboard/deployments?deployment=${encodeURIComponent(item.id)}`}
+                          href={`/dashboard/releases?deployment=${encodeURIComponent(item.id)}`}
                         >
                           {item.id}
                         </a>{' '}
@@ -751,6 +801,7 @@ function ImageJourney({
               <DeploymentProgress
                 appCreated
                 appName={operation.createRequest.slug}
+                appSlug={operation.createRequest.slug}
                 deploymentId={operation.deploymentId ?? null}
                 source={{ kind: 'image', reference: operation.deployRequest.image! }}
                 endpoint={
@@ -785,7 +836,7 @@ function ImageJourney({
           )}
           <a
             className="w-fit text-sm text-brand underline"
-            href={`/dashboard/workflows/${encodeURIComponent(operation.createRequest.slug)}?tab=Deployments`}
+            href={`/dashboard/apps/${encodeURIComponent(operation.createRequest.slug)}?tab=Deployments`}
           >
             Inspect app and releases
           </a>
@@ -797,19 +848,26 @@ function ImageJourney({
               Continuing with saved app <strong>{fixedApp}</strong>. No new app will be created.
             </p>
           )}
+          {/* The fields join this form by id: validation needs a form to
+              focus through, and wrapping them would reflow the section. */}
+          <form ref={fieldsForm} id={`${fieldsId}-fields`} hidden />
           {!fixedApp && (
-            <label className="text-sm">
-              App name
-              <Input
-                disabled={reviewing || frozen}
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                maxLength={40}
-              />
-            </label>
+            <>
+              <label className="flex flex-col gap-1.5 text-sm">
+                App name
+                <Input
+                  {...fieldProps('app-name')}
+                  disabled={reviewing || frozen}
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  maxLength={40}
+                />
+              </label>
+              {fieldError('app-name')}
+            </>
           )}
           {!fixedApp && kind === 'http' && (
-            <label className="text-sm">
+            <label className="flex flex-col gap-1.5 text-sm">
               App visibility
               <select
                 aria-label="App visibility"
@@ -823,9 +881,10 @@ function ImageJourney({
               </select>
             </label>
           )}
-          <label className="text-sm">
+          <label className="flex flex-col gap-1.5 text-sm">
             Image reference
             <Input
+              {...fieldProps('image')}
               disabled={reviewing}
               value={image}
               onChange={(e) => setImage(e.target.value)}
@@ -833,10 +892,12 @@ function ImageJourney({
               autoComplete="off"
             />
           </label>
+          {fieldError('image')}
           {!fixedApp && (
-            <label className="text-sm">
+            <label className="flex flex-col gap-1.5 text-sm">
               Memory (MB)
               <Input
+                {...fieldProps('memory')}
                 type="number"
                 min={128}
                 max={maxMemory}
@@ -847,10 +908,11 @@ function ImageJourney({
               />
             </label>
           )}
+          {!fixedApp && fieldError('memory')}
           {kind === 'worker' && !fixedApp && (
             <div className="space-y-3 rounded border border-border p-3 text-sm">
               <p>Worker lifecycle</p>
-              <label className="block space-y-1">
+              <label className="flex flex-col gap-1.5">
                 <span>Restart policy</span>
                 <select
                   className="block rounded border border-border bg-background px-2 py-1"
@@ -864,7 +926,7 @@ function ImageJourney({
                   <option value="no">Never</option>
                 </select>
               </label>
-              <label className="block space-y-1">
+              <label className="flex flex-col gap-1.5">
                 <span>Startup deadline (seconds)</span>
                 <Input
                   type="number"
@@ -874,7 +936,7 @@ function ImageJourney({
                   onChange={(event) => setStartupDeadline(Number(event.target.value))}
                 />
               </label>
-              <label className="block space-y-1">
+              <label className="flex flex-col gap-1.5">
                 <span>Max restart retries</span>
                 <Input
                   type="number"
@@ -890,7 +952,7 @@ function ImageJourney({
               </p>
             </div>
           )}
-          <details>
+          <details ref={advanced}>
             <summary className="cursor-pointer text-sm">Advanced settings</summary>
             <div className="mt-3 flex flex-col gap-3">
               {kind === 'http' && (
@@ -899,23 +961,27 @@ function ImageJourney({
                     Omit overrides to use the image defaults. A health path is readiness
                     configuration, not proof that the app is healthy.
                   </p>
-                  <label className="text-sm">
+                  <label className="flex flex-col gap-1.5 text-sm">
                     Port override
                     <Input
+                      {...fieldProps('port')}
                       disabled={reviewing}
                       value={port}
                       onChange={(e) => setPort(e.target.value)}
                       inputMode="numeric"
                     />
                   </label>
-                  <label className="text-sm">
+                  {fieldError('port')}
+                  <label className="flex flex-col gap-1.5 text-sm">
                     Health path override
                     <Input
+                      {...fieldProps('health')}
                       disabled={reviewing}
                       value={health}
                       onChange={(e) => setHealth(e.target.value)}
                     />
                   </label>
+                  {fieldError('health')}
                 </>
               )}
               <label className="flex gap-2 text-sm">
@@ -960,7 +1026,7 @@ function ImageJourney({
           )}
           {privateRegistry && (
             <>
-              <label className="text-sm">
+              <label className="flex flex-col gap-1.5 text-sm">
                 Registry username
                 <Input
                   autoComplete="off"
@@ -969,7 +1035,7 @@ function ImageJourney({
                   onChange={(e) => setUsername(e.target.value)}
                 />
               </label>
-              <label className="text-sm">
+              <label className="flex flex-col gap-1.5 text-sm">
                 Registry password
                 <Input
                   type="password"
@@ -988,7 +1054,8 @@ function ImageJourney({
           {reviewing ? (
             <>
               <p className="text-sm">
-                Review: {fixedApp || name} · {memory} MB ·{' '}
+                Review: {fixedApp || name}
+                {!fixedApp && ` · in the ${workspace.label} workspace`} · {memory} MB ·{' '}
                 {kind === 'worker'
                   ? `Worker execution · ${reviewedRestartPolicy} restart · startup deadline ${reviewedStartupDeadline || 'plan default'} · retry cap ${reviewedMaxRetries || 'plan default'} · internal only · no public endpoint · `
                   : !fixedApp &&
@@ -1029,6 +1096,17 @@ function ImageJourney({
                 (kind === 'worker' && Boolean(slug) && !editingApp && !existingWorker.data)
               }
               onClick={() => {
+                // An advanced field may be the culprit; open its disclosure
+                // so focus can land on it.
+                if ((fieldErrors.port || fieldErrors.health) && advanced.current)
+                  advanced.current.open = true;
+                if (
+                  fieldsForm.current &&
+                  !fieldValidation.validate(fieldErrors, fieldsForm.current)
+                ) {
+                  setError(null);
+                  return;
+                }
                 try {
                   imageRequest(
                     image,

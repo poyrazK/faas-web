@@ -25,7 +25,7 @@ export function AppVisibility({
 }) {
   const capability = useCapability('private-apps');
   const cache = useQueryClient();
-  const [desired, setDesired] = useState<'public' | 'internal'>(app.visibility);
+  const [desired, setDesired] = useState<'public' | 'internal'>(app.visibility ?? 'public');
   const [review, setReview] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
@@ -130,7 +130,7 @@ export function AppVisibility({
         {!available && (
           <p role="status">Visibility changes require confirmed private-app capability access.</p>
         )}
-        <label className="block space-y-1">
+        <label className="flex flex-col gap-1.5">
           <span>Visibility</span>
           <select
             aria-label="App visibility"

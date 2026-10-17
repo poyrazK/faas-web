@@ -25,6 +25,11 @@ const hooks = vi.hoisted(() => ({
   useAppAnalyticsTimeseries: vi.fn(),
   useAppSlo: vi.fn(),
   useAppWakeTimeline: vi.fn(),
+  // The health, awake-time and dependency panels are covered in their own tests.
+  useAppHealth: () => ({ isPending: true, error: null, refetch: vi.fn() }),
+  useAppHealthHistory: () => ({ isPending: true, error: null, refetch: vi.fn() }),
+  useRouteAwake: () => ({ isPending: true, error: null, refetch: vi.fn() }),
+  useDependencyLatency: () => ({ isPending: true, error: null, refetch: vi.fn() }),
 }));
 // Network-backed hooks are the boundary; all panels and controls remain real.
 vi.mock('@/lib/api/queries', async (original) => ({
@@ -102,6 +107,7 @@ const analytics: components['schemas']['RequestAnalyticsResponse'] = {
   routes: [],
   routes_limit: 50,
   routes_truncated: false,
+  dependencies_truncated: false,
 };
 const ready = (data: unknown) => ({ data, isPending: false, error: null, refetch: vi.fn() });
 const failed = (error: unknown) => ({ data: undefined, isPending: false, error, refetch: vi.fn() });

@@ -170,6 +170,42 @@ export function useWriteAutomation(account: string, slug: string) {
   });
 }
 
+/**
+ * Removes a dashboard-owned definition at the observed revision. A stale
+ * revision answers `automation_version_conflict`; an automation that also has
+ * a YAML definition answers `automation_ownership_conflict` until the caller
+ * explicitly asks for ownership to return to the manifest.
+ */
+export async function deleteAutomation(
+  slug: string,
+  name: string,
+  expectedVersion: number,
+  restoreManifest = false
+) {
+  await unwrap(
+    api.DELETE('/v1/apps/{slug}/automations/{name}', {
+      params: {
+        path: { slug, name },
+        query: restoreManifest
+          ? { expected_version: expectedVersion, restore_manifest: true }
+          : { expected_version: expectedVersion },
+      },
+    })
+  );
+}
+
+export function useDeleteAutomation(account: string, slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { name: string; expectedVersion: number; restoreManifest?: boolean }) =>
+      deleteAutomation(slug, input.name, input.expectedVersion, input.restoreManifest),
+    retry: false,
+    // Only the list: the deleted automation's own reads would 404 while its
+    // workspace is still on screen, and a conflict needs the fresh revision.
+    onSettled: () => qc.invalidateQueries({ queryKey: [...root(account, slug), 'list'] }),
+  });
+}
+
 export function useValidateAutomation(slug: string) {
   return useMutation({
     mutationFn: (definition: Definition) =>

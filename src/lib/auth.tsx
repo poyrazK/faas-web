@@ -39,7 +39,6 @@ const ONBOARDED_KEY = 'gregale.onboarded';
 const WORKSPACE_KEY = 'gregale.workspace';
 const OAUTH_PENDING_KEY = 'gregale.oauth-pending';
 const ONBOARDING_GITHUB_RETURN_KEY = 'gregale.onboarding-github-return';
-export const DEFAULT_WORKSPACE = 'acme-corp';
 
 /** The server's floor: NIST-style length rule, no complexity theatre. */
 export const MIN_PASSWORD_LENGTH = 12;
@@ -166,17 +165,10 @@ export function consumeOnboardingGitHubReturn(): boolean {
   return pending;
 }
 
-/** Workspace slug chosen during onboarding; falls back to the demo default. */
-export function readWorkspace(): string {
-  if (typeof window === 'undefined') return DEFAULT_WORKSPACE;
-  return window.localStorage.getItem(WORKSPACE_KEY)?.trim() || DEFAULT_WORKSPACE;
-}
-
-export function saveWorkspace(slug: string) {
-  window.localStorage.setItem(WORKSPACE_KEY, slug.trim());
-}
-
-/** Clear the console-only workspace label and onboarding hint in this browser. */
+/**
+ * Clear console state kept in this browser: the onboarding hint, and the free-text
+ * workspace label older versions stored (the workspace is a real organization now).
+ */
 export function clearWorkspace() {
   window.localStorage.removeItem(WORKSPACE_KEY);
   window.localStorage.removeItem(ONBOARDED_KEY);

@@ -16,7 +16,7 @@ import { InlinePhase } from '@/components/dashboard/primitives';
 import { slugIndex } from '@/lib/api/adapters';
 import { consoleHead } from '@/lib/seo';
 import { formatUsageBytes, formatUsageNumber } from '@/lib/usage-format';
-import { SpendCap } from '@/components/dashboard/spend-cap';
+import { SpendControl } from '@/components/dashboard/spend-control';
 import { ObjectStorageUsagePanel } from '@/components/dashboard/object-storage-usage';
 
 export const Route = createFileRoute('/dashboard/usage')({
@@ -300,9 +300,10 @@ function UsagePage() {
                 {formatUsageNumber(used)} of {formatUsageNumber(included)} GB-hours
                 {over ? ' — you are into overage for this period.' : '.'}
               </p>
-              <SpendCap compact />
             </div>
           </Panel>
+
+          <SpendControl overageCents={data?.overage_cents} />
 
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatTile label="CPU hours" value={formatUsageNumber(data?.used_cpu_hours)} />
