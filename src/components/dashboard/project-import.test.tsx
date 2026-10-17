@@ -5,6 +5,7 @@ import { ProjectImport } from './project-import';
 import type { ReactNode } from 'react';
 const scan = vi.hoisted(() => vi.fn());
 const apply = vi.hoisted(() => vi.fn());
+vi.mock('./project-migration', () => ({ ProjectMigration: () => <div>Connected migration</div> }));
 vi.mock('@/lib/api/queries', () => ({
   useProjectScan: () => ({ mutateAsync: scan, isPending: false }),
   useProjectApply: () => ({ mutateAsync: apply, isPending: false }),
@@ -44,6 +45,7 @@ it('renders null empty lists and ports from older scan responses without crashin
   });
   const user = userEvent.setup();
   const { container } = render(<ProjectImport />);
+  await user.click(screen.getByRole('button', { name: 'Upload an archive' }));
   await user.upload(
     container.querySelector('input[type=file]') as HTMLInputElement,
     new File(['archive'], 'repo.tar.gz', { type: 'application/gzip' })
@@ -66,6 +68,7 @@ it('links the applied project using the reviewed server plan identity', async ()
   });
   apply.mockResolvedValue({ project_id: 'project-1', apps: [] });
   const { container } = render(<ProjectImport />);
+  await userEvent.click(screen.getByRole('button', { name: 'Upload an archive' }));
   const input = container.querySelector('input[type=file]') as HTMLInputElement;
   await userEvent.upload(input, new File(['archive'], 'repo.tar.gz', { type: 'application/gzip' }));
   await userEvent.click(screen.getByRole('button', { name: 'Scan' }));

@@ -228,6 +228,8 @@ export interface Tracked {
   /** The status this module last wrote; anything else means a route changed it. */
   written: string;
   settled: boolean;
+  waitForBuildDependencies?: string[];
+  waitingForBuildDependencies?: boolean;
 }
 
 const tracked = new Map<string, Tracked>();
@@ -294,6 +296,21 @@ export function advanceDeployments(now: number) {
       rec.settled = true;
       if (scenarioOf(rec.app) === 'deploying') restore(rec);
       continue;
+    }
+    if (rec.waitForBuildDependencies?.length) {
+      const ready = rec.waitForBuildDependencies.every((id) =>
+        deployments.some((d) => d.id === id && d.status === 'live' && d.traffic_percent === 100)
+      );
+      if (!ready) {
+        rec.waitingForBuildDependencies = true;
+        rec.startedAt = now;
+        apply(rec, phaseAt(rec.plan, 0));
+        continue;
+      }
+      if (rec.waitingForBuildDependencies) {
+        rec.startedAt = now;
+        rec.waitingForBuildDependencies = false;
+      }
     }
     apply(rec, phaseAt(rec.plan, now - rec.startedAt));
   }

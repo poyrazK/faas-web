@@ -9,6 +9,7 @@ import { DeploymentLifecycle } from './deployment-lifecycle';
 import type { DeploymentRecoveryContext } from './new-app-source';
 import { RecoverySourceForm } from './recovery-source-form';
 import { resourceId } from '@/lib/resource-id';
+import { MigrationVerification } from './migration-verification';
 
 /** Resolve every saved pointer against the account before offering mutations. */
 export function FirstDeploymentRecovery({
@@ -186,6 +187,13 @@ export function FirstDeploymentRecovery({
       >
         Check deployment history
       </Link>
+      {recovery.migration && recovery.deployment && attempt.data?.status === 'live' && (
+        <MigrationVerification
+          key={recovery.deployment}
+          app={recovery.app}
+          deployment={recovery.deployment}
+        />
+      )}
     </div>
   );
 }

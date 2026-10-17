@@ -180,7 +180,7 @@ describe('NewAppWizard source picker', () => {
     expect(project).toHaveAccessibleName('Bring an existing project');
     const importCard = within(project).getByRole('button', { name: 'Import' });
     expect(importCard).toHaveAccessibleDescription(
-      /several services \(Compose, Procfile, k8s, Render, Fly, or serverless\), scanned and created together as a project/
+      /Migrate one existing service from GitHub, or scan a repository archive as a project/
     );
     expect(screen.getByRole('button', { name: 'Git repository' })).toHaveAccessibleDescription(
       /one service from a branch, tag, or commit/
@@ -317,14 +317,15 @@ describe('NewAppWizard repository prefill', () => {
     await user.type(screen.getByLabelText('Ref'), 'develop');
     expect(
       screen.getByText(
-        'This repository has 3 services. Import it as a project to create them together.'
+        'This repository has 3 services. Choose one to migrate first and keep the others with your current provider.'
       )
     ).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Import as a project' }));
+    await user.click(screen.getByRole('button', { name: 'Choose a service to migrate' }));
     expect(onSearchChange).toHaveBeenLastCalledWith({
       source: 'import',
       slug: 'shop',
       branch: 'develop',
+      repo: 'gregale/shop',
     });
   });
 

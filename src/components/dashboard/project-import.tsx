@@ -12,6 +12,9 @@ import { errorMessage } from '@/lib/api/errors';
 import { cn } from '@/lib/utils';
 import { useUnsavedGuard } from '@/lib/use-unsaved-guard';
 import { SCAN_SOURCE_LABEL } from './scan-source';
+import { ProjectMigration } from './project-migration';
+import type { DeploymentRecoveryContext } from './new-app-source';
+import { SegmentedControl } from './tabs';
 
 /**
  * Repository import — `/v1/projects/scan` + `/v1/projects`.
@@ -28,6 +31,56 @@ import { SCAN_SOURCE_LABEL } from './scan-source';
 const SLUG_RULE = /^[a-z0-9][a-z0-9-]*$/;
 
 export function ProjectImport({
+  initialRepo = '',
+  initialSlug = '',
+  initialBranch = 'main',
+  onRecoveryChange,
+  onMigrationChange,
+  active = true,
+}: {
+  initialRepo?: string;
+  initialSlug?: string;
+  initialBranch?: string;
+  onRecoveryChange?: (recovery: DeploymentRecoveryContext) => void;
+  onMigrationChange?: (
+    id: string,
+    source: { repo: string; ref: string; projectSlug: string }
+  ) => void;
+  active?: boolean;
+}) {
+  const [github, setGitHub] = useState(true);
+  const [pending, setPending] = useState(false);
+  return (
+    <div className="flex flex-col gap-6">
+      <SegmentedControl
+        label="Migration source"
+        value={github ? 'github' : 'archive'}
+        disabled={pending}
+        onChange={(value) => setGitHub(value === 'github')}
+        options={[
+          { key: 'github', label: 'Migrate from GitHub' },
+          { key: 'archive', label: 'Upload an archive' },
+        ]}
+      />
+      {github ? (
+        active ? (
+          <ProjectMigration
+            initialRepo={initialRepo}
+            initialRef={initialBranch}
+            initialSlug={initialSlug}
+            onRecoveryChange={onRecoveryChange}
+            onMigrationChange={onMigrationChange}
+            onBusyChange={setPending}
+          />
+        ) : null
+      ) : (
+        <ArchiveProjectImport initialSlug={initialSlug} initialBranch={initialBranch} />
+      )}
+    </div>
+  );
+}
+
+function ArchiveProjectImport({
   initialSlug = '',
   initialBranch = 'main',
 }: {

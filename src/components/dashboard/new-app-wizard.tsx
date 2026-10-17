@@ -1,3 +1,4 @@
+import { ProjectMigrationProgress } from './project-migration-progress';
 import { MemorySelect } from './memory-select';
 import { RestoreTarget } from '@/components/restore-target';
 import { RESTORE_CONTEXT } from '@/lib/platform-claims';
@@ -97,7 +98,7 @@ const SOURCES = [
   {
     id: 'import',
     name: 'Import',
-    desc: 'A repository with several services (Compose, Procfile, k8s, Render, Fly, or serverless), scanned and created together as a project.',
+    desc: 'Migrate one existing service from GitHub, or scan a repository archive as a project.',
     icon: Upload,
   },
 ] as const;
@@ -151,6 +152,22 @@ export function NewAppWizard(props: NewAppWizardProps) {
   // Only restoration bypasses creation. An in-flight create keeps its owner
   // mounted while it writes the durable pointer and submits the first build.
   const [restored, setRestored] = useState(props.search?.recovery);
+  if (props.search?.projectMigration)
+    return (
+      <ProjectMigrationProgress
+        key={props.search.projectMigration}
+        id={props.search.projectMigration}
+        source={
+          props.search.repo
+            ? {
+                repo: props.search.repo,
+                ref: props.search.branch ?? 'main',
+                projectSlug: props.search.slug ?? '',
+              }
+            : undefined
+        }
+      />
+    );
   if (restored)
     return (
       <FirstDeploymentRecovery
@@ -237,7 +254,7 @@ function CreateAppWizard({
   // The endpoint the API assigned. Constructing one from the slug would be a
   // guess about the platform's hostname scheme; this is the real value.
   const [createdUrl, setCreatedUrl] = useState<string | null>(null);
-  const [repo, setRepo] = useState('');
+  const [repo, setRepo] = useState(search.repo ?? '');
   const [ref, setRef] = useState('main');
   const [nameDraft, setName] = useState<string | null>(null);
   const [nameTouched, setNameTouched] = useState(false);
@@ -339,24 +356,26 @@ function CreateAppWizard({
     scannedService && !['', '.', './'].includes(scannedService.root_dir.trim())
       ? scannedService.root_dir.trim()
       : '';
-  // Import uploads an archive, so the repository cannot travel with it; the
-  // project slug and branch it asks for can. Import keeps its own draft, so a
-  // hand-off remounts it with these values rather than waiting on the URL.
+  // Carry the connected repository into migration rather than asking the
+  // customer to package and upload the source they already selected.
   const [importHandoff, setImportHandoff] = useState<{
     seed: number;
     slug: string;
     branch: string;
+    repo: string;
   } | null>(null);
   const switchToImport = () => {
     setImportHandoff((prev) => ({
       seed: (prev?.seed ?? 0) + 1,
       slug: scanProjectSlug,
       branch: normalizedRef,
+      repo: repo.trim(),
     }));
     changeSearch({
       source: 'import',
       slug: scanProjectSlug,
       branch: normalizedRef,
+      repo: repo.trim(),
     });
   };
   const sourceValid =
@@ -738,19 +757,18 @@ function CreateAppWizard({
           <p className="min-w-0 flex-1 basis-64 text-sm">
             {count > 1 ? (
               <>
-                This repository has {count} services. Import it as a project to create them
-                together.
+                This repository has {count} services. Choose one to migrate first and keep the
+                others with your current provider.
               </>
             ) : (
               <>
                 The scan found this service in <code className="font-mono">{scannedRootDir}</code>.
-                This form deploys the repository as one app; import it as a project to build from
-                that directory.
+                Continue with migration to review its configuration and build from that directory.
               </>
             )}
           </p>
           <Button type="button" variant="outline" size="sm" onClick={switchToImport}>
-            Import as a project
+            Choose a service to migrate
           </Button>
         </div>
       );
@@ -1352,8 +1370,25 @@ function CreateAppWizard({
         <div hidden={deploying || source !== 'import'} className="mx-auto mt-6 w-full max-w-5xl">
           <ProjectImport
             key={importHandoff?.seed ?? 0}
+            active={source === 'import' && !deploying}
+            initialRepo={importHandoff?.repo ?? search.repo}
             initialSlug={importHandoff?.slug ?? search.slug}
             initialBranch={importHandoff?.branch ?? search.branch}
+            onRecoveryChange={saveRecovery}
+            onMigrationChange={(id, source) =>
+              changeSearch(
+                {
+                  ...search,
+                  source: 'import',
+                  projectMigration: id,
+                  repo: source.repo,
+                  branch: source.ref,
+                  slug: source.projectSlug,
+                  recovery: undefined,
+                },
+                { replace: true }
+              )
+            }
           />
         </div>
       )}

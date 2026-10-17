@@ -4,6 +4,70 @@
  */
 
 export interface paths {
+    "/v1/project-migrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List saved project migrations for the authenticated account
+         * @description List saved project migrations for the authenticated account. Source-backed HTTP and GraphQL services only. Secret values are request-only; the receipt retains key names. Existing reconcile, sealing, deployment admission, verification and cutover owners remain authoritative. No domain or production traffic changes are performed by this endpoint.
+         */
+        get: operations["listProjectMigrations"];
+        put?: never;
+        /**
+         * Save and apply a reviewed multi-service migration
+         * @description Save and apply a reviewed multi-service migration. Source-backed HTTP and GraphQL services only. Secret values are request-only; the receipt retains key names. Existing reconcile, sealing, deployment admission, verification and cutover owners remain authoritative. No domain or production traffic changes are performed by this endpoint.
+         */
+        post: operations["createProjectMigration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/project-migrations/{migration}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Inspect each reserved deployment and its recorded verification and cutover
+         * @description Inspect each reserved deployment and its recorded verification and cutover. Source-backed HTTP and GraphQL services only. Secret values are request-only; the receipt retains key names. Existing reconcile, sealing, deployment admission, verification and cutover owners remain authoritative. No domain or production traffic changes are performed by this endpoint.
+         */
+        get: operations["getProjectMigration"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/project-migrations/{migration}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume unfinished migration services while preserving accepted deployments
+         * @description Resume unfinished migration services while preserving accepted deployments. Source-backed HTTP and GraphQL services only. Secret values are request-only; the receipt retains key names. Existing reconcile, sealing, deployment admission, verification and cutover owners remain authoritative. No domain or production traffic changes are performed by this endpoint.
+         */
+        post: operations["resumeProjectMigration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/mcp/admissions/{id}": {
         parameters: {
             query?: never;
@@ -1767,6 +1831,8 @@ export interface paths {
          *     cutovers, legacy recovery and project release graph switches fail closed
          *     until they support binding fences. Policies with storage requirements must use
          *     release-policy-with-object-storage for updates, including explicit clearing.
+         *     Policies with queue requirements must use release-policy-with-queues and
+         *     explicitly retain or clear every queue and storage requirement.
          *     To recover without evidence, explicitly
          *     set off with the current revision and a reason, then retry. Every update
          *     has durable policy history. Existing traffic is not changed by this call.
@@ -2327,6 +2393,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/postgres/cutovers/{id}/preflight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Gregale managed PostgreSQL cutover UUID. */
+                id: components["parameters"]["ManagedPostgresCutoverID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read restore activation preflight findings
+         * @description Requires managed PostgreSQL read scope. Findings describe a historical
+         *     catalog snapshot. Positive fields remain historical when stale is true.
+         *     Staleness is recomputed for expiry, cutover changes and cancellation.
+         *     Even fresh findings never authorize activation or prove writer isolation.
+         *     Returns 404 if no preflight has been requested.
+         */
+        get: operations["getManagedPostgresCutoverPreflight"];
+        put?: never;
+        /**
+         * Queue a restore activation preflight
+         * @description Requires managed PostgreSQL manage scope and verified email. Durably
+         *     queues catalog inspection, including while provider provisioning is
+         *     disabled. Concurrent pending requests keep the revision; requesting a
+         *     completed check starts a new revision. Does not fence admissions, call
+         *     a provider, publish bindings or resume workloads. Activation remains
+         *     disabled. Idempotency replay returns the original response; poll GET
+         *     for latest progress. Cancelling or cancelled cutovers conflict.
+         */
+        post: operations["requestManagedPostgresCutoverPreflight"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/postgres/cutovers/{id}/cancel": {
         parameters: {
             query?: never;
@@ -2532,6 +2635,52 @@ export interface paths {
         put?: never;
         /** Restore a database into a new managed PostgreSQL database */
         post: operations["restoreManagedPostgresDatabase"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/postgres/databases/{id}/connection-budget": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Opaque Gregale managed PostgreSQL resource identifier. */
+                id: components["parameters"]["ManagedPostgresID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Inspect read-only database connection planning
+         * @description Account-scoped metadata only; requires managed PostgreSQL read permission. Does not wake SQL, reserve connections or change admission. Current adapters have no verified usable-capacity observation and return unknown with canonical pool estimates. Database snapshots are independent.
+         */
+        get: operations["getManagedPostgresConnectionBudget"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/data-api/connection-budget": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App whose managed Data API bindings select the shared database reports. */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Inspect shared database budgets for Data API bindings
+         * @description Lists independently sampled planning reports for the app's shared managed Data API databases, including other bindings in the same account. Requires managed PostgreSQL read permission. Reads metadata without waking SQL or changing admission; current adapters retain unknown capacity.
+         */
+        get: operations["getAppDataAPIConnectionBudgets"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4947,6 +5096,238 @@ export interface paths {
          *     available when new Runs admission is disabled.
          */
         delete: operations["revokeExecutionArtifactGrant"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/migration-cutovers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List saved production cutover plans.
+         * @description Return the latest app-owned production switch plans, newest first. Revalidate
+         *     deployment, configuration and domain binding evidence without starting network
+         *     probes. Up to twenty plans are retained; terminal plans may be pruned after
+         *     ninety days. Requires app read scope and MFA.
+         */
+        get: operations["listMigrationCutovers"];
+        put?: never;
+        /**
+         * Prepare a production switch without changing traffic.
+         * @description Save a plan for a currently passed default-scope verification. Supply a stable
+         *     caller UUID, production hostname, previous routing records and TTLs, previous
+         *     proxy setting and traffic budgets. Reusing an ID returns its original intent;
+         *     changed intent conflicts. Preparation edits no DNS, domain binding, rollout,
+         *     default hostname or monitor policy. Connect the domain through the existing
+         *     domain API before starting checks. Requires deployment write scope, verified
+         *     email and MFA.
+         */
+        post: operations["createMigrationCutover"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/migration-cutovers/{plan}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Identity of the retained production switch to inspect. */
+                plan: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read a saved production cutover plan.
+         * @description Read one saved production switch and its original DNS recovery settings.
+         *     Changed source verification, deployment configuration or domain binding blocks
+         *     its evidence. Reads perform no HTTP or DNS probes. Requires app read scope
+         *     and MFA; a blocked plan retains its previous-provider routing instructions.
+         */
+        get: operations["getMigrationCutover"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/migration-cutovers/{plan}/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Identity of the production switch receiving this explicit action. */
+                plan: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start checks, complete a switch or record recovery.
+         * @description start_checks explicitly arms thirty minutes of durable server checks after
+         *     domain connection and a customer DNS change. Complete performs fresh DNS,
+         *     trusted TLS and exact deployment response checks through the published Gregale
+         *     edge, refuses sustained traffic budget violations and requires acknowledgement
+         *     for limited coverage. Cancel stops checking only. confirm_restored records
+         *     a customer attestation after manually restoring the saved provider routing,
+         *     TTL and proxy settings. No action edits external DNS or monitor policies.
+         *     Requires deployment write scope, verified email and MFA.
+         */
+        post: operations["actOnMigrationCutover"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/migration-verifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List saved migration verification reports.
+         * @description Return the latest twenty app-owned migration reports, newest first.
+         *     Each report is checked against the current deployment and scoped runtime
+         *     configuration; changed evidence is blocked. Reading never starts work.
+         *     Requires app read scope and MFA. Old reports are pruned after thirty
+         *     days on subsequent creation; no connection values or response bodies
+         *     are returned.
+         */
+        get: operations["listMigrationVerifications"];
+        put?: never;
+        /**
+         * Start a resumable migration verification.
+         * @description Save immutable checks for the current public HTTP deployment with all
+         *     Gregale traffic. Supply a stable caller-generated UUID to reconcile
+         *     response loss. Creation queues durable background execution; clients
+         *     may close while the API worker drives checks. Cold-wake consent permits briefly parking this Gregale
+         *     app while production remains on the previous provider. One unfinished,
+         *     run per app, including cancellation/recovery, and a ten-minute checking deadline. Requires deployment
+         *     write scope, verified email and MFA. Checks select saved environment
+         *     names; credentials are resolved only inside task guests.
+         */
+        post: operations["createMigrationVerification"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/migration-verifications/{run}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Receipt UUID to inspect. */
+                run: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read a migration verification and current configuration validity.
+         * @description Read one owned receipt and re-evaluate deployment/configuration validity.
+         *     Passed evidence becomes blocked when recorded inputs change. Reads never
+         *     advance checks, park an app or request a wake. Requires app read scope
+         *     and MFA. This is the recovery operation after an uncertain advance.
+         */
+        get: operations["getMigrationVerification"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/migration-verifications/{run}/advance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Receipt UUID to advance. */
+                run: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Advance one saved migration verification step.
+         * @description Advance one leased step of an existing migration receipt. Dependency
+         *     tasks and their IDs commit atomically. Startup and post-wake HTTP checks
+         *     require a successful exact-deployment gateway response proof. Cold wake
+         *     waits for zero active instances and a running instance with the saved
+         *     wake identity. Replays preserve task IDs and wake correlation. The
+         *     server worker continues pending runs independently of clients and
+         *     resumes after restart. This operation is an optional compatibility
+         *     action; clients normally poll GET. Cancelled, expired or invalidated
+         *     runs stop tasks and restore a service they may have parked before
+         *     becoming terminal. Recovery retries continue beyond the checking deadline.
+         *     Requires deployment write scope, verified email and MFA. Changed inputs
+         *     block qualification; infrastructure errors preserve resumable progress.
+         */
+        post: operations["advanceMigrationVerification"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/migration-verifications/{run}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Receipt UUID to cancel. */
+                run: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel saved migration checks and recover a parked service.
+         * @description Persist idempotent cancellation intent. An active worker lease remains
+         *     fenced until its bounded step ends or the lease expires. No further
+         *     checks can commit after cancellation. Background cleanup cancels saved
+         *     tasks and restores the same deployment if this run may have parked it.
+         *     Status remains pending while cleanup runs; recovery_status describes
+         *     restoration, supersession by another deployment or an account/security
+         *     block. A wake notification alone never means service was restored.
+         *     Completed runs are unchanged. Requires deployment write scope, verified
+         *     email and MFA; remains available when task admission is disabled.
+         */
+        post: operations["cancelMigrationVerification"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -18000,6 +18381,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/apply-plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Deploy an account-owned reviewed project source without another upload.
+         * @description Applies the exact archive retained by a project scan, not the current
+         *     head of a mutable Git ref. The normal scanner and apply admission gates
+         *     run again. The account-scoped source expires after one hour; rescan on
+         *     preview_expired. Initial secrets require secrets:write or admin and are
+         *     sealed before any deployment is enqueued. Failed configuration starts
+         *     no builds; saved apps and any completed configuration remain available
+         *     for correction. Values are never included in responses or scan plans.
+         */
+        post: operations["applyCachedProjectPlan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects": {
         parameters: {
             query?: never;
@@ -29447,10 +29854,747 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{slug}/environments/{environment}/release-sets/verification-runs/{run}/diagnostics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Explain verification blockers and safe public changes without admitting work */
+        get: operations["getProjectBindingVerificationRunDiagnostics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/bindings/verification-runs/{run}/diagnostics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Explain blockers and recovery for an app verification receipt */
+        get: operations["getBindingVerificationRunDiagnostics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{slug}/environments/{environment}/release-sets/verification-runs/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Review verification without creating receipts or admitting work */
+        post: operations["reviewProjectBindingVerification"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/bindings/verification-runs/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Review app binding verification selection and consent without admitting work */
+        post: operations["reviewBindingVerification"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{slug}/environments/{environment}/release-sets/verification-runs/{run}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** completeProjectBindingVerificationRun */
+        post: operations["completeProjectBindingVerificationRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{slug}/environments/{environment}/release-sets/verification-runs/{run}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** resumeProjectBindingVerificationRun */
+        post: operations["resumeProjectBindingVerificationRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{slug}/environments/{environment}/release-sets/verification-runs/{run}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** getProjectBindingVerificationRun */
+        get: operations["getProjectBindingVerificationRun"];
+        put?: never;
+        post?: never;
+        /** cancelProjectBindingVerificationRun */
+        delete: operations["cancelProjectBindingVerificationRun"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{slug}/environments/{environment}/release-sets/verification-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List retained verification receipt summaries without requalifying evidence.
+         * @description Newest first with creation-time and UUID keyset pagination. Reuse filters with next_cursor. observed_at freezes the expiry cutoff; recorded state may change between pages. Listings grant no admission or release authority.
+         */
+        get: operations["listProjectBindingVerificationRuns"];
+        put?: never;
+        /** createProjectBindingVerificationRun */
+        post: operations["createProjectBindingVerificationRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/bindings/verification-runs/{run}/steps/{step}/admit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the app for admitting one frozen app verification step. */
+                slug: string;
+                /** @description Verification receipt UUID for admitting one frozen app verification step. */
+                run: string;
+                /** @description Frozen step index selected for admission within this app receipt. */
+                step: number;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Atomically admit one frozen step or return its previously recorded resource. */
+        post: operations["admitBindingVerificationRunStep"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/bindings/verification-runs/{run}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the app for finalizing an app verification receipt. */
+                slug: string;
+                /** @description Verification receipt UUID for finalizing an app verification receipt. */
+                run: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Complete only after fresh server-side policy preflight. */
+        post: operations["completeBindingVerificationRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/bindings/verification-runs/{run}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the app for reconciling unfinished app verification work. */
+                slug: string;
+                /** @description Verification receipt UUID for reconciling unfinished app verification work. */
+                run: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm the original review without extending deadlines or replacing work. */
+        post: operations["resumeBindingVerificationRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/bindings/verification-runs/{run}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the app for inspecting or cancelling an app verification receipt. */
+                slug: string;
+                /** @description Verification receipt UUID for inspecting or cancelling an app verification receipt. */
+                run: string;
+            };
+            cookie?: never;
+        };
+        /** Observe the original plan and current owned or reused resource status. */
+        get: operations["getBindingVerificationRun"];
+        put?: never;
+        post?: never;
+        /** Block admissions and cancel only unfinished work owned by this run. */
+        delete: operations["cancelBindingVerificationRun"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/bindings/verification-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the app for discovering or creating app verification receipts. */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * List retained app binding verification receipt summaries
+         * @description App receipt discovery. Newest first with creation-time and UUID keyset pagination. Reuse filters with next_cursor. observed_at freezes the expiry cutoff; recorded state may change between pages. Listings grant no admission or release authority.
+         */
+        get: operations["listBindingVerificationRuns"];
+        put?: never;
+        /** Create a reviewed fixed-deadline single-app verification receipt. */
+        post: operations["createBindingVerificationRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/bindings/queue-canaries/{canary}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the app for inspecting or cancelling an existing queue completion canary. */
+                slug: string;
+                /** @description Identifier of the push queue completion canary selected for inspection or cancellation. */
+                canary: string;
+            };
+            cookie?: never;
+        };
+        /** Observe exact-deployment queue completion evidence. */
+        get: operations["getQueueBindingCanary"];
+        put?: never;
+        post?: never;
+        /** Cancel the canary and revoke its evidence. */
+        delete: operations["cancelQueueBindingCanary"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/bindings/queue-canaries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the app for publishing a consented push queue completion canary. */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish one explicitly consented safe message through a push queue binding.
+         * @description Requires a live pinned deployment declaring this binding in GREGALE_QUEUE_CANARY_BINDINGS. Uses normal queue and runtime capacity; no traffic change.
+         */
+        post: operations["createQueueBindingCanary"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{slug}/environments/{environment}/release-sets/deactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the project for deactivating a checked project release set. */
+                slug: string;
+                /** @description Project environment for deactivating a checked project release set. */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Deactivate a checked project release set after verifying fallback recipients
+         * @description Requires one eligible materialized live 100% fallback per current workload,
+         *     a current active graph and enforced binding policies on every fallback.
+         *     Preparation observes routes without changing them. Use the returned manifest
+         *     to qualify exact fallback service dependencies, then deactivate explicitly.
+         *     ttl_seconds is zero because the retired graph keeps its existing TTL.
+         *     Deactivation compares active graph, complete fallback routing, current policies,
+         *     fresh evidence, artifacts and service readiness atomically. PostgreSQL rechecks
+         *     routing and evidence expiry at commit. Missing routes and traffic splits block.
+         *     The retired release contains an immutable deactivation receipt. Use an
+         *     Idempotency-Key for retries. GitOps-managed workloads remain blocked.
+         */
+        post: operations["deactivateCheckedProjectRelease"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{slug}/environments/{environment}/release-sets/prepare-deactivation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the project for reviewing exact weighted fallbacks before graph deactivation. */
+                slug: string;
+                /** @description Project environment for reviewing exact weighted fallbacks before graph deactivation. */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Prepare checked release-set deactivation to exact weighted fallback routes
+         * @description Checked release-set deactivation preparation. Requires one eligible materialized live 100% fallback per current workload,
+         *     a current active graph and enforced binding policies on every fallback.
+         *     Preparation observes routes without changing them. Use the returned manifest
+         *     to qualify exact fallback service dependencies, then deactivate explicitly.
+         *     ttl_seconds is zero because the retired graph keeps its existing TTL.
+         *     Deactivation compares active graph, complete fallback routing, current policies,
+         *     fresh evidence, artifacts and service readiness atomically. PostgreSQL rechecks
+         *     routing and evidence expiry at commit. Missing routes and traffic splits block.
+         *     The retired release contains an immutable deactivation receipt. Use an
+         *     Idempotency-Key for retries. GitOps-managed workloads remain blocked.
+         */
+        post: operations["prepareCheckedProjectDeactivation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{slug}/environments/{environment}/release-sets/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the project for restoring a retained graph with fresh binding qualification. */
+                slug: string;
+                /** @description Project environment for restoring a retained graph with fresh binding qualification. */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore a historical project release set using fresh binding checks
+         * @description Selects an inactive, unexpired historical release in this project environment.
+         *     Requires a different expected active release, exact historical membership,
+         *     current enforced policies, fresh target-specific evidence and ready artifacts
+         *     and service replicas. Historical expiry is checked again at commit.
+         *     Publishes a new immutable release recording rollback_source_release_id and
+         *     rollback_previous_release_id; history never grants a policy waiver.
+         *     Use an Idempotency-Key for mutation retries. No deployments are awakened.
+         */
+        post: operations["rollbackCheckedProjectRelease"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{slug}/environments/{environment}/release-sets/prepare-rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the project for reviewing recovery to a selected historical release graph. */
+                slug: string;
+                /** @description Project environment for reviewing recovery to a selected historical release graph. */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Prepare checked release-set recovery to a selected retained graph
+         * @description Checked release-set rollback preparation. Selects an inactive, unexpired historical release in this project environment.
+         *     Requires a different expected active release, exact historical membership,
+         *     current enforced policies, fresh target-specific evidence and ready artifacts
+         *     and service replicas. Historical expiry is checked again at commit.
+         *     Publishes a new immutable release recording rollback_source_release_id and
+         *     rollback_previous_release_id; history never grants a policy waiver.
+         *     Use an Idempotency-Key for mutation retries. No deployments are awakened.
+         */
+        post: operations["prepareCheckedProjectRollback"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{slug}/environments/{environment}/release-sets/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the project for activating a pinned project graph after binding checks. */
+                slug: string;
+                /** @description Project environment for activating a pinned project graph after binding checks. */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Activate a checked project release set with pinned binding evidence
+         * @description Requires an enforced binding release policy on every project member scope.
+         *     Preparation freezes exact deployments, active graph or weighted fallback,
+         *     policy revisions and internal service targets. It is a metadata observation,
+         *     not an evidence grant. Qualification uses candidate-specific task probes.
+         *     Activation independently checks all member evidence, service edges, artifacts,
+         *     full project membership, current policy, evidence expiry, active graph CAS
+         *     and service replica readiness in one transaction. A blocked graph keeps
+         *     current routes. No target handler calls or wakes are made by service probes.
+         *     Generic graph publication and deactivation remain fail closed under enforcement.
+         */
+        post: operations["activateCheckedProjectRelease"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{slug}/environments/{environment}/release-sets/prepare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the project for preparing binding qualification for a pinned release-set manifest. */
+                slug: string;
+                /** @description Project environment for preparing binding qualification for a pinned release-set manifest. */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Prepare a project release-set manifest for checked binding qualification
+         * @description Checked release-set preparation. Requires an enforced binding release policy on every project member scope.
+         *     Preparation freezes exact deployments, active graph or weighted fallback,
+         *     policy revisions and internal service targets. It is a metadata observation,
+         *     not an evidence grant. Qualification uses candidate-specific task probes.
+         *     Activation independently checks all member evidence, service edges, artifacts,
+         *     full project membership, current policy, evidence expiry, active graph CAS
+         *     and service replica readiness in one transaction. A blocked graph keeps
+         *     current routes. No target handler calls or wakes are made by service probes.
+         *     Generic graph publication and deactivation remain fail closed under enforcement.
+         */
+        post: operations["prepareCheckedProjectRelease"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{slug}/environments/{environment}/release-sets/staging/{stage}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the project for observing or cancelling a candidate service staging lease. */
+                slug: string;
+                /** @description Project environment for observing or cancelling a candidate service staging lease. */
+                environment: string;
+                /** @description Identifier of the candidate service staging lease selected for status or cancellation. */
+                stage: string;
+            };
+            cookie?: never;
+        };
+        /** Observe a candidate staging lease. */
+        get: operations["getProjectReleaseStage"];
+        put?: never;
+        post?: never;
+        /** Cancel temporary candidate capacity; active graph and traffic allocations remain authoritative. */
+        delete: operations["cancelProjectReleaseStage"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{slug}/environments/{environment}/release-sets/staging": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the project for temporarily admitting selected candidate services for staging. */
+                slug: string;
+                /** @description Project environment for temporarily admitting selected candidate services for staging. */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Lease candidate service capacity without publishing routes.
+         * @description Stages the exact service deployments in a complete prepared forward or rollback manifest.
+         *     Non-GitOps live materialized candidates only; mirror recipients and active service rollouts are excluded.
+         *     Policy and routing changes fail closed.
+         *     Schedd uses normal admission, preserves serving allocations and never grants extra concurrency.
+         *     Capacity is billable. Repeating the same manifest reuses its unexpired lease without extending it.
+         *     A different manifest conflicts until the current stage is cancelled or expires.
+         *     Qualification and activation remain explicit and independently recheck readiness and evidence.
+         */
+        post: operations["stageCheckedProjectRelease"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/bindings/release-policy-with-queues": {
+        parameters: {
+            query?: {
+                /** @description Deployment scope whose queue release requirements will be replaced. Omit for default. */
+                scope?: string;
+            };
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Replace release policy with explicit per-binding queue readiness requirements.
+         * @description Requires deploy:write or admin and completed MFA. queue_requirements is
+         *     explicit, including an empty object to clear it. Names select one shared
+         *     or selected-environment push binding; consumer_readiness requires a
+         *     confirmed queue environment and an enabled, active, healthy scheduler
+         *     consumer with a poll at most thirty seconds old. Missing, ambiguous,
+         *     disabled, external pull, unobserved or
+         *     stale consumers block. Connectivity and message delivery remain
+         *     unverified; passed readiness policies retain partial coverage. Unlisted
+         *     queues retain strict unsupported coverage. Existing storage requirements
+         *     must be explicitly retained or cleared. Policy and queue facts, and poll
+         *     expiry, are checked at the traffic write. This call sends no messages and
+         *     performs no probes. Older servers return 404 before mutation.
+         */
+        put: operations["setQueueBindingReleasePolicy"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description Start one durable migration of selected reviewed services with request-only configuration. */
+        CreateProjectMigrationRequest: {
+            /**
+             * Format: uuid
+             * @description Client-generated identity saved before submission.
+             */
+            id: string;
+            /** @description Reviewed migration-mode source token; never persisted in the receipt. */
+            plan_token: string;
+            only: string[];
+            initial_secrets?: components["schemas"]["ProjectInitialSecrets"];
+            service_connections?: components["schemas"]["ProjectServiceConnections"];
+            /** @description Explicit public build URL mappings to selected declared dependencies. Resolves their reviewed public_url and saves it for retries. Public URL keys only. */
+            public_service_connections?: components["schemas"]["ProjectServiceConnections"];
+            public_build_urls?: components["schemas"]["ProjectPublicBuildURLs"];
+            /** @description Optional caller-to-API build waits. Targets must be selected declared dependencies. Each attempt pins the saved API deployment, waits up to 30 minutes without using a builder slot, and requires it to be live with 100 percent traffic. Resume restores these choices. */
+            build_dependencies?: {
+                [key: string]: string[];
+            };
+        };
+        /** @description Explicitly resume unfinished migration work against the original reviewed source checksum. */
+        ResumeProjectMigrationRequest: {
+            /**
+             * Format: int64
+             * @description Version of the saved receipt reviewed before this resume; stale replays are rejected.
+             */
+            expected_version: number;
+            /** @description Exact unfinished services approved for this resume action. */
+            only: string[];
+            /** @description Fresh migration-mode token for the original source checksum and project. */
+            plan_token: string;
+            initial_secrets?: components["schemas"]["ProjectInitialSecrets"];
+        };
+        /** @description Durable readiness progress before a migration build consumes a builder slot. Public URLs still route normally; this is a point-in-time readiness check. */
+        ProjectMigrationBuildWait: {
+            /**
+             * @description Whether selected API deployments satisfied build admission.
+             * @enum {string}
+             */
+            status: "waiting" | "ready" | "failed";
+            /** @description Stable build dependency blocker code, when present. */
+            code?: string;
+            /** @description Customer-safe explanation of a build dependency wait or failure. */
+            detail?: string;
+            /**
+             * Format: date-time
+             * @description Fixed deadline for this attempt's API readiness wait.
+             */
+            deadline_at: string;
+        };
+        /** @description Progress and historical evidence pointers for one migration service and its current attempt. */
+        ProjectMigrationService: {
+            /** @description Saved declared API services required before this migration service builds. */
+            build_dependencies?: string[];
+            build_wait?: components["schemas"]["ProjectMigrationBuildWait"];
+            /** @description Saved public build variable-to-service choices. */
+            public_service_connections?: {
+                [key: string]: string;
+            };
+            /** @description Explicitly reviewed public HTTPS URLs. Saved values may appear in browser bundles; credentials, queries and fragments are rejected. */
+            public_build_urls?: {
+                [key: string]: string;
+            };
+            /** @description Selected workload name. */
+            name: string;
+            /** @description Current application slug. */
+            app?: string;
+            /**
+             * Format: uuid
+             * @description Application identity bound before enqueue.
+             */
+            app_id?: string;
+            /**
+             * Format: uuid
+             * @description Exact reserved deployment for this attempt.
+             */
+            deployment_id?: string;
+            /**
+             * Format: uuid
+             * @description Exact reserved build for this attempt.
+             */
+            build_id?: string;
+            attempt: number;
+            /** @description Observed state of the reserved deployment, waiting for build APIs, pending work or changed application. */
+            status: string;
+            /** @description Metadata-only explanation for unfinished work. */
+            reason?: string;
+            depends_on: string[];
+            required_env_keys: string[];
+            configured_keys: string[];
+            /** @description Saved runtime variable names mapped to selected declared services. Resumed automatically; contains no values. */
+            service_connections?: {
+                [key: string]: string;
+            };
+            /**
+             * Format: uuid
+             * @description Latest recorded verification identity for this exact deployment.
+             */
+            verification_id?: string;
+            /** @description Last recorded verification result; reopen verification to validate current configuration. */
+            verification_status?: string;
+            /**
+             * Format: uuid
+             * @description Latest saved cutover identity for this exact deployment.
+             */
+            cutover_id?: string;
+            /** @description Last recorded cutover state; reopen cutover to validate current configuration. */
+            cutover_status?: string;
+        };
+        /** @description Creator-owned migration receipt linking selected services to exact deployment identities. */
+        ProjectMigration: {
+            /**
+             * Format: int64
+             * @description Monotonic journal version required to resume the reviewed set of services.
+             */
+            version: number;
+            /**
+             * Format: uuid
+             * @description Durable project migration identity.
+             */
+            id: string;
+            /** @description Creator-owned project slug. */
+            project: string;
+            /**
+             * Format: uuid
+             * @description Project identity after reconciliation.
+             */
+            project_id?: string;
+            /** @description Checksum of the original reviewed source archive. */
+            source_sha256: string;
+            /** @enum {string} */
+            status: "prepared" | "applying" | "tracking" | "attention";
+            /** @description Project migration recovery guidance. */
+            reason?: string;
+            services: components["schemas"]["ProjectMigrationService"][];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: date-time */
+            retry_after?: string;
+        };
+        /** @description Bounded newest-first inventory of saved migrations for the authenticated creator. */
+        ProjectMigrationList: {
+            migrations: components["schemas"]["ProjectMigration"][];
+        };
         /** @description Explicit OAuth refresh grant for one app and role; credentials are app default-scope secret references. */
         MCPCatalogObserverOAuthConfig: {
             /**
@@ -36672,6 +37816,10 @@ export interface components {
         };
         /** @description Best-effort app binding metadata with explicit completeness and sanitized section issues. */
         AppBindingInventory: {
+            /** @description Applied exact service target selectors; absent for ordinary evidence selection. */
+            service_targets?: {
+                [key: string]: string;
+            };
             app: string;
             /** @description Resource scope filter. Absent means all scopes. */
             scope?: string;
@@ -36785,6 +37933,11 @@ export interface components {
         /** @description Preflight status and safe evidence summary for one binding. */
         BindingCheckBindingResult: {
             /**
+             * @description Explicit scheduler readiness requirement; a passed policy result does not imply queue connectivity.
+             * @enum {string}
+             */
+            required_queue_evidence?: "consumer_readiness" | "handler_completion";
+            /**
              * @description Exact admitted canary mode. Older evidence with no mode is listing-only and cannot satisfy write requirements.
              * @enum {string}
              */
@@ -36806,6 +37959,7 @@ export interface components {
         };
         /** @description Safe preflight findings for the declared policy at checked_at. Coverage may be complete, partial or none; a passed report does not independently establish application readiness or credential use. Optional application acknowledgements are version-bound self-attestations. */
         BindingCheckReport: {
+            queue_requirements?: components["schemas"]["QueueReleaseRequirements"];
             object_storage_requirements?: components["schemas"]["ObjectStorageReleaseRequirements"];
             /** Format: uuid */
             expected_deployment_id?: string;
@@ -36846,6 +38000,7 @@ export interface components {
         };
         /** @description Stored binding verification requirements and revision for an app deployment scope; unconfigured scopes default to off. */
         BindingReleasePolicy: {
+            queue_requirements?: components["schemas"]["QueueReleaseRequirements"];
             object_storage_requirements?: components["schemas"]["ObjectStorageReleaseRequirements"];
             /** Format: uuid */
             app_id: string;
@@ -36864,6 +38019,7 @@ export interface components {
         };
         /** @description Compare-and-set binding release enforcement for one deployment scope, including evidence age, application acknowledgements and an explicit change reason. */
         SetBindingReleasePolicyRequest: {
+            queue_requirements?: components["schemas"]["QueueReleaseRequirements"];
             object_storage_requirements?: components["schemas"]["ObjectStorageReleaseRequirements"];
             /** @enum {string} */
             mode: "off" | "enforce";
@@ -36910,6 +38066,16 @@ export interface components {
         /** @description Sanitized durable evidence from the latest admitted service, PostgreSQL or object-storage task guest canary. Object-storage verification records bucket listing or explicitly requested permission-aware object operations and cleanup; inspect checks for coverage. Resident application adoption is not checked. */
         BindingVerification: {
             /**
+             * Format: uuid
+             * @description Original probe task identity for pending observation and durable receipts.
+             */
+            task_id?: string;
+            /**
+             * Format: uuid
+             * @description Service recipient qualified by the probe; absent for legacy any-replica evidence.
+             */
+            target_deployment_id?: string;
+            /**
              * @description Object operation level admitted for this stored verification; missing values denote a legacy listing canary and do not qualify required write operations.
              * @enum {string}
              */
@@ -36948,6 +38114,15 @@ export interface components {
         };
         /** @description Public binding configuration with separately reported runtime observations and verification status. */
         AppBindingInventoryItem: {
+            /**
+             * Format: uuid
+             * @description Exact candidate service recipient required by this inventory selection.
+             */
+            service_target_deployment_id?: string;
+            queue_canary?: components["schemas"]["QueueBindingCanary"];
+            queue_canary_supported?: boolean;
+            /** @description Explicit queue environment; empty means shared legacy binding. Distinguishes app-wide scope from an environment named app. Consumer-readiness policies require this field; older inventories omit it. */
+            queue_environment?: string;
             /** @enum {string} */
             type: "service" | "postgres" | "object_storage" | "queue" | "outbound";
             name: string;
@@ -39275,6 +40450,87 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
+        /** @description Read-only planning snapshots. Not applicable means the app has no visible Data API binding. */
+        DataAPIConnectionBudgets: {
+            /** @enum {integer} */
+            version: 1;
+            app: string;
+            /** @enum {string} */
+            state: "not_applicable" | "unknown" | "within_budget" | "over_budget";
+            truncated: boolean;
+            databases: components["schemas"]["ManagedPostgresConnectionBudget"][];
+        };
+        /** @description Canonical pool planning, not live SQL usage or reservation. A comparison requires complete verified capacity and consumer evidence; current adapters report unknown. */
+        ManagedPostgresConnectionBudget: {
+            /** @enum {integer} */
+            version: 1;
+            /** Format: uuid */
+            database_id: string;
+            database_name: string;
+            /** @enum {string} */
+            state: "unknown" | "within_budget" | "over_budget";
+            /** Format: date-time */
+            checked_at: string;
+            /** Format: date-time */
+            expires_at: string;
+            /** @enum {boolean} */
+            enforced: false;
+            /** @enum {string} */
+            model: "canonical_runtime_pools";
+            inventory: components["schemas"]["ConnectionBudgetInventory"];
+            demand: components["schemas"]["ConnectionBudgetDemand"];
+            capacity: components["schemas"]["ConnectionBudgetCapacity"];
+            reasons: string[];
+        };
+        /** @description Deduplicated app/scope potential consumers; counts are not live SQL sessions. */
+        ConnectionBudgetInventory: {
+            /** Format: int64 */
+            bindings: number;
+            /** Format: int64 */
+            data_api_consumers: number;
+            /** Format: int64 */
+            auth_consumers: number;
+            /** Format: int64 */
+            migration_bindings: number;
+            /** Format: int64 */
+            other_bindings: number;
+            /** Format: int64 */
+            resident_instances: number;
+            /** Format: int64 */
+            parked_instances: number;
+            /** Format: int64 */
+            auxiliary_instances: number;
+            /** Format: int64 */
+            active_tasks: number;
+            /** Format: int64 */
+            rotation_pending: number;
+            /** Format: int64 */
+            overlap_consumers: number;
+            /** Format: int64 */
+            stale_node_instances: number;
+        };
+        /** @description Canonical runtime pools and explicit planning headroom. Unbounded consumers remain unknown. */
+        ConnectionBudgetDemand: {
+            /** Format: int64 */
+            data_api_resident_estimate: number;
+            /** Format: int64 */
+            data_api_wake_estimate: number;
+            /** Format: int64 */
+            auth_wake_estimate: number;
+            /** Format: int64 */
+            control_headroom: number;
+            /** Format: int64 */
+            migration_headroom: number;
+            /** Format: int64 */
+            modeled_peak_connections: number;
+        };
+        /** @description Qualified tenant-usable allocation for the exact database generation and placement. Current adapters leave this unknown. */
+        ConnectionBudgetCapacity: {
+            /** @enum {string} */
+            state: "unknown" | "verified";
+            /** Format: int64 */
+            usable_connections?: number;
+        };
         /** @description Workload bindings attached to one managed PostgreSQL database. */
         ManagedPostgresBindingList: {
             items: components["schemas"]["ManagedPostgresBinding"][];
@@ -39325,6 +40581,114 @@ export interface components {
             created_at: string;
             /** Format: date-time */
             updated_at: string;
+        };
+        /** @description Historical catalog checks and remaining activation blockers. Never an activation token; sealed credentials and provider identities are private. */
+        ManagedPostgresCutoverPreflight: {
+            /** Format: uuid */
+            cutover_id: string;
+            /** @enum {string} */
+            state: "pending" | "blocked";
+            /** Format: int64 */
+            revision: number;
+            /**
+             * @description Always false; customer activation remains disabled.
+             * @enum {boolean}
+             */
+            activation_allowed: false;
+            /** @description Recomputed on read for pending checks, expiry, future check time, cutover changes, cancellation or changed runtime authority and receipts. Older reports without runtime observations require a new check. */
+            stale: boolean;
+            /** @description Affected source binding IDs observed during evaluation. */
+            binding_ids: string[];
+            blockers: ("activation_disabled" | "runtime_safety_unproven" | "source_sessions_unfenced" | "routes_unconverged" | "snapshot_invalidation_unproven" | "resume_plan_missing" | "cutover_inactive" | "source_changed" | "target_changed" | "verification_required" | "bindings_changed")[];
+            /** @description All staged credentials had fresh SQL verification at checked_at. */
+            verification_fresh: boolean;
+            source_matches: boolean;
+            target_matches: boolean;
+            bindings_match: boolean;
+            runtime_drain?: components["schemas"]["ManagedPostgresCutoverRuntimeDrain"];
+            source_sessions?: components["schemas"]["ManagedPostgresCutoverSourceSessions"];
+            /** Format: date-time */
+            observed_cutover_updated_at?: string;
+            /** Format: date-time */
+            checked_at?: string;
+            /** Format: date-time */
+            expires_at?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /** @description Historical source SQL admission and session observations for the frozen selected database set. Never complete writer-isolation proof. Preflight and GET initiate no SQL fences. Absent on pending and older reports. Inspect the parent stale and expires_at fields. */
+        ManagedPostgresCutoverSourceSessions: {
+            /** @enum {string} */
+            state: "unavailable" | "not_requested" | "pending" | "closing" | "closed" | "abandoning" | "released";
+            /** @description Admission closure was independently confirmed and fresh at checked_at. */
+            admission_closed: boolean;
+            /** @description Selected databases had no observed sessions or prepared transactions at checked_at. Background writers and future catalog stability remain unproven. */
+            selected_databases_drained: boolean;
+            selected_database_count: number;
+            /** Format: int64 */
+            sessions: number;
+            /** Format: int64 */
+            prepared_transactions: number;
+            /** Format: int64 */
+            unselected_databases: number;
+            blockers: string[];
+            /** Format: date-time */
+            observed_at?: string;
+            writer_isolation?: components["schemas"]["ManagedPostgresCutoverWriterIsolation"];
+        };
+        /** @description Historical SQL writer inventory and optional provider guard evidence. Confirmed requires fresh matching evidence and idle complete SQL inventory; it does not qualify a deployed provider or allow activation. Neon currently lacks the stronger provider guarantee. Names, catalog fingerprints and ownership tokens remain private. */
+        ManagedPostgresCutoverWriterIsolation: {
+            /** @enum {string} */
+            state: "pending" | "unsupported" | "unavailable" | "blocked" | "confirmed" | "expired" | "inactive";
+            confirmed: boolean;
+            inventory_available: boolean;
+            /** @description The complete observed catalog matches its immutable original fingerprint; this is not a catalog lock. */
+            catalog_matches: boolean;
+            /** @description Fresh provider evidence attests a durable catalog guard. */
+            catalog_stable: boolean;
+            /** @description Fresh provider evidence covers background and replication write paths across all dataset endpoints. */
+            background_writers_fenced: boolean;
+            /** Format: int64 */
+            client_sessions: number;
+            /** Format: int64 */
+            background_workers: number;
+            /** Format: int64 */
+            replication_workers: number;
+            /**
+             * Format: int64
+             * @description Backends whose type is hidden by privileges or not recognized; these prevent confirmation.
+             */
+            unknown_backends: number;
+            /** Format: date-time */
+            expires_at?: string;
+        };
+        /** @description Historical scheduler instance catalog evidence at checked_at. Catalog retirement does not prove complete writer isolation. No fence or drain is initiated by preflight. Absent on pending requests and reports created before runtime observations were supported. */
+        ManagedPostgresCutoverRuntimeDrain: {
+            /** @enum {string} */
+            state: "unavailable" | "not_fenced" | "missing" | "draining" | "blocked" | "catalog_retired";
+            /** @description Captured catalog count; a lower bound when inventory_limit_exceeded is reported. */
+            inventory_count: number;
+            pending: number;
+            /** @description Members with matching native retirement receipts. */
+            retired: number;
+            blocked: number;
+            /** @description Plan and authority blocker codes. Member blockers appear on each member. */
+            blockers: string[];
+            members: components["schemas"]["ManagedPostgresCutoverRuntimeDrainMember"][];
+        };
+        /** @description Safe captured workload identity and retirement finding. Host identities and native proof details remain private. */
+        ManagedPostgresCutoverRuntimeDrainMember: {
+            /** Format: uuid */
+            instance_id: string;
+            /** Format: uuid */
+            deployment_id?: string;
+            scope: string;
+            mode: string;
+            /** @enum {string} */
+            state: "pending" | "retired" | "blocked";
+            blocker_code?: string;
         };
         /** @description Safe staging and SQL verification evidence for a source binding. */
         ManagedPostgresCutoverMember: {
@@ -41596,6 +42960,8 @@ export interface components {
         };
         /** @description An app: slug, type, runtime (for functions), RAM/cpu/idle-timeout config, current state, last-deploy pointer, per-app outbound CIDR allowlist (ADR-031 + ADR-032), and reactive scale-up trigger targets (issue #169 / #172). */
         AppResponse: {
+            /** @description Opaque fingerprint of app identity, source ownership and service binding settings. Use as the atomic precondition for a reviewed service-only update. */
+            service_binding_fingerprint?: string;
             /** @example 0123456789abcdef0123456789abcdef */
             id: string;
             /** @example hello-world */
@@ -44247,6 +45613,8 @@ export interface components {
              *     ]
              */
             cors_default_origins?: string[];
+            /** @description Apply only if the locked app service settings still match this fingerprint. Supported only for app-level service-only updates; returns 409 on conflict. Omit for the existing unguarded behavior. */
+            expected_service_binding_fingerprint?: string;
         };
         /** @description Rename payload: new slug. Old slug returns 404 immediately on the next request. */
         RenameAppRequest: {
@@ -54280,6 +55648,15 @@ export interface components {
         /** @description Multipart body for POST /v1/projects/scan (dry-run). */
         ProjectScanRequest: {
             /**
+             * @description Preserve repository service identities and suggest project-prefixed app names. Requires no_triggers and no repository push binding; apply repeats the reviewed setting.
+             * @default false
+             */
+            migration?: boolean;
+            /** @description Exact repository service names mapped to Gregale app names. Existing project members retain their names. Names are checked for format, reservation and availability; they are never allocated by scan. Multipart clients send this field as JSON. */
+            app_slugs?: {
+                [key: string]: string;
+            };
+            /**
              * Format: binary
              * @description tar.gz of the repo root.
              */
@@ -54390,6 +55767,11 @@ export interface components {
         };
         /** @description Immutable project deployment graph. Active sets do not expire; when replaced, their TTL starts and expires_at is set. */
         ProjectReleaseSetResponse: {
+            deactivation?: components["schemas"]["ProjectReleaseDeactivationReceipt"];
+            /** Format: uuid */
+            rollback_source_release_id?: string;
+            /** Format: uuid */
+            rollback_previous_release_id?: string;
             /** Format: uuid */
             id: string;
             /** Format: uuid */
@@ -55093,6 +56475,10 @@ export interface components {
         };
         /** @description Connected GitHub repository input for POST /v1/projects/scan/source-ref. */
         ProjectSourceRefScanRequest: {
+            /** @description App allocations for this connected repository review. Keys are exact service names. Existing project apps keep their names; new names are checked for format, reservation and availability without being allocated. */
+            app_slugs?: {
+                [key: string]: string;
+            };
             /** @description GitHub owner/name to fetch through the connected installation. */
             repo: string;
             /** @description Branch, tag, or commit ref to scan. */
@@ -55113,6 +56499,11 @@ export interface components {
             environment?: string;
             /** @default false */
             no_triggers?: boolean;
+            /**
+             * @description Prepare a manual migration: preserve repository service names, suggest project-prefixed app names, leave the project unbound from GitHub push deployments and suppress schedules and async routes. Credentials remain inside githubd.
+             * @default false
+             */
+            migration?: boolean;
         };
         /** @description Git repository and revision selectors to resolve without creating a deployment. */
         SourceReviewRequest: {
@@ -55390,12 +56781,213 @@ export interface components {
              */
             plan?: "free" | "hobby" | "pro" | "scale";
         };
+        /** @description Request-only mapping of exact selected workload names to initial sealed environment values. Values stay in memory until sealing and never enter responses or source caches. */
+        ProjectInitialSecrets: {
+            [key: string]: {
+                [key: string]: string;
+            };
+        };
+        /** @description Previous routing record at the production hostname. No URLs, credentials or TXT records. */
+        MigrationDNSRecord: {
+            /** @enum {string} */
+            type: "A" | "AAAA" | "CNAME";
+            value: string;
+            ttl: number;
+        };
+        /** @description Immutable production cutover plan. The stable ID reconciles lost responses. Preparation changes no traffic or domain bindings. */
+        CreateMigrationCutoverRequest: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            verification_id: string;
+            hostname: string;
+            previous_records: components["schemas"]["MigrationDNSRecord"][];
+            previous_proxy_enabled: boolean;
+            /** Format: int64 */
+            max_5xx_rate_bps: number;
+            /** Format: int64 */
+            max_p95_ms: number;
+        };
+        /** @description Explicit user action. Restored records the customer attestation that provider DNS was restored; Gregale never edits external DNS. */
+        MigrationCutoverActionRequest: {
+            /** @enum {string} */
+            action: "start_checks" | "complete" | "cancel" | "confirm_restored";
+            acknowledge_limited_traffic: boolean;
+        };
+        /** @description Existing deployment and exact GET route observations after hostname proof. Aggregates are not hostname-specific and never prove every customer moved. */
+        MigrationCutoverTraffic: {
+            /** @enum {string} */
+            status: "unknown" | "healthy" | "violated";
+            /** @enum {string} */
+            coverage: "deployment_route_observed_only";
+            reason: string;
+            /** Format: int64 */
+            requests: number;
+            /** Format: int64 */
+            server_errors: number;
+            /** Format: double */
+            worst_window_p95_ms?: number;
+            /** Format: date-time */
+            checked_at?: string;
+        };
+        /** @description Saved plan, immutable recovery routing and bounded background cutover evidence. Ready means current DNS, trusted TLS and an exact-deployment gateway response passed; completion remains explicit. */
+        MigrationCutover: {
+            /** Format: uuid */
+            id: string;
+            app: string;
+            /** Format: uuid */
+            deployment_id: string;
+            configuration_revision: string;
+            smoke_path: string;
+            /** @enum {string} */
+            status: "prepared" | "checking" | "ready" | "attention" | "completed" | "cancelled" | "restored" | "blocked";
+            reason?: string;
+            request: components["schemas"]["CreateMigrationCutoverRequest"];
+            domain_connected: boolean;
+            dns_records: components["schemas"]["DNSRecordInstruction"][];
+            checks: components["schemas"]["MigrationVerificationCheck"][];
+            traffic: components["schemas"]["MigrationCutoverTraffic"];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            started_at?: string;
+            /** Format: date-time */
+            check_deadline?: string;
+            /** Format: date-time */
+            checked_at?: string;
+            /** Format: date-time */
+            hostname_verified_at?: string;
+            /** Format: date-time */
+            completed_at?: string;
+            limited_traffic_acknowledged: boolean;
+        };
+        /** @description Latest app-owned cutover plans, newest first. Up to twenty are retained; terminal plans may be pruned after ninety days. */
+        MigrationCutoverList: {
+            plans: components["schemas"]["MigrationCutover"][];
+        };
+        /** @description Selected caller names mapped to variable-to-service choices. Targets must be selected declared HTTP or GraphQL dependencies. service_connections uses private runtime URLs; public_service_connections uses reviewed public build URLs. */
+        ProjectServiceConnections: {
+            [key: string]: {
+                [key: string]: string;
+            };
+        };
+        /** @description Explicit public HTTPS build URLs for selected services, persisted and exposed in frontend bundles. Keys use VITE_, NEXT_PUBLIC_, REACT_APP_, PUBLIC_, NUXT_PUBLIC_ or GATSBY_ and end in _URL. URLs may include a base path but no credentials, query, fragment, IP, localhost or private service name. Up to ten URLs per service. Omitted keys keep their existing runtime configuration. */
+        ProjectPublicBuildURLs: {
+            [key: string]: {
+                [key: string]: string;
+            };
+        };
+        /** @description Runtime variable and logical service pinned to an exact target deployment. The guest checks its private HTTPS value and authorized routing; no URLs or credentials are saved. */
+        MigrationServiceConnectionCheck: {
+            env_key: string;
+            service: string;
+            /** Format: uuid */
+            deployment_id: string;
+        };
+        /** @description Existing scoped environment names; values are resolved only in the task guest. */
+        MigrationDependencyChecks: {
+            /** @description PostgreSQL connection string environment key for authenticated SELECT 1. */
+            postgres_env_key?: string;
+            /** @description Prefix for the existing six S3 binding variables; read-only listing. */
+            object_storage_prefix?: string;
+            /** @description Environment key containing an HTTPS external API URL for a bounded GET; redirects are rejected. */
+            http_env_key?: string;
+            service_connections?: components["schemas"]["MigrationServiceConnectionCheck"][];
+        };
+        /** @description Immutable migration checks and explicit consent to park and wake the selected Gregale app. */
+        CreateMigrationVerificationRequest: {
+            /**
+             * Format: uuid
+             * @description Stable caller-generated identity for creation recovery.
+             */
+            id: string;
+            /** Format: uuid */
+            deployment_id: string;
+            checks: components["schemas"]["MigrationDependencyChecks"];
+            /** @description Read-only GET path on this app; no query, fragment or absolute URL. A successful 2xx response is required. */
+            smoke_path: string;
+            /** @description Explicitly park this Gregale app and verify a correlated wake followed by repeated checks. */
+            cold_wake: boolean;
+        };
+        /** @description Sanitized verification verdict; excludes credentials, URLs, response headers and bodies. */
+        MigrationVerificationCheck: {
+            name: string;
+            /** @enum {string} */
+            status: "passed" | "failed" | "pending";
+            detail: string;
+        };
+        /** @description Durable migration report tied to a deployment, configuration revision and optional cold-wake evidence. */
+        MigrationVerification: {
+            /** Format: uuid */
+            id: string;
+            app: string;
+            /** Format: uuid */
+            deployment_id: string;
+            scope: string;
+            /** @description Opaque fingerprint of deployment and scoped runtime configuration. */
+            configuration_revision: string;
+            /** @enum {string} */
+            status: "pending" | "passed" | "failed" | "blocked" | "expired" | "cancelled";
+            /** @enum {string} */
+            phase: "dependencies" | "startup" | "park" | "drain" | "wake" | "waking" | "cold_smoke" | "cold_dependencies" | "restoring" | "complete";
+            reason?: string;
+            request: components["schemas"]["CreateMigrationVerificationRequest"];
+            checks: components["schemas"]["MigrationVerificationCheck"][];
+            /** Format: uuid */
+            dependency_task_id?: string;
+            /** Format: uuid */
+            cold_dependency_task_id?: string;
+            /** Format: uuid */
+            wake_id?: string;
+            /** Format: uuid */
+            instance_id?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: date-time */
+            drained_at?: string;
+            /** Format: date-time */
+            completed_at?: string;
+            /**
+             * Format: date-time
+             * @description Durable cancellation intent; pending status includes task shutdown and service recovery.
+             */
+            cancel_requested_at?: string;
+            /**
+             * @description Restoration outcome after interrupted verification. Restored requires a running instance; superseded leaves the new deployment alone; blocked requires resolving an account or security restriction.
+             * @enum {string}
+             */
+            recovery_status?: "pending" | "restored" | "superseded" | "blocked";
+        };
+        /** @description Latest saved migration reports for the authorized app. */
+        MigrationVerificationList: {
+            runs: components["schemas"]["MigrationVerification"][];
+        };
+        /** @description Applies an account-owned reviewed project archive with selected workloads and optional initial sealed configuration. */
+        ApplyCachedProjectPlanRequest: {
+            plan_token: string;
+            /** @description Selected workload names; unselected existing workloads remain unchanged. */
+            only?: string[];
+            exclude?: string[];
+            approval_token?: string;
+            initial_secrets?: components["schemas"]["ProjectInitialSecrets"];
+        };
         /**
          * @description Multipart body for POST /v1/projects (apply). Same shape as
          *     ProjectScanRequest; the apply handler resolves AppIDs and
          *     inserts crons in a follow-up pass.
          */
         ProjectApplyRequest: {
+            /**
+             * @description Apply the reviewed migration naming mode, preserving repository service identities and project-prefixed app allocations. Automatic triggers and repository push bindings must be disabled.
+             * @default false
+             */
+            migration?: boolean;
+            /** @description Reviewed repository service-to-app allocations for this apply. Preserve existing project app names and repeat the exact selected names from review; multipart clients encode this object as JSON. */
+            app_slugs?: {
+                [key: string]: string;
+            };
             /** Format: binary */
             source: string;
             project_slug?: string;
@@ -55415,6 +57007,7 @@ export interface components {
             no_triggers?: boolean;
             /** @description Override the customer identity policy for selected workloads (Hobby and above). Must match the scan override. Omitted uses Compose declarations and preserves existing app policy. */
             platform_tenant_required?: boolean;
+            initial_secrets?: components["schemas"]["ProjectInitialSecrets"];
         };
         /** @description Partial Compose override for a prebuilt image HEALTHCHECK. Empty test and zero timing/retry values inherit image settings. NONE disables the check. Durations retain nanosecond precision; positive durations must be at least 1ms. */
         ComposeHealthcheck: {
@@ -55432,6 +57025,10 @@ export interface components {
         };
         /** @description One discovered unit of work. Mirrors reposcan.Workload. */
         PlanWorkload: {
+            /** @description Reviewed public HTTPS base URL derived from this app allocation and installation domain. Absent when wildcard app URLs are disabled. */
+            public_url?: string;
+            /** @description Reviewed Gregale app name. Repository name, dependencies and configuration keys retain their original identity. Present for migration scans and existing allocations. */
+            app_slug?: string;
             /** @example api */
             name: string;
             /** @description Requested customer identity policy from Compose x-gregale-platform-tenant-required or the request override. Omitted preserves existing app policy; new apps default to false. */
@@ -55476,6 +57073,8 @@ export interface components {
             ports: number[];
             /** @description KEYS only — never values; spec §11 forbids logging secrets */
             env_keys?: string[];
+            /** @description Explicit names from .gregale/required-secrets.json. Detected env_keys alone do not establish requirements. */
+            required_env_keys?: string[];
             /** @description detector provenance, e.g. compose.yaml: api */
             source?: string;
             /** @enum {string} */
@@ -61620,6 +63219,9 @@ export interface components {
          *     POST /v1/apps/{slug}/tasks; exclusive-operation task admission rejects them.
          *     `command_shell=false` executes argv directly. Shell mode requires one
          *     command string and is explicit so clients preserve quoting semantics.
+         *     `__gregale_service_binding_probe_v2__ <service> <target_uuid>` requires
+         *     verification_deployment_id and qualifies only that exact live target in
+         *     the caller scope. It sends a safe HEAD without waking or invoking the target.
          *     `__gregale_service_binding_probe_v1__ <service>` is reserved for the
          *     Gregale HTTPS service-binding canary and is handled by guest-init.
          *     `__gregale_outbound_binding_probe_v1__ <integration-id>` selects a
@@ -71819,6 +73421,443 @@ export interface components {
             /** @description OperationWorkflowPlaybookReview.applicability. Retained exact-case observation reviewed by this decision; distinct from the live applicability field. */
             applicability: components["schemas"]["OperationWorkflowPlaybookApplicability"];
         };
+        /** @description Result of a checked project release operation with per-member binding checks. */
+        CheckedProjectReleaseResponse: {
+            release: components["schemas"]["ProjectReleaseSetResponse"];
+            bindings_checks: {
+                [key: string]: components["schemas"]["BindingCheckReport"];
+            };
+        };
+        /** @description Recorded deactivation decision and exact fallback routes reviewed for a project graph. */
+        ProjectReleaseDeactivationReceipt: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            release_id: string;
+            /** Format: date-time */
+            completed_at: string;
+            fallback_members: components["schemas"]["ProjectReleaseSetMemberResponse"][];
+        };
+        /** @description Immutable candidate graph and expected routing and policy state. This manifest conveys no evidence or waiver. */
+        CheckedProjectReleaseManifest: {
+            /** @description Explicit intent to return to checked weighted fallback routes; requires the deactivation endpoint. */
+            deactivate?: boolean;
+            /**
+             * Format: uuid
+             * @description Historical source identity; requires the checked rollback endpoint.
+             */
+            rollback_release_id?: string;
+            project: string;
+            environment: string;
+            /** @description Zero for deactivation; positive retention TTL for activation or rollback. */
+            ttl_seconds: number;
+            deployments: {
+                [key: string]: string;
+            };
+            /** @description Expected active release UUID or an empty string for the first graph. */
+            expected_active_release_id: string;
+            expected_fallback_deployments: {
+                [key: string]: string;
+            };
+            expected_policy_revisions: {
+                [key: string]: number;
+            };
+            service_targets: {
+                [key: string]: {
+                    [key: string]: string;
+                };
+            };
+        };
+        /** @description Bounded lease for temporarily admitting candidate project services; observed readiness is not binding evidence. */
+        ProjectReleaseStage: {
+            /** Format: uuid */
+            id: string;
+            project: string;
+            environment: string;
+            /** @enum {string} */
+            status: "waiting" | "ready" | "blocked" | "expired" | "cancelled";
+            reason?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at: string;
+            members: components["schemas"]["ProjectReleaseStageMember"][];
+        };
+        /** @description Candidate service deployment and observed replica state covered by a staging lease. */
+        ProjectReleaseStageMember: {
+            app: string;
+            /** Format: uuid */
+            deployment_id: string;
+            desired: number;
+            ready: number;
+        };
+        /** @description Pinned project release manifest and lifetime for temporary candidate service staging. */
+        StageProjectReleaseRequest: {
+            manifest: components["schemas"]["CheckedProjectReleaseManifest"];
+            /** @description Temporary billable capacity lease; repeating the same active stage does not extend it. */
+            ttl_seconds: number;
+        };
+        /** @description Historical release selection used to prepare a checked project rollback. */
+        PrepareProjectRollbackRequest: {
+            /**
+             * Format: uuid
+             * @description Retained inactive historical graph in this project environment.
+             */
+            release_id: string;
+            ttl_seconds: number;
+        };
+        /** @description Revision-guarded release policy replacement with explicit per-binding queue readiness requirements and optional storage requirements. */
+        SetQueueBindingReleasePolicyRequest: components["schemas"]["SetBindingReleasePolicyRequest"] & {
+            queue_requirements: components["schemas"]["QueueReleaseRequirements"];
+        };
+        /** @description Binding name to explicit required queue evidence. Names match ^[a-z][a-z0-9-]{0,62}$. consumer_readiness requires one enabled push consumer with a healthy poll no older than thirty seconds; connectivity coverage remains partial. */
+        QueueReleaseRequirements: {
+            [key: string]: "consumer_readiness" | "handler_completion";
+        };
+        /** @description Retained deployment-bound receipt for an explicitly authorized push queue completion probe. */
+        QueueBindingCanary: {
+            /** Format: uuid */
+            id: string;
+            binding: string;
+            /** Format: uuid */
+            deployment_id: string;
+            scope: string;
+            /** @enum {string} */
+            status: "published" | "dispatching" | "succeeded" | "failed" | "blocked" | "expired" | "cancelled";
+            reason?: string;
+            /** Format: date-time */
+            published_at: string;
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: date-time */
+            delivered_at?: string;
+            /** Format: date-time */
+            completed_at?: string;
+        };
+        /** @description Publication consent and deployment selection for a bounded push queue canary. */
+        CreateQueueBindingCanaryRequest: {
+            /** Format: uuid */
+            deployment_id: string;
+            binding: string;
+            ttl_seconds: number;
+            /** @enum {boolean} */
+            publish_consent: true;
+        };
+        /** @description Public frozen review with no credentials, private probe pins or stdout. Status is an observation; traffic changes still require current atomic policy checks. */
+        BindingVerificationRun: {
+            qualification?: components["schemas"]["BindingVerificationQualification"];
+            /**
+             * @description Frozen shared admission budget; omitted values use two. Graph members share the root budget.
+             * @default 2
+             */
+            max_concurrency?: number;
+            /** Format: uuid */
+            graph_run_id?: string;
+            /** Format: uuid */
+            id: string;
+            app: string;
+            /** Format: uuid */
+            deployment_id: string;
+            scope: string;
+            /** @enum {string} */
+            status: "pending" | "passed" | "blocked" | "cancelled" | "expired";
+            reason?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at: string;
+            object_storage_write: boolean;
+            queue_publish: boolean;
+            review_digest: string;
+            policy: components["schemas"]["BindingReleasePolicy"];
+            inventory: components["schemas"]["AppBindingInventory"];
+            steps: components["schemas"]["BindingVerificationRunStep"][];
+        };
+        /** @description One frozen verification step and its retained admission and completion state. */
+        BindingVerificationRunStep: {
+            plan: components["schemas"]["BindingVerificationPlanStep"];
+            /** Format: uuid */
+            resource_id?: string;
+            /** @enum {string} */
+            resource_kind?: "task" | "queue";
+            owned: boolean;
+            status: string;
+        };
+        /** @description Selected binding resource and immutable operation planned for a verification receipt. */
+        BindingVerificationPlanStep: {
+            /** Format: uuid */
+            target_deployment_id?: string;
+            type: string;
+            name: string;
+            binding: string;
+            scope: string;
+            queue_environment?: string;
+            action: string;
+            reason?: string;
+            required_evidence?: string;
+            /** Format: date-time */
+            checked_at?: string;
+            prefix?: string;
+            required_mode?: string;
+            probe_mode?: string;
+            operations?: string[];
+        };
+        /** @description Review digest must match current policy, configuration and deployment; caller-selected UUID permits create response recovery. */
+        CreateBindingVerificationRunRequest: {
+            /**
+             * @description Requested app receipt admission budget, from one to eight concurrent resources; defaults to two.
+             * @default 2
+             */
+            max_concurrency?: number;
+            service_targets?: {
+                [key: string]: string;
+            };
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            deployment_id: string;
+            review_digest: string;
+            ttl_seconds: number;
+            object_storage_write: boolean;
+            queue_publish: boolean;
+        };
+        /** @description Durable project verification graph with pinned members, a shared budget and a fixed deadline. */
+        ProjectBindingVerificationRun: {
+            qualification?: components["schemas"]["BindingVerificationQualification"];
+            /**
+             * @description Project-wide admission budget frozen on this graph receipt and shared by every member run.
+             * @default 2
+             */
+            max_concurrency?: number;
+            /** Format: uuid */
+            id: string;
+            project: string;
+            environment: string;
+            /** @enum {string} */
+            status: "pending" | "passed" | "blocked" | "cancelled" | "expired";
+            reason?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at: string;
+            review_digest: string;
+            manifest: components["schemas"]["CheckedProjectReleaseManifest"];
+            object_storage_write: boolean;
+            queue_publish: boolean;
+            members: {
+                [key: string]: components["schemas"]["BindingVerificationRun"];
+            };
+        };
+        /** @description Reviewed project selection, consent and shared concurrency for creating a durable verification graph. */
+        CreateProjectBindingVerificationRunRequest: {
+            /**
+             * @description Requested shared graph admission budget; defaults to two and applies across all project members.
+             * @default 2
+             */
+            max_concurrency?: number;
+            /** @description Optional aggregate digest issued by graph review; when supplied, manifest, member digests and consent must match. */
+            review_digest?: string;
+            /** Format: uuid */
+            id: string;
+            manifest: components["schemas"]["CheckedProjectReleaseManifest"];
+            review_digests: {
+                [key: string]: string;
+            };
+            ttl_seconds: number;
+            object_storage_write: boolean;
+            queue_publish: boolean;
+        };
+        /** @description Read-only project verification plan, blockers, required consent and opaque review digests. */
+        ProjectBindingVerificationReview: {
+            project: string;
+            environment: string;
+            /** Format: date-time */
+            reviewed_at: string;
+            ready: boolean;
+            review_digest: string;
+            review_digests: {
+                [key: string]: string;
+            };
+            manifest: components["schemas"]["CheckedProjectReleaseManifest"];
+            object_storage_write: boolean;
+            queue_publish: boolean;
+            object_storage_write_required: boolean;
+            queue_publish_required: boolean;
+            members: {
+                [key: string]: components["schemas"]["BindingVerificationReview"];
+            };
+            blockers: components["schemas"]["BindingCheckFinding"][];
+        };
+        /** @description Project release selection to review without creating receipts or starting verification. */
+        ReviewProjectBindingVerificationRequest: {
+            manifest: components["schemas"]["CheckedProjectReleaseManifest"];
+            object_storage_write: boolean;
+            queue_publish: boolean;
+        };
+        /** @description Read-only application binding plan used to review selection and consent before receipt creation. */
+        BindingVerificationReview: {
+            app: string;
+            /** Format: uuid */
+            deployment_id: string;
+            scope: string;
+            service_targets: {
+                [key: string]: string;
+            };
+            /** Format: date-time */
+            reviewed_at: string;
+            ready: boolean;
+            review_digest: string;
+            object_storage_write_required: boolean;
+            queue_publish_required: boolean;
+            inventory: components["schemas"]["AppBindingInventory"];
+            policy: components["schemas"]["BindingReleasePolicy"];
+            plan: components["schemas"]["BindingVerificationPlanStep"][];
+            blockers: components["schemas"]["BindingCheckFinding"][];
+            observed_check?: components["schemas"]["BindingCheckReport"];
+        };
+        /** @description Application deployment and binding selection to review without admitting work. */
+        ReviewBindingVerificationRequest: {
+            /**
+             * Format: uuid
+             * @description Exact deployment; omission selects the current live deployment once.
+             */
+            deployment_id?: string;
+            service_targets?: {
+                [key: string]: string;
+            };
+        };
+        /** @description Public graph receipt observations, safe differences and suggested recovery actions. */
+        ProjectBindingVerificationRunDiagnostics: {
+            budget?: components["schemas"]["BindingVerificationBudget"];
+            /** Format: uuid */
+            run_id: string;
+            project: string;
+            environment: string;
+            /** @enum {string} */
+            status: "pending" | "passed" | "blocked" | "cancelled" | "expired";
+            /** Format: date-time */
+            checked_at: string;
+            /** Format: date-time */
+            expires_at: string;
+            complete: boolean;
+            members: {
+                [key: string]: components["schemas"]["BindingVerificationRunDiagnostics"];
+            };
+            blockers: components["schemas"]["BindingVerificationDiagnosticBlocker"][];
+            changes: components["schemas"]["BindingVerificationDifference"][];
+            recovery: components["schemas"]["BindingVerificationRecoveryAction"][];
+        };
+        /** @description Public app receipt observations and recovery suggestions without admission authority. */
+        BindingVerificationRunDiagnostics: {
+            budget?: components["schemas"]["BindingVerificationBudget"];
+            /** Format: uuid */
+            run_id: string;
+            /** Format: uuid */
+            graph_run_id?: string;
+            app: string;
+            /** Format: uuid */
+            deployment_id: string;
+            scope: string;
+            /** @enum {string} */
+            status: "pending" | "passed" | "blocked" | "cancelled" | "expired";
+            /** Format: date-time */
+            checked_at: string;
+            /** Format: date-time */
+            expires_at: string;
+            /** @description All applicable diagnostic reads succeeded; does not authorize admission. */
+            complete: boolean;
+            /** @description Current public evidence satisfies current policy; does not confirm receipt completion. */
+            check_passed?: boolean;
+            blockers: components["schemas"]["BindingVerificationDiagnosticBlocker"][];
+            changes: components["schemas"]["BindingVerificationDifference"][];
+            recovery: components["schemas"]["BindingVerificationRecoveryAction"][];
+        };
+        /** @description Bounded retained receipt summaries and a cursor tied to the original observation cutoff. */
+        BindingVerificationRunList: {
+            runs: components["schemas"]["BindingVerificationRunSummary"][];
+            /** Format: date-time */
+            observed_at: string;
+            next_cursor?: string;
+        };
+        /** @description Compact retained receipt identity and stored state, with expiry derived at the page observation time. Passed does not assert current evidence qualification. No resource output, plans, policy or manifest is included. */
+        BindingVerificationRunSummary: {
+            /** Format: uuid */
+            id: string;
+            app?: string;
+            /** Format: uuid */
+            deployment_id?: string;
+            scope?: string;
+            /** Format: uuid */
+            graph_run_id?: string;
+            project?: string;
+            environment?: string;
+            /** @enum {string} */
+            status: "pending" | "passed" | "cancelled" | "expired";
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
+        /** @description Server-confirmed temporary qualification conditions for the original receipt. No admission or release authority; wait within its original expiry and recheck. */
+        BindingVerificationQualification: {
+            /** Format: date-time */
+            checked_at: string;
+            conditions: components["schemas"]["BindingVerificationQualificationCondition"][];
+        };
+        /** @description Temporary readiness condition preventing final qualification of a selected binding. */
+        BindingVerificationQualificationCondition: {
+            app: string;
+            /** @enum {string} */
+            code: "runtime_updating" | "runtime_stale" | "queue_consumer_unobserved" | "queue_consumer_stale" | "application_adoption_unknown" | "application_ack_stale" | "application_ack_candidate_unobserved";
+            type?: string;
+            name?: string;
+            binding?: string;
+            scope?: string;
+        };
+        /** @description Suggested client recovery step for a verification receipt; it grants no execution authority. */
+        BindingVerificationRecoveryAction: {
+            /** @enum {string} */
+            action: "resume" | "wait" | "wait_for_application_ack" | "cancel" | "review_new_run" | "retry_diagnostics";
+            message: string;
+        };
+        /** @description Only whitelisted public scalar values; no credentials, provider origins, commands or guest output. */
+        BindingVerificationDifference: {
+            app?: string;
+            type?: string;
+            name?: string;
+            binding?: string;
+            scope?: string;
+            field: string;
+            reviewed: string;
+            current: string;
+        };
+        /** @description Public reason and recovery classification for a blocked verification selection. */
+        BindingVerificationDiagnosticBlocker: {
+            code: string;
+            message: string;
+            app?: string;
+            type?: string;
+            name?: string;
+            binding?: string;
+            scope?: string;
+            status?: string;
+            /** @enum {string} */
+            recovery: "resume" | "wait" | "wait_for_application_ack" | "cancel" | "review_new_run" | "retry_diagnostics";
+            step_index?: number;
+            /** Format: uuid */
+            resource_id?: string;
+            /** @enum {string} */
+            resource_kind?: "task" | "queue";
+        };
+        /** @description Public observation of shared capacity. Underlying unfinished resources remain counted after diagnostic expiry or cancellation requests. No admission authority. */
+        BindingVerificationBudget: {
+            /** Format: uuid */
+            run_id: string;
+            max_concurrency: number;
+            active_resources: number;
+            waiting_steps: number;
+            full: boolean;
+        };
     };
     responses: {
         /** @description If-Match no longer names the app's latest edge-rule set version (edge_rules_version_mismatch). The response ETag carries the current version. */
@@ -72917,6 +74956,139 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listProjectMigrations: {
+        parameters: {
+            query?: {
+                /** @description Optional exact project slug to filter migration records. */
+                project?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List saved project migrations for the authenticated account result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectMigrationList"];
+                };
+            };
+            /** @description List saved project migrations for the authenticated account error. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    createProjectMigration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateProjectMigrationRequest"];
+            };
+        };
+        responses: {
+            /** @description Save and apply a reviewed multi-service migration result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectMigration"];
+                };
+            };
+            /** @description Save and apply a reviewed multi-service migration error. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getProjectMigration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Creator-owned migration journal UUID. */
+                migration: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Inspect each reserved deployment and its recorded verification and cutover result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectMigration"];
+                };
+            };
+            /** @description Inspect each reserved deployment and its recorded verification and cutover error. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    resumeProjectMigration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Saved migration to resume after reviewing unfinished services. */
+                migration: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResumeProjectMigrationRequest"];
+            };
+        };
+        responses: {
+            /** @description Resume unfinished migration services while preserving accepted deployments result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectMigration"];
+                };
+            };
+            /** @description Resume unfinished migration services while preserving accepted deployments error. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     getMCPAdmissionReceipt: {
         parameters: {
             query?: never;
@@ -78258,6 +80430,8 @@ export interface operations {
             query?: {
                 /** @description Select evidence for this exact app-owned, materialized live deployment, including zero-traffic candidates. No fallback to evidence from another deployment. Omit to use the manual-task selection. */
                 deployment_id?: string;
+                /** @description JSON object mapping declared service names to exact live deployment UUIDs in the caller scope. Requires deployment_id. Target evidence is isolated from ordinary any-replica evidence. Does not change routes or grant access. */
+                service_targets?: string;
                 /** @description Filter database and bucket binding scopes. Omit to include all scopes. App-wide service, queue and outbound bindings always remain included. */
                 scope?: string;
             };
@@ -79186,6 +81360,76 @@ export interface operations {
             };
         };
     };
+    getManagedPostgresCutoverPreflight: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Gregale managed PostgreSQL cutover UUID. */
+                id: components["parameters"]["ManagedPostgresCutoverID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Durable preflight findings; Cache-Control no-store */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManagedPostgresCutoverPreflight"];
+                };
+            };
+            /** @description Authentication or preflight status error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    requestManagedPostgresCutoverPreflight: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description Idempotency key for the POST. Stored for 24h. On replay the server
+                 *     returns the original response with `Idempotent-Replayed: true`.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description Gregale managed PostgreSQL cutover UUID. */
+                id: components["parameters"]["ManagedPostgresCutoverID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Durable preflight request; Cache-Control no-store */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManagedPostgresCutoverPreflight"];
+                };
+            };
+            /** @description Authentication, state conflict or cutover error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     cancelManagedPostgresCutover: {
         parameters: {
             query?: never;
@@ -79490,6 +81734,74 @@ export interface operations {
                 };
             };
             /** @description Invalid point in time, plan limit, or provider error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getManagedPostgresConnectionBudget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Opaque Gregale managed PostgreSQL resource identifier. */
+                id: components["parameters"]["ManagedPostgresID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Bounded credential-free planning and explicit unknown coverage */
+            200: {
+                headers: {
+                    /** @description Always no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManagedPostgresConnectionBudget"];
+                };
+            };
+            /** @description Authentication, ownership or metadata read error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getAppDataAPIConnectionBudgets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App whose managed Data API bindings select the shared database reports. */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Per-database estimates and unknown coverage for this app's managed Data API bindings */
+            200: {
+                headers: {
+                    /** @description Prevents caching the app's independently sampled database reports. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataAPIConnectionBudgets"];
+                };
+            };
+            /** @description Data API app lookup, permission or budget inventory failure */
             default: {
                 headers: {
                     [name: string]: unknown;
@@ -83749,6 +86061,315 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    listMigrationCutovers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Latest retained plans with current deployment and binding validity. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MigrationCutoverList"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+            429: components["responses"]["TooManyRequests"];
+            501: components["responses"]["NotImplemented"];
+            503: components["responses"]["ServerError"];
+        };
+    };
+    createMigrationCutover: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateMigrationCutoverRequest"];
+            };
+        };
+        responses: {
+            /** @description New or replayed immutable production switch plan; traffic remains unchanged. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MigrationCutover"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+            429: components["responses"]["TooManyRequests"];
+            501: components["responses"]["NotImplemented"];
+            503: components["responses"]["ServerError"];
+        };
+    };
+    getMigrationCutover: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Identity of the retained production switch to inspect. */
+                plan: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Requested plan, saved recovery settings and validity of its evidence. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MigrationCutover"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+            429: components["responses"]["TooManyRequests"];
+            501: components["responses"]["NotImplemented"];
+            503: components["responses"]["ServerError"];
+        };
+    };
+    actOnMigrationCutover: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Identity of the production switch receiving this explicit action. */
+                plan: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MigrationCutoverActionRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated cutover progress or customer acknowledgement of manual recovery. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MigrationCutover"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+            429: components["responses"]["TooManyRequests"];
+            501: components["responses"]["NotImplemented"];
+            503: components["responses"]["ServerError"];
+        };
+    };
+    listMigrationVerifications: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Latest retained migration reports with current validity. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MigrationVerificationList"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+            429: components["responses"]["TooManyRequests"];
+            501: components["responses"]["NotImplemented"];
+            503: components["responses"]["ServerError"];
+        };
+    };
+    createMigrationVerification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateMigrationVerificationRequest"];
+            };
+        };
+        responses: {
+            /** @description Original or newly saved verification intent and receipt. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MigrationVerification"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+            429: components["responses"]["TooManyRequests"];
+            501: components["responses"]["NotImplemented"];
+            503: components["responses"]["ServerError"];
+        };
+    };
+    getMigrationVerification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Receipt UUID to inspect. */
+                run: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Owned verification status and current evidence validity. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MigrationVerification"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+            429: components["responses"]["TooManyRequests"];
+            501: components["responses"]["NotImplemented"];
+            503: components["responses"]["ServerError"];
+        };
+    };
+    advanceMigrationVerification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Receipt UUID to advance. */
+                run: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Journaled progress after one bounded verification step. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MigrationVerification"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+            429: components["responses"]["TooManyRequests"];
+            501: components["responses"]["NotImplemented"];
+            503: components["responses"]["ServerError"];
+        };
+    };
+    cancelMigrationVerification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Receipt UUID to cancel. */
+                run: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Saved cancellation intent or the unchanged terminal report. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MigrationVerification"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServerError"];
         };
     };
     listAppTasks: {
@@ -106066,6 +108687,57 @@ export interface operations {
             413: components["responses"]["SourceTooLarge"];
             429: components["responses"]["TooManyRequests"];
             503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    applyCachedProjectPlan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplyCachedProjectPlanRequest"];
+            };
+        };
+        responses: {
+            /** @description Project applied with per-workload deployment receipts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplyResponse"];
+                };
+            };
+            /** @description The caller lacks deployment or secret write permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The plan is stale, blocked, or requires environment approval. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The account-owned reviewed source expired; scan again. */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     listProjects: {
@@ -130128,6 +132800,1143 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getProjectBindingVerificationRunDiagnostics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the project for diagnosing blockers in a project verification graph. */
+                slug: string;
+                /** @description Project environment for diagnosing blockers in a project verification graph. */
+                environment: string;
+                /** @description Verification receipt UUID for diagnosing blockers in a project verification graph. */
+                run: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Read-only public observations and suggested recovery; grants no admission or activation authority. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectBindingVerificationRunDiagnostics"];
+                };
+            };
+            /** @description Invalid receipt UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Read access to every reviewed binding domain is required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No owned receipt was found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Receipt metadata could not be read. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getBindingVerificationRunDiagnostics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the app for diagnosing an app binding verification receipt. */
+                slug: string;
+                /** @description Verification receipt UUID for diagnosing an app binding verification receipt. */
+                run: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description App receipt diagnostics. Read-only public observations and suggested recovery; grants no admission or activation authority. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BindingVerificationRunDiagnostics"];
+                };
+            };
+            /** @description App receipt diagnostics. Invalid receipt UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description App receipt diagnostics. Read access to every reviewed binding domain is required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description App receipt diagnostics. No owned receipt was found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description App receipt diagnostics. Receipt metadata could not be read. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    reviewProjectBindingVerification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the project for reviewing project graph verification before receipt creation. */
+                slug: string;
+                /** @description Project environment for reviewing project graph verification before receipt creation. */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewProjectBindingVerificationRequest"];
+            };
+        };
+        responses: {
+            /** @description Server plan, blockers, required consent and opaque review digests. Ready means the plan is available; it is not verification evidence. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectBindingVerificationReview"];
+                };
+            };
+            /** @description Project verification review. Read access to every reviewed binding domain is required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The selected deployment, policy or prepared manifest changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A complete review could not be read. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    reviewBindingVerification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the app for reviewing an app binding plan before admitting work. */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewBindingVerificationRequest"];
+            };
+        };
+        responses: {
+            /** @description App verification review. Server plan, blockers, required consent and opaque review digests. Ready means the plan is available; it is not verification evidence. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BindingVerificationReview"];
+                };
+            };
+            /** @description App verification review. Read access to every reviewed binding domain is required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description App verification review. The selected deployment, policy or prepared manifest changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description App verification review. A complete review could not be read. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    completeProjectBindingVerificationRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the project for finalizing a retained project verification graph. */
+                slug: string;
+                /** @description Project environment for finalizing a retained project verification graph. */
+                environment: string;
+                /** @description Verification receipt UUID for finalizing a retained project verification graph. */
+                run: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Frozen graph verification run; qualification does not change traffic. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectBindingVerificationRun"];
+                };
+            };
+            /** @description Original receipt remains pending while recognized final readiness conditions settle. No new work was admitted and its expiry is unchanged. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectBindingVerificationRun"];
+                };
+            };
+            /** @description Frozen membership, routing, policy, configuration or evidence changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Normal admission or receipt capacity reached. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    resumeProjectBindingVerificationRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the project for reconciling unfinished project verification work. */
+                slug: string;
+                /** @description Project environment for reconciling unfinished project verification work. */
+                environment: string;
+                /** @description Verification receipt UUID for reconciling unfinished project verification work. */
+                run: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Project graph reconciliation. Frozen graph verification run; qualification does not change traffic. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectBindingVerificationRun"];
+                };
+            };
+            /** @description Project graph reconciliation. Frozen membership, routing, policy, configuration or evidence changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Project graph reconciliation. Normal admission or receipt capacity reached. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getProjectBindingVerificationRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the project for reading retained project graph verification status. */
+                slug: string;
+                /** @description Project environment for reading retained project graph verification status. */
+                environment: string;
+                /** @description Verification receipt UUID for reading retained project graph verification status. */
+                run: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Project graph status. Frozen graph verification run; qualification does not change traffic. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectBindingVerificationRun"];
+                };
+            };
+            /** @description Project graph status. Frozen membership, routing, policy, configuration or evidence changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Project graph status. Normal admission or receipt capacity reached. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    cancelProjectBindingVerificationRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the project for requesting cancellation of a project verification graph. */
+                slug: string;
+                /** @description Project environment for requesting cancellation of a project verification graph. */
+                environment: string;
+                /** @description Verification receipt UUID for requesting cancellation of a project verification graph. */
+                run: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Project graph cancellation. Frozen graph verification run; qualification does not change traffic. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectBindingVerificationRun"];
+                };
+            };
+            /** @description Project graph cancellation. Frozen membership, routing, policy, configuration or evidence changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Project graph cancellation. Normal admission or receipt capacity reached. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listProjectBindingVerificationRuns: {
+        parameters: {
+            query?: {
+                /** @description Maximum retained project verification receipts returned on this page. */
+                limit?: number;
+                /** @description Opaque continuation cursor from the previous project verification receipt page. */
+                cursor?: string;
+                /** @description Restrict retained project verification receipts to this exact deployment UUID. */
+                deployment_id?: string;
+                /** @description Restrict project verification receipt discovery to this effective retained status. */
+                status?: "pending" | "passed" | "cancelled" | "expired";
+            };
+            header?: never;
+            path: {
+                /** @description Slug of the project for listing retained project graph verification receipts. */
+                slug: string;
+                /** @description Project environment for listing retained project graph verification receipts. */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Bounded retained receipt summaries; not a permanent history or proof of current qualification. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BindingVerificationRunList"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    createProjectBindingVerificationRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the project for creating a reviewed project verification graph. */
+                slug: string;
+                /** @description Project environment for creating a reviewed project verification graph. */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateProjectBindingVerificationRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Project graph creation. Frozen graph verification run; qualification does not change traffic. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectBindingVerificationRun"];
+                };
+            };
+            /** @description Project graph creation. Frozen membership, routing, policy, configuration or evidence changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Project graph creation. Normal admission or receipt capacity reached. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    admitBindingVerificationRunStep: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the app for admitting one frozen app verification step. */
+                slug: string;
+                /** @description Verification receipt UUID for admitting one frozen app verification step. */
+                run: string;
+                /** @description Frozen step index selected for admission within this app receipt. */
+                step: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Durable receipt with original identity and deadline. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BindingVerificationRunStep"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    completeBindingVerificationRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the app for finalizing an app verification receipt. */
+                slug: string;
+                /** @description Verification receipt UUID for finalizing an app verification receipt. */
+                run: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description App receipt completion. Durable receipt with original identity and deadline. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BindingVerificationRun"];
+                };
+            };
+            /** @description App receipt completion. Original receipt remains pending while recognized final readiness conditions settle. No new work was admitted and its expiry is unchanged. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BindingVerificationRun"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    resumeBindingVerificationRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the app for reconciling unfinished app verification work. */
+                slug: string;
+                /** @description Verification receipt UUID for reconciling unfinished app verification work. */
+                run: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description App receipt reconciliation. Durable receipt with original identity and deadline. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BindingVerificationRun"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getBindingVerificationRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the app for inspecting or cancelling an app verification receipt. */
+                slug: string;
+                /** @description Verification receipt UUID for inspecting or cancelling an app verification receipt. */
+                run: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description App receipt status. Durable receipt with original identity and deadline. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BindingVerificationRun"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    cancelBindingVerificationRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the app for inspecting or cancelling an app verification receipt. */
+                slug: string;
+                /** @description Verification receipt UUID for inspecting or cancelling an app verification receipt. */
+                run: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description App receipt cancellation. Durable receipt with original identity and deadline. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BindingVerificationRun"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    listBindingVerificationRuns: {
+        parameters: {
+            query?: {
+                /** @description Maximum retained app verification receipts returned on this page. */
+                limit?: number;
+                /** @description Opaque continuation cursor from the previous app verification receipt page. */
+                cursor?: string;
+                /** @description Restrict retained app verification receipts to this exact deployment UUID. */
+                deployment_id?: string;
+                /** @description Restrict app verification receipt discovery to this effective retained status. */
+                status?: "pending" | "passed" | "cancelled" | "expired";
+                /** @description Only app receipts whose frozen binding scope matches this value are returned. */
+                scope?: string;
+                /** @description Include app receipts created as members of project verification graphs. */
+                include_members?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description Slug of the app for discovering or creating app verification receipts. */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description App receipt discovery. Bounded retained receipt summaries; not a permanent history or proof of current qualification. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BindingVerificationRunList"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    createBindingVerificationRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the app for discovering or creating app verification receipts. */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateBindingVerificationRunRequest"];
+            };
+        };
+        responses: {
+            /** @description App receipt creation. Durable receipt with original identity and deadline. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BindingVerificationRun"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getQueueBindingCanary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the app for inspecting or cancelling an existing queue completion canary. */
+                slug: string;
+                /** @description Identifier of the push queue completion canary selected for inspection or cancellation. */
+                canary: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current evidence; an in-flight handler may finish after cancellation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueueBindingCanary"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    cancelQueueBindingCanary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the app for inspecting or cancelling an existing queue completion canary. */
+                slug: string;
+                /** @description Identifier of the push queue completion canary selected for inspection or cancellation. */
+                canary: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Queue canary cancellation. Current evidence; an in-flight handler may finish after cancellation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueueBindingCanary"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    createQueueBindingCanary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the app for publishing a consented push queue completion canary. */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateQueueBindingCanaryRequest"];
+            };
+        };
+        responses: {
+            /** @description Published canary; publication does not prove delivery or handler completion. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueueBindingCanary"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    deactivateCheckedProjectRelease: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the project for deactivating a checked project release set. */
+                slug: string;
+                /** @description Project environment for deactivating a checked project release set. */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CheckedProjectReleaseManifest"];
+            };
+        };
+        responses: {
+            /** @description Deactivate the current graph after checking every fallback recipient. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckedProjectReleaseResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    prepareCheckedProjectDeactivation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the project for reviewing exact weighted fallbacks before graph deactivation. */
+                slug: string;
+                /** @description Project environment for reviewing exact weighted fallbacks before graph deactivation. */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Prepare checked return to exact 100% weighted fallback routes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckedProjectReleaseManifest"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    rollbackCheckedProjectRelease: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the project for restoring a retained graph with fresh binding qualification. */
+                slug: string;
+                /** @description Project environment for restoring a retained graph with fresh binding qualification. */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CheckedProjectReleaseManifest"];
+            };
+        };
+        responses: {
+            /** @description Recover a retained historical graph with fresh binding evidence. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckedProjectReleaseResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    prepareCheckedProjectRollback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the project for reviewing recovery to a selected historical release graph. */
+                slug: string;
+                /** @description Project environment for reviewing recovery to a selected historical release graph. */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PrepareProjectRollbackRequest"];
+            };
+        };
+        responses: {
+            /** @description Prepare recovery to an explicit retained historical graph. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckedProjectReleaseManifest"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    activateCheckedProjectRelease: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the project for activating a pinned project graph after binding checks. */
+                slug: string;
+                /** @description Project environment for activating a pinned project graph after binding checks. */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CheckedProjectReleaseManifest"];
+            };
+        };
+        responses: {
+            /** @description Activate a pinned graph with fresh checked binding evidence. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckedProjectReleaseResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    prepareCheckedProjectRelease: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the project for preparing binding qualification for a pinned release-set manifest. */
+                slug: string;
+                /** @description Project environment for preparing binding qualification for a pinned release-set manifest. */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublishProjectReleaseSetRequest"];
+            };
+        };
+        responses: {
+            /** @description Prepare a pinned graph manifest without changing routes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckedProjectReleaseManifest"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getProjectReleaseStage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the project for observing or cancelling a candidate service staging lease. */
+                slug: string;
+                /** @description Project environment for observing or cancelling a candidate service staging lease. */
+                environment: string;
+                /** @description Identifier of the candidate service staging lease selected for status or cancellation. */
+                stage: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current staging lease and observed service readiness; this conveys no binding evidence. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectReleaseStage"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    cancelProjectReleaseStage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the project for observing or cancelling a candidate service staging lease. */
+                slug: string;
+                /** @description Project environment for observing or cancelling a candidate service staging lease. */
+                environment: string;
+                /** @description Identifier of the candidate service staging lease selected for status or cancellation. */
+                stage: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Candidate service staging cancellation. Current staging lease and observed service readiness; this conveys no binding evidence. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectReleaseStage"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    stageCheckedProjectRelease: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the project for temporarily admitting selected candidate services for staging. */
+                slug: string;
+                /** @description Project environment for temporarily admitting selected candidate services for staging. */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StageProjectReleaseRequest"];
+            };
+        };
+        responses: {
+            /** @description Candidate service staging admission. Current staging lease and observed service readiness; this conveys no binding evidence. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectReleaseStage"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    setQueueBindingReleasePolicy: {
+        parameters: {
+            query?: {
+                /** @description Deployment scope whose queue release requirements will be replaced. Omit for default. */
+                scope?: string;
+            };
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetQueueBindingReleasePolicyRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved policy with explicit queue requirements and incremented revision. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BindingReleasePolicy"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             503: components["responses"]["ServiceUnavailable"];
         };
     };

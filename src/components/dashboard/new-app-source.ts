@@ -1,6 +1,7 @@
 import { resourceId } from '@/lib/resource-id';
 
 export interface DeploymentRecoveryContext {
+  migration?: boolean;
   app: string;
   repo: string;
   ref: string;
@@ -23,6 +24,7 @@ export function validateRecovery(value: unknown): DeploymentRecoveryContext | un
   )
     return undefined;
   return {
+    ...(raw.migration === true ? { migration: true } : {}),
     app: raw.app,
     repo: raw.repo.trim(),
     ref: raw.ref.trim(),
@@ -41,7 +43,9 @@ export interface NewAppSearch {
   step?: 'configure' | 'review';
   slug?: string;
   branch?: string;
+  repo?: string;
   recovery?: DeploymentRecoveryContext;
+  projectMigration?: string;
 }
 
 export function validateNewAppSearch(search: Record<string, unknown>): NewAppSearch {
@@ -59,7 +63,17 @@ export function validateNewAppSearch(search: Record<string, unknown>): NewAppSea
     step: search.step === 'configure' || search.step === 'review' ? search.step : undefined,
     slug: typeof search.slug === 'string' ? search.slug : undefined,
     branch: typeof search.branch === 'string' ? search.branch : undefined,
+    repo:
+      typeof search.repo === 'string' && isValidGitHubRepo(search.repo)
+        ? search.repo.trim()
+        : undefined,
     recovery: validateRecovery(search.recovery),
+    projectMigration:
+      typeof search.projectMigration === 'string' &&
+      /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(search.projectMigration) &&
+      search.projectMigration !== '00000000-0000-0000-0000-000000000000'
+        ? search.projectMigration
+        : undefined,
   };
 }
 const GITHUB_REPO = /^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/;
