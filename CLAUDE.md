@@ -115,3 +115,11 @@ paths are checked against `api/openapi.yaml` by `src/lib/mock-spec-drift.test.ts
   inherits the bare brand title. See the Page titles section in `README.md`.
 - **Adding a console page means touching `nav-config.ts` too**, or the page
   exists but is unreachable from the sidebar, breadcrumb, and ⌘K palette.
+- **Headers live in `src/lib/security-headers.ts`; `vercel.json` is a copy.**
+  `src/hosting-contract.test.ts` fails when they differ. The dev server sends
+  the same policy, so a font, image, script, or fetch from a third-party host
+  is blocked locally — that is the point. Do not add an origin to a directive
+  to make something load; ask whether it should be first-party instead (the
+  fonts are, under `public/fonts/`). `npm run build:mock && npm run preview:mock`
+  then `BASE_URL=http://localhost:4173 npm run tour` checks a real build under
+  the production headers; the tour fails on CSP violations.
