@@ -170,3 +170,24 @@ describe('vendored content', () => {
     }
   });
 });
+
+describe('install guide', () => {
+  // faas-web#120: the homepage pointed at a page that assumed the CLI was
+  // already installed. The install guide is locally authored because the
+  // upstream page ends with operator-only release steps.
+  it('is published locally, ahead of the first-deploy guide', () => {
+    const entry = findDoc('install');
+    expect(entry?.local).toBe(true);
+    const slugs = DOC_SECTIONS[0].entries.map((e) => e.slug);
+    expect(slugs.indexOf('install')).toBeLessThan(slugs.indexOf('getting-started'));
+  });
+
+  it('covers both channels, the beta tag, and the optional-dependency recovery', () => {
+    const source = docSource('install') ?? '';
+    expect(source).toContain('curl -fsSL https://get.gregale.dev | sh');
+    expect(source).toContain('npm install -g gregale@rc');
+    expect(source).toContain('--include=optional');
+    expect(source).toMatch(/`latest`/);
+    expect(source).toMatch(/`rc`/);
+  });
+});

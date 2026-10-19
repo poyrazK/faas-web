@@ -3,7 +3,7 @@ import { Link } from '@tanstack/react-router';
 import { ArrowRight } from 'iconoir-react';
 import { SweepLink } from '@/components/sweep-link';
 import { RestoreTarget } from '@/components/restore-target';
-import { RESTORE_CONTEXT } from '@/lib/platform-claims';
+import { BETA_STATUS, RESTORE_CONTEXT } from '@/lib/platform-claims';
 import { DeployTerminal } from './deploy-terminal';
 import { EASE } from './reveal';
 import { LIQUID_PRESETS, LiquidField } from './liquid-field';
@@ -86,8 +86,7 @@ export function Hero() {
             </SweepLink>
           </div>
           <p className="mt-6 max-w-[34rem] text-center font-mono text-[11px] text-muted-foreground">
-            Hosting and PR previews are in public beta. Connected work, MCP hosting and isolated
-            runs are in preview; plan and rollout limits apply.
+            {BETA_STATUS}
           </p>
         </div>
       </section>

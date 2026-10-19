@@ -109,6 +109,23 @@ describeBuilt('prerendered pages', () => {
     });
   });
 
+  describe('llms.txt', () => {
+    const llms = built && existsSync('dist/llms.txt') ? readFileSync('dist/llms.txt', 'utf8') : '';
+
+    it('is written', () => {
+      expect(llms.startsWith('# Gregale')).toBe(true);
+    });
+
+    it('states the wake figure with its measurement boundary', () => {
+      expect(llms).toContain('platform-only');
+      expect(llms.replace(/platform-only[^\n]*/g, '')).not.toMatch(/350\s*ms/);
+    });
+
+    it('links the docs at the site origin', () => {
+      expect(llms).toContain('https://gregale.dev/docs/scale-to-zero');
+    });
+  });
+
   describe('indexing directives', () => {
     it('lets the landing page be indexed', () => {
       expect(readFileSync('dist/index.html', 'utf8')).not.toContain('name="robots"');

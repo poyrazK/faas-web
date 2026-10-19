@@ -25,6 +25,7 @@ import { dirname, join } from 'node:path';
  * the sitemap. Same reasoning as generating robots.txt below.
  */
 const { DOC_ENTRIES } = await import('../src/lib/docs-manifest.ts');
+const { renderLlmsTxt } = await import('../src/lib/llms-txt.ts');
 const DOC_ROUTES = ['/docs', ...DOC_ENTRIES.map((entry) => `/docs/${entry.slug}`)];
 
 const INCIDENT_SHELL_ROUTE = '/status/incidents/00000000-0000-4000-8000-000000000000';
@@ -246,6 +247,11 @@ const robots = [
 
 writeFileSync(join(DIST, 'robots.txt'), robots);
 console.log('  wrote robots.txt');
+
+// Same reasoning for llms.txt: the claims and the docs list it carries have
+// one source each, so it is derived from them rather than committed.
+writeFileSync(join(DIST, 'llms.txt'), renderLlmsTxt(SITE_URL));
+console.log('  wrote llms.txt');
 
 if (SITE_URL) {
   const urls = INDEXABLE.map(
