@@ -16,7 +16,7 @@ function directives(csp: string): string[] {
 describe('production policy', () => {
   const csp = contentSecurityPolicy('production');
 
-  it.each(['default-src', 'script-src', 'style-src', 'connect-src', 'font-src', 'img-src'])(
+  it.each(['default-src', 'script-src', 'style-src', 'font-src', 'img-src'])(
     '%s names no third-party host, no hash or nonce',
     (name) => {
       const value = directive(csp, name);
@@ -25,6 +25,13 @@ describe('production policy', () => {
       expect(value).not.toMatch(/sha(256|384|512)-|nonce-/);
     }
   );
+
+  it('connect-src allows exactly one third party: the S3 gateway signed uploads PUT to', () => {
+    // `uploadSignedObject` (lib/api/object-storage.ts) PUTs the file straight to
+    // the signed URL, which the API issues on the branded S3 gateway. Every
+    // other request the console makes is same-origin.
+    expect(directive(csp, 'connect-src')).toBe("'self' https://s3.gregale.dev");
+  });
 
   it.each(['default-src', 'script-src', 'connect-src', 'font-src', 'img-src'])(
     '%s allows no unsafe keyword',
@@ -49,7 +56,6 @@ describe('production policy', () => {
   it('allows the data: QR code and blob: workers, nothing wider', () => {
     expect(directive(csp, 'img-src')).toBe("'self' data: blob:");
     expect(directive(csp, 'worker-src')).toBe("'self' blob:");
-    expect(directive(csp, 'connect-src')).toBe("'self'");
     expect(directive(csp, 'font-src')).toBe("'self'");
   });
 });
@@ -67,11 +73,11 @@ describe('modes', () => {
     const preview = directives(contentSecurityPolicy('preview'));
     expect(dev.filter((d) => !preview.includes(d))).toEqual([
       "script-src 'self' 'unsafe-inline'",
-      "connect-src 'self' ws:",
+      "connect-src 'self' https://s3.gregale.dev ws:",
     ]);
     expect(preview.filter((d) => !dev.includes(d))).toEqual([
       "script-src 'self'",
-      "connect-src 'self'",
+      "connect-src 'self' https://s3.gregale.dev",
     ]);
   });
 

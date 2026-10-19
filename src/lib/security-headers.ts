@@ -7,11 +7,13 @@
  * directly (see `vite.config.ts`), so a new third-party fetch, font or image
  * breaks on the developer's machine rather than after deploy.
  *
- * Every fetch destination is first-party. The console only ever talks to its
- * own origin: the API is rewritten to `apid` same-origin, logs are SSE on the
- * same origin, Vercel Analytics loads and beacons under `/_vercel/insights`,
- * and the fonts live in `public/fonts`. Adding a host to any directive is a
- * policy change, not a tag in `index.html`.
+ * Every fetch destination is first-party, with one named exception. The API
+ * is rewritten to `apid` same-origin, logs are SSE on the same origin, Vercel
+ * Analytics loads and beacons under `/_vercel/insights`, and the fonts live in
+ * `public/fonts`. The exception is the branded S3 gateway: object uploads PUT
+ * the file straight to a signed URL there (`lib/api/object-storage.ts`), so
+ * `connect-src` names it. Adding a host to any directive is a policy change,
+ * not a tag in `index.html`; say why in a comment, as below.
  *
  * Modes:
  * - `production`: the full policy, including `upgrade-insecure-requests`.
@@ -25,6 +27,8 @@ export type HeaderMode = 'production' | 'preview' | 'dev';
 
 const SELF = "'self'";
 const NONE = "'none'";
+/** Where `POST …/signed-url` sends uploads; see `ObjectSignedRequest` in the spec. */
+const S3_GATEWAY = 'https://s3.gregale.dev';
 
 /** A directive's sources, or `true` for a valueless directive. */
 type Directives = Record<string, string[] | true>;
@@ -50,7 +54,9 @@ function directives(mode: HeaderMode): Directives {
     'font-src': [SELF],
     // `data:` is the MFA enrolment QR code; `blob:` covers object URLs.
     'img-src': [SELF, 'data:', 'blob:'],
-    'connect-src': dev ? [SELF, 'ws:'] : [SELF],
+    // The S3 gateway receives signed object uploads directly from the browser.
+    // `ws:` is the dev server's HMR socket.
+    'connect-src': [SELF, S3_GATEWAY, ...(dev ? ['ws:'] : [])],
     'worker-src': [SELF, 'blob:'],
     'manifest-src': [SELF],
   };

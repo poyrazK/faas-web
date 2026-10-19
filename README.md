@@ -506,15 +506,17 @@ Config for the common hosts is committed:
 `npm run dev` and `npm run preview` apply it from the module, and `vercel.json`
 carries a literal copy of the production set that `src/hosting-contract.test.ts`
 checks for equality — on a mismatch, regenerate the literal from the module.
-The policy is first-party only: `connect-src 'self'`, `font-src 'self'`,
-`script-src 'self'`, no third-party host in any directive. Fonts are
-self-hosted under `public/fonts/` for that reason (provenance and licenses in
-its README). The one allowance is `style-src 'unsafe-inline'`: the prerendered
-public pages carry React's `style=""` attributes in their markup, and the
-overview search's border-beam package renders a `<style>` element, so a strict
-`style-src` blanks both until build-time hashes exist. A new external origin is
-a policy change, not a tag in `index.html`, and the dev server blocks it until
-the module allows it.
+The policy is first-party with one named exception: `script-src 'self'`,
+`font-src 'self'`, and `connect-src 'self' https://s3.gregale.dev`, because
+object uploads PUT the file straight to a signed URL on the branded S3 gateway
+(`lib/api/object-storage.ts`). Fonts are self-hosted under `public/fonts/` for
+the same reason (provenance and licenses in its README). The one keyword
+allowance is `style-src 'unsafe-inline'`: the prerendered public pages carry
+React's `style=""` attributes in their markup, and the overview search's
+border-beam package renders a `<style>` element, so a strict `style-src` blanks
+both until build-time hashes exist. A new external origin is a policy change,
+not a tag in `index.html`, and the dev server blocks it until the module allows
+it; the policy tests name each allowed host and why.
 
 `npm run build:mock` then `npm run preview:mock` serve a built console with the
 mock API behind it under the production headers; point `npm run tour` at
