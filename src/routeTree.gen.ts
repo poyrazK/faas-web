@@ -64,6 +64,7 @@ import { Route as DashboardUsageRouteImport } from './routes/dashboard.usage'
 import { Route as DashboardWebhooksRouteImport } from './routes/dashboard.webhooks'
 import { Route as DashboardWorkersRouteImport } from './routes/dashboard.workers'
 import { Route as DocsIndexRouteImport } from './routes/docs.index'
+import { Route as DocsSplatRouteImport } from './routes/docs.$'
 import { Route as DocsSlugRouteImport } from './routes/docs.$slug'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as StatusIndexRouteImport } from './routes/status.index'
@@ -353,6 +354,11 @@ const DocsIndexRoute = DocsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => DocsRoute,
 } as any)
+const DocsSplatRoute = DocsSplatRouteImport.update({
+  id: '/$',
+  path: '/$',
+  getParentRoute: () => DocsRoute,
+} as any)
 const DocsSlugRoute = DocsSlugRouteImport.update({
   id: '/$slug',
   path: '/$slug',
@@ -475,6 +481,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/usage': typeof DashboardUsageRoute
   '/dashboard/webhooks': typeof DashboardWebhooksRoute
   '/dashboard/workers': typeof DashboardWorkersRoute
+  '/docs/$': typeof DocsSplatRoute
   '/docs/$slug': typeof DocsSlugRoute
   '/invite/$token': typeof InviteTokenRoute
   '/dashboard/': typeof DashboardIndexRoute
@@ -541,6 +548,7 @@ export interface FileRoutesByTo {
   '/dashboard/usage': typeof DashboardUsageRoute
   '/dashboard/webhooks': typeof DashboardWebhooksRoute
   '/dashboard/workers': typeof DashboardWorkersRoute
+  '/docs/$': typeof DocsSplatRoute
   '/docs/$slug': typeof DocsSlugRoute
   '/invite/$token': typeof InviteTokenRoute
   '/dashboard': typeof DashboardIndexRoute
@@ -612,6 +620,7 @@ export interface FileRoutesById {
   '/dashboard/usage': typeof DashboardUsageRoute
   '/dashboard/webhooks': typeof DashboardWebhooksRoute
   '/dashboard/workers': typeof DashboardWorkersRoute
+  '/docs/$': typeof DocsSplatRoute
   '/docs/$slug': typeof DocsSlugRoute
   '/invite/$token': typeof InviteTokenRoute
   '/dashboard/': typeof DashboardIndexRoute
@@ -684,6 +693,7 @@ export interface FileRouteTypes {
     | '/dashboard/usage'
     | '/dashboard/webhooks'
     | '/dashboard/workers'
+    | '/docs/$'
     | '/docs/$slug'
     | '/invite/$token'
     | '/dashboard/'
@@ -750,6 +760,7 @@ export interface FileRouteTypes {
     | '/dashboard/usage'
     | '/dashboard/webhooks'
     | '/dashboard/workers'
+    | '/docs/$'
     | '/docs/$slug'
     | '/invite/$token'
     | '/dashboard'
@@ -820,6 +831,7 @@ export interface FileRouteTypes {
     | '/dashboard/usage'
     | '/dashboard/webhooks'
     | '/dashboard/workers'
+    | '/docs/$'
     | '/docs/$slug'
     | '/invite/$token'
     | '/dashboard/'
@@ -1236,6 +1248,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DocsIndexRouteImport
       parentRoute: typeof DocsRoute
     }
+    '/docs/$': {
+      id: '/docs/$'
+      path: '/$'
+      fullPath: '/docs/$'
+      preLoaderRoute: typeof DocsSplatRouteImport
+      parentRoute: typeof DocsRoute
+    }
     '/docs/$slug': {
       id: '/docs/$slug'
       path: '/$slug'
@@ -1469,11 +1488,13 @@ const DashboardRouteWithChildren = DashboardRoute._addFileChildren(
 )
 
 interface DocsRouteChildren {
+  DocsSplatRoute: typeof DocsSplatRoute
   DocsSlugRoute: typeof DocsSlugRoute
   DocsIndexRoute: typeof DocsIndexRoute
 }
 
 const DocsRouteChildren: DocsRouteChildren = {
+  DocsSplatRoute: DocsSplatRoute,
   DocsSlugRoute: DocsSlugRoute,
   DocsIndexRoute: DocsIndexRoute,
 }
