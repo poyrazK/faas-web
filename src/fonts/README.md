@@ -3,7 +3,8 @@
 Byte-identical copies of the files the CDNs served on 2026-10-19, so rendering
 does not change. They live here so the Content-Security-Policy can be
 first-party only (`font-src 'self'`); see `src/lib/security-headers.ts`.
-Rules are in `src/fonts.css`.
+Rules are in `src/fonts.css`, with relative URLs so Vite content-hashes the
+files into `/assets/` and the immutable cache rule in `vercel.json` applies.
 
 | File                                                | Family           | Weight             | Subset           | Source                          | License               |
 | --------------------------------------------------- | ---------------- | ------------------ | ---------------- | ------------------------------- | --------------------- |

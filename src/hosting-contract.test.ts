@@ -58,7 +58,9 @@ it('loads fonts from this origin, not a CDN', () => {
   for (const family of ['Familjen Grotesk', 'Spline Sans Mono', 'Satoshi']) {
     expect(fonts).toContain(`font-family: '${family}'`);
   }
-  expect(fonts.match(/url\('\/fonts\/[a-z0-9-]+\.woff2'\)/g)).toHaveLength(8);
+  // Relative, so Vite content-hashes the files into /assets/, where the
+  // immutable cache rule above already applies; see prerender.test.ts.
+  expect(fonts.match(/url\('\.\/fonts\/[a-z0-9-]+\.woff2'\)/g)).toHaveLength(8);
 });
 
 /** Model only the post-filesystem fallbacks: published documents and assets

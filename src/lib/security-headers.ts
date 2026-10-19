@@ -9,8 +9,8 @@
  *
  * Every fetch destination is first-party, with one named exception. The API
  * is rewritten to `apid` same-origin, logs are SSE on the same origin, Vercel
- * Analytics loads and beacons under `/_vercel/insights`, and the fonts live in
- * `public/fonts`. The exception is the branded S3 gateway: object uploads PUT
+ * Analytics loads and beacons under `/_vercel/insights`, and the fonts are built from
+ * `src/fonts` into hashed `/assets`. The exception is the branded S3 gateway: object uploads PUT
  * the file straight to a signed URL there (`lib/api/object-storage.ts`), so
  * `connect-src` names it. Adding a host to any directive is a policy change,
  * not a tag in `index.html`; say why in a comment, as below.

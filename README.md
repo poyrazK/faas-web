@@ -509,8 +509,9 @@ checks for equality — on a mismatch, regenerate the literal from the module.
 The policy is first-party with one named exception: `script-src 'self'`,
 `font-src 'self'`, and `connect-src 'self' https://s3.gregale.dev`, because
 object uploads PUT the file straight to a signed URL on the branded S3 gateway
-(`lib/api/object-storage.ts`). Fonts are self-hosted under `public/fonts/` for
-the same reason (provenance and licenses in its README). The one keyword
+(`lib/api/object-storage.ts`). Fonts are self-hosted from `src/fonts/` for the
+same reason (provenance and licenses in its README); Vite content-hashes them
+into `/assets/`, which the immutable cache rule covers. The one keyword
 allowance is `style-src 'unsafe-inline'`: the prerendered public pages carry
 React's `style=""` attributes in their markup, and the overview search's
 border-beam package renders a `<style>` element, so a strict `style-src` blanks

@@ -114,7 +114,10 @@ Modes:
   the same `unicode-range` subsetting Google serves and `font-display: swap`.
 - `index.html` loses the seven preconnect and stylesheet tags. The comment that names
   the families moves with the `@font-face` rules.
-- `vercel.json` already has the immutable cache rule for `/fonts/*`; it now applies.
+- ~~`vercel.json` already has the immutable cache rule for `/fonts/*`; it now applies.~~
+  **Revised 2026-10-20:** that rule existed only in a stale checkout. The files live in
+  `src/fonts/` and `src/fonts.css` references them relatively, so Vite content-hashes
+  them into `/assets/`, which the existing immutable rule covers.
 - `scripts/og-image.mjs` fetches TTFs from Google Fonts at `npm run og` time, a build
   tool with no browser involved. Unchanged.
 

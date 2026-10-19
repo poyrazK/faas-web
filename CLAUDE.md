@@ -120,6 +120,6 @@ paths are checked against `api/openapi.yaml` by `src/lib/mock-spec-drift.test.ts
   the same policy, so a font, image, script, or fetch from a third-party host
   is blocked locally — that is the point. Do not add an origin to a directive
   to make something load; ask whether it should be first-party instead (the
-  fonts are, under `public/fonts/`). `npm run build:mock && npm run preview:mock`
+  fonts are, under `src/fonts/`, hashed into `/assets/`). `npm run build:mock && npm run preview:mock`
   then `BASE_URL=http://localhost:4173 npm run tour` checks a real build under
   the production headers; the tour fails on CSP violations.
