@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { securityHeaders } from '@/lib/security-headers';
 
 interface Route {
   src?: string;
@@ -32,17 +33,18 @@ describe('public hosting contract', () => {
     const boundary = config.routes.findIndex(
       (route) => route.src === '^/(.*)$' && route.continue === true
     );
-    const headers = config.routes[boundary]?.headers ?? {};
 
     expect(boundary).toBeGreaterThan(apiEnd);
     expect(boundary).toBeLessThan(filesystem);
-    expect(headers['Content-Security-Policy']).toContain("frame-ancestors 'none'");
-    expect(headers['Content-Security-Policy']).toContain("object-src 'none'");
-    expect(headers['X-Content-Type-Options']).toBe('nosniff');
-    expect(headers['X-Frame-Options']).toBe('DENY');
-    expect(headers['Referrer-Policy']).toBe('strict-origin-when-cross-origin');
-    expect(headers['Permissions-Policy']).toContain('camera=()');
-    expect(headers['Access-Control-Allow-Origin']).toBe('https://gregale.dev');
+  });
+
+  it('serves exactly the policy src/lib/security-headers.ts defines', () => {
+    const boundary = config.routes.find(
+      (route) => route.src === '^/(.*)$' && route.continue === true
+    );
+    // On failure: copy `securityHeaders('production')` into vercel.json —
+    // Vercel reads JSON, so the literal is a copy and this test keeps it honest.
+    expect(boundary?.headers).toEqual(securityHeaders('production'));
   });
 });
 
