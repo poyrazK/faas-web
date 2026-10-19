@@ -9,7 +9,7 @@ function renderFeatures() {
 }
 
 describe('feature explorer', () => {
-  it('starts with beta hosting and a matching source-deployment guide', async () => {
+  it('starts with hosting and a matching source-deployment guide', async () => {
     renderFeatures();
     const region = await screen.findByRole('region', {
       name: /explore the pieces of your backend/i,
@@ -24,7 +24,8 @@ describe('feature explorer', () => {
       'true'
     );
     const detail = within(region).getByRole('tabpanel', { name: 'Source deploys' });
-    expect(within(detail).getByText('Public beta')).toBeInTheDocument();
+    // Beta features carry no label: the hero states the beta once for all of them.
+    expect(detail.querySelector('.feature-availability')).toBeNull();
     expect(within(detail).getByRole('link', { name: /read the guide/i })).toHaveAttribute(
       'href',
       '/docs/deploy-from-github'
@@ -50,21 +51,17 @@ describe('feature explorer', () => {
   });
 
   it.each([
-    ['PR previews', 'Public beta', '/docs/preview-environments', /deployed-app limit/],
-    [
-      'Object storage',
-      'Preview',
-      '/docs/object-storage',
-      /availability depends on the storage rollout/,
-    ],
+    ['PR previews', null, '/docs/preview-environments', /deployed-app limit/],
+    ['Object storage', 'Preview', '/docs/object-storage', /signed URLs/],
   ] as const)(
-    'explains %s availability and links to its guide',
+    'explains %s and links to its guide, labelling only what is not in beta',
     async (name, status, href, qualification) => {
       const user = userEvent.setup();
       renderFeatures();
       await user.click(await screen.findByRole('tab', { name }));
       const panel = screen.getByRole('tabpanel', { name });
-      expect(within(panel).getByText(status)).toBeInTheDocument();
+      if (status) expect(within(panel).getByText(status)).toBeInTheDocument();
+      else expect(panel.querySelector('.feature-availability')).toBeNull();
       expect(panel).toHaveTextContent(qualification);
       expect(within(panel).getByRole('link', { name: /read the guide/i })).toHaveAttribute(
         'href',
@@ -81,14 +78,14 @@ describe('feature explorer', () => {
     expect(screen.queryByRole('tab', { name: 'Custom domains' })).not.toBeInTheDocument();
     const services = screen.getByRole('tabpanel', { name: 'Service connections' });
     expect(within(services).getByText('Preview')).toBeInTheDocument();
-    expect(within(services).getByText('Guide coming soon')).toBeInTheDocument();
+    expect(within(services).queryByText(/coming soon/i)).not.toBeInTheDocument();
     expect(
       within(services).queryByRole('link', { name: /read platform docs/i })
     ).not.toBeInTheDocument();
     await user.click(screen.getByRole('tab', { name: 'Release coordination' }));
     const release = screen.getByRole('tabpanel', { name: 'Release coordination' });
     expect(within(release).getByText('In development')).toBeInTheDocument();
-    expect(within(release).getByText('Guide coming soon')).toBeInTheDocument();
+    expect(within(release).queryByText(/coming soon/i)).not.toBeInTheDocument();
     expect(
       within(release).queryByRole('link', { name: /read platform docs/i })
     ).not.toBeInTheDocument();

@@ -37,11 +37,6 @@
   box-shadow: 0 1px 3px rgb(13 21 18 / 0.06);
 }
 
-.feature-category-status {
-  font-size: 11px;
-  color: var(--brand);
-}
-
 .feature-stage {
   position: relative;
   isolation: isolate;
@@ -428,13 +423,6 @@
   text-underline-offset: 4px;
 }
 
-.feature-guide-pending {
-  align-self: start;
-  margin-top: 1.6rem;
-  color: var(--muted-foreground);
-  font-size: 13px;
-}
-
 .feature-explorer button:focus-visible,
 .feature-detail:focus-visible,
 .feature-guide:focus-visible {
@@ -498,9 +486,6 @@
     gap: 4px;
     padding: 0.65rem 0.4rem;
     font-size: 14px;
-  }
-  .feature-category-status {
-    font-size: 10px;
   }
   .feature-stage {
     grid-template-columns: minmax(0, 1fr);
