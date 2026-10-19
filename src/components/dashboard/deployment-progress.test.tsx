@@ -113,6 +113,20 @@ describe('live deployment', () => {
     );
   });
 
+  it('offers Open app only for an http(s) endpoint', () => {
+    api.status = 'live';
+    render(<DeploymentProgress {...props} endpoint="javascript:alert(1)" appSlug="hello-app" />);
+    expect(screen.queryByRole('link', { name: /Open app/ })).not.toBeInTheDocument();
+  });
+
+  it('opens an http(s) endpoint in a new tab', () => {
+    api.status = 'live';
+    render(<DeploymentProgress {...props} appSlug="hello-app" />);
+    const link = screen.getByRole('link', { name: /Open app/ });
+    expect(link).toHaveAttribute('href', 'https://hello.example/');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  });
+
   it('does not offer a request before the deployment is live', () => {
     api.status = 'building';
     render(<DeploymentProgress {...props} appSlug="hello-app" />);
@@ -195,7 +209,11 @@ describe('first deployment progress', () => {
     expect(screen.queryByRole('link', { name: 'Open app' })).not.toBeInTheDocument();
     api.status = 'live';
     rerender(<DeploymentProgress {...props} />);
-    expect(screen.getByRole('link', { name: 'Open app' })).toHaveAttribute('href', props.endpoint);
+    // `publicAppUrl` normalises through `new URL`, hence the trailing slash.
+    expect(screen.getByRole('link', { name: 'Open app' })).toHaveAttribute(
+      'href',
+      `${props.endpoint}/`
+    );
     api.status = 'superseded';
     rerender(<DeploymentProgress {...props} />);
     expect(screen.queryByRole('link', { name: 'Open app' })).not.toBeInTheDocument();
