@@ -9,7 +9,7 @@ The `gregale` command is how you deploy, inspect, and operate apps from a termin
 | | npm | curl installer |
 |---|---|---|
 | Command | `npm install -g gregale@rc` | `curl -fsSL https://get.gregale.dev \| sh` |
-| Needs | Node.js 18 or newer | `curl` or `wget`, `tar`, `sha256sum` |
+| Needs | Node.js 18 or newer | `curl` or `wget`, `tar`, and `sha256sum` or `shasum` |
 | Verifies | npm integrity and provenance | the release checksum file |
 | Pin a version | `npm install -g gregale@0.1.18` | `sh -s -- --version v0.1.18` |
 | Best for | a repository that already has a `package.json` | laptops, servers, Dockerfiles |
@@ -62,10 +62,14 @@ Archives for each platform, the installer script, and a `CLI-SHA256SUMS` file ar
 
 ```bash
 TAG=v0.1.18
-curl -fsSLO "https://github.com/poyrazK/faas/releases/download/$TAG/gregale_${TAG#v}_darwin_arm64.tar.gz"
+ARCHIVE="gregale_${TAG#v}_darwin_arm64.tar.gz"
+curl -fsSLO "https://github.com/poyrazK/faas/releases/download/$TAG/$ARCHIVE"
 curl -fsSLO "https://github.com/poyrazK/faas/releases/download/$TAG/CLI-SHA256SUMS"
-sha256sum --ignore-missing -c CLI-SHA256SUMS
+grep " $ARCHIVE\$" CLI-SHA256SUMS | shasum -a 256 -c -     # macOS
+grep " $ARCHIVE\$" CLI-SHA256SUMS | sha256sum -c -         # Linux
 ```
+
+macOS ships `shasum` rather than GNU `sha256sum`, and `shasum` cannot skip entries for archives you did not download, so the sums file is filtered to the one archive first.
 
 ## Verify and sign in
 
