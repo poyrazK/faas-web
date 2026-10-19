@@ -33,10 +33,12 @@
 ### Task 1: The policy module
 
 **Files:**
+
 - Create: `src/lib/security-headers.ts`
 - Test: `src/lib/security-headers.test.ts`
 
 **Interfaces:**
+
 - Produces: `type HeaderMode = 'production' | 'preview' | 'dev'`, `contentSecurityPolicy(mode: HeaderMode): string`, `securityHeaders(mode: HeaderMode): Record<string, string>`. Tasks 2 and 8 consume both.
 
 - [ ] **Step 1: Write the failing test**
@@ -230,11 +232,13 @@ git commit -m "feat(security): define the browser header policy in one module"
 ### Task 2: Apply the policy in dev, preview and production
 
 **Files:**
+
 - Modify: `vite.config.ts` (imports; `server` block; add `preview` block)
 - Modify: `vercel.json` (the `^/(.*)$` boundary route's `headers`)
 - Modify: `src/hosting-contract.test.ts:30-48` (the "browser security boundary" test)
 
 **Interfaces:**
+
 - Consumes: `securityHeaders` from Task 1.
 
 - [ ] **Step 1: Replace the header assertions with an equality check**
@@ -248,25 +252,25 @@ import { securityHeaders } from '@/lib/security-headers';
 Replace the body of `it('applies the browser security boundary to every route', …)` with:
 
 ```ts
-  it('applies the browser security boundary to every route', () => {
-    const apiEnd = config.routes.findIndex((route) => route.src === '^/logout$');
-    const filesystem = config.routes.findIndex((route) => 'handle' in route);
-    const boundary = config.routes.findIndex(
-      (route) => route.src === '^/(.*)$' && route.continue === true
-    );
+it('applies the browser security boundary to every route', () => {
+  const apiEnd = config.routes.findIndex((route) => route.src === '^/logout$');
+  const filesystem = config.routes.findIndex((route) => 'handle' in route);
+  const boundary = config.routes.findIndex(
+    (route) => route.src === '^/(.*)$' && route.continue === true
+  );
 
-    expect(boundary).toBeGreaterThan(apiEnd);
-    expect(boundary).toBeLessThan(filesystem);
-  });
+  expect(boundary).toBeGreaterThan(apiEnd);
+  expect(boundary).toBeLessThan(filesystem);
+});
 
-  it('serves exactly the policy src/lib/security-headers.ts defines', () => {
-    const boundary = config.routes.find(
-      (route) => route.src === '^/(.*)$' && route.continue === true
-    );
-    // On failure: copy `securityHeaders('production')` into vercel.json —
-    // Vercel reads JSON, so the literal is a copy and this test keeps it honest.
-    expect(boundary?.headers).toEqual(securityHeaders('production'));
-  });
+it('serves exactly the policy src/lib/security-headers.ts defines', () => {
+  const boundary = config.routes.find(
+    (route) => route.src === '^/(.*)$' && route.continue === true
+  );
+  // On failure: copy `securityHeaders('production')` into vercel.json —
+  // Vercel reads JSON, so the literal is a copy and this test keeps it honest.
+  expect(boundary?.headers).toEqual(securityHeaders('production'));
+});
 ```
 
 - [ ] **Step 2: Run it to verify it fails**
@@ -360,6 +364,7 @@ git commit -m "feat(security): enforce the header policy in dev and preview; ver
 ### Task 3: Self-host the fonts
 
 **Files:**
+
 - Create: `public/fonts/*.woff2` (8 files), `public/fonts/README.md`
 - Create: `src/fonts.css`
 - Modify: `src/index.css:1-3`, `src/index.css:173`
@@ -389,6 +394,7 @@ Expected: 8 files, each reported as `Web Open Font Format (Version 2)`. (Satoshi
 
 ```markdown
 <!-- public/fonts/README.md -->
+
 # Self-hosted fonts
 
 Byte-identical copies of the files the CDNs served on 2026-10-19, so rendering
@@ -396,11 +402,11 @@ does not change. They live here so the Content-Security-Policy can be
 first-party only (`font-src 'self'`); see `src/lib/security-headers.ts`.
 Rules are in `src/fonts.css`.
 
-| File | Family | Weight | Subset | Source | License |
-| --- | --- | --- | --- | --- | --- |
-| familjen-grotesk-{latin,latin-ext,vietnamese}.woff2 | Familjen Grotesk | 400–700 (variable) | by unicode-range | Google Fonts v11 | SIL OFL 1.1 |
-| spline-sans-mono-{latin,latin-ext}.woff2 | Spline Sans Mono | 400–700 (variable) | by unicode-range | Google Fonts v13 | SIL OFL 1.1 |
-| satoshi-{400,500,700}.woff2 | Satoshi | 400, 500, 700 | all | Fontshare (Indian Type Foundry) | ITF Free Font License |
+| File                                                | Family           | Weight             | Subset           | Source                          | License               |
+| --------------------------------------------------- | ---------------- | ------------------ | ---------------- | ------------------------------- | --------------------- |
+| familjen-grotesk-{latin,latin-ext,vietnamese}.woff2 | Familjen Grotesk | 400–700 (variable) | by unicode-range | Google Fonts v11                | SIL OFL 1.1           |
+| spline-sans-mono-{latin,latin-ext}.woff2            | Spline Sans Mono | 400–700 (variable) | by unicode-range | Google Fonts v13                | SIL OFL 1.1           |
+| satoshi-{400,500,700}.woff2                         | Satoshi          | 400, 500, 700      | all              | Fontshare (Indian Type Foundry) | ITF Free Font License |
 
 SIL OFL 1.1: https://openfontlicense.org — redistribution permitted with the
 license notice; the fonts are not sold and not renamed.
@@ -427,8 +433,8 @@ free for personal and commercial use including self-hosted web embedding.
   font-display: swap;
   src: url('/fonts/familjen-grotesk-vietnamese.woff2') format('woff2');
   unicode-range:
-    U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0,
-    U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+    U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301,
+    U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
 }
 @font-face {
   font-family: 'Familjen Grotesk';
@@ -437,9 +443,9 @@ free for personal and commercial use including self-hosted web embedding.
   font-display: swap;
   src: url('/fonts/familjen-grotesk-latin-ext.woff2') format('woff2');
   unicode-range:
-    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308,
-    U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4,
-    U+2113, U+2C60-2C7F, U+A720-A7FF;
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F,
+    U+A720-A7FF;
 }
 @font-face {
   font-family: 'Familjen Grotesk';
@@ -448,9 +454,8 @@ free for personal and commercial use including self-hosted web embedding.
   font-display: swap;
   src: url('/fonts/familjen-grotesk-latin.woff2') format('woff2');
   unicode-range:
-    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304,
-    U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215,
-    U+FEFF, U+FFFD;
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
 /* Spline Sans Mono, variable 400–700 */
@@ -461,9 +466,9 @@ free for personal and commercial use including self-hosted web embedding.
   font-display: swap;
   src: url('/fonts/spline-sans-mono-latin-ext.woff2') format('woff2');
   unicode-range:
-    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308,
-    U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4,
-    U+2113, U+2C60-2C7F, U+A720-A7FF;
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F,
+    U+A720-A7FF;
 }
 @font-face {
   font-family: 'Spline Sans Mono';
@@ -472,9 +477,8 @@ free for personal and commercial use including self-hosted web embedding.
   font-display: swap;
   src: url('/fonts/spline-sans-mono-latin.woff2') format('woff2');
   unicode-range:
-    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304,
-    U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215,
-    U+FEFF, U+FFFD;
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
 /* Satoshi, static weights. There is no 600; the console's 600 resolves to 700,
@@ -539,11 +543,13 @@ git commit -m "feat(fonts): self-host Familjen Grotesk, Spline Sans Mono and Sat
 ### Task 4: Route the last two API-supplied links through `publicAppUrl`
 
 **Files:**
+
 - Modify: `src/components/dashboard/deployment-progress.tsx:236-243`
 - Modify: `src/components/dashboard/deployment-insights.tsx:171-182`
 - Test: `src/components/dashboard/deployment-progress.test.tsx`, `src/components/dashboard/deployment-insights.test.tsx`
 
 **Interfaces:**
+
 - Consumes: `publicAppUrl(value: string | null | undefined): string | undefined` from `src/lib/app-url.ts`.
 
 - [ ] **Step 1: Write the failing tests**
@@ -601,22 +607,24 @@ import { publicAppUrl } from '@/lib/app-url';
 Before the `return (` of the component body (after the hooks), add:
 
 ```ts
-  // Only an API-assigned http(s) destination becomes a link; the raw value is
-  // still shown and copyable above so nothing is hidden.
-  const openHref = live ? publicAppUrl(endpoint) : undefined;
+// Only an API-assigned http(s) destination becomes a link; the raw value is
+// still shown and copyable above so nothing is hidden.
+const openHref = live ? publicAppUrl(endpoint) : undefined;
 ```
 
 (`live` is already defined in the component; place this line after it.) Replace the `{live && (` block that wraps the `Open app` button with:
 
 ```tsx
-            {openHref && (
-              <Button asChild variant="cta">
-                <a href={openHref} target="_blank" rel="noopener noreferrer">
-                  Open app
-                  <OpenNewWindow aria-hidden />
-                </a>
-              </Button>
-            )}
+{
+  openHref && (
+    <Button asChild variant="cta">
+      <a href={openHref} target="_blank" rel="noopener noreferrer">
+        Open app
+        <OpenNewWindow aria-hidden />
+      </a>
+    </Button>
+  );
+}
 ```
 
 - [ ] **Step 4: Implement in `deployment-insights.tsx`**
@@ -630,26 +638,26 @@ import { publicAppUrl } from '@/lib/app-url';
 Replace the tail of `DeploymentPreviewUrl` from `const data = preview.data;` with:
 
 ```tsx
-  const data = preview.data;
-  if (!data?.alive || !data.url) {
-    return <Pill label="preview closed" color="var(--status-idle)" />;
-  }
-  const href = publicAppUrl(data.url);
-  const label = data.host ?? data.url;
-  if (!href) {
-    return <span className="font-mono text-xs text-muted-foreground">{label}</span>;
-  }
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="inline-flex items-center gap-1 font-mono text-xs text-brand hover:underline"
-    >
-      {label}
-      <OpenNewWindow aria-hidden className="h-3 w-3" />
-    </a>
-  );
+const data = preview.data;
+if (!data?.alive || !data.url) {
+  return <Pill label="preview closed" color="var(--status-idle)" />;
+}
+const href = publicAppUrl(data.url);
+const label = data.host ?? data.url;
+if (!href) {
+  return <span className="font-mono text-xs text-muted-foreground">{label}</span>;
+}
+return (
+  <a
+    href={href}
+    target="_blank"
+    rel="noopener noreferrer"
+    className="inline-flex items-center gap-1 font-mono text-xs text-brand hover:underline"
+  >
+    {label}
+    <OpenNewWindow aria-hidden className="h-3 w-3" />
+  </a>
+);
 ```
 
 Keep whatever the existing anchor's children were if they differ from `{label}` plus the icon; only the guard and `href` change.
@@ -671,11 +679,13 @@ git commit -m "fix(console): only http(s) app URLs become links on deployment su
 ### Task 5: Tour the built console under the strict policy
 
 **Files:**
+
 - Modify: `mock/plugin.ts` (the `mockApi()` plugin: share the middleware with `configurePreviewServer`)
 - Modify: `package.json` scripts (`build:mock`, `preview:mock`)
 - Modify: `scripts/tour.mjs:85-92` (record CSP violations)
 
 **Interfaces:**
+
 - Produces: `npm run build:mock` (a development-mode bundle in `dist-mock/` with the dev bypass compiled in), `npm run preview:mock` (serves it on port 4173 with the mock API and `securityHeaders('preview')`).
 
 - [ ] **Step 1: Let the mock plugin serve `vite preview`**
@@ -686,7 +696,9 @@ In `mock/plugin.ts`, inside `mockApi()`, move the body of `configureServer(serve
 export function mockApi(): Plugin {
   const install = (server: {
     config: { logger: { info: (msg: string) => void; warn: (msg: string) => void } };
-    middlewares: { use: (fn: (req: IncomingMessage, res: ServerResponse, next: () => void) => void) => void };
+    middlewares: {
+      use: (fn: (req: IncomingMessage, res: ServerResponse, next: () => void) => void) => void;
+    };
   }) => {
     server.config.logger.info(
       `  ➜  mock api: serving /v1/* from mock/ — no backend needed${db.EMPTY ? ' (empty workspace)' : ''}`
@@ -784,6 +796,7 @@ git commit -m "test(tour): tour the built console under the production headers a
 ### Task 6: Dependabot and the audit advisories
 
 **Files:**
+
 - Create: `.github/dependabot.yml`
 - Modify: `package.json`, `package-lock.json` (dev tooling only)
 
@@ -839,6 +852,7 @@ git commit -m "chore(deps): add Dependabot; take the dev-tooling security update
 ### Task 7: Document the boundary
 
 **Files:**
+
 - Modify: `README.md:499` (Deployment section, after "Config for the common hosts is committed:" list)
 - Modify: `CLAUDE.md` (append one gotcha)
 

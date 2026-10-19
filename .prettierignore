@@ -20,3 +20,7 @@ content/docs
 # Vendored component manifests, kept byte-identical to their source.
 dither-kit.json
 components.json
+
+# Local plan workspaces (superpowers); git-ignored by their own .gitignore,
+# which Prettier does not read.
+.superpowers

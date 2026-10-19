@@ -47,22 +47,22 @@ export function contentSecurityPolicy(mode: HeaderMode): string;
 
 Production directives:
 
-| directive | value | why |
-| --- | --- | --- |
-| `default-src` | `'self'` | floor |
-| `base-uri` | `'self'` | unchanged |
-| `object-src` | `'none'` | unchanged |
-| `frame-ancestors` | `'none'` | unchanged (plus `X-Frame-Options: DENY`) |
-| `frame-src` | `'none'` | unchanged |
-| `form-action` | `'self' https://github.com` | GitHub install form posts to `/dashboard/install/connect`, which redirects to GitHub; Chromium applies `form-action` to that redirect |
-| `script-src` | `'self'` | drops the dead sha256 hash; Vercel Analytics loads from `/_vercel/insights`, same origin |
-| `style-src` | `'self'` | Tailwind is compiled; React inline styles go through CSSOM, which CSP does not govern; `motion`'s only `<style>` injection is its unused view-transition helper. **Verified at runtime in step 6; falls back to `'self' 'unsafe-inline'` if the tour shows a violation** |
-| `font-src` | `'self'` | fonts self-hosted (step 3) |
-| `img-src` | `'self' data: blob:` | the only non-self image is the MFA QR `data:` URI; vendored docs embed no images |
-| `connect-src` | `'self'` | the console talks only to its own origin (API rewrites, SSE, analytics beacon) |
-| `worker-src` | `'self' blob:` | unchanged |
-| `manifest-src` | `'self'` | unchanged |
-| `upgrade-insecure-requests` | present | production only |
+| directive                   | value                       | why                                                                                                                                                                                                                                                                      |
+| --------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `default-src`               | `'self'`                    | floor                                                                                                                                                                                                                                                                    |
+| `base-uri`                  | `'self'`                    | unchanged                                                                                                                                                                                                                                                                |
+| `object-src`                | `'none'`                    | unchanged                                                                                                                                                                                                                                                                |
+| `frame-ancestors`           | `'none'`                    | unchanged (plus `X-Frame-Options: DENY`)                                                                                                                                                                                                                                 |
+| `frame-src`                 | `'none'`                    | unchanged                                                                                                                                                                                                                                                                |
+| `form-action`               | `'self' https://github.com` | GitHub install form posts to `/dashboard/install/connect`, which redirects to GitHub; Chromium applies `form-action` to that redirect                                                                                                                                    |
+| `script-src`                | `'self'`                    | drops the dead sha256 hash; Vercel Analytics loads from `/_vercel/insights`, same origin                                                                                                                                                                                 |
+| `style-src`                 | `'self'`                    | Tailwind is compiled; React inline styles go through CSSOM, which CSP does not govern; `motion`'s only `<style>` injection is its unused view-transition helper. **Verified at runtime in step 6; falls back to `'self' 'unsafe-inline'` if the tour shows a violation** |
+| `font-src`                  | `'self'`                    | fonts self-hosted (step 3)                                                                                                                                                                                                                                               |
+| `img-src`                   | `'self' data: blob:`        | the only non-self image is the MFA QR `data:` URI; vendored docs embed no images                                                                                                                                                                                         |
+| `connect-src`               | `'self'`                    | the console talks only to its own origin (API rewrites, SSE, analytics beacon)                                                                                                                                                                                           |
+| `worker-src`                | `'self' blob:`              | unchanged                                                                                                                                                                                                                                                                |
+| `manifest-src`              | `'self'`                    | unchanged                                                                                                                                                                                                                                                                |
+| `upgrade-insecure-requests` | present                     | production only                                                                                                                                                                                                                                                          |
 
 Static headers, unchanged values plus one addition:
 `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
@@ -73,6 +73,7 @@ Static headers, unchanged values plus one addition:
 full-page navigations, never popups, so nothing depends on an opener).
 
 Modes:
+
 - **production**: the table above. This is what `vercel.json` must contain.
 - **preview** (`vite preview`, built output on `http://localhost`): production minus
   `upgrade-insecure-requests`, which would upgrade localhost subresources.
