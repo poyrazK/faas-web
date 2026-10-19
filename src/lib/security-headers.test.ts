@@ -17,15 +17,25 @@ describe('production policy', () => {
   const csp = contentSecurityPolicy('production');
 
   it.each(['default-src', 'script-src', 'style-src', 'connect-src', 'font-src', 'img-src'])(
-    '%s names no third-party host, no unsafe keyword, no hash or nonce',
+    '%s names no third-party host, no hash or nonce',
     (name) => {
       const value = directive(csp, name);
       expect(value).toBeDefined();
       expect(value).not.toMatch(/https?:\/\//);
-      expect(value).not.toMatch(/unsafe-/);
       expect(value).not.toMatch(/sha(256|384|512)-|nonce-/);
     }
   );
+
+  it.each(['default-src', 'script-src', 'connect-src', 'font-src', 'img-src'])(
+    '%s allows no unsafe keyword',
+    (name) => {
+      expect(directive(csp, name)).not.toMatch(/unsafe-/);
+    }
+  );
+
+  it('styles alone keep unsafe-inline, for the prerendered style attributes', () => {
+    expect(directive(csp, 'style-src')).toBe("'self' 'unsafe-inline'");
+  });
 
   it('locks framing, plugins, base and forms', () => {
     expect(directive(csp, 'frame-ancestors')).toBe("'none'");
@@ -52,17 +62,15 @@ describe('modes', () => {
     expect(preview).not.toContain('upgrade-insecure-requests');
   });
 
-  it('dev relaxes only inline script and style plus the HMR socket', () => {
+  it('dev relaxes only inline script plus the HMR socket', () => {
     const dev = directives(contentSecurityPolicy('dev'));
     const preview = directives(contentSecurityPolicy('preview'));
     expect(dev.filter((d) => !preview.includes(d))).toEqual([
       "script-src 'self' 'unsafe-inline'",
-      "style-src 'self' 'unsafe-inline'",
       "connect-src 'self' ws:",
     ]);
     expect(preview.filter((d) => !dev.includes(d))).toEqual([
       "script-src 'self'",
-      "style-src 'self'",
       "connect-src 'self'",
     ]);
   });

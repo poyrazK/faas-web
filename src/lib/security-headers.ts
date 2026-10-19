@@ -17,10 +17,9 @@
  * - `production`: the full policy, including `upgrade-insecure-requests`.
  * - `preview`: production minus `upgrade-insecure-requests`, which would
  *   upgrade `http://localhost` subresources and fail them.
- * - `dev`: preview plus `'unsafe-inline'` on scripts and styles, and `ws:` for
- *   the HMR socket. Vite's dev server injects the React Refresh preamble as an
- *   inline module and serves CSS by injecting `<style>` elements; nothing else
- *   is relaxed.
+ * - `dev`: preview plus `'unsafe-inline'` on scripts and `ws:` for the HMR
+ *   socket. Vite's dev server injects the React Refresh preamble as an inline
+ *   module; nothing else is relaxed.
  */
 export type HeaderMode = 'production' | 'preview' | 'dev';
 
@@ -42,7 +41,12 @@ function directives(mode: HeaderMode): Directives {
     // redirects to github.com; Chromium applies form-action to that redirect.
     'form-action': [SELF, 'https://github.com'],
     'script-src': dev ? [SELF, "'unsafe-inline'"] : [SELF],
-    'style-src': dev ? [SELF, "'unsafe-inline'"] : [SELF],
+    // Styles keep 'unsafe-inline' for now: the prerendered public pages carry
+    // React's `style=""` attributes in their markup, and the overview's
+    // border-beam package renders a `<style>` element. Both would need
+    // build-time hashes to remove. Scripts are strict, which is where the
+    // injection risk lives.
+    'style-src': [SELF, "'unsafe-inline'"],
     'font-src': [SELF],
     // `data:` is the MFA enrolment QR code; `blob:` covers object URLs.
     'img-src': [SELF, 'data:', 'blob:'],
