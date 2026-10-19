@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { InstallCommand } from './install-command';
+import { INSTALL_COMMAND } from '@/lib/platform-claims';
 
 const writeText = vi.fn<(text: string) => Promise<void>>();
 const clipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
@@ -24,7 +25,7 @@ describe.each(['inline', 'standalone'] as const)('%s install copy', (variant) =>
   function mount() {
     const view = render(<InstallCommand variant={variant} />);
     const button = screen.getByRole('button', {
-      name: 'Copy install command: npm install -g gregale',
+      name: `Copy install command: ${INSTALL_COMMAND}`,
     });
     return { ...view, button };
   }
@@ -37,7 +38,7 @@ describe.each(['inline', 'standalone'] as const)('%s install copy', (variant) =>
     expect(button).toHaveAttribute('aria-busy', 'true');
     expect(screen.queryByText('Copied', { exact: true })).not.toBeInTheDocument();
     await act(async () => complete());
-    expect(writeText).toHaveBeenCalledWith('npm install -g gregale');
+    expect(writeText).toHaveBeenCalledWith(INSTALL_COMMAND);
     expect(screen.getByText('Copied', { exact: true })).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('Copied to clipboard');
     expect(button).toHaveAttribute('aria-busy', 'false');
@@ -49,7 +50,7 @@ describe.each(['inline', 'standalone'] as const)('%s install copy', (variant) =>
     expect(screen.getByRole('status')).toHaveTextContent('Copied to clipboard');
     await act(async () => vi.advanceTimersByTimeAsync(2600));
     expect(screen.getByRole('status')).toBeEmptyDOMElement();
-    expect(screen.getByText('npm install -g gregale')).toBeInTheDocument();
+    expect(screen.getByText(INSTALL_COMMAND)).toBeInTheDocument();
   });
 
   it('reports clipboard rejection without showing a success confirmation', async () => {
@@ -58,7 +59,7 @@ describe.each(['inline', 'standalone'] as const)('%s install copy', (variant) =>
     await act(async () => fireEvent.click(button));
     expect(screen.getByRole('status')).toHaveTextContent(/couldn’t copy/i);
     expect(screen.queryByText('Copied', { exact: true })).not.toBeInTheDocument();
-    expect(screen.getByText('npm install -g gregale')).toBeInTheDocument();
+    expect(screen.getByText(INSTALL_COMMAND)).toBeInTheDocument();
     writeText.mockResolvedValue(undefined);
     await act(async () => fireEvent.click(button));
     expect(screen.getByRole('status')).toHaveTextContent('Copied to clipboard');

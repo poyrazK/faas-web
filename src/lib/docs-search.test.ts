@@ -22,7 +22,8 @@ describe('documentation search', () => {
     expect(searchDocs('qzzzx-unfindable-document')).toEqual([]);
   });
   it('starts with a locally maintained guide that upstream pulls must preserve', () => {
-    expect(DOC_ENTRIES[0].slug).toBe('getting-started');
+    expect(DOC_ENTRIES[0].local).toBe(true);
+    expect(findDoc('install')?.local).toBe(true);
     expect(findDoc('getting-started')?.local).toBe(true);
     expect(findDoc('cli')?.local).toBeUndefined();
   });
