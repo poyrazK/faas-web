@@ -48,6 +48,19 @@ describe('public hosting contract', () => {
   });
 });
 
+it('loads fonts from this origin, not a CDN', () => {
+  // The policy is `font-src 'self'` and `style-src 'self'`; a CDN tag in the
+  // document would be blocked, and a CDN rule in the stylesheet likewise.
+  const thirdParty = /fonts\.googleapis\.com|fonts\.gstatic\.com|fontshare\.com/;
+  expect(readFileSync('index.html', 'utf8')).not.toMatch(thirdParty);
+  const fonts = readFileSync('src/fonts.css', 'utf8');
+  expect(fonts).not.toMatch(thirdParty);
+  for (const family of ['Familjen Grotesk', 'Spline Sans Mono', 'Satoshi']) {
+    expect(fonts).toContain(`font-family: '${family}'`);
+  }
+  expect(fonts.match(/url\('\/fonts\/[a-z0-9-]+\.woff2'\)/g)).toHaveLength(8);
+});
+
 /** Model only the post-filesystem fallbacks: published documents and assets
  * have already resolved; missing routes must never receive the landing shell. */
 function fallbackFor(path: string) {
