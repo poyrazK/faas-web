@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createHash, randomBytes } from 'node:crypto';
-import type { Plugin } from 'vite';
+import type { Connect, Logger, Plugin } from 'vite';
 import type { components } from '../src/lib/api/schema';
 import * as db from './data';
 import * as automationMock from './automations';
@@ -6831,68 +6831,73 @@ const MOCKED_PREFIXES = [
   '/dashboard/install/connect',
 ];
 
+/** What the installer needs from either Vite server; dev and preview both have it. */
+type MockHost = { config: { logger: Logger }; middlewares: Connect.Server };
+
 export function mockApi(): Plugin {
+  const install = (server: MockHost) => {
+    server.config.logger.info(
+      `  ➜  mock api: serving /v1/* from mock/ — no backend needed${db.EMPTY ? ' (empty workspace)' : ''}`
+    );
+    server.middlewares.use((req, res, next) => {
+      const url = new URL(req.url ?? '/', 'http://localhost');
+      const method = req.method ?? 'GET';
+      // GET /login and /signup are this app's own pages; only the POSTs are the API's.
+      const isApi =
+        url.pathname.startsWith('/v1/') ||
+        url.pathname === '/status/slo.json' ||
+        (method !== 'GET' &&
+          MOCKED_PREFIXES.some((p) => url.pathname === p || url.pathname.startsWith(p + '/')));
+      if (!isApi) return next();
+
+      const match = routes.find((r) => r.method === method && r.pattern.test(url.pathname));
+      if (!match) {
+        server.config.logger.warn(`  mock api: no handler for ${method} ${url.pathname}`);
+        return problem(
+          res,
+          new Problem(
+            404,
+            'not_mocked',
+            `The mock API has no handler for ${method} ${url.pathname}.`
+          )
+        );
+      }
+
+      const values = url.pathname.match(match.pattern)!.slice(1).map(decodeURIComponent);
+      const params = Object.fromEntries(match.keys.map((k, i) => [k, values[i]]));
+
+      void (async () => {
+        const body = method === 'GET' ? {} : await readBody(req);
+        await new Promise((r) => setTimeout(r, latency()));
+        // Deployments created here move along their lifecycle as time passes.
+        advanceDeployments(Date.now());
+        try {
+          const out = await match.handler({ params, query: url.searchParams, body, req, res });
+          if (res.writableEnded || res.headersSent) return; // streaming handlers own the response
+          if (out === NO_CONTENT) {
+            res.statusCode = 204;
+            res.end();
+            return;
+          }
+          if (out && typeof out === 'object' && '__status' in out) {
+            const s = out as { __status: number; body: unknown };
+            return json(res, s.__status, s.body);
+          }
+          json(res, 200, out);
+        } catch (err) {
+          if (err instanceof Problem) return problem(res, err);
+          server.config.logger.error(`  mock api: ${method} ${url.pathname} threw: ${String(err)}`);
+          problem(res, new Problem(500, 'mock_error', String(err)));
+        }
+      })();
+    });
+  };
   return {
     name: 'gregale-mock-api',
     apply: 'serve',
-    configureServer(server) {
-      server.config.logger.info(
-        `  ➜  mock api: serving /v1/* from mock/ — no backend needed${db.EMPTY ? ' (empty workspace)' : ''}`
-      );
-      server.middlewares.use((req, res, next) => {
-        const url = new URL(req.url ?? '/', 'http://localhost');
-        const method = req.method ?? 'GET';
-        // GET /login and /signup are this app's own pages; only the POSTs are the API's.
-        const isApi =
-          url.pathname.startsWith('/v1/') ||
-          url.pathname === '/status/slo.json' ||
-          (method !== 'GET' &&
-            MOCKED_PREFIXES.some((p) => url.pathname === p || url.pathname.startsWith(p + '/')));
-        if (!isApi) return next();
-
-        const match = routes.find((r) => r.method === method && r.pattern.test(url.pathname));
-        if (!match) {
-          server.config.logger.warn(`  mock api: no handler for ${method} ${url.pathname}`);
-          return problem(
-            res,
-            new Problem(
-              404,
-              'not_mocked',
-              `The mock API has no handler for ${method} ${url.pathname}.`
-            )
-          );
-        }
-
-        const values = url.pathname.match(match.pattern)!.slice(1).map(decodeURIComponent);
-        const params = Object.fromEntries(match.keys.map((k, i) => [k, values[i]]));
-
-        void (async () => {
-          const body = method === 'GET' ? {} : await readBody(req);
-          await new Promise((r) => setTimeout(r, latency()));
-          // Deployments created here move along their lifecycle as time passes.
-          advanceDeployments(Date.now());
-          try {
-            const out = await match.handler({ params, query: url.searchParams, body, req, res });
-            if (res.writableEnded || res.headersSent) return; // streaming handlers own the response
-            if (out === NO_CONTENT) {
-              res.statusCode = 204;
-              res.end();
-              return;
-            }
-            if (out && typeof out === 'object' && '__status' in out) {
-              const s = out as { __status: number; body: unknown };
-              return json(res, s.__status, s.body);
-            }
-            json(res, 200, out);
-          } catch (err) {
-            if (err instanceof Problem) return problem(res, err);
-            server.config.logger.error(
-              `  mock api: ${method} ${url.pathname} threw: ${String(err)}`
-            );
-            problem(res, new Problem(500, 'mock_error', String(err)));
-          }
-        })();
-      });
-    },
+    configureServer: install,
+    // `vite preview` serves the built bundle; with the mock installed here too,
+    // `npm run preview:mock` tours a real build under the production headers.
+    configurePreviewServer: install,
   };
 }

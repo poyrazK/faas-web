@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite --port 3000",
     "dev:mock": "MOCK_API=1 vite --port 3000",
+    "build:mock": "MOCK_API=1 vite build --mode development --outDir dist-mock",
+    "preview:mock": "MOCK_API=1 vite preview --outDir dist-mock --port 4173",
     "tour": "node scripts/tour.mjs",
     "build": "tsc && vite build && npm run prerender",
     "preview": "vite preview",
