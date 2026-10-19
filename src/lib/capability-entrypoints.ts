@@ -31,7 +31,7 @@ const TARGETS: Record<string, Entrypoint> = {
     label: 'Create an OCI worker',
   },
   'disposable-runs': {
-    instruction: 'Use the CLI or API for isolated runs. See the disposable executions guide.',
+    instruction: 'Use the CLI or API for isolated runs (`gregale run --help`).',
   },
   'pr-previews': { href: '/dashboard/releases', label: 'Open releases' },
   issues: { href: '/dashboard/apps', label: 'Choose an app, then open Issues' },

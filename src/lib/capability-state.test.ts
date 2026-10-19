@@ -49,8 +49,11 @@ describe('capability availability', () => {
 });
 describe('verified capability destinations', () => {
   it('accepts only published docs on approved origins', () => {
-    expect(safeCapabilityDocs('/docs/object-storage#limits')).toBe('/docs/object-storage#limits');
-    expect(safeCapabilityDocs('https://gregale.dev/docs/executions')).toBe('/docs/executions');
+    expect(safeCapabilityDocs('/docs/custom-domains#verify')).toBe('/docs/custom-domains#verify');
+    expect(safeCapabilityDocs('https://gregale.dev/docs/security')).toBe('/docs/security');
+    // Registry pages held back from the site (docs-catalog.ts UNPUBLISHED_DOCS).
+    expect(safeCapabilityDocs('/docs/object-storage#limits')).toBeUndefined();
+    expect(safeCapabilityDocs('https://gregale.dev/docs/executions')).toBeUndefined();
     for (const url of [
       'javascript:alert(1)',
       '//evil.test/docs/executions',

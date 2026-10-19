@@ -35,9 +35,9 @@ it('loads isolated-run discovery only on request and explains runtime denial wit
   fireEvent.click(screen.getByRole('button', { name: 'Container images and isolated runs' }));
   await screen.findByText(/Unavailable on this installation/);
   expect(screen.queryByRole('link', { name: 'View plans' })).not.toBeInTheDocument();
-  expect(screen.getByRole('link', { name: 'Documentation' })).toHaveAttribute(
-    'href',
-    '/docs/executions'
-  );
+  // `/docs/executions` is held back from the site (docs-catalog.ts
+  // UNPUBLISHED_DOCS), so the registry's docs_url yields no link rather than
+  // a 404.
+  expect(screen.queryByRole('link', { name: 'Documentation' })).not.toBeInTheDocument();
   get.mockRestore();
 });

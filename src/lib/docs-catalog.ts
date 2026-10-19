@@ -68,6 +68,8 @@ export const UNPUBLISHED_DOCS: Record<string, string> = {
   datadog: 'feature is an internal preview',
   'durable-entity-development': 'feature gates are off in production',
   errors: 'upstream page gives operator remedies for several codes',
+  executions:
+    'published until 2026-10-20; upstream page carries apid/schedd flags, scheduler metrics and operator image publication steps',
   'event-driven': 'operator rollout notes from line 687 on; the first part is clean',
   'exclusive-operations': 'upstream page carries an open release gate and implementation notes',
   functions: 'upstream page links ops acceptance docs; the rest is customer content',
@@ -76,6 +78,8 @@ export const UNPUBLISHED_DOCS: Record<string, string> = {
   'managed-postgres': 'operator preview; no contiguous customer section',
   mcp: 'operator thresholds and runbook links throughout; also too long for one page',
   networking: 'first 160 lines describe internal network design',
+  'object-storage':
+    'published until 2026-10-20; upstream page opens with the install procedure (Ansible, systemd, /etc/faas, loopback listeners) and carries migration order throughout',
   operations: 'feature is internal and not launched',
   postgres: 'alias of managed-postgres',
   profiling: 'feature is internal',

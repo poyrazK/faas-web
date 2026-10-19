@@ -52,7 +52,6 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
     links: [
       { label: 'Node 24', href: '/docs/runtime-node', doc: 'runtime-node' },
       { label: 'Python 3.13', href: '/docs/runtime-python', doc: 'runtime-python' },
-      { label: 'Go 1.24', href: '/docs/runtime-go', doc: 'runtime-go' },
       { label: 'Trace propagation', href: '/docs/trace-propagation', doc: 'trace-propagation' },
     ],
   },
