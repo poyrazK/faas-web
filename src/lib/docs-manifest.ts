@@ -71,8 +71,9 @@ export const DOC_SECTIONS: DocSection[] = [
       {
         slug: 'cli',
         source: 'docs/cli-setup.md',
-        title: 'CLI completion & man pages',
-        summary: 'Set up shell completion and offline command reference.',
+        title: 'CLI guide',
+        summary:
+          'Interactive flows, saved log views, Job and workflow recovery, required secrets, and shell completion for the gregale CLI.',
       },
     ],
   },
