@@ -115,8 +115,8 @@ function JobRunDialog({
   const [tasks, setTasks] = useState('1');
   const [attempted, setAttempted] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
-  // One key per intent: a retry of the same task count replays the first run
-  // rather than creating and billing another.
+  // One key per intent: a retry of the same task count after an unknown outcome
+  // replays the first run rather than creating and billing another.
   const attempt = useRef<{ tasks: number; key: string } | null>(null);
 
   const count = Number(tasks);
@@ -155,6 +155,10 @@ function JobRunDialog({
       });
       onStarted(run.id);
     } catch (err) {
+      // apid stores almost every answer under the key for 24 h, refusals
+      // included, so reusing it after an ApiError would replay that refusal.
+      // Keep it only when the outcome is unknown (network failure).
+      if (err instanceof ApiError) attempt.current = null;
       setFailure(errorMessage(err));
     }
   };

@@ -346,8 +346,9 @@ function Bindings({ database }: { database: PostgresDatabase }) {
   const create = useCreatePostgresBinding(database.id);
   const remove = useDeletePostgresBinding(database.id);
   const rotate = useRotatePostgresBinding(database.id);
-  // One key per intent: a retry against the same credential generation replays
-  // the first answer instead of asking for a second replacement.
+  // One key per intent: a retry after an unknown outcome (the request may have
+  // landed) replays the first answer instead of asking for a second replacement.
+  // After an ApiError the answer is known, so the key is dropped.
   const rotation = useRef(new Map<string, { generation: number; key: string }>());
   const [appId, setAppId] = useState('');
   const [environmentKey, setEnvironmentKey] = useState('DATABASE_URL');
@@ -427,6 +428,10 @@ function Bindings({ database }: { database: PostgresDatabase }) {
             }
       );
     } catch (err) {
+      // apid stores almost every answer under the key for 24 h, refusals
+      // included, so a retry that reused it would replay the refusal even once
+      // the binding is ready. Keep the key only when the outcome is unknown.
+      if (err instanceof ApiError) rotation.current.delete(binding.id);
       toast(explainPostgres(err));
     }
   };

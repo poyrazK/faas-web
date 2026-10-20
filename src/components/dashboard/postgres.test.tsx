@@ -276,8 +276,31 @@ describe('PostgresDatabases', () => {
       );
     });
 
-    it('reuses the idempotency key for a retry of the same generation', async () => {
-      rotateBinding.mockRejectedValueOnce(new Error('network'));
+    it('mints a new idempotency key after the API refused, because apid replays a stored refusal', async () => {
+      rotateBinding
+        .mockRejectedValueOnce(
+          new ApiError({
+            status: 409,
+            code: 'managed_postgres_conflict',
+            title: 't',
+            detail: 'binding is not ready',
+          })
+        )
+        .mockResolvedValue(binding({ credential_generation: 3, rotation_pending: true }));
+      const button = await openBindings();
+      await userEvent.click(button);
+      await waitFor(() => expect(toast).toHaveBeenCalledTimes(1));
+      await userEvent.click(button);
+      await waitFor(() => expect(rotateBinding).toHaveBeenCalledTimes(2));
+      const [first, second] = rotateBinding.mock.calls.map(
+        (c) => (c[0] as { idempotencyKey: string }).idempotencyKey
+      );
+      expect(second).toEqual(expect.any(String));
+      expect(second).not.toBe(first);
+    });
+
+    it('reuses the idempotency key when the outcome is unknown (network failure)', async () => {
+      rotateBinding.mockRejectedValueOnce(new TypeError('Failed to fetch'));
       const button = await openBindings();
       await userEvent.click(button);
       await waitFor(() => expect(toast).toHaveBeenCalledTimes(1));

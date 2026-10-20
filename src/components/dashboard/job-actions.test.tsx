@@ -115,34 +115,58 @@ describe('JobActions start run', () => {
     expect(screen.getByRole('dialog', { name: /start a run/i })).toBeInTheDocument();
   });
 
-  it('replays the same idempotency key when retrying a count, and mints a new one when the count changes', async () => {
-    startRun
-      .mockRejectedValueOnce(new ApiError({ status: 503, code: 'unavailable', title: 'Try later' }))
-      .mockRejectedValueOnce(new ApiError({ status: 503, code: 'unavailable', title: 'Try later' }))
-      .mockResolvedValue(queued);
-    const { user } = setup();
-    await user.click(screen.getByRole('button', { name: 'Start run' }));
-    const tasks = await screen.findByLabelText('Number of tasks');
-    const submit = () => user.click(screen.getByRole('button', { name: 'Continue' }));
-    const sent = () =>
-      startRun.mock.calls.map(([vars]) => vars as { tasks: number; idempotencyKey: string });
+  describe('idempotency key', () => {
+    // `retry` is how the second attempt ends; a success closes the dialog, so a
+    // test that goes on to edit the count has the retry fail too.
+    const attemptTwice = async (first: unknown, retry: unknown = queued) => {
+      startRun.mockReset().mockRejectedValueOnce(first);
+      if (retry === queued) startRun.mockResolvedValue(queued);
+      else startRun.mockRejectedValueOnce(retry).mockResolvedValue(queued);
+      const { user } = setup();
+      await user.click(screen.getByRole('button', { name: 'Start run' }));
+      const tasks = await screen.findByLabelText('Number of tasks');
+      const submit = () => user.click(screen.getByRole('button', { name: 'Continue' }));
+      const sent = () =>
+        startRun.mock.calls.map(([vars]) => vars as { tasks: number; idempotencyKey: string });
+      await submit();
+      await screen.findByRole('alert');
+      await submit();
+      await waitFor(() => expect(startRun).toHaveBeenCalledTimes(2));
+      return { user, tasks, submit, sent };
+    };
 
-    await submit();
-    await screen.findByRole('alert');
-    await submit();
-    await waitFor(() => expect(startRun).toHaveBeenCalledTimes(2));
-    const [first, retry] = sent();
-    expect(first?.tasks).toBe(1);
-    expect(retry?.idempotencyKey).toBe(first?.idempotencyKey);
+    it('is reused when the outcome is unknown (network failure), so a retry cannot bill twice', async () => {
+      const { sent } = await attemptTwice(new TypeError('Failed to fetch'));
+      const [first, retry] = sent();
+      expect(first?.tasks).toBe(1);
+      expect(retry?.idempotencyKey).toBe(first?.idempotencyKey);
+    });
 
-    await user.clear(tasks);
-    await user.type(tasks, '5');
-    await submit();
-    await waitFor(() => expect(startRun).toHaveBeenCalledTimes(3));
-    const changed = sent()[2];
-    expect(changed?.tasks).toBe(5);
-    expect(changed?.idempotencyKey).toEqual(expect.any(String));
-    expect(changed?.idempotencyKey).not.toBe(first?.idempotencyKey);
+    it.each([409, 500])(
+      'is replaced after the API answered %s, because apid replays a stored refusal for 24 hours',
+      async (status) => {
+        const { sent } = await attemptTwice(
+          new ApiError({ status, code: 'job_has_live_instances', title: 'Refused' })
+        );
+        const [first, retry] = sent();
+        expect(retry?.idempotencyKey).toEqual(expect.any(String));
+        expect(retry?.idempotencyKey).not.toBe(first?.idempotencyKey);
+      }
+    );
+
+    it('is replaced when the count changes', async () => {
+      const { user, tasks, submit, sent } = await attemptTwice(
+        new TypeError('Failed to fetch'),
+        new TypeError('Failed to fetch')
+      );
+      await user.clear(tasks);
+      await user.type(tasks, '5');
+      await submit();
+      await waitFor(() => expect(startRun).toHaveBeenCalledTimes(3));
+      const [first, , changed] = sent();
+      expect(changed?.tasks).toBe(5);
+      expect(changed?.idempotencyKey).not.toBe(first?.idempotencyKey);
+    });
   });
 
   it('is unavailable for a paused workload, and says why', () => {
