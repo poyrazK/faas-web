@@ -16,7 +16,7 @@ import { cn } from '@/lib/utils';
 
 /** Mirrors the API's `^[A-Z][A-Z0-9_]*$` CHECK on secret names. */
 const KEY_RULE = /^[A-Z][A-Z0-9_]*$/;
-import { formatRelative } from '@/lib/mock-data';
+import { Timestamp } from '@/components/ui/timestamp';
 import { consoleHead } from '@/lib/seo';
 
 export const Route = createFileRoute('/dashboard/secrets')({
@@ -39,12 +39,6 @@ interface SecretRow {
   key: string;
   updatedAt: string;
   kid: string;
-}
-
-function formatWhen(value: string | undefined): string {
-  if (!value) return '—';
-  const ms = Date.parse(value);
-  return Number.isNaN(ms) ? '—' : formatRelative(ms);
 }
 
 /**
@@ -100,9 +94,7 @@ export function SecretsBody({ slug }: { slug: string }) {
       key: 'updatedAt',
       label: 'Updated',
       numeric: true,
-      render: (s) => (
-        <span className="text-xs text-muted-foreground">{formatWhen(s.updatedAt)}</span>
-      ),
+      render: (s) => <Timestamp value={s.updatedAt} className="text-xs text-muted-foreground" />,
     },
     {
       key: 'id',

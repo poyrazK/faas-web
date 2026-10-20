@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { InlinePhase, PageHeader, queryPhase } from '@/components/dashboard/primitives';
 import { ResourceTable, type Column } from '@/components/dashboard/resource-table';
-import { formatRelative } from '@/lib/mock-data';
+import { Timestamp } from '@/components/ui/timestamp';
 import {
   useApps,
   useBuildRecords,
@@ -203,7 +203,7 @@ export function DeploymentsPage() {
       priority: 'secondary',
       numeric: true,
       width: 'md:w-[14%]',
-      render: (r) => formatRelative(Date.parse(r.createdAt)),
+      render: (r) => <Timestamp value={r.createdAt} />,
     },
   ];
   const selected = deployments.find((deployment) => deployment.id === search.deployment);

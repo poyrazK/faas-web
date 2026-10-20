@@ -322,6 +322,14 @@ describe('Releases hub', () => {
     expect(screen.getByRole('columnheader', { name: 'Process' })).not.toHaveClass('hidden');
   });
 
+  it('shows when a release was created, with the exact time on hover', async () => {
+    await mount();
+    const when = (await screen.findAllByRole('time'))[0];
+    expect(when).toHaveAttribute('dateTime', '2026-09-11T00:00:00.000Z');
+    expect(when).toHaveAttribute('title', expect.stringContaining('2026'));
+    expect(when).toHaveTextContent(/ago$/);
+  });
+
   it('shows each release as a process with its current phase', async () => {
     await mount();
     const processes = await screen.findAllByRole('list', { name: 'Release process' });

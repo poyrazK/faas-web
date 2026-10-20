@@ -13,6 +13,7 @@ import {
   useReplayInvocation,
 } from '@/lib/api/queries';
 import { Modal } from '@/components/ui/modal';
+import { Timestamp } from '@/components/ui/timestamp';
 import { slugIndex } from '@/lib/api/adapters';
 import { errorMessage } from '@/lib/api/errors';
 import { formatRelative } from '@/lib/mock-data';
@@ -55,12 +56,6 @@ const STATE_COLOR: Record<string, string> = {
   dead_letter: 'var(--status-critical)',
   cancelled: 'var(--chart-muted)',
 };
-
-function formatWhen(value: string | undefined): string {
-  if (!value) return '—';
-  const ms = Date.parse(value);
-  return Number.isNaN(ms) ? '—' : formatRelative(ms);
-}
 
 function Json({ value }: { value: unknown }) {
   return (
@@ -175,9 +170,7 @@ function InvocationsPage() {
       key: 'createdAt',
       label: 'When',
       numeric: true,
-      render: (i) => (
-        <span className="text-xs text-muted-foreground">{formatWhen(i.createdAt)}</span>
-      ),
+      render: (i) => <Timestamp value={i.createdAt} className="text-xs text-muted-foreground" />,
     },
     {
       key: 'app',

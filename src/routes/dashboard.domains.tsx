@@ -7,6 +7,7 @@ import { Modal } from '@/components/ui/modal';
 import { InlinePhase, PageHeader, Panel, queryPhase } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { useToast } from '@/components/ui/toast';
+import { Timestamp } from '@/components/ui/timestamp';
 import { useConfirm } from '@/components/ui/confirm';
 import {
   useAddDomain,
@@ -57,12 +58,6 @@ interface DomainRow {
   verified: boolean;
   verifiedAt: string | null;
   txtRecord: string | null;
-}
-
-function formatDate(value: string | null | undefined): string {
-  if (!value) return '—';
-  const ms = Date.parse(value);
-  return Number.isNaN(ms) ? '—' : new Date(ms).toLocaleDateString();
 }
 
 function DomainsPage() {
@@ -150,7 +145,7 @@ function DomainsPage() {
       label: 'Verified',
       priority: 'secondary',
       numeric: true,
-      render: (d) => formatDate(d.verifiedAt),
+      render: (d) => <Timestamp value={d.verifiedAt} />,
     },
     {
       key: 'id',

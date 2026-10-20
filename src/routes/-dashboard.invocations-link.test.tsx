@@ -97,6 +97,13 @@ async function mount(entry: string) {
 }
 
 describe('invocation detail links', () => {
+  it('shows when each invocation was created, with the exact time on hover', async () => {
+    await mount('/dashboard/invocations');
+    const when = await screen.findByRole('time');
+    expect(when).toHaveAttribute('dateTime', '2026-09-01T00:00:00.000Z');
+    expect(when).toHaveAttribute('title', expect.stringContaining('2026'));
+    expect(when).toHaveTextContent(/ago$/);
+  });
   it('opens an ID directly even when it is not in the loaded list', async () => {
     await mount(`/dashboard/invocations?invocation=${olderId}`);
     expect(await screen.findByRole('dialog', { name: 'POST /work' })).toHaveTextContent(olderId);
