@@ -28,10 +28,8 @@ describe('docs manifest', () => {
     const expected = {
       'api-hosting-openapi': '# OpenAPI hosting',
       faas_openapi_spec: '# OpenAPI spec + CI gate',
-      'object-storage': '# Customer object storage preview',
       'custom-domains': '# Domains',
       'deploy-from-github': '# Deploys',
-      executions: '# Disposable isolated runs',
       security: '# Security',
     };
 
@@ -39,6 +37,16 @@ describe('docs manifest', () => {
       expect(findDoc(slug), slug).toBeDefined();
       expect(docSource(slug), slug).toContain(heading);
     }
+  });
+
+  it('holds the capability pages whose upstream text is half operator procedure', () => {
+    // The capability registry still sends `docs_url` for these; the dashboard
+    // drops the link (`safeCapabilityDocs`) rather than 404 on it.
+    for (const slug of ['object-storage', 'executions']) {
+      expect(findDoc(slug), slug).toBeUndefined();
+      expect(UNPUBLISHED_DOCS[slug], slug).toMatch(/published until 2026-10-20/);
+    }
+    expect(findDoc('runtime-go')).toBeUndefined();
   });
 
   it('uses unique slugs', () => {

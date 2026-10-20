@@ -107,23 +107,17 @@ export const DOC_SECTIONS: DocSection[] = [
         summary:
           'What the platform stores per app: VM snapshots, image layers, and what you pay for.',
       },
-      {
-        slug: 'object-storage',
-        source: 'docs/object-storage.md',
-        title: 'Object storage',
-        summary: 'Preview: managed object buckets, credentials, and storage rollout limits.',
-      },
+      // `docs/object-storage.md` (slug `object-storage`) and `docs/executions.md`
+      // (slug `executions`) were published here until 2026-10-20. Both carry an
+      // operator half — install procedure, Ansible/systemd paths, loopback
+      // listeners, migration order, daemon flags — that upstream has not split
+      // out yet (poyrazK/faas#5023). They are listed in `UNPUBLISHED_DOCS`
+      // with the reason, and come back as manifest entries once cut.
       {
         slug: 'custom-domains',
         source: 'docs/domains.md',
         title: 'Custom domains',
         summary: 'Attach, verify, and diagnose your own domain on a deployed app.',
-      },
-      {
-        slug: 'executions',
-        source: 'docs/executions.md',
-        title: 'Disposable executions',
-        summary: 'Run bounded Node.js or Python work in a fresh isolated microVM.',
       },
       {
         slug: 'preview-environments',
@@ -235,12 +229,11 @@ export const DOC_SECTIONS: DocSection[] = [
         title: 'Python 3.13',
         summary: 'The Python runtime: entrypoint, dependency install, and image contents.',
       },
-      {
-        slug: 'runtime-go',
-        source: 'docs/runtimes/go124.md',
-        title: 'Go 1.24',
-        summary: 'The Go runtime, including the Alpine variant and static build behaviour.',
-      },
+      // `docs/runtimes/go124.md` (slug `runtime-go`) is held back since
+      // 2026-10-20: its troubleshooting table tells the reader to apply
+      // migration 00043 and revert a field in `pkg/imaged/handler.go`
+      // (poyrazK/faas#5023). Not a catalog path, so it has no
+      // `UNPUBLISHED_DOCS` row; it returns here once upstream cuts the rows.
       {
         slug: 'trace-propagation',
         source: 'docs/runtimes/trace-propagation.md',
