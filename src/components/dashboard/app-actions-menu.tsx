@@ -80,19 +80,20 @@ export function AppActionsMenu({
       !(await confirm({
         title: `Roll back ${app.name}?`,
         description:
-          'Traffic moves to the previous successful deployment. The current one stays available to roll forward to.',
+          'The platform queues a new deployment from the previous successful release. The current release remains in history to roll forward to.',
         confirmLabel: 'Roll back',
+        destructive: true,
       }))
     )
       return;
-    // `POST /v1/apps/{slug}/rollback` — a real write, so the toast reports
-    // what happened rather than announcing it up front.
+    // `POST /v1/apps/{slug}/rollback` answers 202: the rollback is a queued
+    // deployment, and acceptance does not mean it is serving yet.
     try {
-      await redeploy(app.id);
+      const deployment = await redeploy(app.id);
       toast({
         kind: 'success',
-        title: 'Rolled back',
-        description: `${app.name} is serving its previous deployment.`,
+        title: 'Rollback queued',
+        description: `New deployment ${deployment.id.slice(0, 12)} is being prepared.`,
       });
     } catch (err) {
       toast({ kind: 'error', title: 'Rollback failed', description: errorMessage(err) });
