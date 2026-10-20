@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Database, Plus, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
@@ -25,6 +25,8 @@ import {
   usePostgresBindings,
   usePostgresDatabases,
   useRestorePostgresDatabase,
+  useRotatePostgresBinding,
+  type PostgresBinding,
   type PostgresDatabase,
 } from '@/lib/api/queries';
 import { formatRelative } from '@/lib/mock-data';
@@ -343,6 +345,10 @@ function Bindings({ database }: { database: PostgresDatabase }) {
   const apps = useApps();
   const create = useCreatePostgresBinding(database.id);
   const remove = useDeletePostgresBinding(database.id);
+  const rotate = useRotatePostgresBinding(database.id);
+  // One key per intent: a retry against the same credential generation replays
+  // the first answer instead of asking for a second replacement.
+  const rotation = useRef(new Map<string, { generation: number; key: string }>());
   const [appId, setAppId] = useState('');
   const [environmentKey, setEnvironmentKey] = useState('DATABASE_URL');
   const [access, setAccess] = useState<'read_write' | 'read_only'>('read_write');
@@ -389,6 +395,42 @@ function Bindings({ database }: { database: PostgresDatabase }) {
     }
   };
 
+  const onRotate = async (binding: PostgresBinding) => {
+    if (
+      !(await confirm({
+        title: `Rotate credentials for ${appName(binding.app_id)}?`,
+        description: `This creates a replacement credential and refreshes the app's runtime so it picks up the new ${binding.environment_key} secret. The previous credential keeps working until that rolling refresh completes, then stops. Until then the binding shows rotation pending. The connection string is never shown here.`,
+        confirmLabel: 'Rotate credentials',
+        destructive: true,
+      }))
+    )
+      return;
+    const prior = rotation.current.get(binding.id);
+    const attempt =
+      prior?.generation === binding.credential_generation
+        ? prior
+        : { generation: binding.credential_generation, key: crypto.randomUUID() };
+    rotation.current.set(binding.id, attempt);
+    try {
+      const result = await rotate.mutateAsync({ id: binding.id, idempotencyKey: attempt.key });
+      toast(
+        result.rotation_pending
+          ? {
+              kind: 'success',
+              title: `Rotation accepted: credentials v${result.credential_generation}`,
+              description: `The app is refreshing onto the new ${result.environment_key} secret. It has not finished: the previous credential keeps working until the refresh completes.`,
+            }
+          : {
+              kind: 'success',
+              title: `Credentials rotated to v${result.credential_generation}`,
+              description: `The app holds the new ${result.environment_key} secret and the previous credential no longer applies.`,
+            }
+      );
+    } catch (err) {
+      toast(explainPostgres(err));
+    }
+  };
+
   return (
     <div className="flex flex-col gap-3">
       <p className="label-mono text-muted-foreground">Bound apps</p>
@@ -413,6 +455,9 @@ function Bindings({ database }: { database: PostgresDatabase }) {
               <span className="text-muted-foreground">
                 credentials v{binding.credential_generation}
               </span>
+              {binding.rotation_pending && (
+                <Pill label="rotation pending" color="var(--status-warning)" />
+              )}
               {binding.last_error_code && (
                 <span style={{ color: 'var(--status-critical)' }}>{binding.last_error_code}</span>
               )}
@@ -420,6 +465,20 @@ function Bindings({ database }: { database: PostgresDatabase }) {
                 size="xs"
                 variant="ghost"
                 className="ml-auto"
+                aria-label={`Rotate credentials for ${appName(binding.app_id)}`}
+                title={
+                  binding.rotation_pending
+                    ? 'A rotation is still refreshing the app; wait for it to finish.'
+                    : undefined
+                }
+                onClick={() => void onRotate(binding)}
+                disabled={rotate.isPending || binding.rotation_pending || binding.state !== 'ready'}
+              >
+                Rotate credentials
+              </Button>
+              <Button
+                size="xs"
+                variant="ghost"
                 aria-label={`Remove binding for ${appName(binding.app_id)}`}
                 onClick={() => void onRemove(binding.id, binding.environment_key)}
                 disabled={remove.isPending}

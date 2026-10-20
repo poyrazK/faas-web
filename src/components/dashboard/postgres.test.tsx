@@ -12,6 +12,7 @@ const deleteDb = vi.fn();
 const restoreDb = vi.fn();
 const createBinding = vi.fn();
 const deleteBinding = vi.fn();
+const rotateBinding = vi.fn();
 const toast = vi.fn();
 const confirm = vi.fn();
 
@@ -24,6 +25,7 @@ vi.mock('@/lib/api/queries', () => ({
   useRestorePostgresDatabase: () => ({ mutateAsync: restoreDb, isPending: false }),
   useCreatePostgresBinding: () => ({ mutateAsync: createBinding, isPending: false }),
   useDeletePostgresBinding: () => ({ mutateAsync: deleteBinding, isPending: false }),
+  useRotatePostgresBinding: () => ({ mutateAsync: rotateBinding, isPending: false }),
 }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => confirm }));
@@ -55,6 +57,7 @@ const binding = (over: Record<string, unknown> = {}) => ({
   environment_key: 'DATABASE_URL',
   access: 'read_write',
   credential_generation: 2,
+  rotation_pending: false,
   state: 'ready',
   last_error_code: null,
   created_at: '2026-09-01T00:00:00Z',
@@ -73,6 +76,9 @@ beforeEach(() => {
   restoreDb.mockReset().mockResolvedValue(database({ id: 'db3', name: 'orders-restored' }));
   createBinding.mockReset().mockResolvedValue(binding({ id: 'b2' }));
   deleteBinding.mockReset().mockResolvedValue(binding({ state: 'deleting' }));
+  rotateBinding
+    .mockReset()
+    .mockResolvedValue(binding({ credential_generation: 3, rotation_pending: true }));
   toast.mockReset();
   confirm.mockReset().mockResolvedValue(true);
 });
@@ -184,6 +190,104 @@ describe('PostgresDatabases', () => {
       expect(confirm).toHaveBeenCalledWith(expect.objectContaining({ typeToConfirm: 'orders' }))
     );
     expect(deleteDb).toHaveBeenCalledWith('db1');
+  });
+
+  describe('rotating a binding’s credentials', () => {
+    const openBindings = async () => {
+      render(<PostgresDatabases />);
+      await userEvent.click(screen.getByRole('button', { name: /orders/i }));
+      return screen.findByRole('button', { name: /rotate credentials for api-gateway/i });
+    };
+
+    it('asks first, in destructive terms, and says what happens to the old credentials', async () => {
+      await userEvent.click(await openBindings());
+      await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+      const asked = confirm.mock.calls[0]![0] as {
+        destructive: boolean;
+        description: string;
+        confirmLabel: string;
+      };
+      expect(asked.destructive).toBe(true);
+      expect(asked.confirmLabel).toBe('Rotate credentials');
+      expect(asked.description).toMatch(/replacement credential/i);
+      expect(asked.description).toMatch(/DATABASE_URL/);
+      expect(asked.description).toMatch(/previous credential keeps working until/i);
+      expect(rotateBinding).toHaveBeenCalledWith({
+        id: 'b1',
+        idempotencyKey: expect.any(String) as string,
+      });
+    });
+
+    it('does nothing when the confirm is declined', async () => {
+      confirm.mockResolvedValue(false);
+      await userEvent.click(await openBindings());
+      await waitFor(() => expect(confirm).toHaveBeenCalled());
+      expect(rotateBinding).not.toHaveBeenCalled();
+      expect(toast).not.toHaveBeenCalled();
+    });
+
+    it('reports a rotation still in progress as accepted, never as rotated', async () => {
+      await userEvent.click(await openBindings());
+      await waitFor(() => expect(toast).toHaveBeenCalled());
+      const shown = toast.mock.calls[0]![0] as { title: string; description?: string };
+      expect(shown.title).toMatch(/accepted/i);
+      expect(shown.description).toMatch(/not finished|has not finished/i);
+      expect(`${shown.title} ${shown.description}`).not.toMatch(/\brotated\b/i);
+    });
+
+    it('says the new credentials are live when the answer reports no rotation pending', async () => {
+      rotateBinding.mockResolvedValue(
+        binding({ credential_generation: 3, rotation_pending: false })
+      );
+      await userEvent.click(await openBindings());
+      await waitFor(() => expect(toast).toHaveBeenCalled());
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 'success', title: 'Credentials rotated to v3' })
+      );
+    });
+
+    it('shows a rotation as pending on the binding and does not offer a second one', async () => {
+      usePostgresBindings.mockReturnValue(
+        ready({ items: [binding({ credential_generation: 3, rotation_pending: true })] })
+      );
+      render(<PostgresDatabases />);
+      await userEvent.click(screen.getByRole('button', { name: /orders/i }));
+      expect(await screen.findByText('rotation pending')).toBeInTheDocument();
+      expect(screen.getByText('credentials v3')).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: /rotate credentials for api-gateway/i })
+      ).toBeDisabled();
+    });
+
+    it('explains a refusal with the Postgres error toast', async () => {
+      rotateBinding.mockRejectedValue(
+        new ApiError({
+          status: 409,
+          code: 'managed_postgres_conflict',
+          title: 't',
+          detail: 'binding is deleting',
+        })
+      );
+      await userEvent.click(await openBindings());
+      await waitFor(() =>
+        expect(toast).toHaveBeenCalledWith(
+          expect.objectContaining({ kind: 'error', title: 'That name or binding is taken' })
+        )
+      );
+    });
+
+    it('reuses the idempotency key for a retry of the same generation', async () => {
+      rotateBinding.mockRejectedValueOnce(new Error('network'));
+      const button = await openBindings();
+      await userEvent.click(button);
+      await waitFor(() => expect(toast).toHaveBeenCalledTimes(1));
+      await userEvent.click(button);
+      await waitFor(() => expect(rotateBinding).toHaveBeenCalledTimes(2));
+      const [first, second] = rotateBinding.mock.calls.map(
+        (c) => (c[0] as { idempotencyKey: string }).idempotencyKey
+      );
+      expect(second).toBe(first);
+    });
   });
 
   it('renders the Free-plan gate as the plan panel', async () => {

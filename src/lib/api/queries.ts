@@ -3681,7 +3681,7 @@ export function usePostgresBindings(id: string) {
     enabled: Boolean(id),
     refetchInterval: (query) =>
       (query.state.data?.items ?? []).some(
-        (b) => b.state === 'provisioning' || b.state === 'deleting'
+        (b) => b.state === 'provisioning' || b.state === 'deleting' || b.rotation_pending
       )
         ? 5_000
         : false,
@@ -3705,6 +3705,28 @@ export function useCreatePostgresBinding(databaseId: string) {
         api.POST('/v1/postgres/databases/{id}/bindings', {
           params: { path: { id: databaseId } },
           body,
+        })
+      ),
+    onSuccess: () =>
+      void qc.invalidateQueries({ queryKey: [...postgresKey, databaseId, 'bindings'] }),
+  });
+}
+
+/**
+ * Rotate a binding's credential (`POST /v1/postgres/bindings/{id}/rotate`).
+ * The answer is the binding with its new `credential_generation` and a
+ * `rotation_pending` flag: the previous credential stays valid until the app
+ * runtime's rolling refresh completes, so `true` means accepted, not finished.
+ * `idempotencyKey` is chosen by the caller so a retry of the same intent
+ * replays the first answer.
+ */
+export function useRotatePostgresBinding(databaseId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, idempotencyKey }: { id: string; idempotencyKey: string }) =>
+      unwrap(
+        api.POST('/v1/postgres/bindings/{id}/rotate', {
+          params: { path: { id }, header: { 'Idempotency-Key': idempotencyKey } },
         })
       ),
     onSuccess: () =>

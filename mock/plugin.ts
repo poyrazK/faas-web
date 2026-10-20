@@ -2853,6 +2853,11 @@ function pgSettle(row: PgRow): PgRow {
   } else if (row.state === 'deleting' && Date.now() - Date.parse(row.updated_at) > 4000) {
     row.state = 'deleted';
     row.updated_at = new Date().toISOString();
+  } else if (row.rotation_pending === true && Date.now() - Date.parse(row.updated_at) > 4000) {
+    // A rotation keeps the previous credential valid while the app refreshes,
+    // then settles.
+    row.rotation_pending = false;
+    row.updated_at = new Date().toISOString();
   }
   return row;
 }
@@ -2998,6 +3003,7 @@ route('POST', '/v1/postgres/databases/{id}/bindings', ({ params, body }) => {
     environment_key: key,
     access: String(body.access ?? 'read_write'),
     credential_generation: 1,
+    rotation_pending: false,
     state: 'provisioning',
     last_error_code: null,
     created_at: now,
@@ -3010,6 +3016,32 @@ route('GET', '/v1/postgres/bindings/{id}', ({ params }) => {
   const binding = pgBindings.find((b) => b.id === params.id);
   if (!binding) throw new Problem(404, 'managed_postgres_not_found', 'no such binding');
   return pgSettle(binding);
+});
+// Receipts for the optional Idempotency-Key: a repeated key replays the first
+// answer, as the spec's IdempotencyKey parameter describes.
+const pgRotateReceipts = new Map<string, PgRow>();
+route('POST', '/v1/postgres/bindings/{id}/rotate', ({ params, req }) => {
+  const binding = pgBindings.find((b) => b.id === params.id);
+  if (!binding) throw new Problem(404, 'managed_postgres_not_found', 'no such binding');
+  const key = String(req.headers['idempotency-key'] ?? '');
+  const receipt = key ? pgRotateReceipts.get(`${binding.id}:${key}`) : undefined;
+  if (receipt) return receipt;
+  pgSettle(binding);
+  if (binding.state !== 'ready')
+    throw new Problem(
+      409,
+      'managed_postgres_conflict',
+      `the binding is ${binding.state}; rotate it once it is ready.`
+    );
+  // A rotation already in flight is joined, not restarted.
+  if (binding.rotation_pending !== true) {
+    binding.credential_generation = Number(binding.credential_generation) + 1;
+    binding.rotation_pending = true;
+    binding.updated_at = new Date().toISOString();
+  }
+  const answer = { ...binding };
+  if (key) pgRotateReceipts.set(`${binding.id}:${key}`, answer);
+  return answer;
 });
 route('DELETE', '/v1/postgres/bindings/{id}', ({ params }) => {
   const binding = pgBindings.find((b) => b.id === params.id);

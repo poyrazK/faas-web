@@ -250,3 +250,76 @@ describe('PATCH /v1/crons/{id}', () => {
     expect(listed).toMatchObject({ schedule: '0 2 * * *', timezone: 'UTC' });
   });
 });
+
+describe('POST /v1/postgres/bindings/{id}/rotate', () => {
+  async function boundBinding(slug: string) {
+    const app = await json('/v1/apps', {
+      method: 'POST',
+      body: JSON.stringify({ slug, type: 'app', runtime: 'node24' }),
+    });
+    const database = await json('/v1/postgres/databases', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: `${slug}-db`,
+        region: 'fra',
+        postgres_major: 17,
+        service_class: 'development',
+        availability: 'single_zone',
+        scale_to_zero: true,
+      }),
+    });
+    expect(database.status).toBe(201);
+    vi.setSystemTime(Date.now() + 5000);
+    const binding = await json(`/v1/postgres/databases/${database.body.id}/bindings`, {
+      method: 'POST',
+      body: JSON.stringify({
+        app_id: app.body.id,
+        scope: 'default',
+        environment_key: 'DATABASE_URL',
+        access: 'read_write',
+      }),
+    });
+    expect(binding.status).toBe(201);
+    return binding.body as { id: string; credential_generation: number; rotation_pending: boolean };
+  }
+  const rotate = (id: string, key: string) =>
+    json(`/v1/postgres/bindings/${id}/rotate`, {
+      method: 'POST',
+      headers: { 'Idempotency-Key': key },
+    });
+
+  it('starts at generation 1 with no rotation pending', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const binding = await boundBinding('rotate-a');
+    expect(binding).toMatchObject({ credential_generation: 1, rotation_pending: false });
+  });
+
+  it('answers 200 with the next generation pending, then settles', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const binding = await boundBinding('rotate-b');
+    vi.setSystemTime(Date.now() + 5000);
+    const res = await rotate(binding.id, 'k1');
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ credential_generation: 2, rotation_pending: true });
+    vi.setSystemTime(Date.now() + 5000);
+    const settled = await json(`/v1/postgres/bindings/${binding.id}`);
+    expect(settled.body).toMatchObject({ credential_generation: 2, rotation_pending: false });
+  });
+
+  it('joins a rotation already in progress and replays a repeated key', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const binding = await boundBinding('rotate-c');
+    vi.setSystemTime(Date.now() + 5000);
+    await rotate(binding.id, 'k1');
+    const joined = await rotate(binding.id, 'k2');
+    expect(joined.body.credential_generation).toBe(2);
+    const replay = await rotate(binding.id, 'k1');
+    expect(replay.body.credential_generation).toBe(2);
+  });
+
+  it('refuses an unknown binding with the Postgres not-found code', async () => {
+    const res = await rotate('nope', 'k1');
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe('managed_postgres_not_found');
+  });
+});
