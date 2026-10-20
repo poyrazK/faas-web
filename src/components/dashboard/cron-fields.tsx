@@ -76,7 +76,7 @@ export function SkipIfRunningField({
         Skip a run if the previous one is still running
       </label>
       <p id={hintId} className="text-xs text-muted-foreground">
-        A skipped run is not made up later. Leave this off to let runs overlap.
+        A skipped run is recorded as skipped. Leave this off to let runs overlap.
       </p>
     </div>
   );

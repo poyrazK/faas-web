@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, type RefObject } from 'react';
 import { Play, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
@@ -33,6 +33,10 @@ export function JobActions({
   onDeleted: () => void;
 }) {
   const [starting, setStarting] = useState(false);
+  // One key per intent, kept here rather than in the dialog: Cancel unmounts the
+  // dialog, and a network failure, Cancel, reopen sequence must still replay the
+  // first run instead of minting a key and billing a second one. Keyed by name.
+  const attempts = useRef(new Map<string, RunAttempt>());
   const confirm = useConfirm();
   const { toast } = useToast();
   const remove = useDeleteJob();
@@ -89,6 +93,7 @@ export function JobActions({
       {starting && (
         <JobRunDialog
           name={name}
+          attempts={attempts}
           onClose={() => setStarting(false)}
           onStarted={(runId) => {
             setStarting(false);
@@ -100,12 +105,16 @@ export function JobActions({
   );
 }
 
+type RunAttempt = { tasks: number; key: string };
+
 function JobRunDialog({
   name,
+  attempts,
   onClose,
   onStarted,
 }: {
   name: string;
+  attempts: RefObject<Map<string, RunAttempt>>;
   onClose: () => void;
   onStarted: (runId: string) => void;
 }) {
@@ -115,9 +124,8 @@ function JobRunDialog({
   const [tasks, setTasks] = useState('1');
   const [attempted, setAttempted] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
-  // One key per intent: a retry of the same task count after an unknown outcome
-  // replays the first run rather than creating and billing another.
-  const attempt = useRef<{ tasks: number; key: string } | null>(null);
+  // A retry of the same task count after an unknown outcome replays the first
+  // run rather than creating and billing another.
 
   const count = Number(tasks);
   const invalid = !tasks.trim() || !Number.isSafeInteger(count) || count < 1 || count > MAX_TASKS;
@@ -140,14 +148,18 @@ function JobRunDialog({
       }))
     )
       return;
-    if (attempt.current?.tasks !== count)
-      attempt.current = { tasks: count, key: crypto.randomUUID() };
+    let attempt = attempts.current.get(name);
+    if (attempt?.tasks !== count) {
+      attempt = { tasks: count, key: crypto.randomUUID() };
+      attempts.current.set(name, attempt);
+    }
     try {
       const run = await start.mutateAsync({
         name,
         tasks: count,
-        idempotencyKey: attempt.current.key,
+        idempotencyKey: attempt.key,
       });
+      attempts.current.delete(name);
       toast({
         kind: 'success',
         title: 'Run queued',
@@ -158,7 +170,7 @@ function JobRunDialog({
       // apid stores almost every answer under the key for 24 h, refusals
       // included, so reusing it after an ApiError would replay that refusal.
       // Keep it only when the outcome is unknown (network failure).
-      if (err instanceof ApiError) attempt.current = null;
+      if (err instanceof ApiError) attempts.current.delete(name);
       setFailure(errorMessage(err));
     }
   };

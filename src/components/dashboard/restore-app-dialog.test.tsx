@@ -62,7 +62,7 @@ describe('RestoreAppDialog', () => {
   it.each([
     ['not_found', 404, /No deleted app named "ghost-app"/],
     ['app_not_restorable', 409, /7-day grace window has ended/],
-    ['conflict', 409, /already uses the slug "ghost-app"/],
+    ['conflict', 409, /changed since you looked it up\. Check Apps and try again/],
     ['mfa_required', 403, /Set up multi-factor authentication/],
     ['plan_limit_apps', 403, /apps allowed on your plan/i],
   ])('explains %s in its own words and keeps the dialog open', async (code, status, words) => {

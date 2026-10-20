@@ -154,6 +154,25 @@ describe('JobActions start run', () => {
       }
     );
 
+    it('survives Cancel and reopen after a network failure, so the first run cannot be billed twice', async () => {
+      startRun.mockReset().mockRejectedValueOnce(new TypeError('Failed to fetch'));
+      startRun.mockResolvedValue(queued);
+      const { user } = setup();
+      await user.click(screen.getByRole('button', { name: 'Start run' }));
+      await user.click(await screen.findByRole('button', { name: 'Continue' }));
+      await screen.findByRole('alert');
+      await user.click(screen.getByRole('button', { name: 'Cancel' }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      await user.click(screen.getByRole('button', { name: 'Start run' }));
+      await user.click(await screen.findByRole('button', { name: 'Continue' }));
+      await waitFor(() => expect(startRun).toHaveBeenCalledTimes(2));
+      const [first, retry] = startRun.mock.calls.map(
+        ([vars]) => vars as { tasks: number; idempotencyKey: string }
+      );
+      expect(retry?.tasks).toBe(first?.tasks);
+      expect(retry?.idempotencyKey).toBe(first?.idempotencyKey);
+    });
+
     it('is replaced when the count changes', async () => {
       const { user, tasks, submit, sent } = await attemptTwice(
         new TypeError('Failed to fetch'),

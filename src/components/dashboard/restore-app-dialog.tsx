@@ -25,7 +25,7 @@ export function restoreFailureMessage(err: unknown, slug: string): string {
       case 'app_not_restorable':
         return `${slug} cannot be restored. Either its 7-day grace window has ended, or it was not deleted.`;
       case 'conflict':
-        return `An active app already uses the slug "${slug}", so the deleted one cannot come back under it.`;
+        return `That app changed since you looked it up. Check Apps and try again.`;
       case 'mfa_required':
         return 'Set up multi-factor authentication in the prompt that opened, then restore again.';
       case 'plan_limit_apps':

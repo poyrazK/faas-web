@@ -124,8 +124,10 @@ function BindingRow({
  * The integrations themselves are account-wide and live on the Integrations
  * page; this is the per-app half — which of them this app may reach. Binding
  * and unbinding touch only the attachment: the integration, its sealed
- * credential and every other app's binding are left as they are. Neither call
- * is gated by MFA, and both are idempotent by resource.
+ * credential and every other app's binding are left as they are. Both calls
+ * are MFA-gated (`requireMFA`); the global `mfa_required` handling in the API
+ * client prompts for it, so this component does not. Both are idempotent by
+ * resource.
  *
  * The spec does not say how application code addresses a bound integration, so
  * this page does not either.
@@ -142,7 +144,7 @@ export function AppOutboundBindings({ slug }: { slug: string }) {
   const [unbinding, setUnbinding] = useState<string | null>(null);
 
   const bound = new Set((bindings.data ?? []).map((b) => b.integration.id));
-  const available = (integrations.data ?? []).filter((i) => !bound.has(i.id));
+  const available = (integrations.data ?? []).filter((i) => i.enabled && !bound.has(i.id));
   const bindingsPhase = queryPhase({
     error: bindings.error,
     loading: bindings.isPending,
@@ -176,7 +178,7 @@ export function AppOutboundBindings({ slug }: { slug: string }) {
     const { id, name } = binding.integration;
     const ok = await confirm({
       title: `Unbind ${name} from ${slug}?`,
-      description: `${slug} stops being able to call ${name} through the gateway. The integration itself, its credential and other apps' bindings stay as they are, and you can bind it again at any time.`,
+      description: `${slug} stops being able to call ${name} through the gateway. The integration itself, its credential and other apps' bindings stay as they are. This app's own limits on the binding (narrowed methods and paths, daily request and AI token limits, AI guardrails) are discarded; binding it again starts from the integration's defaults.`,
       confirmLabel: 'Unbind',
       destructive: true,
       typeToConfirm: name,
@@ -196,7 +198,7 @@ export function AppOutboundBindings({ slug }: { slug: string }) {
   return (
     <Panel
       title="Outbound integrations"
-      description="Fixed destinations this app may call through the gateway. Binding attaches the app to an integration your account owns; it never carries a provider key."
+      description="Fixed destinations this app may call through the gateway. Binding attaches the app to an integration available to your account; it never carries a provider key."
       actions={
         <Link
           to="/dashboard/integrations"

@@ -139,6 +139,31 @@ describe('App outbound integrations', () => {
     );
   });
 
+  it('does not offer a disabled integration, which the backend refuses to bind', async () => {
+    integrations = [
+      STRIPE,
+      GEOCODER,
+      integration({ id: OPENAI.id, name: 'openai', enabled: false }),
+    ];
+    renderSection();
+    const select = await screen.findByRole('combobox', { name: 'Integration' });
+    await waitFor(() =>
+      expect(
+        within(select)
+          .getAllByRole('option')
+          .map((o) => o.textContent)
+      ).toEqual(['Choose an integration', 'geocoder'])
+    );
+  });
+
+  it('describes binding as available to the account, not owned by it', async () => {
+    renderSection();
+    expect(
+      await screen.findByText(/an integration available to your account/i)
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/account owns/i)).toBeNull();
+  });
+
   it('binds the chosen integration and shows it once the list reloads', async () => {
     const user = userEvent.setup();
     renderSection();
@@ -216,6 +241,12 @@ describe('App outbound integrations', () => {
     await user.click(await screen.findByRole('button', { name: 'Unbind stripe' }));
     const dialog = within(await screen.findByRole('dialog', { name: /Unbind stripe/ }));
     expect(dialog.getByText(/integration itself.*stay/i)).toBeInTheDocument();
+    // The binding row holds this app's own limits; unbinding discards them.
+    expect(dialog.getByText(/limits on the binding.*discarded/i)).toBeInTheDocument();
+    expect(
+      dialog.getByText(/binding it again starts from the integration's defaults/i)
+    ).toBeInTheDocument();
+    expect(dialog.queryByText(/at any time/i)).toBeNull();
     await user.click(dialog.getByRole('button', { name: 'Cancel' }));
 
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
