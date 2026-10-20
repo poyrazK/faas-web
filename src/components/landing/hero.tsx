@@ -110,8 +110,7 @@ export function Hero() {
           <DeployTerminal />
         </motion.div>
         <p className="mb-8 text-center font-mono text-[11px] text-muted-foreground">
-          Example deployment and requests; timings are illustrative. <RestoreTarget />.{' '}
-          <span>{RESTORE_CONTEXT}</span>
+          Example session. <RestoreTarget />. <span>{RESTORE_CONTEXT}</span>
         </p>
       </section>
     </>
