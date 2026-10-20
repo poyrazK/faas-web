@@ -189,3 +189,64 @@ describe('a deployment created through the mock', () => {
     expect((await json(`/v1/deployments/${retry.body.id}`)).body.status).toBe('live');
   });
 });
+
+describe('PATCH /v1/crons/{id}', () => {
+  async function createCron(slug: string) {
+    const app = await json('/v1/apps', {
+      method: 'POST',
+      body: JSON.stringify({ slug, type: 'app', runtime: 'node24' }),
+    });
+    expect(app.status).toBe(201);
+    const cron = await json('/v1/crons', {
+      method: 'POST',
+      body: JSON.stringify({ app_id: app.body.id, schedule: '0 2 * * *', path: '/run' }),
+    });
+    expect(cron.status).toBe(201);
+    return cron.body as { id: string; timezone: string; skip_if_running: boolean };
+  }
+  const patch = (id: string, body: unknown) =>
+    json(`/v1/crons/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+
+  it('applies timezone, overlap skipping and the other editable fields', async () => {
+    const cron = await createCron('cron-edit-a');
+    const res = await patch(cron.id, {
+      schedule: '30 6 * * *',
+      path: '/nightly',
+      timezone: 'Europe/Istanbul',
+      skip_if_running: true,
+    });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      schedule: '30 6 * * *',
+      path: '/nightly',
+      timezone: 'Europe/Istanbul',
+      skip_if_running: true,
+    });
+    const listed = (await json('/v1/crons')).body.find((c: { id: string }) => c.id === cron.id);
+    expect(listed).toMatchObject({ timezone: 'Europe/Istanbul', skip_if_running: true });
+  });
+
+  it('resets an empty timezone to UTC and leaves unsent fields alone', async () => {
+    const cron = await createCron('cron-edit-b');
+    await patch(cron.id, { timezone: 'Europe/Istanbul', skip_if_running: true });
+    const res = await patch(cron.id, { timezone: '' });
+    expect(res.body).toMatchObject({
+      timezone: 'UTC',
+      skip_if_running: true,
+      schedule: '0 2 * * *',
+      path: '/run',
+    });
+  });
+
+  it('refuses a bad schedule or timezone with a stable code and changes nothing', async () => {
+    const cron = await createCron('cron-edit-c');
+    const badSchedule = await patch(cron.id, { schedule: 'nope' });
+    expect(badSchedule.status).toBe(400);
+    expect(badSchedule.body.code).toBe('invalid_schedule');
+    const badZone = await patch(cron.id, { timezone: 'Mars/Olympus' });
+    expect(badZone.status).toBe(400);
+    expect(badZone.body.code).toBe('invalid_timezone');
+    const listed = (await json('/v1/crons')).body.find((c: { id: string }) => c.id === cron.id);
+    expect(listed).toMatchObject({ schedule: '0 2 * * *', timezone: 'UTC' });
+  });
+});

@@ -5121,16 +5121,33 @@ route('POST', '/v1/triggers/{id}/records/{rid}/retry', ({ params }) => {
 route('POST', '/v1/triggers/{id}/records/{rid}/drop', () => NO_CONTENT);
 
 route('GET', '/v1/crons', () => db.crons);
-route('POST', '/v1/crons', ({ body }) => {
-  const a = db.apps.find((x) => x.id === body.app_id);
-  if (!a) throw new Problem(404, 'app_not_found', 'No app with that id.');
-  const schedule = String(body.schedule ?? '').trim();
+
+// The real handlers reject a schedule that is not five fields and a timezone
+// the runtime cannot load; both come back as 400 with a stable code.
+function cronSchedule(value: unknown): string {
+  const schedule = String(value ?? '').trim();
   if (schedule.split(/\s+/).length !== 5)
     throw new Problem(
       400,
       'invalid_schedule',
       'A schedule has five fields: minute hour day month weekday.'
     );
+  return schedule;
+}
+function cronTimezone(value: unknown): string {
+  const zone = String(value ?? '').trim() || 'UTC';
+  try {
+    new Intl.DateTimeFormat('en', { timeZone: zone });
+  } catch {
+    throw new Problem(400, 'invalid_timezone', `Unknown timezone "${zone}". Use an IANA name.`);
+  }
+  return zone;
+}
+
+route('POST', '/v1/crons', ({ body }) => {
+  const a = db.apps.find((x) => x.id === body.app_id);
+  if (!a) throw new Problem(404, 'app_not_found', 'No app with that id.');
+  const schedule = cronSchedule(body.schedule);
   const cron = {
     id: db.id(),
     app_id: a.id,
@@ -5138,7 +5155,7 @@ route('POST', '/v1/crons', ({ body }) => {
     schedule,
     path: String(body.path ?? '/'),
     enabled: body.enabled !== false,
-    timezone: String(body.timezone ?? 'UTC'),
+    timezone: cronTimezone(body.timezone),
     skip_if_running: body.skip_if_running === true,
     created_at: db.iso(0),
     last_fired_at: null,
@@ -5150,9 +5167,17 @@ route('POST', '/v1/crons', ({ body }) => {
 route('PATCH', '/v1/crons/{id}', ({ params, body }) => {
   const c = db.crons.find((x) => x.id === params.id);
   if (!c) throw new Problem(404, 'cron_not_found');
-  if (typeof body.schedule === 'string') c.schedule = body.schedule;
+  // Validate everything before applying anything, so a refused patch changes nothing.
+  const schedule = typeof body.schedule === 'string' ? cronSchedule(body.schedule) : undefined;
+  const timezone = typeof body.timezone === 'string' ? cronTimezone(body.timezone) : undefined;
+  if (schedule !== undefined) c.schedule = schedule;
   if (typeof body.path === 'string') c.path = body.path;
   if (typeof body.enabled === 'boolean') c.enabled = body.enabled;
+  if (timezone !== undefined) c.timezone = timezone;
+  if (typeof body.skip_if_running === 'boolean') c.skip_if_running = body.skip_if_running;
+  if (typeof body.retry_max === 'number') c.retry_max = body.retry_max;
+  if (typeof body.retry_backoff_seconds === 'number')
+    c.retry_backoff_seconds = body.retry_backoff_seconds;
   return c;
 });
 route('GET', '/v1/crons/{id}/runs', ({ params }) => {
