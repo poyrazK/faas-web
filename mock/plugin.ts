@@ -5604,13 +5604,28 @@ route('POST', '/v1/install/repos/list', () => {
     { id: 1004, full_name: 'acme-corp/nightly-etl', default_branch: 'main', private: true },
   ];
 });
-route('POST', '/v1/apps/{slug}/install/bind', async ({ body }) => {
-  requireGitHub();
+const repoBindings = new Map<string, { repo_full_name: string; production_branch: string }>();
+route('GET', '/v1/apps/{slug}/install/bind', ({ params }) => {
+  const bound = repoBindings.get(params.slug);
+  const installed = Boolean(db.account.github_install_id);
   return {
-    binding_id: hex(32),
+    state: bound ? 'bound' : installed ? 'installed' : 'not_installed',
+    health: installed ? 'healthy' : 'not_connected',
+    connected: installed,
+    ...(installed ? { installation_id: Number(MOCK_INSTALL_ID) } : {}),
+    last_reconcile_repository_count: 4,
+    last_reconcile_detached_count: 0,
+    ...bound,
+  };
+});
+route('POST', '/v1/apps/{slug}/install/bind', async ({ params, body }) => {
+  requireGitHub();
+  const bound = {
     repo_full_name: String(body.repo_full_name ?? ''),
     production_branch: String(body.production_branch ?? 'main'),
   };
+  repoBindings.set(params.slug, bound);
+  return { binding_id: hex(32), ...bound };
 });
 
 // --- Organisations, org keys, invitations ---

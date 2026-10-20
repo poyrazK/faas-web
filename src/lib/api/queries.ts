@@ -135,7 +135,20 @@ async function bindRepo(slug: string, input: BindRepoInput) {
 }
 
 export function useBindRepo(slug: string) {
-  return useMutation({ mutationFn: (input: BindRepoInput) => bindRepo(slug, input) });
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: BindRepoInput) => bindRepo(slug, input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [...keys.app(slug), 'repo-binding'] }),
+  });
+}
+
+/** The app's current repository binding (cookie session; no credentials). */
+export function useAppRepoBinding(slug: string, options: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: [...keys.app(slug), 'repo-binding'],
+    queryFn: () => unwrap(api.GET('/v1/apps/{slug}/install/bind', { params: { path: { slug } } })),
+    enabled: Boolean(slug) && (options.enabled ?? true),
+  });
 }
 
 /** Slug-in-variables variant for a wizard that creates the app first. */
