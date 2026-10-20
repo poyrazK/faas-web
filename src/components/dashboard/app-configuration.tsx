@@ -110,14 +110,33 @@ function NumberField({
   min: number;
   onChange: (n: number) => void;
 }) {
+  // The text is a draft: clamping on each keystroke turned "30" into 530 when
+  // the minimum is 5, because "3" was raised to 5 before the "0" arrived.
+  // Values below the minimum are only raised once the field loses focus.
+  const [text, setText] = useState(String(value));
+  const [synced, setSynced] = useState(value);
+  if (value !== synced) {
+    setSynced(value);
+    if (Number(text) !== value) setText(String(value));
+  }
   return (
     <label className="flex flex-col gap-1.5">
       <span className="label-mono text-muted-foreground">{label}</span>
       <input
         type="number"
         min={min}
-        value={value}
-        onChange={(e) => onChange(Math.max(min, Number(e.target.value) || 0))}
+        value={text}
+        onChange={(e) => {
+          setText(e.target.value);
+          const n = Number(e.target.value);
+          if (e.target.value !== '' && Number.isFinite(n) && n >= min) onChange(n);
+        }}
+        onBlur={() => {
+          const n = Number(text);
+          const next = text !== '' && Number.isFinite(n) ? Math.max(min, n) : Math.max(min, value);
+          setText(String(next));
+          onChange(next);
+        }}
         className={FIELD}
       />
       <span className="text-xs text-muted-foreground">{hint}</span>

@@ -100,6 +100,36 @@ describe('App deletion contract copy', () => {
     expect(screen.getByText('Desired revision 6 · App scope')).toBeVisible();
     expect(screen.queryByText('Active')).not.toBeInTheDocument();
   });
+  it('lets a number be typed through values below its minimum', async () => {
+    const user = userEvent.setup();
+    render(
+      <ConfirmProvider>
+        <AppConfiguration slug="alpha" />
+      </ConfirmProvider>
+    );
+    const idle = screen.getByLabelText(/Idle timeout/);
+    await user.clear(idle);
+    await user.type(idle, '30');
+    expect(idle).toHaveValue(30);
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() =>
+      expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ idle_timeout_s: 30 }))
+    );
+  });
+  it('raises a number left below its minimum once the field loses focus', async () => {
+    const user = userEvent.setup();
+    render(
+      <ConfirmProvider>
+        <AppConfiguration slug="alpha" />
+      </ConfirmProvider>
+    );
+    const idle = screen.getByLabelText(/Idle timeout/);
+    await user.clear(idle);
+    await user.type(idle, '2');
+    expect(idle).toHaveValue(2);
+    await user.tab();
+    expect(idle).toHaveValue(5);
+  });
   it('explains live policy convergence separately from boot-time memory', () => {
     render(
       <ConfirmProvider>
