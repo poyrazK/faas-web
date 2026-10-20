@@ -115,6 +115,36 @@ describe('JobActions start run', () => {
     expect(screen.getByRole('dialog', { name: /start a run/i })).toBeInTheDocument();
   });
 
+  it('replays the same idempotency key when retrying a count, and mints a new one when the count changes', async () => {
+    startRun
+      .mockRejectedValueOnce(new ApiError({ status: 503, code: 'unavailable', title: 'Try later' }))
+      .mockRejectedValueOnce(new ApiError({ status: 503, code: 'unavailable', title: 'Try later' }))
+      .mockResolvedValue(queued);
+    const { user } = setup();
+    await user.click(screen.getByRole('button', { name: 'Start run' }));
+    const tasks = await screen.findByLabelText('Number of tasks');
+    const submit = () => user.click(screen.getByRole('button', { name: 'Continue' }));
+    const sent = () =>
+      startRun.mock.calls.map(([vars]) => vars as { tasks: number; idempotencyKey: string });
+
+    await submit();
+    await screen.findByRole('alert');
+    await submit();
+    await waitFor(() => expect(startRun).toHaveBeenCalledTimes(2));
+    const [first, retry] = sent();
+    expect(first?.tasks).toBe(1);
+    expect(retry?.idempotencyKey).toBe(first?.idempotencyKey);
+
+    await user.clear(tasks);
+    await user.type(tasks, '5');
+    await submit();
+    await waitFor(() => expect(startRun).toHaveBeenCalledTimes(3));
+    const changed = sent()[2];
+    expect(changed?.tasks).toBe(5);
+    expect(changed?.idempotencyKey).toEqual(expect.any(String));
+    expect(changed?.idempotencyKey).not.toBe(first?.idempotencyKey);
+  });
+
   it('is unavailable for a paused workload, and says why', () => {
     setup('paused');
     expect(screen.getByRole('button', { name: 'Start run' })).toBeDisabled();
