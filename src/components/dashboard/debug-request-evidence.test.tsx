@@ -74,6 +74,23 @@ describe('DebugRequestEvidence', () => {
     expect(screen.getByText('2180 ms')).toBeInTheDocument();
   });
 
+  it('lets the request ID and trace ID be copied in full', () => {
+    render(<DebugRequestEvidence slug="api" reqId="req1" onClose={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Copy: request ID req1' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Copy: trace ID trace1' })).toBeInTheDocument();
+  });
+
+  it('offers no trace copy button when the request has no trace ID', () => {
+    const current = useDebugRequestEvidence() as { data: object };
+    useDebugRequestEvidence.mockReturnValue({
+      ...current,
+      data: { ...current.data, request: { ...request, trace_id: '' } },
+    });
+    render(<DebugRequestEvidence slug="api" reqId="req1" onClose={vi.fn()} />);
+    expect(screen.getByText('Not reported', { selector: 'dd' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Copy: trace ID/ })).not.toBeInTheDocument();
+  });
+
   it('states the matched regression against its baseline', () => {
     render(<DebugRequestEvidence slug="api" reqId="req1" onClose={vi.fn()} />);
     expect(screen.getByText(/baseline of 260 ms/)).toBeInTheDocument();
