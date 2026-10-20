@@ -2177,7 +2177,10 @@ route('POST', '/v1/apps/{slug}/restart', ({ params }) => {
 route('POST', '/v1/apps/{slug}/restore', ({ params }) => {
   const deleted = deletedApps.get(params.slug);
   if (!deleted) {
-    app(params.slug);
+    // The restore operation's own not-found is the spec's `not_found`, not the
+    // app-scoped `app_not_found` of the active-app routes: apid looks the slug up
+    // among tombstones and answers the generic code for a stranger's slug too.
+    if (!db.appBySlug(params.slug)) throw new Problem(404, 'not_found', 'no such app');
     throw new Problem(409, 'app_not_restorable', 'the app is not pending deletion.');
   }
   return restoreDeleted(deleted);

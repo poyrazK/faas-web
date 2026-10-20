@@ -754,6 +754,10 @@ describe('mock API', () => {
       // The fixture has no deployment. Restored metadata alone is not execution evidence.
       expect(await restored.json()).toMatchObject({ id: original.id, slug, status: 'undeployed' });
       expect((await fetch(`${base}/v1/apps/${slug}/restore`, { method: 'POST' })).status).toBe(409);
+      // A slug that was never an app is the spec's `not_found`, not an app-scoped code.
+      const unknown = await fetch(`${base}/v1/apps/never-existed-app/restore`, { method: 'POST' });
+      expect(unknown.status).toBe(404);
+      expect(await unknown.json()).toMatchObject({ code: 'not_found' });
       expect((await fetch(`${base}/v1/apps/${slug}`, { method: 'DELETE' })).status).toBe(204);
       clock.mockReturnValue(now + 8 * 86400e3);
       const expired = await fetch(`${base}/v1/apps/${slug}/restore`, { method: 'POST' });
