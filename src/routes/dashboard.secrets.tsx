@@ -11,6 +11,7 @@ import { useConfirm } from '@/components/ui/confirm';
 import { useAppSecrets, useDeleteSecret, useSetSecret, useRotateSecret } from '@/lib/api/queries';
 import { errorMessage } from '@/lib/api/errors';
 import { EnvImportButton } from '@/components/dashboard/env-import';
+import { SecretValueField } from '@/components/dashboard/secret-value-field';
 import { FieldError } from '@/components/ui/field';
 import { cn } from '@/lib/utils';
 
@@ -71,6 +72,19 @@ export function SecretsBody({ slug }: { slug: string }) {
   // 422 after the round-trip.
   const keyOk = KEY_RULE.test(key.trim());
   const showKeyError = keyTouched && key.trim().length > 0 && !keyOk;
+
+  const saveSecret = (name: string) =>
+    void setSecret
+      .mutateAsync({ key: name, value })
+      .then(() => {
+        setKey('');
+        setValue('');
+        setKeyTouched(false);
+        toast({ kind: 'success', title: 'Secret saved' });
+      })
+      .catch((err: unknown) =>
+        toast({ kind: 'error', title: 'Could not save', description: errorMessage(err) })
+      );
 
   const rows = useMemo<SecretRow[]>(
     () =>
@@ -151,17 +165,24 @@ export function SecretsBody({ slug }: { slug: string }) {
           onSubmit={(e) => {
             e.preventDefault();
             if (!keyOk || !value || setSecret.isPending) return;
-            void setSecret
-              .mutateAsync({ key: key.trim(), value })
-              .then(() => {
-                setKey('');
-                setValue('');
-                setKeyTouched(false);
-                toast({ kind: 'success', title: 'Secret saved' });
-              })
-              .catch((err: unknown) =>
-                toast({ kind: 'error', title: 'Could not save', description: errorMessage(err) })
-              );
+            const name = key.trim();
+            const exists = rows.some((row) => row.key === name);
+            // A set on an existing name replaces its sealed value, which
+            // cannot be read back. Ask, as Rotate's own dialog effectively does.
+            void (
+              exists
+                ? confirm({
+                    title: `Replace ${name}?`,
+                    description:
+                      'Its current value is overwritten and cannot be recovered. Instances pick up the new value when they next start.',
+                    confirmLabel: 'Replace secret',
+                    destructive: true,
+                  })
+                : Promise.resolve(true)
+            ).then((proceed) => {
+              if (!proceed) return;
+              saveSecret(name);
+            });
           }}
         >
           <label className="flex min-w-44 flex-1 flex-col gap-1.5">
@@ -184,17 +205,13 @@ export function SecretsBody({ slug }: { slug: string }) {
               </FieldError>
             )}
           </label>
-          <label className="flex min-w-56 flex-[2] flex-col gap-1.5">
-            <span className="label-mono text-muted-foreground">Value</span>
-            <input
-              type="password"
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              autoComplete="off"
-              placeholder="Never shown again once saved"
-              className="h-10 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-brand"
-            />
-          </label>
+          <SecretValueField
+            label="Value"
+            value={value}
+            onChange={setValue}
+            placeholder="Never shown again once saved"
+            className="min-w-56 flex-[2]"
+          />
           <Button
             type="submit"
             size="sm"
@@ -275,13 +292,11 @@ export function SecretsBody({ slug }: { slug: string }) {
           </>
         }
       >
-        <input
-          type="password"
+        <SecretValueField
+          key={rotating ?? ''}
+          label="New value"
           value={rotateValue}
-          onChange={(e) => setRotateValue(e.target.value)}
-          autoComplete="off"
-          placeholder="New value"
-          className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-brand"
+          onChange={setRotateValue}
         />
       </Modal>
     </div>
