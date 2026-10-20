@@ -434,11 +434,18 @@ export function formatRelative(ts: number): string {
 
   // Against the real clock: every caller now passes live API timestamps, and
   // the pinned fixture clock above made anything newer than it read "just now".
+  // Future timestamps (an invitation's expiry, a next run) read as time to
+  // come; a few seconds of clock skew still reads as now.
   const diff = Date.now() - ts;
-  if (diff < 60_000) return 'just now';
-  if (diff < HOUR) return `${Math.max(1, Math.round(diff / 60_000))}m ago`;
-  if (diff < DAY) return `${Math.round(diff / HOUR)}h ago`;
-  return `${Math.round(diff / DAY)}d ago`;
+  const span = Math.abs(diff);
+  if (span < 60_000) return 'just now';
+  const amount =
+    span < HOUR
+      ? `${Math.max(1, Math.round(span / 60_000))}m`
+      : span < DAY
+        ? `${Math.round(span / HOUR)}h`
+        : `${Math.round(span / DAY)}d`;
+  return diff < 0 ? `in ${amount}` : `${amount} ago`;
 }
 
 export function formatClock(ts: number): string {
