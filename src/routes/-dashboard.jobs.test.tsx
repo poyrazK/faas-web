@@ -380,6 +380,18 @@ describe('Jobs hub', () => {
     expect(started?.textContent).not.toBe('2026-09-11T00:00:00Z');
   });
 
+  it('shows each run-history start time with the exact time on hover', async () => {
+    await mount('/dashboard/jobs?section=scheduled&schedule=schedule-1');
+    const row = (await screen.findByRole('button', { name: 'Execution execution-1' })).closest(
+      'li'
+    )!;
+
+    const started = within(row).getByRole('time');
+    expect(started).toHaveAttribute('dateTime', '2026-09-11T00:00:00.000Z');
+    expect(started).toHaveAttribute('title', expect.stringContaining('2026'));
+    expect(started).toHaveTextContent(/ago$/);
+  });
+
   it('restores workload, run and task from a copied URL, refresh, Back and Forward', async () => {
     const router = await mount('/dashboard/jobs?section=workloads&campaign=handoff');
     await userEvent.click(screen.getByRole('button', { name: 'nightly-export' }));

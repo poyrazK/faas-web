@@ -166,7 +166,7 @@ function RunHistory({
                 Execution {r.id}
               </button>
               <Pill label={r.outcome} color={OUTCOME_COLOR[r.outcome]} />
-              <span className="text-xs text-muted-foreground">{formatWhen(r.started_at)}</span>
+              <Timestamp value={r.started_at} className="text-xs text-muted-foreground" />
               <span className="font-mono text-xs [font-variant-numeric:tabular-nums]">
                 {r.duration_ms != null ? `${(r.duration_ms / 1000).toFixed(1)}s` : '—'}
               </span>
