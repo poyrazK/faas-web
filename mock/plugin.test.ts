@@ -323,3 +323,86 @@ describe('POST /v1/postgres/bindings/{id}/rotate', () => {
     expect(res.body.code).toBe('managed_postgres_not_found');
   });
 });
+
+describe('outbound bindings through the mock', () => {
+  const BASE = '/v1/outbound/integrations';
+  const bindingsOf = (slug: string) => `/v1/apps/${slug}/outbound-bindings`;
+  async function setup(slug: string, name: string) {
+    const app = await json('/v1/apps', {
+      method: 'POST',
+      body: JSON.stringify({ slug, type: 'app', runtime: 'node24' }),
+    });
+    const integration = await json(BASE, {
+      method: 'POST',
+      body: JSON.stringify({
+        name,
+        origin: 'https://api.example.com',
+        allowed_methods: ['GET', 'POST'],
+        allowed_path_prefixes: ['/v1/'],
+      }),
+    });
+    expect(app.status).toBe(201);
+    expect(integration.status).toBe(201);
+    return { app: app.body as { id: string }, integration: integration.body as { id: string } };
+  }
+  const put = (slug: string, id: string) => json(`${bindingsOf(slug)}/${id}`, { method: 'PUT' });
+  const unbind = (slug: string, id: string) =>
+    fetch(`${base}${bindingsOf(slug)}/${id}`, { method: 'DELETE' });
+
+  it('starts empty, binds with the schema’s shape, and stores a repeat bind once', async () => {
+    const { app, integration } = await setup('bind-a', 'bind-a-api');
+    expect((await json(bindingsOf('bind-a'))).body).toEqual({ items: [] });
+
+    const bound = await put('bind-a', integration.id);
+    expect(bound.status).toBe(200);
+    expect(bound.body).toMatchObject({
+      app_id: app.id,
+      integration: { id: integration.id, name: 'bind-a-api' },
+      allowed_methods: ['GET', 'POST'],
+      allowed_path_prefixes: ['/v1/'],
+      daily_request_limit: null,
+    });
+    expect(typeof bound.body.created_at).toBe('string');
+
+    expect((await put('bind-a', integration.id)).status).toBe(200);
+    expect((await json(bindingsOf('bind-a'))).body.items).toHaveLength(1);
+  });
+
+  it('keeps bindings per app', async () => {
+    const { integration } = await setup('bind-b', 'bind-b-api');
+    await json('/v1/apps', {
+      method: 'POST',
+      body: JSON.stringify({ slug: 'bind-b-other', type: 'app', runtime: 'node24' }),
+    });
+    await put('bind-b', integration.id);
+    expect((await json(bindingsOf('bind-b-other'))).body.items).toEqual([]);
+  });
+
+  it('unbinds, answering 204 again when it is already absent', async () => {
+    const { integration } = await setup('bind-c', 'bind-c-api');
+    await put('bind-c', integration.id);
+    expect((await unbind('bind-c', integration.id)).status).toBe(204);
+    expect((await unbind('bind-c', integration.id)).status).toBe(204);
+    expect((await json(bindingsOf('bind-c'))).body.items).toEqual([]);
+  });
+
+  it('refuses an unknown integration or app with not_found', async () => {
+    await setup('bind-d', 'bind-d-api');
+    const missing = '00000000-0000-4000-8000-00000000dead';
+    const noIntegration = await put('bind-d', missing);
+    expect(noIntegration.status).toBe(404);
+    expect(noIntegration.body.code).toBe('not_found');
+    const noApp = await put('no-such-app-anywhere', missing);
+    expect(noApp.status).toBe(404);
+    expect(noApp.body.code).toBe('not_found');
+    expect((await json(bindingsOf('no-such-app-anywhere'))).status).toBe(404);
+  });
+
+  it('drops an app’s binding when its integration is deleted', async () => {
+    const { integration } = await setup('bind-e', 'bind-e-api');
+    await put('bind-e', integration.id);
+    const deleted = await fetch(`${base}${BASE}/${integration.id}`, { method: 'DELETE' });
+    expect(deleted.status).toBe(204);
+    expect((await json(bindingsOf('bind-e'))).body.items).toEqual([]);
+  });
+});
