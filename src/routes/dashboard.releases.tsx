@@ -163,7 +163,7 @@ export function DeploymentsPage() {
     {
       key: view === 'builds' ? 'id' : 'app',
       label: view === 'builds' ? 'Build' : 'Release',
-      width: 'w-[52%] md:w-[28%]',
+      width: view === 'builds' ? 'w-[52%] md:w-[32%]' : 'w-[52%] md:w-[26%]',
       render: (r) => (
         <span className="flex min-w-0 flex-col gap-1 py-1">
           {view === 'releases' && (

@@ -13,6 +13,7 @@ import { PageHeader, Panel } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { useToast } from '@/components/ui/toast';
 import { Timestamp } from '@/components/ui/timestamp';
+import { parseTime } from '@/lib/time';
 import { useConfirm } from '@/components/ui/confirm';
 import {
   useApiKeys,
@@ -225,7 +226,7 @@ export function PersonalKeysBody({
       priority: 'secondary',
       numeric: true,
       render: (k) =>
-        k.lastUsedAt ? (
+        parseTime(k.lastUsedAt) ? (
           <Timestamp value={k.lastUsedAt} className="text-xs text-muted-foreground" />
         ) : (
           <span className="text-xs text-muted-foreground">Never</span>

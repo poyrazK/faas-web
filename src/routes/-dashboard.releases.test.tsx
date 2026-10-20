@@ -327,6 +327,18 @@ describe('Releases hub', () => {
     expect(screen.queryByRole('columnheader', { name: 'Commit' })).not.toBeInTheDocument();
   });
 
+  it.each([
+    ['releases', '/dashboard/releases'],
+    ['builds', '/dashboard/releases?view=builds'],
+  ])('sizes the %s columns to exactly 100% on desktop', async (_view, url) => {
+    await mount(url);
+    const total = screen
+      .getAllByRole('columnheader')
+      .flatMap((th) => Array.from(th.className.matchAll(/(?:^|\s)md:w-\[(\d+)%\]/g)))
+      .reduce((sum, match) => sum + Number(match[1]), 0);
+    expect(total).toBe(100);
+  });
+
   it('offers actual status values and preserves unrelated URL state when filtering', async () => {
     const router = await mount('/dashboard/releases?campaign=handoff#details');
     await userEvent.selectOptions(

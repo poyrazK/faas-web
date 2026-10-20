@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/lib/api/queries', () => ({
@@ -12,6 +12,13 @@ vi.mock('@/lib/api/queries', () => ({
         last_used_at: '2026-09-11T00:00:00Z',
       },
       { id: 'k2', label: 'spare', prefix: 'gk_idle', scopes: ['deploy'] },
+      {
+        id: 'k3',
+        label: 'zeroed',
+        prefix: 'gk_zero',
+        scopes: ['deploy'],
+        last_used_at: '0001-01-01T00:00:00Z',
+      },
     ],
     isPending: false,
     error: null,
@@ -38,5 +45,13 @@ describe('API keys table', () => {
     expect(used).toHaveTextContent(/ago$/);
 
     expect(screen.getByText('spare').closest('tr')).toHaveTextContent('Never');
+  });
+
+  it('reads a zero-time last use as "Never", not a dash', () => {
+    render(<PersonalKeysBody />);
+
+    const row = screen.getByText('zeroed').closest('tr');
+    expect(row).toHaveTextContent('Never');
+    expect(within(row as HTMLElement).queryByRole('time')).not.toBeInTheDocument();
   });
 });
