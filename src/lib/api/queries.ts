@@ -2810,11 +2810,18 @@ export function useBillingPortal() {
  * bill immediately, so callers must confirm before invoking it — a 402 here
  * means payment is required and carries a link to the provider's checkout.
  */
+/**
+ * A 202 means the provider accepted a deferred change: the account keeps its
+ * current plan until the provider's webhook confirms the new one.
+ */
 export function useChangePlan() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (plan: components['schemas']['ChangePlanRequest']['plan']) =>
-      unwrap(api.PATCH('/v1/account/plan', { body: { plan } })),
+    mutationFn: async (plan: components['schemas']['ChangePlanRequest']['plan']) => {
+      const result = await api.PATCH('/v1/account/plan', { body: { plan } });
+      const account = await unwrap(Promise.resolve(result));
+      return { account, pending: result.response.status === 202 };
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.account }),
   });
 }

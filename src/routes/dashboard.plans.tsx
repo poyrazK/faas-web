@@ -14,7 +14,8 @@ import {
 import { useAuth, type Plan } from '@/lib/auth';
 import { Panel } from '@/components/dashboard/primitives';
 import { useConfirm } from '@/components/ui/confirm';
-import { errorMessage } from '@/lib/api/errors';
+import { ApiError, errorMessage } from '@/lib/api/errors';
+import { goToExternal } from '@/lib/external-navigation';
 import { consoleHead } from '@/lib/seo';
 import { SpendCap } from '@/components/dashboard/spend-cap';
 
@@ -158,13 +159,27 @@ function PlansPage() {
     if (!pending) return;
     void changePlan
       .mutateAsync(pending)
-      .then(async () => {
+      .then(async (result) => {
         await refreshAccount().catch(() => {});
-        toast({ kind: 'success', title: `Now on the ${pending} plan` });
+        toast(
+          result.pending
+            ? {
+                kind: 'info',
+                title: 'Plan change pending',
+                description: `You stay on your current plan until the billing provider confirms ${pending}.`,
+              }
+            : { kind: 'success', title: `Now on the ${pending} plan` }
+        );
         setPending(null);
       })
       .catch((err: unknown) => {
         setPending(null);
+        // An upgrade that needs payment answers 402 with the provider page
+        // that takes it; that is the next step, not a failure.
+        if (err instanceof ApiError && err.billingUrl) {
+          goToExternal(err.billingUrl);
+          return;
+        }
         toast({ kind: 'error', title: 'Could not change plan', description: errorMessage(err) });
       });
   };

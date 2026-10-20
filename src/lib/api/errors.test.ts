@@ -145,6 +145,20 @@ describe('toApiError', () => {
     expect(stripe.billingUrl).toBe('https://billing.example/portal');
     expect(paddle.billingUrl).toBe('https://paddle.example/checkout');
   });
+
+  it('prefers the provider-neutral checkout_url over the legacy and portal links', async () => {
+    const error = await toApiError(
+      problemResponse(402, {
+        title: 'Payment required',
+        status: 402,
+        code: 'payment_required',
+        checkout_url: 'https://checkout.example/session',
+        billing_portal_url: 'https://billing.example/portal',
+        paddle_checkout_url: 'https://paddle.example/checkout',
+      })
+    );
+    expect(error.billingUrl).toBe('https://checkout.example/session');
+  });
 });
 
 describe('errorMessage', () => {

@@ -71,10 +71,16 @@ export class ApiError extends Error {
 
   /**
    * A 402 carries a link to whichever billing provider the box runs on, so the
-   * UI can send the customer straight there instead of to a dead end.
+   * UI can send the customer straight there instead of to a dead end:
+   * `checkout_url` when a new subscription is needed, `billing_portal_url` when
+   * an existing one must change, and the legacy Paddle field last.
    */
   get billingUrl(): string | undefined {
-    return this.problem.billing_portal_url ?? this.problem.paddle_checkout_url;
+    return (
+      this.problem.checkout_url ??
+      this.problem.billing_portal_url ??
+      this.problem.paddle_checkout_url
+    );
   }
 }
 
