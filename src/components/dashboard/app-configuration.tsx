@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
-import { FIELD as BASE_FIELD } from '@/components/ui/field';
+import { FIELD as BASE_FIELD, FieldError } from '@/components/ui/field';
 import { Switch } from '@/components/ui/switch';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
@@ -22,6 +22,7 @@ import { SupplyChainPanel } from './supply-chain-panel';
 import { StaticEgressIP, StreamingCapNote } from './app-insights';
 import { PurgeCacheControl } from './app-lifecycle';
 import { publicAppUrl } from '@/lib/app-url';
+import { appNameError } from './new-app-validation';
 import { useAuth } from '@/lib/auth';
 import { MemorySelect } from './memory-select';
 import { configurationEffects } from '@/lib/api/runtime-policy';
@@ -619,7 +620,10 @@ function RenamePanel({ app }: { app: App }) {
   const navigate = useNavigate();
   const rename = useRenameApp(app.slug);
   const [next, setNext] = useState(app.slug);
-  const valid = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(next) && next !== app.slug;
+  // The same rule the create wizard applies, including the reserved tag- prefix.
+  const nameError = next === app.slug ? undefined : appNameError(next);
+  const valid = next !== app.slug && !nameError;
+  const currentUrl = publicAppUrl(app.url)?.replace(/\/$/, '') ?? `the ${app.slug} hostname`;
 
   return (
     <Panel
@@ -634,7 +638,7 @@ function RenamePanel({ app }: { app: App }) {
           if (
             !(await confirm({
               title: `Rename ${app.slug} to ${next}?`,
-              description: `https://${app.slug}.gregale.app stops answering as soon as this lands. Anything pointing at it — a custom domain, a webhook, a cron path — keeps working; anything pointing at the old hostname does not.`,
+              description: `${currentUrl} stops answering as soon as this lands. Anything pointing at it — a custom domain, a webhook, a cron path — keeps working; anything pointing at the old hostname does not.`,
               confirmLabel: 'Rename',
             }))
           )
@@ -660,8 +664,11 @@ function RenamePanel({ app }: { app: App }) {
             value={next}
             onChange={(e) => setNext(e.target.value.toLowerCase())}
             spellCheck={false}
+            aria-invalid={nameError ? true : undefined}
+            aria-describedby={nameError ? 'rename-slug-error' : undefined}
             className={FIELD}
           />
+          {nameError && <FieldError id="rename-slug-error">{nameError}</FieldError>}
         </label>
         <Button type="submit" size="sm" variant="outline" disabled={!valid} busy={rename.isPending}>
           Rename

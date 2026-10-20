@@ -130,6 +130,33 @@ describe('App deletion contract copy', () => {
     await user.tab();
     expect(idle).toHaveValue(5);
   });
+  it('names the URL the app actually answers on when confirming a rename', async () => {
+    const user = userEvent.setup();
+    render(
+      <ConfirmProvider>
+        <AppConfiguration slug="alpha" />
+      </ConfirmProvider>
+    );
+    const slug = screen.getByLabelText('Slug');
+    await user.clear(slug);
+    await user.type(slug, 'alpha-two');
+    await user.click(screen.getByRole('button', { name: 'Rename' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('https://alpha.example.test stops answering');
+    expect(dialog).not.toHaveTextContent('gregale.app');
+  });
+  it('refuses a rename onto the reserved tag- prefix', async () => {
+    const user = userEvent.setup();
+    render(
+      <ConfirmProvider>
+        <AppConfiguration slug="alpha" />
+      </ConfirmProvider>
+    );
+    const slug = screen.getByLabelText('Slug');
+    await user.clear(slug);
+    await user.type(slug, 'tag-alpha');
+    expect(screen.getByRole('button', { name: 'Rename' })).toBeDisabled();
+  });
   it('explains live policy convergence separately from boot-time memory', () => {
     render(
       <ConfirmProvider>
