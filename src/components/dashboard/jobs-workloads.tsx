@@ -253,9 +253,14 @@ export function WorkloadsBody({ search, onSelection }: JobsSelectionProps) {
           >
             <JobDefinition name={job} />
             <div className="mt-5 flex flex-col gap-3 border-t border-border pt-4">
-              <CliCommand label="Start a run with one task" command={cliJobRunCommand(job)} />
+              <CliCommand
+                label="Start a run with one task. This starts real, billed work right away."
+                copyLabel={`run command for ${job}`}
+                command={cliJobRunCommand(job)}
+              />
               <CliCommand
                 label="Delete this workload. The CLI does not ask first."
+                copyLabel={`delete command for ${job}`}
                 command={cliJobRemoveCommand(job)}
               />
             </div>

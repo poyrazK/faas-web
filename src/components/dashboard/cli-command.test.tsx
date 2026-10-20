@@ -36,4 +36,19 @@ describe('CliCommand', () => {
       screen.getByRole('button', { name: 'Copy: gregale domains set-default api.example.com' })
     ).toBeInTheDocument();
   });
+
+  it('names the copy button after copyLabel while the visible caption stays the label', () => {
+    render(
+      <CliCommand
+        command="gregale jobs rm nightly"
+        label="Delete this workload. The CLI does not ask first."
+        copyLabel="delete command for nightly"
+      />
+    );
+
+    expect(screen.getByText('Delete this workload. The CLI does not ask first.')).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: 'Copy: delete command for nightly' })
+    ).toBeInTheDocument();
+  });
 });

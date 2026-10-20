@@ -50,6 +50,30 @@ describe('WorkloadsBody', () => {
     expect(screen.queryByText(/Further changes can be made with the CLI/)).not.toBeInTheDocument();
   });
 
+  it('warns beside the run command that pasting it starts real, billed work', () => {
+    useJobs.mockReturnValue({ data: { jobs: [job] }, isPending: false, error: null });
+    render(<WorkloadsBody search={{ job: 'job-1' }} onSelection={vi.fn()} />);
+
+    expect(
+      screen.getByText('Start a run with one task. This starts real, billed work right away.')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Delete this workload. The CLI does not ask first.')
+    ).toBeInTheDocument();
+  });
+
+  it('names the copy buttons as short nouns, not as the warning sentences', () => {
+    useJobs.mockReturnValue({ data: { jobs: [job] }, isPending: false, error: null });
+    render(<WorkloadsBody search={{ job: 'job-1' }} onSelection={vi.fn()} />);
+
+    expect(
+      screen.getByRole('button', { name: 'Copy: run command for nightly-report' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Copy: delete command for nightly-report' })
+    ).toBeInTheDocument();
+  });
+
   it('shows no command until a workload is selected', () => {
     render(<WorkloadsBody search={{}} onSelection={vi.fn()} />);
 
