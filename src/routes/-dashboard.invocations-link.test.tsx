@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   createMemoryHistory,
@@ -104,6 +104,30 @@ describe('invocation detail links', () => {
     expect(when).toHaveAttribute('title', expect.stringContaining('2026'));
     expect(when).toHaveTextContent(/ago$/);
   });
+  it('offers the full invocation ID to copy from the list without opening the drawer', async () => {
+    const { router } = await mount('/dashboard/invocations');
+    expect(screen.getByText('aaaaaaaaaaaa…')).toHaveAttribute('title', listedId);
+    await userEvent.click(screen.getByRole('button', { name: `Copy: invocation ID ${listedId}` }));
+    expect(router.state.location.search.invocation).toBeUndefined();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+  it('shows the invocation ID in full with a copy button in the drawer', async () => {
+    await mount(`/dashboard/invocations?invocation=${olderId}`);
+    const dialog = await screen.findByRole('dialog', { name: 'POST /work' });
+    expect(within(dialog).getByText(olderId)).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole('button', { name: `Copy: invocation ID ${olderId}` })
+    ).toBeInTheDocument();
+  });
+  it('keeps the ID copyable when the invocation cannot be read', async () => {
+    mocks.errorStatus = 404;
+    await mount(`/dashboard/invocations?invocation=${olderId}`);
+    expect(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: `Copy: invocation ID ${olderId}`,
+      })
+    ).toBeInTheDocument();
+  });
   it('opens an ID directly even when it is not in the loaded list', async () => {
     await mount(`/dashboard/invocations?invocation=${olderId}`);
     expect(await screen.findByRole('dialog', { name: 'POST /work' })).toHaveTextContent(olderId);
@@ -111,7 +135,7 @@ describe('invocation detail links', () => {
   });
   it('writes row selection to the URL and follows back/forward navigation', async () => {
     const { router, history } = await mount('/dashboard/invocations');
-    await userEvent.click(screen.getByText(listedId));
+    await userEvent.click(screen.getByText('aaaaaaaaaaaa…'));
     await waitFor(() => expect(router.state.location.search.invocation).toBe(listedId));
     await act(async () => {
       history.back();

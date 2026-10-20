@@ -4,6 +4,7 @@ import { Refresh } from 'iconoir-react';
 import { InlinePhase, PageHeader, queryPhase } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { Button } from '@/components/ui/button';
+import { CopyableId } from '@/components/ui/copyable-id';
 import { useToast } from '@/components/ui/toast';
 import { useConfirm } from '@/components/ui/confirm';
 import {
@@ -79,9 +80,14 @@ function InvocationDrawer({ id, onClose }: { id: string | null; onClose: () => v
       open={id !== null}
       onClose={onClose}
       title={inv ? `${inv.method ?? ''} ${inv.path ?? ''}`.trim() || 'Invocation' : 'Invocation'}
-      description={id ?? undefined}
       width="max-w-2xl"
     >
+      {id && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <span>Invocation ID</span>
+          <CopyableId value={id} label="invocation ID" full />
+        </div>
+      )}
       {invPhase !== 'ready' || !inv ? (
         <InlinePhase
           phase={invPhase}
@@ -206,7 +212,9 @@ function InvocationsPage() {
     {
       key: 'id',
       label: 'Invocation',
-      render: (i) => <span className="font-mono text-xs text-muted-foreground">{i.id}</span>,
+      render: (i) => (
+        <CopyableId value={i.id} label="invocation ID" className="text-muted-foreground" />
+      ),
     },
     {
       key: 'app',

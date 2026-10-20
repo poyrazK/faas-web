@@ -81,4 +81,16 @@ describe('CopyableId', () => {
     await user.click(screen.getByRole('button', { name: 'Copy: database ID db_123' }));
     expect(onRow).not.toHaveBeenCalled();
   });
+
+  it('still lets a press on the ID text reach a clickable parent', async () => {
+    const onRow = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <div onClick={onRow}>
+        <CopyableId value="db_123" label="database ID" />
+      </div>
+    );
+    await user.click(screen.getByText('db_123'));
+    expect(onRow).toHaveBeenCalledTimes(1);
+  });
 });

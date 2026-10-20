@@ -32,16 +32,19 @@ export function CopyableId({
   const keep = displayLength ?? DEFAULT_DISPLAY;
   const shown = !full && value.length > limit ? `${value.slice(0, keep)}…` : value;
   return (
-    // The click shield: copying inside a clickable row must not also open it.
-    <span
-      className={cn('inline-flex min-w-0 items-center gap-1', className)}
-      onClick={(e) => e.stopPropagation()}
-      onKeyDown={(e) => e.stopPropagation()}
-    >
+    <span className={cn('inline-flex min-w-0 items-center gap-1', className)}>
       <span title={value} className={cn('font-mono text-xs', full ? 'break-all' : 'truncate')}>
         {shown}
       </span>
-      <CopyIconButton text={value} label={`${label} ${value}`} />
+      {/* The click shield covers the button only: copying inside a clickable
+          row must not also open it, but the ID text is part of the row. */}
+      <span
+        className="inline-flex shrink-0"
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
+      >
+        <CopyIconButton text={value} label={`${label} ${value}`} />
+      </span>
     </span>
   );
 }
