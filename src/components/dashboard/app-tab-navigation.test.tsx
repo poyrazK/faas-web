@@ -73,3 +73,13 @@ it('groups the consumer pages under Monetize', () => {
       .map((b) => b.textContent)
   ).toEqual(['Consumers', 'Consumer plans']);
 });
+
+it('puts Outbound integrations under Connect, beside the app’s other destinations', () => {
+  render(<Navigation initial="Outbound" />);
+  expect(screen.getByRole('tab', { name: 'Connect' })).toHaveAttribute('aria-selected', 'true');
+  expect(within(pages('Connect')).getByRole('button', { name: 'Outbound' })).toHaveAttribute(
+    'aria-pressed',
+    'true'
+  );
+  expect(resolveAppTab('Outbound')).toBe('Outbound');
+});
