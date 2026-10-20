@@ -102,10 +102,16 @@ describe('App deletion contract copy', () => {
   });
   it('lets a number be typed through values below its minimum', async () => {
     const user = userEvent.setup();
+    // Saving mounts the policy status panel, which reads through React Query.
+    spyApi('GET').mockResolvedValue({ data: status, response: new Response() } as never);
     render(
-      <ConfirmProvider>
-        <AppConfiguration slug="alpha" />
-      </ConfirmProvider>
+      <QueryClientProvider
+        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
+        <ConfirmProvider>
+          <AppConfiguration slug="alpha" />
+        </ConfirmProvider>
+      </QueryClientProvider>
     );
     const idle = screen.getByLabelText(/Idle timeout/);
     await user.clear(idle);
