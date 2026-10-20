@@ -17,7 +17,6 @@ import {
 } from '@/lib/api/queries';
 import { DomainDoctor } from '@/components/dashboard/domain-doctor';
 import { slugIndex } from '@/lib/api/adapters';
-import { errorMessage } from '@/lib/api/errors';
 import { FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
 import { cn } from '@/lib/utils';
 
@@ -181,7 +180,7 @@ function DomainsPage() {
                     toast({
                       kind: 'error',
                       title: 'Could not verify',
-                      description: errorMessage(err),
+                      error: err,
                     })
                   );
               }}
@@ -220,7 +219,7 @@ function DomainsPage() {
                   toast({
                     kind: 'error',
                     title: 'Could not remove',
-                    description: errorMessage(err),
+                    error: err,
                   })
                 );
             }}
@@ -255,9 +254,7 @@ function DomainsPage() {
             : undefined,
         });
       })
-      .catch((err: unknown) =>
-        toast({ kind: 'error', title: 'Could not add domain', description: errorMessage(err) })
-      );
+      .catch((err: unknown) => toast({ kind: 'error', title: 'Could not add domain', error: err }));
   };
 
   return (

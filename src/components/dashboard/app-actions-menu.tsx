@@ -11,7 +11,6 @@ import {
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
 import type { Workflow } from '@/lib/mock-data';
-import { errorMessage } from '@/lib/api/errors';
 import { useParkApp, useWakeApp } from '@/lib/api/queries';
 import { RESTORE_CONTEXT, RESTORE_TARGET } from '@/lib/platform-claims';
 import { useData } from '@/lib/store';
@@ -62,7 +61,7 @@ export function AppActionsMenu({
       await park.mutateAsync(app.id);
       toast({ kind: 'success', title: `Parked ${app.name}` });
     } catch (err) {
-      toast({ kind: 'error', title: 'Could not park', description: errorMessage(err) });
+      toast({ kind: 'error', title: 'Could not park', error: err });
     }
   };
 
@@ -71,7 +70,7 @@ export function AppActionsMenu({
       await wake.mutateAsync(app.id);
       toast({ kind: 'success', title: `Waking ${app.name}` });
     } catch (err) {
-      toast({ kind: 'error', title: 'Could not wake', description: errorMessage(err) });
+      toast({ kind: 'error', title: 'Could not wake', error: err });
     }
   };
 
@@ -95,7 +94,7 @@ export function AppActionsMenu({
         description: `${app.name} is serving its previous deployment.`,
       });
     } catch (err) {
-      toast({ kind: 'error', title: 'Rollback failed', description: errorMessage(err) });
+      toast({ kind: 'error', title: 'Rollback failed', error: err });
     }
   };
 

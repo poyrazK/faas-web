@@ -69,6 +69,7 @@ function explainImportError(err: unknown): {
   kind: 'info' | 'error';
   title: string;
   description?: string;
+  error?: unknown;
 } {
   if (err instanceof ApiError) {
     switch (err.code) {
@@ -76,19 +77,19 @@ function explainImportError(err: unknown): {
         return {
           kind: 'error',
           title: 'Not a valid OpenAPI document',
-          description: errorMessage(err),
+          error: err,
         };
       case 'openapi_import_too_many_endpoints':
-        return { kind: 'error', title: 'Too many endpoints', description: errorMessage(err) };
+        return { kind: 'error', title: 'Too many endpoints', error: err };
       case 'openapi_import_too_large':
-        return { kind: 'error', title: 'Document too large', description: errorMessage(err) };
+        return { kind: 'error', title: 'Document too large', error: err };
       case 'openapi_import_quota_reached':
-        return { kind: 'info', title: 'Import limit reached', description: errorMessage(err) };
+        return { kind: 'info', title: 'Import limit reached', error: err };
       case 'empty_body':
         return { kind: 'error', title: 'Nothing to import' };
     }
   }
-  return { kind: 'error', title: 'Could not process the document', description: errorMessage(err) };
+  return { kind: 'error', title: 'Could not process the document', error: err };
 }
 
 function isNotFound(error: unknown): boolean {
@@ -146,7 +147,7 @@ function ImportedDocument({ slug }: { slug: string }) {
       await remove.mutateAsync();
       toast({ kind: 'success', title: 'Imported document deleted' });
     } catch (err) {
-      toast({ kind: 'error', title: 'Could not delete', description: errorMessage(err) });
+      toast({ kind: 'error', title: 'Could not delete', error: err });
     }
   };
 

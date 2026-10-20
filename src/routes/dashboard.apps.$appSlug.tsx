@@ -803,7 +803,7 @@ function FunctionDetailPage() {
                     toast({
                       kind: 'error',
                       title: 'Could not start the deploy',
-                      description: errorMessage(err),
+                      error: err,
                     });
                   });
               }}

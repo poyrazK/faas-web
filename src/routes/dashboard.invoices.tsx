@@ -6,7 +6,6 @@ import { InlinePhase, PageHeader, queryPhase } from '@/components/dashboard/prim
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { useToast } from '@/components/ui/toast';
 import { useBillingPortal, useInfiniteInvoices } from '@/lib/api/queries';
-import { errorMessage } from '@/lib/api/errors';
 import { consoleHead } from '@/lib/seo';
 import { FocusExport } from '@/components/dashboard/focus-export';
 
@@ -135,7 +134,7 @@ function InvoicesPage() {
                   toast({
                     kind: 'error',
                     title: 'Could not open the billing portal',
-                    description: errorMessage(err),
+                    error: err,
                   })
                 );
             }}
