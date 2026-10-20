@@ -57,6 +57,8 @@ interface DomainRow {
   domain: string;
   app: string;
   verified: boolean;
+  /** True when this domain is already its app's default. */
+  isDefault: boolean;
   verifiedAt: string | null;
   txtRecord: string | null;
 }
@@ -106,15 +108,18 @@ function DomainsPage() {
       domain: d.domain,
       app: bySlug.get(d.app_id) ?? d.app_id,
       verified: d.verified,
+      isDefault: d.default === true,
       verifiedAt: d.verified_at ?? null,
       txtRecord: d.txt_record ?? null,
     }));
   }, [data, apps]);
 
-  // The first verified hostname by name, matching the table's initial order.
-  const defaultCandidate = rows
-    .filter((row) => row.verified)
-    .sort((a, b) => a.domain.localeCompare(b.domain))[0];
+  // A domain can be made its app's default only once verified, and there is
+  // nothing to do for one that already is. Each eligible domain gets its own
+  // command, so every app with a candidate is covered.
+  const defaultCandidates = rows
+    .filter((row) => row.verified && !row.isDefault)
+    .sort((a, b) => a.domain.localeCompare(b.domain));
 
   const columns: Column<DomainRow>[] = [
     {
@@ -398,18 +403,20 @@ function DomainsPage() {
         onRetry={() => void refetch()}
       />
 
-      {defaultCandidate && (
+      {defaultCandidates.length > 0 && (
         <Panel
-          title="Default domain"
-          description="The console does not set an app's default domain. Only a verified domain can be the default."
+          title="Set a default domain"
+          description="The console does not set an app's default domain. Only a verified domain can be the default, and the new one replaces the app's current default."
         >
-          <CliCommand
-            label={`Make ${defaultCandidate.domain} the default domain for ${defaultCandidate.app}`}
-            command={cliDomainSetDefaultCommand(defaultCandidate.domain)}
-          />
-          <p className="mt-2 text-xs text-muted-foreground">
-            Use another verified hostname in the command to make that one the default instead.
-          </p>
+          <div className="flex flex-col gap-3">
+            {defaultCandidates.map((row) => (
+              <CliCommand
+                key={row.domain}
+                label={`Make ${row.domain} the default domain for ${row.app}`}
+                command={cliDomainSetDefaultCommand(row.domain)}
+              />
+            ))}
+          </div>
         </Panel>
       )}
 
