@@ -3,7 +3,7 @@ import { Upload } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { FIELD, Select } from '@/components/ui/field';
 import { useToast } from '@/components/ui/toast';
-import { ApiError, errorMessage } from '@/lib/api/errors';
+import { ApiError } from '@/lib/api/errors';
 import { useDeployTarball } from '@/lib/api/queries';
 import { cn } from '@/lib/utils';
 
@@ -67,14 +67,14 @@ export function TarballDeploy({
         toast({
           kind: 'error',
           title: 'Archive too large',
-          description: errorMessage(err),
+          error: err,
         });
         return;
       }
       toast({
         kind: 'error',
         title: 'Could not deploy the archive',
-        description: errorMessage(err),
+        error: err,
       });
     }
   };

@@ -9,7 +9,6 @@ import { useToast } from '@/components/ui/toast';
 import { Modal } from '@/components/ui/modal';
 import { useConfirm } from '@/components/ui/confirm';
 import { useAppSecrets, useDeleteSecret, useSetSecret, useRotateSecret } from '@/lib/api/queries';
-import { errorMessage } from '@/lib/api/errors';
 import { EnvImportButton } from '@/components/dashboard/env-import';
 import { FieldError } from '@/components/ui/field';
 import { cn } from '@/lib/utils';
@@ -127,7 +126,7 @@ export function SecretsBody({ slug }: { slug: string }) {
               .mutateAsync(s.key)
               .then(() => toast({ kind: 'success', title: `Deleted ${s.key}` }))
               .catch((err: unknown) =>
-                toast({ kind: 'error', title: 'Could not delete', description: errorMessage(err) })
+                toast({ kind: 'error', title: 'Could not delete', error: err })
               );
           }}
           className="text-muted-foreground transition-colors hover:text-foreground"
@@ -160,7 +159,7 @@ export function SecretsBody({ slug }: { slug: string }) {
                 toast({ kind: 'success', title: 'Secret saved' });
               })
               .catch((err: unknown) =>
-                toast({ kind: 'error', title: 'Could not save', description: errorMessage(err) })
+                toast({ kind: 'error', title: 'Could not save', error: err })
               );
           }}
         >
@@ -265,7 +264,7 @@ export function SecretsBody({ slug }: { slug: string }) {
                     toast({
                       kind: 'error',
                       title: 'Could not rotate',
-                      description: errorMessage(err),
+                      error: err,
                     })
                   );
               }}

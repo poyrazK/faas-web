@@ -5,7 +5,6 @@ import { ErrorState, LoadingState, Panel } from './primitives';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
-import { errorMessage } from '@/lib/api/errors';
 import { BucketAccess } from './bucket-access';
 import { useCapability } from '@/lib/api/capabilities';
 import { CapabilityNotice } from './capability-notice';
@@ -72,7 +71,7 @@ function BucketManager({ slug }: { slug: string }) {
     mutationFn: async (task: () => Promise<unknown>) => task(),
     onSuccess: () => void refresh(),
     onError: (error) => {
-      toast({ kind: 'error', title: 'Storage operation failed', description: errorMessage(error) });
+      toast({ kind: 'error', title: 'Storage operation failed', error: error });
       void refresh();
     },
   });
@@ -260,8 +259,7 @@ function ObjectBrowser({
     onSuccess: () => {
       void cache.invalidateQueries({ queryKey: objectKey(slug, bucket.id) });
     },
-    onError: (error) =>
-      toast({ kind: 'error', title: 'Object operation failed', description: errorMessage(error) }),
+    onError: (error) => toast({ kind: 'error', title: 'Object operation failed', error: error }),
   });
   const upload = async (event: FormEvent) => {
     event.preventDefault();

@@ -8,7 +8,6 @@ import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-
 import { useToast } from '@/components/ui/toast';
 import { useConfirm } from '@/components/ui/confirm';
 import { useAppEnv, useDeleteEnv, useSetEnv } from '@/lib/api/queries';
-import { errorMessage } from '@/lib/api/errors';
 import { FieldError } from '@/components/ui/field';
 import { cn } from '@/lib/utils';
 
@@ -123,7 +122,7 @@ export function EnvBody({ slug }: { slug: string }) {
               .mutateAsync(v.key)
               .then(() => toast({ kind: 'success', title: `Deleted ${v.key}` }))
               .catch((err: unknown) =>
-                toast({ kind: 'error', title: 'Could not delete', description: errorMessage(err) })
+                toast({ kind: 'error', title: 'Could not delete', error: err })
               );
           }}
           className="text-muted-foreground transition-colors hover:text-foreground"
@@ -151,7 +150,7 @@ export function EnvBody({ slug }: { slug: string }) {
                 toast({ kind: 'success', title: 'Variable saved' });
               })
               .catch((err: unknown) =>
-                toast({ kind: 'error', title: 'Could not save', description: errorMessage(err) })
+                toast({ kind: 'error', title: 'Could not save', error: err })
               );
           }}
         >

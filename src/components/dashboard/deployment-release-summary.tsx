@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
-import { ApiError, errorMessage } from '@/lib/api/errors';
+import { ApiError } from '@/lib/api/errors';
 import { useDeploymentSummary, useRollback, type DeploymentSummary } from '@/lib/api/queries';
 import { InlinePhase, queryPhase } from './primitives';
 
@@ -59,7 +59,7 @@ export function DeploymentReleaseSummary({
         description: `New deployment ${result.id.slice(0, 12)} is being prepared.`,
       });
     } catch (err) {
-      toast({ kind: 'error', title: 'Could not roll back', description: errorMessage(err) });
+      toast({ kind: 'error', title: 'Could not roll back', error: err });
     }
   };
 

@@ -22,7 +22,6 @@ import {
   useSetGraceWindow,
 } from '@/lib/api/queries';
 import { PersonalKeyDetail } from './personal-key-detail';
-import { errorMessage } from '@/lib/api/errors';
 
 /**
  * API keys, from `/v1/keys`.
@@ -94,7 +93,7 @@ function GraceWindowPanel() {
               toast({ kind: 'success', title: 'Grace window updated' });
             })
             .catch((err: unknown) =>
-              toast({ kind: 'error', title: 'Could not update', description: errorMessage(err) })
+              toast({ kind: 'error', title: 'Could not update', error: err })
             );
         }}
       >
@@ -134,7 +133,7 @@ function GraceWindowPanel() {
                 toast({
                   kind: 'error',
                   title: 'Could not restore default',
-                  description: errorMessage(err),
+                  error: err,
                 })
               )
           }
@@ -269,7 +268,7 @@ export function PersonalKeysBody({
                   toast({
                     kind: 'error',
                     title: 'Could not rotate',
-                    description: errorMessage(err),
+                    error: err,
                   })
                 )
                 .finally(() => rotateKey.reset());
@@ -299,7 +298,7 @@ export function PersonalKeysBody({
                   toast({
                     kind: 'error',
                     title: 'Could not revoke',
-                    description: errorMessage(err),
+                    error: err,
                   })
                 );
             }}
@@ -379,7 +378,7 @@ export function PersonalKeysBody({
                     toast({
                       kind: 'error',
                       title: 'Could not create key',
-                      description: errorMessage(err),
+                      error: err,
                     })
                   )
                   .finally(() => createKey.reset());
