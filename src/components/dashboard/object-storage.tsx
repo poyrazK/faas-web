@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { AppScope, AppSelect, useSelectedApp } from './app-select';
 import { ErrorState, LoadingState, Panel } from './primitives';
 import { Button } from '@/components/ui/button';
+import { CopyableId } from '@/components/ui/copyable-id';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
 import { errorMessage } from '@/lib/api/errors';
@@ -168,6 +169,7 @@ function BucketManager({ slug }: { slug: string }) {
             <span className="text-xs text-muted-foreground">
               {b.scope} · {b.region} · {b.state}
             </span>
+            <CopyableId value={b.id} label="bucket ID" />
             {b.state === 'provisioning' && (
               <Button
                 variant="outline"
