@@ -19,8 +19,9 @@ vi.mock('@/lib/api/palette', () => ({
   }),
 }));
 
+const store = vi.hoisted(() => ({ workflows: [] as unknown[] }));
 vi.mock('@/lib/store', () => ({
-  useData: () => ({ workflows: [] }),
+  useData: () => ({ workflows: store.workflows }),
 }));
 
 function renderPalette(onOpenChange = vi.fn()) {
@@ -29,6 +30,29 @@ function renderPalette(onOpenChange = vi.fn()) {
 }
 
 describe('CommandPalette', () => {
+  it('leaves call counts out of app hints when request metrics are unknown', async () => {
+    store.workflows = [
+      {
+        id: 'alpha',
+        name: 'alpha',
+        runtime: 'node24',
+        invocations24h: 0,
+        metricsUnavailable: true,
+      },
+    ];
+    try {
+      renderPalette();
+      await userEvent.type(
+        await screen.findByRole('combobox', { name: /search commands/i }),
+        'alpha'
+      );
+      expect(await screen.findByText('node24')).toBeInTheDocument();
+      expect(screen.queryByText(/0 calls/)).not.toBeInTheDocument();
+    } finally {
+      store.workflows = [];
+    }
+  });
+
   it('closes on Escape even before the user clicks into the dialog', async () => {
     const onOpenChange = renderPalette();
     const user = userEvent.setup();

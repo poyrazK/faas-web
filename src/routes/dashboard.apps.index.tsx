@@ -86,24 +86,27 @@ const COLUMNS: Column<Workflow>[] = [
     label: 'Invocations 24h',
     priority: 'secondary',
     numeric: true,
-    render: (fn) => <>{formatCompact(fn.invocations24h)}</>,
+    render: (fn) => <>{fn.metricsUnavailable ? '—' : formatCompact(fn.invocations24h)}</>,
   },
   {
     key: 'avgDurationMs',
-    label: 'Avg duration',
+    label: 'p50 latency',
     priority: 'secondary',
     numeric: true,
-    render: (fn) => <>{formatMs(fn.avgDurationMs)}</>,
+    render: (fn) => <>{fn.metricsUnavailable ? '—' : formatMs(fn.avgDurationMs)}</>,
   },
   {
     key: 'errorRatePct',
     label: 'Errors',
     numeric: true,
-    render: (fn) => (
-      <span style={{ color: fn.errorRatePct > 1 ? 'var(--status-critical)' : undefined }}>
-        {fn.errorRatePct.toFixed(2)}%
-      </span>
-    ),
+    render: (fn) =>
+      fn.metricsUnavailable ? (
+        <>—</>
+      ) : (
+        <span style={{ color: fn.errorRatePct > 1 ? 'var(--status-critical)' : undefined }}>
+          {fn.errorRatePct.toFixed(2)}%
+        </span>
+      ),
   },
   {
     key: 'lastDeployedAt',
@@ -158,6 +161,10 @@ function FunctionsPage() {
     [workflows, state, runtime]
   );
 
+  // Without request metrics (a plan without them, or a degraded rollup) every
+  // count is a zero placeholder, so traffic cannot order the list.
+  const metricsKnown = workflows.some((fn) => !fn.metricsUnavailable);
+
   // Built from what is actually deployed rather than a fixed list, so the
   // filter never offers a runtime with nothing behind it.
   const runtimes = useMemo(
@@ -183,7 +190,11 @@ function FunctionsPage() {
       <ResourceTable
         rows={rows}
         columns={COLUMNS}
-        initialSort={{ key: 'invocations24h', dir: 'desc' }}
+        initialSort={
+          metricsKnown
+            ? { key: 'invocations24h', dir: 'desc' }
+            : { key: 'lastDeployedAt', dir: 'desc' }
+        }
         searchKeys={['name', 'runtime']}
         searchPlaceholder="Filter by name or runtime…"
         query={query}

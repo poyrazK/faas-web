@@ -62,6 +62,12 @@ export interface Workflow {
   avgDurationMs: number;
   coldStartP50Ms: number;
   errorRatePct: number;
+  /**
+   * True when request metrics could not be read (no metrics on the plan, or a
+   * degraded rollup). The numeric fields are then zero placeholders, not
+   * readings, and must not be shown as traffic.
+   */
+  metricsUnavailable?: boolean;
   lastDeployedAt: number;
   version: string;
 }

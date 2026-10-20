@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Route as Apps } from './dashboard.apps.index';
 
 let empty = true;
+let metricsUnavailable = false;
 vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { id: 'account-a' } }) }));
 vi.mock('@/lib/store', () => ({
   useData: () => ({
@@ -27,7 +28,20 @@ vi.mock('@/lib/store', () => ({
             invocations24h: 3,
             avgDurationMs: 42,
             errorRatePct: 0,
+            lastDeployedAt: Date.now() - 86_400_000,
+            metricsUnavailable,
+          },
+          {
+            id: 'beta',
+            name: 'beta',
+            runtime: 'node',
+            state: 'running',
+            memoryMb: 256,
+            invocations24h: 0,
+            avgDurationMs: 0,
+            errorRatePct: 0,
             lastDeployedAt: Date.now(),
+            metricsUnavailable,
           },
         ],
     loading: false,
@@ -37,6 +51,7 @@ vi.mock('@/lib/store', () => ({
 }));
 beforeEach(() => {
   empty = true;
+  metricsUnavailable = false;
 });
 async function mount(entry = '/dashboard/apps') {
   const root = createRootRoute({ component: Outlet });
@@ -99,11 +114,29 @@ describe('Apps polish', () => {
     empty = false;
     await mount();
     expect(screen.getByRole('columnheader', { name: 'App' })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: 'Avg duration' })).toHaveClass(
+    expect(screen.getByRole('columnheader', { name: 'p50 latency' })).toHaveClass(
       'hidden',
       'md:table-cell'
     );
     expect(screen.getByRole('columnheader', { name: 'State' })).not.toHaveClass('hidden');
     expect(screen.getByText('More details for alpha')).toBeInTheDocument();
+  });
+  it('shows unknown request metrics as missing, not as zero traffic', async () => {
+    empty = false;
+    metricsUnavailable = true;
+    await mount();
+    const row = screen.getByRole('button', { name: /alpha/ }).closest('tr')!;
+    expect(row).not.toHaveTextContent('0.00%');
+    expect(row).not.toHaveTextContent('42ms');
+    expect(row.textContent).toContain('—');
+  });
+  it('orders apps by latest deploy when request metrics are unknown', async () => {
+    empty = false;
+    metricsUnavailable = true;
+    await mount();
+    const names = screen
+      .getAllByRole('button', { name: /^(alpha|beta)/ })
+      .map((b) => b.textContent);
+    expect(names[0]).toMatch(/^beta/);
   });
 });
