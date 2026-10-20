@@ -77,7 +77,7 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
         href: '/docs/deploy-from-github',
         doc: 'deploy-from-github',
       },
-      { label: 'CLI setup', href: '/docs/cli', doc: 'cli' },
+      { label: 'CLI guide', href: '/docs/cli', doc: 'cli' },
       // Served by apid on this same origin, so it needs no absolute URL.
       { label: 'API reference', href: '/v1/openapi.yaml' },
     ],
