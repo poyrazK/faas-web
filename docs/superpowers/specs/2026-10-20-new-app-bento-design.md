@@ -84,14 +84,14 @@ Git is the hero because it is the one path that deploys from the console, and th
 
 Six small components, inline SVG plus CSS, on tokens only. Each has a resting frame and a loop.
 
-| Cell              | Resting                                                                          | Loop                                                                        |
-| ----------------- | -------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| Git repository    | Repo chip `acme/storefront`, branch chip `main`, a four-segment rail, a URL pill | Segments fill queued → building → deploying → live; the URL pill turns mint |
-| Template          | A four-line file tree; runtime chips Node, Python, Go                            | Lines type in, top to bottom                                                |
-| Empty app         | A dashed empty box with a `$` prompt                                             | `gregale deploy` types; the cursor blinks                                   |
-| Container image   | `sha256:7f3a…` and three layer bars                                              | Layers stack from the bottom                                                |
-| Long-lived worker | A heartbeat line; a globe with a slash (no HTTP)                                 | The line pulses                                                             |
-| Import            | One manifest card fanning into three service nodes                               | The dashed edges draw, using the canvas's `canvas-march` look               |
+| Cell              | Resting                                                                          | Loop                                                                                                                                               |
+| ----------------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Git repository    | Repo chip `acme/storefront`, branch chip `main`, a four-segment rail, a URL pill | Segments fill queued → building → deploying → live; the URL pill turns mint                                                                        |
+| Template          | A four-line file tree; runtime chips Node, Python, Go                            | Lines type in, top to bottom                                                                                                                       |
+| Empty app         | A dashed empty box with a `$` prompt                                             | `gregale deploy` types; the cursor blinks                                                                                                          |
+| Container image   | `sha256:7f3a…` and three layer bars                                              | Layers stack from the bottom                                                                                                                       |
+| Long-lived worker | A heartbeat line; a globe with a slash (no HTTP)                                 | The line pulses                                                                                                                                    |
+| Import            | One manifest card fanning into three service nodes                               | The dashed edges draw, with a dashed-line march defined in `new-app-bento.css` (the canvas branch has a similar keyframe, but it is not on `main`) |
 
 Mechanics: keyframes in `new-app-bento.css` with `animation-play-state: paused` at rest; the cell's `:hover` and `:focus-visible` set `running`; `[aria-pressed="true"]` runs one iteration. `@media (prefers-reduced-motion: reduce)` removes the animations, leaving the resting frame. No timers and no JavaScript per frame.
 
