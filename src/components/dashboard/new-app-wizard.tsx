@@ -30,7 +30,8 @@ import { ProjectImport } from '@/components/dashboard/project-import';
 import { NewAppCapabilities } from './new-app-capabilities';
 import { ImageDeployForm } from './image-deploy-form';
 import { CopyIconButton } from '@/components/ui/copy-button';
-import { templateBySlug } from '@/lib/templates';
+import { DEPLOY_STEP, templateBySlug } from '@/lib/templates';
+import { cliDeployCommand, cliInitDeployCommand } from '@/lib/cli-commands';
 import { type Runtime } from '@/lib/mock-data';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import { useData } from '@/lib/store';
@@ -613,10 +614,10 @@ function CreateAppWizard({
             <p className="text-xs text-muted-foreground">{catalogTemplate.description}</p>
             <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-border bg-background p-3">
               <code className="font-mono text-xs text-foreground">
-                gregale init --template {catalogTemplate.name} && gregale deploy --app {name}
+                {cliInitDeployCommand(catalogTemplate.name, name)}
               </code>
               <CopyIconButton
-                text={`gregale init --template ${catalogTemplate.name} && gregale deploy --app ${name}`}
+                text={cliInitDeployCommand(catalogTemplate.name, name)}
                 label="Copy the CLI commands"
               />
             </div>
@@ -636,9 +637,9 @@ function CreateAppWizard({
             <ol className="mt-4 flex list-decimal flex-col gap-1.5 pl-5 text-sm text-muted-foreground">
               {template.steps.map((s) => (
                 <li key={s}>
-                  {s === 'gregale deploy --app' ? (
+                  {s === DEPLOY_STEP ? (
                     <code className="rounded bg-background px-1.5 py-0.5 font-mono text-xs text-foreground">
-                      gregale deploy --app {name}
+                      {cliDeployCommand(name)}
                     </code>
                   ) : (
                     s
@@ -653,7 +654,7 @@ function CreateAppWizard({
               The app is ready for its first deployment from the CLI or CI.
             </p>
             <code className="mt-4 block overflow-x-auto rounded-lg border border-border bg-background p-3 font-mono text-xs text-foreground">
-              gregale deploy --app {name}
+              {cliDeployCommand(name)}
             </code>
           </Panel>
         )}
