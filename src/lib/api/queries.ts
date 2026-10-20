@@ -1600,6 +1600,57 @@ export function useCancelJobRun() {
   });
 }
 
+/**
+ * Fan out a run of a job (`POST /v1/jobs/{name}/runs`). The answer is the new
+ * run in `queued`, not a finished one. `idempotencyKey` is chosen by the caller
+ * so a retry of the same intent replays the first run instead of billing a
+ * second.
+ */
+export function useStartJobRun() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      name,
+      tasks,
+      idempotencyKey,
+    }: {
+      name: string;
+      tasks: number;
+      idempotencyKey: string;
+    }) =>
+      unwrap(
+        api.POST('/v1/jobs/{name}/runs', {
+          params: { path: { name }, header: { 'Idempotency-Key': idempotencyKey } },
+          body: { tasks },
+        })
+      ),
+    // Awaited so the run list already holds the new run when the caller
+    // selects it, rather than briefly reporting "Run not found".
+    onSuccess: () => qc.invalidateQueries({ queryKey: [...keys.jobs] }),
+  });
+}
+
+/**
+ * Soft-delete a job. The API answers 409 `job_has_live_instances` while any of
+ * its tasks is still in flight.
+ */
+export function useDeleteJob() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) =>
+      unwrap(api.DELETE('/v1/jobs/{name}', { params: { path: { name } } })),
+    onSuccess: async (_none, name) => {
+      // Refresh the lists, but not the deleted job's own detail and runs: they
+      // would only come back 404 while the page is still showing them.
+      await qc.invalidateQueries({
+        queryKey: keys.jobs,
+        predicate: (query) => query.queryKey[1] !== name,
+      });
+      qc.removeQueries({ queryKey: [...keys.jobs, name] });
+    },
+  });
+}
+
 export type Job = components['schemas']['JobResponse'];
 export type JobRun = components['schemas']['JobRunResponse'];
 export type JobTask = components['schemas']['JobTaskResponse'];

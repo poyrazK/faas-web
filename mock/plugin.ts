@@ -4745,6 +4745,63 @@ route('POST', '/v1/jobs/{name}/runs/{id}/cancel', ({ params }) => {
   return { run, cancelled_at: new Date().toISOString() };
 });
 
+// POST /v1/jobs/{name}/runs fans out `tasks` tasks. The spec says the count is
+// clamped against Plan.JobMaxTasksPerRun (Hobby 100, Pro 1000, Scale 5000), so
+// the mock clamps rather than refusing. The run starts queued with nothing done.
+route('POST', '/v1/jobs/{name}/runs', ({ params, body }) => {
+  gateJobs();
+  const job = jobs.find((j) => j.name === params.name);
+  if (!job) throw new Problem(404, 'job_not_found', 'no such job');
+  if (job.status === 'paused') throw new Problem(409, 'job_paused', 'This job is paused.');
+  const requested = body.tasks;
+  if (typeof requested !== 'number' || !Number.isSafeInteger(requested) || requested < 1)
+    throw new Problem(400, 'validation_failed', 'tasks must be a positive whole number.');
+  const tier = process.env.MOCK_PLAN === 'hobby' ? 0 : process.env.MOCK_PLAN === 'scale' ? 2 : 1;
+  const run = {
+    id: db.id(),
+    job_id: job.id,
+    account_id: 'acct-1',
+    trigger_kind: 'manual' as const,
+    tasks: Math.min(requested, [100, 1000, 5000][tier]),
+    parallelism: job.max_parallelism,
+    retry_max: job.retry_max,
+    task_timeout_sec: job.task_timeout_sec,
+    execution_class: 'standard',
+    failure_policy: 'continue',
+    aggregate_status: 'queued',
+    tasks_succeeded: 0,
+    tasks_failed: 0,
+    tasks_cancelled: 0,
+    tasks_running: 0,
+    dead_letter_count: 0,
+    created_at: db.iso(0),
+    updated_at: db.iso(0),
+  };
+  runsOf(job.name).unshift(run);
+  return status(201, run);
+});
+
+// Soft delete. The real API refuses with 409 job_has_live_instances while any
+// task of the job is still queued or running; the mock reads that off run state.
+route('DELETE', '/v1/jobs/{name}', ({ params }) => {
+  gateJobs();
+  const index = jobs.findIndex((j) => j.name === params.name);
+  if (index < 0) throw new Problem(404, 'job_not_found', 'no such job');
+  if (
+    runsOf(params.name).some(
+      (r) => r.aggregate_status === 'running' || r.aggregate_status === 'queued'
+    )
+  )
+    throw new Problem(
+      409,
+      'job_has_live_instances',
+      'This job still has tasks running. Cancel its runs or wait for them to finish.'
+    );
+  jobs.splice(index, 1);
+  runCache.delete(params.name);
+  return NO_CONTENT;
+});
+
 // --- Triggers ---------------------------------------------------------------
 // Six kinds so every pill renders, one paused, and a spread of record states
 // and dead-letter reasons so each filter has something to find.
