@@ -5,6 +5,20 @@
 /status/slo.json    https://api.gregale.dev/status/slo.json   200
 /status/incidents/*    /status/incidents/index.html   200
 
+# Docs paths the API and CLI emit that are published under another slug
+# (from content/customer-pages.json; `src/lib/docs.test.ts` keeps this list in step).
+/docs/build/source    /docs/deploy-from-github   301
+/docs/build/source-ref    /docs/deploy-from-source   301
+/docs/builds    /docs/build   301
+/docs/deployments    /docs/deploy-from-github   301
+/docs/deploys    /docs/deploy-from-github   301
+/docs/domains    /docs/custom-domains   301
+/docs/dpa/subprocessors    /docs/subprocessors   301
+/docs/gdpr    /docs/account   301
+/docs/orgs    /docs/account   301
+/docs/sidecars    /docs/companions   301
+/docs/:parent/*    /docs/:parent   301
+
 # Only registered client routes receive the app shell.
 # The built 404.html handles every unmatched URL on Netlify and Cloudflare Pages.
 /dashboard    /index.html   200
