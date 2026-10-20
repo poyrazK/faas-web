@@ -15,9 +15,11 @@ import {
   useDomains,
   useVerifyDomain,
 } from '@/lib/api/queries';
+import { CliCommand } from '@/components/dashboard/cli-command';
 import { DomainDoctor } from '@/components/dashboard/domain-doctor';
 import { slugIndex } from '@/lib/api/adapters';
 import { errorMessage } from '@/lib/api/errors';
+import { cliDomainSetDefaultCommand } from '@/lib/cli-commands';
 import { FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
 import { cn } from '@/lib/utils';
 
@@ -108,6 +110,11 @@ function DomainsPage() {
       txtRecord: d.txt_record ?? null,
     }));
   }, [data, apps]);
+
+  // The first verified hostname by name, matching the table's initial order.
+  const defaultCandidate = rows
+    .filter((row) => row.verified)
+    .sort((a, b) => a.domain.localeCompare(b.domain))[0];
 
   const columns: Column<DomainRow>[] = [
     {
@@ -390,6 +397,21 @@ function DomainsPage() {
         error={error}
         onRetry={() => void refetch()}
       />
+
+      {defaultCandidate && (
+        <Panel
+          title="Default domain"
+          description="The console does not set an app's default domain. Only a verified domain can be the default."
+        >
+          <CliCommand
+            label={`Make ${defaultCandidate.domain} the default domain for ${defaultCandidate.app}`}
+            command={cliDomainSetDefaultCommand(defaultCandidate.domain)}
+          />
+          <p className="mt-2 text-xs text-muted-foreground">
+            Use another verified hostname in the command to make that one the default instead.
+          </p>
+        </Panel>
+      )}
 
       {doctorFor && (
         <Modal

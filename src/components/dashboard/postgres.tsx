@@ -13,6 +13,7 @@ import {
   UnreachableState,
   queryPhase,
 } from '@/components/dashboard/primitives';
+import { CliCommand } from '@/components/dashboard/cli-command';
 import { PlanGated } from '@/components/dashboard/plan-gated';
 import { Pill } from '@/components/dashboard/resource-table';
 import { ApiError, errorMessage } from '@/lib/api/errors';
@@ -27,6 +28,7 @@ import {
   useRestorePostgresDatabase,
   type PostgresDatabase,
 } from '@/lib/api/queries';
+import { cliPostgresRestoreCommand } from '@/lib/cli-commands';
 import { formatRelative } from '@/lib/mock-data';
 import { cn } from '@/lib/utils';
 
@@ -257,6 +259,12 @@ function DatabaseDetail({ database }: { database: PostgresDatabase }) {
   };
 
   const restoreReady = restoreName.trim().length > 0 && !Number.isNaN(Date.parse(pointInTime));
+  // Same values the form submits: the trimmed name and the instant as UTC ISO.
+  const restoreCommand = cliPostgresRestoreCommand(
+    database.id,
+    restoreName.trim() || undefined,
+    Number.isNaN(Date.parse(pointInTime)) ? undefined : new Date(pointInTime).toISOString()
+  );
 
   return (
     <Panel
@@ -330,6 +338,7 @@ function DatabaseDetail({ database }: { database: PostgresDatabase }) {
               Restore into a new database
             </Button>
           </div>
+          <CliCommand label="Or restore from the CLI" command={restoreCommand} />
         </form>
       </div>
     </Panel>

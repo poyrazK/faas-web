@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { ObjectStorage } from './object-storage';
@@ -208,4 +208,34 @@ it('rejects files above the single-PUT limit before requesting a signed URL', as
     title: 'File exceeds the 5 GiB direct upload limit',
   });
   expect(mocks.sign).not.toHaveBeenCalled();
+});
+it('points to the CLI for bucket features the console lacks, with the chosen app and bucket filled in', async () => {
+  const user = userEvent.setup();
+  show();
+  await user.click(screen.getByRole('button', { name: 'assets' }));
+  const more = screen.getByRole('region', { name: 'More in the CLI' });
+  for (const command of [
+    'gregale bucket versioning status demo bucket-one',
+    'gregale bucket lifecycle get demo bucket-one',
+    'gregale bucket encryption status demo bucket-one',
+    'gregale bucket object-lock status demo bucket-one',
+    'gregale bucket uploads list demo bucket-one',
+  ])
+    expect(within(more).getByText(command)).toBeInTheDocument();
+});
+it('shows <bucket-id> placeholders until a bucket is chosen', () => {
+  show();
+  const more = screen.getByRole('region', { name: 'More in the CLI' });
+  expect(
+    within(more).getByText('gregale bucket versioning status demo <bucket-id>')
+  ).toBeInTheDocument();
+});
+it('keeps the CLI panel away when storage is disabled on this installation', () => {
+  mocks.buckets.mockReturnValue({
+    data: { ...capabilities, enabled: false },
+    isPending: false,
+    error: null,
+  });
+  show();
+  expect(screen.queryByRole('region', { name: 'More in the CLI' })).not.toBeInTheDocument();
 });
