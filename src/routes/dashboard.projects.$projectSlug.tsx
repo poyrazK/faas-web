@@ -1,3 +1,4 @@
+import { SavedProjectMigrations } from '@/components/dashboard/project-migration-progress';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { useAuth } from '@/lib/auth';
 import { useProject } from '@/lib/api/projects';
@@ -97,6 +98,11 @@ function ProjectPage() {
           </p>
         )}
       </Panel>
+      <SavedProjectMigrations
+        key={account.id + project.id}
+        accountId={account.id}
+        project={projectSlug}
+      />
       <ProjectWorkloads key={`${account.id}:${project.id}`} workloads={project.workloads} />
       <ProjectEnvironments
         accountId={account.id}

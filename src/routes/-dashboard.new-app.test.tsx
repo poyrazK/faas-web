@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Route as NewAppRoute } from './dashboard.apps.new';
 import { Route as TemplatesRoute } from './dashboard.templates';
 import { Route as ImportRoute } from './dashboard.import';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ProjectPlan } from '@/lib/api/queries';
 
 const mocks = vi.hoisted(() => ({
@@ -133,7 +134,15 @@ async function mount(entry = '/dashboard/apps/new') {
     history: createMemoryHistory({ initialEntries: [entry] }),
   });
   await router.load();
-  render(<RouterProvider router={router} />);
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={client}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>
+  );
+  if (entry.includes('source=import')) {
+    await userEvent.click(await screen.findByRole('button', { name: 'Upload an archive' }));
+  }
   return router;
 }
 
@@ -370,14 +379,15 @@ describe('New App source flow', () => {
     await user.type(screen.getByLabelText('Repository'), 'acme/Checkout_Service');
     await user.clear(screen.getByLabelText('Ref'));
     await user.type(screen.getByLabelText('Ref'), 'develop');
-    await user.click(screen.getByRole('button', { name: 'Import as a project' }));
+    await user.click(screen.getByRole('button', { name: 'Choose a service to migrate' }));
     expect(router.state.location.search).toMatchObject({
       source: 'import',
       slug: 'checkout-service',
       branch: 'develop',
+      repo: 'acme/Checkout_Service',
     });
-    expect(screen.getByLabelText('Project slug')).toHaveValue('checkout-service');
-    expect(screen.getByLabelText('Branch')).toHaveValue('develop');
+    expect(screen.getByLabelText('Project name')).toHaveValue('checkout-service');
+    expect(screen.getByLabelText('Branch, tag, or commit')).toHaveValue('develop');
   });
 
   it('scans, reviews and applies an import within New App using the existing project endpoint contract', async () => {
