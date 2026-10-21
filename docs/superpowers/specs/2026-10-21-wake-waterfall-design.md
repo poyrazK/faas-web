@@ -3,6 +3,17 @@
 **Status:** approved in conversation on 2026-10-21, section by section, awaiting review of this written spec.
 **Branch:** `feat/console-wake-waterfall`, off `main` at 7376e5f. One PR.
 
+**Plan:** `docs/superpowers/plans/2026-10-21-wake-waterfall.md`.
+
+## Revisions (2026-10-21, found while writing the plan)
+
+1. **Later pages, not older ones.** The vendored endpoint has no `cursor` parameter. `next_cursor` is an RFC 3339 timestamp passed back as `since`, so further pages hold later frames. The control is "Load later frames", pages are appended, and the inclusive boundary frame is de-duplicated.
+2. **No clock-skew flag.** Frames are ordered by timestamp, so a segment can never run backwards. `skewed` is dropped from `WakeSegment`.
+3. **Buttons with callbacks, not router links.** Recent-wakes rows and the debugger's Wake row are buttons calling a host-supplied callback, which keeps the shared components free of route knowledge. The opened wake is still in the URL and shareable.
+4. **One dialog at a time in the debugger.** The request-evidence view is itself a dialog. While a wake is open it steps aside, keeping `request` in the URL, and it returns when the drawer closes.
+5. **Analytics passes the app slug.** Analytics may show a default app that is not in the URL, so opening a wake there sets both `app` and `wake`.
+6. **Smaller details.** An unknown wake returns `404 not_found` from apid, and the waterfall treats that code as the empty state. On narrow screens, labels wrap within their own column and the actor column hides, instead of moving labels above the bars. A breakdown without a host row renders after the stage table. With no canonical stages, "Other frames" opens by default.
+
 ## Why
 
 Gregale's core promise is that a sleeping app wakes and answers in a few hundred milliseconds. When a wake is slow, the developer's question is "where did the time go?". The console cannot answer it today:
