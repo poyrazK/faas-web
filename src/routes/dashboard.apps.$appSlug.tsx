@@ -51,6 +51,7 @@ import { QueuesBody } from './dashboard.queues';
 import { UpstreamsBody } from './dashboard.upstreams';
 import { AlertsBody } from './dashboard.alerts';
 import { DebugBody } from '@/components/dashboard/debug-body';
+import { WakeDrawer } from '@/components/dashboard/wake-drawer';
 import { validateDebugSearch, type DebugSearch } from '@/components/dashboard/debug-search';
 import { MirrorsBody } from './dashboard.mirrors';
 import { TenantSurfacesBody } from './dashboard.tenant-surfaces';
@@ -738,6 +739,18 @@ function FunctionDetailPage() {
         </Swap>
       </div>
 
+      <WakeDrawer
+        slug={fn.id}
+        wakeId={search.wake}
+        onClose={() =>
+          void navigate({
+            search: (current) => ({ ...current, wake: undefined }),
+            replace: true,
+            hash: true,
+            resetScroll: false,
+          })
+        }
+      />
       {/* The one deploy the console can start itself: a Git ref, built
           server-side. The image constructor wants a registry the browser has
           no business holding credentials for. */}

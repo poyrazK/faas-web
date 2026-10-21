@@ -42,7 +42,10 @@ export function DebugBody({ slug, search, onSelect }: { slug: string } & DebugSe
         <DebugRequestEvidence
           key={`${slug}:${search.request}`}
           slug={slug}
-          reqId={search.request}
+          // One dialog at a time: the evidence steps aside while a wake is
+          // open and returns when the drawer closes, since `request` stays.
+          reqId={search.wake ? null : search.request}
+          onOpenWake={(wake) => onSelect({ wake })}
           onClose={() => onSelect({ request: undefined })}
           onRegression={(regression) =>
             onSelect({ debugView: 'regressions', regression, request: undefined })
