@@ -533,7 +533,16 @@ function FunctionDetailPage() {
                     <AwakeRoutesPanel slug={fn.id} since="7d" />
                     <DependencyLatencyPanel slug={fn.id} since="24h" />
                   </div>
-                  <WakeTimelinePanel slug={fn.id} />
+                  <WakeTimelinePanel
+                    slug={fn.id}
+                    onOpenWake={(wake) =>
+                      void navigate({
+                        search: (current) => ({ ...current, wake }),
+                        hash: true,
+                        resetScroll: false,
+                      })
+                    }
+                  />
                   <AppUsagePanel slug={fn.id} />
                 </div>
               ))}
