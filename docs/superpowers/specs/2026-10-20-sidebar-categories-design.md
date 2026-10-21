@@ -2,6 +2,13 @@
 
 **Status:** approach approved in conversation on 2026-10-20 (Option A, "cloud-console nouns"), awaiting review of this written spec.
 **Branch:** `feat/console-sidebar-categories`, off `main` at 7376e5f. One PR.
+**Plan:** `docs/superpowers/plans/2026-10-21-sidebar-categories.md`.
+
+## Revisions (2026-10-21, found while writing the plan)
+
+1. **`secondary-navigation.tsx` does change.** Its guard returns early for any hub without sections. Once Projects loses Templates and Import, that guard would hide the "App sections" strip on every standalone per-app page, which this spec says must stay. The guard now checks the page instead of the hub's sections.
+2. **The Object storage → Postgres tab-order test is kept**, renamed, rather than deleted. The two rows are still adjacent, so the test still means something.
+3. **⌘K learns the rail headings as unrendered keywords.** "Data" and "Observe" were rows people typed into the palette; after the regroup the search would return nothing for "Observe". Each palette command now carries its rail heading as a search keyword, so "Observe" lists its four pages and "Storage" finds Postgres. Option text does not change. The old hub name "Data" is not aliased.
 
 ## Why
 
@@ -89,14 +96,14 @@ No change. Groups, disclosures, the collapsed rail and the mobile drawer all ren
 
 ### `src/components/dashboard/secondary-navigation.tsx`
 
-No change, but two pages change behaviour because they now have a hub without sections:
+The early-return guard changes (see Revisions). Two pages change behaviour because they are now rail rows of their own:
 
 - `/dashboard/edge-rules` loses the collapsible "App sections" strip. Intended: it is the account view, and the per-app view is the app tab.
 - `/dashboard/debug` loses the same strip. Accepted: Debugger is an Observe destination with its own app picker, and the app tab under Observe is the per-app way in.
 
 ### Tests
 
-- `src/components/dashboard/navigation.test.tsx`: `RAIL` becomes the 20-row list above; `RAIL_GROUPS` the seven titles; `RAIL_PARENTS` is `['Billing']`; `GROUPS` keeps only the Billing entry. The disclosure tests (close and reopen, `gregale.sidebar.closedGroups`, ⌘B focusing the first disclosure button) retarget Billing. The "Storage → Postgres tab order" test goes; there is no Data strip any more. The breadcrumb assertion "Observe › Debugger" becomes "Debugger". The ⌘K "Go to" fixture `['Data', '/dashboard/storage']` becomes `['Object storage', '/dashboard/storage']`, and the search that types "Data" retargets a label that still exists. Add one assertion each for: Edge rules is a rail link under Networking; Templates and Import are not rail links but are ⌘K results; `/dashboard/edge-rules` lights Edge rules, not Projects; `/dashboard/instances` lights Instances under Compute.
+- `src/components/dashboard/navigation.test.tsx`: `RAIL` becomes the 20-row list above; `RAIL_GROUPS` the seven titles; `RAIL_PARENTS` is `['Billing']`; `GROUPS` keeps only the Billing entry. The disclosure tests (close and reopen, `gregale.sidebar.closedGroups`, ⌘B focusing the first disclosure button) retarget Billing. The "Storage → Postgres tab order" test is kept with the new label (see Revisions). The breadcrumb assertion "Observe › Debugger" becomes "Debugger". The ⌘K "Go to" fixture `['Data', '/dashboard/storage']` becomes `['Object storage', '/dashboard/storage']`, and the search that types "Data" retargets a label that still exists. Add one assertion each for: Edge rules is a rail link under Networking; Templates and Import are not rail links but are ⌘K results; `/dashboard/edge-rules` lights Edge rules, not Projects; `/dashboard/instances` lights Instances under Compute.
 - `src/routes/-dashboard.navigation.test.tsx`, `-dashboard.hub-navigation.test.tsx`, `-dashboard.settings-hub.test.tsx`, `src/lib/customer-surface.test.ts`: expected to pass unchanged. They check routes, redirects and the Jobs, Releases and Settings strips, none of which move.
 - The same file looks up a rail link named "Storage" in several places (the rail fixture, the ⌘K fixture, the palette search, and the Data strip tests); each becomes "Object storage" or goes with the strip. No other test asserts the Storage page title.
 
