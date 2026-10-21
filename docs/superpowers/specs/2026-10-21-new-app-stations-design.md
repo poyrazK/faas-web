@@ -33,17 +33,23 @@ The wizard is four stations, in order: **Sources → Setup → Configure → Rev
 | Long-lived worker | The image form (`ImageDeployForm kind="worker"`)                    | the form's own submit |
 | Import            | The project import (`ProjectImport`)                                | its own apply         |
 
-**Which station is current** is a pure function, `stationFor()`, of the URL search and the inferred source:
+**Which station is current** is a pure function, `stationFor()`, of the URL search and the inferred source. `NewAppSearch.step` gains `'source'` and `'setup'`, and `validateNewAppSearch` accepts both.
 
-- `step === 'review'` with a valid name → Review. `step === 'configure'` → Configure. This is the existing contract.
-- `step === 'setup'`, or a source **named in the URL** (`?source=…` or `?template=…`) with no step → that source's Setup. Empty has no Setup, so it resolves to Configure. This covers the GitHub round-trip (`?source=git`) and template-gallery links (`?template=hello-node`).
-- Otherwise → Sources. This includes a source only _inferred_ (Git preselected because GitHub is connected): the person still sees the choices, with Git highlighted, and Continue moves on.
+| `step` in the URL                                                               | Station                                           |
+| ------------------------------------------------------------------------------- | ------------------------------------------------- |
+| `review`, with the source and name valid                                        | Review                                            |
+| `review` or `configure`, with the source valid                                  | Configure                                         |
+| `review` or `configure`, source not valid yet                                   | that source's Setup, or Sources if it has none    |
+| `setup`                                                                         | that source's Setup. Empty has none, so Configure |
+| `source`                                                                        | Sources (the source stays selected)               |
+| none, source **named in the URL** (`?source=` or `?template=`) that has a Setup | that Setup                                        |
+| none, otherwise (no source, Empty, or a source only _inferred_)                 | Sources                                           |
 
-URL changes:
-
-- `NewAppSearch.step` gains `'setup'`, and `validateNewAppSearch` accepts it.
-- Picking a cell sets `{ source, step: 'setup' }`. For Empty it sets `{ source: 'empty', step: 'configure' }`.
-- Back from Setup returns to Sources, with the source kept as the selection and `step` cleared.
+- **Named sources land on Setup.** This covers the GitHub round-trip (`?source=git`) and template-gallery links (`?template=hello-node`).
+- **Inferred sources stay on Sources.** When Git is preselected because GitHub is connected, the person still sees the choices with Git highlighted, and Continue moves on. A bookmarked `?source=empty` also stays on Sources, with Empty selected.
+- **Picking a cell moves forward.** It sets `{ source, step: 'setup' }`, or `{ source: 'empty', step: 'configure' }` for Empty. Continue on Sources does the same for the selected source.
+- **Back from Setup** sets `step: 'source'`, so it does not bounce back into Setup. Back from Configure clears `step`, which lands on the Setup (named source) or on Sources.
+- **Validation is per station.** Sources checks only that a source is chosen. Setup checks the source's own fields (Git's repository and ref, the GitHub connection, a picked template), as today's source step does.
 
 **The rail.** It shows three numbered steps: 01 Source, 02 Configure, 03 Review.
 
@@ -58,12 +64,11 @@ Both layouts render the same stations; only placement and motion differ.
 
 **Track**
 
-- The stations sit side by side in one horizontal track.
-- The viewport shows the current station. The previous one stays as a 3.5rem clickable sliver on the left, labelled "← Sources", "← Setup" and so on, with `aria-label="Back to <station>"`.
-- Moving forward pans the track left by one station (`transform: translateX`, 420ms on `--motion-ease`); back pans right.
-- Only the current station is reachable: the others are `inert`, so focus and the accessibility tree skip them.
+- Only the current station is rendered.
+- On its left sits a 3.5rem sliver for the previous station: a labelled button ("← Sources", "← Setup", "← Configure", with `aria-label="Back to <station>"`). It renders the station's name only, not the station's content, so the page never holds two sets of fields.
+- Moving forward slides the current station out to the left and the next one in from the right (`motion`, 420ms on `--motion-ease`). Back does the reverse.
 - Each station scrolls vertically within the page; nothing scrolls sideways.
-- With reduced motion, stations swap without a pan.
+- With reduced motion, stations swap without sliding.
 
 **Fold**
 
@@ -151,7 +156,7 @@ The scene holds a still frame until its cell is hovered, focused or selected, th
   - an invalid `step: 'review'` falls back to Configure.
 - `validateNewAppSearch` accepts `setup`.
 - Track:
-  - only the current station is not `inert`;
+  - only the current station's content is in the document;
   - the sliver is labelled and goes back;
   - reduced motion sets no transition.
 - Fold: the strip lists six sources with the selection pressed, and picking one goes to its Setup.
@@ -172,7 +177,6 @@ The scene holds a still frame until its cell is hovered, focused or selected, th
 - Checks:
   - no sideways scroll;
   - picking each source lands on its Setup with no vertical hunt (the Setup's first control within the first viewport);
-  - Tab never reaches an `inert` station;
   - the number of WebGL contexts on the page is 6 or fewer;
   - hover animates a scene;
   - reduced motion shows still frames;
