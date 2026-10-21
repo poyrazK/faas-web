@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 /**
  * Shared WebGL plumbing for the site's background shaders.
@@ -30,6 +30,10 @@ interface Options {
   uniformNames?: readonly string[];
   /** Runs each frame to write the extra uniforms. */
   onFrame?: (gl: WebGLRenderingContext, uniforms: UniformMap) => void;
+  /** Animate only while true; otherwise hold one still frame. Default true. */
+  active?: boolean;
+  /** The time (seconds) the still frame shows. Default 0. */
+  stillAt?: number;
 }
 
 function compile(
@@ -64,6 +68,8 @@ export function useShaderCanvas({
   renderScale = 0.55,
   uniformNames = [],
   onFrame,
+  active = true,
+  stillAt = 0,
 }: Options) {
   const hostRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -73,6 +79,18 @@ export function useShaderCanvas({
   // down and rebuilds the GL context.
   const onFrameRef = useRef(onFrame);
   onFrameRef.current = onFrame;
+
+  // Whether to animate, read by the GL effect's loop; changing it re-syncs the
+  // loop without rebuilding the context.
+  const activeRef = useRef(active);
+  const stillRef = useRef(stillAt);
+  const syncRef = useRef<() => void>(() => undefined);
+  const redrawRef = useRef<() => void>(() => undefined);
+  useEffect(() => {
+    activeRef.current = active;
+    stillRef.current = stillAt;
+    syncRef.current();
+  }, [active, stillAt]);
 
   const names = uniformNames.join(',');
 
@@ -174,10 +192,10 @@ export function useShaderCanvas({
     };
 
     const sync = () => {
-      if (reduced.matches) {
+      if (reduced.matches || !activeRef.current) {
         stop();
         resize();
-        draw(0); // one static frame
+        draw(reduced.matches ? 0 : stillRef.current * 1000); // one still frame
         return;
       }
       if (onscreen && pageVisible) {
@@ -189,6 +207,10 @@ export function useShaderCanvas({
       } else {
         stop();
       }
+    };
+    syncRef.current = sync;
+    redrawRef.current = () => {
+      if (!running) draw(stillRef.current * 1000);
     };
 
     resize();
@@ -234,6 +256,8 @@ export function useShaderCanvas({
     sync();
 
     return () => {
+      syncRef.current = () => undefined;
+      redrawRef.current = () => undefined;
       stop();
       ro.disconnect();
       io.disconnect();
@@ -255,7 +279,9 @@ export function useShaderCanvas({
     };
   }, [frag, label, renderScale, names]);
 
-  return { hostRef, canvasRef, supported };
+  // Stable, so callers can depend on it in an effect.
+  const redraw = useCallback(() => redrawRef.current(), []);
+  return { hostRef, canvasRef, supported, redraw };
 }
 
 /** GLSL shared by the shaders: precision guard and the Bayer dither ladder. */
