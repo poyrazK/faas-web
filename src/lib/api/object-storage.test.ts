@@ -1,7 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { uploadSignedObject } from './object-storage';
+import {
+  createBucketBinding,
+  revokeBucketBinding,
+  rotateBucketBinding,
+  uploadSignedObject,
+} from './object-storage';
+import { spyApi } from '@/test/api';
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 describe('direct object uploads', () => {
   it('omits Gregale credentials and lets the browser supply the signed length', async () => {
@@ -62,5 +71,38 @@ describe('direct object uploads', () => {
         new File(['abc'], 'file')
       )
     ).rejects.toThrow('Upload failed (403)');
+  });
+});
+
+describe('compute bindings, versioning and lifecycle', () => {
+  const ok = (data: unknown) => ({ data, response: new Response() }) as never;
+
+  it('binds a bucket to its app with the chosen permission, sending a prefix only when one is set', async () => {
+    const post = spyApi('POST').mockResolvedValue(ok({ id: 'b1' }));
+    await createBucketBinding('shop', 'bkt', { permission: 'read' });
+    expect(post).toHaveBeenLastCalledWith('/v1/apps/{slug}/buckets/{bucket}/compute-bindings', {
+      params: { path: { slug: 'shop', bucket: 'bkt' } },
+      body: { permission: 'read' },
+    });
+    await createBucketBinding('shop', 'bkt', { permission: 'read_write', prefix: 'MEDIA' });
+    expect(post).toHaveBeenLastCalledWith('/v1/apps/{slug}/buckets/{bucket}/compute-bindings', {
+      params: { path: { slug: 'shop', bucket: 'bkt' } },
+      body: { permission: 'read_write', prefix: 'MEDIA' },
+    });
+  });
+
+  it('rotates and revokes a binding by its id', async () => {
+    const post = spyApi('POST').mockResolvedValue(ok({ id: 'b1' }));
+    const del = spyApi('DELETE').mockResolvedValue(ok(undefined));
+    await rotateBucketBinding('shop', 'bkt', 'b1');
+    expect(post).toHaveBeenLastCalledWith(
+      '/v1/apps/{slug}/buckets/{bucket}/compute-bindings/{binding}/rotate',
+      { params: { path: { slug: 'shop', bucket: 'bkt', binding: 'b1' } } }
+    );
+    await revokeBucketBinding('shop', 'bkt', 'b1');
+    expect(del).toHaveBeenLastCalledWith(
+      '/v1/apps/{slug}/buckets/{bucket}/compute-bindings/{binding}',
+      { params: { path: { slug: 'shop', bucket: 'bkt', binding: 'b1' } } }
+    );
   });
 });

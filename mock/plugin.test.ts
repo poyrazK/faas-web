@@ -189,3 +189,63 @@ describe('a deployment created through the mock', () => {
     expect((await json(`/v1/deployments/${retry.body.id}`)).body.status).toBe('live');
   });
 });
+
+describe('object storage buckets in the mock', () => {
+  it('binds a bucket to its app under the default prefix, and counts the credential once', async () => {
+    expect(
+      (
+        await json('/v1/apps', {
+          method: 'POST',
+          body: JSON.stringify({ slug: 'media-api', type: 'app', runtime: 'node24' }),
+        })
+      ).status
+    ).toBe(201);
+    const bucket = await json('/v1/apps/media-api/buckets', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'user-uploads', scope: 'default', region: 'us-east-1' }),
+    });
+    expect(bucket.status).toBe(201);
+    const id = bucket.body.id as string;
+
+    const bound = await json(`/v1/apps/media-api/buckets/${id}/compute-bindings`, {
+      method: 'POST',
+      body: JSON.stringify({ permission: 'read_write' }),
+    });
+    expect(bound.status).toBe(201);
+    expect(bound.body.prefix).toBe('GREGALE_S3_USER_UPLOADS');
+    expect(bound.body.secret_keys.secret_access_key).toBe(
+      'GREGALE_S3_USER_UPLOADS_SECRET_ACCESS_KEY'
+    );
+
+    const keys = await json(`/v1/apps/media-api/buckets/${id}/s3-credentials`);
+    expect(keys.body.items.map((c: { id: string }) => c.id)).toContain(bound.body.credential.id);
+
+    const revoked = await fetch(
+      `${base}/v1/apps/media-api/buckets/${id}/compute-bindings/${bound.body.id}`,
+      { method: 'DELETE' }
+    );
+    expect(revoked.status).toBe(204);
+    expect((await json(`/v1/apps/media-api/buckets/${id}/compute-bindings`)).body.items).toEqual(
+      []
+    );
+  });
+
+  it('refuses to delete a bucket that still holds objects', async () => {
+    await json('/v1/apps', {
+      method: 'POST',
+      body: JSON.stringify({ slug: 'full-bucket', type: 'app', runtime: 'node24' }),
+    });
+    const { body } = await json('/v1/apps/full-bucket/buckets', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'docs' }),
+    });
+    await json(`/v1/apps/full-bucket/buckets/${body.id}/signed-url`, {
+      method: 'POST',
+      body: JSON.stringify({ method: 'PUT', key: 'a.txt', size_bytes: 3 }),
+    });
+    const res = await fetch(`${base}/v1/apps/full-bucket/buckets/${body.id}`, {
+      method: 'DELETE',
+    });
+    expect(res.status).toBe(409);
+  });
+});

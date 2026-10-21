@@ -2826,6 +2826,313 @@ route('DELETE', '/v1/apps/{slug}/buckets/{bucket}/s3-credentials/{credential}', 
   return NO_CONTENT;
 });
 
+// Object storage buckets. A seeded `assets` bucket on api-gateway carries
+// objects, a runtime binding, versioning and lifecycle rules, so every part of
+// the storage page has something real to show; MOCK_EMPTY starts with none.
+const MOCK_S3_ENDPOINT = 'https://s3.gregale.dev';
+const MOCK_S3_REGION = 'us-east-1';
+const storageBuckets = new Map<string, S_['ObjectBucket'][]>();
+const storageObjects = new Map<
+  string,
+  { key: string; size_bytes: number; last_modified: string }[]
+>();
+const storageBindings = new Map<string, S_['ObjectStorageComputeBinding'][]>();
+
+function mockBindingPrefix(bucketName: string) {
+  const raw = `GREGALE_S3_${bucketName.toUpperCase().replace(/[^A-Z0-9]/g, '_')}`.replace(
+    /_+$/,
+    ''
+  );
+  return raw.length > 48 ? raw.slice(0, 48).replace(/_+$/, '') : raw;
+}
+
+function bucketsFor(slug: string) {
+  if (!storageBuckets.has(slug)) {
+    const seeded: S_['ObjectBucket'][] = [];
+    if (!db.EMPTY && slug === 'api-gateway') {
+      for (const [name, age] of [
+        ['assets', 21],
+        ['user-uploads', 9],
+      ] as const) {
+        const bucket = {
+          id: hex(32),
+          name,
+          scope: 'default',
+          region: MOCK_S3_REGION,
+          state: 'ready' as const,
+          public: false,
+          created_at: db.iso(age * 24 * 3_600_000),
+        };
+        seeded.push(bucket);
+        if (name === 'assets') seedAssets(slug, bucket.id);
+      }
+    }
+    storageBuckets.set(slug, seeded);
+  }
+  return storageBuckets.get(slug)!;
+}
+
+function seedAssets(slug: string, bucket: string) {
+  const files: [string, number, number][] = [
+    ['fonts/familjen-grotesk.woff2', 48_212, 20],
+    ['fonts/spline-sans-mono.woff2', 39_877, 20],
+    ['images/hero.webp', 284_331, 6],
+    ['images/logo.svg', 2_418, 19],
+    ['images/og.png', 91_204, 6],
+    ['manifest.json', 734, 2],
+    ['robots.txt', 68, 19],
+    ['tmp/import-2026-10-19.csv', 1_904_552, 1],
+  ];
+  storageObjects.set(
+    `${slug}/${bucket}`,
+    files.map(([key, size_bytes, days]) => ({
+      key,
+      size_bytes,
+      last_modified: db.iso(days * 24 * 3_600_000),
+    }))
+  );
+  const prefix = mockBindingPrefix('assets');
+  const credential: S_['ObjectS3Credential'] = {
+    id: hex(32),
+    bucket_id: bucket,
+    access_key_id: `GRGA${hex(16)
+      .toUpperCase()
+      .replace(/[^A-Z2-7]/g, 'A')}`,
+    label: 'compute',
+    permission: 'read',
+    status: 'active',
+    created_at: db.iso(14 * 24 * 3_600_000),
+  };
+  storageBindings.set(`${slug}/${bucket}`, [
+    {
+      id: hex(32),
+      bucket_id: bucket,
+      scope: 'default',
+      prefix,
+      credential,
+      secret_keys: bindingSecretKeys(prefix),
+      rotation_pending: false,
+    },
+  ]);
+  s3For(slug, bucket).push({ ...credential });
+}
+
+function bindingSecretKeys(prefix: string): S_['ObjectStorageComputeBindingSecretKeys'] {
+  return {
+    endpoint: `${prefix}_ENDPOINT`,
+    region: `${prefix}_REGION`,
+    bucket: `${prefix}_BUCKET`,
+    access_key_id: `${prefix}_ACCESS_KEY_ID`,
+    secret_access_key: `${prefix}_SECRET_ACCESS_KEY`,
+    addressing_style: `${prefix}_ADDRESSING_STYLE`,
+  };
+}
+
+function ownedBucket(slug: string, id: string) {
+  const bucket = bucketsFor(slug).find((b) => b.id === bucketId(id));
+  if (!bucket) throw new Problem(404, 'not_found', 'no such bucket');
+  return bucket;
+}
+
+route('GET', '/v1/apps/{slug}/buckets', ({ params }) => ({
+  items: bucketsFor(app(params.slug).slug),
+  enabled: true,
+  regions: [MOCK_S3_REGION],
+  default_region: MOCK_S3_REGION,
+  max_upload_bytes: 5 * 1024 ** 3,
+  max_buckets_per_app: 10,
+}));
+route('POST', '/v1/apps/{slug}/buckets', ({ params, body }) => {
+  const slug = app(params.slug).slug;
+  const name = String(body.name ?? '');
+  if (!/^[a-z][a-z0-9-]{0,62}$/.test(name))
+    throw new Problem(422, 'validation_failed', 'name must start with a letter: a-z, 0-9 and -.');
+  const list = bucketsFor(slug);
+  if (list.some((b) => b.name === name))
+    throw new Problem(409, 'conflict', `a bucket named "${name}" already exists.`);
+  const bucket = {
+    id: hex(32),
+    name,
+    scope: String(body.scope ?? 'default'),
+    region: String(body.region ?? MOCK_S3_REGION),
+    state: 'ready' as const,
+    public: false,
+    created_at: db.iso(0),
+  };
+  list.push(bucket);
+  return status(201, bucket);
+});
+route('DELETE', '/v1/apps/{slug}/buckets/{bucket}', ({ params }) => {
+  const slug = app(params.slug).slug;
+  const bucket = ownedBucket(slug, params.bucket);
+  if ((storageObjects.get(`${slug}/${bucket.id}`) ?? []).length)
+    throw new Problem(409, 'conflict', 'Only an empty bucket can be deleted.');
+  storageBuckets.set(
+    slug,
+    bucketsFor(slug).filter((b) => b.id !== bucket.id)
+  );
+  return NO_CONTENT;
+});
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/objects', ({ params, query }) => {
+  const slug = app(params.slug).slug;
+  const bucket = ownedBucket(slug, params.bucket);
+  const prefix = query.get('prefix') ?? '';
+  const limit = Math.min(1000, Number(query.get('limit') ?? 100) || 100);
+  const start = Number(query.get('cursor') ?? 0) || 0;
+  const all = (storageObjects.get(`${slug}/${bucket.id}`) ?? []).filter((o) =>
+    o.key.startsWith(prefix)
+  );
+  const items = all.slice(start, start + limit);
+  return {
+    items,
+    ...(start + limit < all.length ? { next_cursor: String(start + limit) } : {}),
+  };
+});
+route('DELETE', '/v1/apps/{slug}/buckets/{bucket}/objects', ({ params, query }) => {
+  const slug = app(params.slug).slug;
+  const bucket = ownedBucket(slug, params.bucket);
+  const key = query.get('key') ?? '';
+  const list = storageObjects.get(`${slug}/${bucket.id}`) ?? [];
+  storageObjects.set(
+    `${slug}/${bucket.id}`,
+    list.filter((o) => o.key !== key)
+  );
+  return NO_CONTENT;
+});
+route('POST', '/v1/apps/{slug}/buckets/{bucket}/signed-url', ({ params, body }) => {
+  const slug = app(params.slug).slug;
+  const bucket = ownedBucket(slug, params.bucket);
+  const method = String(body.method ?? 'GET') as 'GET' | 'HEAD' | 'PUT';
+  const key = String(body.key ?? '');
+  if (!key) throw new Problem(422, 'validation_failed', 'key is required.');
+  const expiresIn = Math.min(900, Number(body.expires_in ?? 300));
+  if (method === 'PUT') {
+    // The mock cannot receive the bytes; record the object so the browser shows it.
+    const list = storageObjects.get(`${slug}/${bucket.id}`) ?? [];
+    storageObjects.set(`${slug}/${bucket.id}`, [
+      ...list.filter((o) => o.key !== key),
+      { key, size_bytes: Number(body.size_bytes ?? 0), last_modified: db.iso(0) },
+    ]);
+  }
+  return status(201, {
+    url: `${MOCK_S3_ENDPOINT}/${bucket.name}/${encodeURI(key)}?X-Amz-Signature=${hex(16)}`,
+    method,
+    headers: {},
+    expires_at: new Date(Date.now() + expiresIn * 1000).toISOString(),
+  });
+});
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/compute-bindings', ({ params }) => {
+  const slug = app(params.slug).slug;
+  const bucket = ownedBucket(slug, params.bucket);
+  return { items: storageBindings.get(`${slug}/${bucket.id}`) ?? [] };
+});
+route('POST', '/v1/apps/{slug}/buckets/{bucket}/compute-bindings', ({ params, body }) => {
+  const slug = app(params.slug).slug;
+  const bucket = ownedBucket(slug, params.bucket);
+  const permission = String(body.permission ?? '') as S_['ObjectS3Credential']['permission'];
+  if (!['read', 'write', 'read_write'].includes(permission))
+    throw new Problem(422, 'validation_failed', 'permission must be read, write or read_write.');
+  const prefix = body.prefix ? String(body.prefix) : mockBindingPrefix(bucket.name);
+  if (!/^[A-Z][A-Z0-9_]{0,47}$/.test(prefix))
+    throw new Problem(422, 'validation_failed', 'prefix must be UPPER_SNAKE_CASE, at most 48.');
+  const list = storageBindings.get(`${slug}/${bucket.id}`) ?? [];
+  if (list.some((b) => b.prefix === prefix))
+    throw new Problem(409, 'conflict', `the app already has secrets named ${prefix}_*.`);
+  const credential: S_['ObjectS3Credential'] = {
+    id: hex(32),
+    bucket_id: bucket.id,
+    access_key_id: `GRGA${hex(16)
+      .toUpperCase()
+      .replace(/[^A-Z2-7]/g, 'A')}`,
+    label: String(body.label ?? 'compute'),
+    permission,
+    status: 'active',
+    created_at: db.iso(0),
+  };
+  const binding = {
+    id: hex(32),
+    bucket_id: bucket.id,
+    scope: bucket.scope,
+    prefix,
+    credential,
+    secret_keys: bindingSecretKeys(prefix),
+    rotation_pending: false,
+  };
+  storageBindings.set(`${slug}/${bucket.id}`, [...list, binding]);
+  s3For(slug, bucket.id).push({ ...credential });
+  return status(201, binding);
+});
+route('DELETE', '/v1/apps/{slug}/buckets/{bucket}/compute-bindings/{binding}', ({ params }) => {
+  const slug = app(params.slug).slug;
+  const bucket = ownedBucket(slug, params.bucket);
+  const list = storageBindings.get(`${slug}/${bucket.id}`) ?? [];
+  const binding = list.find((b) => b.id === params.binding);
+  if (!binding) throw new Problem(404, 'not_found', 'no such binding');
+  storageBindings.set(
+    `${slug}/${bucket.id}`,
+    list.filter((b) => b.id !== binding.id)
+  );
+  const credential = s3For(slug, bucket.id).find((c) => c.id === binding.credential.id);
+  if (credential) {
+    credential.status = 'revoked';
+    credential.revoked_at = db.iso(0);
+  }
+  return NO_CONTENT;
+});
+route(
+  'POST',
+  '/v1/apps/{slug}/buckets/{bucket}/compute-bindings/{binding}/rotate',
+  ({ params }) => {
+    const slug = app(params.slug).slug;
+    const bucket = ownedBucket(slug, params.bucket);
+    const binding = (storageBindings.get(`${slug}/${bucket.id}`) ?? []).find(
+      (b) => b.id === params.binding
+    );
+    if (!binding) throw new Problem(404, 'not_found', 'no such binding');
+    binding.rotation_pending = true;
+    // The rolling refresh drains old instances; settle after a few seconds.
+    setTimeout(() => {
+      binding.rotation_pending = false;
+    }, 6_000);
+    return binding;
+  }
+);
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/versioning', ({ params }) => {
+  const slug = app(params.slug).slug;
+  const bucket = ownedBucket(slug, params.bucket);
+  const on = bucket.name === 'assets';
+  return {
+    bucket_id: bucket.id,
+    desired_status: on ? 'Enabled' : '',
+    observed_status: on ? 'Enabled' : '',
+    state: 'ready',
+    revision: on ? 2 : 0,
+    versions_required: on,
+    updated_at: bucket.created_at,
+  };
+});
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/lifecycle', ({ params }) => {
+  const slug = app(params.slug).slug;
+  const bucket = ownedBucket(slug, params.bucket);
+  return {
+    bucket_id: bucket.id,
+    revision: bucket.name === 'assets' ? 1 : 0,
+    rules:
+      bucket.name === 'assets'
+        ? [
+            {
+              id: 'expire-tmp',
+              status: 'Enabled',
+              filter: { prefix: 'tmp/' },
+              expiration: { days: 7 },
+            },
+            { id: 'abort-uploads', status: 'Enabled', abort_incomplete_multipart_days: 3 },
+          ]
+        : [],
+    updated_at: bucket.created_at,
+  };
+});
+
 // Managed PostgreSQL. Provisioning settles after a tick so the console's
 // polling path is exercised; MOCK_PLAN=free reproduces the plan gate.
 type PgRow = { id: string; state: string; updated_at: string } & Record<string, unknown>;
