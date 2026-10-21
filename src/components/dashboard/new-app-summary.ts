@@ -35,11 +35,15 @@ export interface SummaryInput {
 export function summaryRows(i: SummaryInput): SummaryRow[] {
   if (!i.source) return [];
   const repoRef = `${i.repo.trim()}@${i.ref.trim() || 'main'}`;
-  const rows: SummaryRow[] = [{ key: 'source', label: 'Source', value: sourceName(i.source) }];
+  // A picked template rides in the Source row: its name is usually the app's
+  // name too, and a row of its own would say the same thing twice.
+  const source =
+    i.source === 'template' && i.templateName
+      ? `${sourceName(i.source)} · ${i.templateName}`
+      : sourceName(i.source);
+  const rows: SummaryRow[] = [{ key: 'source', label: 'Source', value: source }];
   if (i.source === 'git' && i.repo.trim())
     rows.push({ key: 'repository', label: 'Repository', value: repoRef, mono: true });
-  if (i.source === 'template' && i.templateName)
-    rows.push({ key: 'template', label: 'Template', value: i.templateName, mono: true });
   if (i.name) rows.push({ key: 'name', label: 'Name', value: i.name, mono: true });
   if (i.workspaceIsOrg || i.step >= 2)
     rows.push({ key: 'workspace', label: 'Workspace', value: i.workspaceLabel });

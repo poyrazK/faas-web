@@ -38,10 +38,14 @@ describe('summaryRows', () => {
     ]);
   });
 
-  it('names a picked template, and nothing for a template not picked yet', () => {
+  // A template's name is usually the app's name too, so it rides in the Source
+  // row rather than repeating as a row of its own.
+  it('names a picked template in the source row, and nothing extra before one is picked', () => {
     expect(keys({ source: 'template' })).toEqual(['source']);
-    expect(value({ source: 'template', templateName: 'hello-node' }, 'template')).toBe(
-      'hello-node'
+    expect(value({ source: 'template' }, 'source')).toBe('Template');
+    expect(keys({ source: 'template', templateName: 'hello-node' })).toEqual(['source']);
+    expect(value({ source: 'template', templateName: 'hello-node' }, 'source')).toBe(
+      'Template · hello-node'
     );
   });
 

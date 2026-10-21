@@ -7,7 +7,7 @@ import { RepoPicker } from '@/components/dashboard/repo-picker';
 import { GitHubConnectForm } from '@/components/dashboard/github-connect-form';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { ArrowLeft, ArrowRight, Check, Github, Package, Page, Upload } from 'iconoir-react';
+import { ArrowLeft, ArrowRight } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
@@ -28,6 +28,9 @@ import {
 import { TemplateCatalog } from '@/components/dashboard/template-catalog';
 import { ProjectImport } from '@/components/dashboard/project-import';
 import { NewAppCapabilities } from './new-app-capabilities';
+import { summaryRows } from './new-app-summary';
+import { NewAppBento } from './new-app-bento';
+import { NewAppRail, NewAppReviewGrid } from './new-app-rail';
 import { ImageDeployForm } from './image-deploy-form';
 import { CopyIconButton } from '@/components/ui/copy-button';
 import { templateBySlug } from '@/lib/templates';
@@ -59,56 +62,6 @@ import { FirstDeploymentRecovery } from './first-deployment-recovery';
 type SourceField = 'source-git' | 'source-template' | 'repository' | 'ref';
 
 const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
-const STEPS = ['Source', 'Configure', 'Review'] as const;
-
-/** Git deploys immediately; empty/template apps await CLI deployment.
- * Import keeps the existing project scan/apply contract inside this flow. */
-const SOURCES = [
-  {
-    id: 'git',
-    name: 'Git repository',
-    desc: 'Build and deploy one service from a branch, tag, or commit, right from the console.',
-    icon: Github,
-  },
-  {
-    id: 'template',
-    name: 'Template',
-    desc: 'Start with sample code. Create the app here, then deploy it with the CLI.',
-    icon: Page,
-  },
-  {
-    id: 'empty',
-    name: 'Empty app',
-    desc: 'Create the app without a deployment. Add code from the CLI or CI later.',
-    icon: Package,
-  },
-  {
-    id: 'container',
-    name: 'Container image',
-    desc: 'Deploy an immutable HTTP image by digest. No GitHub connection required.',
-    icon: Package,
-  },
-  {
-    id: 'worker',
-    name: 'Long-lived worker',
-    desc: 'Deploy a pinned OCI worker without an HTTP listener. Hobby or above.',
-    icon: Package,
-  },
-  {
-    id: 'import',
-    name: 'Import',
-    desc: 'A repository with several services (Compose, Procfile, k8s, Render, Fly, or serverless), scanned and created together as a project.',
-    icon: Upload,
-  },
-] as const;
-
-/** The common path first: most people arrive with code, not an image or a
- * multi-service repository. The order inside a group is the order shown. */
-const SOURCE_GROUPS: { title: string; sources: AppSource[] }[] = [
-  { title: 'From code', sources: ['git', 'template', 'empty'] },
-  { title: 'From an image', sources: ['container', 'worker'] },
-  { title: 'Bring an existing project', sources: ['import'] },
-];
 
 /** The set `apid` accepts on `POST /v1/apps`; anything else is a 400. */
 const RUNTIMES: { id: Runtime; label: string }[] = [
@@ -130,7 +83,6 @@ const CONTROL =
   'h-[var(--console-control-height,2.25rem)] rounded-[var(--console-control-radius,0.375rem)]';
 const LABEL =
   'text-[length:var(--console-label-size,0.875rem)] leading-[var(--console-label-leading,1.4286)] font-medium';
-const SURFACE = 'rounded-[var(--console-surface-radius,0.625rem)]';
 
 interface NewAppWizardProps {
   search?: NewAppSearch;
@@ -440,6 +392,25 @@ function CreateAppWizard({
         : visibility === 'internal' && !privateAvailable
           ? 'Internal-only apps are not confirmed for this account yet. Choose public visibility, or try again shortly.'
           : undefined;
+
+  // What the app will be, as far as the person has said: the rail shows it as
+  // it fills in, Review shows it whole, from one list.
+  const rows = summaryRows({
+    step: step as 0 | 1 | 2,
+    source,
+    repo,
+    ref,
+    templateName: template?.name ?? catalogTemplate?.name,
+    name,
+    workspaceLabel: workspace.label,
+    workspaceIsOrg: Boolean(workspace.org),
+    appType,
+    runtimeLabel: RUNTIMES.find((r) => r.id === runtime)?.label,
+    memoryMb: selectedMemoryMb,
+    scaleToZero: effectiveScaleToZero,
+    visibility,
+    predictedUrl,
+  });
 
   async function submitGitSource(slug: string) {
     sourceRequested.current = false;
@@ -764,42 +735,6 @@ function CreateAppWizard({
     return null;
   }
 
-  // A card is named by its title alone and described by its sentence, so a
-  // screen reader announces "Git repository, toggle button" and then the
-  // detail, rather than one run-on name.
-  function renderSourceCard(id: AppSource) {
-    const s = SOURCES.find((option) => option.id === id)!;
-    const Icon = s.icon;
-    return (
-      <button
-        key={s.id}
-        type="button"
-        name={`source-${s.id}`}
-        form={`${uid}-source-form`}
-        onClick={() => setSource(s.id)}
-        aria-pressed={source === s.id}
-        aria-labelledby={`${uid}-${s.id}-name`}
-        aria-describedby={cn(`${uid}-${s.id}-desc`, sourceLevelError && `${uid}-source-error`)}
-        className={cn(
-          'flex items-start gap-3 rounded-lg border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
-          source === s.id
-            ? 'border-brand bg-brand/5'
-            : 'border-border bg-card hover:border-border-secondary'
-        )}
-      >
-        <Icon aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-brand" />
-        <span className="min-w-0">
-          <span id={`${uid}-${s.id}-name`} className="block text-sm font-medium">
-            {s.name}
-          </span>
-          <span id={`${uid}-${s.id}-desc`} className="mt-0.5 block text-xs text-muted-foreground">
-            {s.desc}
-          </span>
-        </span>
-      </button>
-    );
-  }
-
   const containerForm = (
     <div className="mx-auto flex max-w-2xl flex-col gap-6">
       <button
@@ -821,23 +756,8 @@ function CreateAppWizard({
     </div>
   );
   const form = (
-    <div
-      className={cn(
-        'mx-auto flex w-full flex-col gap-6 text-[length:var(--console-body-size,0.875rem)] leading-[var(--console-body-leading,1.5714)]',
-        source === 'template' || source === 'import' ? 'max-w-5xl' : 'max-w-2xl'
-      )}
-    >
-      {!onboarding && (
-        <Link
-          to="/dashboard/apps"
-          className="inline-flex w-fit items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <ArrowLeft className="h-3 w-3" />
-          All apps
-        </Link>
-      )}
-
-      <PageHeader
+    <div className="mx-auto grid w-full max-w-5xl gap-8 text-[length:var(--console-body-size,0.875rem)] leading-[var(--console-body-leading,1.5714)] lg:grid-cols-[17.5rem_minmax(0,1fr)] lg:items-start">
+      <NewAppRail
         title={onboarding ? 'Deploy your first app' : 'New app'}
         description={
           onboarding
@@ -846,496 +766,430 @@ function CreateAppWizard({
               ? `Starting from the ${template.name} template — source, runtime, and memory are prefilled; the scaffold arrives once the app exists.`
               : 'Choose a source to create your app.'
         }
+        back={!onboarding}
+        step={source === 'import' ? undefined : (step as 0 | 1 | 2)}
+        rows={step === 2 ? [] : rows}
       />
-
-      {/* Step rail */}
-      {source !== 'import' && (
-        <ol aria-label="App creation steps" className="flex items-center gap-2">
-          {STEPS.map((label, i) => (
-            <li
-              key={label}
-              aria-current={i === step ? 'step' : undefined}
-              className="flex items-center gap-2"
+      <div className="flex min-w-0 flex-col gap-6">
+        <AnimatePresence mode="wait" initial={false}>
+          {step === 0 && (
+            <motion.div
+              key="source"
+              initial={reduce ? false : { opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={reduce ? { opacity: 1 } : { opacity: 0, y: -10 }}
+              transition={{ duration: reduce ? 0 : 0.25, ease: EASE }}
+              className="flex flex-col gap-4"
             >
-              <span
-                className={cn(
-                  'flex h-6 w-6 items-center justify-center rounded-full border text-[11px]',
-                  i < step && 'border-transparent text-black',
-                  i === step && 'border-brand text-brand',
-                  i > step && 'border-border text-muted-foreground'
-                )}
-                style={i < step ? { background: 'var(--status-good)' } : undefined}
-              >
-                {i < step ? <Check className="h-3 w-3" /> : i + 1}
-              </span>
-              <span
-                className={cn('text-sm', i === step ? 'text-foreground' : 'text-muted-foreground')}
-              >
-                {label}
-              </span>
-              {i < STEPS.length - 1 && <span className="mx-1 h-px w-6 bg-border sm:w-10" />}
-            </li>
-          ))}
-        </ol>
-      )}
-
-      <AnimatePresence mode="wait" initial={false}>
-        {step === 0 && (
-          <motion.div
-            key="source"
-            initial={reduce ? false : { opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={reduce ? { opacity: 1 } : { opacity: 0, y: -10 }}
-            transition={{ duration: reduce ? 0 : 0.25, ease: EASE }}
-            className="flex flex-col gap-4"
-          >
-            {/* The step holds GitHub's own connect form, so its controls join
+              {/* The step holds GitHub's own connect form, so its controls join
                 this form by id rather than by nesting. */}
-            <form
-              id={`${uid}-source-form`}
-              noValidate
-              aria-label="Choose a source"
-              onSubmit={(event) => {
-                event.preventDefault();
-                if (sourceValidation.validate(sourceErrors, event.currentTarget)) setStep(1);
-              }}
-            />
-            {onboarding ? (
-              <div className="flex flex-col gap-2">{renderSourceCard('git')}</div>
-            ) : (
-              <div className="flex flex-col gap-5">
-                {SOURCE_GROUPS.map((group, index) => (
-                  <div
-                    key={group.title}
-                    role="group"
-                    aria-labelledby={`${uid}-group-${index}`}
-                    className="flex flex-col gap-2"
-                  >
-                    <h2
-                      id={`${uid}-group-${index}`}
-                      className="text-xs font-medium text-muted-foreground"
-                    >
-                      {group.title}
-                    </h2>
-                    {group.sources.map(renderSourceCard)}
+              <form
+                id={`${uid}-source-form`}
+                noValidate
+                aria-label="Choose a source"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  if (sourceValidation.validate(sourceErrors, event.currentTarget)) setStep(1);
+                }}
+              />
+              <NewAppBento
+                uid={uid}
+                formId={`${uid}-source-form`}
+                selected={source}
+                onSelect={setSource}
+                errorId={sourceLevelError ? `${uid}-source-error` : undefined}
+                single={onboarding}
+              />
+              {sourceLevelError && (
+                <FieldError id={`${uid}-source-error`}>{sourceLevelError}</FieldError>
+              )}
+
+              {!onboarding && <NewAppCapabilities />}
+              {source === 'git' && !githubConnected ? (
+                <div
+                  role="status"
+                  className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-brand/30 bg-brand/5 p-4"
+                >
+                  <div>
+                    <p className="text-sm font-medium">Connect GitHub first</p>
+                    <p className="mt-1 max-w-md text-xs text-muted-foreground">
+                      Gregale uses your GitHub App installation to list repositories and fetch the
+                      exact ref you deploy.
+                    </p>
                   </div>
-                ))}
-              </div>
-            )}
-            {sourceLevelError && (
-              <FieldError id={`${uid}-source-error`}>{sourceLevelError}</FieldError>
-            )}
-
-            {!onboarding && <NewAppCapabilities />}
-            {source === 'git' && !githubConnected ? (
-              <div
-                role="status"
-                className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-brand/30 bg-brand/5 p-4"
-              >
-                <div>
-                  <p className="text-sm font-medium">Connect GitHub first</p>
-                  <p className="mt-1 max-w-md text-xs text-muted-foreground">
-                    Gregale uses your GitHub App installation to list repositories and fetch the
-                    exact ref you deploy.
-                  </p>
-                </div>
-                {/* Connecting from New app comes straight back to the Git source.
+                  {/* Connecting from New app comes straight back to the Git source.
                     Onboarding keeps the Settings landing its return flag expects. */}
-                <GitHubConnectForm
-                  onConnect={onConnectGitHub}
-                  returnTo={onConnectGitHub ? undefined : '/dashboard/apps/new?source=git'}
-                />
-              </div>
-            ) : source === 'git' ? (
-              <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
-                <div className="flex min-w-0 flex-col gap-1.5">
-                  <label htmlFor={`${uid}-repository`} className={LABEL}>
-                    Repository
-                  </label>
-                  <RepoPicker
-                    id={`${uid}-repository`}
-                    name="repository"
-                    form={`${uid}-source-form`}
-                    {...fieldErrorProps(repoError, `${uid}-repository-error`)}
-                    value={repo}
-                    onChange={(nextRepo, defaultBranch) => {
-                      setRepo(nextRepo);
-                      if (defaultBranch) setRef(defaultBranch);
-                    }}
-                    className={CONTROL}
+                  <GitHubConnectForm
+                    onConnect={onConnectGitHub}
+                    returnTo={onConnectGitHub ? undefined : '/dashboard/apps/new?source=git'}
                   />
-                  {repoError && <FieldError id={`${uid}-repository-error`}>{repoError}</FieldError>}
                 </div>
-                <div className="flex flex-col gap-1.5 sm:w-40">
-                  <label htmlFor={`${uid}-ref`} className={LABEL}>
-                    Ref
-                  </label>
-                  <Input
-                    id={`${uid}-ref`}
-                    name="ref"
-                    form={`${uid}-source-form`}
-                    {...fieldErrorProps(refError, `${uid}-ref-error`)}
-                    value={ref}
-                    onChange={(e) => setRef(e.target.value)}
-                    placeholder="main"
-                    maxLength={200}
-                    spellCheck={false}
-                    className={cn(CONTROL, 'font-mono')}
-                  />
-                  {refError && <FieldError id={`${uid}-ref-error`}>{refError}</FieldError>}
-                </div>
-                <p className="text-[13px] leading-5 text-muted-foreground sm:col-span-2">
-                  Choose a repository your connected GitHub account has granted Gregale access to.
-                  The ref can be a branch, tag, or commit SHA.
-                </p>
-                {renderScanHint()}
-              </div>
-            ) : null}
-
-            {source === 'template' && (
-              <>
-                {picked && (
-                  <p role="status" className="text-sm text-muted-foreground">
-                    Selected template: <strong>{template?.name ?? catalogTemplate?.name}</strong>.
-                    Create the app, then deploy the scaffold from the CLI.
-                  </p>
-                )}
-                {templateSlug && !picked && !catalog.isPending && (
-                  <p role="status" className="text-sm text-muted-foreground">
-                    This template is unavailable. Choose a starter below or another source.
-                  </p>
-                )}
-                <TemplateCatalog
-                  selected={templateSlug}
-                  onChooseEmpty={() => setSource('empty')}
-                  onSelect={(slug) =>
-                    changeSearch({ ...search, source: 'template', template: slug, step: undefined })
-                  }
-                />
-              </>
-            )}
-
-            {source !== 'import' && (
-              <div className="flex justify-end">
-                <Button
-                  variant="cta"
-                  type="submit"
-                  form={`${uid}-source-form`}
-                  className="h-10 gap-2 rounded-lg"
-                >
-                  Continue
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              </div>
-            )}
-          </motion.div>
-        )}
-
-        {step === 1 && (
-          <motion.form
-            key="configure"
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (configureValidation.validate({ name: nameError }, event.currentTarget))
-                setStep(2);
-            }}
-            noValidate
-            initial={reduce ? false : { opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={reduce ? { opacity: 1 } : { opacity: 0, y: -10 }}
-            transition={{ duration: reduce ? 0 : 0.25, ease: EASE }}
-            className="flex flex-col gap-5"
-          >
-            <Panel className={SURFACE}>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <FormField
-                  id="new-app-name"
-                  label="App name"
-                  error={nameError}
-                  showError={nameTouched || configureValidation.submitAttempted}
-                >
-                  {(props) => (
+              ) : source === 'git' ? (
+                <div className="grid gap-4 border border-border bg-card p-5 sm:grid-cols-[1fr_auto]">
+                  <div className="flex min-w-0 flex-col gap-1.5">
+                    <label htmlFor={`${uid}-repository`} className={LABEL}>
+                      Repository
+                    </label>
+                    <RepoPicker
+                      id={`${uid}-repository`}
+                      name="repository"
+                      form={`${uid}-source-form`}
+                      {...fieldErrorProps(repoError, `${uid}-repository-error`)}
+                      value={repo}
+                      onChange={(nextRepo, defaultBranch) => {
+                        setRepo(nextRepo);
+                        if (defaultBranch) setRef(defaultBranch);
+                      }}
+                      className={CONTROL}
+                    />
+                    {repoError && (
+                      <FieldError id={`${uid}-repository-error`}>{repoError}</FieldError>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-1.5 sm:w-40">
+                    <label htmlFor={`${uid}-ref`} className={LABEL}>
+                      Ref
+                    </label>
                     <Input
-                      {...props}
-                      name="name"
-                      value={name}
-                      onChange={(e) => setName(e.target.value.toLowerCase())}
-                      onBlur={() => setNameTouched(true)}
+                      id={`${uid}-ref`}
+                      name="ref"
+                      form={`${uid}-source-form`}
+                      {...fieldErrorProps(refError, `${uid}-ref-error`)}
+                      value={ref}
+                      onChange={(e) => setRef(e.target.value)}
+                      placeholder="main"
+                      maxLength={200}
+                      spellCheck={false}
                       className={cn(CONTROL, 'font-mono')}
                     />
-                  )}
-                </FormField>
-
-                <div className="flex flex-col gap-1.5">
-                  <label htmlFor={`${uid}-type`} className={LABEL}>
-                    Type
-                  </label>
-                  <Select
-                    id={`${uid}-type`}
-                    name="type"
-                    aria-describedby={`${uid}-type-hint`}
-                    value={appType}
-                    onChange={(e) => setAppType(e.target.value as 'function' | 'app')}
-                    className={CONTROL}
-                  >
-                    {APP_TYPES.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.label}
-                      </option>
-                    ))}
-                  </Select>
-                  <span
-                    id={`${uid}-type-hint`}
-                    className="text-[13px] leading-5 text-muted-foreground"
-                  >
-                    {APP_TYPES.find((t) => t.id === appType)?.desc}
-                    {detectedType && appTypeDraft === null && (
-                      <> Detected from {detectedFrom} — change it if that is wrong.</>
-                    )}
-                  </span>
+                    {refError && <FieldError id={`${uid}-ref-error`}>{refError}</FieldError>}
+                  </div>
+                  <p className="text-[13px] leading-5 text-muted-foreground sm:col-span-2">
+                    Choose a repository your connected GitHub account has granted Gregale access to.
+                    The ref can be a branch, tag, or commit SHA.
+                  </p>
+                  {renderScanHint()}
                 </div>
+              ) : null}
 
-                {appType === 'function' && (
+              {source === 'template' && (
+                <>
+                  {picked && (
+                    <p role="status" className="text-sm text-muted-foreground">
+                      Selected template: <strong>{template?.name ?? catalogTemplate?.name}</strong>.
+                      Create the app, then deploy the scaffold from the CLI.
+                    </p>
+                  )}
+                  {templateSlug && !picked && !catalog.isPending && (
+                    <p role="status" className="text-sm text-muted-foreground">
+                      This template is unavailable. Choose a starter below or another source.
+                    </p>
+                  )}
+                  <TemplateCatalog
+                    selected={templateSlug}
+                    onChooseEmpty={() => setSource('empty')}
+                    onSelect={(slug) =>
+                      changeSearch({
+                        ...search,
+                        source: 'template',
+                        template: slug,
+                        step: undefined,
+                      })
+                    }
+                  />
+                </>
+              )}
+
+              {source !== 'import' && (
+                <div className="flex justify-end">
+                  <Button
+                    variant="cta"
+                    type="submit"
+                    form={`${uid}-source-form`}
+                    className="h-10 gap-2 rounded-lg"
+                  >
+                    Continue
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+            </motion.div>
+          )}
+
+          {step === 1 && (
+            <motion.form
+              key="configure"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (configureValidation.validate({ name: nameError }, event.currentTarget))
+                  setStep(2);
+              }}
+              noValidate
+              initial={reduce ? false : { opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={reduce ? { opacity: 1 } : { opacity: 0, y: -10 }}
+              transition={{ duration: reduce ? 0 : 0.25, ease: EASE }}
+              className="flex flex-col gap-5"
+            >
+              <Panel className="rounded-none border-border">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <FormField
+                    id="new-app-name"
+                    label="App name"
+                    error={nameError}
+                    showError={nameTouched || configureValidation.submitAttempted}
+                  >
+                    {(props) => (
+                      <Input
+                        {...props}
+                        name="name"
+                        value={name}
+                        onChange={(e) => setName(e.target.value.toLowerCase())}
+                        onBlur={() => setNameTouched(true)}
+                        className={cn(CONTROL, 'font-mono')}
+                      />
+                    )}
+                  </FormField>
+
                   <div className="flex flex-col gap-1.5">
-                    <label htmlFor={`${uid}-runtime`} className={LABEL}>
-                      Runtime
+                    <label htmlFor={`${uid}-type`} className={LABEL}>
+                      Type
                     </label>
                     <Select
-                      id={`${uid}-runtime`}
-                      name="runtime"
-                      value={runtime}
-                      onChange={(e) => setRuntime(e.target.value as Runtime)}
+                      id={`${uid}-type`}
+                      name="type"
+                      aria-describedby={`${uid}-type-hint`}
+                      value={appType}
+                      onChange={(e) => setAppType(e.target.value as 'function' | 'app')}
                       className={CONTROL}
                     >
-                      {RUNTIMES.map((r) => (
-                        <option key={r.id} value={r.id}>
-                          {r.label}
+                      {APP_TYPES.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.label}
                         </option>
                       ))}
                     </Select>
+                    <span
+                      id={`${uid}-type-hint`}
+                      className="text-[13px] leading-5 text-muted-foreground"
+                    >
+                      {APP_TYPES.find((t) => t.id === appType)?.desc}
+                      {detectedType && appTypeDraft === null && (
+                        <> Detected from {detectedFrom} — change it if that is wrong.</>
+                      )}
+                    </span>
                   </div>
-                )}
 
-                <div className="flex flex-col gap-1.5">
-                  <label htmlFor={`${uid}-visibility`} className={LABEL}>
-                    App visibility
-                  </label>
-                  <Select
-                    id={`${uid}-visibility`}
-                    name="visibility"
-                    aria-describedby={`${uid}-visibility-hint`}
-                    value={visibility}
-                    onChange={(event) => setVisibility(event.target.value as 'public' | 'internal')}
-                    className={CONTROL}
-                  >
-                    <option value="public">Public edge and internal service</option>
-                    <option value="internal">Internal service only</option>
-                  </Select>
-                  <span
-                    id={`${uid}-visibility-hint`}
-                    className="text-[13px] leading-5 text-muted-foreground"
-                  >
-                    Internal apps have no public platform URL or custom-domain route. Authenticated
-                    same-account service calls remain subject to caller policy.
-                    {visibility === 'internal' && !privateAvailable
-                      ? ' Checking private-app availability before creation.'
-                      : ''}
-                  </span>
+                  {appType === 'function' && (
+                    <div className="flex flex-col gap-1.5">
+                      <label htmlFor={`${uid}-runtime`} className={LABEL}>
+                        Runtime
+                      </label>
+                      <Select
+                        id={`${uid}-runtime`}
+                        name="runtime"
+                        value={runtime}
+                        onChange={(e) => setRuntime(e.target.value as Runtime)}
+                        className={CONTROL}
+                      >
+                        {RUNTIMES.map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {r.label}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+                  )}
+
+                  <div className="flex flex-col gap-1.5">
+                    <label htmlFor={`${uid}-visibility`} className={LABEL}>
+                      App visibility
+                    </label>
+                    <Select
+                      id={`${uid}-visibility`}
+                      name="visibility"
+                      aria-describedby={`${uid}-visibility-hint`}
+                      value={visibility}
+                      onChange={(event) =>
+                        setVisibility(event.target.value as 'public' | 'internal')
+                      }
+                      className={CONTROL}
+                    >
+                      <option value="public">Public edge and internal service</option>
+                      <option value="internal">Internal service only</option>
+                    </Select>
+                    <span
+                      id={`${uid}-visibility-hint`}
+                      className="text-[13px] leading-5 text-muted-foreground"
+                    >
+                      Internal apps have no public platform URL or custom-domain route.
+                      Authenticated same-account service calls remain subject to caller policy.
+                      {visibility === 'internal' && !privateAvailable
+                        ? ' Checking private-app availability before creation.'
+                        : ''}
+                    </span>
+                  </div>
+
+                  {/* No region picker: this is a one-box platform and the API
+                    exposes no region to choose. */}
                 </div>
 
-                {/* No region picker: this is a one-box platform and the API
-                    exposes no region to choose. */}
-              </div>
+                <p className="mt-6 text-[13px] leading-5 text-muted-foreground">
+                  {selectedMemoryMb} MB ·{' '}
+                  {effectiveScaleToZero ? 'Parks when idle' : 'One instance kept resident'}
+                </p>
+                <details className="mt-4 border-t border-border pt-2">
+                  <summary className="min-h-11 cursor-pointer content-center rounded text-sm font-medium focus-visible:outline-2 focus-visible:outline-brand">
+                    Resource settings
+                  </summary>
+                  <div className="mt-4">
+                    <span className={LABEL}>Memory</span>
+                    <div className="mt-2">
+                      <MemorySelect
+                        value={selectedMemoryMb}
+                        maxMb={limitsLoading ? undefined : account?.limits.ram_mb}
+                        onChange={setMemoryMb}
+                      />
+                    </div>
+                    {account ? (
+                      <p className="mt-2 text-[13px] leading-5 text-muted-foreground">
+                        {account.plan} plan · up to {account.limits.ram_mb} MB per instance
+                      </p>
+                    ) : limitsLoading ? (
+                      <p className="mt-2 text-xs text-muted-foreground" role="status">
+                        Checking plan limits…
+                      </p>
+                    ) : null}
+                  </div>
 
-              <p className="mt-6 text-[13px] leading-5 text-muted-foreground">
-                {selectedMemoryMb} MB ·{' '}
-                {effectiveScaleToZero ? 'Parks when idle' : 'One instance kept resident'}
-              </p>
-              <details className="mt-4 border-t border-border pt-2">
-                <summary className="min-h-11 cursor-pointer content-center rounded text-sm font-medium focus-visible:outline-2 focus-visible:outline-brand">
-                  Resource settings
-                </summary>
-                <div className="mt-4">
-                  <span className={LABEL}>Memory</span>
-                  <div className="mt-2">
-                    <MemorySelect
-                      value={selectedMemoryMb}
-                      maxMb={limitsLoading ? undefined : account?.limits.ram_mb}
-                      onChange={setMemoryMb}
+                  <div className="mt-6 flex items-start justify-between gap-6 border-t border-border pt-5">
+                    <div>
+                      <p className="text-sm font-medium">Scale to zero</p>
+                      <p className="mt-1 max-w-md text-[13px] leading-5 text-muted-foreground">
+                        Snapshot the microVM when idle. <RestoreTarget />. {RESTORE_CONTEXT}
+                      </p>
+                      {account && !canKeepResident && (
+                        <p
+                          id="scale-to-zero-plan-note"
+                          className="mt-1 text-xs text-muted-foreground"
+                        >
+                          Keeping an instance resident requires a paid plan.
+                        </p>
+                      )}
+                    </div>
+                    <Switch
+                      checked={effectiveScaleToZero}
+                      disabled={!canKeepResident}
+                      onCheckedChange={setScaleToZero}
+                      aria-label="Scale to zero"
+                      aria-describedby={!canKeepResident ? 'scale-to-zero-plan-note' : undefined}
+                      className="mt-1 data-[state=checked]:bg-brand"
                     />
                   </div>
-                  {account ? (
-                    <p className="mt-2 text-[13px] leading-5 text-muted-foreground">
-                      {account.plan} plan · up to {account.limits.ram_mb} MB per instance
-                    </p>
-                  ) : limitsLoading ? (
-                    <p className="mt-2 text-xs text-muted-foreground" role="status">
-                      Checking plan limits…
-                    </p>
-                  ) : null}
-                </div>
+                </details>
+              </Panel>
 
-                <div className="mt-6 flex items-start justify-between gap-6 border-t border-border pt-5">
-                  <div>
-                    <p className="text-sm font-medium">Scale to zero</p>
-                    <p className="mt-1 max-w-md text-[13px] leading-5 text-muted-foreground">
-                      Snapshot the microVM when idle. <RestoreTarget />. {RESTORE_CONTEXT}
-                    </p>
-                    {account && !canKeepResident && (
-                      <p
-                        id="scale-to-zero-plan-note"
-                        className="mt-1 text-xs text-muted-foreground"
-                      >
-                        Keeping an instance resident requires a paid plan.
-                      </p>
+              <div className="flex items-center justify-between">
+                <Button type="button" variant="ghost" onClick={() => setStep(0)} className="gap-2">
+                  <ArrowLeft className="h-4 w-4" />
+                  Back
+                </Button>
+                <Button variant="cta" type="submit" className="h-10 gap-2 rounded-lg">
+                  Review
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </motion.form>
+          )}
+
+          {step === 2 && (
+            <motion.div
+              key="review"
+              initial={reduce ? false : { opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={reduce ? { opacity: 1 } : { opacity: 0, y: -10 }}
+              transition={{ duration: reduce ? 0 : 0.25, ease: EASE }}
+              className="flex flex-col gap-5"
+            >
+              <Panel className="rounded-none border-border">
+                <NewAppReviewGrid rows={rows} />
+                <p className="mt-4 text-xs text-muted-foreground">
+                  {visibility === 'internal'
+                    ? 'Internal apps get no public URL; other apps in this account call them through service routing.'
+                    : 'The URL follows the app name; the platform confirms it when the app is created.'}
+                </p>
+                {workspace.org && (
+                  <p className="mt-4 text-xs text-muted-foreground">
+                    Created in {workspace.label}, so it is listed in that workspace. You stay its
+                    owner: its settings, quota, and billing remain with your account.
+                  </p>
+                )}
+
+                {account && (
+                  <div
+                    role={quotaExceeded ? 'alert' : 'status'}
+                    className={cn(
+                      'mt-5 rounded-lg border px-3 py-2 text-xs',
+                      quotaExceeded
+                        ? 'border-[color:var(--status-critical)]/35 text-muted-foreground'
+                        : 'border-border text-muted-foreground'
+                    )}
+                  >
+                    {quotaExceeded ? (
+                      <>
+                        You have reached the {account.plan} plan limit of{' '}
+                        {account.limits.deployed_apps} app
+                        {account.limits.deployed_apps === 1 ? '' : 's'}.{' '}
+                        <Link to="/dashboard/plans" className="text-brand hover:underline">
+                          Upgrade your plan
+                        </Link>{' '}
+                        to deploy another app.
+                      </>
+                    ) : (
+                      <>
+                        {account.plan} plan · {quotaRemaining} app
+                        {quotaRemaining === 1 ? '' : 's'} available · up to {account.limits.ram_mb}{' '}
+                        MB per app.
+                      </>
                     )}
                   </div>
-                  <Switch
-                    checked={effectiveScaleToZero}
-                    disabled={!canKeepResident}
-                    onCheckedChange={setScaleToZero}
-                    aria-label="Scale to zero"
-                    aria-describedby={!canKeepResident ? 'scale-to-zero-plan-note' : undefined}
-                    className="mt-1 data-[state=checked]:bg-brand"
-                  />
-                </div>
-              </details>
-            </Panel>
+                )}
+              </Panel>
 
-            <div className="flex items-center justify-between">
-              <Button type="button" variant="ghost" onClick={() => setStep(0)} className="gap-2">
-                <ArrowLeft className="h-4 w-4" />
-                Back
-              </Button>
-              <Button variant="cta" type="submit" className="h-10 gap-2 rounded-lg">
-                Review
-                <ArrowRight className="h-4 w-4" />
-              </Button>
-            </div>
-          </motion.form>
-        )}
-
-        {step === 2 && (
-          <motion.div
-            key="review"
-            initial={reduce ? false : { opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={reduce ? { opacity: 1 } : { opacity: 0, y: -10 }}
-            transition={{ duration: reduce ? 0 : 0.25, ease: EASE }}
-            className="flex flex-col gap-5"
-          >
-            <Panel title="Review" className={SURFACE}>
-              <dl className="grid gap-x-8 gap-y-4 sm:grid-cols-2">
-                {[
-                  ['Name', name],
-                  ['Workspace', workspace.label],
-                  ['Source', SOURCES.find((option) => option.id === source)?.name ?? ''],
-                  ['Type', APP_TYPES.find((t) => t.id === appType)?.label ?? ''],
-                  [
-                    'First deploy',
-                    source === 'git'
-                      ? `${repo}@${normalizedRef}, right after create`
-                      : 'Later, from the CLI',
-                  ],
-                  ...(appType === 'function' ? [['Runtime', runtime]] : []),
-                  [
-                    'Visibility',
-                    visibility === 'internal' ? 'Internal service only' : 'Public edge',
-                  ],
-                  ['Memory', `${selectedMemoryMb} MB`],
-                  [
-                    'Scale to zero',
-                    effectiveScaleToZero ? 'Parks when idle' : 'One instance kept resident',
-                  ],
-                  [
-                    'Public URL',
-                    visibility === 'internal'
-                      ? 'None (internal service only)'
-                      : (predictedUrl ?? 'Assigned on create'),
-                  ],
-                ].map(([label, value]) => (
-                  <div key={label} className="flex flex-col gap-1 border-b border-border pb-3">
-                    <dt className={cn(LABEL, 'text-muted-foreground')}>{label}</dt>
-                    <dd className="break-words font-mono text-sm">{value}</dd>
-                  </div>
-                ))}
-              </dl>
-              <p className="mt-4 text-xs text-muted-foreground">
-                {visibility === 'internal'
-                  ? 'Internal apps get no public URL; other apps in this account call them through service routing.'
-                  : 'The URL follows the app name; the platform confirms it when the app is created.'}
-              </p>
-              {workspace.org && (
-                <p className="mt-4 text-xs text-muted-foreground">
-                  Created in {workspace.label}, so it is listed in that workspace. You stay its
-                  owner: its settings, quota, and billing remain with your account.
+              {blockedReason && (
+                <p
+                  id={`${uid}-blocked`}
+                  role="status"
+                  className="text-right text-[13px] leading-5 text-muted-foreground"
+                >
+                  {blockedReason}
                 </p>
               )}
-
-              {account && (
-                <div
-                  role={quotaExceeded ? 'alert' : 'status'}
-                  className={cn(
-                    'mt-5 rounded-lg border px-3 py-2 text-xs',
-                    quotaExceeded
-                      ? 'border-[color:var(--status-critical)]/35 text-muted-foreground'
-                      : 'border-border text-muted-foreground'
-                  )}
+              <div className="flex items-center justify-between">
+                <Button variant="ghost" onClick={() => setStep(1)} className="gap-2">
+                  <ArrowLeft className="h-4 w-4" />
+                  Back
+                </Button>
+                <Button
+                  variant="cta"
+                  disabled={
+                    deployBlocked ||
+                    !nameValid ||
+                    !gitSourceValid ||
+                    (source === 'git' && !githubConnected)
+                  }
+                  aria-describedby={blockedReason ? `${uid}-blocked` : undefined}
+                  onClick={() => void createFunction()}
+                  className="h-10 gap-2 rounded-lg px-6"
                 >
-                  {quotaExceeded ? (
-                    <>
-                      You have reached the {account.plan} plan limit of{' '}
-                      {account.limits.deployed_apps} app
-                      {account.limits.deployed_apps === 1 ? '' : 's'}.{' '}
-                      <Link to="/dashboard/plans" className="text-brand hover:underline">
-                        Upgrade your plan
-                      </Link>{' '}
-                      to deploy another app.
-                    </>
-                  ) : (
-                    <>
-                      {account.plan} plan · {quotaRemaining} app
-                      {quotaRemaining === 1 ? '' : 's'} available · up to {account.limits.ram_mb} MB
-                      per app.
-                    </>
-                  )}
-                </div>
-              )}
-            </Panel>
-
-            {blockedReason && (
-              <p
-                id={`${uid}-blocked`}
-                role="status"
-                className="text-right text-[13px] leading-5 text-muted-foreground"
-              >
-                {blockedReason}
-              </p>
-            )}
-            <div className="flex items-center justify-between">
-              <Button variant="ghost" onClick={() => setStep(1)} className="gap-2">
-                <ArrowLeft className="h-4 w-4" />
-                Back
-              </Button>
-              <Button
-                variant="cta"
-                disabled={
-                  deployBlocked ||
-                  !nameValid ||
-                  !gitSourceValid ||
-                  (source === 'git' && !githubConnected)
-                }
-                aria-describedby={blockedReason ? `${uid}-blocked` : undefined}
-                onClick={() => void createFunction()}
-                className="h-10 gap-2 rounded-lg px-6"
-              >
-                {source === 'git' ? 'Deploy app' : 'Create app'}
-                <ArrowRight className="h-4 w-4" />
-              </Button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+                  {source === 'git' ? 'Deploy app' : 'Create app'}
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
     </div>
   );
 

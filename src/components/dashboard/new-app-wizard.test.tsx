@@ -187,6 +187,27 @@ describe('NewAppWizard source picker', () => {
     );
   });
 
+  it("fills the rail's summary as you go and hands it to review", async () => {
+    const user = userEvent.setup();
+    render(<NewAppWizard />);
+    const rail = screen.getByRole('complementary');
+    // "Source" is also a step label in the rail, so read the row from its value.
+    expect(within(rail).getByText('Git repository').previousElementSibling).toHaveTextContent(
+      'Source'
+    );
+    await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
+    expect(within(rail).getByText('Repository').nextElementSibling).toHaveTextContent(
+      'gregale/demo@main'
+    );
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await screen.findByLabelText('App name');
+    expect(within(rail).getByText('Memory').nextElementSibling).toHaveTextContent('128 MB');
+    await user.click(screen.getByRole('button', { name: 'Review' }));
+    await screen.findByRole('button', { name: 'Deploy app' });
+    expect(within(rail).queryByText("What you'll get")).not.toBeInTheDocument();
+    expect(screen.getByText('Memory').nextElementSibling).toHaveTextContent('128 MB');
+  });
+
   it('preselects Git when GitHub is connected', () => {
     render(<NewAppWizard />);
     expect(screen.getByRole('button', { name: 'Git repository' })).toHaveAttribute(
