@@ -82,4 +82,12 @@ describe('NewAppReviewGrid', () => {
     render(<NewAppReviewGrid rows={all} />);
     screen.getAllByRole('definition').forEach((d) => expect(d).toHaveClass('break-words'));
   });
+
+  it('gives Name and the URL one wide hero cell, so a URL does not break mid-word', () => {
+    render(<NewAppReviewGrid rows={all} />);
+    const hero = screen.getByText('Name').closest('[data-hero]');
+    expect(hero).not.toBeNull();
+    expect(hero).toContainElement(screen.getByText('Public URL'));
+    expect(hero).toHaveClass('sm:col-span-2');
+  });
 });

@@ -37,3 +37,29 @@ describe('new-app-bento.css', () => {
     expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*animation: none/);
   });
 });
+
+// Found in the browser pass: flex dropped the space after `$`, chips stretched
+// to the scene's width, the import edges missed their services, and the hero
+// scene sat small in a large preview.
+describe('preview polish', () => {
+  const rule = (selector: string) => {
+    const at = css.indexOf(`${selector} {`);
+    return at < 0 ? '' : css.slice(at, css.indexOf('}', at));
+  };
+
+  it('keeps the space between the prompt and its command', () => {
+    expect(rule('.nab-prompt')).toMatch(/gap:/);
+  });
+
+  it('sizes chips to their text inside a scene', () => {
+    expect(rule('.nab-scene > .nab-chip')).toMatch(/width: fit-content/);
+  });
+
+  it('lands the import edges on three evenly placed services', () => {
+    expect(rule('.nab-services')).toMatch(/grid-template-columns: repeat\(3/);
+  });
+
+  it('draws the Git scene larger in the hero cell', () => {
+    expect(css).toMatch(/\[data-source='git'\] \.nab-scene \{[^}]*font-size/);
+  });
+});

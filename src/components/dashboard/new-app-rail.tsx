@@ -124,9 +124,11 @@ export function NewAppReviewGrid({ rows }: { rows: SummaryRow[] }) {
   return (
     <dl className="grid gap-px border border-border bg-border sm:grid-cols-2">
       {hero.length > 0 && (
-        <div className="grid gap-px bg-border sm:col-span-2 sm:grid-cols-2">
+        // One wide cell: side by side when the URL fits, stacked when it does
+        // not, so a long URL never breaks mid-word in a half-width column.
+        <div data-hero="" className="flex flex-wrap gap-x-12 gap-y-4 bg-card p-5 sm:col-span-2">
           {hero.map((row) => (
-            <div key={row.key} className="flex min-w-0 flex-col gap-1 bg-card p-5">
+            <div key={row.key} className="flex min-w-0 flex-col gap-1">
               <dt className="text-xs text-muted-foreground">{row.label}</dt>
               <dd
                 className={cn(
