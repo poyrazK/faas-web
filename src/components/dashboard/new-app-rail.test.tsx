@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { NewAppRail, NewAppReviewGrid } from './new-app-rail';
+import { NewAppHeader, NewAppRail, NewAppReviewGrid } from './new-app-rail';
 import type { SummaryRow } from './new-app-summary';
 
 vi.mock('@tanstack/react-router', () => ({
@@ -13,18 +13,21 @@ const rows: SummaryRow[] = [
   { key: 'name', label: 'Name', value: 'a-forty-character-app-name-that-is-long', mono: true },
 ];
 
-describe('NewAppRail', () => {
+describe('NewAppHeader', () => {
   it('heads the page and links back to the apps', () => {
-    render(<NewAppRail title="New app" description="Choose a source." back step={0} rows={[]} />);
+    render(<NewAppHeader title="New app" description="Choose a source." back />);
     expect(screen.getByRole('heading', { level: 1, name: 'New app' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /All apps/ })).toHaveAttribute(
       'href',
       '/dashboard/apps'
     );
   });
+});
 
-  it('marks the current step and the ones done', () => {
-    render(<NewAppRail title="New app" description="" back={false} step={1} rows={[]} />);
+describe('NewAppRail', () => {
+  it('is a named landmark that marks the current step and the ones done', () => {
+    render(<NewAppRail step={1} rows={[]} />);
+    expect(screen.getByRole('complementary', { name: 'New app progress' })).toBeInTheDocument();
     const steps = within(screen.getByRole('list', { name: 'App creation steps' })).getAllByRole(
       'listitem'
     );
@@ -36,27 +39,37 @@ describe('NewAppRail', () => {
     expect(steps[1]).toHaveAttribute('aria-current', 'step');
     expect(steps[0]).toHaveAttribute('data-state', 'done');
     expect(steps[2]).toHaveAttribute('data-state', 'upcoming');
-    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 1 })).not.toBeInTheDocument();
+  });
+
+  it('names the chosen source under step one, and shows one step for self-contained sources', () => {
+    const { rerender } = render(<NewAppRail step={0} rows={[]} sourceLabel="Template" />);
+    expect(screen.getAllByRole('listitem')[0]).toHaveTextContent('Template');
+    rerender(<NewAppRail step={0} rows={[]} stepCount={1} sourceLabel="Container image" />);
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+  });
+
+  it('scrolls itself when taller than the screen', () => {
+    render(<NewAppRail step={0} rows={rows} />);
+    expect(screen.getByRole('complementary')).toHaveClass('lg:overflow-y-auto');
   });
 
   it('hides the steps when there is no step (Import)', () => {
-    render(<NewAppRail title="New app" description="" back step={undefined} rows={[]} />);
+    render(<NewAppRail step={undefined} rows={[]} />);
     expect(screen.queryByRole('list', { name: 'App creation steps' })).not.toBeInTheDocument();
   });
 
   it('lists only what is known, and nothing at all when the list is empty', () => {
-    const { rerender } = render(
-      <NewAppRail title="New app" description="" back step={0} rows={rows} />
-    );
+    const { rerender } = render(<NewAppRail step={0} rows={rows} />);
     // "Source" is also a step label, so read the row from its value.
     expect(screen.getByText('Git repository').previousElementSibling).toHaveTextContent('Source');
     expect(screen.getByText("What you'll get")).toBeInTheDocument();
-    rerender(<NewAppRail title="New app" description="" back step={2} rows={[]} />);
+    rerender(<NewAppRail step={2} rows={[]} />);
     expect(screen.queryByText("What you'll get")).not.toBeInTheDocument();
   });
 
   it('wraps long values instead of overflowing', () => {
-    render(<NewAppRail title="New app" description="" back step={0} rows={rows} />);
+    render(<NewAppRail step={0} rows={rows} />);
     expect(screen.getByText('a-forty-character-app-name-that-is-long')).toHaveClass('break-words');
   });
 });
@@ -89,5 +102,10 @@ describe('NewAppReviewGrid', () => {
     expect(hero).not.toBeNull();
     expect(hero).toContainElement(screen.getByText('Public URL'));
     expect(hero).toHaveClass('sm:col-span-2');
+  });
+
+  it('heads the review', () => {
+    render(<NewAppReviewGrid rows={all} />);
+    expect(screen.getByRole('heading', { level: 2, name: 'Review' })).toBeInTheDocument();
   });
 });

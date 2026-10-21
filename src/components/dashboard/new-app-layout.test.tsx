@@ -54,6 +54,23 @@ describe('NewAppStage', () => {
     expect(onBack).toHaveBeenCalled();
   });
 
+  // A station that lingered through an exit animation left two stations'
+  // controls in the page at once, and a quick click hit the old one.
+  it('swaps stations at once, never holding the old one while the new slides in', () => {
+    const { rerender } = render(
+      <NewAppStage layout="track" station="sources">
+        <p>grid</p>
+      </NewAppStage>
+    );
+    rerender(
+      <NewAppStage layout="track" station="setup" back={{ label: 'Sources', onBack: vi.fn() }}>
+        <p>setup fields</p>
+      </NewAppStage>
+    );
+    expect(screen.queryByText('grid')).not.toBeInTheDocument();
+    expect(screen.getByText('setup fields')).toBeInTheDocument();
+  });
+
   it('Track: no way back from the first station', () => {
     render(
       <NewAppStage layout="track" station="sources">

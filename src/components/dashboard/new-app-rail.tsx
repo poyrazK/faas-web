@@ -16,6 +16,33 @@ function Item({ row }: { row: SummaryRow }) {
   );
 }
 
+/** The page's heading row: the way back, the title and what the page is for. */
+export function NewAppHeader({
+  title,
+  description,
+  back,
+}: {
+  title: string;
+  description: string;
+  back: boolean;
+}) {
+  return (
+    <header className="flex flex-col gap-3 lg:col-span-2">
+      {back && (
+        <Link
+          to="/dashboard/apps"
+          className="inline-flex w-fit items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <ArrowLeft className="h-3 w-3" />
+          All apps
+        </Link>
+      )}
+      <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+      {description && <p className="max-w-2xl text-sm text-muted-foreground">{description}</p>}
+    </header>
+  );
+}
+
 /**
  * The New app rail: where you are and what you are making. Sticky beside the
  * step on wide screens, stacked above it on narrow ones. Its summary fills in
@@ -23,37 +50,26 @@ function Item({ row }: { row: SummaryRow }) {
  * an empty list there and the rail shows only the steps.
  */
 export function NewAppRail({
-  title,
-  description,
-  back,
   step,
   rows,
+  stepCount = 3,
+  sourceLabel,
 }: {
-  title: string;
-  description: string;
-  back: boolean;
   step?: 0 | 1 | 2;
   rows: SummaryRow[];
+  /** Container, Worker and Import finish in their own form: one step. */
+  stepCount?: 1 | 3;
+  /** The chosen source, named under step one once it is picked. */
+  sourceLabel?: string;
 }) {
   return (
-    <aside className="flex flex-col gap-6 lg:sticky lg:top-20">
-      <div className="flex flex-col gap-3">
-        {back && (
-          <Link
-            to="/dashboard/apps"
-            className="inline-flex w-fit items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <ArrowLeft className="h-3 w-3" />
-            All apps
-          </Link>
-        )}
-        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-        {description && <p className="text-sm text-muted-foreground">{description}</p>}
-      </div>
-
+    <aside
+      aria-label="New app progress"
+      className="flex flex-col gap-6 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto"
+    >
       {step !== undefined && (
         <ol aria-label="App creation steps" className="flex flex-col gap-1 border-l border-border">
-          {STEPS.map((label, i) => {
+          {STEPS.slice(0, stepCount).map((label, i) => {
             const state = i < step ? 'done' : i === step ? 'current' : 'upcoming';
             return (
               <li
@@ -81,6 +97,11 @@ export function NewAppRail({
                   )}
                 </span>
                 {label}
+                {i === 0 && sourceLabel && (
+                  <span className="ml-auto truncate pr-2 text-xs text-muted-foreground">
+                    {sourceLabel}
+                  </span>
+                )}
               </li>
             );
           })}
@@ -122,27 +143,30 @@ export function NewAppReviewGrid({ rows }: { rows: SummaryRow[] }) {
     </div>
   );
   return (
-    <dl className="grid gap-px border border-border bg-border sm:grid-cols-2">
-      {hero.length > 0 && (
-        // One wide cell: side by side when the URL fits, stacked when it does
-        // not, so a long URL never breaks mid-word in a half-width column.
-        <div data-hero="" className="flex flex-wrap gap-x-12 gap-y-4 bg-card p-5 sm:col-span-2">
-          {hero.map((row) => (
-            <div key={row.key} className="flex min-w-0 flex-col gap-1">
-              <dt className="text-xs text-muted-foreground">{row.label}</dt>
-              <dd
-                className={cn(
-                  'break-words text-base font-medium text-foreground',
-                  row.mono && 'font-mono'
-                )}
-              >
-                {row.value}
-              </dd>
-            </div>
-          ))}
-        </div>
-      )}
-      {rest.map((row, i) => cell(row, i === rest.length - 1 && rest.length % 2 === 1))}
-    </dl>
+    <>
+      <h2 className="mb-3 text-base font-medium">Review</h2>
+      <dl className="grid gap-px border border-border bg-border sm:grid-cols-2">
+        {hero.length > 0 && (
+          // One wide cell: side by side when the URL fits, stacked when it does
+          // not, so a long URL never breaks mid-word in a half-width column.
+          <div data-hero="" className="flex flex-wrap gap-x-12 gap-y-4 bg-card p-5 sm:col-span-2">
+            {hero.map((row) => (
+              <div key={row.key} className="flex min-w-0 flex-col gap-1">
+                <dt className="text-xs text-muted-foreground">{row.label}</dt>
+                <dd
+                  className={cn(
+                    'break-words text-base font-medium text-foreground',
+                    row.mono && 'font-mono'
+                  )}
+                >
+                  {row.value}
+                </dd>
+              </div>
+            ))}
+          </div>
+        )}
+        {rest.map((row, i) => cell(row, i === rest.length - 1 && rest.length % 2 === 1))}
+      </dl>
+    </>
   );
 }

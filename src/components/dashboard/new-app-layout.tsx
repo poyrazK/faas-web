@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { motion, useReducedMotion } from 'motion/react';
 import { ArrowLeft } from 'iconoir-react';
 import { cn } from '@/lib/utils';
 import type { AppSource } from './new-app-source';
@@ -96,25 +96,19 @@ export function NewAppStage({
     setDir(ORDER[station] >= ORDER[seen] ? 1 : -1);
     setSeen(station);
   }
-  const slide = reduce
-    ? { initial: false as const, animate: { opacity: 1 }, exit: { opacity: 1 } }
-    : {
-        initial: { x: `${dir * 8}%`, opacity: 0 },
-        animate: { x: '0%', opacity: 1 },
-        exit: { x: `${dir * -8}%`, opacity: 0 },
-      };
-
+  // The old station leaves at once and the new one slides in from its side:
+  // holding the old one through an exit animation left two stations'
+  // controls in the page together, and a quick click hit the wrong one.
   const body = (
-    <AnimatePresence mode="wait" initial={false}>
-      <motion.div
-        key={station}
-        {...slide}
-        transition={{ duration: reduce ? 0 : 0.42, ease: EASE }}
-        className="min-w-0"
-      >
-        {children}
-      </motion.div>
-    </AnimatePresence>
+    <motion.div
+      key={station}
+      initial={reduce ? false : { x: `${dir * 6}%`, opacity: 0 }}
+      animate={{ x: '0%', opacity: 1 }}
+      transition={{ duration: reduce ? 0 : 0.42, ease: EASE }}
+      className="min-w-0"
+    >
+      {children}
+    </motion.div>
   );
 
   if (layout === 'fold') {

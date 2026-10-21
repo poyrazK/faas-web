@@ -46,7 +46,9 @@ void main() {
   float t = u_time;
   float v = 0.0;
 ${body}
-  gl_FragColor = vec4(shade(clamp(v, 0.0, 1.0)), 1.0);
+  // Opaque, written premultiplied like every shader here (see premultiplied.test.ts).
+  float alpha = 1.0;
+  gl_FragColor = vec4(shade(clamp(v, 0.0, 1.0)) * alpha, alpha);
 }
 `;
 

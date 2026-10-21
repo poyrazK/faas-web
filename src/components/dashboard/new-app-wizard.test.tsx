@@ -190,12 +190,13 @@ describe('NewAppWizard source picker', () => {
   it("fills the rail's summary as you go and hands it to review", async () => {
     const user = userEvent.setup();
     render(<NewAppWizard />);
-    const rail = screen.getByRole('complementary');
+    const rail = screen.getByRole('complementary', { name: 'New app progress' });
     // "Source" is also a step label in the rail, so read the row from its value.
     expect(within(rail).getByText('Git repository').previousElementSibling).toHaveTextContent(
       'Source'
     );
-    await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.type(await screen.findByLabelText('Repository'), 'gregale/demo');
     expect(within(rail).getByText('Repository').nextElementSibling).toHaveTextContent(
       'gregale/demo@main'
     );
@@ -208,13 +209,44 @@ describe('NewAppWizard source picker', () => {
     expect(screen.getByText('Memory').nextElementSibling).toHaveTextContent('128 MB');
   });
 
-  it('preselects Git when GitHub is connected', () => {
+  it('moves to the chosen source’s own station, and back to the sources', async () => {
+    const user = userEvent.setup();
+    render(<NewAppWizard />);
+    await user.click(screen.getByRole('button', { name: 'Template' }));
+    expect(await screen.findByText(/Pick a starter to prefill your app/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Git repository' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Back to Sources' }));
+    expect(await screen.findByRole('button', { name: 'Template' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
+  });
+
+  it('opens a container image inside the wizard, not on another page', async () => {
+    const user = userEvent.setup();
+    render(<NewAppWizard />);
+    await user.click(screen.getByRole('button', { name: 'Container image' }));
+    expect(await screen.findByText('HTTP image setup')).toBeInTheDocument();
+    expect(screen.getByRole('complementary', { name: 'New app progress' })).toBeInTheDocument();
+  });
+
+  it('goes straight to Configure for an empty app', async () => {
+    const user = userEvent.setup();
+    render(<NewAppWizard />);
+    await user.click(screen.getByRole('button', { name: 'Empty app' }));
+    expect(await screen.findByLabelText('App name')).toBeInTheDocument();
+  });
+
+  it('preselects Git when GitHub is connected', async () => {
+    const user = userEvent.setup();
     render(<NewAppWizard />);
     expect(screen.getByRole('button', { name: 'Git repository' })).toHaveAttribute(
       'aria-pressed',
       'true'
     );
-    expect(screen.getByLabelText('Repository')).toBeInTheDocument();
+    // Git's fields are on its own station, one Continue away.
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(await screen.findByLabelText('Repository')).toBeInTheDocument();
   });
 
   it('leaves the choice open without a GitHub connection', () => {
@@ -381,14 +413,23 @@ describe('NewAppWizard validation', () => {
     expect(screen.queryByLabelText('App name')).not.toBeInTheDocument();
   });
 
+  // On Git's own page without GitHub, the way on is the connect notice; a
+  // Continue there could only fail on a control that is no longer on screen.
   it('asks for a GitHub connection instead of doing nothing', async () => {
     mocks.account.github_install_id = '';
     const user = userEvent.setup();
     render(<NewAppWizard />);
     await user.click(screen.getByRole('button', { name: 'Git repository' }));
-    await user.click(screen.getByRole('button', { name: 'Continue' }));
-    expect(screen.getByText(/Connect GitHub to deploy from a repository/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Git repository' })).toHaveFocus();
+    expect(await screen.findByText('Connect GitHub first')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Continue' })).not.toBeInTheDocument();
+  });
+
+  it('offers Continue on the template page only once a template is picked', async () => {
+    const user = userEvent.setup();
+    render(<NewAppWizard />);
+    await user.click(screen.getByRole('button', { name: 'Template' }));
+    await screen.findByText(/Pick a starter to prefill your app/);
+    expect(screen.queryByRole('button', { name: 'Continue' })).not.toBeInTheDocument();
   });
 
   it('shows an inline error on the repository and focuses it', async () => {
