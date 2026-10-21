@@ -1,0 +1,373 @@
+/* The New app bento: a hairline grid of source cells with corner marks, and
+   the previews inside them. Tokens only; both polarities. Scenes rest on their
+   finished frame; hover, focus and selection apply the animation, which replays
+   and ends on that same frame. */
+
+.nab-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+}
+
+@media (min-width: 640px) {
+  .nab-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .nab-cell[data-source='git'],
+  .nab-cell[data-source='import'] {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (min-width: 1024px) {
+  .nab-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .nab-cell[data-source='git'] {
+    grid-column: 1 / 3;
+    grid-row: 1 / 3;
+  }
+  .nab-cell[data-source='template'] {
+    grid-column: 3;
+    grid-row: 1;
+  }
+  .nab-cell[data-source='empty'] {
+    grid-column: 3;
+    grid-row: 2;
+  }
+  .nab-cell[data-source='container'] {
+    grid-column: 1;
+    grid-row: 3;
+  }
+  .nab-cell[data-source='worker'] {
+    grid-column: 2 / 4;
+    grid-row: 3;
+  }
+  .nab-cell[data-source='import'] {
+    grid-column: 1 / -1;
+    grid-row: 4;
+  }
+}
+
+/* Onboarding: Git alone, across the grid. */
+.nab-grid[data-single] {
+  grid-template-columns: minmax(0, 1fr);
+}
+.nab-grid[data-single] .nab-cell {
+  grid-column: auto;
+  grid-row: auto;
+}
+
+.nab-cell {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.875rem;
+  padding: 1rem;
+  text-align: left;
+  background: var(--card);
+  color: var(--card-foreground);
+  transition: background-color var(--motion-fast) var(--motion-ease);
+}
+.nab-cell:hover {
+  background: color-mix(in srgb, var(--foreground) 2.5%, var(--card));
+}
+.nab-cell:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1.5px var(--brand);
+}
+.nab-cell[aria-pressed='true'] {
+  box-shadow: inset 0 0 0 1.5px var(--brand);
+}
+
+/* Corner marks: four 5px squares at the cell's corners, over the hairline. */
+.nab-mark {
+  position: absolute;
+  z-index: 1;
+  width: 5px;
+  height: 5px;
+  background: var(--border-secondary);
+  pointer-events: none;
+}
+.nab-mark[data-corner='tl'] {
+  top: -3px;
+  left: -3px;
+}
+.nab-mark[data-corner='tr'] {
+  top: -3px;
+  right: -3px;
+}
+.nab-mark[data-corner='bl'] {
+  bottom: -3px;
+  left: -3px;
+}
+.nab-mark[data-corner='br'] {
+  bottom: -3px;
+  right: -3px;
+}
+.nab-cell[aria-pressed='true'] .nab-mark {
+  z-index: 2;
+  background: var(--brand);
+}
+
+.nab-preview {
+  display: grid;
+  height: 9.5rem;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--console-surface-radius);
+  background: color-mix(in srgb, var(--foreground) 4%, var(--card));
+}
+@media (min-width: 1024px) {
+  .nab-grid:not([data-single]) .nab-cell[data-source='git'] .nab-preview {
+    height: auto;
+    min-height: 12rem;
+    flex: 1;
+  }
+}
+
+/* --- Scene parts -------------------------------------------------------- */
+
+.nab-scene {
+  display: flex;
+  width: min(100%, 22rem);
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+}
+.nab-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+.nab-mono {
+  font-family: var(--font-mono);
+}
+.nab-chip {
+  border: 1px solid var(--border-secondary);
+  border-radius: 0.375rem;
+  background: var(--card);
+  padding: 0.125rem 0.5rem;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--foreground);
+}
+.nab-dim {
+  color: var(--muted-foreground);
+}
+
+/* Git: four-segment rail, URL pill. Rest = live. */
+.nab-rail {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.375rem;
+}
+.nab-seg {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.nab-seg-bar {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--brand);
+}
+.nab-seg-label {
+  font-size: 9.5px;
+  color: var(--muted-foreground);
+}
+.nab-url {
+  width: fit-content;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--brand) 45%, transparent);
+  background: color-mix(in srgb, var(--brand) 12%, transparent);
+  padding: 0.125rem 0.625rem;
+  font-size: 11px;
+  color: var(--brand);
+}
+
+/* Template: file tree. */
+.nab-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  font-size: 11px;
+  white-space: pre;
+  color: var(--foreground);
+}
+
+/* Empty: dashed box and a prompt. */
+.nab-box {
+  height: 3.5rem;
+  border: 1px dashed var(--border-secondary);
+  border-radius: 0.5rem;
+}
+.nab-prompt {
+  display: flex;
+  align-items: center;
+  font-size: 11px;
+  color: var(--foreground);
+}
+.nab-type {
+  display: inline-block;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.nab-caret {
+  display: inline-block;
+  width: 6px;
+  height: 12px;
+  margin-left: 2px;
+  background: var(--brand);
+}
+
+/* Container: digest and three layers. */
+.nab-layers {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.nab-layer {
+  height: 0.625rem;
+  border-radius: 0.25rem;
+  background: color-mix(in srgb, var(--brand) calc(20% + var(--i) * 15%), transparent);
+}
+
+/* Worker: heartbeat, no HTTP. */
+.nab-beat {
+  width: 100%;
+  height: 2.5rem;
+  fill: none;
+  stroke: var(--brand);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+.nab-struck {
+  width: fit-content;
+  text-decoration: line-through;
+}
+
+/* Import: one manifest fanning out to services. */
+.nab-fan {
+  width: 100%;
+  height: 2rem;
+  fill: none;
+  stroke: var(--border-secondary);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+.nab-services {
+  justify-content: space-between;
+}
+
+/* --- Motion: applied on hover, focus, and once on selection ------------ */
+
+@keyframes nab-fill {
+  from {
+    background: color-mix(in srgb, var(--foreground) 12%, transparent);
+  }
+}
+@keyframes nab-url {
+  0%,
+  70% {
+    color: var(--muted-foreground);
+    border-color: var(--border-secondary);
+    background: transparent;
+  }
+}
+@keyframes nab-in {
+  from {
+    opacity: 0;
+    transform: translateX(-4px);
+  }
+}
+@keyframes nab-typing {
+  from {
+    max-width: 0;
+  }
+  to {
+    max-width: 14ch;
+  }
+}
+@keyframes nab-blink {
+  50% {
+    opacity: 0;
+  }
+}
+@keyframes nab-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@keyframes nab-draw {
+  from {
+    stroke-dashoffset: 260;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes nab-march {
+  to {
+    stroke-dashoffset: -12;
+  }
+}
+
+.nab-cell:hover .nab-seg-bar,
+.nab-cell:focus-visible .nab-seg-bar,
+.nab-cell[aria-pressed='true'] .nab-seg-bar {
+  animation: nab-fill 0.4s var(--motion-ease) both;
+  animation-delay: calc(var(--i) * 0.45s);
+}
+.nab-cell:hover .nab-url,
+.nab-cell:focus-visible .nab-url,
+.nab-cell[aria-pressed='true'] .nab-url {
+  animation: nab-url 2.2s linear both;
+}
+.nab-cell:hover .nab-line,
+.nab-cell:focus-visible .nab-line,
+.nab-cell[aria-pressed='true'] .nab-line,
+.nab-cell:hover .nab-services .nab-chip,
+.nab-cell:focus-visible .nab-services .nab-chip,
+.nab-cell[aria-pressed='true'] .nab-services .nab-chip {
+  animation: nab-in 0.35s var(--motion-ease) both;
+  animation-delay: calc(var(--i) * 0.12s + 0.15s);
+}
+.nab-cell:hover .nab-type,
+.nab-cell:focus-visible .nab-type,
+.nab-cell[aria-pressed='true'] .nab-type {
+  animation: nab-typing 0.9s steps(14) both;
+}
+.nab-cell:hover .nab-caret,
+.nab-cell:focus-visible .nab-caret {
+  animation: nab-blink 1s steps(1) infinite;
+}
+.nab-cell:hover .nab-layer,
+.nab-cell:focus-visible .nab-layer,
+.nab-cell[aria-pressed='true'] .nab-layer {
+  animation: nab-rise 0.35s var(--motion-ease) both;
+  animation-delay: calc((2 - var(--i)) * 0.14s);
+}
+.nab-cell:hover .nab-beat path,
+.nab-cell:focus-visible .nab-beat path,
+.nab-cell[aria-pressed='true'] .nab-beat path {
+  stroke-dasharray: 260;
+  animation: nab-draw 1.2s var(--motion-ease) both;
+}
+.nab-cell:hover .nab-fan path,
+.nab-cell:focus-visible .nab-fan path {
+  animation: nab-march 0.8s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nab-cell,
+  .nab-cell * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
