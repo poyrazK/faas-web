@@ -6,6 +6,7 @@ import {
   Coins,
   DataTransferBoth,
   Database,
+  FilterList,
   Folder,
   CreditCard,
   Community,
@@ -76,16 +77,13 @@ export const NAV_HUBS: NavHub[] = [
   {
     // Projects are the way in: apps live inside them (standalone apps are a
     // group on the Projects page), so there is no separate Apps row. The app
-    // list and app pages still resolve and belong to this hub.
+    // list, app pages and standalone per-app pages light this row. Templates
+    // and Import used to nest here; both redirect into the New app wizard, so
+    // they live in PALETTE_ONLY rather than as rows that are never current.
     to: '/dashboard/projects',
     label: 'Projects',
     icon: Folder,
     sidebarIconClassName: 'text-cat-compute/80',
-    sections: [
-      { to: '/dashboard/projects', label: 'Projects', icon: Folder },
-      { to: '/dashboard/templates', label: 'Templates', icon: Cube },
-      { to: '/dashboard/import', label: 'Import', icon: Upload },
-    ],
   },
   {
     // Not in the rail. Kept as a hub so `/dashboard/apps` keeps its title,
@@ -94,6 +92,17 @@ export const NAV_HUBS: NavHub[] = [
     label: 'Apps',
     icon: WorkflowIcon,
     sidebarIconClassName: 'text-cat-compute/80',
+  },
+  {
+    to: '/dashboard/releases',
+    label: 'Releases',
+    icon: Rocket,
+    sidebarIconClassName: 'text-cat-compute/80',
+    pageOwnsNavigation: true,
+    sections: [
+      { to: '/dashboard/releases', label: 'Deployments', icon: Rocket },
+      { to: '/dashboard/builds', label: 'Builds', icon: Package },
+    ],
   },
   {
     to: '/dashboard/jobs',
@@ -114,15 +123,25 @@ export const NAV_HUBS: NavHub[] = [
     ],
   },
   {
-    to: '/dashboard/releases',
-    label: 'Releases',
-    icon: Rocket,
+    // The microVMs that run apps: compute you can see, not a way of watching it.
+    to: '/dashboard/instances',
+    label: 'Instances',
+    icon: Server,
     sidebarIconClassName: 'text-cat-compute/80',
-    pageOwnsNavigation: true,
-    sections: [
-      { to: '/dashboard/releases', label: 'Deployments', icon: Rocket },
-      { to: '/dashboard/builds', label: 'Builds', icon: Package },
-    ],
+  },
+  {
+    // Not "Storage": the heading above already says that word. The page also
+    // carries the app-capacity meter, and its description says so.
+    to: '/dashboard/storage',
+    label: 'Object storage',
+    icon: HardDrive,
+    sidebarIconClassName: 'text-cat-storage/80',
+  },
+  {
+    to: '/dashboard/postgres',
+    label: 'Postgres',
+    icon: Database,
+    sidebarIconClassName: 'text-cat-storage/80',
   },
   {
     to: '/dashboard/domains',
@@ -131,24 +150,13 @@ export const NAV_HUBS: NavHub[] = [
     sidebarIconClassName: 'text-cat-network/80',
   },
   {
-    // Your end customers across apps (platform tenants). Operate rather than
-    // Account: they are resources you run — consumers, hostnames, prices —
-    // next to Domains, not settings of your own Gregale account, and Billing
-    // there is what Gregale charges you, not what you charge them.
-    to: '/dashboard/customers',
-    label: 'Customers',
-    icon: Community,
+    // The account view: every app's rules plus CORS presets. The per-app view
+    // is the app page's Connect tab. The label matches APP_TABS, so ⌘K and the
+    // breadcrumb list the page once.
+    to: '/dashboard/edge-rules',
+    label: 'Edge rules',
+    icon: FilterList,
     sidebarIconClassName: 'text-cat-network/80',
-  },
-  {
-    to: '/dashboard/storage',
-    label: 'Data',
-    icon: HardDrive,
-    sidebarIconClassName: 'text-cat-storage/80',
-    sections: [
-      { to: '/dashboard/storage', label: 'Storage', icon: HardDrive },
-      { to: '/dashboard/postgres', label: 'Postgres', icon: Database },
-    ],
   },
   {
     // Account-wide: the event router has no per-app read for its backlog,
@@ -167,22 +175,38 @@ export const NAV_HUBS: NavHub[] = [
     sidebarIconClassName: 'text-cat-network/80',
   },
   {
+    // Your end customers across apps (platform tenants). Monetize rather than
+    // Account: they are resources you run — consumers, hostnames, prices —
+    // not settings of your own Gregale account, and Billing there is what
+    // Gregale charges you, not what you charge them.
+    to: '/dashboard/customers',
+    label: 'Customers',
+    icon: Community,
+    sidebarIconClassName: 'text-cat-network/80',
+  },
+  {
     to: '/dashboard/analytics',
     label: 'Analytics',
     icon: GraphUp,
-    sidebarIconClassName: 'text-brand/80',
+    sidebarIconClassName: 'text-cat-security/80',
   },
   {
     to: '/dashboard/debug',
-    label: 'Observe',
+    label: 'Debugger',
     icon: Search,
     sidebarIconClassName: 'text-cat-security/80',
-    sections: [
-      { to: '/dashboard/debug', label: 'Debugger', icon: Search },
-      { to: '/dashboard/invocations', label: 'Invocations', icon: Activity },
-      { to: '/dashboard/instances', label: 'Instances', icon: Server },
-      { to: '/dashboard/audit', label: 'Audit Log', icon: Journal },
-    ],
+  },
+  {
+    to: '/dashboard/invocations',
+    label: 'Invocations',
+    icon: Activity,
+    sidebarIconClassName: 'text-cat-security/80',
+  },
+  {
+    to: '/dashboard/audit',
+    label: 'Audit Log',
+    icon: Journal,
+    sidebarIconClassName: 'text-cat-security/80',
   },
   {
     to: '/dashboard/usage',
@@ -218,21 +242,27 @@ export const NAV_HUBS: NavHub[] = [
 ];
 
 /**
- * The sidebar's shape.
+ * The sidebar's shape: account-wide destinations, grouped by the kind of
+ * resource they manage.
  *
- * Hubs consolidate *pages*; they must not consolidate *navigation*. An earlier
- * pass did both at once — ten untitled rows, every second-level destination
- * reachable only after guessing which hub owned it — and the rail lost both its
- * scent and two thirds of its rows. Titles and nested sections come back here;
- * the hub pages themselves are untouched.
+ * People arriving from other clouds look for a thing by its kind, so the
+ * headings are resource categories rather than tasks. Only account-wide pages
+ * are rows. Per-app resources (logs, secrets, queues, routes and the rest) are
+ * tabs on the app page, where the app is already in the URL; listing them here
+ * would ask "which app?" once per row. Reasoning and history:
+ * docs/superpowers/specs/2026-10-20-sidebar-categories-design.md.
+ *
+ * Hubs consolidate pages, not navigation: a hub keeps its sections as nested
+ * rows (Billing) unless its page owns them (Jobs, Releases, Settings).
  */
 const SIDEBAR_GROUPS: { title?: string; hubs: string[] }[] = [
   { hubs: ['Overview'] },
-  { title: 'Build', hubs: ['Projects', 'Jobs', 'Releases'] },
-  {
-    title: 'Operate',
-    hubs: ['Domains', 'Customers', 'Data', 'Events', 'Integrations', 'Analytics', 'Observe'],
-  },
+  { title: 'Compute', hubs: ['Projects', 'Releases', 'Jobs', 'Instances'] },
+  { title: 'Storage', hubs: ['Object storage', 'Postgres'] },
+  { title: 'Networking', hubs: ['Domains', 'Edge rules'] },
+  { title: 'Messaging', hubs: ['Events', 'Integrations'] },
+  { title: 'Monetize', hubs: ['Customers'] },
+  { title: 'Observe', hubs: ['Analytics', 'Debugger', 'Invocations', 'Audit Log'] },
   { title: 'Account', hubs: ['Billing', 'Settings'] },
 ];
 
@@ -312,10 +342,21 @@ export const APP_SECTIONS: NavItem[] = APP_TABS.map(({ tab, segment }) => ({
   icon: Search,
 }));
 
+/**
+ * Destinations ⌘K and the breadcrumb know but the rail does not list. Both
+ * redirect into the New app wizard (`?source=template|import`), so a rail row
+ * could never be the current page. The New app button is the visible way in.
+ */
+const PALETTE_ONLY: NavItem[] = [
+  { to: '/dashboard/templates', label: 'Templates', icon: Cube },
+  { to: '/dashboard/import', label: 'Import', icon: Upload },
+];
+
 /** Both hub names and familiar page names remain searchable. */
 export const NAV_ITEMS: NavItem[] = [
   ...NAV_HUBS,
   ...NAV_HUBS.flatMap((hub) => hub.sections ?? []),
+  ...PALETTE_ONLY,
   ...APP_SECTIONS,
 ].filter(
   (item, index, all) =>
@@ -341,8 +382,8 @@ export function findNavHub(pathname: string): NavHub | undefined {
       item.sections?.some((section) => matchesNavPath(pathname, section))
   );
   // Apps live under Projects: the app list, app pages and standalone app
-  // sections all light the Projects row. Debugger belongs to Observe
-  // globally, even though it also has an app tab.
+  // sections all light the Projects row. Debugger and Edge rules are rail
+  // rows of their own, so they match above, before the app-section fallback.
   const projects = NAV_HUBS.find((item) => item.label === 'Projects');
   if (hub?.label === 'Apps') return projects;
   return (

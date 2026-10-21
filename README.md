@@ -646,7 +646,11 @@ calling a function with the wrong type.
 - **Adding a console page:** create the route file, then add it to
   `components/dashboard/nav-config.ts`. The sidebar, the breadcrumb, and the
   ⌘K palette are all driven from that one config, so the page becomes
-  reachable everywhere at once.
+  reachable everywhere at once. The sidebar lists account-wide pages only,
+  grouped by resource category (Compute, Storage, Networking, Messaging,
+  Monetize, Observe, Account). A `/v1/apps/{slug}/…` resource is an app tab
+  instead (`APP_TABS`). The reasoning is in
+  `docs/superpowers/specs/2026-10-20-sidebar-categories-design.md`.
 
 ## Keyboard
 
