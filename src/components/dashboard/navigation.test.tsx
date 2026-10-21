@@ -769,8 +769,10 @@ describe('dashboard navigation foundation', () => {
     ).toEqual(['Data and privacyPage']);
     await user.clear(input);
     await user.type(input, 'Storage');
+    // The label hit leads; Postgres follows because it is filed under Storage.
     expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
       'Object storagePage',
+      'PostgresPage',
     ]);
     await user.clear(input);
     // Debugger is both a rail row and an app section: one result, not two.
@@ -817,6 +819,23 @@ describe('dashboard navigation foundation', () => {
     await user.click(command!);
     await waitFor(() => expect(router.state.location.pathname).toBe('/dashboard/apps/api'));
     expect(router.state.location.search).toEqual({ tab: 'Logs' });
+  });
+
+  it('finds the pages filed under a rail heading from the overview search', async () => {
+    // The overview search is the same matching over the same destinations as
+    // ⌘K, so a heading finds its pages here too.
+    await renderShell('/dashboard', <OverviewSearch workflows={[app]} />);
+    const user = userEvent.setup();
+    await user.type(
+      screen.getByRole('combobox', { name: 'Search apps, pages, and actions' }),
+      'Observe'
+    );
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
+      'AnalyticsPage',
+      'DebuggerPage',
+      'InvocationsPage',
+      'Audit LogPage',
+    ]);
   });
 
   it.each([
