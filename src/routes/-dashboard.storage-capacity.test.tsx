@@ -58,7 +58,7 @@ it('shows the authoritative app quota instead of runtime bytes, keeping object s
   expect(meter).toHaveAttribute('aria-valuemax', '3');
   expect(screen.getByText('2 app slots available')).toBeInTheDocument();
   expect(screen.getByText('Free plan')).toBeInTheDocument();
-  expect(screen.getByRole('heading', { name: 'Object storage' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { level: 2, name: 'Object storage' })).toBeInTheDocument();
   expect(screen.queryByText('Runtime storage usage')).not.toBeInTheDocument();
   expect(api.GET).not.toHaveBeenCalledWith('/v1/usage/storage', expect.anything());
 });
