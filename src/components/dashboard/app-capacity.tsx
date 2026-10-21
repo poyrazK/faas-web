@@ -21,6 +21,17 @@ export function AppCapacity() {
         />
       </Panel>
     );
+  // `limits` is required by the spec, but a partial account must not take the
+  // Usage page down with it.
+  if (!account.limits)
+    return (
+      <Panel title="App capacity">
+        <p className="text-sm text-muted-foreground">
+          Your plan&apos;s app allowance is not available right now. {account.app_count} apps
+          deployed.
+        </p>
+      </Panel>
+    );
   const used = account.app_count;
   const limit = account.limits.deployed_apps;
   const remaining = Math.max(0, limit - used);

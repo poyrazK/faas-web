@@ -93,3 +93,10 @@ it('keeps the true count visible when a downgraded account exceeds its limit', a
   expect(meter).toHaveAttribute('aria-valuetext', '4 of 3 app slots used');
   expect(screen.getByText('All app slots are in use')).toBeInTheDocument();
 });
+
+it('says the allowance is unknown rather than crashing when the account carries no limits', async () => {
+  account = { plan: 'pro', app_count: 2 } as typeof account;
+  await mount();
+  expect(await screen.findByText(/allowance is not available/i)).toBeInTheDocument();
+  expect(screen.queryByRole('meter')).not.toBeInTheDocument();
+});
