@@ -275,7 +275,7 @@ usage with a quote that is labelled an estimate, crossed usage alerts, and
 usage statements (snapshot a UTC month, confirmed finalize, handoff receipt
 read) — and **Consumer plans**, whose limits and alert thresholds are the only
 plan fields the API has. Account-level **Customers** (`/dashboard/customers`,
-under Operate) are platform tenants: register idempotently by external
+under Monetize) are platform tenants: register idempotently by external
 reference, link existing consumers and surfaces, suspend or resume (which
 blocks linked credentials and hostnames), set immutable tenant prices, and
 read cross-app usage, statements and credential metadata. Every page shows
@@ -341,7 +341,7 @@ publication revision, so the UI states that limit.
 Mock mode includes these screens; `MOCK_AUTOMATIONS_DISABLED=1` exercises the
 runtime-disabled presentation. No mock data ships in the preview build.
 
-**Events** (`/dashboard/events`, under Operate) reads the account's event
+**Events** (`/dashboard/events`, under Messaging) reads the account's event
 router: waiting consumers with exact counts and their dominant waiting reason,
 retained storage against plan limits, and retention health. A consumer opens
 its oldest waiting recipients, each with a fresh routing-blocker read. Receipt
@@ -646,7 +646,11 @@ calling a function with the wrong type.
 - **Adding a console page:** create the route file, then add it to
   `components/dashboard/nav-config.ts`. The sidebar, the breadcrumb, and the
   ⌘K palette are all driven from that one config, so the page becomes
-  reachable everywhere at once.
+  reachable everywhere at once. The sidebar lists account-wide pages only,
+  grouped by resource category (Compute, Storage, Networking, Messaging,
+  Monetize, Observe, Account). A `/v1/apps/{slug}/…` resource is an app tab
+  instead (`APP_TABS`). The reasoning is in
+  `docs/superpowers/specs/2026-10-20-sidebar-categories-design.md`.
 
 ## Keyboard
 
