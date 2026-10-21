@@ -1,0 +1,45 @@
+/* Object storage page. Tokens only: both console polarities come for free. */
+
+/* A bucket's address is its identity; set it like one. */
+.storage-address {
+  letter-spacing: -0.02em;
+}
+
+.storage-first {
+  background:
+    radial-gradient(
+      120% 80% at 0% 0%,
+      color-mix(in oklab, var(--brand) 9%, transparent),
+      transparent 60%
+    ),
+    var(--card);
+}
+
+.storage-rail-item--open {
+  box-shadow: inset 2px 0 0 var(--brand);
+}
+
+.storage-path button[aria-current='location'] {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklab, var(--brand) 60%, transparent);
+  text-underline-offset: 4px;
+}
+
+.storage-env {
+  background:
+    repeating-linear-gradient(
+      -45deg,
+      transparent 0 9px,
+      color-mix(in oklab, var(--foreground) 3%, transparent) 9px 10px
+    ),
+    var(--card);
+}
+
+.storage-code {
+  background: color-mix(in oklab, var(--muted) 70%, var(--card));
+  box-shadow: inset 3px 0 0 color-mix(in oklab, var(--brand) 70%, transparent);
+}
+
+.storage-rule__tick {
+  background: var(--brand);
+}

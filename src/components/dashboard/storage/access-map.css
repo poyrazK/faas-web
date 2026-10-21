@@ -1,0 +1,106 @@
+/* The access map: cables from a bucket to what can reach it.
+   Colour is meaning here: --brand flows out (read), --status-warning flows in
+   (write). Both polarities come from the tokens, so light and dark just work. */
+
+.access-map {
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    color-mix(in oklab, var(--foreground) 9%, transparent) 1px,
+    transparent 0
+  );
+  background-size: 18px 18px;
+}
+
+.access-map__ports {
+  background: linear-gradient(
+    to bottom,
+    var(--brand),
+    color-mix(in oklab, var(--brand) 40%, var(--status-warning)),
+    var(--status-warning)
+  );
+  box-shadow: 0 0 12px color-mix(in oklab, var(--brand) 35%, transparent);
+}
+
+.access-map__port {
+  background: var(--brand);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--brand) 18%, transparent);
+}
+.access-map__end[data-permission='write'] .access-map__port {
+  background: var(--status-warning);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--status-warning) 18%, transparent);
+}
+.access-map__end[data-permission='read_write'] .access-map__port {
+  background: linear-gradient(135deg, var(--brand) 50%, var(--status-warning) 50%);
+}
+.access-map__end[data-pending] .access-map__port {
+  background: var(--muted-foreground);
+  box-shadow: none;
+}
+.access-map__end:hover,
+.access-map__end:focus-visible {
+  border-color: color-mix(in oklab, var(--brand) 55%, var(--border));
+}
+
+.access-cable {
+  transition: opacity 180ms ease;
+}
+.access-cable--dim {
+  opacity: 0.18;
+}
+
+.access-cable__line,
+.access-cable--pending {
+  fill: none;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+}
+.access-cable__line--read {
+  stroke: var(--brand);
+}
+.access-cable__line--write {
+  stroke: var(--status-warning);
+}
+.access-cable--pending {
+  stroke: var(--muted-foreground);
+  stroke-dasharray: 4 5;
+}
+
+/* One orchestrated moment: each cable draws itself in, bucket outward. */
+.access-cable__line {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: access-cable-draw 700ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation-delay: inherit;
+}
+@keyframes access-cable-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Motion that answers a person: the cable they point at shows its flow. */
+.access-cable--lit .access-cable__line {
+  stroke-dasharray: 0.04 0.03;
+  stroke-width: 2.25;
+  animation: access-cable-flow 900ms linear infinite;
+}
+.access-cable--lit .access-cable__line--write {
+  animation-direction: reverse;
+}
+@keyframes access-cable-flow {
+  from {
+    stroke-dashoffset: 0.07;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .access-cable__line,
+  .access-cable--lit .access-cable__line {
+    animation: none;
+    stroke-dasharray: none;
+    stroke-dashoffset: 0;
+  }
+}
