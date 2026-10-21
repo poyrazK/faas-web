@@ -169,3 +169,15 @@
     transition: none !important;
   }
 }
+
+/* Fold's strip swatches: static, from the same tokens, never WebGL. */
+.nab-swatch {
+  background:
+    radial-gradient(
+      120% 120% at 30% 70%,
+      color-mix(in srgb, var(--brand) 55%, transparent),
+      transparent 70%
+    ),
+    var(--card);
+  border: 1px solid var(--border);
+}

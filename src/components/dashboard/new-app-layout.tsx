@@ -1,0 +1,203 @@
+import { useState, type ReactNode } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { ArrowLeft } from 'iconoir-react';
+import { cn } from '@/lib/utils';
+import type { AppSource } from './new-app-source';
+import { SOURCES } from './new-app-sources';
+import type { Station } from './new-app-station';
+
+export type NewAppLayout = 'track' | 'fold';
+
+const KEY = 'gregale.dev.newAppLayout';
+const ORDER: Record<Station, number> = { sources: 0, setup: 1, configure: 2, review: 3 };
+const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
+
+/**
+ * Which layout the wizard uses. Two exist while Bahadir chooses; outside dev
+ * builds it is always Track, and the stored choice is never read.
+ */
+export function useNewAppLayout(): [NewAppLayout, (l: NewAppLayout) => void] {
+  const [layout, setLayout] = useState<NewAppLayout>(() => {
+    if (!import.meta.env.DEV) return 'track';
+    try {
+      return localStorage.getItem(KEY) === 'fold' ? 'fold' : 'track';
+    } catch {
+      return 'track';
+    }
+  });
+  const choose = (next: NewAppLayout) => {
+    setLayout(next);
+    try {
+      localStorage.setItem(KEY, next);
+    } catch {
+      // Without storage the choice lasts this visit.
+    }
+  };
+  return [layout, choose];
+}
+
+/** Dev only: flip between the two layouts while comparing them. */
+export function DevLayoutSwitch({
+  layout,
+  onChange,
+}: {
+  layout: NewAppLayout;
+  onChange: (l: NewAppLayout) => void;
+}) {
+  if (!import.meta.env.DEV) return null;
+  return (
+    <div
+      role="radiogroup"
+      aria-label="New app layout (dev only)"
+      className="fixed bottom-4 left-4 z-50 flex items-center gap-1 rounded-full border border-border bg-popover p-1 font-mono text-[11px] shadow-elevation-3"
+    >
+      <span className="px-2 text-muted-foreground">Layout</span>
+      {(['track', 'fold'] as const).map((l) => (
+        <button
+          key={l}
+          type="button"
+          role="radio"
+          aria-checked={layout === l}
+          onClick={() => onChange(l)}
+          className={cn(
+            'rounded-full px-3 py-1 capitalize transition-colors',
+            layout === l ? 'bg-brand text-primary-foreground' : 'text-foreground hover:bg-accent'
+          )}
+        >
+          {l === 'track' ? 'Track' : 'Fold'}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Where the current station is shown. Track: one station at a time, sliding
+ * sideways, with a named sliver to go back. Fold: the sources strip stays
+ * beside every station after Sources.
+ */
+export function NewAppStage({
+  layout,
+  station,
+  back,
+  strip,
+  children,
+}: {
+  layout: NewAppLayout;
+  station: Station;
+  back?: { label: string; onBack: () => void };
+  strip?: ReactNode;
+  children: ReactNode;
+}) {
+  const reduce = useReducedMotion();
+  const [seen, setSeen] = useState(station);
+  const [dir, setDir] = useState(1);
+  if (seen !== station) {
+    setDir(ORDER[station] >= ORDER[seen] ? 1 : -1);
+    setSeen(station);
+  }
+  const slide = reduce
+    ? { initial: false as const, animate: { opacity: 1 }, exit: { opacity: 1 } }
+    : {
+        initial: { x: `${dir * 8}%`, opacity: 0 },
+        animate: { x: '0%', opacity: 1 },
+        exit: { x: `${dir * -8}%`, opacity: 0 },
+      };
+
+  const body = (
+    <AnimatePresence mode="wait" initial={false}>
+      <motion.div
+        key={station}
+        {...slide}
+        transition={{ duration: reduce ? 0 : 0.42, ease: EASE }}
+        className="min-w-0"
+      >
+        {children}
+      </motion.div>
+    </AnimatePresence>
+  );
+
+  if (layout === 'fold') {
+    const folded = station !== 'sources' && strip;
+    return (
+      <div
+        data-layout="fold"
+        className={cn('grid min-w-0 gap-6', folded && '@[40rem]:grid-cols-[12rem_minmax(0,1fr)]')}
+      >
+        {folded && (
+          <motion.div
+            initial={reduce ? false : { opacity: 0, x: -12 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: reduce ? 0 : 0.42, ease: EASE }}
+          >
+            {strip}
+          </motion.div>
+        )}
+        {body}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      data-layout="track"
+      className={cn(
+        'grid min-w-0 gap-4 overflow-x-clip',
+        back && 'grid-cols-[3.5rem_minmax(0,1fr)]'
+      )}
+    >
+      {back && (
+        <button
+          type="button"
+          onClick={back.onBack}
+          aria-label={`Back to ${back.label}`}
+          className="group flex min-h-40 flex-col items-center gap-3 border border-border bg-card py-4 text-muted-foreground transition-colors hover:border-border-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+        >
+          <ArrowLeft
+            aria-hidden
+            className="h-4 w-4 transition-transform group-hover:-translate-x-0.5"
+          />
+          <span
+            aria-hidden
+            className="font-mono text-[10.5px] uppercase tracking-[0.08em] [writing-mode:vertical-rl] rotate-180"
+          >
+            {back.label}
+          </span>
+        </button>
+      )}
+      {body}
+    </div>
+  );
+}
+
+/** Fold's strip: every source, switchable, beside the station. */
+export function NewAppStrip({
+  selected,
+  onSelect,
+}: {
+  selected?: AppSource;
+  onSelect: (id: AppSource) => void;
+}) {
+  return (
+    <nav
+      aria-label="Sources"
+      className="nab-strip flex flex-col gap-px border border-border bg-border"
+    >
+      {SOURCES.map((s) => (
+        <button
+          key={s.id}
+          type="button"
+          aria-pressed={selected === s.id}
+          onClick={() => onSelect(s.id)}
+          className={cn(
+            'flex h-12 items-center gap-3 bg-card px-3 text-left text-[13px] transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand',
+            selected === s.id && 'shadow-[inset_2px_0_0_var(--brand)]'
+          )}
+        >
+          <span aria-hidden className="nab-swatch h-6 w-6 shrink-0 rounded-md" data-source={s.id} />
+          <span className="truncate">{s.name}</span>
+        </button>
+      ))}
+    </nav>
+  );
+}
