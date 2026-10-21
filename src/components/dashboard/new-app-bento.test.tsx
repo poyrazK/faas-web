@@ -83,4 +83,24 @@ describe('NewAppBento', () => {
     expect(screen.getAllByRole('button')).toHaveLength(1);
     expect(container.querySelector('.nab-grid')).toHaveAttribute('data-single');
   });
+
+  it('plays only the hovered or focused cell, and the selected one', async () => {
+    const { container } = setup({ selected: 'git' });
+    const playing = () =>
+      [...container.querySelectorAll('[data-preview]')]
+        .filter((p) => p.closest('.nab-cell')?.getAttribute('data-active') === 'true')
+        .map((p) => p.getAttribute('data-preview'));
+    expect(playing()).toEqual(['git']);
+    await userEvent.hover(screen.getByRole('button', { name: 'Template' }));
+    expect(playing()).toEqual(['git', 'template']);
+    await userEvent.unhover(screen.getByRole('button', { name: 'Template' }));
+    expect(playing()).toEqual(['git']);
+  });
+
+  it('numbers nothing in onboarding, where there is one cell', () => {
+    setup({ single: true, selected: 'git' });
+    const git = screen.getByRole('button', { name: 'Git repository' });
+    expect(git).not.toHaveTextContent('01');
+    expect(git).not.toHaveTextContent('From code');
+  });
 });
