@@ -820,6 +820,21 @@ describe('dashboard navigation foundation', () => {
   });
 
   it.each([
+    ['Observe', ['Analytics', 'Debugger', 'Invocations', 'Audit Log']],
+    ['Networking', ['Domains', 'Edge rules']],
+    ['Storage', ['Object storage', 'Postgres']],
+  ])('finds the pages filed under %s from the command palette', async (heading, labels) => {
+    await renderShell();
+    const user = userEvent.setup();
+    await user.keyboard('{Control>}k{/Control}');
+    await user.type(await screen.findByRole('combobox', { name: 'Search commands' }), heading);
+    const options = screen.queryAllByRole('option').map((option) => option.textContent);
+    expect(options).toEqual(expect.arrayContaining(labels));
+    // The heading is a search term, not a destination, and never shows as text.
+    expect(options).not.toContain(heading);
+  });
+
+  it.each([
     ['Releases', '/dashboard/releases'],
     ['Analytics', '/dashboard/analytics'],
     ['Builds', '/dashboard/builds'],

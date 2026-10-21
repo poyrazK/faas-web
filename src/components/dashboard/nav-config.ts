@@ -278,6 +278,19 @@ export const NAV_GROUPS: NavGroup[] = SIDEBAR_GROUPS.map(({ title, hubs }) => ({
 }));
 
 /**
+ * The rail heading a destination is filed under, so ⌘K can find a page by its
+ * category: "Storage" and "Observe" were rows people typed, and are headings
+ * now. Undefined for the untitled Overview group and for pages the rail does
+ * not list (app sections, Templates, Import, the Apps list).
+ */
+export function railGroupFor(item: Pick<NavItem, 'to' | 'label'>): string | undefined {
+  const same = (other: NavItem) => other.to === item.to && other.label === item.label;
+  return NAV_GROUPS.find((group) =>
+    group.items.some((hub) => same(hub) || (hub.sections ?? []).some(same))
+  )?.title;
+}
+
+/**
  * The sections a hub contributes to the rail as nested rows.
  *
  * A section pointing at the hub's own label is dropped — "Apps › Apps" is the
