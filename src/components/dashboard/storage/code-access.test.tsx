@@ -131,4 +131,17 @@ describe('Use from code', () => {
     expect(mocks.confirm).toHaveBeenCalledWith(expect.objectContaining({ destructive: true }));
     await waitFor(() => expect(mocks.revoke).toHaveBeenCalledWith('api-gateway', 'bkt', 'b1'));
   });
+
+  it('leads with the existing connection and keeps a second one behind Connect again', async () => {
+    const user = userEvent.setup();
+    mocks.bindings = [binding];
+    mount();
+    const again = screen.getByText('Connect again with other rights or names');
+    expect(again.closest('details')).not.toHaveAttribute('open');
+    expect(screen.queryByText(/already has secrets named/)).not.toBeInTheDocument();
+    await user.click(again);
+    await user.click(screen.getByRole('button', { name: 'Connect api-gateway' }));
+    expect(screen.getByText(/already has secrets named GREGALE_S3_ASSETS_\*/)).toBeInTheDocument();
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
 });

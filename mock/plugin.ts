@@ -2915,6 +2915,19 @@ function seedAssets(slug: string, bucket: string) {
     },
   ]);
   s3For(slug, bucket).push({ ...credential });
+  // A standalone key for an outside tool, so the map shows a write cable too.
+  s3For(slug, bucket).push({
+    id: hex(32),
+    bucket_id: bucket,
+    access_key_id: `GRGA${hex(16)
+      .toUpperCase()
+      .replace(/[^A-Z2-7]/g, 'B')}`,
+    label: 'nightly-backup',
+    permission: 'read_write',
+    status: 'active',
+    created_at: db.iso(8 * 24 * 3_600_000),
+    last_used_at: db.iso(9 * 3_600_000),
+  });
 }
 
 function bindingSecretKeys(prefix: string): S_['ObjectStorageComputeBindingSecretKeys'] {

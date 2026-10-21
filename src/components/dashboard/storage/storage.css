@@ -43,3 +43,12 @@
 .storage-rule__tick {
   background: var(--brand);
 }
+
+.storage-danger {
+  border-color: color-mix(in oklab, var(--status-critical) 35%, var(--border));
+}
+
+.storage-drop:hover,
+.storage-drop:focus-within {
+  border-color: color-mix(in oklab, var(--brand) 60%, var(--border));
+}

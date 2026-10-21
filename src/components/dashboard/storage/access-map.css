@@ -51,7 +51,7 @@
 .access-cable__line,
 .access-cable--pending {
   fill: none;
-  stroke-width: 1.75;
+  stroke-width: 2;
   stroke-linecap: round;
 }
 .access-cable__line--read {
@@ -67,9 +67,9 @@
 
 /* One orchestrated moment: each cable draws itself in, bucket outward. */
 .access-cable__line {
-  stroke-dasharray: 1;
-  stroke-dashoffset: 1;
-  animation: access-cable-draw 700ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  stroke-dasharray: var(--cable-length);
+  stroke-dashoffset: var(--cable-length);
+  animation: access-cable-draw 800ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
   animation-delay: inherit;
 }
 @keyframes access-cable-draw {
@@ -80,16 +80,17 @@
 
 /* Motion that answers a person: the cable they point at shows its flow. */
 .access-cable--lit .access-cable__line {
-  stroke-dasharray: 0.04 0.03;
+  stroke-dasharray: 7 6;
+  stroke-dashoffset: 0;
   stroke-width: 2.25;
-  animation: access-cable-flow 900ms linear infinite;
+  animation: access-cable-flow 700ms linear infinite;
 }
 .access-cable--lit .access-cable__line--write {
   animation-direction: reverse;
 }
 @keyframes access-cable-flow {
   from {
-    stroke-dashoffset: 0.07;
+    stroke-dashoffset: 13;
   }
   to {
     stroke-dashoffset: 0;

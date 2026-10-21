@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { cn } from '@/lib/utils';
 import type { AccessConnection, AccessLane, Permission } from '@/lib/storage-access';
 import './access-map.css';
@@ -29,8 +29,31 @@ const LANES: { lane: AccessLane; title: (app: string) => string; empty: string }
 interface Cable {
   id: string;
   d: string;
+  /** The inbound (write) line runs the other way and stops short of the
+   * bucket, so its arrowhead is not lost under the port strip. */
+  dIn: string;
+  /** Measured length in px, so the draw-in and flow are in real units. */
+  length: number;
   permission: Permission;
   pending: boolean;
+}
+
+/** Length of a cubic Bézier, by sampling: close enough to animate a stroke. */
+function bezierLength(p: number[]): number {
+  const [x0, y0, x1, y1, x2, y2, x3, y3] = p;
+  let length = 0;
+  let px = x0;
+  let py = y0;
+  for (let i = 1; i <= 24; i++) {
+    const t = i / 24;
+    const u = 1 - t;
+    const x = u * u * u * x0 + 3 * u * u * t * x1 + 3 * u * t * t * x2 + t * t * t * x3;
+    const y = u * u * u * y0 + 3 * u * u * t * y1 + 3 * u * t * t * y2 + t * t * t * y3;
+    length += Math.hypot(x - px, y - py);
+    px = x;
+    py = y;
+  }
+  return Math.ceil(length);
 }
 
 export function AccessMap({
@@ -59,7 +82,7 @@ export function AccessMap({
     const box = frame.current?.getBoundingClientRect();
     const from = source.current?.getBoundingClientRect();
     if (!box || !from || box.width === 0) return;
-    const x0 = from.right - box.left;
+    const x0 = from.right - box.left + 2;
     const span = from.height * 0.6;
     const top = from.top - box.top + (from.height - span) / 2;
     setCables(
@@ -72,10 +95,13 @@ export function AccessMap({
         const x1 = end.left - box.left - 6;
         const y1 = end.top - box.top + end.height / 2;
         const bend = Math.max(48, (x1 - x0) * 0.5);
+        const points = [x0, y0, x0 + bend, y0, x1 - bend, y1, x1, y1];
         return [
           {
             id: c.id,
             d: `M ${x0} ${y0} C ${x0 + bend} ${y0}, ${x1 - bend} ${y1}, ${x1} ${y1}`,
+            dIn: `M ${x1} ${y1} C ${x1 - bend} ${y1}, ${x0 + bend} ${y0}, ${x0 + 11} ${y0}`,
+            length: bezierLength(points),
             permission: c.permission,
             pending: Boolean(c.pending),
           },
@@ -103,7 +129,7 @@ export function AccessMap({
       </figcaption>
       <div
         ref={frame}
-        className="relative grid gap-6 p-5 sm:grid-cols-[minmax(0,15rem)_minmax(0,1fr)] sm:gap-x-24 sm:p-7"
+        className="relative grid gap-6 p-5 sm:grid-cols-[minmax(0,14rem)_minmax(5rem,1fr)_minmax(0,24rem)] sm:gap-x-0 sm:p-8"
       >
         <svg
           aria-hidden="true"
@@ -124,11 +150,11 @@ export function AccessMap({
             <marker
               id="cable-in"
               viewBox="0 0 8 8"
-              refX="1"
+              refX="7"
               refY="4"
               markerWidth="7"
               markerHeight="7"
-              orient="auto-start-reverse"
+              orient="auto"
             >
               <path d="M0 0 L8 4 L0 8 z" style={{ fill: 'var(--status-warning)' }} />
             </marker>
@@ -144,8 +170,11 @@ export function AccessMap({
           ))}
         </svg>
 
-        <div ref={source} className="relative flex flex-col justify-center gap-3 self-center">
-          <p className="text-2xl font-semibold leading-none tracking-tight [overflow-wrap:anywhere] sm:text-3xl">
+        <div
+          ref={source}
+          className="access-map__node relative flex flex-col justify-center gap-3 self-center rounded-xl border border-border bg-background/80 px-5 py-5"
+        >
+          <p className="access-map__name text-3xl font-semibold leading-none tracking-tight [overflow-wrap:anywhere] sm:text-4xl">
             {bucket}
           </p>
           <p className="font-mono text-xs text-muted-foreground">s3://{bucket}</p>
@@ -154,18 +183,24 @@ export function AccessMap({
               'Nothing can reach this bucket yet.'
             ) : (
               <>
-                <span className="text-[color:var(--brand)]">{readers} can read</span>
+                <span className={readers ? 'text-[color:var(--brand)]' : undefined}>
+                  {readers} can read
+                </span>
                 <span aria-hidden="true">, </span>
                 <span className="sr-only">, </span>
-                <span className="text-[color:var(--status-warning)]">{writers} can write</span>
+                <span className={writers ? 'text-[color:var(--status-warning)]' : undefined}>
+                  {writers} can write
+                </span>
               </>
             )}
           </p>
           <span
             aria-hidden="true"
-            className="access-map__ports absolute -right-1.5 top-1/2 hidden h-3/5 w-1 -translate-y-1/2 rounded-full sm:block"
+            className="access-map__ports absolute -right-[3px] top-1/2 hidden h-3/5 w-[5px] -translate-y-1/2 rounded-full sm:block"
           />
         </div>
+
+        <span aria-hidden="true" className="hidden sm:block" />
 
         <div className="flex flex-col gap-5">
           {LANES.map(({ lane, title, empty }) => {
@@ -243,7 +278,10 @@ function CablePath({
   dimmed: boolean;
   lit: boolean;
 }) {
-  const style = { animationDelay: `${index * 90}ms` };
+  const style = {
+    animationDelay: `${index * 90}ms`,
+    '--cable-length': `${cable.length}px`,
+  } as CSSProperties;
   const className = cn('access-cable', dimmed && 'access-cable--dim', lit && 'access-cable--lit');
   if (cable.pending)
     return <path d={cable.d} className={cn(className, 'access-cable--pending')} style={style} />;
@@ -255,7 +293,6 @@ function CablePath({
       {read && (
         <path
           d={cable.d}
-          pathLength={1}
           transform={offset ? `translate(0 ${-offset})` : undefined}
           className="access-cable__line access-cable__line--read"
           markerEnd="url(#cable-out)"
@@ -263,11 +300,10 @@ function CablePath({
       )}
       {write && (
         <path
-          d={cable.d}
-          pathLength={1}
+          d={cable.dIn}
           transform={offset ? `translate(0 ${offset})` : undefined}
           className="access-cable__line access-cable__line--write"
-          markerStart="url(#cable-in)"
+          markerEnd="url(#cable-in)"
         />
       )}
     </g>

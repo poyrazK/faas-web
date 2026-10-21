@@ -91,12 +91,15 @@ export function ObjectStorage({
   // Every selection names its app, so a shared link opens the same bucket.
   const change = (next: StorageSelection) => emit({ app: app.slug, ...next });
   const linked = current.app;
+  const followed = useRef<string | undefined>(undefined);
+  const known = app.apps.some((a) => a.slug === linked);
   useEffect(() => {
-    if (linked && linked !== app.slug && app.apps.some((a) => a.slug === linked))
-      app.select(linked);
-    // Follow a link once; afterwards the picker owns the app.
+    // Follow a link once the app list can confirm it; afterwards the picker owns the app.
+    if (!linked || !known || followed.current === linked) return;
+    followed.current = linked;
+    if (linked !== app.slug) app.select(linked);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [linked]);
+  }, [linked, known]);
   return (
     <div className="flex flex-col gap-5">
       {availability.state !== 'available' && (
@@ -155,7 +158,10 @@ function BucketManager({
     ...query.data!,
     enabled: query.data!.enabled && availability.state === 'available',
   };
-  const bucket = data.items.find((b) => b.id === selection.bucket);
+  // With nothing chosen, open the first ready bucket rather than a blank pane.
+  const bucket = selection.bucket
+    ? data.items.find((b) => b.id === selection.bucket)
+    : data.items.find((b) => b.state === 'ready');
   const directUploadMaxBytes = Math.min(data.max_upload_bytes, MAX_SINGLE_PUT_BYTES);
   const select = (id: string) => onSelectionChange({ bucket: id });
   const create = (name: string, scope: string, region: string) =>
@@ -201,7 +207,7 @@ function BucketManager({
               key={b.id}
               className={cn(
                 'storage-rail-item flex flex-col gap-1 rounded-xl border px-3 py-2.5',
-                selection.bucket === b.id
+                bucket?.id === b.id
                   ? 'storage-rail-item--open border-[color:color-mix(in_oklab,var(--brand)_45%,var(--border))] bg-card'
                   : 'border-transparent'
               )}
@@ -209,7 +215,7 @@ function BucketManager({
               <button
                 type="button"
                 onClick={() => select(b.id)}
-                aria-current={selection.bucket === b.id ? 'true' : undefined}
+                aria-current={bucket?.id === b.id ? 'true' : undefined}
                 className="pressable truncate text-left text-sm font-medium"
               >
                 {b.name}
@@ -258,12 +264,17 @@ function BucketManager({
           ))}
         </ul>
         {data.enabled && (
-          <CreateBucket
-            regions={data.regions}
-            defaultRegion={data.default_region}
-            busy={mutation.isPending}
-            onCreate={create}
-          />
+          <details className="storage-new group rounded-xl border border-dashed border-border px-3 py-2.5">
+            <summary className="cursor-pointer text-sm text-muted-foreground group-open:mb-3 hover:text-foreground">
+              New bucket
+            </summary>
+            <CreateBucket
+              regions={data.regions}
+              defaultRegion={data.default_region}
+              busy={mutation.isPending}
+              onCreate={create}
+            />
+          </details>
         )}
         {limits}
       </aside>
@@ -455,19 +466,13 @@ function BucketDetail({
         onSelect={openConnection}
         onConnect={() => onChange({ tab: 'code' })}
       />
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <Tabs
-          label={`${bucket.name} sections`}
-          value={tab}
-          options={TABS}
-          onChange={(next) => onChange({ tab: next })}
-          panelId={panelId}
-          className="flex-1"
-        />
-        <Button variant="ghost" size="sm" disabled={deleting} onClick={onDelete}>
-          Delete bucket
-        </Button>
-      </div>
+      <Tabs
+        label={`${bucket.name} sections`}
+        value={tab}
+        options={TABS}
+        onChange={(next) => onChange({ tab: next })}
+        panelId={panelId}
+      />
       <div id={panelId} role="tabpanel" aria-labelledby={tabId(panelId, tab)}>
         {tab === 'objects' && (
           <ObjectBrowser
@@ -499,7 +504,9 @@ function BucketDetail({
             </section>
           </div>
         )}
-        {tab === 'settings' && <BucketSettings slug={slug} bucket={bucket} />}
+        {tab === 'settings' && (
+          <BucketSettings slug={slug} bucket={bucket} onDelete={onDelete} deleting={deleting} />
+        )}
       </div>
     </div>
   );
@@ -523,6 +530,11 @@ function ObjectBrowser({
   const [cursor, setCursor] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [key, setKey] = useState('');
+  const [dragging, setDragging] = useState(false);
+  const choose = (f: File | null) => {
+    setFile(f);
+    setKey(f ? `${prefix}${f.name}` : '');
+  };
   const writable = useRef(signingEnabled);
   useLayoutEffect(() => {
     writable.current = signingEnabled;
@@ -641,20 +653,44 @@ function ObjectBrowser({
             spellCheck={false}
           />
         </label>
-        <form onSubmit={(e) => void upload(e)} className="ml-auto flex flex-wrap items-end gap-3">
-          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-            File
+        <form
+          onSubmit={(e) => void upload(e)}
+          className="flex w-full flex-wrap items-end gap-3 lg:ml-auto lg:w-auto"
+        >
+          <label
+            onDragOver={(e) => {
+              if (!signingEnabled) return;
+              e.preventDefault();
+              setDragging(true);
+            }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragging(false);
+              if (signingEnabled) choose(e.dataTransfer.files?.[0] ?? null);
+            }}
+            className={cn(
+              'storage-drop flex min-w-56 flex-1 cursor-pointer flex-col gap-0.5 rounded-xl border border-dashed px-4 py-2.5 text-xs text-muted-foreground transition-colors',
+              dragging ? 'border-[color:var(--brand)] text-foreground' : 'border-border',
+              !signingEnabled && 'cursor-not-allowed opacity-60'
+            )}
+          >
             <input
+              aria-label="File"
               type="file"
               required
               disabled={!signingEnabled}
-              className="text-sm text-foreground"
-              onChange={(e) => {
-                const f = e.target.files?.[0] ?? null;
-                setFile(f);
-                setKey(f ? `${prefix}${f.name}` : '');
-              }}
+              className="sr-only"
+              onChange={(e) => choose(e.target.files?.[0] ?? null)}
             />
+            <span className="text-sm text-foreground">
+              {file ? file.name : 'Drop a file here, or choose one'}
+            </span>
+            <span>
+              {file
+                ? `${formatUsageBytes(file.size)}, up to ${formatUploadLimit(maxBytes)}`
+                : `Up to ${formatUploadLimit(maxBytes)} in one upload`}
+            </span>
           </label>
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             Object key

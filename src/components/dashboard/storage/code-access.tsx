@@ -55,19 +55,26 @@ export function CodeAccess({
   const bindings = useBucketBindings(slug, bucketId);
   const items = bindings.data?.items ?? [];
   const phase = queryPhase({ loading: bindings.isPending, error: bindings.error });
+  const form = (
+    <ConnectForm slug={slug} bucketId={bucketId} bucketName={bucketName} taken={items} />
+  );
+  if (phase !== 'ready')
+    return (
+      <InlinePhase phase={phase} error={bindings.error} onRetry={() => void bindings.refetch()} />
+    );
+  if (items.length === 0) return form;
+  // Once the app is connected, how to use it comes first; a second connection
+  // (other rights, other names) is the rarer job.
   return (
     <div className="flex flex-col gap-8">
-      <ConnectForm slug={slug} bucketId={bucketId} bucketName={bucketName} taken={items} />
-      {phase !== 'ready' ? (
-        <InlinePhase phase={phase} error={bindings.error} onRetry={() => void bindings.refetch()} />
-      ) : (
-        items.length > 0 && (
-          <>
-            <BindingList slug={slug} bucketId={bucketId} items={items} />
-            <Snippets env={items[0].secret_keys} permission={items[0].credential.permission} />
-          </>
-        )
-      )}
+      <BindingList slug={slug} bucketId={bucketId} items={items} />
+      <Snippets env={items[0].secret_keys} permission={items[0].credential.permission} />
+      <details className="storage-again group rounded-2xl border border-dashed border-border px-5 py-4">
+        <summary className="cursor-pointer text-sm text-muted-foreground group-open:mb-5 hover:text-foreground">
+          Connect again with other rights or names
+        </summary>
+        {form}
+      </details>
     </div>
   );
 }
@@ -92,6 +99,9 @@ function ConnectForm({
   const effective = prefix || defaultBindingPrefix(bucketName);
   const invalid = prefix !== '' && !PREFIX_RULE.test(prefix);
   const clash = taken.some((b) => b.prefix === effective);
+  // Say what is wrong once the person has acted, not on arrival.
+  const showInvalid = touched && invalid;
+  const showClash = touched && clash;
   const env = bindingEnvNames(effective);
 
   const connect = useMutation({
@@ -172,16 +182,16 @@ function ConnectForm({
             onBlur={() => setTouched(true)}
             placeholder={defaultBindingPrefix(bucketName)}
             spellCheck={false}
-            aria-invalid={(touched && invalid) || clash || undefined}
+            aria-invalid={showInvalid || showClash || undefined}
             aria-describedby={`${formId}-prefix-help`}
             className={cn(FIELD, 'font-mono text-sm')}
           />
           <span id={`${formId}-prefix-help`} className="text-xs text-muted-foreground">
-            {touched && invalid ? (
+            {showInvalid ? (
               <span className="text-[color:var(--status-critical)]">
                 Use UPPER_SNAKE_CASE: a letter, then letters, digits or underscores (48 at most).
               </span>
-            ) : clash ? (
+            ) : showClash ? (
               <span className="text-[color:var(--status-critical)]">
                 {slug} already has secrets named {effective}_*. Pick another prefix.
               </span>
@@ -195,7 +205,7 @@ function ConnectForm({
         </Button>
       </div>
 
-      <div className="storage-env rounded-2xl border border-border p-4">
+      <div className="storage-env self-start rounded-2xl border border-border p-4">
         <p className="mb-3 text-xs text-muted-foreground">
           {slug} will read these, set for every instance
         </p>
@@ -205,7 +215,7 @@ function ConnectForm({
               key={key}
               className="flex items-baseline justify-between gap-4 border-t border-border/60 py-1.5 first:border-t-0"
             >
-              <dt className="min-w-0 truncate font-mono text-xs">{env[key]}</dt>
+              <dt className="min-w-0 font-mono text-xs [overflow-wrap:anywhere]">{env[key]}</dt>
               <dd className="shrink-0 text-xs text-muted-foreground">{role}</dd>
             </div>
           ))}

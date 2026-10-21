@@ -15,16 +15,19 @@ const mocks = vi.hoisted(() => ({
   confirm: vi.fn(),
   upload: vi.fn(),
   versioning: vi.fn(),
+  remove: vi.fn(),
   lifecycle: vi.fn(),
   selected: 'demo',
+  appState: null as null | { slug: string; apps: { slug: string }[]; select: () => void },
 }));
 vi.mock('@/lib/api/capabilities', () => ({ useCapability: mocks.capability }));
 vi.mock('./app-select', () => ({
-  useSelectedApp: () => ({
-    slug: mocks.selected,
-    apps: [{ slug: mocks.selected }],
-    select: vi.fn(),
-  }),
+  useSelectedApp: () =>
+    mocks.appState ?? {
+      slug: mocks.selected,
+      apps: [{ slug: mocks.selected }],
+      select: vi.fn(),
+    },
   AppSelect: () => null,
   AppScope: ({ children }: { children: ReactNode }) => children,
 }));
@@ -37,6 +40,7 @@ vi.mock('@/lib/api/object-storage', async (original) => ({
   createObjectBucket: mocks.create,
   signStoredObject: mocks.sign,
   uploadSignedObject: mocks.upload,
+  deleteObjectBucket: mocks.remove,
   useBucketBindings: () => ({ data: { items: [] }, isPending: false, error: null }),
   useBucketAccessGrants: () => ({ data: { items: [] }, isPending: false, error: null }),
   useBucketS3Credentials: () => ({ data: { items: [] }, isPending: false, error: null }),
@@ -74,6 +78,7 @@ function show() {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.selected = 'demo';
+  mocks.appState = null;
   mocks.confirm.mockResolvedValue(true);
   mocks.capability.mockReturnValue({ state: 'available', refresh: vi.fn() });
   mocks.buckets.mockReturnValue({ data: capabilities, isPending: false, error: null });
@@ -376,4 +381,54 @@ it('lists a nested object inside its folder, named relative to it', async () => 
   await user.click(screen.getByRole('button', { name: 'Open folder images/' }));
   expect(screen.getByText('logo.svg')).toHaveAttribute('title', 'images/logo.svg');
   expect(screen.getByRole('button', { name: 'Copy link to images/logo.svg' })).toBeInTheDocument();
+});
+
+it('keeps deleting a bucket in its Settings, away from everyday tabs', async () => {
+  const user = userEvent.setup();
+  mocks.remove.mockResolvedValue(undefined);
+  show();
+  await user.click(screen.getByRole('button', { name: 'assets' }));
+  expect(screen.queryByRole('button', { name: 'Delete bucket' })).not.toBeInTheDocument();
+  await user.click(screen.getByRole('tab', { name: 'Settings' }));
+  await user.click(screen.getByRole('button', { name: 'Delete bucket' }));
+  await waitFor(() => expect(mocks.remove).toHaveBeenCalledWith('demo', 'bucket-one'));
+});
+
+it('takes a dropped file and names it under the open folder', () => {
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <ObjectStorage
+        selection={{ bucket: 'bucket-one', prefix: 'images/' }}
+        onSelectionChange={vi.fn()}
+      />
+    </QueryClientProvider>
+  );
+  const file = new File(['png'], 'photo.png', { type: 'image/png' });
+  fireEvent.drop(screen.getByText(/Drop a file here/), { dataTransfer: { files: [file] } });
+  expect(screen.getByLabelText('Object key')).toHaveValue('images/photo.png');
+  expect(screen.getByRole('button', { name: 'Upload' })).toBeEnabled();
+});
+
+it('opens the first ready bucket when none is chosen yet', () => {
+  show();
+  expect(screen.getByRole('figure', { name: 'Who can reach assets' })).toBeInTheDocument();
+});
+
+it('follows a linked app once the app list has loaded', () => {
+  const select = vi.fn();
+  const apps = [{ slug: 'demo' }];
+  mocks.appState = { slug: 'demo', apps, select };
+  const view = render(
+    <QueryClientProvider client={new QueryClient()}>
+      <ObjectStorage selection={{ app: 'shop' }} onSelectionChange={vi.fn()} />
+    </QueryClientProvider>
+  );
+  expect(select).not.toHaveBeenCalled();
+  mocks.appState = { slug: 'demo', apps: [...apps, { slug: 'shop' }], select };
+  view.rerender(
+    <QueryClientProvider client={new QueryClient()}>
+      <ObjectStorage selection={{ app: 'shop' }} onSelectionChange={vi.fn()} />
+    </QueryClientProvider>
+  );
+  expect(select).toHaveBeenCalledWith('shop');
 });

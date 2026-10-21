@@ -1,4 +1,5 @@
 import { InlinePhase, queryPhase } from '@/components/dashboard/primitives';
+import { Button } from '@/components/ui/button';
 import { Timestamp } from '@/components/ui/timestamp';
 import {
   useBucketLifecycle,
@@ -52,7 +53,17 @@ function versioningSentence(v: Versioning): string {
   return `Versioning is ${observed}`;
 }
 
-export function BucketSettings({ slug, bucket }: { slug: string; bucket: ObjectBucket }) {
+export function BucketSettings({
+  slug,
+  bucket,
+  onDelete,
+  deleting,
+}: {
+  slug: string;
+  bucket: ObjectBucket;
+  onDelete: () => void;
+  deleting: boolean;
+}) {
   const versioning = useBucketVersioning(slug, bucket.id);
   const lifecycle = useBucketLifecycle(slug, bucket.id);
   const vPhase = queryPhase({ loading: versioning.isPending, error: versioning.error });
@@ -114,6 +125,18 @@ export function BucketSettings({ slug, bucket }: { slug: string; bucket: ObjectB
         These are read here. Change them with the gregale CLI or the API; this page shows the
         result.
       </p>
+
+      <section className="storage-danger flex flex-wrap items-center justify-between gap-4 rounded-2xl border p-5 lg:col-span-2">
+        <div>
+          <h3 className="text-sm font-medium">Delete this bucket</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Only an empty bucket can be deleted. Nothing is emptied for you.
+          </p>
+        </div>
+        <Button variant="outline" size="sm" disabled={deleting} onClick={onDelete}>
+          Delete bucket
+        </Button>
+      </section>
     </div>
   );
 }
