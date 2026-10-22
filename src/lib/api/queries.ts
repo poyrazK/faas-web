@@ -3458,6 +3458,27 @@ export function usePurgeAppCache(slug: string) {
   });
 }
 
+/**
+ * Replace every live instance without capturing process memory, so new and
+ * changed environment variables and secrets apply now (`fresh=true`). A plain
+ * restart snapshots memory and would keep the previous environment.
+ */
+export function useFreshRestart(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      unwrap(
+        api.POST('/v1/apps/{slug}/restart', {
+          params: { path: { slug }, query: { fresh: true } },
+        })
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.app(slug) });
+      void qc.invalidateQueries({ queryKey: ['apps', slug, 'wake-timeline'] });
+    },
+  });
+}
+
 /** Park every instance, snapshot afresh, and queue one replacement wake. */
 export function useRestartApp(slug: string) {
   const qc = useQueryClient();

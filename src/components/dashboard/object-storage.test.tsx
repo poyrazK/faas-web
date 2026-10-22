@@ -1,9 +1,9 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, it, vi } from 'vitest';
-import { ObjectStorage } from './object-storage';
+import { ObjectStorage, type StorageSelection } from './object-storage';
 
 const mocks = vi.hoisted(() => ({
   buckets: vi.fn(),
@@ -14,15 +14,20 @@ const mocks = vi.hoisted(() => ({
   capability: vi.fn(),
   confirm: vi.fn(),
   upload: vi.fn(),
+  versioning: vi.fn(),
+  remove: vi.fn(),
+  lifecycle: vi.fn(),
   selected: 'demo',
+  appState: null as null | { slug: string; apps: { slug: string }[]; select: () => void },
 }));
 vi.mock('@/lib/api/capabilities', () => ({ useCapability: mocks.capability }));
 vi.mock('./app-select', () => ({
-  useSelectedApp: () => ({
-    slug: mocks.selected,
-    apps: [{ slug: mocks.selected }],
-    select: vi.fn(),
-  }),
+  useSelectedApp: () =>
+    mocks.appState ?? {
+      slug: mocks.selected,
+      apps: [{ slug: mocks.selected }],
+      select: vi.fn(),
+    },
   AppSelect: () => null,
   AppScope: ({ children }: { children: ReactNode }) => children,
 }));
@@ -35,6 +40,16 @@ vi.mock('@/lib/api/object-storage', async (original) => ({
   createObjectBucket: mocks.create,
   signStoredObject: mocks.sign,
   uploadSignedObject: mocks.upload,
+  deleteObjectBucket: mocks.remove,
+  useBucketBindings: () => ({ data: { items: [] }, isPending: false, error: null }),
+  useBucketAccessGrants: () => ({ data: { items: [] }, isPending: false, error: null }),
+  useBucketS3Credentials: () => ({ data: { items: [] }, isPending: false, error: null }),
+  useBucketVersioning: mocks.versioning,
+  useBucketLifecycle: mocks.lifecycle,
+}));
+vi.mock('@/lib/api/queries', async (original) => ({
+  ...(await original<typeof import('@/lib/api/queries')>()),
+  useApiKeys: () => ({ data: [], isPending: false, error: null }),
 }));
 const bucket = {
   id: 'bucket-one',
@@ -63,15 +78,47 @@ function show() {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.selected = 'demo';
+  mocks.appState = null;
   mocks.confirm.mockResolvedValue(true);
   mocks.capability.mockReturnValue({ state: 'available', refresh: vi.fn() });
   mocks.buckets.mockReturnValue({ data: capabilities, isPending: false, error: null });
   mocks.objects.mockReturnValue({
-    data: { items: [{ key: 'folder/file.txt', size_bytes: 3 }] },
+    data: { items: [{ key: 'file.txt', size_bytes: 3 }] },
     isPending: false,
     error: null,
   });
   mocks.create.mockResolvedValue(bucket);
+  mocks.versioning.mockReturnValue({
+    data: {
+      bucket_id: 'bucket-one',
+      desired_status: 'Enabled',
+      observed_status: 'Enabled',
+      state: 'ready',
+      revision: 2,
+      versions_required: true,
+      updated_at: '2026-10-01T00:00:00Z',
+    },
+    isPending: false,
+    error: null,
+  });
+  mocks.lifecycle.mockReturnValue({
+    data: {
+      bucket_id: 'bucket-one',
+      revision: 1,
+      rules: [
+        {
+          id: 'expire-tmp',
+          status: 'Enabled',
+          filter: { prefix: 'tmp/' },
+          expiration: { days: 7 },
+        },
+        { id: 'abort', status: 'Enabled', abort_incomplete_multipart_days: 3 },
+      ],
+      updated_at: '2026-10-01T00:00:00Z',
+    },
+    isPending: false,
+    error: null,
+  });
 });
 it.each(['runtime-unavailable', 'registry-error', 'app-change', 'account-change'])(
   'blocks a delayed upload confirmation after %s',
@@ -182,7 +229,7 @@ it('opens a ready bucket and exposes object actions', async () => {
   show();
   await user.click(screen.getByRole('button', { name: 'assets' }));
   expect(screen.getByRole('region', { name: 'Objects in assets' })).toBeInTheDocument();
-  expect(screen.getByText('folder/file.txt')).toBeInTheDocument();
+  expect(screen.getByText('file.txt')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Download' })).toBeInTheDocument();
 });
 it('rejects files above the single-PUT limit before requesting a signed URL', async () => {
@@ -219,4 +266,235 @@ it('shows each bucket ID with a copy button that carries the full ID', () => {
   show();
   expect(screen.getByText('3f2b8c1e-5d4…')).toHaveAttribute('title', id);
   expect(screen.getByRole('button', { name: `Copy: bucket ID ${id}` })).toBeInTheDocument();
+});
+
+it('shows who can reach the open bucket above its objects, code access and settings', async () => {
+  const user = userEvent.setup();
+  show();
+  await user.click(screen.getByRole('button', { name: 'assets' }));
+  expect(screen.getByRole('figure', { name: 'Who can reach assets' })).toBeInTheDocument();
+  expect(screen.getByRole('tab', { name: 'Objects' })).toHaveAttribute('aria-selected', 'true');
+  await user.click(screen.getByRole('tab', { name: 'Use from code' }));
+  expect(screen.getByRole('form', { name: 'Connect demo to assets' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'From outside Gregale' })).toBeInTheDocument();
+});
+
+it('reports the selection so the page can keep it in the URL', async () => {
+  const user = userEvent.setup();
+  const onSelectionChange = vi.fn();
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <ObjectStorage selection={{}} onSelectionChange={onSelectionChange} />
+    </QueryClientProvider>
+  );
+  await user.click(screen.getByRole('button', { name: 'assets' }));
+  expect(onSelectionChange.mock.lastCall).toEqual([
+    { app: 'demo', bucket: 'bucket-one' },
+    undefined,
+  ]);
+});
+
+type Change = (next: StorageSelection, options?: { replace?: boolean }) => void;
+function Routed({ onChange, start }: { onChange: Change; start: StorageSelection }) {
+  const [selection, setSelection] = useState(start);
+  return (
+    <QueryClientProvider client={new QueryClient()}>
+      <ObjectStorage
+        selection={selection}
+        onSelectionChange={(next, options) => {
+          onChange(next, options);
+          setSelection(next);
+        }}
+      />
+    </QueryClientProvider>
+  );
+}
+const replaced = (change: ReturnType<typeof vi.fn>) =>
+  change.mock.calls.map(([, options]) => Boolean(options?.replace));
+
+it('makes a Back step for every folder opened, and one per typed prefix', async () => {
+  const user = userEvent.setup();
+  mocks.objects.mockReturnValue({
+    data: { items: [{ key: 'images/logo.svg', size_bytes: 2048 }] },
+    isPending: false,
+    error: null,
+  });
+  const change = vi.fn();
+  render(<Routed onChange={change} start={{ bucket: 'bucket-one' }} />);
+  await user.click(screen.getByRole('button', { name: 'Open folder images/' }));
+  expect(change.mock.lastCall?.[0]).toEqual({
+    app: 'demo',
+    bucket: 'bucket-one',
+    tab: 'objects',
+    prefix: 'images/',
+  });
+  expect(replaced(change)).toEqual([false]);
+
+  change.mockClear();
+  const field = screen.getByLabelText('Key prefix');
+  await user.clear(field);
+  await user.type(field, 'tmp/');
+  // The first keystroke steps away from the folder; the rest refine that step.
+  expect(replaced(change)).toEqual([false, true, true, true, true]);
+  expect(change).toHaveBeenLastCalledWith(
+    { app: 'demo', bucket: 'bucket-one', tab: 'objects', prefix: 'tmp/' },
+    { replace: true }
+  );
+
+  change.mockClear();
+  await user.tab();
+  await user.click(field);
+  await user.type(field, 'x');
+  expect(replaced(change)).toEqual([false]);
+});
+
+it('swaps the URL of a deleted bucket rather than leaving it one Back away', async () => {
+  const user = userEvent.setup();
+  mocks.remove.mockResolvedValue(undefined);
+  const change = vi.fn();
+  render(<Routed onChange={change} start={{ bucket: 'bucket-one', tab: 'settings' }} />);
+  await user.click(screen.getByRole('button', { name: 'Delete bucket' }));
+  await waitFor(() => expect(change).toHaveBeenLastCalledWith({ app: 'demo' }, { replace: true }));
+});
+
+it('opens folders found on the loaded page and shows readable sizes', async () => {
+  const user = userEvent.setup();
+  mocks.objects.mockReturnValue({
+    data: {
+      items: [
+        { key: 'images/logo.svg', size_bytes: 2048, last_modified: '2026-10-01T00:00:00Z' },
+        { key: 'robots.txt', size_bytes: 68, last_modified: '2026-10-01T00:00:00Z' },
+      ],
+    },
+    isPending: false,
+    error: null,
+  });
+  show();
+  await user.click(screen.getByRole('button', { name: 'assets' }));
+  expect(screen.getByText('68 B')).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Open folder images/' }));
+  expect(mocks.objects).toHaveBeenLastCalledWith('demo', 'bucket-one', 'images/', '');
+});
+
+it('copies a share link that works for 15 minutes', async () => {
+  const user = userEvent.setup();
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+  mocks.sign.mockResolvedValue({
+    url: 'https://s3.example/assets/file.txt?sig',
+    method: 'GET',
+  });
+  show();
+  await user.click(screen.getByRole('button', { name: 'assets' }));
+  await user.click(screen.getByRole('button', { name: 'Copy link to file.txt' }));
+  await waitFor(() =>
+    expect(mocks.sign).toHaveBeenCalledWith('demo', 'bucket-one', {
+      method: 'GET',
+      expires_in: 900,
+      key: 'file.txt',
+    })
+  );
+  await waitFor(() =>
+    expect(writeText).toHaveBeenCalledWith('https://s3.example/assets/file.txt?sig')
+  );
+  expect(mocks.toast).toHaveBeenCalledWith(
+    expect.objectContaining({
+      title: 'Link copied',
+      description: expect.stringMatching(/15 minutes/),
+    })
+  );
+});
+
+it('reads versioning and lifecycle rules in plain words', async () => {
+  const user = userEvent.setup();
+  show();
+  await user.click(screen.getByRole('button', { name: 'assets' }));
+  await user.click(screen.getByRole('tab', { name: 'Settings' }));
+  expect(screen.getByText('Versioning is on')).toBeInTheDocument();
+  expect(
+    screen.getByText('Delete objects under tmp/ 7 days after they are written')
+  ).toBeInTheDocument();
+  expect(screen.getByText('Abort unfinished multipart uploads after 3 days')).toBeInTheDocument();
+});
+
+it('invites the first bucket with its address taking shape as you type', async () => {
+  const user = userEvent.setup();
+  mocks.buckets.mockReturnValue({
+    data: { ...capabilities, items: [] },
+    isPending: false,
+    error: null,
+  });
+  show();
+  expect(screen.getByText('s3://your-bucket')).toBeInTheDocument();
+  await user.type(screen.getByLabelText('Bucket name'), 'media');
+  expect(screen.getByText('s3://media')).toBeInTheDocument();
+});
+
+it('lists a nested object inside its folder, named relative to it', async () => {
+  const user = userEvent.setup();
+  mocks.objects.mockImplementation((_slug: string, _bucket: string, prefix: string) => ({
+    data: {
+      items: [
+        { key: 'images/logo.svg', size_bytes: 2048, last_modified: '2026-10-01T00:00:00Z' },
+      ].filter((o) => o.key.startsWith(prefix)),
+    },
+    isPending: false,
+    error: null,
+  }));
+  show();
+  await user.click(screen.getByRole('button', { name: 'assets' }));
+  expect(screen.queryByText('logo.svg')).not.toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Open folder images/' }));
+  expect(screen.getByText('logo.svg')).toHaveAttribute('title', 'images/logo.svg');
+  expect(screen.getByRole('button', { name: 'Copy link to images/logo.svg' })).toBeInTheDocument();
+});
+
+it('keeps deleting a bucket in its Settings, away from everyday tabs', async () => {
+  const user = userEvent.setup();
+  mocks.remove.mockResolvedValue(undefined);
+  show();
+  await user.click(screen.getByRole('button', { name: 'assets' }));
+  expect(screen.queryByRole('button', { name: 'Delete bucket' })).not.toBeInTheDocument();
+  await user.click(screen.getByRole('tab', { name: 'Settings' }));
+  await user.click(screen.getByRole('button', { name: 'Delete bucket' }));
+  await waitFor(() => expect(mocks.remove).toHaveBeenCalledWith('demo', 'bucket-one'));
+});
+
+it('takes a dropped file and names it under the open folder', () => {
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <ObjectStorage
+        selection={{ bucket: 'bucket-one', prefix: 'images/' }}
+        onSelectionChange={vi.fn()}
+      />
+    </QueryClientProvider>
+  );
+  const file = new File(['png'], 'photo.png', { type: 'image/png' });
+  fireEvent.drop(screen.getByText(/Drop a file here/), { dataTransfer: { files: [file] } });
+  expect(screen.getByLabelText('Object key')).toHaveValue('images/photo.png');
+  expect(screen.getByRole('button', { name: 'Upload' })).toBeEnabled();
+});
+
+it('opens the first ready bucket when none is chosen yet', () => {
+  show();
+  expect(screen.getByRole('figure', { name: 'Who can reach assets' })).toBeInTheDocument();
+});
+
+it('follows a linked app once the app list has loaded', () => {
+  const select = vi.fn();
+  const apps = [{ slug: 'demo' }];
+  mocks.appState = { slug: 'demo', apps, select };
+  const view = render(
+    <QueryClientProvider client={new QueryClient()}>
+      <ObjectStorage selection={{ app: 'shop' }} onSelectionChange={vi.fn()} />
+    </QueryClientProvider>
+  );
+  expect(select).not.toHaveBeenCalled();
+  mocks.appState = { slug: 'demo', apps: [...apps, { slug: 'shop' }], select };
+  view.rerender(
+    <QueryClientProvider client={new QueryClient()}>
+      <ObjectStorage selection={{ app: 'shop' }} onSelectionChange={vi.fn()} />
+    </QueryClientProvider>
+  );
+  expect(select).toHaveBeenCalledWith('shop');
 });
