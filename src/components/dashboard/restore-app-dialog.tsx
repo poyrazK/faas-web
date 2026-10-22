@@ -12,10 +12,11 @@ import { appNameError } from './new-app-validation';
 /**
  * What to tell someone whose restore was refused, by `ApiError.code`.
  *
- * The restore operation names `not_found` and `conflict`; apid also answers
- * `app_not_restorable` (ADR-022) and the plan caps answer `plan_limit_apps`,
- * which the spec does not list on this operation. An unknown code falls
- * through to the API's own sentence rather than a guess.
+ * The restore operation names `not_found` and `conflict` (an `expected_app_id`
+ * mismatch only); apid also answers `app_not_restorable` (ADR-022), the plan
+ * caps `plan_limit_apps` and `plan_limit_developer_apps`, `org_role_forbidden`,
+ * and `billing_past_due`, which the spec does not list on this operation. An
+ * unknown code falls through to the API's own sentence rather than a guess.
  */
 export function restoreFailureMessage(err: unknown, slug: string): string {
   if (err instanceof ApiError) {
@@ -30,6 +31,12 @@ export function restoreFailureMessage(err: unknown, slug: string): string {
         return 'Set up multi-factor authentication in the prompt that opened, then restore again.';
       case 'plan_limit_apps':
         return 'Your account is at the number of apps allowed on your plan. Free a slot or change plan, then restore again.';
+      case 'plan_limit_developer_apps':
+        return 'Restoring this app would go over the developer environments your plan allows. Stop an unused one or change plan on the Plans page, then restore again.';
+      case 'org_role_forbidden':
+        return 'Your role in this organization does not allow restoring apps. Ask someone who manages the organization to restore it, or to change your role.';
+      case 'billing_past_due':
+        return 'Your account has an outstanding payment, so apps cannot be restored. Resolve billing on the Plans page, then restore again.';
     }
   }
   return errorMessage(err);
