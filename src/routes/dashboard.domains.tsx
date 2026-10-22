@@ -125,7 +125,14 @@ function DomainsPage() {
     {
       key: 'domain',
       label: 'Domain',
-      render: (d) => <span className="font-mono">{d.domain}</span>,
+      // Marked so it is clear why the default is missing from set-default below.
+      // Stacked under the hostname so it does not squeeze an already narrow column.
+      render: (d) => (
+        <span className="flex flex-col items-start gap-1">
+          <span className="font-mono">{d.domain}</span>
+          {d.isDefault && <Pill label="default" />}
+        </span>
+      ),
     },
     {
       key: 'verified',
