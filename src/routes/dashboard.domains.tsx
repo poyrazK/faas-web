@@ -279,15 +279,19 @@ function DomainsPage() {
     {
       key: 'id',
       label: '',
-      // As wide as its controls, so the TXT record gets the rest of the row.
-      width: 'w-0',
+      // As wide as its controls. On a phone they wrap, so the icons drop
+      // below a recovery button instead of running off the card.
+      width: 'md:w-0',
       render: (d) => (
-        <div className="flex items-center justify-end gap-1.5">
+        <div className="flex flex-wrap items-center justify-end gap-1.5 md:flex-nowrap">
           {!d.verified &&
             (expired.has(d.domain) ? (
               <Button
                 size="sm"
                 variant="secondary"
+                // The longest control in the cell: on a phone its label wraps
+                // rather than pushing the row wider than the card.
+                className="h-auto min-h-8 shrink whitespace-normal py-1 md:h-8 md:whitespace-nowrap"
                 busy={rearming === d.domain}
                 onClick={() => void getNewRecord(d)}
               >
