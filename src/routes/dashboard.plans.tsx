@@ -204,10 +204,7 @@ function PlansPage() {
    * without a stamp, so neither counts as confirmation here.
    */
   const stepUp = async (): Promise<'confirmed' | 'recovery' | 'dismissed'> => {
-    let via = await openStep(
-      'choose',
-      'Plan changes need two-factor authentication. Set up an authenticator, or enter a code from the one you already use.'
-    );
+    let via = await openStep('choose', 'Plan changes need two-factor authentication.');
     if (via === 'enrolment') {
       via = await openStep(
         'verify',

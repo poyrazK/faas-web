@@ -210,7 +210,7 @@ describe('Plan change', () => {
       await waitFor(() => expect(mocks.openMfa).toHaveBeenCalled());
       const [mode, opts] = mocks.openMfa.mock.calls[0];
       expect(mode).toBe('choose');
-      expect(opts.reason).toMatch(/plan changes need two-factor authentication/i);
+      expect(opts.reason).toBe('Plan changes need two-factor authentication.');
     });
 
     it('retries the change once an authenticator code is accepted', async () => {
