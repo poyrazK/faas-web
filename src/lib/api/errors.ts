@@ -76,11 +76,13 @@ export class ApiError extends Error {
    * an existing one must change, and the legacy Paddle field last.
    */
   get billingUrl(): string | undefined {
-    return (
-      this.problem.checkout_url ??
-      this.problem.billing_portal_url ??
-      this.problem.paddle_checkout_url
-    );
+    // `billing_portal_url` is an empty string, not absent, when billing has no
+    // portal configured (handlers_ext.go changePlan), so `??` would return it.
+    return [
+      this.problem.checkout_url,
+      this.problem.billing_portal_url,
+      this.problem.paddle_checkout_url,
+    ].find((url) => typeof url === 'string' && url !== '');
   }
 }
 

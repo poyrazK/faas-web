@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { Check, OpenNewWindow } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
+import { useMfa } from '@/components/auth/mfa-provider';
 import { PageHeader } from '@/components/dashboard/primitives';
 import { Modal } from '@/components/ui/modal';
 import { useToast } from '@/components/ui/toast';
@@ -146,42 +147,108 @@ function BillingControlsPanel() {
   );
 }
 
+/** How often, and for how long, the page re-reads the account while a
+ * provider-deferred plan change is outstanding. `GET /v1/account` never
+ * reports the pending state, so the plan flipping is the only signal. */
+const PENDING_POLL_MS = 15_000;
+const PENDING_POLL_WINDOW_MS = 3 * 60_000;
+
+const planName = (id: Plan) => PLANS.find((p) => p.id === id)?.name ?? id;
+
 function PlansPage() {
   const { toast } = useToast();
   const { account, refreshAccount } = useAuth();
+  const { openMfa } = useMfa();
   const changePlan = useChangePlan();
   const portal = useBillingPortal();
   const [pending, setPending] = useState<Plan | null>(null);
+  // A deferred change (202) leaves the account on its old plan, so the page
+  // remembers what was asked for until the account catches up.
+  const [requested, setRequested] = useState<{ plan: Plan; effectiveAt?: string } | null>(null);
 
   const current = account?.plan;
+  const awaiting = requested !== null && requested.plan !== current;
 
-  const confirm = () => {
-    if (!pending) return;
-    void changePlan
-      .mutateAsync(pending)
+  // Once the account reports the requested plan the note has done its job.
+  if (requested && requested.plan === current) setRequested(null);
+  useEffect(() => {
+    if (!awaiting) return;
+    const reread = () => void refreshAccount().catch(() => {});
+    const timer = window.setInterval(reread, PENDING_POLL_MS);
+    const stop = window.setTimeout(() => window.clearInterval(timer), PENDING_POLL_WINDOW_MS);
+    window.addEventListener('focus', reread);
+    return () => {
+      window.clearInterval(timer);
+      window.clearTimeout(stop);
+      window.removeEventListener('focus', reread);
+    };
+  }, [awaiting, refreshAccount]);
+
+  const stepUp = () =>
+    new Promise<boolean>((resolve) =>
+      openMfa('verify', { onVerified: () => resolve(true), onDismissed: () => resolve(false) })
+    );
+
+  const apply = (plan: Plan, retried = false): Promise<void> =>
+    changePlan
+      .mutateAsync(plan)
       .then(async (result) => {
         await refreshAccount().catch(() => {});
-        toast(
-          result.pending
-            ? {
-                kind: 'info',
-                title: 'Plan change pending',
-                description: `You stay on your current plan until the billing provider confirms ${pending}.`,
-              }
-            : { kind: 'success', title: `Now on the ${pending} plan` }
-        );
-        setPending(null);
+        if (result.pending) {
+          const target = (result.account.requested_plan as Plan | undefined) ?? plan;
+          const effectiveAt = result.account.effective_at;
+          setRequested({ plan: target, effectiveAt });
+          toast({
+            kind: 'info',
+            title: 'Plan change pending',
+            description:
+              `You stay on your current plan until the billing provider confirms ${target}.` +
+              (effectiveAt
+                ? ` It takes effect on ${new Date(effectiveAt).toLocaleDateString()}.`
+                : ''),
+          });
+        } else {
+          toast({ kind: 'success', title: `Now on the ${plan} plan` });
+        }
       })
-      .catch((err: unknown) => {
-        setPending(null);
+      .catch(async (err: unknown) => {
+        // The session's step-up is older than five minutes: verify, then ask
+        // again — once, so a second refusal is reported rather than looped.
+        if (err instanceof ApiError && err.code === 'step_up_required') {
+          if (!retried && (await stepUp())) return apply(plan, true);
+          toast({
+            kind: 'error',
+            title: 'Could not change plan',
+            description:
+              "Confirm it's you with your authenticator code, then retry the change. Plan changes need a recent confirmation.",
+          });
+          return;
+        }
         // An upgrade that needs payment answers 402 with the provider page
         // that takes it; that is the next step, not a failure.
         if (err instanceof ApiError && err.billingUrl) {
           goToExternal(err.billingUrl);
           return;
         }
+        // payment_required with no URL: billing has no portal configured and
+        // nothing hosted to send the customer to.
+        if (err instanceof ApiError && err.code === 'payment_required') {
+          toast({
+            kind: 'error',
+            title: 'Could not change plan',
+            description:
+              'Billing has no checkout or portal page for this account, so the change cannot be completed here. Contact support to change your plan.',
+          });
+          return;
+        }
         toast({ kind: 'error', title: 'Could not change plan', description: errorMessage(err) });
       });
+
+  const confirm = () => {
+    if (!pending) return;
+    const plan = pending;
+    setPending(null);
+    void apply(plan);
   };
 
   return (
@@ -215,6 +282,21 @@ function PlansPage() {
           </Button>
         }
       />
+
+      {awaiting && requested && (
+        <div
+          role="status"
+          aria-label="Plan change pending"
+          className="rounded-lg border bg-card px-4 py-3 text-sm text-muted-foreground"
+        >
+          A change to the {planName(requested.plan)} plan was requested. You stay on{' '}
+          {current ? planName(current) : 'your current plan'} until the billing provider confirms it
+          {requested.effectiveAt
+            ? `; it takes effect on ${new Date(requested.effectiveAt).toLocaleDateString()}`
+            : ''}
+          .
+        </div>
+      )}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {PLANS.map((plan) => {

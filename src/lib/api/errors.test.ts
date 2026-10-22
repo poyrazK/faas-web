@@ -161,6 +161,33 @@ describe('toApiError', () => {
   });
 });
 
+describe('billingUrl with empty links', () => {
+  it('skips an empty billing_portal_url instead of returning it', async () => {
+    const error = await toApiError(
+      problemResponse(402, {
+        title: 'Payment required',
+        status: 402,
+        code: 'payment_required',
+        billing_portal_url: '',
+        paddle_checkout_url: 'https://paddle.example/checkout',
+      })
+    );
+    expect(error.billingUrl).toBe('https://paddle.example/checkout');
+  });
+
+  it('is undefined when every link is empty', async () => {
+    const error = await toApiError(
+      problemResponse(402, {
+        title: 'Payment required',
+        status: 402,
+        code: 'payment_required',
+        billing_portal_url: '',
+      })
+    );
+    expect(error.billingUrl).toBeUndefined();
+  });
+});
+
 describe('errorMessage', () => {
   it('explains a dropped connection rather than leaking "Failed to fetch"', () => {
     expect(errorMessage(new TypeError('Failed to fetch'))).toMatch(/could not reach the api/i);
