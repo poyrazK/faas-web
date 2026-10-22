@@ -188,6 +188,7 @@ function PlansPage() {
     new Promise<MfaMethod | null>((resolve) =>
       openMfa(mode, {
         reason,
+        allowRecovery: false,
         onVerified: (via) => resolve(via),
         onDismissed: () => resolve(null),
       })
@@ -201,18 +202,18 @@ function PlansPage() {
    * enrolled, so the first prompt is the provider's "set up or enter a code"
    * choice, which already falls through to verification when enrolment answers
    * 409. Finishing enrolment and a recovery code both reissue the cookie
-   * without a stamp, so neither counts as confirmation here.
+   * without a stamp (handlers_mfa.go: only mfaVerify stamps), so enrolment is
+   * followed by a code and the recovery option is not offered at all.
    */
-  const stepUp = async (): Promise<'confirmed' | 'recovery' | 'dismissed'> => {
-    let via = await openStep('choose', 'Plan changes need two-factor authentication.');
+  const stepUp = async (): Promise<'confirmed' | 'dismissed'> => {
+    let via = await openStep('choose', 'Plan changes need multi-factor authentication.');
     if (via === 'enrolment') {
       via = await openStep(
         'verify',
         'Authenticator set up. Enter a new code from your authenticator to confirm this change.'
       );
     }
-    if (via === 'authenticator') return 'confirmed';
-    return via === 'recovery' ? 'recovery' : 'dismissed';
+    return via === 'authenticator' ? 'confirmed' : 'dismissed';
   };
 
   const apply = (plan: Plan, retried = false): Promise<void> =>
@@ -228,28 +229,36 @@ function PlansPage() {
             kind: 'info',
             title: 'Plan change pending',
             description:
-              `You stay on your current plan until the billing provider confirms ${target}.` +
+              `You stay on your current plan until the billing provider confirms ${planName(target)}.` +
               (effectiveAt
                 ? ` It takes effect on ${new Date(effectiveAt).toLocaleDateString()}.`
                 : ''),
           });
         } else {
-          toast({ kind: 'success', title: `Now on the ${plan} plan` });
+          toast({ kind: 'success', title: `Now on the ${planName(plan)} plan` });
         }
       })
       .catch(async (err: unknown) => {
         // The session's step-up is older than five minutes: verify, then ask
         // again — once, so a second refusal is reported rather than looped.
         if (err instanceof ApiError && err.code === 'step_up_required') {
-          const outcome = retried ? 'dismissed' : await stepUp();
-          if (outcome === 'confirmed') return apply(plan, true);
+          // A refusal straight after an accepted code is not the customer's to
+          // fix with another code; asking for one would read as a loop.
+          if (retried) {
+            toast({
+              kind: 'error',
+              title: 'Could not change plan',
+              description:
+                'Your code was accepted, but the change could not be confirmed. Try again in a moment.',
+            });
+            return;
+          }
+          if ((await stepUp()) === 'confirmed') return apply(plan, true);
           toast({
             kind: 'error',
             title: 'Could not change plan',
             description:
-              outcome === 'recovery'
-                ? 'A recovery code does not count for plan changes. Use the code from your authenticator app, then retry the change.'
-                : "Confirm it's you with your authenticator code, then retry the change. Plan changes need a recent confirmation.",
+              "Confirm it's you with your authenticator code, then retry the change. Plan changes need a recent confirmation.",
           });
           return;
         }

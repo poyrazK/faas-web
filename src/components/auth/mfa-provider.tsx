@@ -41,6 +41,12 @@ interface MfaOpenOptions {
   onVerified?: (via: MfaMethod) => void;
   /** The modal closed without success. */
   onDismissed?: () => void;
+  /**
+   * Whether to offer a recovery code. Defaults to true. A step-up gate that
+   * only an authenticator code satisfies (`/mfa/recover` never stamps one)
+   * passes false rather than offer a path it will always refuse.
+   */
+  allowRecovery?: boolean;
 }
 
 interface MfaContextValue {
@@ -70,6 +76,7 @@ export function MfaProvider({ children }: { children: ReactNode }) {
   const [required, setRequired] = useState(false);
   const pending = useRef<MfaOpenOptions | null>(null);
   const [reason, setReason] = useState<string | null>(null);
+  const [allowRecovery, setAllowRecovery] = useState(true);
 
   const resetTransient = useCallback(() => {
     setEnrollment(null);
@@ -83,6 +90,7 @@ export function MfaProvider({ children }: { children: ReactNode }) {
       setRequired(false);
       pending.current = opts ?? null;
       setReason(opts?.reason ?? null);
+      setAllowRecovery(opts?.allowRecovery ?? true);
       setMode(nextMode);
       setOpen(true);
     },
@@ -92,6 +100,7 @@ export function MfaProvider({ children }: { children: ReactNode }) {
   const handleMfaRequired = useCallback(() => {
     pending.current = null;
     setReason(null);
+    setAllowRecovery(true);
     setError(null);
     setRequired(true);
     setMode('choose');
@@ -198,7 +207,7 @@ export function MfaProvider({ children }: { children: ReactNode }) {
             ? required
               ? 'Additional verification required'
               : reason
-                ? 'Two-factor authentication required'
+                ? 'Multi-factor authentication required'
                 : 'Protect your account with MFA'
             : 'Multi-factor authentication'
         }
@@ -209,7 +218,9 @@ export function MfaProvider({ children }: { children: ReactNode }) {
               : reason
                 ? 'This action needs a recent code from your authenticator app.'
                 : 'MFA is optional. Set it up when you want extra protection for your account.'
-            : 'Use an authenticator app or a saved recovery code to continue.'
+            : allowRecovery
+              ? 'Use an authenticator app or a saved recovery code to continue.'
+              : 'Use your authenticator app to continue.'
         }
         width="max-w-lg"
       >
@@ -239,17 +250,17 @@ export function MfaProvider({ children }: { children: ReactNode }) {
                 Enter authenticator code
               </Button>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                setError(null);
-                setCode('');
-                setMode('recover');
-              }}
-              className="text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-            >
-              Use a recovery code instead
-            </button>
+            {allowRecovery && (
+              <SwitchMode
+                onClick={() => {
+                  setError(null);
+                  setCode('');
+                  setMode('recover');
+                }}
+              >
+                Use a recovery code instead
+              </SwitchMode>
+            )}
           </div>
         )}
 
@@ -307,15 +318,17 @@ export function MfaProvider({ children }: { children: ReactNode }) {
               submitLabel="Verify and continue"
               hint="Codes change every 30 seconds."
             />
-            <SwitchMode
-              onClick={() => {
-                setError(null);
-                setCode('');
-                setMode('recover');
-              }}
-            >
-              Use a recovery code instead
-            </SwitchMode>
+            {allowRecovery && (
+              <SwitchMode
+                onClick={() => {
+                  setError(null);
+                  setCode('');
+                  setMode('recover');
+                }}
+              >
+                Use a recovery code instead
+              </SwitchMode>
+            )}
           </div>
         )}
 

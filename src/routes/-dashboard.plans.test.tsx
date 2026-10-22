@@ -85,7 +85,7 @@ describe('Plan change', () => {
     await switchToPro();
     await waitFor(() => expect(mocks.toast).toHaveBeenCalled());
     expect(mocks.toast).not.toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'Now on the pro plan' })
+      expect.objectContaining({ title: 'Now on the Pro plan' })
     );
     expect(mocks.toast).toHaveBeenCalledWith(
       expect.objectContaining({ title: expect.stringMatching(/pending/i) })
@@ -97,7 +97,7 @@ describe('Plan change', () => {
     await switchToPro();
     await waitFor(() =>
       expect(mocks.toast).toHaveBeenCalledWith(
-        expect.objectContaining({ kind: 'success', title: 'Now on the pro plan' })
+        expect.objectContaining({ kind: 'success', title: 'Now on the Pro plan' })
       )
     );
   });
@@ -132,7 +132,10 @@ describe('Plan change', () => {
       )
     );
     const note = screen.getByRole('status', { name: 'Plan change pending' });
-    expect(note).toHaveTextContent(/hobby/i);
+    expect(note).toHaveTextContent(/Hobby/);
+    expect(mocks.toast).toHaveBeenCalledWith(
+      expect.objectContaining({ description: expect.stringContaining('confirms Hobby.') })
+    );
     expect(note).toHaveTextContent(new Date(effectiveAt).toLocaleDateString());
   });
 
@@ -210,7 +213,10 @@ describe('Plan change', () => {
       await waitFor(() => expect(mocks.openMfa).toHaveBeenCalled());
       const [mode, opts] = mocks.openMfa.mock.calls[0];
       expect(mode).toBe('choose');
-      expect(opts.reason).toBe('Plan changes need two-factor authentication.');
+      expect(opts.reason).toBe('Plan changes need multi-factor authentication.');
+      // Only an authenticator code stamps a step-up (apid handlers_mfa.go), so
+      // the recovery option would always be refused here.
+      expect(opts.allowRecovery).toBe(false);
     });
 
     it('retries the change once an authenticator code is accepted', async () => {
@@ -223,7 +229,7 @@ describe('Plan change', () => {
       expect(mocks.changePlan).toHaveBeenNthCalledWith(2, 'pro');
       await waitFor(() =>
         expect(mocks.toast).toHaveBeenCalledWith(
-          expect.objectContaining({ kind: 'success', title: 'Now on the pro plan' })
+          expect.objectContaining({ kind: 'success', title: 'Now on the Pro plan' })
         )
       );
     });
@@ -242,22 +248,7 @@ describe('Plan change', () => {
       const [mode, opts] = mocks.openMfa.mock.calls[1];
       expect(mode).toBe('verify');
       expect(opts.reason).toMatch(/new code from your authenticator/i);
-    });
-
-    it('does not retry after a recovery code, and says an authenticator code is needed', async () => {
-      mocks.changePlan.mockRejectedValue(stepUpRequired());
-      answerWith((o) => o.onVerified('recovery'));
-      await switchToPro();
-      await waitFor(() =>
-        expect(mocks.toast).toHaveBeenCalledWith(
-          expect.objectContaining({
-            kind: 'error',
-            description: expect.stringMatching(/recovery code does not count.*authenticator app/i),
-          })
-        )
-      );
-      expect(mocks.changePlan).toHaveBeenCalledTimes(1);
-      expect(mocks.openMfa).toHaveBeenCalledTimes(1);
+      expect(opts.allowRecovery).toBe(false);
     });
 
     it('explains what to do when the verification is dismissed', async () => {
@@ -282,6 +273,16 @@ describe('Plan change', () => {
       await waitFor(() => expect(mocks.toast).toHaveBeenCalled());
       expect(mocks.changePlan).toHaveBeenCalledTimes(2);
       expect(mocks.openMfa).toHaveBeenCalledTimes(1);
+      // The code was just accepted; asking for it again would read as a loop.
+      expect(mocks.toast).not.toHaveBeenCalledWith(
+        expect.objectContaining({ description: expect.stringMatching(/confirm it.s you/i) })
+      );
+      expect(mocks.toast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: 'error',
+          description: expect.stringMatching(/could not be confirmed.*try again/i),
+        })
+      );
     });
   });
 });
