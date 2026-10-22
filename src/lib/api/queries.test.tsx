@@ -111,6 +111,28 @@ describe('analytics query contracts', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it('restarts an app with fresh=true so new secrets apply', async () => {
+    const fetchMock = vi.fn(async (request: Request) => {
+      const url = urlOf(request);
+      expect(request.method).toBe('POST');
+      expect(url.pathname).toBe('/v1/apps/imgpipe-gateway/restart');
+      expect(url.searchParams.get('fresh')).toBe('true');
+      return new Response(JSON.stringify({ wake_id: 'w1' }), {
+        status: 202,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+    stubApiFetch(fetchMock);
+    const { useFreshRestart } = await import('./queries');
+    const hook = renderHook(() => useFreshRestart('imgpipe-gateway'), {
+      wrapper: queryWrapper(new QueryClient()),
+    });
+    await act(async () => {
+      await hook.result.current.mutateAsync();
+    });
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
   it('does not submit a repository binding when CSRF issuance fails', async () => {
     const fetchMock = vi
       .fn()

@@ -1,10 +1,13 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from '@/lib/api/errors';
 import { SecretsBody } from './dashboard.secrets';
 
 const mocks = vi.hoisted(() => ({
   set: vi.fn(),
+  rotate: vi.fn(),
+  restart: vi.fn(),
   confirm: vi.fn(),
   toast: vi.fn(),
 }));
@@ -21,13 +24,16 @@ vi.mock('@/lib/api/queries', () => ({
   }),
   useSetSecret: () => ({ mutateAsync: mocks.set, isPending: false }),
   useDeleteSecret: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  useRotateSecret: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useRotateSecret: () => ({ mutateAsync: mocks.rotate, isPending: false }),
+  useFreshRestart: () => ({ mutateAsync: mocks.restart, isPending: false }),
 }));
 
 const PEM = '-----BEGIN PRIVATE KEY-----\nMIIEvQIBADAN\n-----END PRIVATE KEY-----';
 
 beforeEach(() => {
   mocks.set.mockReset().mockResolvedValue({});
+  mocks.rotate.mockReset().mockResolvedValue({ key: 'API_TOKEN', kid: 'k2' });
+  mocks.restart.mockReset().mockResolvedValue({ wake_id: 'w1' });
   mocks.confirm.mockReset();
   mocks.toast.mockReset();
 });
@@ -66,5 +72,112 @@ describe('Secrets', () => {
     await save(user, 'NEW_KEY', 'value');
     await waitFor(() => expect(mocks.set).toHaveBeenCalled());
     expect(mocks.confirm).not.toHaveBeenCalled();
+  });
+
+  it('says the new value applies on the next cold start or a restart when replacing', async () => {
+    const user = userEvent.setup();
+    mocks.confirm.mockResolvedValue(false);
+    render(<SecretsBody slug="alpha" />);
+    await save(user, 'API_TOKEN', 'new-value');
+    await waitFor(() =>
+      expect(mocks.confirm).toHaveBeenCalledWith(
+        expect.objectContaining({
+          description: expect.stringMatching(/next cold start,? or .*restart/i),
+        })
+      )
+    );
+  });
+
+  describe('applying new values', () => {
+    const NOTICE = { name: 'Apply the new values' };
+
+    it('shows no notice before anything has been saved', () => {
+      render(<SecretsBody slug="alpha" />);
+      expect(screen.queryByRole('status', NOTICE)).toBeNull();
+    });
+
+    it('warns that running instances keep the previous values after a save', async () => {
+      const user = userEvent.setup();
+      render(<SecretsBody slug="alpha" />);
+      await save(user, 'NEW_KEY', 'value');
+      const notice = await screen.findByRole('status', NOTICE);
+      expect(notice).toHaveTextContent(
+        'Running instances keep the previous values until they restart.'
+      );
+      expect(
+        within(notice).getByRole('button', { name: 'Restart with the new values' })
+      ).toBeInTheDocument();
+    });
+
+    it('shows the same notice after a rotation', async () => {
+      const user = userEvent.setup();
+      render(<SecretsBody slug="alpha" />);
+      await user.click(screen.getByRole('button', { name: 'Rotate' }));
+      await user.click(screen.getByLabelText('New value'));
+      await user.paste('rotated');
+      await user.click(screen.getByRole('button', { name: 'Rotate secret' }));
+      await waitFor(() => expect(mocks.rotate).toHaveBeenCalled());
+      expect(await screen.findByRole('status', NOTICE)).toBeInTheDocument();
+    });
+
+    it('does not show the notice when the save failed', async () => {
+      const user = userEvent.setup();
+      mocks.set.mockRejectedValue(new Error('nope'));
+      render(<SecretsBody slug="alpha" />);
+      await save(user, 'NEW_KEY', 'value');
+      await waitFor(() =>
+        expect(mocks.toast).toHaveBeenCalledWith(expect.objectContaining({ kind: 'error' }))
+      );
+      expect(screen.queryByRole('status', NOTICE)).toBeNull();
+    });
+
+    async function savedThenRestart(user: ReturnType<typeof userEvent.setup>) {
+      render(<SecretsBody slug="alpha" />);
+      await save(user, 'NEW_KEY', 'value');
+      await user.click(await screen.findByRole('button', { name: 'Restart with the new values' }));
+    }
+
+    it('asks before restarting and does nothing when declined', async () => {
+      const user = userEvent.setup();
+      mocks.confirm.mockResolvedValue(false);
+      await savedThenRestart(user);
+      await waitFor(() => expect(mocks.confirm).toHaveBeenCalled());
+      expect(mocks.restart).not.toHaveBeenCalled();
+      expect(screen.getByRole('status', NOTICE)).toBeInTheDocument();
+    });
+
+    it('restarts fresh once confirmed, reports it queued, and clears the notice', async () => {
+      const user = userEvent.setup();
+      mocks.confirm.mockResolvedValue(true);
+      await savedThenRestart(user);
+      await waitFor(() => expect(mocks.restart).toHaveBeenCalledTimes(1));
+      expect(mocks.toast).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 'success', title: 'Restart queued' })
+      );
+      await waitFor(() => expect(screen.queryByRole('status', NOTICE)).toBeNull());
+    });
+
+    it('shows the API message and keeps the notice when the restart is refused', async () => {
+      const user = userEvent.setup();
+      mocks.confirm.mockResolvedValue(true);
+      mocks.restart.mockRejectedValue(
+        new ApiError({
+          status: 409,
+          code: 'conflict',
+          title: 'Restart already in progress',
+          detail: 'wait for the accepted restart to finish before retrying',
+        })
+      );
+      await savedThenRestart(user);
+      await waitFor(() =>
+        expect(mocks.toast).toHaveBeenCalledWith(
+          expect.objectContaining({
+            kind: 'error',
+            description: 'wait for the accepted restart to finish before retrying',
+          })
+        )
+      );
+      expect(screen.getByRole('status', NOTICE)).toBeInTheDocument();
+    });
   });
 });

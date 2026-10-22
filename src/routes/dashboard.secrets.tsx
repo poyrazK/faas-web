@@ -8,7 +8,13 @@ import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-
 import { useToast } from '@/components/ui/toast';
 import { Modal } from '@/components/ui/modal';
 import { useConfirm } from '@/components/ui/confirm';
-import { useAppSecrets, useDeleteSecret, useSetSecret, useRotateSecret } from '@/lib/api/queries';
+import {
+  useAppSecrets,
+  useDeleteSecret,
+  useFreshRestart,
+  useSetSecret,
+  useRotateSecret,
+} from '@/lib/api/queries';
 import { errorMessage } from '@/lib/api/errors';
 import { EnvImportButton } from '@/components/dashboard/env-import';
 import { SecretValueField } from '@/components/dashboard/secret-value-field';
@@ -62,6 +68,12 @@ export function SecretsBody({ slug }: { slug: string }) {
   const setSecret = useSetSecret(slug);
   const deleteSecret = useDeleteSecret(slug);
   const rotate = useRotateSecret(slug);
+  const freshRestart = useFreshRestart(slug);
+  // A write seals the value and stamps the change, but starts nothing:
+  // running instances read their environment once, at boot. Tracked per app so
+  // switching apps never carries the notice across.
+  const [unappliedFor, setUnappliedFor] = useState<string | null>(null);
+  const unapplied = unappliedFor === slug;
   const [rotating, setRotating] = useState<string | null>(null);
   const [rotateValue, setRotateValue] = useState('');
 
@@ -80,11 +92,37 @@ export function SecretsBody({ slug }: { slug: string }) {
         setKey('');
         setValue('');
         setKeyTouched(false);
+        setUnappliedFor(slug);
         toast({ kind: 'success', title: 'Secret saved' });
       })
       .catch((err: unknown) =>
         toast({ kind: 'error', title: 'Could not save', description: errorMessage(err) })
       );
+
+  const applyNow = async () => {
+    if (
+      !(await confirm({
+        title: 'Restart with the new values?',
+        description:
+          'Replacement instances boot from scratch with the current secrets and environment variables. Old instances stop taking new requests and drain before they are destroyed.',
+        confirmLabel: 'Restart now',
+      }))
+    )
+      return;
+    void freshRestart
+      .mutateAsync()
+      .then(() => {
+        setUnappliedFor(null);
+        toast({
+          kind: 'success',
+          title: 'Restart queued',
+          description: 'Instances are replaced in the background.',
+        });
+      })
+      .catch((err: unknown) =>
+        toast({ kind: 'error', title: 'Could not restart', description: errorMessage(err) })
+      );
+  };
 
   const rows = useMemo<SecretRow[]>(
     () =>
@@ -159,6 +197,21 @@ export function SecretsBody({ slug }: { slug: string }) {
         <EnvImportButton slug={slug} existingKeys={rows.map((r) => r.key)} />
       </div>
 
+      {unapplied && (
+        <div
+          role="status"
+          aria-label="Apply the new values"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card px-4 py-3"
+        >
+          <p className="text-sm text-muted-foreground">
+            Running instances keep the previous values until they restart.
+          </p>
+          <Button size="sm" variant="outline" busy={freshRestart.isPending} onClick={applyNow}>
+            Restart with the new values
+          </Button>
+        </div>
+      )}
+
       <Panel lit title="Set a secret">
         <form
           className="flex flex-wrap items-end gap-3"
@@ -174,7 +227,7 @@ export function SecretsBody({ slug }: { slug: string }) {
                 ? confirm({
                     title: `Replace ${name}?`,
                     description:
-                      'Its current value is overwritten and cannot be recovered. Instances pick up the new value when they next start.',
+                      "Its current value is overwritten and cannot be recovered. The new value applies on the app's next cold start, or when you restart it.",
                     confirmLabel: 'Replace secret',
                     destructive: true,
                   })
@@ -272,6 +325,7 @@ export function SecretsBody({ slug }: { slug: string }) {
                   .mutateAsync({ key: rotating, value: rotateValue })
                   .then((r) => {
                     setRotating(null);
+                    setUnappliedFor(slug);
                     toast({
                       kind: 'success',
                       title: `Rotated ${r.key}`,
