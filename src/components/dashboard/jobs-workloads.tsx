@@ -249,7 +249,7 @@ export function WorkloadsBody({ search, onSelection }: JobsSelectionProps) {
         {job && selectedJob && (
           <Panel
             title={`Definition — ${job}`}
-            description="Current configuration. Further changes can be made with the CLI."
+            description="Current configuration. Changing the image, command, environment, resources, or schedule still takes gregale jobs update."
             actions={
               <JobActions
                 name={job}
