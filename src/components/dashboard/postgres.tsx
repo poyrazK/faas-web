@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Database, Plus, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
@@ -359,6 +359,33 @@ function Bindings({ database }: { database: PostgresDatabase }) {
   const appList = apps.data ?? [];
   const chosenApp = appId || appList[0]?.id || '';
   const appName = (id: string) => appList.find((a) => a.id === id)?.slug ?? id.slice(0, 8);
+  // Rotations started here that apid answered as still pending, keyed by
+  // binding id, with the generation each one minted. Polling keeps running
+  // while any binding is pending, so the settle is seen and said once.
+  const settling = useRef(new Map<string, number>());
+
+  const polled = bindings.data;
+  const knownApps = apps.data;
+  useEffect(() => {
+    if (!polled) return;
+    for (const [id, generation] of settling.current) {
+      const binding = polled.items.find((b) => b.id === id);
+      // A read from before the rotation landed still carries the old generation.
+      if (binding && (binding.rotation_pending || binding.credential_generation < generation))
+        continue;
+      settling.current.delete(id);
+      // apid clears the pending flag on a finished refresh (back to ready) and
+      // on a delete; only the first is a rotation completing.
+      if (binding?.state !== 'ready') continue;
+      const app =
+        knownApps?.find((a) => a.id === binding.app_id)?.slug ?? binding.app_id.slice(0, 8);
+      toast({
+        kind: 'success',
+        title: `Credentials rotated to v${binding.credential_generation}`,
+        description: `${app} has finished refreshing onto the new ${binding.environment_key} secret. The previous credential no longer works.`,
+      });
+    }
+  }, [polled, knownApps, toast]);
 
   const submit = async () => {
     try {
@@ -414,10 +441,11 @@ function Bindings({ database }: { database: PostgresDatabase }) {
     rotation.current.set(binding.id, attempt);
     try {
       const result = await rotate.mutateAsync({ id: binding.id, idempotencyKey: attempt.key });
+      if (result.rotation_pending) settling.current.set(binding.id, result.credential_generation);
       toast(
         result.rotation_pending
           ? {
-              kind: 'success',
+              kind: 'info',
               title: `Rotation accepted: credentials v${result.credential_generation}`,
               description: `The app is refreshing onto the new ${result.environment_key} secret. It has not finished: the previous credential keeps working until the refresh completes.`,
             }

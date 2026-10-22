@@ -229,7 +229,13 @@ describe('PostgresDatabases', () => {
     it('reports a rotation still in progress as accepted, never as rotated', async () => {
       await userEvent.click(await openBindings());
       await waitFor(() => expect(toast).toHaveBeenCalled());
-      const shown = toast.mock.calls[0]![0] as { title: string; description?: string };
+      const shown = toast.mock.calls[0]![0] as {
+        kind: string;
+        title: string;
+        description?: string;
+      };
+      // Nothing has succeeded yet, so the toast is not styled as a success.
+      expect(shown.kind).toBe('info');
       expect(shown.title).toMatch(/accepted/i);
       expect(shown.description).toMatch(/not finished|has not finished/i);
       expect(`${shown.title} ${shown.description}`).not.toMatch(/\brotated\b/i);
@@ -244,6 +250,90 @@ describe('PostgresDatabases', () => {
       expect(toast).toHaveBeenCalledWith(
         expect.objectContaining({ kind: 'success', title: 'Credentials rotated to v3' })
       );
+    });
+
+    describe('when the rotation settles', () => {
+      const rotated = (over: Record<string, unknown>) => ready({ items: [binding(over)] });
+
+      it('says the credentials rotated once polling sees rotation_pending clear', async () => {
+        const view = render(<PostgresDatabases />);
+        await userEvent.click(screen.getByRole('button', { name: /orders/i }));
+        await userEvent.click(
+          await screen.findByRole('button', { name: /rotate credentials for api-gateway/i })
+        );
+        await waitFor(() => expect(toast).toHaveBeenCalledTimes(1));
+
+        usePostgresBindings.mockReturnValue(
+          rotated({ credential_generation: 3, rotation_pending: true })
+        );
+        view.rerender(<PostgresDatabases />);
+        expect(toast).toHaveBeenCalledTimes(1);
+
+        usePostgresBindings.mockReturnValue(
+          rotated({ credential_generation: 3, rotation_pending: false })
+        );
+        view.rerender(<PostgresDatabases />);
+        await waitFor(() => expect(toast).toHaveBeenCalledTimes(2));
+        expect(toast).toHaveBeenLastCalledWith(
+          expect.objectContaining({ kind: 'success', title: 'Credentials rotated to v3' })
+        );
+
+        // Said once: later polls of the settled binding stay quiet.
+        usePostgresBindings.mockReturnValue(
+          rotated({ credential_generation: 3, rotation_pending: false })
+        );
+        view.rerender(<PostgresDatabases />);
+        expect(toast).toHaveBeenCalledTimes(2);
+      });
+
+      it('does not take a stale read from before the rotation as it settling', async () => {
+        const view = render(<PostgresDatabases />);
+        await userEvent.click(screen.getByRole('button', { name: /orders/i }));
+        await userEvent.click(
+          await screen.findByRole('button', { name: /rotate credentials for api-gateway/i })
+        );
+        await waitFor(() => expect(toast).toHaveBeenCalledTimes(1));
+
+        // A poll that left before the rotation landed: old generation, not pending.
+        usePostgresBindings.mockReturnValue(
+          rotated({ credential_generation: 2, rotation_pending: false })
+        );
+        view.rerender(<PostgresDatabases />);
+        expect(toast).toHaveBeenCalledTimes(1);
+      });
+
+      it('does not call a binding deleted mid-rotation rotated', async () => {
+        const view = render(<PostgresDatabases />);
+        await userEvent.click(screen.getByRole('button', { name: /orders/i }));
+        await userEvent.click(
+          await screen.findByRole('button', { name: /rotate credentials for api-gateway/i })
+        );
+        await waitFor(() => expect(toast).toHaveBeenCalledTimes(1));
+
+        // apid also clears the pending flag when the binding is deleted.
+        usePostgresBindings.mockReturnValue(
+          rotated({ credential_generation: 3, rotation_pending: false, state: 'deleting' })
+        );
+        view.rerender(<PostgresDatabases />);
+        await screen.findByText('deleting');
+        expect(toast).toHaveBeenCalledTimes(1);
+      });
+
+      it('says nothing for a rotation this page did not start', async () => {
+        usePostgresBindings.mockReturnValue(
+          rotated({ credential_generation: 3, rotation_pending: true })
+        );
+        const view = render(<PostgresDatabases />);
+        await userEvent.click(screen.getByRole('button', { name: /orders/i }));
+        expect(await screen.findByText('rotation pending')).toBeInTheDocument();
+
+        usePostgresBindings.mockReturnValue(
+          rotated({ credential_generation: 3, rotation_pending: false })
+        );
+        view.rerender(<PostgresDatabases />);
+        await waitFor(() => expect(screen.queryByText('rotation pending')).toBeNull());
+        expect(toast).not.toHaveBeenCalled();
+      });
     });
 
     it('shows a rotation as pending on the binding and does not offer a second one', async () => {
