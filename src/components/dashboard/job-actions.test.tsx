@@ -363,6 +363,26 @@ describe('JobActions pause and resume', () => {
     );
   });
 
+  it('passes through a 409 that is not about active runs', async () => {
+    setStatus.mockRejectedValue(
+      new ApiError({
+        status: 409,
+        code: 'image_run_managed',
+        title: 'Image-run jobs are managed by the platform',
+      })
+    );
+    const { user } = setup('active');
+    await user.click(screen.getByRole('button', { name: 'Pause' }));
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: 'error',
+          description: 'Image-run jobs are managed by the platform',
+        })
+      )
+    );
+  });
+
   it('resumes a paused workload', async () => {
     const { user } = setup('paused');
     expect(screen.queryByRole('button', { name: 'Pause' })).not.toBeInTheDocument();

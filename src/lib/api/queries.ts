@@ -1661,8 +1661,8 @@ export function useDeleteJob() {
 }
 
 /**
- * Pause or resume a job (`PATCH /v1/jobs/{name}` with `status`). Pausing halts
- * future dispatches without killing tasks already running; a paused job answers
+ * Pause or resume a job (`PATCH /v1/jobs/{name}` with `status`). apid refuses
+ * the change with 409 while any task is queued or claimed; a paused job answers
  * 409 to a run start.
  */
 export function useSetJobStatus() {

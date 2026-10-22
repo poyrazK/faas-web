@@ -49,10 +49,11 @@ export function JobActions({
     try {
       await setStatus.mutateAsync({ name, status: next });
     } catch (error) {
-      // apid refuses any update while a task is queued or claimed (409,
-      // "Job has active runs"; the code is the generic validation one, so the
-      // status is what identifies it).
-      const activeRuns = error instanceof ApiError && error.status === 409;
+      // apid refuses any update while a task is queued or claimed with 409
+      // validation_failed, "Job has active runs" (handlers_jobs.go). The other
+      // 409, image_run_managed, keeps its own message.
+      const activeRuns =
+        error instanceof ApiError && error.status === 409 && error.code === 'validation_failed';
       toast({
         kind: 'error',
         title: paused ? 'Could not resume' : 'Could not pause',

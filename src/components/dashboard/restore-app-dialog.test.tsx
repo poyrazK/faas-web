@@ -69,7 +69,7 @@ describe('RestoreAppDialog', () => {
     [
       'org_role_forbidden',
       403,
-      /role doesn't allow restoring apps, or the organization is suspended or past due/i,
+      /role doesn't allow restoring apps, or the organization is suspended or past due.*organization owner.*billing/i,
     ],
     ['billing_past_due', 402, /outstanding payment.*Plans page/i],
   ])('explains %s in its own words and keeps the dialog open', async (code, status, words) => {
