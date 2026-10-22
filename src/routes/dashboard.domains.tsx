@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { Activity, Plus, Trash } from 'iconoir-react';
 import { CopyIconButton } from '@/components/ui/copy-button';
@@ -219,7 +219,19 @@ function DomainsPage() {
     {
       key: 'domain',
       label: 'Domain',
-      render: (d) => <span className="font-mono">{d.domain}</span>,
+      // One line from md up. On a phone the column is narrow, so the name may
+      // break, but only before a dot, never mid-label.
+      render: (d) => (
+        <span className="font-mono [overflow-wrap:normal] md:whitespace-nowrap md:[&_wbr]:hidden">
+          {d.domain.split('.').map((label, i) => (
+            <Fragment key={i}>
+              {i > 0 && <wbr />}
+              {i > 0 && '.'}
+              {label}
+            </Fragment>
+          ))}
+        </span>
+      ),
     },
     {
       key: 'verified',
@@ -236,7 +248,9 @@ function DomainsPage() {
       key: 'app',
       label: 'Routes to',
       priority: 'secondary',
-      render: (d) => <span className="font-mono text-xs text-muted-foreground">{d.app}</span>,
+      render: (d) => (
+        <span className="whitespace-nowrap font-mono text-xs text-muted-foreground">{d.app}</span>
+      ),
     },
     {
       key: 'txtRecord',
@@ -250,7 +264,7 @@ function DomainsPage() {
             This verification expired. Get a new TXT record, then publish that value instead.
           </span>
         ) : (
-          <code className="select-all break-all text-xs text-muted-foreground">
+          <code className="select-all text-xs text-muted-foreground [overflow-wrap:anywhere]">
             {d.txtRecord ?? '—'}
           </code>
         ),
@@ -260,12 +274,13 @@ function DomainsPage() {
       label: 'Verified',
       priority: 'secondary',
       numeric: true,
-      render: (d) => formatDate(d.verifiedAt),
+      render: (d) => <span className="whitespace-nowrap">{formatDate(d.verifiedAt)}</span>,
     },
     {
       key: 'id',
       label: '',
-      width: 'w-80',
+      // As wide as its controls, so the TXT record gets the rest of the row.
+      width: 'w-0',
       render: (d) => (
         <div className="flex items-center justify-end gap-1.5">
           {!d.verified &&
