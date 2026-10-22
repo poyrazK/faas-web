@@ -76,6 +76,11 @@ export function SecretsBody({ slug }: { slug: string }) {
   const unapplied = unappliedFor === slug;
   const [rotating, setRotating] = useState<string | null>(null);
   const [rotateValue, setRotateValue] = useState('');
+  // Closing drops the typed value, which also puts the field back to masked.
+  const closeRotate = () => {
+    setRotating(null);
+    setRotateValue('');
+  };
 
   const [key, setKey] = useState('');
   const [value, setValue] = useState('');
@@ -314,12 +319,12 @@ export function SecretsBody({ slug }: { slug: string }) {
           crosses the wire once, exactly like create, and is never echoed. */}
       <Modal
         open={rotating !== null}
-        onClose={() => setRotating(null)}
+        onClose={closeRotate}
         title={rotating ? `Rotate ${rotating}` : ''}
         description="Provide the value again; it is re-sealed under the current host key and never shown after this."
         footer={
           <>
-            <Button variant="ghost" size="sm" onClick={() => setRotating(null)}>
+            <Button variant="ghost" size="sm" onClick={closeRotate}>
               Cancel
             </Button>
             <Button
@@ -331,7 +336,7 @@ export function SecretsBody({ slug }: { slug: string }) {
                 void rotate
                   .mutateAsync({ key: rotating, value: rotateValue })
                   .then((r) => {
-                    setRotating(null);
+                    closeRotate();
                     setUnappliedFor(slug);
                     toast({
                       kind: 'success',

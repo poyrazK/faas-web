@@ -61,6 +61,39 @@ describe('Secrets', () => {
     await waitFor(() => expect(mocks.set).toHaveBeenCalledWith({ key: 'TLS_KEY', value: PEM }));
   });
 
+  it('masks the value field again after a multi-line secret is saved', async () => {
+    const user = userEvent.setup();
+    render(<SecretsBody slug="alpha" />);
+    await save(user, 'TLS_KEY', PEM);
+    await waitFor(() => expect(mocks.set).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByLabelText('Value').tagName).toBe('INPUT'));
+    expect(screen.getByLabelText('Value')).toHaveAttribute('type', 'password');
+  });
+
+  it('keeps the multi-line value when the save fails', async () => {
+    const user = userEvent.setup();
+    mocks.set.mockRejectedValue(new Error('nope'));
+    render(<SecretsBody slug="alpha" />);
+    await save(user, 'TLS_KEY', PEM);
+    await waitFor(() =>
+      expect(mocks.toast).toHaveBeenCalledWith(expect.objectContaining({ kind: 'error' }))
+    );
+    expect(screen.getByLabelText('Value').tagName).toBe('TEXTAREA');
+    expect(screen.getByLabelText('Value')).toHaveValue(PEM);
+  });
+
+  it('masks the rotate field again when the dialog is closed and reopened', async () => {
+    const user = userEvent.setup();
+    render(<SecretsBody slug="alpha" />);
+    await user.click(screen.getByRole('button', { name: 'Rotate' }));
+    await user.click(screen.getByLabelText('New value'));
+    await user.paste(PEM);
+    expect(screen.getByLabelText('New value').tagName).toBe('TEXTAREA');
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    await user.click(screen.getByRole('button', { name: 'Rotate' }));
+    expect(await screen.findByLabelText('New value')).toHaveAttribute('type', 'password');
+  });
+
   it('asks before replacing a secret that already exists', async () => {
     const user = userEvent.setup();
     mocks.confirm.mockResolvedValue(false);

@@ -8,7 +8,9 @@ const FIELD =
  * A secret's value. Masked while it is one line; a password input strips line
  * breaks, which mangles PEM keys and other multi-line secrets, so pasting text
  * with line breaks (or choosing "Multi-line value") switches to a textarea
- * that keeps them. The textarea is not masked: multi-line text cannot be.
+ * that keeps them. The textarea is not masked: multi-line text cannot be, so
+ * once the parent clears the value (a save went through, a dialog closed) the
+ * field goes back to masked: the next secret typed must not show in clear.
  */
 export function SecretValueField({
   label,
@@ -25,6 +27,18 @@ export function SecretValueField({
 }) {
   const id = useId();
   const [multiline, setMultiline] = useState(() => value.includes('\n'));
+  // The last value this field reported. An empty value it did not report is the
+  // parent resetting the form; clearing the textarea by hand is not, and keeps
+  // the mode the user chose.
+  const [emitted, setEmitted] = useState(value);
+  if (value === '' && emitted !== '') {
+    setEmitted('');
+    setMultiline(false);
+  }
+  const emit = (next: string) => {
+    setEmitted(next);
+    onChange(next);
+  };
   return (
     <div className={cn('flex flex-col gap-1.5', className)}>
       <span className="flex items-center justify-between gap-2">
@@ -45,7 +59,7 @@ export function SecretValueField({
         <textarea
           id={id}
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => emit(e.target.value)}
           rows={6}
           autoComplete="off"
           spellCheck={false}
@@ -57,7 +71,7 @@ export function SecretValueField({
           id={id}
           type="password"
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => emit(e.target.value)}
           onPaste={(e) => {
             const pasted = e.clipboardData.getData('text');
             if (!pasted.includes('\n')) return;
@@ -66,7 +80,7 @@ export function SecretValueField({
             const start = input.selectionStart ?? value.length;
             const end = input.selectionEnd ?? value.length;
             setMultiline(true);
-            onChange(value.slice(0, start) + pasted + value.slice(end));
+            emit(value.slice(0, start) + pasted + value.slice(end));
           }}
           autoComplete="off"
           placeholder={placeholder}

@@ -45,4 +45,34 @@ describe('SecretValueField', () => {
     await user.type(screen.getByLabelText('Value'), 'line one{Enter}line two');
     expect(onValue).toHaveBeenLastCalledWith('line one\nline two');
   });
+
+  it('goes back to masked when the parent clears the value', async () => {
+    const user = userEvent.setup();
+    function Resettable() {
+      const [value, setValue] = useState('');
+      return (
+        <>
+          <SecretValueField label="Value" value={value} onChange={setValue} />
+          <button type="button" onClick={() => setValue('')}>
+            reset
+          </button>
+        </>
+      );
+    }
+    render(<Resettable />);
+    await user.click(screen.getByLabelText('Value'));
+    await user.paste(PEM);
+    expect(screen.getByLabelText('Value').tagName).toBe('TEXTAREA');
+    await user.click(screen.getByRole('button', { name: 'reset' }));
+    expect(screen.getByLabelText('Value')).toHaveAttribute('type', 'password');
+  });
+
+  it('stays multi-line when the user empties the textarea by hand', async () => {
+    const user = userEvent.setup();
+    render(<Harness onValue={vi.fn()} />);
+    await user.click(screen.getByRole('button', { name: 'Multi-line value' }));
+    await user.type(screen.getByLabelText('Value'), 'ab');
+    await user.clear(screen.getByLabelText('Value'));
+    expect(screen.getByLabelText('Value').tagName).toBe('TEXTAREA');
+  });
 });
