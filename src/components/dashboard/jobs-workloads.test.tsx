@@ -28,6 +28,7 @@ vi.mock('@/lib/api/queries', () => ({
   useJobs: () => ({ data: { jobs: [job] }, error: null, isPending: false, refetch: vi.fn() }),
   useStartJobRun: () => ({ mutateAsync: startRun, isPending: false }),
   useDeleteJob: () => ({ mutateAsync: deleteJob, isPending: false }),
+  useSetJobStatus: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => confirm }));

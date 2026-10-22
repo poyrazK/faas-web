@@ -441,3 +441,25 @@ describe('outbound bindings through the mock', () => {
     expect((await json(bindingsOf('bind-e'))).body.items).toEqual([]);
   });
 });
+
+describe('PATCH /v1/jobs/{name}', () => {
+  const patch = (name: string, body: unknown) =>
+    json(`/v1/jobs/${name}`, { method: 'PATCH', body: JSON.stringify(body) });
+
+  it('pauses and resumes a job, and a paused job refuses a run with 409', async () => {
+    expect((await patch('reindex-search', { status: 'paused' })).body.status).toBe('paused');
+    const refused = await json('/v1/jobs/reindex-search/runs', {
+      method: 'POST',
+      body: JSON.stringify({ tasks: 1 }),
+    });
+    expect(refused.status).toBe(409);
+    expect((await patch('reindex-search', { status: 'active' })).body.status).toBe('active');
+    expect((await json('/v1/jobs/reindex-search')).body.status).toBe('active');
+  });
+
+  it('refuses a status other than active or paused, and an unknown job', async () => {
+    const bad = await patch('nightly-export', { status: 'deleted' });
+    expect(bad.status).toBe(400);
+    expect((await patch('no-such-job', { status: 'paused' })).status).toBe(404);
+  });
+});

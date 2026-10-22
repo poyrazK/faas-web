@@ -5,12 +5,14 @@ import { ApiError } from '@/lib/api/errors';
 
 const startRun = vi.fn();
 const deleteJob = vi.fn();
+const setStatus = vi.fn();
 const toast = vi.fn();
 const confirm = vi.fn();
 
 vi.mock('@/lib/api/queries', () => ({
   useStartJobRun: () => ({ mutateAsync: startRun, isPending: false }),
   useDeleteJob: () => ({ mutateAsync: deleteJob, isPending: false }),
+  useSetJobStatus: () => ({ mutateAsync: setStatus, isPending: false }),
 }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => confirm }));
@@ -31,6 +33,7 @@ function setup(status = 'active') {
 beforeEach(() => {
   startRun.mockReset().mockResolvedValue(queued);
   deleteJob.mockReset().mockResolvedValue(undefined);
+  setStatus.mockReset().mockResolvedValue({});
   toast.mockReset();
   confirm.mockReset().mockResolvedValue(true);
 });
@@ -212,6 +215,27 @@ describe('JobActions delete', () => {
     expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Workload deleted' }));
   });
 
+  it('says run history and logs stop being available, and that pausing keeps them', async () => {
+    const { user } = setup();
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+    const { description } = confirm.mock.calls[0]?.[0] as { description: string };
+    expect(description).toMatch(
+      /run history and logs .*no longer available in the console or the API/i
+    );
+    expect(description).toMatch(/pausing .*keeps them/i);
+  });
+
+  it('treats a 404 as already deleted: success toast, and the selection is cleared', async () => {
+    deleteJob.mockRejectedValue(
+      new ApiError({ status: 404, code: 'not_found', title: 'no such job' })
+    );
+    const { user, onDeleted } = setup();
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+    await waitFor(() => expect(onDeleted).toHaveBeenCalledOnce());
+    expect(toast).toHaveBeenCalledWith(expect.objectContaining({ kind: 'success' }));
+    expect(toast).not.toHaveBeenCalledWith(expect.objectContaining({ kind: 'error' }));
+  });
+
   it('deletes nothing when the confirm is declined', async () => {
     confirm.mockResolvedValue(false);
     const { user, onDeleted } = setup();
@@ -246,6 +270,48 @@ describe('JobActions delete', () => {
     await waitFor(() =>
       expect(toast).toHaveBeenCalledWith(
         expect.objectContaining({ kind: 'error', title: 'Could not delete', description: 'Boom' })
+      )
+    );
+  });
+});
+
+describe('JobActions pause and resume', () => {
+  it('pauses an active workload without a confirm, and says running tasks carry on', async () => {
+    const { user } = setup('active');
+    expect(screen.queryByRole('button', { name: 'Resume' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Pause' }));
+    await waitFor(() =>
+      expect(setStatus).toHaveBeenCalledWith({ name: 'nightly-export', status: 'paused' })
+    );
+    expect(confirm).not.toHaveBeenCalled();
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'success',
+        title: 'Workload paused',
+        description: expect.stringMatching(/running tasks (carry on|continue)/i),
+      })
+    );
+  });
+
+  it('resumes a paused workload', async () => {
+    const { user } = setup('paused');
+    expect(screen.queryByRole('button', { name: 'Pause' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Resume' }));
+    await waitFor(() =>
+      expect(setStatus).toHaveBeenCalledWith({ name: 'nightly-export', status: 'active' })
+    );
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'success', title: 'Workload resumed' })
+    );
+  });
+
+  it('reports a refusal with the API message', async () => {
+    setStatus.mockRejectedValue(new ApiError({ status: 500, code: 'internal', title: 'Boom' }));
+    const { user } = setup('active');
+    await user.click(screen.getByRole('button', { name: 'Pause' }));
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 'error', title: 'Could not pause', description: 'Boom' })
       )
     );
   });

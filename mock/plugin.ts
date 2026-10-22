@@ -4816,6 +4816,25 @@ route('POST', '/v1/jobs/{name}/runs', ({ params, body }) => {
   return status(201, run);
 });
 
+// Pause or resume. The real API (updateJob) accepts only active or paused here;
+// the other fields are a partial update the console does not send.
+route('PATCH', '/v1/jobs/{name}', ({ params, body }) => {
+  gateJobs();
+  const job = jobs.find((j) => j.name === params.name);
+  if (!job) throw new Problem(404, 'job_not_found', 'no such job');
+  if (body.status !== undefined) {
+    if (body.status !== 'active' && body.status !== 'paused')
+      throw new Problem(
+        400,
+        'validation_failed',
+        "status must be 'active' or 'paused' (use DELETE for soft-delete)"
+      );
+    job.status = body.status;
+    job.updated_at = db.iso(0);
+  }
+  return job;
+});
+
 // Soft delete. The real API refuses with 409 job_has_live_instances while any
 // task of the job is still queued or running; the mock reads that off run state.
 route('DELETE', '/v1/jobs/{name}', ({ params }) => {

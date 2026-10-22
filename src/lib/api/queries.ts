@@ -1651,6 +1651,20 @@ export function useDeleteJob() {
   });
 }
 
+/**
+ * Pause or resume a job (`PATCH /v1/jobs/{name}` with `status`). Pausing halts
+ * future dispatches without killing tasks already running; a paused job answers
+ * 409 to a run start.
+ */
+export function useSetJobStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ name, status }: { name: string; status: 'active' | 'paused' }) =>
+      unwrap(api.PATCH('/v1/jobs/{name}', { params: { path: { name } }, body: { status } })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.jobs }),
+  });
+}
+
 export type Job = components['schemas']['JobResponse'];
 export type JobRun = components['schemas']['JobRunResponse'];
 export type JobTask = components['schemas']['JobTaskResponse'];

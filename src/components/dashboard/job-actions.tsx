@@ -1,12 +1,12 @@
 import { useRef, useState, type RefObject } from 'react';
-import { Play, Trash } from 'iconoir-react';
+import { Pause, Play, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
 import { FIELD, FieldError, fieldErrorProps } from '@/components/ui/field';
 import { Modal } from '@/components/ui/modal';
 import { useToast } from '@/components/ui/toast';
 import { ApiError, errorMessage } from '@/lib/api/errors';
-import { useDeleteJob, useStartJobRun } from '@/lib/api/queries';
+import { useDeleteJob, useSetJobStatus, useStartJobRun } from '@/lib/api/queries';
 
 /** `CreateJobRunRequest.tasks` is 1–5000; the plan may clamp it lower. */
 const MAX_TASKS = 5000;
@@ -14,7 +14,7 @@ const MAX_TASKS = 5000;
 const plural = (n: number) => `${n} ${n === 1 ? 'task' : 'tasks'}`;
 
 /**
- * Start a run of a workload, or delete it.
+ * Start a run of a workload, pause or resume it, or delete it.
  *
  * Starting a run launches real, billable tasks, so it goes in two steps: pick
  * how many tasks, then a confirm that says what is about to happen. The
@@ -40,15 +40,43 @@ export function JobActions({
   const confirm = useConfirm();
   const { toast } = useToast();
   const remove = useDeleteJob();
+  const setStatus = useSetJobStatus();
   // A paused workload answers 409 to a run; say so up front instead of after.
   const paused = status === 'paused';
+
+  const onToggle = async () => {
+    const next = paused ? 'active' : 'paused';
+    try {
+      await setStatus.mutateAsync({ name, status: next });
+    } catch (error) {
+      toast({
+        kind: 'error',
+        title: paused ? 'Could not resume' : 'Could not pause',
+        description: errorMessage(error),
+      });
+      return;
+    }
+    toast(
+      paused
+        ? {
+            kind: 'success',
+            title: 'Workload resumed',
+            description: `${name} can start runs again.`,
+          }
+        : {
+            kind: 'success',
+            title: 'Workload paused',
+            description: `No new tasks start. Running tasks continue, and run history and logs are kept.`,
+          }
+    );
+  };
 
   const onDelete = async () => {
     if (
       !(await confirm({
         title: `Delete ${name}?`,
         description:
-          'The workload is removed from your list and cannot start new runs. It is refused while any run still has tasks in flight, so cancel those runs or wait for them to finish first.',
+          'The workload is removed from your list and cannot start new runs. Its run history and logs are no longer available in the console or the API, and the name can be used again. Pausing keeps them. Delete is refused while any run still has tasks in flight, so cancel those runs or wait for them to finish first.',
         confirmLabel: 'Delete workload',
         destructive: true,
         typeToConfirm: name,
@@ -58,6 +86,18 @@ export function JobActions({
     try {
       await remove.mutateAsync(name);
     } catch (error) {
+      // The delete is a soft delete and every read of a deleted job is a 404, so
+      // a 404 here means it is already gone, which is what was asked for.
+      const alreadyGone = error instanceof ApiError && error.status === 404;
+      if (alreadyGone) {
+        toast({
+          kind: 'success',
+          title: 'Workload deleted',
+          description: `${name} was already deleted.`,
+        });
+        onDeleted();
+        return;
+      }
       if (error instanceof ApiError && error.code === 'job_has_live_instances') {
         toast({
           kind: 'error',
@@ -85,6 +125,15 @@ export function JobActions({
       <Button size="sm" disabled={paused} onClick={() => setStarting(true)}>
         <Play className="h-4 w-4" />
         Start run
+      </Button>
+      <Button
+        size="sm"
+        variant="outline"
+        busy={setStatus.isPending}
+        onClick={() => void onToggle()}
+      >
+        {paused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
+        {paused ? 'Resume' : 'Pause'}
       </Button>
       <Button size="sm" variant="outline" busy={remove.isPending} onClick={() => void onDelete()}>
         <Trash className="h-4 w-4" />
