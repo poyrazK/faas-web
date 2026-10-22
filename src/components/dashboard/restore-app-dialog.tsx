@@ -34,7 +34,7 @@ export function restoreFailureMessage(err: unknown, slug: string): string {
       case 'plan_limit_developer_apps':
         return 'Restoring this app would go over the developer environments your plan allows. Stop an unused one or change plan on the Plans page, then restore again.';
       case 'org_role_forbidden':
-        return 'Your role in this organization does not allow restoring apps. Ask someone who manages the organization to restore it, or to change your role.';
+        return "Your role doesn't allow restoring apps, or the organization is suspended or past due. Ask an organization owner.";
       case 'billing_past_due':
         return 'Your account has an outstanding payment, so apps cannot be restored. Resolve billing on the Plans page, then restore again.';
     }

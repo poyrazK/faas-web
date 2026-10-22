@@ -66,7 +66,11 @@ describe('RestoreAppDialog', () => {
     ['mfa_required', 403, /Set up multi-factor authentication/],
     ['plan_limit_apps', 403, /apps allowed on your plan/i],
     ['plan_limit_developer_apps', 403, /developer environments .*plan/i],
-    ['org_role_forbidden', 403, /role in this organization does not allow restoring apps/i],
+    [
+      'org_role_forbidden',
+      403,
+      /role doesn't allow restoring apps, or the organization is suspended or past due/i,
+    ],
     ['billing_past_due', 402, /outstanding payment.*Plans page/i],
   ])('explains %s in its own words and keeps the dialog open', async (code, status, words) => {
     spyApi('POST').mockResolvedValue(problem(status, code, 'Title from the API') as never);
