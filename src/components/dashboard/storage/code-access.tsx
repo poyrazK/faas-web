@@ -1,4 +1,4 @@
-import { useId, useState, type FormEvent } from 'react';
+import { Fragment, useId, useState, type FormEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { CopyIconButton } from '@/components/ui/copy-button';
@@ -171,7 +171,8 @@ function ConnectForm({
         </div>
         <fieldset className="flex flex-col gap-2">
           <legend className="mb-2 text-xs text-muted-foreground">What the code may do</legend>
-          <div className="grid grid-cols-3 gap-1 rounded-xl border border-border bg-background p-1">
+          {/* Columns never narrower than their one-line label, so "Read and write" stays whole. */}
+          <div className="grid grid-cols-[repeat(3,minmax(min-content,1fr))] gap-1 rounded-xl border border-border bg-background p-1">
             {PERMISSIONS.map((p) => (
               <label
                 key={p.value}
@@ -190,7 +191,7 @@ function ConnectForm({
                   onChange={() => setPermission(p.value)}
                   className="sr-only"
                 />
-                <span className="font-medium">{p.label}</span>
+                <span className="whitespace-nowrap font-medium">{p.label}</span>
                 <span className="text-xs text-muted-foreground">{p.hint}</span>
               </label>
             ))}
@@ -237,7 +238,9 @@ function ConnectForm({
               key={key}
               className="flex items-baseline justify-between gap-4 border-t border-border/60 py-1.5 first:border-t-0"
             >
-              <dt className="min-w-0 font-mono text-xs [overflow-wrap:anywhere]">{env[key]}</dt>
+              <dt className="min-w-0 font-mono text-xs [overflow-wrap:anywhere]">
+                <BreakAtUnderscores name={env[key]} />
+              </dt>
               <dd className="shrink-0 text-xs text-muted-foreground">{role}</dd>
             </div>
           ))}
@@ -245,6 +248,25 @@ function ConnectForm({
       </div>
     </form>
   );
+}
+
+/**
+ * An env name may wrap after an underscore, so a long one splits between
+ * words (`…_SECRET_` / `ACCESS_KEY`) rather than mid-word. `overflow-wrap`
+ * on the parent stays as the last resort for a single overlong segment.
+ */
+function BreakAtUnderscores({ name }: { name: string }) {
+  const parts = name.split('_');
+  return parts.map((part, i) => (
+    <Fragment key={i}>
+      {part}
+      {i < parts.length - 1 && (
+        <>
+          _<wbr />
+        </>
+      )}
+    </Fragment>
+  ));
 }
 
 const VERB: Record<Permission, string> = {
