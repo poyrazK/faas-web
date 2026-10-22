@@ -175,6 +175,14 @@ export const SOURCE_LABELS: Record<ArtifactSource, string> = {
   unknown: 'Unknown',
 };
 
+/** Frames that begin a wake or a thaw; after a first byte, one opens a new generation. */
+const OPENERS = new Set([
+  'wake.thaw_breakdown',
+  'wake.queue_accepted',
+  'wake.admitted',
+  'wake.boot_started',
+]);
+
 const SOURCES: ArtifactSource[] = ['backend_local', 'cache_hit', 'materialized', 'direct'];
 
 const num = (v: unknown): number | undefined =>
@@ -341,15 +349,21 @@ export function parseWake(events: readonly RawWakeEvent[]): WakeAnatomy {
   consumed.sort((a, b) => a.t - b.t);
 
   // A frozen VM keeps one wake ID across thaws, and each thaw ends with its
-  // own first byte, so the timeline splits after every first byte.
+  // own first byte. A generation therefore closes at a first byte, but the
+  // next one opens only on a frame that starts a wake: schedd stamps
+  // boot_completed after publishing RUNNING, so it can trail the first byte
+  // and still belongs to the same wake.
   const groups: Item[][] = [];
   let current: Item[] = [];
+  let answered = false;
   for (const item of consumed) {
-    current.push(item);
-    if (item.ev.kind === 'wake.proxy_first_byte') {
+    if (answered && OPENERS.has(item.ev.kind)) {
       groups.push(current);
       current = [];
+      answered = false;
     }
+    current.push(item);
+    if (item.ev.kind === 'wake.proxy_first_byte') answered = true;
   }
   if (current.length) groups.push(current);
 

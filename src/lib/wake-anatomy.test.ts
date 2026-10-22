@@ -106,6 +106,19 @@ describe('parseWake', () => {
     expect(gens[2].totalMs).toBe(30);
   });
 
+  it('keeps a boot_completed that lands after the first byte in the same generation', () => {
+    // schedd publishes RUNNING before it stamps boot_completed, so a waiting
+    // request can reach its first byte first. That is still one wake.
+    const frames = restoreFrames().map((f) =>
+      f.kind === 'wake.boot_completed' ? { ...f, at: at(316) } : f
+    );
+    const gens = parseWake(frames).generations;
+    expect(gens).toHaveLength(1);
+    expect(gens[0].outcome).toEqual({ status: 'ready' });
+    expect(gens[0].method).toBe('restore');
+    expect(gens[0].totalMs).toBe(311);
+  });
+
   it('keeps frames after the last first byte as an in-progress generation', () => {
     const gens = parseWake([
       ...restoreFrames(),
