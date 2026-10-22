@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { Activity, Plus, Trash } from 'iconoir-react';
+import { CopyIconButton } from '@/components/ui/copy-button';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Modal } from '@/components/ui/modal';
@@ -13,11 +14,12 @@ import {
   useApps,
   useDeleteDomain,
   useDomains,
+  useRetryDomain,
   useVerifyDomain,
 } from '@/lib/api/queries';
 import { DomainDoctor } from '@/components/dashboard/domain-doctor';
 import { slugIndex } from '@/lib/api/adapters';
-import { errorMessage } from '@/lib/api/errors';
+import { ApiError, errorMessage } from '@/lib/api/errors';
 import { FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
 import { cn } from '@/lib/utils';
 
@@ -54,6 +56,9 @@ interface DomainRow {
   id: string;
   domain: string;
   app: string;
+  appId: string;
+  /** Project environment the route is scoped to; carried through a re-add. */
+  environment: string | null;
   verified: boolean;
   verifiedAt: string | null;
   txtRecord: string | null;
@@ -74,6 +79,11 @@ function DomainsPage() {
   const addDomain = useAddDomain();
   const deleteDomain = useDeleteDomain();
   const verifyDomain = useVerifyDomain();
+  const retryDomain = useRetryDomain();
+  // Hostnames whose TXT challenge the API refused to retry because it ran out.
+  const [expired, setExpired] = useState<ReadonlySet<string>>(new Set());
+  const [rearming, setRearming] = useState<string | null>(null);
+  const [newRecord, setNewRecord] = useState<{ domain: string; txt: string } | null>(null);
 
   // Keep diagnostics shareable and restorable with browser Back/Forward.
   const search = Route.useSearch();
@@ -103,11 +113,83 @@ function DomainsPage() {
       id: d.domain,
       domain: d.domain,
       app: bySlug.get(d.app_id) ?? d.app_id,
+      appId: d.app_id,
+      environment: d.environment ?? null,
       verified: d.verified,
       verifiedAt: d.verified_at ?? null,
       txtRecord: d.txt_record ?? null,
     }));
   }, [data, apps]);
+
+  const markExpired = (domain: string, on: boolean) =>
+    setExpired((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(domain);
+      else next.delete(domain);
+      return next;
+    });
+
+  /**
+   * Retry only works while the challenge is unexpired. It answers 409 for an
+   * expired challenge and for a domain that is already verified (the code is the
+   * generic `validation_failed`, so the status is what tells it apart), and the
+   * two need opposite words, so the domains are re-read to see which it was.
+   */
+  const checkAgain = async (domain: string) => {
+    try {
+      await retryDomain.mutateAsync(domain);
+      toast({
+        kind: 'info',
+        title: 'Checking again',
+        description: 'The TXT record will be looked up again shortly.',
+      });
+    } catch (err) {
+      if (!(err instanceof ApiError && err.status === 409)) {
+        toast({ kind: 'error', title: 'Could not check again', description: errorMessage(err) });
+        return;
+      }
+      const fresh = await refetch().catch(() => undefined);
+      const row = fresh?.data?.find((x) => x.domain === domain);
+      if (!row) return;
+      if (row.verified) {
+        toast({ kind: 'success', title: `${domain} verified` });
+      } else {
+        markExpired(domain, true);
+        toast({
+          kind: 'info',
+          title: 'This verification expired',
+          description: 'Get a new TXT record, publish it, then check again.',
+        });
+      }
+    }
+  };
+
+  /** Adding the same domain and app again re-arms an expired challenge with a new token. */
+  const getNewRecord = async (row: DomainRow) => {
+    setRearming(row.domain);
+    try {
+      const created = await addDomain.mutateAsync({
+        domain: row.domain,
+        app_id: row.appId,
+        ...(row.environment ? { environment: row.environment } : {}),
+      });
+      const dns = created.dns_records?.find(
+        (r) => r.type === 'TXT' && r.purpose === 'verification'
+      );
+      const txt = created.txt_record ?? (dns ? `${dns.name} TXT "${dns.value}"` : null);
+      markExpired(row.domain, false);
+      if (txt) setNewRecord({ domain: row.domain, txt });
+      else toast({ kind: 'success', title: 'Verification restarted' });
+    } catch (err) {
+      toast({
+        kind: 'error',
+        title: 'Could not get a new TXT record',
+        description: errorMessage(err),
+      });
+    } finally {
+      setRearming(null);
+    }
+  };
 
   const columns: Column<DomainRow>[] = [
     {
@@ -139,6 +221,10 @@ function DomainsPage() {
       render: (d) =>
         d.verified ? (
           <span className="text-xs text-muted-foreground">—</span>
+        ) : expired.has(d.domain) ? (
+          <span className="text-xs" style={{ color: 'var(--status-warning)' }}>
+            This verification expired. Get a new TXT record, then publish that value instead.
+          </span>
         ) : (
           <code className="select-all break-all text-xs text-muted-foreground">
             {d.txtRecord ?? '—'}
@@ -155,9 +241,29 @@ function DomainsPage() {
     {
       key: 'id',
       label: '',
-      width: 'w-56',
+      width: 'w-80',
       render: (d) => (
         <div className="flex items-center justify-end gap-1.5">
+          {!d.verified &&
+            (expired.has(d.domain) ? (
+              <Button
+                size="sm"
+                variant="secondary"
+                busy={rearming === d.domain}
+                onClick={() => void getNewRecord(d)}
+              >
+                Get a new TXT record
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="outline"
+                busy={retryDomain.isPending && retryDomain.variables === d.domain}
+                onClick={() => void checkAgain(d.domain)}
+              >
+                Check again
+              </Button>
+            ))}
           {!d.verified && (
             <Button
               size="sm"
@@ -390,6 +496,30 @@ function DomainsPage() {
         error={error}
         onRetry={() => void refetch()}
       />
+
+      {newRecord && (
+        <Modal
+          open
+          onClose={() => setNewRecord(null)}
+          width="max-w-xl"
+          title={`New TXT record for ${newRecord.domain}`}
+          description="The previous value no longer works. Publish this one, then check again. It is valid for seven days."
+        >
+          <div className="flex flex-col gap-3 p-1">
+            <div className="flex items-start gap-2">
+              <code className="select-all break-all rounded-md bg-muted px-2 py-1.5 text-xs">
+                {newRecord.txt}
+              </code>
+              <CopyIconButton text={newRecord.txt} label="TXT record" />
+            </div>
+            <div className="flex justify-end">
+              <Button size="sm" onClick={() => setNewRecord(null)}>
+                Done
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {doctorFor && (
         <Modal

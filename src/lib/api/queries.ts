@@ -2078,6 +2078,22 @@ export function useVerifyDomain() {
 }
 
 /**
+ * Re-arm polling for a pending domain (`POST /v1/domains/{domain}/retry`, 202,
+ * no body). Only works while the TXT challenge is unexpired: the API answers
+ * 409 for an expired challenge and for a domain that is already verified, and
+ * never extends the window. The caller decides what a 409 means by re-reading
+ * the domain, so this hook does not invalidate on error.
+ */
+export function useRetryDomain() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (domain: string) =>
+      unwrap(api.POST('/v1/domains/{domain}/retry', { params: { path: { domain } } })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.domains }),
+  });
+}
+
+/**
  * The five-check domain doctor (ADR-120). Disabled until a domain is selected,
  * because the probe is synchronous server-side when its cache is cold.
  */

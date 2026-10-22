@@ -485,3 +485,70 @@ describe('POST /v1/jobs/{name}/runs above the plan cap', () => {
     expect((await start(0)).status).toBe(400);
   });
 });
+
+describe('custom domain verification retry and re-add', () => {
+  const add = async (domain: string, slug: string) => {
+    const app = await json('/v1/apps', {
+      method: 'POST',
+      body: JSON.stringify({ slug, type: 'app', runtime: 'node24' }),
+    });
+    const created = await json('/v1/domains', {
+      method: 'POST',
+      body: JSON.stringify({ domain, app_id: app.body.id }),
+    });
+    return { appId: app.body.id as string, created };
+  };
+  const retry = (domain: string) => fetch(`${base}/v1/domains/${domain}/retry`, { method: 'POST' });
+
+  it('binds by app_id, as the spec says, and returns a TXT record', async () => {
+    const { appId, created } = await add('retry-a.example.com', 'retry-app-a');
+    expect(created.status).toBe(201);
+    expect(created.body).toMatchObject({ domain: 'retry-a.example.com', app_id: appId });
+    expect(created.body.txt_record).toContain('retry-a.example.com');
+  });
+
+  it('answers 202 with no body while the challenge is live, 404 for an unknown domain', async () => {
+    await add('retry-b.example.com', 'retry-app-b');
+    const ok = await retry('retry-b.example.com');
+    expect(ok.status).toBe(202);
+    expect(await ok.text()).toBe('');
+    expect((await retry('nobody.example.com')).status).toBe(404);
+  });
+
+  it('answers 409 once the seven-day challenge has expired, and never extends it', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const t0 = Date.now();
+    await add('retry-c.example.com', 'retry-app-c');
+    vi.setSystemTime(t0 + 6 * 86_400_000);
+    expect((await retry('retry-c.example.com')).status).toBe(202);
+    vi.setSystemTime(t0 + 8 * 86_400_000);
+    expect((await retry('retry-c.example.com')).status).toBe(409);
+  });
+
+  it('re-adding an expired unverified domain re-arms it with a new token and window', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const t0 = Date.now();
+    const { appId, created } = await add('retry-d.example.com', 'retry-app-d');
+    vi.setSystemTime(t0 + 8 * 86_400_000);
+    const again = await json('/v1/domains', {
+      method: 'POST',
+      body: JSON.stringify({ domain: 'retry-d.example.com', app_id: appId }),
+    });
+    expect(again.status).toBe(201);
+    expect(again.body.txt_record).not.toBe(created.body.txt_record);
+    expect((await retry('retry-d.example.com')).status).toBe(202);
+  });
+
+  it('refuses to re-add a domain whose challenge is still live, or already verified, with 409', async () => {
+    const { appId } = await add('retry-e.example.com', 'retry-app-e');
+    const dup = await json('/v1/domains', {
+      method: 'POST',
+      body: JSON.stringify({ domain: 'retry-e.example.com', app_id: appId }),
+    });
+    expect(dup.status).toBe(409);
+    // Verify flips the row on the second press.
+    await json('/v1/domains/retry-e.example.com/verify', { method: 'POST' });
+    await json('/v1/domains/retry-e.example.com/verify', { method: 'POST' });
+    expect((await retry('retry-e.example.com')).status).toBe(409);
+  });
+});

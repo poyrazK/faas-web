@@ -4369,23 +4369,66 @@ route('GET', '/v1/deployments/{id}/scan', ({ params }) => {
   };
 });
 
+// A pending domain's TXT challenge lives seven days from creation and is never
+// extended (pkg/state/custom_domain_polling.go). The expiry sits beside the
+// rows, which are schema-typed. `MOCK_DOMAIN_EXPIRED=1` makes the seeded pending
+// domain arrive already expired, so the recovery path can be seen on demand.
+const CHALLENGE_MS = 7 * 24 * 60 * 60 * 1000;
+const domainExpiry = new Map<string, number>();
+function challengeExpiry(domain: string): number {
+  let at = domainExpiry.get(domain);
+  if (at === undefined) {
+    at = process.env.MOCK_DOMAIN_EXPIRED === '1' ? 0 : Date.now() + CHALLENGE_MS;
+    domainExpiry.set(domain, at);
+  }
+  return at;
+}
+const txtRecordFor = (domain: string) => `_gregale-challenge.${domain} TXT "${db.id()}"`;
+
 route('GET', '/v1/domains', () => db.domains);
+// Binds by `app_id` (an id or, as the API also accepts, a slug). Adding a domain
+// that is pending with an expired challenge re-arms it: a new token and a new
+// seven-day window. A verified domain or a live challenge is a 409.
 route('POST', '/v1/domains', ({ body }) => {
   const domain = String(body.domain ?? '')
     .toLowerCase()
     .trim();
   if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(domain)) throw new Problem(400, 'invalid_domain');
-  if (db.domains.some((d) => d.domain === domain)) throw new Problem(409, 'domain_exists');
-  const a = db.appBySlug(String(body.app_slug ?? '')) ?? db.apps[0];
+  const ref = String(body.app_id ?? '');
+  const a = db.apps.find((x) => x.id === ref) ?? db.appBySlug(ref);
+  if (!a) throw new Problem(404, 'not_found', 'no such app');
+  const existing = db.domains.find((d) => d.domain === domain);
+  if (existing) {
+    if (existing.verified || challengeExpiry(domain) > Date.now())
+      throw new Problem(409, 'validation_failed', 'Domain taken');
+    existing.app_id = a.id;
+    existing.challenge_token = db.id().slice(0, 24);
+    existing.txt_record = txtRecordFor(domain);
+    domainExpiry.set(domain, Date.now() + CHALLENGE_MS);
+    verifyAttempts.delete(domain);
+    return status(201, existing);
+  }
   const created = {
     domain,
     app_id: a.id,
     verified: false,
     challenge_token: db.id().slice(0, 24),
-    txt_record: `_gregale-challenge.${domain} TXT "${db.id()}"`,
+    txt_record: txtRecordFor(domain),
   };
   db.domains.push(created);
+  domainExpiry.set(domain, Date.now() + CHALLENGE_MS);
   return status(201, created);
+});
+// Retry only accelerates the next poll of a live challenge. 409 for an expired
+// challenge or an already verified domain; 202 with no body otherwise.
+route('POST', '/v1/domains/{domain}/retry', ({ params, res }) => {
+  const d = db.domains.find((x) => x.domain === params.domain);
+  if (!d) throw new Problem(404, 'domain_not_found');
+  if (d.verified || challengeExpiry(d.domain) <= Date.now())
+    throw new Problem(409, 'validation_failed', 'Domain cannot be retried');
+  // 202 with an empty body, which no helper expresses: answer directly.
+  res.statusCode = 202;
+  res.end();
 });
 route('DELETE', '/v1/domains/{domain}', ({ params }) => {
   const i = db.domains.findIndex((d) => d.domain === params.domain);
