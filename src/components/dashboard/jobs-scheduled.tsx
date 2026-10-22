@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { Link } from '@tanstack/react-router';
-import { Clock, Play, Plus, Trash } from 'iconoir-react';
+import { Clock, EditPencil, Play, Plus, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { FIELD, useFormValidation } from '@/components/ui/field';
@@ -21,16 +21,20 @@ import {
   useFireNowRequest,
 } from '@/lib/api/queries';
 import { slugIndex } from '@/lib/api/adapters';
+import type { components } from '@/lib/api/schema';
 import { errorMessage } from '@/lib/api/errors';
 import { formatRelative } from '@/lib/mock-data';
 import type { JobsSelectionProps } from './jobs-search';
 import { ScheduleField, useScheduleClock } from './schedule-field';
+import { EditCronDialog } from './cron-edit-dialog';
 import {
-  describeCronSchedule,
-  formatCronTime,
-  isCronSchedule,
-  upcomingCronRuns,
-} from '@/lib/cron-schedule';
+  cronScheduleError,
+  OverlapField,
+  overlapPolicy,
+  TimezoneField,
+  type Overlap,
+} from './cron-fields';
+import { describeCronSchedule, formatCronTime, upcomingCronRuns } from '@/lib/cron-schedule';
 
 /**
  * Scheduled requests into an app.
@@ -81,6 +85,8 @@ interface CronRow {
   description: string;
   nextRunAt: string | null;
   timezone: string;
+  /** The API row, for the edit dialog to prefill from. */
+  source: components['schemas']['CronResponse'];
 }
 
 function formatWhen(value: string | null | undefined): string {
@@ -198,18 +204,15 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
   const [schedule, setSchedule] = useState('');
   const scheduleInput = useRef<HTMLInputElement>(null);
   const [path, setPath] = useState('/');
+  const [timezone, setTimezone] = useState('UTC');
+  const [overlap, setOverlap] = useState<Overlap>('allow');
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [fireRequest, setFireRequest] = useState<string | null>(null);
   const validation = useFormValidation<'schedule'>();
 
   const targetApp = apps?.find((app) => app.id === appId)?.id || apps?.[0]?.id || '';
   const now = useScheduleClock();
-  const scheduleOk = isCronSchedule(schedule);
-  const upcoming = useMemo(() => upcomingCronRuns(schedule, new Date(now), 1), [schedule, now]);
-  const scheduleError = !scheduleOk
-    ? 'Enter a five-field cron schedule.'
-    : upcoming?.length === 0
-      ? 'Choose a schedule with an upcoming run within five years.'
-      : undefined;
+  const scheduleError = cronScheduleError(schedule, now);
   const shownScheduleError = validation.submitAttempted ? scheduleError : undefined;
 
   useEffect(() => {
@@ -223,6 +226,8 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
     setCreating(false);
     setSchedule('');
     setPath('/');
+    setTimezone('UTC');
+    setOverlap('allow');
     setCreationError(null);
     validation.resetValidation();
   };
@@ -237,6 +242,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
       enabled: c.enabled,
       lastFiredAt: c.last_fired_at ?? null,
       timezone: c.timezone || 'UTC',
+      source: c,
       description: describeCronSchedule(c.schedule).replace(/\bUTC\b/g, c.timezone || 'UTC'),
       nextRunAt:
         c.enabled && (!c.timezone || c.timezone === 'UTC')
@@ -245,6 +251,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
     }));
   }, [data, apps, now]);
   const history = rows.find((cron) => cron.id === search.schedule) ?? null;
+  const editing = rows.find((cron) => cron.id === editingId) ?? null;
 
   const setEnabled = (c: CronRow, enabled: boolean) =>
     void updateCron
@@ -329,9 +336,17 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
     {
       key: 'id',
       label: '',
-      width: 'w-28',
+      width: 'w-36',
       render: (c) => (
         <span className="flex items-center gap-3">
+          <IconButton
+            type="button"
+            aria-label={`Edit scheduled request ${c.schedule}`}
+            onClick={() => setEditingId(c.id)}
+            className="text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <EditPencil className="h-3.5 w-3.5" />
+          </IconButton>
           <IconButton
             type="button"
             aria-label={`Run history for ${c.schedule}`}
@@ -415,7 +430,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
           open
           onClose={closeCreation}
           title="New scheduled request"
-          description="Send an HTTP GET to an app on a recurring UTC schedule."
+          description="Send an HTTP GET to an app on a recurring schedule. Times use the timezone below, UTC unless you change it."
           width="max-w-lg"
         >
           <form
@@ -437,11 +452,19 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
                   app_id: targetApp,
                   schedule: schedule.trim(),
                   path: path.trim() || '/',
+                  // Defaults are left out so the API's own defaults apply.
+                  ...(timezone.trim() && timezone.trim() !== 'UTC'
+                    ? { timezone: timezone.trim() }
+                    : {}),
+                  // `allow` is the API default, so only a stricter choice is sent.
+                  ...(overlap !== 'allow' ? { schedule_policy: overlapPolicy({}, overlap) } : {}),
                 })
                 .then((c) => {
                   setCreating(false);
                   setSchedule('');
                   setPath('/');
+                  setTimezone('UTC');
+                  setOverlap('allow');
                   validation.resetValidation();
                   toast({
                     kind: 'success',
@@ -452,7 +475,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
                 .catch((err: unknown) => setCreationError(errorMessage(err)));
             }}
           >
-            <div className="max-h-[calc(100dvh-14rem)] space-y-5 overflow-y-auto p-1">
+            <div className="space-y-5 p-1">
               <fieldset disabled={createCron.isPending} className="space-y-5">
                 <label className="flex flex-col gap-1.5">
                   <span className="label-mono text-muted-foreground">App</span>
@@ -475,7 +498,9 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
                   onChange={setSchedule}
                   inputRef={scheduleInput}
                   error={shownScheduleError}
+                  timezone={timezone}
                 />
+                <TimezoneField value={timezone} onChange={setTimezone} />
                 <label className="flex flex-col gap-1.5">
                   <span className="label-mono text-muted-foreground">Path</span>
                   <input
@@ -489,6 +514,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
                 <p className="-mt-3 text-xs text-muted-foreground">
                   The request runs against this path on your app. Leave / to use its root.
                 </p>
+                <OverlapField value={overlap} onChange={setOverlap} />
               </fieldset>
               {creationError && (
                 <p role="alert" className="text-sm" style={{ color: 'var(--status-critical)' }}>
@@ -514,7 +540,11 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
                 </div>
               )}
             </div>
-            <footer className="-mx-5 -mb-4 flex justify-end gap-2 border-t border-border px-5 py-3.5">
+            {/* The modal body is what scrolls, and the footer sticks to its
+                bottom: a nested max-height guessed at the header's height, so a
+                description that wrapped to a third line on a phone pushed the
+                buttons out of the panel. */}
+            <footer className="sticky -bottom-4 -mx-5 -mb-4 flex justify-end gap-2 border-t border-border bg-popover px-5 py-3.5">
               <Button
                 type="button"
                 variant="ghost"
@@ -559,6 +589,14 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
         error={error}
         onRetry={() => void refetch()}
       />
+
+      {editing && (
+        <EditCronDialog
+          cron={editing.source}
+          target={editing.target}
+          onClose={() => setEditingId(null)}
+        />
+      )}
 
       {history && (
         <RunHistory

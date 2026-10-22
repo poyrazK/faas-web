@@ -63,6 +63,7 @@ import { ErrorsBody } from '@/components/dashboard/errors-body';
 import { LogDrainsBody } from '@/components/dashboard/log-drains';
 import { IssuesBody } from '@/components/dashboard/issues-body';
 import { ServiceBindings } from '@/components/dashboard/service-bindings';
+import { AppOutboundBindings } from '@/components/dashboard/outbound/app-outbound-bindings';
 import { McpGuidance } from '@/components/dashboard/mcp-guidance';
 import { validateIssueSearch, type IssueSearch } from '@/components/dashboard/issues-search';
 import { AppConfiguration } from '@/components/dashboard/app-configuration';
@@ -689,6 +690,7 @@ function FunctionDetailPage() {
             )}
             {tab === 'Queues' && <QueuesBody slug={fn.id} />}
             {tab === 'Upstreams' && <UpstreamsBody slug={fn.id} />}
+            {tab === 'Outbound' && <AppOutboundBindings slug={fn.id} />}
             {tab === 'Services' && <ServiceBindings slug={fn.id} />}
             {tab === 'MCP' && <McpGuidance key={appSlug} slug={appSlug} />}
             {tab === 'Alerts' && <AlertsBody slug={fn.id} />}

@@ -78,6 +78,8 @@ paths are checked against `api/openapi.yaml` by `src/lib/mock-spec-drift.test.ts
   their age on each request (`mock/deploy-lifecycle.ts`); seeded rows never move.
   `MOCK_BUILD_FAIL=1` makes new source builds fail installing dependencies
   (`dep_install_failed`) after ~4.5 s, for first-deployment recovery.
+  `MOCK_DOMAIN_EXPIRED=1` seeds the pending domain with an expired TXT challenge,
+  so "Check again" answers 409 and the "Get a new TXT record" recovery shows.
 - **`npm run tour` walks the console and fails on what a unit test cannot see** —
   an error boundary, a spinner nothing resolves, a path the mock does not
   answer, a page that threw. Point it at a running dev server

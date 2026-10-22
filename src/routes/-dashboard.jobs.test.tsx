@@ -108,6 +108,9 @@ vi.mock('@/lib/api/queries', () => {
     useJobRuns: () => ok({ runs: [run] }),
     useJobRun: () => ok(run),
     useCancelJobRun: mutation,
+    useStartJobRun: mutation,
+    useDeleteJob: mutation,
+    useSetJobStatus: mutation,
     useJobTasks: () =>
       ok({ tasks: [{ run_id: 'run-1', task_index: 0, status: 'succeeded', attempt: 1 }] }),
     useJobTaskLog: () => ok({ log_content: 'export complete', truncated: false, max_bytes: 65536 }),

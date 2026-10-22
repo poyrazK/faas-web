@@ -89,7 +89,9 @@ class Problem extends Error {
   constructor(
     readonly status: number,
     readonly code: string,
-    readonly detail?: string
+    readonly detail?: string,
+    /** Extra RFC 7807 members, such as `limit` and `observed`. */
+    readonly extra: Record<string, unknown> = {}
   ) {
     super(detail ?? code);
   }
@@ -2177,7 +2179,10 @@ route('POST', '/v1/apps/{slug}/restart', ({ params }) => {
 route('POST', '/v1/apps/{slug}/restore', ({ params }) => {
   const deleted = deletedApps.get(params.slug);
   if (!deleted) {
-    app(params.slug);
+    // The restore operation's own not-found is the spec's `not_found`, not the
+    // app-scoped `app_not_found` of the active-app routes: apid looks the slug up
+    // among tombstones and answers the generic code for a stranger's slug too.
+    if (!db.appBySlug(params.slug)) throw new Problem(404, 'not_found', 'no such app');
     throw new Problem(409, 'app_not_restorable', 'the app is not pending deletion.');
   }
   return restoreDeleted(deleted);
@@ -2850,6 +2855,11 @@ function pgSettle(row: PgRow): PgRow {
   } else if (row.state === 'deleting' && Date.now() - Date.parse(row.updated_at) > 4000) {
     row.state = 'deleted';
     row.updated_at = new Date().toISOString();
+  } else if (row.rotation_pending === true && Date.now() - Date.parse(row.updated_at) > 4000) {
+    // A rotation keeps the previous credential valid while the app refreshes,
+    // then settles.
+    row.rotation_pending = false;
+    row.updated_at = new Date().toISOString();
   }
   return row;
 }
@@ -2995,6 +3005,7 @@ route('POST', '/v1/postgres/databases/{id}/bindings', ({ params, body }) => {
     environment_key: key,
     access: String(body.access ?? 'read_write'),
     credential_generation: 1,
+    rotation_pending: false,
     state: 'provisioning',
     last_error_code: null,
     created_at: now,
@@ -3007,6 +3018,32 @@ route('GET', '/v1/postgres/bindings/{id}', ({ params }) => {
   const binding = pgBindings.find((b) => b.id === params.id);
   if (!binding) throw new Problem(404, 'managed_postgres_not_found', 'no such binding');
   return pgSettle(binding);
+});
+// Receipts for the optional Idempotency-Key: a repeated key replays the first
+// answer, as the spec's IdempotencyKey parameter describes.
+const pgRotateReceipts = new Map<string, PgRow>();
+route('POST', '/v1/postgres/bindings/{id}/rotate', ({ params, req }) => {
+  const binding = pgBindings.find((b) => b.id === params.id);
+  if (!binding) throw new Problem(404, 'managed_postgres_not_found', 'no such binding');
+  const key = String(req.headers['idempotency-key'] ?? '');
+  const receipt = key ? pgRotateReceipts.get(`${binding.id}:${key}`) : undefined;
+  if (receipt) return receipt;
+  pgSettle(binding);
+  if (binding.state !== 'ready')
+    throw new Problem(
+      409,
+      'managed_postgres_conflict',
+      `the binding is ${binding.state}; rotate it once it is ready.`
+    );
+  // A rotation already in flight is joined, not restarted.
+  if (binding.rotation_pending !== true) {
+    binding.credential_generation = Number(binding.credential_generation) + 1;
+    binding.rotation_pending = true;
+    binding.updated_at = new Date().toISOString();
+  }
+  const answer = { ...binding };
+  if (key) pgRotateReceipts.set(`${binding.id}:${key}`, answer);
+  return answer;
 });
 route('DELETE', '/v1/postgres/bindings/{id}', ({ params }) => {
   const binding = pgBindings.find((b) => b.id === params.id);
@@ -4332,23 +4369,66 @@ route('GET', '/v1/deployments/{id}/scan', ({ params }) => {
   };
 });
 
+// A pending domain's TXT challenge lives seven days from creation and is never
+// extended (pkg/state/custom_domain_polling.go). The expiry sits beside the
+// rows, which are schema-typed. `MOCK_DOMAIN_EXPIRED=1` makes the seeded pending
+// domain arrive already expired, so the recovery path can be seen on demand.
+const CHALLENGE_MS = 7 * 24 * 60 * 60 * 1000;
+const domainExpiry = new Map<string, number>();
+function challengeExpiry(domain: string): number {
+  let at = domainExpiry.get(domain);
+  if (at === undefined) {
+    at = process.env.MOCK_DOMAIN_EXPIRED === '1' ? 0 : Date.now() + CHALLENGE_MS;
+    domainExpiry.set(domain, at);
+  }
+  return at;
+}
+const txtRecordFor = (domain: string) => `_gregale-challenge.${domain} TXT "${db.id()}"`;
+
 route('GET', '/v1/domains', () => db.domains);
+// Binds by `app_id` (an id or, as the API also accepts, a slug). Adding a domain
+// that is pending with an expired challenge re-arms it: a new token and a new
+// seven-day window. A verified domain or a live challenge is a 409.
 route('POST', '/v1/domains', ({ body }) => {
   const domain = String(body.domain ?? '')
     .toLowerCase()
     .trim();
   if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(domain)) throw new Problem(400, 'invalid_domain');
-  if (db.domains.some((d) => d.domain === domain)) throw new Problem(409, 'domain_exists');
-  const a = db.appBySlug(String(body.app_slug ?? '')) ?? db.apps[0];
+  const ref = String(body.app_id ?? '');
+  const a = db.apps.find((x) => x.id === ref) ?? db.appBySlug(ref);
+  if (!a) throw new Problem(404, 'not_found', 'no such app');
+  const existing = db.domains.find((d) => d.domain === domain);
+  if (existing) {
+    if (existing.verified || challengeExpiry(domain) > Date.now())
+      throw new Problem(409, 'validation_failed', 'Domain taken');
+    existing.app_id = a.id;
+    existing.challenge_token = db.id().slice(0, 24);
+    existing.txt_record = txtRecordFor(domain);
+    domainExpiry.set(domain, Date.now() + CHALLENGE_MS);
+    verifyAttempts.delete(domain);
+    return status(201, existing);
+  }
   const created = {
     domain,
     app_id: a.id,
     verified: false,
     challenge_token: db.id().slice(0, 24),
-    txt_record: `_gregale-challenge.${domain} TXT "${db.id()}"`,
+    txt_record: txtRecordFor(domain),
   };
   db.domains.push(created);
+  domainExpiry.set(domain, Date.now() + CHALLENGE_MS);
   return status(201, created);
+});
+// Retry only accelerates the next poll of a live challenge. 409 for an expired
+// challenge or an already verified domain; 202 with no body otherwise.
+route('POST', '/v1/domains/{domain}/retry', ({ params, res }) => {
+  const d = db.domains.find((x) => x.domain === params.domain);
+  if (!d) throw new Problem(404, 'domain_not_found');
+  if (d.verified || challengeExpiry(d.domain) <= Date.now())
+    throw new Problem(409, 'validation_failed', 'Domain cannot be retried');
+  // 202 with an empty body, which no helper expresses: answer directly.
+  res.statusCode = 202;
+  res.end();
 });
 route('DELETE', '/v1/domains/{domain}', ({ params }) => {
   const i = db.domains.findIndex((d) => d.domain === params.domain);
@@ -4745,6 +4825,100 @@ route('POST', '/v1/jobs/{name}/runs/{id}/cancel', ({ params }) => {
   return { run, cancelled_at: new Date().toISOString() };
 });
 
+// POST /v1/jobs/{name}/runs fans out `tasks` tasks. A count above
+// Plan.JobMaxTasksPerRun (Hobby 100, Pro 1000, Scale 5000) is refused with 403
+// job_quota_exceeded carrying `limit` and `observed`, not clamped
+// (handlers_jobs.go createJobRun; ErrJobQuota). The run starts queued with
+// nothing done.
+route('POST', '/v1/jobs/{name}/runs', ({ params, body }) => {
+  gateJobs();
+  const job = jobs.find((j) => j.name === params.name);
+  if (!job) throw new Problem(404, 'job_not_found', 'no such job');
+  if (job.status === 'paused') throw new Problem(409, 'job_paused', 'This job is paused.');
+  const requested = body.tasks;
+  if (typeof requested !== 'number' || !Number.isSafeInteger(requested) || requested < 1)
+    throw new Problem(400, 'validation_failed', 'tasks must be a positive whole number.');
+  const tier = process.env.MOCK_PLAN === 'hobby' ? 0 : process.env.MOCK_PLAN === 'scale' ? 2 : 1;
+  const cap = [100, 1000, 5000][tier];
+  if (requested > cap)
+    throw new Problem(
+      403,
+      'job_quota_exceeded',
+      `This plan caps jobs at ${cap} for tasks_per_run; you have ${requested}.`,
+      { limit: cap, observed: requested }
+    );
+  const run = {
+    id: db.id(),
+    job_id: job.id,
+    account_id: 'acct-1',
+    trigger_kind: 'manual' as const,
+    tasks: requested,
+    parallelism: job.max_parallelism,
+    retry_max: job.retry_max,
+    task_timeout_sec: job.task_timeout_sec,
+    execution_class: 'standard',
+    failure_policy: 'continue',
+    aggregate_status: 'queued',
+    tasks_succeeded: 0,
+    tasks_failed: 0,
+    tasks_cancelled: 0,
+    tasks_running: 0,
+    dead_letter_count: 0,
+    created_at: db.iso(0),
+    updated_at: db.iso(0),
+  };
+  runsOf(job.name).unshift(run);
+  return status(201, run);
+});
+
+// Pause or resume. The real API (updateJob) accepts only active or paused here;
+// the other fields are a partial update the console does not send.
+route('PATCH', '/v1/jobs/{name}', ({ params, body }) => {
+  gateJobs();
+  const job = jobs.find((j) => j.name === params.name);
+  if (!job) throw new Problem(404, 'job_not_found', 'no such job');
+  if (body.status !== undefined) {
+    if (body.status !== 'active' && body.status !== 'paused')
+      throw new Problem(
+        400,
+        'validation_failed',
+        "status must be 'active' or 'paused' (use DELETE for soft-delete)"
+      );
+    // apid refuses any update while a task is queued or claimed
+    // (pkg/state/pgstore_jobs.go:345-350; handlers_jobs.go:1081-1084).
+    if (
+      runsOf(job.name).some(
+        (r) => r.aggregate_status === 'running' || r.aggregate_status === 'queued'
+      )
+    )
+      throw new Problem(409, 'validation_failed', 'Job has active runs');
+    job.status = body.status;
+    job.updated_at = db.iso(0);
+  }
+  return job;
+});
+
+// Soft delete. The real API refuses with 409 job_has_live_instances while any
+// task of the job is still queued or running; the mock reads that off run state.
+route('DELETE', '/v1/jobs/{name}', ({ params }) => {
+  gateJobs();
+  const index = jobs.findIndex((j) => j.name === params.name);
+  if (index < 0) throw new Problem(404, 'job_not_found', 'no such job');
+  if (
+    runsOf(params.name).some(
+      (r) => r.aggregate_status === 'running' || r.aggregate_status === 'queued'
+    )
+  )
+    throw new Problem(
+      409,
+      'job_has_live_instances',
+      'This job still has tasks running. Cancel its runs or wait for them to finish.'
+    );
+  jobs.splice(index, 1);
+  runCache.delete(params.name);
+  return NO_CONTENT;
+});
+
 // --- Triggers ---------------------------------------------------------------
 // Six kinds so every pill renders, one paused, and a spread of record states
 // and dead-letter reasons so each filter has something to find.
@@ -5121,16 +5295,59 @@ route('POST', '/v1/triggers/{id}/records/{rid}/retry', ({ params }) => {
 route('POST', '/v1/triggers/{id}/records/{rid}/drop', () => NO_CONTENT);
 
 route('GET', '/v1/crons', () => db.crons);
-route('POST', '/v1/crons', ({ body }) => {
-  const a = db.apps.find((x) => x.id === body.app_id);
-  if (!a) throw new Problem(404, 'app_not_found', 'No app with that id.');
-  const schedule = String(body.schedule ?? '').trim();
+
+// The real handlers reject a schedule that is not five fields and a timezone
+// the runtime cannot load; both come back as 400 with a stable code.
+function cronSchedule(value: unknown): string {
+  const schedule = String(value ?? '').trim();
   if (schedule.split(/\s+/).length !== 5)
     throw new Problem(
       400,
       'invalid_schedule',
       'A schedule has five fields: minute hour day month weekday.'
     );
+  return schedule;
+}
+function cronTimezone(value: unknown): string {
+  const zone = String(value ?? '').trim() || 'UTC';
+  try {
+    new Intl.DateTimeFormat('en', { timeZone: zone });
+  } catch {
+    throw new Problem(400, 'invalid_timezone', `Unknown timezone "${zone}". Use an IANA name.`);
+  }
+  return zone;
+}
+
+const OVERLAPS = ['allow', 'skip', 'replace'];
+const MISSED_RUNS = ['coalesce_latest', 'skip'];
+/** Mirrors workpolicy.SchedulePolicy.Validate (pkg/workpolicy/scheduled_policy.go). */
+function schedulePolicy(value: unknown) {
+  const p = value as Record<string, unknown>;
+  const deadline = p.start_deadline_seconds ?? 0;
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    p.version !== 1 ||
+    !OVERLAPS.includes(String(p.overlap)) ||
+    !MISSED_RUNS.includes(String(p.missed_runs)) ||
+    typeof deadline !== 'number' ||
+    deadline < 0 ||
+    deadline > 30 * 24 * 60 * 60
+  )
+    throw new Problem(400, 'validation_failed', 'schedule_policy is not valid.');
+  return {
+    version: 1 as const,
+    overlap: p.overlap as 'allow' | 'skip' | 'replace',
+    missed_runs: p.missed_runs as 'coalesce_latest' | 'skip',
+    ...(deadline ? { start_deadline_seconds: deadline } : {}),
+  };
+}
+
+route('POST', '/v1/crons', ({ body }) => {
+  const a = db.apps.find((x) => x.id === body.app_id);
+  if (!a) throw new Problem(404, 'app_not_found', 'No app with that id.');
+  const schedule = cronSchedule(body.schedule);
+  const policy = body.schedule_policy == null ? undefined : schedulePolicy(body.schedule_policy);
   const cron = {
     id: db.id(),
     app_id: a.id,
@@ -5138,8 +5355,9 @@ route('POST', '/v1/crons', ({ body }) => {
     schedule,
     path: String(body.path ?? '/'),
     enabled: body.enabled !== false,
-    timezone: String(body.timezone ?? 'UTC'),
+    timezone: cronTimezone(body.timezone),
     skip_if_running: body.skip_if_running === true,
+    ...(policy ? { schedule_policy: policy } : {}),
     created_at: db.iso(0),
     last_fired_at: null,
   };
@@ -5150,9 +5368,20 @@ route('POST', '/v1/crons', ({ body }) => {
 route('PATCH', '/v1/crons/{id}', ({ params, body }) => {
   const c = db.crons.find((x) => x.id === params.id);
   if (!c) throw new Problem(404, 'cron_not_found');
-  if (typeof body.schedule === 'string') c.schedule = body.schedule;
+  // Validate everything before applying anything, so a refused patch changes nothing.
+  const schedule = typeof body.schedule === 'string' ? cronSchedule(body.schedule) : undefined;
+  const timezone = typeof body.timezone === 'string' ? cronTimezone(body.timezone) : undefined;
+  // null is a no-op; an object replaces the whole policy, as the API does.
+  const policy = body.schedule_policy == null ? undefined : schedulePolicy(body.schedule_policy);
+  if (schedule !== undefined) c.schedule = schedule;
+  if (policy !== undefined) c.schedule_policy = policy;
   if (typeof body.path === 'string') c.path = body.path;
   if (typeof body.enabled === 'boolean') c.enabled = body.enabled;
+  if (timezone !== undefined) c.timezone = timezone;
+  if (typeof body.skip_if_running === 'boolean') c.skip_if_running = body.skip_if_running;
+  if (typeof body.retry_max === 'number') c.retry_max = body.retry_max;
+  if (typeof body.retry_backoff_seconds === 'number')
+    c.retry_backoff_seconds = body.retry_backoff_seconds;
   return c;
 });
 route('GET', '/v1/crons/{id}/runs', ({ params }) => {
@@ -6816,6 +7045,7 @@ function problem(res: ServerResponse, p: Problem) {
       code: p.code,
       title: p.code.replace(/_/g, ' '),
       detail: p.detail,
+      ...p.extra,
     })
   );
 }
