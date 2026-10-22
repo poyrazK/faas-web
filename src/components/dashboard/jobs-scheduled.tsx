@@ -475,7 +475,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
                 .catch((err: unknown) => setCreationError(errorMessage(err)));
             }}
           >
-            <div className="max-h-[calc(100dvh-14rem)] space-y-5 overflow-y-auto p-1">
+            <div className="space-y-5 p-1">
               <fieldset disabled={createCron.isPending} className="space-y-5">
                 <label className="flex flex-col gap-1.5">
                   <span className="label-mono text-muted-foreground">App</span>
@@ -540,7 +540,11 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
                 </div>
               )}
             </div>
-            <footer className="-mx-5 -mb-4 flex justify-end gap-2 border-t border-border px-5 py-3.5">
+            {/* The modal body is what scrolls, and the footer sticks to its
+                bottom: a nested max-height guessed at the header's height, so a
+                description that wrapped to a third line on a phone pushed the
+                buttons out of the panel. */}
+            <footer className="sticky -bottom-4 -mx-5 -mb-4 flex justify-end gap-2 border-t border-border bg-popover px-5 py-3.5">
               <Button
                 type="button"
                 variant="ghost"
