@@ -2829,8 +2829,27 @@ route('DELETE', '/v1/apps/{slug}/buckets/{bucket}/s3-credentials/{credential}', 
 // Object storage buckets. A seeded `assets` bucket on api-gateway carries
 // objects, a runtime binding, versioning and lifecycle rules, so every part of
 // the storage page has something real to show; MOCK_EMPTY starts with none.
-const MOCK_S3_ENDPOINT = 'https://s3.gregale.dev';
 const MOCK_S3_REGION = 'us-east-1';
+/**
+ * Where the mock's signed URLs point. The real ones name the storage host,
+ * which a dev browser cannot reach without CORS; this path on the dev origin
+ * stands in for it, so an upload or download actually round-trips.
+ */
+const MOCK_S3_OBJECT_PATH = '/mock-s3/object';
+/** Bytes kept per uploaded object; larger uploads keep their size only. */
+const MOCK_S3_KEEP_BYTES = 16 * 1024 ** 2;
+const storageSignatures = new Map<
+  string,
+  {
+    slug: string;
+    bucketId: string;
+    key: string;
+    method: 'GET' | 'HEAD' | 'PUT';
+    expiresAt: number;
+    contentType: string;
+  }
+>();
+const storageBytes = new Map<string, { bytes: Buffer; contentType: string }>();
 const storageBuckets = new Map<string, S_['ObjectBucket'][]>();
 const storageObjects = new Map<
   string,
@@ -3010,29 +3029,87 @@ route('DELETE', '/v1/apps/{slug}/buckets/{bucket}/objects', ({ params, query }) 
     `${slug}/${bucket.id}`,
     list.filter((o) => o.key !== key)
   );
+  storageBytes.delete(`${slug}/${bucket.id}/${key}`);
   return NO_CONTENT;
 });
-route('POST', '/v1/apps/{slug}/buckets/{bucket}/signed-url', ({ params, body }) => {
+route('POST', '/v1/apps/{slug}/buckets/{bucket}/signed-url', ({ params, body, req }) => {
   const slug = app(params.slug).slug;
   const bucket = ownedBucket(slug, params.bucket);
   const method = String(body.method ?? 'GET') as 'GET' | 'HEAD' | 'PUT';
   const key = String(body.key ?? '');
   if (!key) throw new Problem(422, 'validation_failed', 'key is required.');
   const expiresIn = Math.min(900, Number(body.expires_in ?? 300));
-  if (method === 'PUT') {
-    // The mock cannot receive the bytes; record the object so the browser shows it.
-    const list = storageObjects.get(`${slug}/${bucket.id}`) ?? [];
-    storageObjects.set(`${slug}/${bucket.id}`, [
-      ...list.filter((o) => o.key !== key),
-      { key, size_bytes: Number(body.size_bytes ?? 0), last_modified: db.iso(0) },
-    ]);
-  }
+  const expiresAt = Date.now() + expiresIn * 1000;
+  // Signing is a promise to accept bytes, not an upload: the object appears
+  // when the PUT to this URL lands, as it would on the storage host.
+  const signature = hex(32);
+  storageSignatures.set(signature, {
+    slug,
+    bucketId: bucket.id,
+    key,
+    method,
+    expiresAt,
+    contentType: String(body.content_type ?? 'application/octet-stream'),
+  });
+  const url = new URL(MOCK_S3_OBJECT_PATH, `http://${req.headers.host ?? 'localhost'}`);
+  url.searchParams.set('bucket', bucket.name);
+  url.searchParams.set('key', key);
+  url.searchParams.set('X-Amz-Signature', signature);
   return status(201, {
-    url: `${MOCK_S3_ENDPOINT}/${bucket.name}/${encodeURI(key)}?X-Amz-Signature=${hex(16)}`,
+    url: url.toString(),
     method,
     headers: {},
-    expires_at: new Date(Date.now() + expiresIn * 1000).toISOString(),
+    expires_at: new Date(expiresAt).toISOString(),
   });
+});
+// The storage host itself, as far as signed URLs reach it. S3 answers in XML.
+function s3Refusal(res: ServerResponse, code: number, reason: string) {
+  res.statusCode = code;
+  res.setHeader('Content-Type', 'application/xml');
+  res.end(`<?xml version="1.0" encoding="UTF-8"?><Error><Code>${reason}</Code></Error>`);
+}
+function signedFor(query: URLSearchParams, method: 'GET' | 'PUT') {
+  const signed = storageSignatures.get(query.get('X-Amz-Signature') ?? '');
+  if (!signed || signed.method !== method || signed.expiresAt < Date.now()) return undefined;
+  const exists = bucketsFor(signed.slug).some((b) => b.id === signed.bucketId);
+  return exists ? signed : undefined;
+}
+route('PUT', '/mock-s3/object', async ({ query, req, res }) => {
+  const signed = signedFor(query, 'PUT');
+  if (!signed) return s3Refusal(res, 403, 'AccessDenied');
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) chunks.push(chunk as Buffer);
+  const bytes = Buffer.concat(chunks);
+  const where = `${signed.slug}/${signed.bucketId}`;
+  const list = storageObjects.get(where) ?? [];
+  storageObjects.set(where, [
+    ...list.filter((o) => o.key !== signed.key),
+    { key: signed.key, size_bytes: bytes.length, last_modified: db.iso(0) },
+  ]);
+  const contentType = String(req.headers['content-type'] ?? signed.contentType);
+  if (bytes.length <= MOCK_S3_KEEP_BYTES)
+    storageBytes.set(`${where}/${signed.key}`, { bytes, contentType });
+  else storageBytes.delete(`${where}/${signed.key}`);
+  res.statusCode = 200;
+  res.setHeader('ETag', `"${createHash('md5').update(bytes).digest('hex')}"`);
+  res.end();
+});
+route('GET', '/mock-s3/object', ({ query, res }) => {
+  const signed = signedFor(query, 'GET');
+  if (!signed) return s3Refusal(res, 403, 'AccessDenied');
+  const where = `${signed.slug}/${signed.bucketId}`;
+  const object = (storageObjects.get(where) ?? []).find((o) => o.key === signed.key);
+  if (!object) return s3Refusal(res, 404, 'NoSuchKey');
+  // Seeded objects, and uploads too large to keep, have no bytes here.
+  const kept = storageBytes.get(`${where}/${signed.key}`);
+  res.statusCode = 200;
+  res.setHeader('Content-Type', kept?.contentType ?? 'text/plain; charset=utf-8');
+  const name = signed.key.split('/').pop() || 'object';
+  res.setHeader('Content-Disposition', `attachment; filename="${name.replace(/"/g, '')}"`);
+  res.end(
+    kept?.bytes ??
+      `Placeholder from the dev mock: ${signed.key} is ${object.size_bytes} bytes, and its contents were never uploaded here.\n`
+  );
 });
 route('GET', '/v1/apps/{slug}/buckets/{bucket}/compute-bindings', ({ params }) => {
   const slug = app(params.slug).slug;
@@ -7166,6 +7243,7 @@ export function mockApi(): Plugin {
         const isApi =
           url.pathname.startsWith('/v1/') ||
           url.pathname === '/status/slo.json' ||
+          url.pathname === MOCK_S3_OBJECT_PATH ||
           (method !== 'GET' &&
             MOCKED_PREFIXES.some((p) => url.pathname === p || url.pathname.startsWith(p + '/')));
         if (!isApi) return next();
@@ -7187,7 +7265,9 @@ export function mockApi(): Plugin {
         const params = Object.fromEntries(match.keys.map((k, i) => [k, values[i]]));
 
         void (async () => {
-          const body = method === 'GET' ? {} : await readBody(req);
+          // The storage stand-in reads its own body: an upload is bytes, not JSON.
+          const body =
+            method === 'GET' || url.pathname === MOCK_S3_OBJECT_PATH ? {} : await readBody(req);
           await new Promise((r) => setTimeout(r, latency()));
           // Deployments created here move along their lifecycle as time passes.
           advanceDeployments(Date.now());

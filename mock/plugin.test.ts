@@ -239,13 +239,59 @@ describe('object storage buckets in the mock', () => {
       method: 'POST',
       body: JSON.stringify({ name: 'docs' }),
     });
-    await json(`/v1/apps/full-bucket/buckets/${body.id}/signed-url`, {
+    const signed = await json(`/v1/apps/full-bucket/buckets/${body.id}/signed-url`, {
       method: 'POST',
       body: JSON.stringify({ method: 'PUT', key: 'a.txt', size_bytes: 3 }),
     });
+    await fetch(signed.body.url, { method: 'PUT', body: 'abc' });
     const res = await fetch(`${base}/v1/apps/full-bucket/buckets/${body.id}`, {
       method: 'DELETE',
     });
     expect(res.status).toBe(409);
+  });
+
+  it('answers a signed upload on the dev origin, and only records what was sent', async () => {
+    await json('/v1/apps', {
+      method: 'POST',
+      body: JSON.stringify({ slug: 'upload-app', type: 'app', runtime: 'node24' }),
+    });
+    const { body } = await json('/v1/apps/upload-app/buckets', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'media' }),
+    });
+    const objects = async () =>
+      (await json(`/v1/apps/upload-app/buckets/${body.id}/objects`)).body.items as {
+        key: string;
+        size_bytes: number;
+      }[];
+    const sign = async (method: string, key: string) =>
+      (
+        await json(`/v1/apps/upload-app/buckets/${body.id}/signed-url`, {
+          method: 'POST',
+          body: JSON.stringify({ method, key, size_bytes: 11, content_type: 'text/plain' }),
+        })
+      ).body.url as string;
+
+    const put = await sign('PUT', 'notes/hello world.txt');
+    // Same origin as the console, so the browser can PUT without CORS.
+    expect(new URL(put).origin).toBe(base);
+    // Signing is a promise to accept bytes, not an upload.
+    expect(await objects()).toEqual([]);
+
+    const sent = await fetch(put, { method: 'PUT', body: 'hello there' });
+    expect(sent.status).toBe(200);
+    expect(await objects()).toMatchObject([{ key: 'notes/hello world.txt', size_bytes: 11 }]);
+
+    const got = await fetch(await sign('GET', 'notes/hello world.txt'));
+    expect(got.status).toBe(200);
+    expect(await got.text()).toBe('hello there');
+
+    // A URL signed for reading does not take writes, and a forged one takes nothing.
+    const read = await sign('GET', 'other.txt');
+    expect((await fetch(read, { method: 'PUT', body: 'x' })).status).toBe(403);
+    const forged = new URL(put);
+    forged.searchParams.set('X-Amz-Signature', 'forged');
+    expect((await fetch(forged, { method: 'PUT', body: 'x' })).status).toBe(403);
+    expect((await objects()).map((o) => o.key)).toEqual(['notes/hello world.txt']);
   });
 });
