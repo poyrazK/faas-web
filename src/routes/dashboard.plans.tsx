@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { Check, OpenNewWindow } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
-import { useMfa } from '@/components/auth/mfa-provider';
+import { useMfa, type MfaMethod } from '@/components/auth/mfa-provider';
 import { PageHeader } from '@/components/dashboard/primitives';
 import { Modal } from '@/components/ui/modal';
 import { useToast } from '@/components/ui/toast';
@@ -184,10 +184,39 @@ function PlansPage() {
     };
   }, [awaiting, refreshAccount]);
 
-  const stepUp = () =>
-    new Promise<boolean>((resolve) =>
-      openMfa('verify', { onVerified: () => resolve(true), onDismissed: () => resolve(false) })
+  const openStep = (mode: 'choose' | 'verify', reason: string) =>
+    new Promise<MfaMethod | null>((resolve) =>
+      openMfa(mode, {
+        reason,
+        onVerified: (via) => resolve(via),
+        onDismissed: () => resolve(null),
+      })
     );
+
+  /**
+   * Plan changes sit behind a five-minute step-up that only an authenticator
+   * code satisfies, and every browser session starts without one — including
+   * accounts with no MFA at all (middleware.go requireStepUp; WithStepUp is
+   * always applied to cookie sessions). No API response says whether MFA is
+   * enrolled, so the first prompt is the provider's "set up or enter a code"
+   * choice, which already falls through to verification when enrolment answers
+   * 409. Finishing enrolment and a recovery code both reissue the cookie
+   * without a stamp, so neither counts as confirmation here.
+   */
+  const stepUp = async (): Promise<'confirmed' | 'recovery' | 'dismissed'> => {
+    let via = await openStep(
+      'choose',
+      'Plan changes need two-factor authentication. Set up an authenticator, or enter a code from the one you already use.'
+    );
+    if (via === 'enrolment') {
+      via = await openStep(
+        'verify',
+        'Authenticator set up. Enter a new code from your authenticator to confirm this change.'
+      );
+    }
+    if (via === 'authenticator') return 'confirmed';
+    return via === 'recovery' ? 'recovery' : 'dismissed';
+  };
 
   const apply = (plan: Plan, retried = false): Promise<void> =>
     changePlan
@@ -215,12 +244,15 @@ function PlansPage() {
         // The session's step-up is older than five minutes: verify, then ask
         // again — once, so a second refusal is reported rather than looped.
         if (err instanceof ApiError && err.code === 'step_up_required') {
-          if (!retried && (await stepUp())) return apply(plan, true);
+          const outcome = retried ? 'dismissed' : await stepUp();
+          if (outcome === 'confirmed') return apply(plan, true);
           toast({
             kind: 'error',
             title: 'Could not change plan',
             description:
-              "Confirm it's you with your authenticator code, then retry the change. Plan changes need a recent confirmation.",
+              outcome === 'recovery'
+                ? 'A recovery code does not count for plan changes. Use the code from your authenticator app, then retry the change.'
+                : "Confirm it's you with your authenticator code, then retry the change. Plan changes need a recent confirmation.",
           });
           return;
         }
@@ -365,7 +397,7 @@ function PlansPage() {
             <Button variant="ghost" size="sm" onClick={() => setPending(null)}>
               Cancel
             </Button>
-            <Button size="sm" onClick={confirm} busy={changePlan.isPending}>
+            <Button size="sm" onClick={confirm}>
               Confirm switch
             </Button>
           </div>

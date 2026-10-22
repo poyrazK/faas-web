@@ -25,9 +25,20 @@ import { useQueryClient } from '@tanstack/react-query';
 
 type MfaMode = 'choose' | 'confirm' | 'verify' | 'recover';
 
+/**
+ * How the session got through. Only an authenticator code (`/mfa/verify`)
+ * stamps a step-up on the cookie; finishing enrolment (`/mfa/confirm`) and a
+ * recovery code (`/mfa/recover`) re-issue it without one
+ * (handlers_mfa.go: mfaConfirm, mfaVerify, mfaRecover), so a caller waiting on
+ * a step-up gate must tell them apart.
+ */
+export type MfaMethod = 'authenticator' | 'recovery' | 'enrolment';
+
 interface MfaOpenOptions {
-  /** After a successful confirm / verify / recover — the session now carries a fresh step-up. */
-  onVerified?: () => void;
+  /** Why the modal opened, shown above the form — the gate that asked for it. */
+  reason?: string;
+  /** After a successful confirm / verify / recover, with the method that was used. */
+  onVerified?: (via: MfaMethod) => void;
   /** The modal closed without success. */
   onDismissed?: () => void;
 }
@@ -58,6 +69,7 @@ export function MfaProvider({ children }: { children: ReactNode }) {
   const [busy, setBusy] = useState(false);
   const [required, setRequired] = useState(false);
   const pending = useRef<MfaOpenOptions | null>(null);
+  const [reason, setReason] = useState<string | null>(null);
 
   const resetTransient = useCallback(() => {
     setEnrollment(null);
@@ -70,6 +82,7 @@ export function MfaProvider({ children }: { children: ReactNode }) {
       resetTransient();
       setRequired(false);
       pending.current = opts ?? null;
+      setReason(opts?.reason ?? null);
       setMode(nextMode);
       setOpen(true);
     },
@@ -78,6 +91,7 @@ export function MfaProvider({ children }: { children: ReactNode }) {
 
   const handleMfaRequired = useCallback(() => {
     pending.current = null;
+    setReason(null);
     setError(null);
     setRequired(true);
     setMode('choose');
@@ -120,19 +134,22 @@ export function MfaProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const complete = useCallback(async () => {
-    setBusy(false);
-    setOpen(false);
-    setRequired(false);
-    resetTransient();
-    // A blocked query remains cached as an error. Refetch every resource so
-    // the page that triggered the gate recovers immediately after the cookie
-    // is re-issued without mfa_pending.
-    await queryClient.invalidateQueries();
-    const cb = pending.current;
-    pending.current = null;
-    cb?.onVerified?.();
-  }, [queryClient, resetTransient]);
+  const complete = useCallback(
+    async (via: MfaMethod) => {
+      setBusy(false);
+      setOpen(false);
+      setRequired(false);
+      resetTransient();
+      // A blocked query remains cached as an error. Refetch every resource so
+      // the page that triggered the gate recovers immediately after the cookie
+      // is re-issued without mfa_pending.
+      await queryClient.invalidateQueries();
+      const cb = pending.current;
+      pending.current = null;
+      cb?.onVerified?.(via);
+    },
+    [queryClient, resetTransient]
+  );
 
   const submit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
@@ -150,10 +167,16 @@ export function MfaProvider({ children }: { children: ReactNode }) {
 
       setBusy(true);
       try {
-        if (mode === 'confirm') await confirmMfa(code);
-        else if (mode === 'verify') await verifyMfa(code);
-        else if (mode === 'recover') await recoverMfa(code.trim().toUpperCase());
-        await complete();
+        let via: MfaMethod = 'authenticator';
+        if (mode === 'confirm') {
+          await confirmMfa(code);
+          via = 'enrolment';
+        } else if (mode === 'verify') await verifyMfa(code);
+        else if (mode === 'recover') {
+          await recoverMfa(code.trim().toUpperCase());
+          via = 'recovery';
+        }
+        await complete(via);
       } catch (err: unknown) {
         setError(errorMessage(err));
         setBusy(false);
@@ -186,6 +209,7 @@ export function MfaProvider({ children }: { children: ReactNode }) {
         }
         width="max-w-lg"
       >
+        {reason && <p className="mb-4 text-sm font-medium leading-relaxed">{reason}</p>}
         {mode === 'choose' && (
           <div className="space-y-4">
             <p className="text-sm leading-relaxed text-muted-foreground">

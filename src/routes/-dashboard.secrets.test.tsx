@@ -6,6 +6,7 @@ import { SecretsBody } from './dashboard.secrets';
 
 const mocks = vi.hoisted(() => ({
   set: vi.fn(),
+  del: vi.fn(),
   rotate: vi.fn(),
   restart: vi.fn(),
   confirm: vi.fn(),
@@ -14,7 +15,13 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: mocks.toast }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => mocks.confirm }));
-vi.mock('@/components/dashboard/env-import', () => ({ EnvImportButton: () => null }));
+vi.mock('@/components/dashboard/env-import', () => ({
+  EnvImportButton: ({ onChanged }: { onChanged?: () => void }) => (
+    <button type="button" onClick={onChanged}>
+      finish import
+    </button>
+  ),
+}));
 vi.mock('@/lib/api/queries', () => ({
   useAppSecrets: () => ({
     data: { secrets: [{ key: 'API_TOKEN', updated_at: '2026-10-01T00:00:00Z', kid: 'k1' }] },
@@ -23,7 +30,7 @@ vi.mock('@/lib/api/queries', () => ({
     refetch: vi.fn(),
   }),
   useSetSecret: () => ({ mutateAsync: mocks.set, isPending: false }),
-  useDeleteSecret: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useDeleteSecret: () => ({ mutateAsync: mocks.del, isPending: false }),
   useRotateSecret: () => ({ mutateAsync: mocks.rotate, isPending: false }),
   useFreshRestart: () => ({ mutateAsync: mocks.restart, isPending: false }),
 }));
@@ -32,6 +39,7 @@ const PEM = '-----BEGIN PRIVATE KEY-----\nMIIEvQIBADAN\n-----END PRIVATE KEY----
 
 beforeEach(() => {
   mocks.set.mockReset().mockResolvedValue({});
+  mocks.del.mockReset().mockResolvedValue({});
   mocks.rotate.mockReset().mockResolvedValue({ key: 'API_TOKEN', kid: 'k2' });
   mocks.restart.mockReset().mockResolvedValue({ wake_id: 'w1' });
   mocks.confirm.mockReset();
@@ -129,6 +137,22 @@ describe('Secrets', () => {
         expect(mocks.toast).toHaveBeenCalledWith(expect.objectContaining({ kind: 'error' }))
       );
       expect(screen.queryByRole('status', NOTICE)).toBeNull();
+    });
+
+    it('shows the notice after a secret is deleted, since the next boot lacks it', async () => {
+      const user = userEvent.setup();
+      mocks.confirm.mockResolvedValue(true);
+      render(<SecretsBody slug="alpha" />);
+      await user.click(screen.getByRole('button', { name: 'Delete secret API_TOKEN' }));
+      await waitFor(() => expect(mocks.del).toHaveBeenCalledWith('API_TOKEN'));
+      expect(await screen.findByRole('status', NOTICE)).toBeInTheDocument();
+    });
+
+    it('shows the notice after a .env import writes values', async () => {
+      const user = userEvent.setup();
+      render(<SecretsBody slug="alpha" />);
+      await user.click(screen.getByRole('button', { name: 'finish import' }));
+      expect(await screen.findByRole('status', NOTICE)).toBeInTheDocument();
     });
 
     async function savedThenRestart(user: ReturnType<typeof userEvent.setup>) {

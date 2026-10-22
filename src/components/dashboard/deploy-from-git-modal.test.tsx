@@ -49,7 +49,7 @@ vi.mock('@/lib/api/queries', () => ({
   useAppRepoBinding: () => ({ data: mocks.binding ?? undefined, isPending: mocks.bindingPending }),
 }));
 
-function open(onAccepted = vi.fn()) {
+function open(onAccepted = vi.fn(), onSubmissionError = vi.fn()) {
   render(
     <DeployFromGitModal
       open
@@ -57,7 +57,7 @@ function open(onAccepted = vi.fn()) {
       appSlug="alpha"
       appName="Alpha"
       onAccepted={onAccepted}
-      onSubmissionError={vi.fn()}
+      onSubmissionError={onSubmissionError}
     />
   );
   return onAccepted;
@@ -156,13 +156,25 @@ describe('Deploy from Git', () => {
         detail: 'more than one connected installation can access the repository',
       })
     );
-    open();
+    const onSubmissionError = vi.fn();
+    open(vi.fn(), onSubmissionError);
     await deploy(user, 'acme/api', 'main');
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent(/more than one GitHub installation/i);
     expect(within(alert).getByRole('link', { name: /integrations/i })).toHaveAttribute(
       'href',
       '/dashboard/settings?section=integrations'
+    );
+    // The raw API sentence must not reach the page behind the modal or the toast.
+    expect(onSubmissionError).not.toHaveBeenCalledWith(
+      expect.stringMatching(/more than one connected/)
+    );
+    expect(onSubmissionError).toHaveBeenLastCalledWith(null);
+    expect(mocks.toast).not.toHaveBeenCalledWith(
+      expect.objectContaining({ description: expect.stringMatching(/more than one connected/) })
+    );
+    expect(mocks.toast).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'error', description: expect.stringMatching(/Integrations/) })
     );
   });
 

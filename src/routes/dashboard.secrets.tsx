@@ -177,7 +177,10 @@ export function SecretsBody({ slug }: { slug: string }) {
               return;
             void deleteSecret
               .mutateAsync(s.key)
-              .then(() => toast({ kind: 'success', title: `Deleted ${s.key}` }))
+              .then(() => {
+                setUnappliedFor(slug);
+                toast({ kind: 'success', title: `Deleted ${s.key}` });
+              })
               .catch((err: unknown) =>
                 toast({ kind: 'error', title: 'Could not delete', description: errorMessage(err) })
               );
@@ -194,7 +197,11 @@ export function SecretsBody({ slug }: { slug: string }) {
     <div className="flex flex-col gap-6">
       {/* Migrations arrive as .env files; the importer takes them whole. */}
       <div className="flex justify-end">
-        <EnvImportButton slug={slug} existingKeys={rows.map((r) => r.key)} />
+        <EnvImportButton
+          slug={slug}
+          existingKeys={rows.map((r) => r.key)}
+          onChanged={() => setUnappliedFor(slug)}
+        />
       </div>
 
       {unapplied && (

@@ -101,9 +101,20 @@ export function DeployFromGitModal({
           );
       })
       .catch((err: unknown) => {
+        // The ambiguous-installation answer has its own explanation in the
+        // modal; the raw API sentence would only repeat it, here and on the
+        // deployment panel behind it.
+        if (err instanceof ApiError && err.code === 'github_install_ambiguous') {
+          setAmbiguous(true);
+          toast({
+            kind: 'error',
+            title: 'Could not start the deploy',
+            description: `Connect ${appName} to one GitHub installation in Settings → Integrations, then deploy again.`,
+          });
+          return;
+        }
         const message = errorMessage(err);
         setError(message);
-        setAmbiguous(err instanceof ApiError && err.code === 'github_install_ambiguous');
         onSubmissionError(message);
         toast({ kind: 'error', title: 'Could not start the deploy', description: message });
       });

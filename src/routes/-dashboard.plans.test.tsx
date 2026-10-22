@@ -195,14 +195,31 @@ describe('Plan change', () => {
         detail: 'step-up MFA required for this action',
       });
 
-    it('opens the MFA verification and retries the change once it succeeds', async () => {
+    type Opts = { reason?: string; onVerified: (via: string) => void; onDismissed: () => void };
+    /** Answer each openMfa call in turn with the given outcome. */
+    const answerWith = (...outcomes: Array<(o: Opts) => void>) => {
+      outcomes.forEach((outcome) =>
+        mocks.openMfa.mockImplementationOnce((_mode: string, opts: Opts) => outcome(opts))
+      );
+    };
+
+    it('offers sign-in or enrolment, since the console cannot tell which applies, and says why', async () => {
+      mocks.changePlan.mockRejectedValue(stepUpRequired());
+      answerWith((o) => o.onDismissed());
+      await switchToPro();
+      await waitFor(() => expect(mocks.openMfa).toHaveBeenCalled());
+      const [mode, opts] = mocks.openMfa.mock.calls[0];
+      expect(mode).toBe('choose');
+      expect(opts.reason).toMatch(/plan changes need two-factor authentication/i);
+    });
+
+    it('retries the change once an authenticator code is accepted', async () => {
       mocks.changePlan
         .mockRejectedValueOnce(stepUpRequired())
         .mockResolvedValueOnce({ account: { plan: 'pro' }, pending: false });
-      mocks.openMfa.mockImplementation((_mode, opts) => opts.onVerified());
+      answerWith((o) => o.onVerified('authenticator'));
       await switchToPro();
       await waitFor(() => expect(mocks.changePlan).toHaveBeenCalledTimes(2));
-      expect(mocks.openMfa).toHaveBeenCalledWith('verify', expect.any(Object));
       expect(mocks.changePlan).toHaveBeenNthCalledWith(2, 'pro');
       await waitFor(() =>
         expect(mocks.toast).toHaveBeenCalledWith(
@@ -211,9 +228,41 @@ describe('Plan change', () => {
       );
     });
 
+    it('asks for a fresh code after enrolment, which does not confirm the session, then retries', async () => {
+      mocks.changePlan
+        .mockRejectedValueOnce(stepUpRequired())
+        .mockResolvedValueOnce({ account: { plan: 'pro' }, pending: false });
+      answerWith(
+        (o) => o.onVerified('enrolment'),
+        (o) => o.onVerified('authenticator')
+      );
+      await switchToPro();
+      await waitFor(() => expect(mocks.changePlan).toHaveBeenCalledTimes(2));
+      expect(mocks.openMfa).toHaveBeenCalledTimes(2);
+      const [mode, opts] = mocks.openMfa.mock.calls[1];
+      expect(mode).toBe('verify');
+      expect(opts.reason).toMatch(/new code from your authenticator/i);
+    });
+
+    it('does not retry after a recovery code, and says an authenticator code is needed', async () => {
+      mocks.changePlan.mockRejectedValue(stepUpRequired());
+      answerWith((o) => o.onVerified('recovery'));
+      await switchToPro();
+      await waitFor(() =>
+        expect(mocks.toast).toHaveBeenCalledWith(
+          expect.objectContaining({
+            kind: 'error',
+            description: expect.stringMatching(/recovery code does not count.*authenticator app/i),
+          })
+        )
+      );
+      expect(mocks.changePlan).toHaveBeenCalledTimes(1);
+      expect(mocks.openMfa).toHaveBeenCalledTimes(1);
+    });
+
     it('explains what to do when the verification is dismissed', async () => {
       mocks.changePlan.mockRejectedValue(stepUpRequired());
-      mocks.openMfa.mockImplementation((_mode, opts) => opts.onDismissed());
+      answerWith((o) => o.onDismissed());
       await switchToPro();
       await waitFor(() =>
         expect(mocks.toast).toHaveBeenCalledWith(
@@ -228,7 +277,7 @@ describe('Plan change', () => {
 
     it('does not loop when the retry is refused again', async () => {
       mocks.changePlan.mockRejectedValue(stepUpRequired());
-      mocks.openMfa.mockImplementation((_mode, opts) => opts.onVerified());
+      answerWith((o) => o.onVerified('authenticator'));
       await switchToPro();
       await waitFor(() => expect(mocks.toast).toHaveBeenCalled());
       expect(mocks.changePlan).toHaveBeenCalledTimes(2);
