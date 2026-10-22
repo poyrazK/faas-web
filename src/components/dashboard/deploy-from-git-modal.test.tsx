@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
     production_branch?: string;
   },
   bindingPending: false,
+  installRepos: [] as { id: number; full_name: string; default_branch: string; private: boolean }[],
 }));
 
 vi.mock('@tanstack/react-router', () => ({
@@ -56,6 +57,7 @@ vi.mock('@/lib/api/queries', () => ({
   useDeployFromRef: () => ({ mutateAsync: mocks.deploy, isPending: false }),
   useBindRepo: () => ({ mutateAsync: mocks.bind, isPending: false }),
   useAppRepoBinding: () => ({ data: mocks.binding ?? undefined, isPending: mocks.bindingPending }),
+  useInstallRepos: () => ({ data: mocks.installRepos, isPending: false }),
 }));
 
 function open(onAccepted = vi.fn(), onSubmissionError = vi.fn()) {
@@ -90,6 +92,7 @@ beforeEach(() => {
   mocks.toast.mockReset();
   mocks.binding = null;
   mocks.bindingPending = false;
+  mocks.installRepos = [];
 });
 
 describe('Deploy from Git', () => {
@@ -163,37 +166,88 @@ describe('Deploy from Git', () => {
     expect(mocks.bind).not.toHaveBeenCalled();
   });
 
-  it('explains an ambiguous GitHub installation and links to Integrations', async () => {
-    const user = userEvent.setup();
-    mocks.binding = { state: 'installed' };
-    mocks.deploy.mockRejectedValue(
+  describe('ambiguous GitHub installation', () => {
+    const AMBIGUOUS = () =>
       new ApiError({
         status: 409,
         code: 'github_install_ambiguous',
         title: 'GitHub installation is ambiguous',
         detail: 'more than one connected installation can access the repository',
-      })
-    );
-    const onSubmissionError = vi.fn();
-    open(vi.fn(), onSubmissionError);
-    await deploy(user, 'acme/api', 'main');
-    const alert = await screen.findByRole('alert');
-    expect(alert).toHaveTextContent(/more than one GitHub installation/i);
-    expect(within(alert).getByRole('link', { name: /integrations/i })).toHaveAttribute(
-      'href',
-      '/dashboard/settings?section=integrations'
-    );
-    // The raw API sentence must not reach the page behind the modal or the toast.
-    expect(onSubmissionError).not.toHaveBeenCalledWith(
-      expect.stringMatching(/more than one connected/)
-    );
-    expect(onSubmissionError).toHaveBeenLastCalledWith(null);
-    expect(mocks.toast).not.toHaveBeenCalledWith(
-      expect.objectContaining({ description: expect.stringMatching(/more than one connected/) })
-    );
-    expect(mocks.toast).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: 'error', description: expect.stringMatching(/Integrations/) })
-    );
+      });
+    const LISTED = [{ id: 1, full_name: 'acme/api', default_branch: 'main', private: false }];
+
+    it('binds the app to the connected installation, then deploys again', async () => {
+      const user = userEvent.setup();
+      mocks.binding = { state: 'installed' };
+      mocks.installRepos = LISTED;
+      mocks.deploy.mockRejectedValueOnce(AMBIGUOUS()).mockResolvedValueOnce({ id: 'dep-2' });
+      const onSubmissionError = vi.fn();
+      const onAccepted = open(vi.fn(), onSubmissionError);
+      await deploy(user, 'acme/api', 'v1.2.0');
+      const alert = await screen.findByRole('alert');
+      expect(alert).toHaveTextContent(/more than one of your GitHub installations/i);
+      // Settings → Integrations only refreshes the connection; it cannot pick one.
+      expect(within(alert).queryByRole('link')).toBeNull();
+      expect(mocks.bind).not.toHaveBeenCalled();
+
+      await user.click(within(alert).getByRole('button', { name: /bind and deploy/i }));
+      await waitFor(() =>
+        expect(mocks.bind).toHaveBeenCalledWith({ installationId: 42, repo: 'acme/api' })
+      );
+      await waitFor(() =>
+        expect(onAccepted).toHaveBeenCalledWith({ id: 'dep-2', repo: 'acme/api', ref: 'v1.2.0' })
+      );
+      expect(mocks.deploy).toHaveBeenCalledTimes(2);
+      // Bound once, before the retry: no second bind after the build is accepted.
+      expect(mocks.bind).toHaveBeenCalledTimes(1);
+      // The raw API sentence must not reach the page behind the modal or the toast.
+      expect(onSubmissionError).not.toHaveBeenCalledWith(
+        expect.stringMatching(/more than one connected/)
+      );
+      expect(mocks.toast).not.toHaveBeenCalledWith(
+        expect.objectContaining({ description: expect.stringMatching(/more than one connected/) })
+      );
+      expect(mocks.toast).not.toHaveBeenCalledWith(
+        expect.objectContaining({ description: expect.stringMatching(/Integrations/) })
+      );
+    });
+
+    it('says binding moves push-to-deploy when the app is bound to another repository', async () => {
+      const user = userEvent.setup();
+      mocks.binding = { state: 'bound', repo_full_name: 'acme/web', production_branch: 'main' };
+      mocks.installRepos = LISTED;
+      mocks.deploy.mockRejectedValueOnce(AMBIGUOUS());
+      open();
+      await deploy(user, 'acme/api', 'main');
+      const alert = await screen.findByRole('alert');
+      expect(alert).toHaveTextContent(/acme\/web stop deploying Alpha/);
+    });
+
+    it('says what fixes it on GitHub when the connected installation cannot see the repository', async () => {
+      const user = userEvent.setup();
+      mocks.binding = { state: 'installed' };
+      mocks.installRepos = [];
+      mocks.deploy.mockRejectedValueOnce(AMBIGUOUS());
+      open();
+      await deploy(user, 'acme/api', 'main');
+      const alert = await screen.findByRole('alert');
+      expect(alert).toHaveTextContent(/On GitHub.*Repository access.*all but one/);
+      expect(within(alert).queryByRole('link')).toBeNull();
+      expect(within(alert).queryByRole('button')).toBeNull();
+    });
+
+    it('shows a failed bind in the modal', async () => {
+      const user = userEvent.setup();
+      mocks.binding = { state: 'installed' };
+      mocks.installRepos = LISTED;
+      mocks.deploy.mockRejectedValueOnce(AMBIGUOUS());
+      mocks.bind.mockRejectedValue(new Error('installation suspended'));
+      open();
+      await deploy(user, 'acme/api', 'main');
+      await user.click(await screen.findByRole('button', { name: /bind and deploy/i }));
+      expect(await screen.findByText(/installation suspended/)).toBeInTheDocument();
+      expect(mocks.deploy).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('reports a failed bind instead of swallowing it', async () => {
