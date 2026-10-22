@@ -247,7 +247,7 @@ export function PasswordWizard({
         }
         setError(
           err.code === 'mfa_required'
-            ? 'Set up two-factor authentication to change the password.'
+            ? 'Set up multi-factor authentication to change the password.'
             : 'Verify with your authenticator to change the password.'
         );
       } else if (err instanceof ApiError && err.code === 'rate_limited') {
