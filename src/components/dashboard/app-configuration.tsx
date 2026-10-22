@@ -663,8 +663,8 @@ function RenamePanel({ app }: { app: App }) {
         <label htmlFor="rename-slug" className="label-mono text-muted-foreground">
           Slug
         </label>
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="min-w-64 flex-1">
+        <div className="flex items-center gap-3">
+          <div className="min-w-0 flex-1">
             <input
               id="rename-slug"
               value={next}
