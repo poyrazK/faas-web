@@ -66,6 +66,29 @@ export function signStoredObject(
   );
 }
 
+/**
+ * A request to a signed URL goes to the storage host, not to the API, so a
+ * network failure there is not "could not reach the API": the API just
+ * answered with the URL. `errorMessage` shows this message as it is.
+ */
+export class StorageUnreachableError extends Error {
+  constructor() {
+    super('Could not reach the storage endpoint. Check your connection and try again.');
+    this.name = 'StorageUnreachableError';
+  }
+}
+
+/** fetch against a signed URL, with its network failures named for the storage host. */
+async function fetchSigned(url: string, init: RequestInit) {
+  try {
+    return await fetch(url, init);
+  } catch (error) {
+    // fetch rejects with a TypeError for CORS, DNS and dropped connections.
+    if (error instanceof TypeError) throw new StorageUnreachableError();
+    throw error;
+  }
+}
+
 /** Direct provider request: never use the authenticated Gregale client. */
 export async function uploadSignedObject(
   signed: components['schemas']['ObjectSignedRequest'],
@@ -74,7 +97,7 @@ export async function uploadSignedObject(
   const headers = new Headers(signed.headers);
   // fetch sets this forbidden header from the File body, matching the signature.
   headers.delete('Content-Length');
-  const response = await fetch(signed.url, {
+  const response = await fetchSigned(signed.url, {
     method: 'PUT',
     headers,
     body: file,

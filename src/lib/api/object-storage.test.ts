@@ -5,6 +5,7 @@ import {
   rotateBucketBinding,
   uploadSignedObject,
 } from './object-storage';
+import { errorMessage } from './errors';
 import { spyApi } from '@/test/api';
 
 afterEach(() => {
@@ -71,6 +72,23 @@ describe('direct object uploads', () => {
         new File(['abc'], 'file')
       )
     ).rejects.toThrow('Upload failed (403)');
+  });
+
+  it('blames the storage endpoint, not the API, when the signed URL cannot be reached', async () => {
+    // What fetch throws for a CORS refusal, a DNS failure or a dropped connection.
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
+    const failure = await uploadSignedObject(
+      {
+        url: 'https://objects.example.test/signed',
+        method: 'PUT',
+        headers: {},
+        expires_at: '2026-09-05T12:00:00Z',
+      },
+      new File(['abc'], 'file')
+    ).catch((error: unknown) => error);
+    expect(errorMessage(failure)).toBe(
+      'Could not reach the storage endpoint. Check your connection and try again.'
+    );
   });
 });
 
