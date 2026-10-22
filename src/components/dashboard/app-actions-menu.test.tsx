@@ -41,8 +41,13 @@ describe('App actions: roll back', () => {
       expect(mocks.toast).toHaveBeenCalledWith({
         kind: 'success',
         title: 'Rollback queued',
-        description: 'New deployment 0123456789ab is being prepared.',
+        // apid re-activates the earlier deployment row; it writes no new one.
+        description:
+          'Returning to deployment 0123456789ab. It serves once its readiness check passes.',
       })
+    );
+    expect(mocks.toast).not.toHaveBeenCalledWith(
+      expect.objectContaining({ description: expect.stringMatching(/new deployment/i) })
     );
     expect(mocks.toast).not.toHaveBeenCalledWith(expect.objectContaining({ title: 'Rolled back' }));
   });

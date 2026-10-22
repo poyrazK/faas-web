@@ -80,20 +80,21 @@ export function AppActionsMenu({
       !(await confirm({
         title: `Roll back ${app.name}?`,
         description:
-          'The platform queues a new deployment from the previous successful release. The current release remains in history to roll forward to.',
+          'The platform brings back the most recent superseded release. The current release remains in history to roll forward to.',
         confirmLabel: 'Roll back',
         destructive: true,
       }))
     )
       return;
-    // `POST /v1/apps/{slug}/rollback` answers 202: the rollback is a queued
-    // deployment, and acceptance does not mean it is serving yet.
+    // `POST /v1/apps/{slug}/rollback` answers 202 with the earlier deployment
+    // it re-activates (apid rollbackAppCore writes no new row), and acceptance
+    // does not mean it is serving yet: a readiness check runs first.
     try {
       const deployment = await redeploy(app.id);
       toast({
         kind: 'success',
         title: 'Rollback queued',
-        description: `New deployment ${deployment.id.slice(0, 12)} is being prepared.`,
+        description: `Returning to deployment ${deployment.id.slice(0, 12)}. It serves once its readiness check passes.`,
       });
     } catch (err) {
       toast({ kind: 'error', title: 'Rollback failed', description: errorMessage(err) });
