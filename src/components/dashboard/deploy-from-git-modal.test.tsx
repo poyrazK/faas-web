@@ -37,11 +37,20 @@ vi.mock('@/components/dashboard/repo-picker', () => ({
     id,
     value,
     onChange,
+    unlistedNote,
   }: {
     id?: string;
     value: string;
     onChange: (repo: string) => void;
-  }) => <input id={id} value={value} onChange={(e) => onChange(e.target.value)} />,
+    unlistedNote?: string;
+  }) => (
+    <input
+      id={id}
+      value={value}
+      data-unlisted-note={unlistedNote}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  ),
 }));
 vi.mock('@/lib/api/queries', () => ({
   useDeployFromRef: () => ({ mutateAsync: mocks.deploy, isPending: false }),
@@ -89,6 +98,15 @@ describe('Deploy from Git', () => {
     open();
     expect(screen.getByLabelText('Repository')).toHaveValue('acme/api');
     expect(screen.getByLabelText('Ref')).toHaveValue('prod');
+  });
+
+  it('labels the bound repository in case the installation does not list it', () => {
+    mocks.binding = { state: 'bound', repo_full_name: 'acme/api', production_branch: 'prod' };
+    open();
+    expect(screen.getByLabelText('Repository')).toHaveAttribute(
+      'data-unlisted-note',
+      'bound repository'
+    );
   });
 
   it('never rebinds a bound app to the ref that was deployed', async () => {

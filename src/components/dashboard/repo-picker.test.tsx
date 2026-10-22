@@ -50,3 +50,29 @@ it('uses the selected repository’s actual default branch', async () => {
   );
   expect(onChange).toHaveBeenCalledWith('poyrazK/imgpipe', 'master');
 });
+
+it('shows a value the installation does not list instead of the placeholder', () => {
+  mocks.data = [{ id: 1, full_name: 'poyrazK/imgpipe', default_branch: 'master', private: false }];
+  render(
+    <RepoPicker value="acme-corp/api-gateway" unlistedNote="bound repository" onChange={vi.fn()} />
+  );
+  const select = screen.getByRole('combobox', { name: 'Repository' });
+  expect(select).toHaveValue('acme-corp/api-gateway');
+  expect(screen.getByRole('option', { selected: true })).toHaveTextContent(
+    'acme-corp/api-gateway (bound repository)'
+  );
+});
+
+it('names an unlisted value even without a caller note', () => {
+  mocks.data = [{ id: 1, full_name: 'poyrazK/imgpipe', default_branch: 'master', private: false }];
+  render(<RepoPicker value="acme-corp/api-gateway" onChange={vi.fn()} />);
+  expect(screen.getByRole('option', { selected: true })).toHaveTextContent(
+    'acme-corp/api-gateway (not listed for this installation)'
+  );
+});
+
+it('does not duplicate a value that is listed', () => {
+  mocks.data = [{ id: 1, full_name: 'poyrazK/imgpipe', default_branch: 'master', private: false }];
+  render(<RepoPicker value="poyrazK/imgpipe" unlistedNote="bound repository" onChange={vi.fn()} />);
+  expect(screen.getAllByRole('option', { name: /poyrazK\/imgpipe/ })).toHaveLength(1);
+});

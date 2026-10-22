@@ -174,6 +174,7 @@ export function DeployFromGitModal({
           <RepoPicker
             id="deploy-git-repository"
             value={repo}
+            unlistedNote={repo && repo === bound?.repo_full_name ? 'bound repository' : undefined}
             onChange={(next, defaultBranch) => {
               setRepo(next);
               if (defaultBranch) setRef(defaultBranch);

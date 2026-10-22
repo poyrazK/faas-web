@@ -16,6 +16,11 @@ import { cn } from '@/lib/utils';
  *
  * Either way the caller's `id`, `name`, `form` and ARIA wiring land on the
  * one control, so a `<label htmlFor>` names it and validation can focus it.
+ *
+ * A value the installation does not list (an app already bound to a repo the
+ * installation no longer shows, say) is still rendered as an option, labelled
+ * with `unlistedNote`: a select without a matching option falls back to the
+ * placeholder and hides what is about to be deployed.
  */
 type ControlProps = Pick<
   React.ComponentProps<'input'>,
@@ -26,11 +31,13 @@ export function RepoPicker({
   value,
   onChange,
   className,
+  unlistedNote = 'not listed for this installation',
   ...control
 }: {
   value: string;
   onChange: (repo: string, defaultBranch?: string) => void;
   className?: string;
+  unlistedNote?: string;
 } & ControlProps) {
   const { account } = useAuth();
   const installId = account?.github_install_id ? Number(account.github_install_id) : null;
@@ -88,6 +95,11 @@ export function RepoPicker({
       className={cn('font-mono', className)}
     >
       <option value="">{repos.isPending ? 'Reading repositories…' : 'Choose a repository…'}</option>
+      {value && !list.some((r) => r.full_name === value) && (
+        <option value={value}>
+          {value} ({unlistedNote})
+        </option>
+      )}
       {list.map((r) => (
         <option key={r.id} value={r.full_name}>
           {r.full_name}
