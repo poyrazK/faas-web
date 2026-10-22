@@ -300,9 +300,16 @@ function BindingList({
       <ul className="flex flex-col divide-y divide-border rounded-xl border border-border">
         {items.map((b) => (
           <li key={b.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
-            <span className="min-w-0 flex-1 truncate font-mono text-sm">{b.prefix}_*</span>
+            {/* The prefix is what code reads, so it claims its full width first
+                (flex-auto, not flex-1) and the access key wraps or gives way. */}
+            <span
+              className="min-w-0 max-w-full flex-auto truncate font-mono text-sm"
+              title={`${b.prefix}_*`}
+            >
+              {b.prefix}_*
+            </span>
             <span className="text-xs text-muted-foreground">{VERB[b.credential.permission]}</span>
-            <span className="font-mono text-xs text-muted-foreground">
+            <span className="min-w-0 truncate font-mono text-xs text-muted-foreground">
               {b.credential.access_key_id}
             </span>
             {b.rotation_pending && (
@@ -379,15 +386,19 @@ function Snippets({ env, permission }: { env: EnvNames; permission: Permission }
         id={panelId}
         role="tabpanel"
         aria-labelledby={tabId(panelId, language)}
-        className="storage-code relative overflow-hidden rounded-2xl border border-border"
+        className="storage-code overflow-hidden rounded-2xl border border-border"
       >
-        <pre className="overflow-x-auto p-4 font-mono text-xs leading-relaxed">{code}</pre>
-        <span className="absolute right-2 top-2">
+        {/* The copy button has a row of its own, so no line of code runs under it. */}
+        <div className="flex items-center justify-between gap-3 border-b border-border/60 py-1 pl-4 pr-2">
+          <span className="truncate font-mono text-xs text-muted-foreground">
+            {language === 'node' ? '@aws-sdk/client-s3' : 'boto3'}
+          </span>
           <CopyIconButton
             text={code}
             label={`${language === 'node' ? 'Node.js' : 'Python'} snippet`}
           />
-        </span>
+        </div>
+        <pre className="overflow-x-auto p-4 font-mono text-xs leading-relaxed">{code}</pre>
       </div>
     </section>
   );
