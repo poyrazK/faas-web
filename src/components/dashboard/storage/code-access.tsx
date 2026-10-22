@@ -17,6 +17,7 @@ import {
   type BucketBinding,
 } from '@/lib/api/object-storage';
 import { bindingEnvNames, defaultBindingPrefix, type Permission } from '@/lib/storage-access';
+import { useFreshRestart } from '@/lib/api/queries';
 import { nodeSnippet, pythonSnippet, type EnvNames } from '@/lib/storage-snippets';
 import { cn } from '@/lib/utils';
 import { errorMessage } from '@/lib/api/errors';
@@ -54,19 +55,39 @@ export function CodeAccess({
 }) {
   const bindings = useBucketBindings(slug, bucketId);
   const items = bindings.data?.items ?? [];
+  // Set when a connection is made here: running instances still have the old
+  // environment until they restart (apid stamps the change and stales the
+  // snapshots, but does not restart a live app for a new binding).
+  const [applied, setApplied] = useState<string | null>(null);
   const phase = queryPhase({ loading: bindings.isPending, error: bindings.error });
   const form = (
-    <ConnectForm slug={slug} bucketId={bucketId} bucketName={bucketName} taken={items} />
+    <ConnectForm
+      slug={slug}
+      bucketId={bucketId}
+      bucketName={bucketName}
+      taken={items}
+      onConnected={setApplied}
+    />
+  );
+  const notice = applied && (
+    <ApplyNotice slug={slug} prefix={applied} onDone={() => setApplied(null)} />
   );
   if (phase !== 'ready')
     return (
       <InlinePhase phase={phase} error={bindings.error} onRetry={() => void bindings.refetch()} />
     );
-  if (items.length === 0) return form;
+  if (items.length === 0)
+    return (
+      <div className="flex flex-col gap-6">
+        {notice}
+        {form}
+      </div>
+    );
   // Once the app is connected, how to use it comes first; a second connection
   // (other rights, other names) is the rarer job.
   return (
     <div className="flex flex-col gap-8">
+      {notice}
       <BindingList slug={slug} bucketId={bucketId} items={items} />
       <Snippets env={items[0].secret_keys} permission={items[0].credential.permission} />
       <details className="storage-again group rounded-2xl border border-dashed border-border px-5 py-4">
@@ -84,11 +105,13 @@ function ConnectForm({
   bucketId,
   bucketName,
   taken,
+  onConnected,
 }: {
   slug: string;
   bucketId: string;
   bucketName: string;
   taken: BucketBinding[];
+  onConnected: (prefix: string) => void;
 }) {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -112,10 +135,11 @@ function ConnectForm({
       setTouched(false);
       void qc.invalidateQueries({ queryKey: bindingKey(slug, bucketId) });
       void qc.invalidateQueries({ queryKey: s3CredentialKey(slug, bucketId) });
+      onConnected(binding.prefix);
       toast({
         kind: 'success',
         title: `Connected ${slug}`,
-        description: `Its code reads ${binding.prefix}_*. Running instances pick the secrets up on their next start.`,
+        description: `New instances read ${binding.prefix}_*.`,
       });
     },
     onError: (error) =>
@@ -367,6 +391,61 @@ function Snippets({ env, permission }: { env: EnvNames; permission: Permission }
           />
         </span>
       </div>
+    </section>
+  );
+}
+
+function ApplyNotice({
+  slug,
+  prefix,
+  onDone,
+}: {
+  slug: string;
+  prefix: string;
+  onDone: () => void;
+}) {
+  const confirm = useConfirm();
+  const { toast } = useToast();
+  const restart = useFreshRestart(slug);
+  return (
+    <section
+      role="status"
+      aria-label="Apply the new variables"
+      className="storage-apply flex flex-wrap items-center justify-between gap-4 rounded-2xl border p-4"
+    >
+      <p className="max-w-prose text-sm">
+        Running instances keep their current environment until they restart. New instances read{' '}
+        <code className="font-mono text-xs">{prefix}_*</code>.
+      </p>
+      <Button
+        size="sm"
+        busy={restart.isPending}
+        onClick={() =>
+          void confirm({
+            title: `Restart ${slug} with the new variables?`,
+            description:
+              'Every live instance is replaced from a clean boot, without its process memory, so it reads the new secrets. In-flight requests are lost.',
+            confirmLabel: 'Restart',
+          }).then((ok) => {
+            if (!ok) return;
+            void restart
+              .mutateAsync()
+              .then(() => {
+                onDone();
+                toast({
+                  kind: 'success',
+                  title: 'Restart queued',
+                  description: `${slug} comes back with ${prefix}_* set.`,
+                });
+              })
+              .catch((err: unknown) =>
+                toast({ kind: 'error', title: 'Could not restart', description: errorMessage(err) })
+              );
+          })
+        }
+      >
+        Restart with the new variables
+      </Button>
     </section>
   );
 }

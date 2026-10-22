@@ -9,12 +9,17 @@ const mocks = vi.hoisted(() => ({
   create: vi.fn(),
   rotate: vi.fn(),
   revoke: vi.fn(),
+  restart: vi.fn(),
   confirm: vi.fn(),
   toast: vi.fn(),
 }));
 
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => mocks.confirm }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: mocks.toast }) }));
+vi.mock('@/lib/api/queries', async (original) => ({
+  ...(await original<typeof import('@/lib/api/queries')>()),
+  useFreshRestart: () => ({ mutateAsync: mocks.restart, isPending: false }),
+}));
 vi.mock('@/lib/api/object-storage', async (original) => ({
   ...(await original<typeof import('@/lib/api/object-storage')>()),
   useBucketBindings: () => ({
@@ -68,6 +73,7 @@ beforeEach(() => {
   mocks.create.mockReset().mockResolvedValue({ ...binding, id: 'b2' });
   mocks.rotate.mockReset().mockResolvedValue({ ...binding, rotation_pending: true });
   mocks.revoke.mockReset().mockResolvedValue(undefined);
+  mocks.restart.mockReset().mockResolvedValue({});
   mocks.confirm.mockReset().mockResolvedValue(true);
   mocks.toast.mockReset();
 });
@@ -143,5 +149,20 @@ describe('Use from code', () => {
     await user.click(screen.getByRole('button', { name: 'Connect api-gateway' }));
     expect(screen.getByText(/already has secrets named GREGALE_S3_ASSETS_\*/)).toBeInTheDocument();
     expect(mocks.create).not.toHaveBeenCalled();
+  });
+
+  it('says running instances keep the old environment and offers a fresh restart', async () => {
+    const user = userEvent.setup();
+    mount();
+    await user.click(screen.getByRole('button', { name: 'Connect api-gateway' }));
+    const notice = await screen.findByRole('status', { name: 'Apply the new variables' });
+    expect(notice).toHaveTextContent(/running instances keep their current environment/i);
+    await user.click(
+      within(notice).getByRole('button', { name: 'Restart with the new variables' })
+    );
+    expect(mocks.confirm).toHaveBeenCalledWith(
+      expect.objectContaining({ description: expect.stringMatching(/in-flight requests/i) })
+    );
+    await waitFor(() => expect(mocks.restart).toHaveBeenCalled());
   });
 });

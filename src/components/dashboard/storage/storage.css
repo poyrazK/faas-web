@@ -52,3 +52,8 @@
 .storage-drop:focus-within {
   border-color: color-mix(in oklab, var(--brand) 60%, var(--border));
 }
+
+.storage-apply {
+  border-color: color-mix(in oklab, var(--brand) 40%, var(--border));
+  background: color-mix(in oklab, var(--brand) 6%, var(--card));
+}
