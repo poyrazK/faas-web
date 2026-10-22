@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import type { AppSource } from './new-app-source';
 import { SOURCES, SOURCE_GROUPS } from './new-app-sources';
-import { SourceShader } from './source-shader';
+import { SourceScene } from './new-app-scenes';
 import './new-app-bento.css';
 
 const CORNERS = ['tl', 'tr', 'bl', 'br'] as const;
@@ -55,7 +55,7 @@ export function NewAppBento({
         {CORNERS.map((c) => (
           <span key={c} aria-hidden="true" className="nab-mark" data-corner={c} />
         ))}
-        <SourceShader id={id} active={hot === id || selected === id} />
+        <SourceScene id={id} active={hot === id || selected === id} />
         {/* One cell numbers nothing: onboarding shows Git alone. */}
         {!single && (
           <span className="flex items-center justify-between gap-3 font-mono text-[10.5px] uppercase tracking-[0.08em] text-muted-foreground">

@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import type { AppSource } from './new-app-source';
 import { SOURCES } from './new-app-sources';
 import type { Station } from './new-app-station';
+import { SourceGlyph } from './new-app-scenes';
 
 export type NewAppLayout = 'track' | 'fold';
 
@@ -49,7 +50,7 @@ export function DevLayoutSwitch({
     <div
       role="radiogroup"
       aria-label="New app layout (dev only)"
-      className="fixed bottom-4 left-4 z-50 flex items-center gap-1 rounded-full border border-border bg-popover p-1 font-mono text-[11px] shadow-elevation-3"
+      className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 flex items-center gap-1 rounded-full border border-border bg-popover p-1 font-mono text-[11px] shadow-elevation-3"
     >
       <span className="px-2 text-muted-foreground">Layout</span>
       {(['track', 'fold'] as const).map((l) => (
@@ -175,7 +176,7 @@ export function NewAppStrip({
   return (
     <nav
       aria-label="Sources"
-      className="nab-strip flex flex-col gap-px border border-border bg-border"
+      className="nab-strip flex flex-row gap-px overflow-x-auto border border-border bg-border @[40rem]:flex-col @[40rem]:overflow-visible"
     >
       {SOURCES.map((s) => (
         <button
@@ -184,12 +185,13 @@ export function NewAppStrip({
           aria-pressed={selected === s.id}
           onClick={() => onSelect(s.id)}
           className={cn(
-            'flex h-12 items-center gap-3 bg-card px-3 text-left text-[13px] transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand',
+            'flex h-12 w-12 shrink-0 items-center justify-center gap-3 bg-card text-left text-[13px] transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand @[40rem]:w-auto @[40rem]:justify-start @[40rem]:px-3',
             selected === s.id && 'shadow-[inset_2px_0_0_var(--brand)]'
           )}
         >
-          <span aria-hidden className="nab-swatch h-6 w-6 shrink-0 rounded-md" data-source={s.id} />
-          <span className="truncate">{s.name}</span>
+          <SourceGlyph id={s.id} />
+          {/* A swatch alone in a narrow row; the name stays for assistive tech. */}
+          <span className="truncate @max-[40rem]:sr-only">{s.name}</span>
         </button>
       ))}
     </nav>

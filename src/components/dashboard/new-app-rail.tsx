@@ -68,7 +68,12 @@ export function NewAppRail({
       className="flex flex-col gap-6 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto"
     >
       {step !== undefined && (
-        <ol aria-label="App creation steps" className="flex flex-col gap-1 border-l border-border">
+        // A compact row on narrow screens, so the station's first control
+        // stays on the first screen; a vertical list beside it from lg up.
+        <ol
+          aria-label="App creation steps"
+          className="flex flex-row flex-wrap gap-x-5 gap-y-1 lg:flex-col lg:gap-1 lg:border-l lg:border-border"
+        >
           {STEPS.slice(0, stepCount).map((label, i) => {
             const state = i < step ? 'done' : i === step ? 'current' : 'upcoming';
             return (
@@ -77,10 +82,10 @@ export function NewAppRail({
                 data-state={state}
                 aria-current={state === 'current' ? 'step' : undefined}
                 className={cn(
-                  '-ml-px flex items-center gap-3 border-l py-1.5 pl-4 text-sm transition-colors',
+                  'flex items-center gap-2 py-1 text-sm transition-colors lg:-ml-px lg:gap-3 lg:border-l lg:py-1.5 lg:pl-4',
                   state === 'current'
-                    ? 'border-brand text-foreground'
-                    : 'border-transparent text-muted-foreground'
+                    ? 'text-foreground lg:border-brand'
+                    : 'text-muted-foreground lg:border-transparent'
                 )}
               >
                 <span
@@ -109,7 +114,8 @@ export function NewAppRail({
       )}
 
       {rows.length > 0 && (
-        <div className="flex flex-col gap-3 border-t border-border pt-5">
+        // The summary needs the room beside the station; Review shows it whole.
+        <div className="hidden flex-col gap-3 border-t border-border pt-5 lg:flex">
           <p className="font-mono text-[10.5px] uppercase tracking-[0.08em] text-muted-foreground">
             What you'll get
           </p>

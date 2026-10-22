@@ -30,6 +30,8 @@ describe('DevLayoutSwitch', () => {
     const onChange = vi.fn();
     render(<DevLayoutSwitch layout="track" onChange={onChange} />);
     expect(screen.getByRole('radio', { name: 'Track' })).toBeChecked();
+    // Bottom centre: bottom-left covered the sidebar's Collapse.
+    expect(screen.getByRole('radiogroup')).toHaveClass('left-1/2', '-translate-x-1/2');
     await userEvent.click(screen.getByRole('radio', { name: 'Fold' }));
     expect(onChange).toHaveBeenCalledWith('fold');
   });
@@ -97,6 +99,14 @@ describe('NewAppStage', () => {
 });
 
 describe('NewAppStrip', () => {
+  it('lies flat as a row of swatches in a narrow column', () => {
+    render(<NewAppStrip selected="git" onSelect={vi.fn()} />);
+    expect(screen.getByRole('navigation', { name: 'Sources' })).toHaveClass(
+      'flex-row',
+      '@[40rem]:flex-col'
+    );
+  });
+
   it('lists the six sources with the selection pressed, and switches', async () => {
     const onSelect = vi.fn();
     render(<NewAppStrip selected="template" onSelect={onSelect} />);

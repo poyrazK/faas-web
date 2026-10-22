@@ -1,4 +1,4 @@
-# New app wizard v2: stations, two layouts, shader scenes
+# New app wizard v2: stations, two layouts, source scenes
 
 **Status:** approved in conversation on 2026-10-21; awaiting review of this written spec.
 **Branch:** `feat/new-app-bento`, building on v1 (`docs/superpowers/specs/2026-10-20-new-app-bento-design.md`, head 63a0910).
@@ -10,7 +10,7 @@ v1 put the rail and the bento in place, but Bahadir's walkthrough (2026-10-21) s
 1. **Choosing a source sends you down the page.**
    - Template's catalog, Git's repository fields and Import all appear below the six-cell grid, so the person scrolls to act. The final review measured the common Git path's Repository field 1.5 to 2.5 screens down.
    - Container and Worker throw the person onto a separate screen in the old style.
-2. **The illustrations are plain.** They are flat diagrams; he wants generative, "startup vibey" scenes made with custom shaders.
+2. **The illustrations are plain.** They are flat diagrams; he wants generative, "startup vibey" scenes. (He first asked for custom shaders; §3 records how that ended at vector scenes.)
 
 The v1 final review adds three measured layout defects, folded in below:
 
@@ -86,43 +86,37 @@ Both layouts render the same stations; only placement and motion differ.
 
 **On small screens** (the content column under 40rem): Fold's strip collapses to a horizontal row of swatches above the station, and Track keeps its sliver.
 
-### 3. Shader scenes
+### 3. Source scenes
 
-Six fragment shaders, one per source, replace v1's diagram previews:
+Six vector scenes, one per source, replace v1's diagram previews. They are drawn after a motion reel Bahadir supplied on 2026-10-22: flat, hard-edged geometry in signal colours on a near-black screen, hairline guides, and motion that snaps on a beat. Each source borrows one of the reel's motifs:
 
-| Source            | Scene                                                                   |
-| ----------------- | ----------------------------------------------------------------------- |
-| Git repository    | Thin streams drift in from the edges and converge into one bright beam. |
-| Template          | Square blocks fall and settle into a grid, row by row.                  |
-| Empty app         | A soft field of grain that breathes, brightening and dimming slowly.    |
-| Container image   | Translucent rectangular planes stack upward with depth.                 |
-| Long-lived worker | A pulse travels a line and never stops; a faint trail follows it.       |
-| Import            | One stream enters from the top and splits into three.                   |
+| Source            | Scene                                                                                     |
+| ----------------- | ----------------------------------------------------------------------------------------- |
+| Git repository    | A trunk with asterisk branches bursting off it, a merged asterisk, a commit stepping down |
+| Template          | A checker grid of colour in a hairline frame, filling in on a diagonal wave               |
+| Empty app         | A dot matrix, densest at a blinking centre, breathing outward                             |
+| Container image   | A pillar: a core in a ring of layers that turns, wired to four corner nodes               |
+| Long-lived worker | Three spinners (a plus, a dot flower, a ring of pills) that never stop                    |
+| Import            | A repository scanned by a moving line, then split into three services                     |
+
+**History.** Two shader versions came first. The Bayer-dithered one and the smooth-glow one were both turned down on 2026-10-22. The reel replaced both.
 
 **Language**
 
-- They are built on the landing's `useShaderCanvas` and `GLSL_PRELUDE`.
-- Colour is quantised with the ordered Bayer dither, so each scene steps rather than blends, like the hero, pricing and how-it-works shaders.
-- Colours come from tokens, not literals: at mount, the component reads `--brand`, `--card` and `--foreground` from computed style and passes them as `u_brand`, `u_bg` and `u_fg`. It re-reads them when the `html` element's class changes (polarity), using a `MutationObserver`. Light and dark both work.
+- The scenes are inline SVG, in `new-app-scenes.tsx`. They are not WebGL: the reel's look is crisp vector geometry, which SVG draws exactly at any pixel density. That also leaves no WebGL contexts on the page.
+- Colours are the art tokens in `index.css` (`--art-ground`, `--art-guide`, `--art-mute`, `--art-light`, and seven signal colours, sampled from the reel). Like Foil, one palette serves both polarities: the preview is a dark screen set into the card either way. Scenes name a token, never a colour.
+- The preview's ground carries a 2.5rem hairline guide grid.
 
 **Motion**
 
-The scene holds a still frame until its cell is hovered, focused or selected, then animates. This matches v1's "alive on hover".
+- The scene shows its composed frame until its cell is hovered, focused or selected; then it loops. This matches v1's "alive on hover".
+- Every loop starts and ends on the composed frame. Spins use the shape's own symmetry (half a turn, or a quarter turn for the pillar), so no loop jumps.
+- Animations are declared only under `[data-active]`, so leaving a cell snaps it back instead of freezing it mid-move.
+- Moves use a sharp in-out curve (`cubic-bezier(0.83, 0, 0.17, 1)`) and then hold. Reduced motion shows the composed frame always.
 
-- `useShaderCanvas` gains an optional `active?: boolean`, defaulting to `true`, so every existing caller is unchanged.
-- When `active` is false, the hook draws one frame and stops its loop.
-- Reduced motion always shows the single still frame (existing behaviour).
+**Fold's strip** shows each source's 4×4 pixel glyph in its signature colour, after the reel's small icons.
 
-**Budget**
-
-- Only the bento's six cells mount WebGL canvases, so a page holds at most six contexts.
-- Fold's strip uses static swatches (CSS gradients from the same tokens), never WebGL.
-- `renderScale` is 0.5.
-- The hook already pauses offscreen and when the tab is hidden.
-
-**Fallback.** If WebGL or compilation fails, the cell shows a CSS gradient in the same tokens. This is the existing `supported` flag.
-
-**Accessibility.** Each canvas is `aria-hidden`; the cell's name and description carry the meaning, as in v1.
+**Accessibility.** Each scene is `aria-hidden`; the cell's name and description carry the meaning, as in v1.
 
 ### 4. Folded-in review fixes
 
@@ -163,10 +157,11 @@ The scene holds a still frame until its cell is hovered, focused or selected, th
 - Dev switch:
   - absent when `import.meta.env.DEV` is false (stubbed with `vi.stubEnv`);
   - present and persisted when true.
-- Shaders:
-  - each scene renders a canvas, `aria-hidden`;
-  - with no WebGL (jsdom), it renders the fallback;
-  - `active` false draws one frame. This is tested on the hook with a stubbed context.
+- Scenes:
+  - each source renders one SVG, `aria-hidden`, and every scene differs;
+  - they paint with art tokens only;
+  - `data-active` follows `active`, and every animation is declared under it;
+  - the art tokens are declared once, for both polarities.
 - Container queries: the stylesheet declares `container-type` and no `min-width` media queries for the grid.
 
 **Browser, on the mock:**
@@ -177,7 +172,7 @@ The scene holds a still frame until its cell is hovered, focused or selected, th
 - Checks:
   - no sideways scroll;
   - picking each source lands on its Setup with no vertical hunt (the Setup's first control within the first viewport);
-  - the number of WebGL contexts on the page is 6 or fewer;
+  - six vector scenes and no WebGL canvas;
   - hover animates a scene;
   - reduced motion shows still frames;
   - the GitHub return lands on Git's Setup.

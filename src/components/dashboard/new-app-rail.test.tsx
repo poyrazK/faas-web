@@ -49,6 +49,17 @@ describe('NewAppRail', () => {
     expect(screen.getAllByRole('listitem')).toHaveLength(1);
   });
 
+  // On a phone the header, steps and summary stacked above the station and
+  // pushed its first control off the first screen.
+  it('keeps to one compact row of steps on narrow screens, the summary from lg up', () => {
+    render(<NewAppRail step={0} rows={rows} />);
+    expect(screen.getByRole('list', { name: 'App creation steps' })).toHaveClass(
+      'flex-row',
+      'lg:flex-col'
+    );
+    expect(screen.getByText("What you'll get").parentElement).toHaveClass('hidden', 'lg:flex');
+  });
+
   it('scrolls itself when taller than the screen', () => {
     render(<NewAppRail step={0} rows={rows} />);
     expect(screen.getByRole('complementary')).toHaveClass('lg:overflow-y-auto');

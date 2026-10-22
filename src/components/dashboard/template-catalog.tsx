@@ -51,7 +51,9 @@ export function TemplateCatalog({
   });
 
   return (
-    <div className="flex flex-col gap-6">
+    // Sized by its own width: it sits beside the New app rail, or beside the
+    // Fold layout's strip, so the window says little about the room it has.
+    <div className="@container flex flex-col gap-6">
       <p className="text-sm text-muted-foreground">
         Pick a starter to prefill your app. The CLI writes its scaffold with{' '}
         <code>gregale init</code> after creation.
@@ -82,7 +84,7 @@ export function TemplateCatalog({
               <h2 className="text-sm font-semibold">{CATEGORY[category].label}</h2>
               <p className="text-xs text-muted-foreground">{CATEGORY[category].blurb}</p>
             </div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 @lg:grid-cols-2 @3xl:grid-cols-3">
               {list
                 .filter((t) => t.category === category)
                 .map((t) => (

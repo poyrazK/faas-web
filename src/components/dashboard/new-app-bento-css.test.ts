@@ -14,14 +14,15 @@ describe('new-app-bento.css', () => {
   // the grid must respond to its own width, not the window's.
   it('lays the grid out by container queries, not viewport media queries', () => {
     expect(css).toMatch(/container-type: inline-size/);
-    expect(css).toMatch(/@container nab \(min-width: 46rem\)/);
+    // 42rem: beside the sidebar and the rail, a 1440px window leaves the grid
+    // ~712px, and the hero layout must appear there.
+    expect(css).toMatch(/@container nab \(min-width: 42rem\)/);
     expect(css).toMatch(/@container nab \(min-width: 30rem\)/);
     expect(css).not.toMatch(/@media \(min-width/);
   });
 
-  it('keeps the selection ring for focus and a still fallback for reduced motion', () => {
+  it('keeps the selection ring for focus, and stops motion when reduced', () => {
     expect(css).toMatch(/\.nab-cell:focus-visible/);
-    expect(css).toMatch(/\.nab-fallback/);
     expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)/);
   });
 });

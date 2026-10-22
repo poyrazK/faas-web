@@ -1,7 +1,6 @@
 /* The New app bento: a hairline grid of source cells with corner marks, and
-   the previews inside them. Tokens only; both polarities. Scenes rest on their
-   finished frame; hover, focus and selection apply the animation, which replays
-   and ends on that same frame. */
+   the previews inside them. Tokens only; both polarities. The scenes themselves
+   are styled in new-app-scenes.css. */
 
 .nab-grid {
   display: grid;
@@ -28,7 +27,7 @@
   }
 }
 
-@container nab (min-width: 46rem) {
+@container nab (min-width: 42rem) {
   .nab-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -133,51 +132,11 @@
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: var(--console-surface-radius);
-  background: color-mix(in srgb, var(--foreground) 4%, var(--card));
 }
-/* Without WebGL (or before it compiles), a still gradient in the same
-   tokens stands in, so a cell is never blank. */
-.nab-fallback {
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(
-      120% 90% at 30% 70%,
-      color-mix(in srgb, var(--brand) 38%, transparent),
-      transparent 60%
-    ),
-    var(--card);
-}
-.nab-fallback[data-source='template'] {
-  background-position: 70% 30%;
-}
-.nab-fallback[data-source='worker'] {
-  background:
-    linear-gradient(
-      90deg,
-      transparent 40%,
-      color-mix(in srgb, var(--brand) 45%, transparent),
-      transparent 60%
-    ),
-    var(--card);
-}
-
 @media (prefers-reduced-motion: reduce) {
   .nab-cell,
   .nab-cell * {
     animation: none !important;
     transition: none !important;
   }
-}
-
-/* Fold's strip swatches: static, from the same tokens, never WebGL. */
-.nab-swatch {
-  background:
-    radial-gradient(
-      120% 120% at 30% 70%,
-      color-mix(in srgb, var(--brand) 55%, transparent),
-      transparent 70%
-    ),
-    var(--card);
-  border: 1px solid var(--border);
 }
