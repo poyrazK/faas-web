@@ -72,4 +72,13 @@ describe('CliCommand', () => {
       screen.queryByRole('button', { name: 'Copy: Delete this workload.' })
     ).not.toBeInTheDocument();
   });
+
+  it('wraps long commands at spaces and punctuation rather than mid-word', () => {
+    render(<CliCommand command="gregale jobs rm nightly" copyLabel="delete command for nightly" />);
+
+    const code = screen.getByText('gregale jobs rm nightly');
+    // break-all split `nightly-export` into `nightly-expor` / `t` at phone width.
+    expect(code).not.toHaveClass('break-all');
+    expect(code).toHaveClass('[overflow-wrap:anywhere]');
+  });
 });
