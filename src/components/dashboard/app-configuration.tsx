@@ -630,8 +630,10 @@ function RenamePanel({ app }: { app: App }) {
       title="Name"
       description="The slug is also the subdomain: renaming changes the URL, and the old one stops answering."
     >
+      {/* The error goes under the row, not inside it, so the button stays
+          level with the input when it appears. */}
       <form
-        className="flex flex-wrap items-end gap-3"
+        className="flex flex-col gap-1.5"
         onSubmit={async (e) => {
           e.preventDefault();
           if (!valid || rename.isPending) return;
@@ -658,21 +660,32 @@ function RenamePanel({ app }: { app: App }) {
             );
         }}
       >
-        <label className="flex min-w-64 flex-1 flex-col gap-1.5">
-          <span className="label-mono text-muted-foreground">Slug</span>
-          <input
-            value={next}
-            onChange={(e) => setNext(e.target.value.toLowerCase())}
-            spellCheck={false}
-            aria-invalid={nameError ? true : undefined}
-            aria-describedby={nameError ? 'rename-slug-error' : undefined}
-            className={FIELD}
-          />
-          {nameError && <FieldError id="rename-slug-error">{nameError}</FieldError>}
+        <label htmlFor="rename-slug" className="label-mono text-muted-foreground">
+          Slug
         </label>
-        <Button type="submit" size="sm" variant="outline" disabled={!valid} busy={rename.isPending}>
-          Rename
-        </Button>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="min-w-64 flex-1">
+            <input
+              id="rename-slug"
+              value={next}
+              onChange={(e) => setNext(e.target.value.toLowerCase())}
+              spellCheck={false}
+              aria-invalid={nameError ? true : undefined}
+              aria-describedby={nameError ? 'rename-slug-error' : undefined}
+              className={FIELD}
+            />
+          </div>
+          <Button
+            type="submit"
+            size="sm"
+            variant="outline"
+            disabled={!valid}
+            busy={rename.isPending}
+          >
+            Rename
+          </Button>
+        </div>
+        {nameError && <FieldError id="rename-slug-error">{nameError}</FieldError>}
       </form>
     </Panel>
   );
