@@ -1,5 +1,6 @@
 import { useId } from 'react';
 import { FIELD } from '@/components/ui/field';
+import type { components } from '@/lib/api/schema';
 import { isCronSchedule, upcomingCronRuns } from '@/lib/cron-schedule';
 import { TIME_ZONES } from '@/lib/timezones';
 
@@ -55,28 +56,82 @@ export function TimezoneField({
   );
 }
 
-/** `skip_if_running`: drop a scheduled fire while the previous one is still active. */
-export function SkipIfRunningField({
-  checked,
+type SchedulePolicy = components['schemas']['SchedulePolicy'];
+export type Overlap = SchedulePolicy['overlap'];
+
+/**
+ * The overlap behaviour the backend applies. `schedule_policy` wins when the
+ * cron has one; `skip_if_running` only matters for a cron that has no policy
+ * (pkg/state/work_policies.go `effectiveCronSchedulePolicy`).
+ */
+export function effectiveOverlap(cron: {
+  skip_if_running?: boolean;
+  schedule_policy?: SchedulePolicy | null;
+}): Overlap {
+  if (cron.schedule_policy) return cron.schedule_policy.overlap;
+  return cron.skip_if_running ? 'skip' : 'allow';
+}
+
+/**
+ * The full policy to send for a new overlap choice. PATCH replaces the whole
+ * object, so `missed_runs` and the start deadline are carried over from the
+ * cron; with no policy the backend's own defaults apply (`missed_runs: skip`,
+ * no deadline).
+ */
+export function overlapPolicy(
+  cron: { schedule_policy?: SchedulePolicy | null },
+  overlap: Overlap
+): SchedulePolicy {
+  const current = cron.schedule_policy;
+  return {
+    version: 1,
+    overlap,
+    missed_runs: current?.missed_runs ?? 'skip',
+    ...(current?.start_deadline_seconds
+      ? { start_deadline_seconds: current.start_deadline_seconds }
+      : {}),
+  };
+}
+
+const OVERLAP_OPTIONS: { value: Overlap; label: string }[] = [
+  { value: 'allow', label: 'Allow overlap' },
+  { value: 'skip', label: 'Skip while running' },
+  { value: 'replace', label: 'Replace the running one' },
+];
+
+/** What a scheduled fire does while the previous one is still active. */
+export function OverlapField({
+  value,
   onChange,
 }: {
-  checked: boolean;
-  onChange: (value: boolean) => void;
+  value: Overlap;
+  onChange: (value: Overlap) => void;
 }) {
   const hintId = useId();
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          checked={checked}
-          onChange={(event) => onChange(event.target.checked)}
+      <label className="flex flex-col gap-1.5">
+        <span className="label-mono text-muted-foreground">Overlap</span>
+        <select
+          name="overlap"
+          value={value}
+          onChange={(event) => onChange(event.target.value as Overlap)}
           aria-describedby={hintId}
-        />
-        Skip a run if the previous one is still running
+          className={`${FIELD} w-full`}
+        >
+          {OVERLAP_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
       </label>
       <p id={hintId} className="text-xs text-muted-foreground">
-        A skipped run is recorded as skipped. Leave this off to let runs overlap.
+        {value === 'allow' && 'Runs may overlap. Nothing is skipped.'}
+        {value === 'skip' &&
+          'A fire is recorded as skipped while the previous run is still active.'}
+        {value === 'replace' &&
+          'The new run takes over from the running one. A request already delivered to your app is waited for, not cancelled.'}
       </p>
     </div>
   );

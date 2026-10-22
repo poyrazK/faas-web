@@ -5236,10 +5236,36 @@ function cronTimezone(value: unknown): string {
   return zone;
 }
 
+const OVERLAPS = ['allow', 'skip', 'replace'];
+const MISSED_RUNS = ['coalesce_latest', 'skip'];
+/** Mirrors workpolicy.SchedulePolicy.Validate (pkg/workpolicy/scheduled_policy.go). */
+function schedulePolicy(value: unknown) {
+  const p = value as Record<string, unknown>;
+  const deadline = p.start_deadline_seconds ?? 0;
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    p.version !== 1 ||
+    !OVERLAPS.includes(String(p.overlap)) ||
+    !MISSED_RUNS.includes(String(p.missed_runs)) ||
+    typeof deadline !== 'number' ||
+    deadline < 0 ||
+    deadline > 30 * 24 * 60 * 60
+  )
+    throw new Problem(400, 'invalid_argument', 'schedule_policy is not valid.');
+  return {
+    version: 1 as const,
+    overlap: p.overlap as 'allow' | 'skip' | 'replace',
+    missed_runs: p.missed_runs as 'coalesce_latest' | 'skip',
+    ...(deadline ? { start_deadline_seconds: deadline } : {}),
+  };
+}
+
 route('POST', '/v1/crons', ({ body }) => {
   const a = db.apps.find((x) => x.id === body.app_id);
   if (!a) throw new Problem(404, 'app_not_found', 'No app with that id.');
   const schedule = cronSchedule(body.schedule);
+  const policy = body.schedule_policy == null ? undefined : schedulePolicy(body.schedule_policy);
   const cron = {
     id: db.id(),
     app_id: a.id,
@@ -5249,6 +5275,7 @@ route('POST', '/v1/crons', ({ body }) => {
     enabled: body.enabled !== false,
     timezone: cronTimezone(body.timezone),
     skip_if_running: body.skip_if_running === true,
+    ...(policy ? { schedule_policy: policy } : {}),
     created_at: db.iso(0),
     last_fired_at: null,
   };
@@ -5262,7 +5289,10 @@ route('PATCH', '/v1/crons/{id}', ({ params, body }) => {
   // Validate everything before applying anything, so a refused patch changes nothing.
   const schedule = typeof body.schedule === 'string' ? cronSchedule(body.schedule) : undefined;
   const timezone = typeof body.timezone === 'string' ? cronTimezone(body.timezone) : undefined;
+  // null is a no-op; an object replaces the whole policy, as the API does.
+  const policy = body.schedule_policy == null ? undefined : schedulePolicy(body.schedule_policy);
   if (schedule !== undefined) c.schedule = schedule;
+  if (policy !== undefined) c.schedule_policy = policy;
   if (typeof body.path === 'string') c.path = body.path;
   if (typeof body.enabled === 'boolean') c.enabled = body.enabled;
   if (timezone !== undefined) c.timezone = timezone;

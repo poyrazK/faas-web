@@ -7,7 +7,14 @@ import { useUpdateCron } from '@/lib/api/queries';
 import type { components } from '@/lib/api/schema';
 import { errorMessage } from '@/lib/api/errors';
 import { ScheduleField, useScheduleClock } from './schedule-field';
-import { cronScheduleError, SkipIfRunningField, TimezoneField } from './cron-fields';
+import {
+  cronScheduleError,
+  effectiveOverlap,
+  OverlapField,
+  overlapPolicy,
+  TimezoneField,
+  type Overlap,
+} from './cron-fields';
 
 type CronResponse = components['schemas']['CronResponse'];
 type UpdateCronRequest = components['schemas']['UpdateCronRequest'];
@@ -16,7 +23,7 @@ interface Draft {
   schedule: string;
   path: string;
   timezone: string;
-  skip: boolean;
+  overlap: Overlap;
   retryMax: string;
   retryBackoff: string;
 }
@@ -25,7 +32,7 @@ const draftOf = (cron: CronResponse): Draft => ({
   schedule: cron.schedule,
   path: cron.path ?? '/',
   timezone: cron.timezone || 'UTC',
-  skip: cron.skip_if_running,
+  overlap: effectiveOverlap(cron),
   retryMax: String(cron.retry_max ?? 0),
   retryBackoff: String(cron.retry_backoff_seconds ?? 60),
 });
@@ -54,9 +61,9 @@ function diff(cron: CronResponse, draft: Draft) {
     patch.timezone = draft.timezone.trim() || 'UTC';
     changed.push('timezone');
   }
-  if (draft.skip !== before.skip) {
-    patch.skip_if_running = draft.skip;
-    changed.push('overlap skipping');
+  if (draft.overlap !== before.overlap) {
+    patch.schedule_policy = overlapPolicy(cron, draft.overlap);
+    changed.push('overlap');
   }
   if (cron.kind === 'command') {
     // An invalid number still counts as a change, so submitting reports the
@@ -188,7 +195,7 @@ export function EditCronDialog({
                 />
               </label>
             )}
-            <SkipIfRunningField checked={draft.skip} onChange={(value) => set('skip', value)} />
+            <OverlapField value={draft.overlap} onChange={(value) => set('overlap', value)} />
             {command && (
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="flex flex-col gap-1.5">

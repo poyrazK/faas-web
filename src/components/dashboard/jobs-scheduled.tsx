@@ -27,7 +27,13 @@ import { formatRelative } from '@/lib/mock-data';
 import type { JobsSelectionProps } from './jobs-search';
 import { ScheduleField, useScheduleClock } from './schedule-field';
 import { EditCronDialog } from './cron-edit-dialog';
-import { cronScheduleError, SkipIfRunningField, TimezoneField } from './cron-fields';
+import {
+  cronScheduleError,
+  OverlapField,
+  overlapPolicy,
+  TimezoneField,
+  type Overlap,
+} from './cron-fields';
 import { describeCronSchedule, formatCronTime, upcomingCronRuns } from '@/lib/cron-schedule';
 
 /**
@@ -199,7 +205,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
   const scheduleInput = useRef<HTMLInputElement>(null);
   const [path, setPath] = useState('/');
   const [timezone, setTimezone] = useState('UTC');
-  const [skipIfRunning, setSkipIfRunning] = useState(false);
+  const [overlap, setOverlap] = useState<Overlap>('allow');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [fireRequest, setFireRequest] = useState<string | null>(null);
   const validation = useFormValidation<'schedule'>();
@@ -221,7 +227,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
     setSchedule('');
     setPath('/');
     setTimezone('UTC');
-    setSkipIfRunning(false);
+    setOverlap('allow');
     setCreationError(null);
     validation.resetValidation();
   };
@@ -450,14 +456,15 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
                   ...(timezone.trim() && timezone.trim() !== 'UTC'
                     ? { timezone: timezone.trim() }
                     : {}),
-                  ...(skipIfRunning ? { skip_if_running: true } : {}),
+                  // `allow` is the API default, so only a stricter choice is sent.
+                  ...(overlap !== 'allow' ? { schedule_policy: overlapPolicy({}, overlap) } : {}),
                 })
                 .then((c) => {
                   setCreating(false);
                   setSchedule('');
                   setPath('/');
                   setTimezone('UTC');
-                  setSkipIfRunning(false);
+                  setOverlap('allow');
                   validation.resetValidation();
                   toast({
                     kind: 'success',
@@ -507,7 +514,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
                 <p className="-mt-3 text-xs text-muted-foreground">
                   The request runs against this path on your app. Leave / to use its root.
                 </p>
-                <SkipIfRunningField checked={skipIfRunning} onChange={setSkipIfRunning} />
+                <OverlapField value={overlap} onChange={setOverlap} />
               </fieldset>
               {creationError && (
                 <p role="alert" className="text-sm" style={{ color: 'var(--status-critical)' }}>

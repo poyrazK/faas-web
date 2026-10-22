@@ -226,6 +226,41 @@ describe('PATCH /v1/crons/{id}', () => {
     expect(listed).toMatchObject({ timezone: 'Europe/Istanbul', skip_if_running: true });
   });
 
+  it('stores a schedule_policy on create and replaces the whole object on PATCH', async () => {
+    const cron = await createCron('cron-policy-a');
+    const full = {
+      version: 1,
+      overlap: 'skip',
+      missed_runs: 'coalesce_latest',
+      start_deadline_seconds: 900,
+    };
+    const first = await patch(cron.id, { schedule_policy: full });
+    expect(first.body.schedule_policy).toEqual(full);
+    // Omitted fields are not preserved: the object is replaced, not merged.
+    const second = await patch(cron.id, {
+      schedule_policy: { version: 1, overlap: 'replace', missed_runs: 'skip' },
+    });
+    expect(second.body.schedule_policy).toEqual({
+      version: 1,
+      overlap: 'replace',
+      missed_runs: 'skip',
+    });
+    // null is a no-op.
+    const third = await patch(cron.id, { schedule_policy: null });
+    expect(third.body.schedule_policy).toEqual(second.body.schedule_policy);
+  });
+
+  it('refuses an invalid schedule_policy with 400 and changes nothing', async () => {
+    const cron = await createCron('cron-policy-b');
+    const res = await patch(cron.id, {
+      schedule: '30 6 * * *',
+      schedule_policy: { version: 1, overlap: 'queue', missed_runs: 'skip' },
+    });
+    expect(res.status).toBe(400);
+    const listed = (await json('/v1/crons')).body.find((c: { id: string }) => c.id === cron.id);
+    expect(listed.schedule).toBe('0 2 * * *');
+  });
+
   it('resets an empty timezone to UTC and leaves unsent fields alone', async () => {
     const cron = await createCron('cron-edit-b');
     await patch(cron.id, { timezone: 'Europe/Istanbul', skip_if_running: true });

@@ -226,7 +226,7 @@ describe('scheduled request editing', () => {
     expect(dialog.getByRole('textbox', { name: 'Schedule' })).toHaveValue('0 9 * * *');
     expect(dialog.getByRole('textbox', { name: 'Path' })).toHaveValue('/report');
     expect(dialog.getByRole('combobox', { name: 'Timezone' })).toHaveValue('America/New_York');
-    expect(dialog.getByRole('checkbox', { name: /Skip a run/ })).toBeChecked();
+    expect(dialog.getByRole('combobox', { name: 'Overlap' })).toHaveValue('skip');
     expect(dialog.getByRole('button', { name: 'Save changes' })).toBeDisabled();
   });
 
@@ -258,7 +258,7 @@ describe('scheduled request editing', () => {
     const zone = dialog.getByRole('combobox', { name: 'Timezone' });
     await userEvent.clear(zone);
     await userEvent.type(zone, 'Europe/Istanbul');
-    await userEvent.click(dialog.getByRole('checkbox', { name: /Skip a run/ }));
+    await userEvent.selectOptions(dialog.getByRole('combobox', { name: 'Overlap' }), 'allow');
     await userEvent.click(dialog.getByRole('button', { name: 'Save changes' }));
 
     await waitFor(() =>
@@ -266,12 +266,54 @@ describe('scheduled request editing', () => {
         id: 'cron-http',
         schedule: '30 6 * * *',
         timezone: 'Europe/Istanbul',
-        skip_if_running: false,
+        schedule_policy: { version: 1, overlap: 'allow', missed_runs: 'skip' },
       })
     );
     expect(toast).toHaveBeenCalledWith(
-      expect.objectContaining({ description: 'Changed schedule, timezone and overlap skipping.' })
+      expect.objectContaining({ description: 'Changed schedule, timezone and overlap.' })
     );
+  });
+
+  it('shows the overlap from schedule_policy even when skip_if_running disagrees', async () => {
+    const dialog = await openEdit({
+      ...httpCron,
+      skip_if_running: false,
+      schedule_policy: { version: 1, overlap: 'replace', missed_runs: 'skip' },
+    });
+    expect(dialog.getByRole('combobox', { name: 'Overlap' })).toHaveValue('replace');
+    expect(dialog.getByRole('button', { name: 'Save changes' })).toBeDisabled();
+  });
+
+  it('shows allow or skip from skip_if_running when the cron has no policy', async () => {
+    const dialog = await openEdit({ ...httpCron, skip_if_running: false });
+    expect(dialog.getByRole('combobox', { name: 'Overlap' })).toHaveValue('allow');
+  });
+
+  it('sends the full policy, carrying missed_runs and the start deadline', async () => {
+    const dialog = await openEdit({
+      ...httpCron,
+      skip_if_running: false,
+      schedule_policy: {
+        version: 1,
+        overlap: 'allow',
+        missed_runs: 'coalesce_latest',
+        start_deadline_seconds: 900,
+      },
+    });
+    await userEvent.selectOptions(dialog.getByRole('combobox', { name: 'Overlap' }), 'replace');
+    await userEvent.click(dialog.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() =>
+      expect(updateCron).toHaveBeenCalledWith({
+        id: 'cron-http',
+        schedule_policy: {
+          version: 1,
+          overlap: 'replace',
+          missed_runs: 'coalesce_latest',
+          start_deadline_seconds: 900,
+        },
+      })
+    );
+    expect(updateCron.mock.calls[0][0]).not.toHaveProperty('skip_if_running');
   });
 
   it('resets a cleared timezone to UTC', async () => {
@@ -349,7 +391,7 @@ describe('scheduled request creation options', () => {
     const dialog = await openCreation();
     expect(dialog.queryByText(/recurring UTC schedule/)).not.toBeInTheDocument();
     expect(dialog.getByRole('combobox', { name: 'Timezone' })).toHaveValue('UTC');
-    expect(dialog.getByRole('checkbox', { name: /Skip a run/ })).not.toBeChecked();
+    expect(dialog.getByRole('combobox', { name: 'Overlap' })).toHaveValue('allow');
   });
 
   it('offers the shared IANA zone list as suggestions', async () => {
@@ -361,6 +403,21 @@ describe('scheduled request creation options', () => {
     expect(zones).toContain('Europe/Istanbul');
   });
 
+  it('sends a schedule policy for skip, and nothing for the default allow', async () => {
+    createCron.mockReset().mockResolvedValue({ schedule: '0 9 * * *', path: '/' });
+    const dialog = await openCreation();
+    expect(dialog.getByRole('combobox', { name: 'Overlap' })).toHaveValue('allow');
+    await userEvent.type(dialog.getByRole('textbox', { name: 'Schedule' }), '0 9 * * *');
+    await userEvent.click(dialog.getByRole('button', { name: 'Create scheduled request' }));
+    await waitFor(() =>
+      expect(createCron).toHaveBeenCalledWith({
+        app_id: APP_ID,
+        schedule: '0 9 * * *',
+        path: '/',
+      })
+    );
+  });
+
   it('sends the chosen timezone and overlap option', async () => {
     createCron.mockReset().mockResolvedValue({ schedule: '0 9 * * *', path: '/' });
     const dialog = await openCreation();
@@ -368,7 +425,7 @@ describe('scheduled request creation options', () => {
     const zone = dialog.getByRole('combobox', { name: 'Timezone' });
     await userEvent.clear(zone);
     await userEvent.type(zone, 'Europe/Istanbul');
-    await userEvent.click(dialog.getByRole('checkbox', { name: /Skip a run/ }));
+    await userEvent.selectOptions(dialog.getByRole('combobox', { name: 'Overlap' }), 'replace');
     await userEvent.click(dialog.getByRole('button', { name: 'Create scheduled request' }));
     await waitFor(() =>
       expect(createCron).toHaveBeenCalledWith({
@@ -376,7 +433,7 @@ describe('scheduled request creation options', () => {
         schedule: '0 9 * * *',
         path: '/',
         timezone: 'Europe/Istanbul',
-        skip_if_running: true,
+        schedule_policy: { version: 1, overlap: 'replace', missed_runs: 'skip' },
       })
     );
   });
