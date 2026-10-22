@@ -338,7 +338,11 @@ function DatabaseDetail({ database }: { database: PostgresDatabase }) {
               Restore into a new database
             </Button>
           </div>
-          <CliCommand label="Or restore from the CLI" command={restoreCommand} />
+          <CliCommand
+            label="Or restore from the CLI"
+            copyLabel={`restore command for ${database.name}`}
+            command={restoreCommand}
+          />
         </form>
       </div>
     </Panel>

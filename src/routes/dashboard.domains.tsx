@@ -413,6 +413,7 @@ function DomainsPage() {
               <CliCommand
                 key={row.domain}
                 label={`Make ${row.domain} the default domain for ${row.app}`}
+                copyLabel={`set-default command for ${row.domain}`}
                 command={cliDomainSetDefaultCommand(row.domain)}
               />
             ))}

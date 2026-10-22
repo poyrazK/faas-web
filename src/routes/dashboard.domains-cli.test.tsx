@@ -60,6 +60,20 @@ describe('domains page CLI commands', () => {
     expect(screen.getByText(/Make a\.example\.com the default domain for api/)).toBeInTheDocument();
   });
 
+  it('names each set-default copy button after its domain, as a noun', () => {
+    useDomains.mockReturnValue(
+      ready([domain('b.example.com', true), domain('a.example.com', true)])
+    );
+    render(<DomainsPage />);
+
+    expect(
+      screen.getByRole('button', { name: 'Copy: set-default command for a.example.com' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Copy: set-default command for b.example.com' })
+    ).toBeInTheDocument();
+  });
+
   it('does not offer a domain that is already its app default', () => {
     useDomains.mockReturnValue(
       ready([

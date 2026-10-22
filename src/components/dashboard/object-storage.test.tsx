@@ -223,6 +223,30 @@ it('points to the CLI for bucket features the console lacks, with the chosen app
   ])
     expect(within(more).getByText(command)).toBeInTheDocument();
 });
+it('names each CLI copy button as a command for the chosen bucket', async () => {
+  const user = userEvent.setup();
+  show();
+  await user.click(screen.getByRole('button', { name: 'assets' }));
+  const more = screen.getByRole('region', { name: 'More in the CLI' });
+  expect(
+    within(more)
+      .getAllByRole('button')
+      .map((b) => b.getAttribute('aria-label'))
+  ).toEqual([
+    'Copy: versioning command for assets',
+    'Copy: lifecycle command for assets',
+    'Copy: encryption command for assets',
+    'Copy: Object Lock command for assets',
+    'Copy: multipart uploads command for assets',
+  ]);
+});
+it('names the CLI copy buttons without a bucket until one is chosen', () => {
+  show();
+  const more = screen.getByRole('region', { name: 'More in the CLI' });
+  expect(
+    within(more).getByRole('button', { name: 'Copy: versioning command' })
+  ).toBeInTheDocument();
+});
 it('shows <bucket-id> placeholders until a bucket is chosen', () => {
   show();
   const more = screen.getByRole('region', { name: 'More in the CLI' });

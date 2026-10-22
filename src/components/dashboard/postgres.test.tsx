@@ -187,6 +187,15 @@ describe('PostgresDatabases', () => {
     ).toBeInTheDocument();
   });
 
+  it('names the restore copy button after the database, as a noun', async () => {
+    render(<PostgresDatabases />);
+    await userEvent.click(screen.getByRole('button', { name: /orders/i }));
+
+    expect(
+      await screen.findByRole('button', { name: 'Copy: restore command for orders' })
+    ).toBeInTheDocument();
+  });
+
   it('fills the CLI restore command from the name and time typed in the form', async () => {
     render(<PostgresDatabases />);
     await userEvent.click(screen.getByRole('button', { name: /orders/i }));
