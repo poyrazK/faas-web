@@ -55,6 +55,11 @@ export interface StorageSelection {
   tab?: StorageTab;
   prefix?: string;
 }
+/**
+ * `replace` marks a change the page made on its own (or a refinement of the
+ * last one), which should not become a step of its own in Back.
+ */
+export type SelectionChange = (next: StorageSelection, options?: { replace?: boolean }) => void;
 
 const TABS = [
   { key: 'objects', label: 'Objects' },
@@ -81,15 +86,15 @@ export function ObjectStorage({
   onSelectionChange,
 }: {
   selection?: StorageSelection;
-  onSelectionChange?: (next: StorageSelection) => void;
+  onSelectionChange?: SelectionChange;
 } = {}) {
   const app = useSelectedApp();
   const availability = useCapability('object-storage');
   const [local, setLocal] = useState<StorageSelection>({});
   const current = selection ?? local;
-  const emit = onSelectionChange ?? setLocal;
+  const emit: SelectionChange = onSelectionChange ?? setLocal;
   // Every selection names its app, so a shared link opens the same bucket.
-  const change = (next: StorageSelection) => emit({ app: app.slug, ...next });
+  const change: SelectionChange = (next, options) => emit({ app: app.slug, ...next }, options);
   const linked = current.app;
   const followed = useRef<string | undefined>(undefined);
   const known = app.apps.some((a) => a.slug === linked);
@@ -136,7 +141,7 @@ function BucketManager({
 }: {
   slug: string;
   selection: StorageSelection;
-  onSelectionChange: (next: StorageSelection) => void;
+  onSelectionChange: SelectionChange;
 }) {
   const availability = useCapability('object-storage');
   const query = useObjectBuckets(slug);
@@ -295,14 +300,15 @@ function BucketManager({
             bucket={bucket}
             tab={selection.tab ?? 'objects'}
             prefix={selection.prefix ?? ''}
-            onChange={(next) => onSelectionChange({ bucket: bucket.id, ...next })}
+            onChange={(next, options) => onSelectionChange({ bucket: bucket.id, ...next }, options)}
             enabled={data.enabled}
             maxBytes={directUploadMaxBytes}
             onDelete={async () => {
               if (await confirmDelete(confirm, bucket))
                 mutation.mutate(async () => {
                   await deleteObjectBucket(slug, bucket.id);
-                  onSelectionChange({});
+                  // The deleted bucket's URL is dead; Back should not land on it.
+                  onSelectionChange({}, { replace: true });
                 });
             }}
             deleting={mutation.isPending}
@@ -432,7 +438,7 @@ function BucketDetail({
   bucket: ObjectBucket;
   tab: StorageTab;
   prefix: string;
-  onChange: (next: Omit<StorageSelection, 'bucket'>) => void;
+  onChange: (next: Omit<StorageSelection, 'bucket'>, options?: { replace?: boolean }) => void;
   enabled: boolean;
   maxBytes: number;
   onDelete: () => void;
@@ -479,7 +485,9 @@ function BucketDetail({
             slug={slug}
             bucket={bucket}
             prefix={prefix}
-            onPrefix={(next) => onChange({ tab: 'objects', prefix: next || undefined })}
+            onPrefix={(next, options) =>
+              onChange({ tab: 'objects', prefix: next || undefined }, options)
+            }
             maxBytes={maxBytes}
             signingEnabled={enabled}
           />
@@ -523,7 +531,7 @@ function ObjectBrowser({
   slug: string;
   bucket: ObjectBucket;
   prefix: string;
-  onPrefix: (prefix: string) => void;
+  onPrefix: (prefix: string, options?: { replace?: boolean }) => void;
   maxBytes: number;
   signingEnabled: boolean;
 }) {
@@ -557,6 +565,14 @@ function ObjectBrowser({
   const goTo = (next: string) => {
     setCursor('');
     onPrefix(next);
+  };
+  // Typing a prefix is one Back step, not one per keystroke: the first change
+  // after the field gains focus pushes, the rest refine that entry.
+  const typing = useRef(false);
+  const typeTo = (next: string) => {
+    setCursor('');
+    onPrefix(next, { replace: typing.current });
+    typing.current = true;
   };
   const items = useMemo(() => query.data?.items ?? [], [query.data]);
   // The API lists flat keys. Folders are the next path segment among the keys
@@ -648,7 +664,8 @@ function ObjectBrowser({
           <input
             className={cn(FIELD, 'font-mono')}
             value={prefix}
-            onChange={(e) => goTo(e.target.value)}
+            onFocus={() => (typing.current = false)}
+            onChange={(e) => typeTo(e.target.value)}
             placeholder="folder/"
             spellCheck={false}
           />

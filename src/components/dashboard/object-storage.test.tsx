@@ -1,9 +1,9 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, it, vi } from 'vitest';
-import { ObjectStorage } from './object-storage';
+import { ObjectStorage, type StorageSelection } from './object-storage';
 
 const mocks = vi.hoisted(() => ({
   buckets: vi.fn(),
@@ -288,7 +288,73 @@ it('reports the selection so the page can keep it in the URL', async () => {
     </QueryClientProvider>
   );
   await user.click(screen.getByRole('button', { name: 'assets' }));
-  expect(onSelectionChange).toHaveBeenLastCalledWith({ app: 'demo', bucket: 'bucket-one' });
+  expect(onSelectionChange.mock.lastCall).toEqual([
+    { app: 'demo', bucket: 'bucket-one' },
+    undefined,
+  ]);
+});
+
+type Change = (next: StorageSelection, options?: { replace?: boolean }) => void;
+function Routed({ onChange, start }: { onChange: Change; start: StorageSelection }) {
+  const [selection, setSelection] = useState(start);
+  return (
+    <QueryClientProvider client={new QueryClient()}>
+      <ObjectStorage
+        selection={selection}
+        onSelectionChange={(next, options) => {
+          onChange(next, options);
+          setSelection(next);
+        }}
+      />
+    </QueryClientProvider>
+  );
+}
+const replaced = (change: ReturnType<typeof vi.fn>) =>
+  change.mock.calls.map(([, options]) => Boolean(options?.replace));
+
+it('makes a Back step for every folder opened, and one per typed prefix', async () => {
+  const user = userEvent.setup();
+  mocks.objects.mockReturnValue({
+    data: { items: [{ key: 'images/logo.svg', size_bytes: 2048 }] },
+    isPending: false,
+    error: null,
+  });
+  const change = vi.fn();
+  render(<Routed onChange={change} start={{ bucket: 'bucket-one' }} />);
+  await user.click(screen.getByRole('button', { name: 'Open folder images/' }));
+  expect(change.mock.lastCall?.[0]).toEqual({
+    app: 'demo',
+    bucket: 'bucket-one',
+    tab: 'objects',
+    prefix: 'images/',
+  });
+  expect(replaced(change)).toEqual([false]);
+
+  change.mockClear();
+  const field = screen.getByLabelText('Key prefix');
+  await user.clear(field);
+  await user.type(field, 'tmp/');
+  // The first keystroke steps away from the folder; the rest refine that step.
+  expect(replaced(change)).toEqual([false, true, true, true, true]);
+  expect(change).toHaveBeenLastCalledWith(
+    { app: 'demo', bucket: 'bucket-one', tab: 'objects', prefix: 'tmp/' },
+    { replace: true }
+  );
+
+  change.mockClear();
+  await user.tab();
+  await user.click(field);
+  await user.type(field, 'x');
+  expect(replaced(change)).toEqual([false]);
+});
+
+it('swaps the URL of a deleted bucket rather than leaving it one Back away', async () => {
+  const user = userEvent.setup();
+  mocks.remove.mockResolvedValue(undefined);
+  const change = vi.fn();
+  render(<Routed onChange={change} start={{ bucket: 'bucket-one', tab: 'settings' }} />);
+  await user.click(screen.getByRole('button', { name: 'Delete bucket' }));
+  await waitFor(() => expect(change).toHaveBeenLastCalledWith({ app: 'demo' }, { replace: true }));
 });
 
 it('opens folders found on the loaded page and shows readable sizes', async () => {

@@ -36,8 +36,11 @@ function StoragePage() {
       />
       <ObjectStorage
         selection={search}
-        onSelectionChange={(next) =>
-          void navigate({ search: next, replace: true, resetScroll: false })
+        // A choice someone makes is a Back step; only a change the page makes
+        // on its own replaces the entry, so Back never lands on a URL that
+        // immediately moves again.
+        onSelectionChange={(next, options) =>
+          void navigate({ search: next, replace: options?.replace ?? false, resetScroll: false })
         }
       />
     </div>
