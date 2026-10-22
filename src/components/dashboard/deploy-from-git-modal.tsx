@@ -1,13 +1,12 @@
 import { useState } from 'react';
+import { Link } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { useToast } from '@/components/ui/toast';
 import { RepoPicker } from '@/components/dashboard/repo-picker';
 import { useAppRepoBinding, useBindRepo, useDeployFromRef } from '@/lib/api/queries';
-import { errorMessage } from '@/lib/api/errors';
+import { ApiError, errorMessage } from '@/lib/api/errors';
 import { useAuth } from '@/lib/auth';
-
-const COMMIT_SHA = /^[0-9a-f]{40}$/i;
 
 export interface AcceptedDeploy {
   id: string;
@@ -20,10 +19,11 @@ export interface AcceptedDeploy {
  * The image constructor wants a registry the browser has no business holding
  * credentials for.
  *
- * The app's repository binding decides what GitHub pushes deploy, so a
- * one-off deploy of a tag or commit must not move it. The modal starts from
- * the bound repository and branch, and only writes a binding when the app has
- * none yet — and then only to a branch, never a commit.
+ * The app's repository binding decides what GitHub pushes deploy, and a
+ * source-ref deploy never writes one. The modal starts from the bound
+ * repository and branch, and only creates a binding when the app has none —
+ * without naming a branch, because the console cannot tell a branch from a tag
+ * or a commit. apid then binds the repository's default branch.
  */
 export function DeployFromGitModal({
   open,
@@ -50,6 +50,7 @@ export function DeployFromGitModal({
   const [repo, setRepo] = useState('');
   const [ref, setRef] = useState('main');
   const [error, setError] = useState<string | null>(null);
+  const [ambiguous, setAmbiguous] = useState(false);
   const [prefilledFrom, setPrefilledFrom] = useState<string | null>(null);
   const boundSource = bound?.repo_full_name
     ? `${bound.repo_full_name}@${bound.production_branch || 'main'}`
@@ -65,14 +66,12 @@ export function DeployFromGitModal({
   const submit = () => {
     const source = { repo: repo.trim(), ref: ref.trim() };
     setError(null);
+    setAmbiguous(false);
     onSubmissionError(null);
     // Read before the build is accepted: a failed or pending binding read
     // means the current binding is unknown, and unknown is never overwritten.
     const connectPushes =
-      binding.data !== undefined &&
-      binding.data.state !== 'bound' &&
-      installationId > 0 &&
-      !COMMIT_SHA.test(source.ref);
+      binding.data !== undefined && binding.data.state !== 'bound' && installationId > 0;
     void deployFromRef
       .mutateAsync({ ...source, format: 'tarball' })
       .then((deployment) => {
@@ -85,12 +84,12 @@ export function DeployFromGitModal({
         });
         if (!connectPushes) return;
         void bindRepo
-          .mutateAsync({ installationId, repo: source.repo, branch: source.ref })
+          .mutateAsync({ installationId, repo: source.repo })
           .then(() =>
             toast({
               kind: 'success',
               title: 'Push-to-deploy connected',
-              description: `Pushes to ${source.repo}@${source.ref} now deploy ${appName}.`,
+              description: `Pushes to ${source.repo}'s default branch now deploy ${appName}.`,
             })
           )
           .catch((err: unknown) =>
@@ -104,6 +103,7 @@ export function DeployFromGitModal({
       .catch((err: unknown) => {
         const message = errorMessage(err);
         setError(message);
+        setAmbiguous(err instanceof ApiError && err.code === 'github_install_ambiguous');
         onSubmissionError(message);
         toast({ kind: 'error', title: 'Could not start the deploy', description: message });
       });
@@ -136,10 +136,25 @@ export function DeployFromGitModal({
       }
     >
       <div className="grid gap-4">
-        {error && (
+        {ambiguous ? (
           <p role="alert" className="text-xs text-[color:var(--status-critical)]">
-            {error}
+            This repository is reachable from more than one GitHub installation, so Gregale cannot
+            tell which one to build from. Connect {appName} to one of them in{' '}
+            <Link
+              to="/dashboard/settings"
+              search={{ section: 'integrations' }}
+              className="underline"
+            >
+              Settings → Integrations
+            </Link>
+            , then deploy again.
           </p>
+        ) : (
+          error && (
+            <p role="alert" className="text-xs text-[color:var(--status-critical)]">
+              {error}
+            </p>
+          )
         )}
         <div className="flex flex-col gap-1.5">
           <label htmlFor="deploy-git-repository" className="label-mono text-muted-foreground">

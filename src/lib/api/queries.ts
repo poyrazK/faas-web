@@ -116,9 +116,13 @@ export function useInstallRepos(installationId: number | null, accountId?: strin
   });
 }
 
-type BindRepoInput = { installationId: number; repo: string; branch: string };
+type BindRepoInput = { installationId: number; repo: string; branch?: string };
 
-/** Persist the (account, app, installation, repo, branch) binding. */
+/**
+ * Persist the (account, app, installation, repo, branch) binding. Leave
+ * `branch` out to let apid use the repository's default branch
+ * (`production_branch` is optional on `install/bind`).
+ */
 async function bindRepo(slug: string, input: BindRepoInput) {
   const csrf_token = await issueCSRF('bind_app_to_repo');
   return unwrap(
@@ -128,7 +132,7 @@ async function bindRepo(slug: string, input: BindRepoInput) {
         csrf_token,
         installation_id: input.installationId,
         repo_full_name: input.repo,
-        production_branch: input.branch,
+        ...(input.branch ? { production_branch: input.branch } : {}),
       },
     })
   );

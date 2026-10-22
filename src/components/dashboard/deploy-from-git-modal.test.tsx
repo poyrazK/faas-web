@@ -1,6 +1,8 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import type { ReactNode } from 'react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from '@/lib/api/errors';
 import { DeployFromGitModal } from './deploy-from-git-modal';
 
 const mocks = vi.hoisted(() => ({
@@ -15,6 +17,17 @@ const mocks = vi.hoisted(() => ({
   bindingPending: false,
 }));
 
+vi.mock('@tanstack/react-router', () => ({
+  Link: ({
+    to,
+    search,
+    children,
+  }: {
+    to: string;
+    search?: Record<string, string>;
+    children: ReactNode;
+  }) => <a href={`${to}${search ? '?' + new URLSearchParams(search) : ''}`}>{children}</a>,
+}));
 vi.mock('@/lib/auth', () => ({
   useAuth: () => ({ account: { id: 'account', github_install_id: '42' } }),
 }));
@@ -92,32 +105,65 @@ describe('Deploy from Git', () => {
     expect(mocks.bind).not.toHaveBeenCalled();
   });
 
-  it('binds an unbound app to the deployed branch and says push-to-deploy now follows it', async () => {
+  it("binds an unbound app without naming a branch, so apid uses the repository's default", async () => {
     const user = userEvent.setup();
     mocks.binding = { state: 'installed' };
     open();
     await deploy(user, 'acme/api', 'main');
     await waitFor(() =>
-      expect(mocks.bind).toHaveBeenCalledWith({
-        installationId: 42,
-        repo: 'acme/api',
-        branch: 'main',
-      })
+      expect(mocks.bind).toHaveBeenCalledWith({ installationId: 42, repo: 'acme/api' })
     );
+    expect(mocks.bind.mock.calls[0][0]).not.toHaveProperty('branch');
     await waitFor(() =>
       expect(mocks.toast).toHaveBeenCalledWith(
-        expect.objectContaining({ description: expect.stringMatching(/acme\/api@main/) })
+        expect.objectContaining({
+          description: "Pushes to acme/api's default branch now deploy Alpha.",
+        })
       )
     );
   });
 
-  it('does not bind an unbound app to a commit', async () => {
+  it.each([
+    ['a tag', 'v1.2.0'],
+    ['a commit', 'a'.repeat(40)],
+  ])('binds the same way when the deployed ref is %s', async (_label, ref) => {
     const user = userEvent.setup();
     mocks.binding = { state: 'installed' };
+    open();
+    await deploy(user, 'acme/api', ref);
+    await waitFor(() =>
+      expect(mocks.bind).toHaveBeenCalledWith({ installationId: 42, repo: 'acme/api' })
+    );
+  });
+
+  it('does not bind when the binding read has not answered', async () => {
+    const user = userEvent.setup();
+    mocks.binding = null;
     const onAccepted = open();
-    await deploy(user, 'acme/api', 'a'.repeat(40));
+    await deploy(user, 'acme/api', 'main');
     await waitFor(() => expect(onAccepted).toHaveBeenCalled());
     expect(mocks.bind).not.toHaveBeenCalled();
+  });
+
+  it('explains an ambiguous GitHub installation and links to Integrations', async () => {
+    const user = userEvent.setup();
+    mocks.binding = { state: 'installed' };
+    mocks.deploy.mockRejectedValue(
+      new ApiError({
+        status: 409,
+        code: 'github_install_ambiguous',
+        title: 'GitHub installation is ambiguous',
+        detail: 'more than one connected installation can access the repository',
+      })
+    );
+    open();
+    await deploy(user, 'acme/api', 'main');
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/more than one GitHub installation/i);
+    expect(within(alert).getByRole('link', { name: /integrations/i })).toHaveAttribute(
+      'href',
+      '/dashboard/settings?section=integrations'
+    );
   });
 
   it('reports a failed bind instead of swallowing it', async () => {
