@@ -36,6 +36,16 @@ const CREDENTIAL_CAVEAT =
 const needsCredential = (integration: OutboundIntegration) =>
   integration.credential_source === 'customer_sealed' && !integration.credential_configured;
 
+/**
+ * Owner and credential are separate facts. An operator-provisioned integration
+ * is meant to be bound by customers (ADR-252); the badge says whose it is. The
+ * credential pill already says "Operator-managed" for an operator-supplied
+ * key, so it is dropped when the owner badge would only repeat it.
+ */
+const operatorOwned = (integration: OutboundIntegration) => integration.owner_kind === 'operator';
+const showsCredentialPill = (integration: OutboundIntegration) =>
+  !(operatorOwned(integration) && integration.credential_source === 'operator_env');
+
 function Fact({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="min-w-0">
@@ -64,7 +74,8 @@ function BindingRow({
             {integration.ai_provider && (
               <Pill label={`AI · ${AI_PROVIDER_LABELS[integration.ai_provider]}`} />
             )}
-            <CredentialPill integration={integration} />
+            {operatorOwned(integration) && <Pill label="Operator-managed" />}
+            {showsCredentialPill(integration) && <CredentialPill integration={integration} />}
             {!integration.enabled && (
               <Pill label="Integration disabled" color="var(--status-warning)" />
             )}
@@ -267,7 +278,7 @@ export function AppOutboundBindings({ slug }: { slug: string }) {
                 </option>
                 {available.map((i) => (
                   <option key={i.id} value={i.id}>
-                    {i.name}
+                    {operatorOwned(i) ? `${i.name} (Operator-managed)` : i.name}
                   </option>
                 ))}
               </select>

@@ -127,6 +127,39 @@ describe('App outbound integrations', () => {
     );
   });
 
+  it('marks an operator-owned integration as Operator-managed, once, in the bound list and the select', async () => {
+    const SENDGRID = integration({
+      id: '00000000-0000-4000-8000-000000000014',
+      name: 'sendgrid',
+      owner_kind: 'operator',
+      credential_source: 'operator_env',
+    });
+    integrations = [STRIPE, GEOCODER, SENDGRID];
+    bindings = [binding(STRIPE), binding(GEOCODER)];
+    renderSection();
+    const stripe = (await screen.findByRole('heading', { name: 'stripe' })).closest('li')!;
+    expect(within(stripe).getAllByText('Operator-managed')).toHaveLength(1);
+    const geocoder = screen.getByRole('heading', { name: 'geocoder' }).closest('li')!;
+    expect(within(geocoder).queryByText('Operator-managed')).toBeNull();
+    const select = screen.getByRole('combobox', { name: 'Integration' });
+    await waitFor(() =>
+      expect(
+        within(select)
+          .getAllByRole('option')
+          .map((o) => o.textContent)
+      ).toEqual(['Choose an integration', 'sendgrid (Operator-managed)'])
+    );
+  });
+
+  it('keeps the credential state visible on an operator-owned integration with a sealed credential', async () => {
+    integrations = [integration({ ...STRIPE, credential_source: 'customer_sealed' })];
+    bindings = [binding(integrations[0]!)];
+    renderSection();
+    const row = (await screen.findByRole('heading', { name: 'stripe' })).closest('li')!;
+    expect(within(row).getAllByText('Operator-managed')).toHaveLength(1);
+    expect(within(row).getByText('Credential set')).toBeInTheDocument();
+  });
+
   it('offers only integrations the app is not already bound to', async () => {
     renderSection();
     const select = await screen.findByRole('combobox', { name: 'Integration' });
@@ -273,7 +306,9 @@ describe('App outbound integrations', () => {
     );
     await waitFor(() => expect(screen.queryByRole('heading', { name: 'stripe' })).toBeNull());
     const select = screen.getByRole('combobox', { name: 'Integration' });
-    expect(within(select).getByRole('option', { name: 'stripe' })).toBeInTheDocument();
+    expect(
+      within(select).getByRole('option', { name: 'stripe (Operator-managed)' })
+    ).toBeInTheDocument();
     expect(toast).toHaveBeenCalledWith(expect.objectContaining({ kind: 'success' }));
   });
 
