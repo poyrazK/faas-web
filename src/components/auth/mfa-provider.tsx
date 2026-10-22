@@ -197,14 +197,18 @@ export function MfaProvider({ children }: { children: ReactNode }) {
           mode === 'choose'
             ? required
               ? 'Additional verification required'
-              : 'Protect your account with MFA'
+              : reason
+                ? 'Two-factor authentication required'
+                : 'Protect your account with MFA'
             : 'Multi-factor authentication'
         }
         description={
           mode === 'choose'
             ? required
               ? 'This session needs MFA before the dashboard can load.'
-              : 'MFA is optional. Set it up when you want extra protection for your account.'
+              : reason
+                ? 'This action needs a recent code from your authenticator app.'
+                : 'MFA is optional. Set it up when you want extra protection for your account.'
             : 'Use an authenticator app or a saved recovery code to continue.'
         }
         width="max-w-lg"
@@ -215,7 +219,9 @@ export function MfaProvider({ children }: { children: ReactNode }) {
             <p className="text-sm leading-relaxed text-muted-foreground">
               {required
                 ? 'MFA adds a second factor to your Gregale account. Set up an authenticator if this is your first time, or verify an existing one to unlock the dashboard.'
-                : 'MFA adds a second factor to your Gregale account. Set up an authenticator now to require a code whenever you sign in from a new dashboard session.'}
+                : reason
+                  ? 'Set up an authenticator if this is your first time, or enter a code from the one you already use.'
+                  : 'MFA adds a second factor to your Gregale account. Set up an authenticator now to require a code whenever you sign in from a new dashboard session.'}
             </p>
             {error && <InlineError message={error} />}
             <div className="grid gap-2 sm:grid-cols-2">

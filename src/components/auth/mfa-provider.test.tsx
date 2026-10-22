@@ -135,4 +135,29 @@ describe('openMfa completion method and reason', () => {
     await user.click(screen.getByRole('button', { name: 'Confirm MFA' }));
     await waitFor(() => expect(onVerified).toHaveBeenCalledWith('enrolment'));
   });
+
+  it('says MFA is optional when nothing gated the open', async () => {
+    renderWith(<OpenerWith mode="choose" onVerified={vi.fn()} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'open' }));
+    expect(await screen.findByText(/MFA is optional/)).toBeInTheDocument();
+    expect(screen.getByText('Protect your account with MFA')).toBeInTheDocument();
+  });
+
+  it('drops every "optional" claim when a gate asked for the modal', async () => {
+    renderWith(
+      <OpenerWith
+        mode="choose"
+        reason="Plan changes need two-factor authentication."
+        onVerified={vi.fn()}
+      />
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'open' }));
+    await screen.findByText('Plan changes need two-factor authentication.');
+    expect(screen.queryByText(/optional/i)).toBeNull();
+    expect(screen.queryByText('Protect your account with MFA')).toBeNull();
+    expect(screen.getByText('Two-factor authentication required')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Set up authenticator' })).toBeInTheDocument();
+  });
 });
