@@ -463,3 +463,25 @@ describe('PATCH /v1/jobs/{name}', () => {
     expect((await patch('no-such-job', { status: 'paused' })).status).toBe(404);
   });
 });
+
+describe('POST /v1/jobs/{name}/runs above the plan cap', () => {
+  const start = (tasks: number) =>
+    json('/v1/jobs/nightly-export/runs', { method: 'POST', body: JSON.stringify({ tasks }) });
+
+  it('refuses with 403 job_quota_exceeded carrying limit and observed, instead of clamping', async () => {
+    vi.stubEnv('MOCK_PLAN', 'hobby');
+    const refused = await start(101);
+    expect(refused.status).toBe(403);
+    expect(refused.body).toMatchObject({ code: 'job_quota_exceeded', limit: 100, observed: 101 });
+    const runs = (await json('/v1/jobs/nightly-export/runs')).body.runs as { tasks: number }[];
+    expect(runs.some((r) => r.tasks === 100 || r.tasks === 101)).toBe(false);
+  });
+
+  it('accepts exactly the cap and refuses fewer than one task with 400', async () => {
+    vi.stubEnv('MOCK_PLAN', 'hobby');
+    const ok = await start(100);
+    expect(ok.status).toBe(201);
+    expect(ok.body.tasks).toBe(100);
+    expect((await start(0)).status).toBe(400);
+  });
+});

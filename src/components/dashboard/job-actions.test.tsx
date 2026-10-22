@@ -118,6 +118,66 @@ describe('JobActions start run', () => {
     expect(screen.getByRole('dialog', { name: /start a run/i })).toBeInTheDocument();
   });
 
+  it('names the plan cap inline when the API refuses the count with job_quota_exceeded', async () => {
+    startRun.mockRejectedValue(
+      new ApiError({
+        status: 403,
+        code: 'job_quota_exceeded',
+        title: 'Job limit reached',
+        detail: 'hobby plan caps jobs at 100 for tasks_per_run; you have 150.',
+        limit: 100,
+        observed: 150,
+      })
+    );
+    const { user, onStarted } = setup();
+    await user.click(screen.getByRole('button', { name: 'Start run' }));
+    const dialog = await screen.findByRole('dialog', { name: /start a run/i });
+    const tasks = within(dialog).getByLabelText('Number of tasks');
+    await user.clear(tasks);
+    await user.type(tasks, '150');
+    await user.click(within(dialog).getByRole('button', { name: 'Continue' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      'Your plan allows up to 100 tasks per run.'
+    );
+    expect(within(dialog).getByRole('alert')).not.toHaveTextContent(/you have 150/);
+    expect(onStarted).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the API message when job_quota_exceeded carries no limit', async () => {
+    startRun.mockRejectedValue(
+      new ApiError({ status: 403, code: 'job_quota_exceeded', title: 'Job limit reached' })
+    );
+    const { user } = setup();
+    await user.click(screen.getByRole('button', { name: 'Start run' }));
+    await user.click(await screen.findByRole('button', { name: 'Continue' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Job limit reached');
+  });
+
+  it('mints a new key after a job_quota_exceeded refusal, so a lower count is not replayed', async () => {
+    startRun.mockReset();
+    startRun.mockRejectedValueOnce(
+      new ApiError({
+        status: 403,
+        code: 'job_quota_exceeded',
+        title: 'x',
+        limit: 100,
+        observed: 150,
+      })
+    );
+    startRun.mockResolvedValue(queued);
+    const { user } = setup();
+    await user.click(screen.getByRole('button', { name: 'Start run' }));
+    const tasks = await screen.findByLabelText('Number of tasks');
+    await user.clear(tasks);
+    await user.type(tasks, '150');
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await screen.findByRole('alert');
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await waitFor(() => expect(startRun).toHaveBeenCalledTimes(2));
+    const [first, retry] = startRun.mock.calls.map(([v]) => v as { idempotencyKey: string });
+    expect(retry?.idempotencyKey).not.toBe(first?.idempotencyKey);
+  });
+
   describe('idempotency key', () => {
     // `retry` is how the second attempt ends; a success closes the dialog, so a
     // test that goes on to edit the count has the retry fail too.

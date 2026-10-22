@@ -89,7 +89,9 @@ class Problem extends Error {
   constructor(
     readonly status: number,
     readonly code: string,
-    readonly detail?: string
+    readonly detail?: string,
+    /** Extra RFC 7807 members, such as `limit` and `observed`. */
+    readonly extra: Record<string, unknown> = {}
   ) {
     super(detail ?? code);
   }
@@ -4780,9 +4782,11 @@ route('POST', '/v1/jobs/{name}/runs/{id}/cancel', ({ params }) => {
   return { run, cancelled_at: new Date().toISOString() };
 });
 
-// POST /v1/jobs/{name}/runs fans out `tasks` tasks. The spec says the count is
-// clamped against Plan.JobMaxTasksPerRun (Hobby 100, Pro 1000, Scale 5000), so
-// the mock clamps rather than refusing. The run starts queued with nothing done.
+// POST /v1/jobs/{name}/runs fans out `tasks` tasks. A count above
+// Plan.JobMaxTasksPerRun (Hobby 100, Pro 1000, Scale 5000) is refused with 403
+// job_quota_exceeded carrying `limit` and `observed`, not clamped
+// (handlers_jobs.go createJobRun; ErrJobQuota). The run starts queued with
+// nothing done.
 route('POST', '/v1/jobs/{name}/runs', ({ params, body }) => {
   gateJobs();
   const job = jobs.find((j) => j.name === params.name);
@@ -4792,12 +4796,20 @@ route('POST', '/v1/jobs/{name}/runs', ({ params, body }) => {
   if (typeof requested !== 'number' || !Number.isSafeInteger(requested) || requested < 1)
     throw new Problem(400, 'validation_failed', 'tasks must be a positive whole number.');
   const tier = process.env.MOCK_PLAN === 'hobby' ? 0 : process.env.MOCK_PLAN === 'scale' ? 2 : 1;
+  const cap = [100, 1000, 5000][tier];
+  if (requested > cap)
+    throw new Problem(
+      403,
+      'job_quota_exceeded',
+      `This plan caps jobs at ${cap} for tasks_per_run; you have ${requested}.`,
+      { limit: cap, observed: requested }
+    );
   const run = {
     id: db.id(),
     job_id: job.id,
     account_id: 'acct-1',
     trigger_kind: 'manual' as const,
-    tasks: Math.min(requested, [100, 1000, 5000][tier]),
+    tasks: requested,
     parallelism: job.max_parallelism,
     retry_max: job.retry_max,
     task_timeout_sec: job.task_timeout_sec,
@@ -6982,6 +6994,7 @@ function problem(res: ServerResponse, p: Problem) {
       code: p.code,
       title: p.code.replace(/_/g, ' '),
       detail: p.detail,
+      ...p.extra,
     })
   );
 }

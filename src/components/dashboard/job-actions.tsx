@@ -8,7 +8,7 @@ import { useToast } from '@/components/ui/toast';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import { useDeleteJob, useSetJobStatus, useStartJobRun } from '@/lib/api/queries';
 
-/** `CreateJobRunRequest.tasks` is 1–5000; the plan may clamp it lower. */
+/** `CreateJobRunRequest.tasks` is 1–5000; a plan cap below that is refused with 403 `job_quota_exceeded`, not clamped. */
 const MAX_TASKS = 5000;
 
 const plural = (n: number) => `${n} ${n === 1 ? 'task' : 'tasks'}`;
@@ -220,7 +220,16 @@ function JobRunDialog({
       // included, so reusing it after an ApiError would replay that refusal.
       // Keep it only when the outcome is unknown (network failure).
       if (err instanceof ApiError) attempts.current.delete(name);
-      setFailure(errorMessage(err));
+      // The plan cap refuses the count rather than clamping it. `limit` is the
+      // cap, so say it in the user's terms; the server prose also cites the
+      // count they sent and a "cancel a task or delete a job" hint that does
+      // not apply to a run's size.
+      const cap = err instanceof ApiError ? err.problem.limit : undefined;
+      setFailure(
+        err instanceof ApiError && err.code === 'job_quota_exceeded' && typeof cap === 'number'
+          ? `Your plan allows up to ${cap.toLocaleString('en-US')} tasks per run.`
+          : errorMessage(err)
+      );
     }
   };
 
