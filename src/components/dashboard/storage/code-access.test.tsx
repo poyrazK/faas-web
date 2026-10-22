@@ -161,7 +161,9 @@ describe('Use from code', () => {
       within(notice).getByRole('button', { name: 'Restart with the new variables' })
     );
     expect(mocks.confirm).toHaveBeenCalledWith(
-      expect.objectContaining({ description: expect.stringMatching(/in-flight requests/i) })
+      expect.objectContaining({
+        description: expect.stringMatching(/drain before they are destroyed/i),
+      })
     );
     await waitFor(() => expect(mocks.restart).toHaveBeenCalled());
   });

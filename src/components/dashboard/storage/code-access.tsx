@@ -424,7 +424,7 @@ function ApplyNotice({
           void confirm({
             title: `Restart ${slug} with the new variables?`,
             description:
-              'Every live instance is replaced from a clean boot, without its process memory, so it reads the new secrets. In-flight requests are lost.',
+              'Replacement instances boot from scratch with the new variables. Old instances stop taking new requests and drain before they are destroyed.',
             confirmLabel: 'Restart',
           }).then((ok) => {
             if (!ok) return;
