@@ -82,8 +82,10 @@ const COLUMNS: Column<Workflow>[] = [
     ),
   },
   {
+    // `request_count` is gateway_requests_total over the window (apid
+    // AppMetricsResponse): HTTP requests. Invocations lists async work only.
     key: 'invocations24h',
-    label: 'Invocations 24h',
+    label: 'Requests 24h',
     priority: 'secondary',
     numeric: true,
     render: (fn) => <>{fn.metricsUnavailable ? '—' : formatCompact(fn.invocations24h)}</>,

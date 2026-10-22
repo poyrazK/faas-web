@@ -110,6 +110,12 @@ describe('Apps polish', () => {
     expect(await screen.findByRole('heading', { name: 'New app wizard' })).toBeInTheDocument();
     expect(router.state.location.pathname).toBe('/dashboard/apps/new');
   });
+  it('names the 24h count for what it is: HTTP requests, not async invocations', async () => {
+    empty = false;
+    await mount();
+    expect(screen.getByRole('columnheader', { name: /Requests 24h/ })).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: /Invocations/ })).toBeNull();
+  });
   it('uses the App noun and compact detail access without hiding state', async () => {
     empty = false;
     await mount();
