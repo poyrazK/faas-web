@@ -31,11 +31,14 @@ export function DebugRequestEvidence({
   reqId,
   onClose,
   onRegression,
+  onOpenWake,
 }: {
   slug: string;
   reqId: string | null;
   onClose: () => void;
   onRegression?: (key: string) => void;
+  /** Present when the host can open a wake; the row appears only for a request that admitted one. */
+  onOpenWake?: (wakeId: string) => void;
 }) {
   const evidence = useDebugRequestEvidence(slug, reqId ?? '');
   const data = evidence.data;
@@ -123,6 +126,20 @@ export function DebugRequestEvidence({
                       <dd className="mt-1 break-words font-mono">{value}</dd>
                     </div>
                   ))}
+                  {data.request.wake_id && onOpenWake && (
+                    <div>
+                      <dt className="text-muted-foreground">Wake</dt>
+                      <dd className="mt-1">
+                        <button
+                          type="button"
+                          onClick={() => onOpenWake(data.request.wake_id!)}
+                          className="pressable rounded text-left font-medium text-brand underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-brand"
+                        >
+                          Woke the app · Open wake
+                        </button>
+                      </dd>
+                    </div>
+                  )}
                 </dl>
                 <p className="text-xs text-muted-foreground">
                   Wake and instance IDs were not returned for this request.

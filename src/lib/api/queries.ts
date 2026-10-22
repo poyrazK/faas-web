@@ -598,16 +598,26 @@ export function useAppErrorSample(slug: string, fingerprint: string) {
   });
 }
 
-/** Frame-by-frame anatomy of one wake attempt. */
+/**
+ * Frame-by-frame anatomy of one wake attempt, oldest first. The endpoint has
+ * no cursor parameter: `next_cursor` is an RFC 3339 timestamp passed back as
+ * `since`, so later pages hold later frames. `since` is inclusive, so the
+ * boundary frame repeats; callers de-duplicate.
+ */
 export function useWakeTimeline(slug: string, wakeId: string) {
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: ['apps', slug, 'wakes', wakeId],
-    queryFn: () =>
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam }) =>
       unwrap(
         api.GET('/v1/apps/{slug}/wakes/{wake_id}/timeline', {
-          params: { path: { slug, wake_id: wakeId } },
+          params: {
+            path: { slug, wake_id: wakeId },
+            query: { limit: 1000, ...(pageParam ? { since: pageParam } : {}) },
+          },
         })
       ),
+    getNextPageParam: (last) => last.next_cursor || undefined,
     enabled: Boolean(slug && wakeId),
   });
 }
