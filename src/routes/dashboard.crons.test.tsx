@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -289,6 +289,20 @@ describe('scheduled request editing', () => {
     expect(dialog.getByRole('combobox', { name: 'Overlap' })).toHaveValue('allow');
   });
 
+  it('says replace waits for an HTTP request but stops a command task', async () => {
+    const http = await openEdit(httpCron);
+    await userEvent.selectOptions(http.getByRole('combobox', { name: 'Overlap' }), 'replace');
+    expect(http.getByRole('combobox', { name: 'Overlap' })).toHaveAccessibleDescription(
+      /waited for, not cancelled/
+    );
+    cleanup();
+    const command = await openEdit(commandCron);
+    await userEvent.selectOptions(command.getByRole('combobox', { name: 'Overlap' }), 'replace');
+    const hint = command.getByRole('combobox', { name: 'Overlap' });
+    expect(hint).toHaveAccessibleDescription(/asked to stop/);
+    expect(hint).not.toHaveAccessibleDescription(/not cancelled/);
+  });
+
   it('sends the full policy, carrying missed_runs and the start deadline', async () => {
     const dialog = await openEdit({
       ...httpCron,
@@ -403,7 +417,23 @@ describe('scheduled request creation options', () => {
     expect(zones).toContain('Europe/Istanbul');
   });
 
-  it('sends a schedule policy for skip, and nothing for the default allow', async () => {
+  it('sends a schedule policy for skip', async () => {
+    createCron.mockReset().mockResolvedValue({ schedule: '0 9 * * *', path: '/' });
+    const dialog = await openCreation();
+    await userEvent.type(dialog.getByRole('textbox', { name: 'Schedule' }), '0 9 * * *');
+    await userEvent.selectOptions(dialog.getByRole('combobox', { name: 'Overlap' }), 'skip');
+    await userEvent.click(dialog.getByRole('button', { name: 'Create scheduled request' }));
+    await waitFor(() =>
+      expect(createCron).toHaveBeenCalledWith({
+        app_id: APP_ID,
+        schedule: '0 9 * * *',
+        path: '/',
+        schedule_policy: { version: 1, overlap: 'skip', missed_runs: 'skip' },
+      })
+    );
+  });
+
+  it('sends no policy for the default allow overlap', async () => {
     createCron.mockReset().mockResolvedValue({ schedule: '0 9 * * *', path: '/' });
     const dialog = await openCreation();
     expect(dialog.getByRole('combobox', { name: 'Overlap' })).toHaveValue('allow');

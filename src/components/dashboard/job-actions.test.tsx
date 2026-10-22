@@ -285,17 +285,6 @@ describe('JobActions delete', () => {
     expect(description).toMatch(/pausing .*keeps them/i);
   });
 
-  it('treats a 404 as already deleted: success toast, and the selection is cleared', async () => {
-    deleteJob.mockRejectedValue(
-      new ApiError({ status: 404, code: 'not_found', title: 'no such job' })
-    );
-    const { user, onDeleted } = setup();
-    await user.click(screen.getByRole('button', { name: 'Delete' }));
-    await waitFor(() => expect(onDeleted).toHaveBeenCalledOnce());
-    expect(toast).toHaveBeenCalledWith(expect.objectContaining({ kind: 'success' }));
-    expect(toast).not.toHaveBeenCalledWith(expect.objectContaining({ kind: 'error' }));
-  });
-
   it('deletes nothing when the confirm is declined', async () => {
     confirm.mockResolvedValue(false);
     const { user, onDeleted } = setup();
@@ -336,7 +325,7 @@ describe('JobActions delete', () => {
 });
 
 describe('JobActions pause and resume', () => {
-  it('pauses an active workload without a confirm, and says running tasks carry on', async () => {
+  it('pauses an active workload without a confirm, and says what pausing does and keeps', async () => {
     const { user } = setup('active');
     expect(screen.queryByRole('button', { name: 'Resume' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Pause' }));
@@ -348,8 +337,29 @@ describe('JobActions pause and resume', () => {
       expect.objectContaining({
         kind: 'success',
         title: 'Workload paused',
-        description: expect.stringMatching(/running tasks (carry on|continue)/i),
+        description: expect.stringMatching(
+          /no new runs start.*scheduled runs stop.*history and logs are kept/i
+        ),
       })
+    );
+    const { description } = toast.mock.calls[0]?.[0] as { description: string };
+    expect(description).not.toMatch(/running tasks continue/i);
+  });
+
+  it('explains the 409 for active runs: wait for them or cancel them, then pause', async () => {
+    setStatus.mockRejectedValue(
+      new ApiError({ status: 409, code: 'validation_failed', title: 'Job has active runs' })
+    );
+    const { user } = setup('active');
+    await user.click(screen.getByRole('button', { name: 'Pause' }));
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: 'error',
+          title: 'Could not pause',
+          description: 'Wait for active runs to finish or cancel them, then pause.',
+        })
+      )
     );
   });
 

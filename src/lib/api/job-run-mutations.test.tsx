@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from './errors';
 
 const del = vi.fn();
 const post = vi.fn();
@@ -48,6 +49,29 @@ describe('job run and delete mutations', () => {
     });
     // The list the run view reads is stale, so the new run will be fetched.
     expect(client.getQueryState(['jobs', 'old-job', 'runs'])?.isInvalidated).toBe(true);
+  });
+
+  it('treats a 404 as already deleted and still clears that job from the cache', async () => {
+    // The job is soft-deleted, so every read of it is a 404: a second delete
+    // (or a stale list row) must end in the state the user asked for, with the
+    // lists refreshed and the job's own queries gone.
+    del.mockRejectedValue(new ApiError({ status: 404, code: 'not_found', title: 'no such job' }));
+    const { wrapper, client } = setup();
+    const { result } = renderHook(() => useDeleteJob(), { wrapper });
+    await expect(result.current.mutateAsync('old-job')).resolves.toBeUndefined();
+    expect(client.getQueryState(['jobs'])?.isInvalidated).toBe(true);
+    expect(client.getQueryData(['jobs', 'old-job'])).toBeUndefined();
+    expect(client.getQueryData(['jobs', 'other-job'])).toBeDefined();
+  });
+
+  it('still rejects any other delete failure and leaves the cache alone', async () => {
+    del.mockRejectedValue(
+      new ApiError({ status: 409, code: 'job_has_live_instances', title: 'x' })
+    );
+    const { wrapper, client } = setup();
+    const { result } = renderHook(() => useDeleteJob(), { wrapper });
+    await expect(result.current.mutateAsync('old-job')).rejects.toMatchObject({ status: 409 });
+    expect(client.getQueryData(['jobs', 'old-job'])).toBeDefined();
   });
 
   it('deletes through DELETE /v1/jobs/{name}, refreshing lists and dropping only that job', async () => {

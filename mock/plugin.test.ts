@@ -257,6 +257,7 @@ describe('PATCH /v1/crons/{id}', () => {
       schedule_policy: { version: 1, overlap: 'queue', missed_runs: 'skip' },
     });
     expect(res.status).toBe(400);
+    expect(res.body.code).toBe('validation_failed');
     const listed = (await json('/v1/crons')).body.find((c: { id: string }) => c.id === cron.id);
     expect(listed.schedule).toBe('0 2 * * *');
   });
@@ -445,16 +446,44 @@ describe('outbound bindings through the mock', () => {
 describe('PATCH /v1/jobs/{name}', () => {
   const patch = (name: string, body: unknown) =>
     json(`/v1/jobs/${name}`, { method: 'PATCH', body: JSON.stringify(body) });
+  // A fresh job has no runs; the seeded ones all have a queued and a running run.
+  const freshJob = async (name: string) => {
+    const created = await json('/v1/jobs', {
+      method: 'POST',
+      body: JSON.stringify({
+        name,
+        kind: 'batch',
+        image_ref: 'registry.gregale.dev/acme/x:v1',
+        command: ['true'],
+      }),
+    });
+    expect(created.status).toBe(201);
+  };
+  const start = (name: string) =>
+    json(`/v1/jobs/${name}/runs`, { method: 'POST', body: JSON.stringify({ tasks: 1 }) });
 
   it('pauses and resumes a job, and a paused job refuses a run with 409', async () => {
-    expect((await patch('reindex-search', { status: 'paused' })).body.status).toBe('paused');
-    const refused = await json('/v1/jobs/reindex-search/runs', {
-      method: 'POST',
-      body: JSON.stringify({ tasks: 1 }),
-    });
+    await freshJob('pause-a');
+    expect((await patch('pause-a', { status: 'paused' })).body.status).toBe('paused');
+    expect((await start('pause-a')).status).toBe(409);
+    expect((await patch('pause-a', { status: 'active' })).body.status).toBe('active');
+    expect((await json('/v1/jobs/pause-a')).body.status).toBe('active');
+  });
+
+  it('refuses with 409 validation_failed "Job has active runs" while tasks are queued, then allows it', async () => {
+    await freshJob('pause-b');
+    const run = await start('pause-b');
+    expect(run.status).toBe(201);
+    const refused = await patch('pause-b', { status: 'paused' });
     expect(refused.status).toBe(409);
-    expect((await patch('reindex-search', { status: 'active' })).body.status).toBe('active');
-    expect((await json('/v1/jobs/reindex-search')).body.status).toBe('active');
+    expect(refused.body).toMatchObject({
+      code: 'validation_failed',
+      detail: 'Job has active runs',
+    });
+    expect((await json('/v1/jobs/pause-b')).body.status).toBe('active');
+    const cancelled = await json(`/v1/jobs/pause-b/runs/${run.body.id}/cancel`, { method: 'POST' });
+    expect(cancelled.status).toBeLessThan(300);
+    expect((await patch('pause-b', { status: 'paused' })).status).toBe(200);
   });
 
   it('refuses a status other than active or paused, and an unknown job', async () => {

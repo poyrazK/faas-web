@@ -103,9 +103,12 @@ const OVERLAP_OPTIONS: { value: Overlap; label: string }[] = [
 export function OverlapField({
   value,
   onChange,
+  kind = 'http',
 }: {
   value: Overlap;
   onChange: (value: Overlap) => void;
+  /** `replace` differs: a command task is asked to stop, an HTTP request is waited for. */
+  kind?: 'http' | 'command';
 }) {
   const hintId = useId();
   return (
@@ -131,7 +134,9 @@ export function OverlapField({
         {value === 'skip' &&
           'A fire is recorded as skipped while the previous run is still active.'}
         {value === 'replace' &&
-          'The new run takes over from the running one. A request already delivered to your app is waited for, not cancelled.'}
+          (kind === 'command'
+            ? 'The running task is asked to stop, and the new run starts once it has stopped.'
+            : 'The new run takes over from the running one. A request already delivered to your app is waited for, not cancelled.')}
       </p>
     </div>
   );

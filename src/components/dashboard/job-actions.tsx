@@ -49,10 +49,16 @@ export function JobActions({
     try {
       await setStatus.mutateAsync({ name, status: next });
     } catch (error) {
+      // apid refuses any update while a task is queued or claimed (409,
+      // "Job has active runs"; the code is the generic validation one, so the
+      // status is what identifies it).
+      const activeRuns = error instanceof ApiError && error.status === 409;
       toast({
         kind: 'error',
         title: paused ? 'Could not resume' : 'Could not pause',
-        description: errorMessage(error),
+        description: activeRuns
+          ? `Wait for active runs to finish or cancel them, then ${paused ? 'resume' : 'pause'}.`
+          : errorMessage(error),
       });
       return;
     }
@@ -61,12 +67,13 @@ export function JobActions({
         ? {
             kind: 'success',
             title: 'Workload resumed',
-            description: `${name} can start runs again.`,
+            description: `${name} can start runs again, and scheduled runs resume.`,
           }
         : {
             kind: 'success',
             title: 'Workload paused',
-            description: `No new tasks start. Running tasks continue, and run history and logs are kept.`,
+            description:
+              'No new runs start and scheduled runs stop. Run history and logs are kept.',
           }
     );
   };
@@ -86,18 +93,6 @@ export function JobActions({
     try {
       await remove.mutateAsync(name);
     } catch (error) {
-      // The delete is a soft delete and every read of a deleted job is a 404, so
-      // a 404 here means it is already gone, which is what was asked for.
-      const alreadyGone = error instanceof ApiError && error.status === 404;
-      if (alreadyGone) {
-        toast({
-          kind: 'success',
-          title: 'Workload deleted',
-          description: `${name} was already deleted.`,
-        });
-        onDeleted();
-        return;
-      }
       if (error instanceof ApiError && error.code === 'job_has_live_instances') {
         toast({
           kind: 'error',

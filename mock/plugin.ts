@@ -4884,6 +4884,14 @@ route('PATCH', '/v1/jobs/{name}', ({ params, body }) => {
         'validation_failed',
         "status must be 'active' or 'paused' (use DELETE for soft-delete)"
       );
+    // apid refuses any update while a task is queued or claimed
+    // (pkg/state/pgstore_jobs.go:345-350; handlers_jobs.go:1081-1084).
+    if (
+      runsOf(job.name).some(
+        (r) => r.aggregate_status === 'running' || r.aggregate_status === 'queued'
+      )
+    )
+      throw new Problem(409, 'validation_failed', 'Job has active runs');
     job.status = body.status;
     job.updated_at = db.iso(0);
   }
@@ -5326,7 +5334,7 @@ function schedulePolicy(value: unknown) {
     deadline < 0 ||
     deadline > 30 * 24 * 60 * 60
   )
-    throw new Problem(400, 'invalid_argument', 'schedule_policy is not valid.');
+    throw new Problem(400, 'validation_failed', 'schedule_policy is not valid.');
   return {
     version: 1 as const,
     overlap: p.overlap as 'allow' | 'skip' | 'replace',

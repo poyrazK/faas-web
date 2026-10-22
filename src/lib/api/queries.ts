@@ -1637,8 +1637,17 @@ export function useStartJobRun() {
 export function useDeleteJob() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (name: string) =>
-      unwrap(api.DELETE('/v1/jobs/{name}', { params: { path: { name } } })),
+    mutationFn: async (name: string) => {
+      try {
+        return await unwrap(api.DELETE('/v1/jobs/{name}', { params: { path: { name } } }));
+      } catch (error) {
+        // A delete is a soft delete and every read of a deleted job is a 404,
+        // so a 404 means it is already gone. Succeeding here (rather than in
+        // the caller) lets onSuccess drop the stale list row and detail query.
+        if (error instanceof ApiError && error.status === 404) return undefined;
+        throw error;
+      }
+    },
     onSuccess: async (_none, name) => {
       // Refresh the lists, but not the deleted job's own detail and runs: they
       // would only come back 404 while the page is still showing them.

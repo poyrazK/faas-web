@@ -195,7 +195,11 @@ export function EditCronDialog({
                 />
               </label>
             )}
-            <OverlapField value={draft.overlap} onChange={(value) => set('overlap', value)} />
+            <OverlapField
+              value={draft.overlap}
+              onChange={(value) => set('overlap', value)}
+              kind={command ? 'command' : 'http'}
+            />
             {command && (
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="flex flex-col gap-1.5">
