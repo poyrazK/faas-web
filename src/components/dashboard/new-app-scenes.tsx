@@ -15,7 +15,8 @@ import './new-app-scenes.css';
  *   Import     a repository scanned, then split into three services
  *
  * A scene at rest shows its composed frame; `active` (hovered, focused or
- * selected) plays its loop, which starts and ends on that frame. Colours are
+ * selected) plays its loop, which starts and ends on that frame (Git's commit
+ * alone restarts from the top). Colours are
  * the art tokens in `index.css`, so no colour is written here.
  */
 

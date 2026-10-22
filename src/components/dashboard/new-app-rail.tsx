@@ -151,11 +151,13 @@ export function NewAppReviewGrid({ rows }: { rows: SummaryRow[] }) {
   return (
     <>
       <h2 className="mb-3 text-base font-medium">Review</h2>
-      <dl className="grid gap-px border border-border bg-border sm:grid-cols-2">
+      {/* Two lists in one hairline grid: a dl takes only one wrapper level
+          around each term, so the hero is a list of its own. */}
+      <div className="grid gap-px border border-border bg-border sm:grid-cols-2">
         {hero.length > 0 && (
           // One wide cell: side by side when the URL fits, stacked when it does
           // not, so a long URL never breaks mid-word in a half-width column.
-          <div data-hero="" className="flex flex-wrap gap-x-12 gap-y-4 bg-card p-5 sm:col-span-2">
+          <dl data-hero="" className="flex flex-wrap gap-x-12 gap-y-4 bg-card p-5 sm:col-span-2">
             {hero.map((row) => (
               <div key={row.key} className="flex min-w-0 flex-col gap-1">
                 <dt className="text-xs text-muted-foreground">{row.label}</dt>
@@ -169,10 +171,12 @@ export function NewAppReviewGrid({ rows }: { rows: SummaryRow[] }) {
                 </dd>
               </div>
             ))}
-          </div>
+          </dl>
         )}
-        {rest.map((row, i) => cell(row, i === rest.length - 1 && rest.length % 2 === 1))}
-      </dl>
+        <dl className="contents">
+          {rest.map((row, i) => cell(row, i === rest.length - 1 && rest.length % 2 === 1))}
+        </dl>
+      </div>
     </>
   );
 }

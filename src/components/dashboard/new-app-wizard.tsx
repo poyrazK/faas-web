@@ -1231,12 +1231,22 @@ function CreateAppWizard({
         />
       )}
       <div className={cn('@container flex min-w-0 flex-col gap-6', deploying && 'lg:col-span-2')}>
-        {deploying ? (
-          renderCompletion()
-        ) : (
+        {deploying && renderCompletion()}
+        {/* The stage stays mounted while creating, emptied and hidden, so the
+            import draft in its persistent slot survives a failed attempt. */}
+        <div hidden={deploying}>
           <NewAppStage
             layout={layout}
             station={station}
+            label={
+              station === 'sources'
+                ? 'Choose a source'
+                : station === 'setup' && source
+                  ? sourceName(source)
+                  : station === 'configure'
+                    ? 'Configure'
+                    : 'Review'
+            }
             back={
               layout === 'track' && station !== 'sources' && !onboarding
                 ? station === 'setup' || (station === 'configure' && !hasSetup(source))
@@ -1251,24 +1261,26 @@ function CreateAppWizard({
                 <NewAppStrip selected={source} onSelect={setSource} />
               ) : undefined
             }
+            persistent={
+              // Kept mounted through source switches and creation, including a
+              // failed attempt from another source; shown on Import's Setup.
+              !onboarding && (
+                <div hidden={deploying || source !== 'import' || station !== 'setup'}>
+                  <ProjectImport
+                    key={importHandoff?.seed ?? 0}
+                    initialSlug={importHandoff?.slug ?? search.slug}
+                    initialBranch={importHandoff?.branch ?? search.branch}
+                  />
+                </div>
+              )
+            }
           >
-            {station === 'sources' && renderSources()}
-            {station === 'setup' && renderSetup()}
-            {station === 'configure' && renderConfigure()}
-            {station === 'review' && renderReview()}
+            {!deploying && station === 'sources' && renderSources()}
+            {!deploying && station === 'setup' && renderSetup()}
+            {!deploying && station === 'configure' && renderConfigure()}
+            {!deploying && station === 'review' && renderReview()}
           </NewAppStage>
-        )}
-        {/* Keep the archive and plan mounted through source switches and
-            submission/completion, including a failed attempt from another source. */}
-        {!onboarding && (
-          <div hidden={deploying || source !== 'import' || station !== 'setup'}>
-            <ProjectImport
-              key={importHandoff?.seed ?? 0}
-              initialSlug={importHandoff?.slug ?? search.slug}
-              initialBranch={importHandoff?.branch ?? search.branch}
-            />
-          </div>
-        )}
+        </div>
       </div>
     </div>
   );

@@ -40,6 +40,20 @@ describe('stationFor', () => {
     ).toBe('review');
     expect(at({ source: 'git', named: true, step: 'review', sourceValid: true })).toBe('configure');
   });
+
+  // A stale URL with an only-inferred source has no Setup to fall back to:
+  // the person never chose it.
+  it('sends an inferred source with a stale step back to Sources', () => {
+    expect(at({ source: 'git', named: false, step: 'configure' })).toBe('sources');
+  });
+
+  // Container, Worker and Import finish on their own page; there is no
+  // Configure or Review for them, whatever the URL says.
+  it('keeps the sources that finish on their own page on that page', () => {
+    for (const source of ['container', 'worker', 'import'] as const)
+      for (const step of ['configure', 'review'] as const)
+        expect(at({ source, named: true, step, sourceValid: true, nameValid: true })).toBe('setup');
+  });
 });
 
 describe('stepForStation', () => {

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import { ArrowLeft } from 'iconoir-react';
 import { cn } from '@/lib/utils';
@@ -76,18 +76,26 @@ export function DevLayoutSwitch({
  * Where the current station is shown. Track: one station at a time, sliding
  * sideways, with a named sliver to go back. Fold: the sources strip stays
  * beside every station after Sources.
+ *
+ * The station's column is a region named `label`. `persistent` content sits in
+ * that column below the station but outside its keyed body, so it survives
+ * station changes (Import's draft lives there).
  */
 export function NewAppStage({
   layout,
   station,
+  label,
   back,
   strip,
+  persistent,
   children,
 }: {
   layout: NewAppLayout;
   station: Station;
+  label: string;
   back?: { label: string; onBack: () => void };
   strip?: ReactNode;
+  persistent?: ReactNode;
   children: ReactNode;
 }) {
   const reduce = useReducedMotion();
@@ -97,19 +105,43 @@ export function NewAppStage({
     setDir(ORDER[station] >= ORDER[seen] ? 1 : -1);
     setSeen(station);
   }
+
+  // The control that moved the wizard on usually leaves with its station.
+  // Then focus goes to the new station, which is named, rather than falling to
+  // the page body; focus that survived (the strip, the switch) stays put.
+  const column = useRef<HTMLDivElement>(null);
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    const active = document.activeElement;
+    if (!active || active === document.body || !active.isConnected)
+      column.current?.focus({ preventScroll: false });
+  }, [station]);
   // The old station leaves at once and the new one slides in from its side:
   // holding the old one through an exit animation left two stations'
   // controls in the page together, and a quick click hit the wrong one.
   const body = (
-    <motion.div
-      key={station}
-      initial={reduce ? false : { x: `${dir * 6}%`, opacity: 0 }}
-      animate={{ x: '0%', opacity: 1 }}
-      transition={{ duration: reduce ? 0 : 0.42, ease: EASE }}
-      className="min-w-0"
+    <div
+      ref={column}
+      role="region"
+      aria-label={label}
+      tabIndex={-1}
+      className="flex min-w-0 flex-col gap-6 focus:outline-none"
     >
-      {children}
-    </motion.div>
+      <motion.div
+        key={station}
+        initial={reduce ? false : { x: `${dir * 6}%`, opacity: 0 }}
+        animate={{ x: '0%', opacity: 1 }}
+        transition={{ duration: reduce ? 0 : 0.42, ease: EASE }}
+        className="min-w-0 empty:hidden"
+      >
+        {children}
+      </motion.div>
+      {persistent}
+    </div>
   );
 
   if (layout === 'fold') {
@@ -176,7 +208,7 @@ export function NewAppStrip({
   return (
     <nav
       aria-label="Sources"
-      className="nab-strip flex flex-row gap-px overflow-x-auto border border-border bg-border @[40rem]:flex-col @[40rem]:overflow-visible"
+      className="flex flex-row gap-px overflow-x-auto border border-border bg-border @[40rem]:flex-col @[40rem]:overflow-visible"
     >
       {SOURCES.map((s) => (
         <button
@@ -190,7 +222,7 @@ export function NewAppStrip({
           )}
         >
           <SourceGlyph id={s.id} />
-          {/* A swatch alone in a narrow row; the name stays for assistive tech. */}
+          {/* A glyph alone in a narrow row; the name stays for assistive tech. */}
           <span className="truncate @max-[40rem]:sr-only">{s.name}</span>
         </button>
       ))}

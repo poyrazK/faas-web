@@ -4,6 +4,9 @@ export type Station = 'sources' | 'setup' | 'configure' | 'review';
 
 const WITH_SETUP: readonly AppSource[] = ['git', 'template', 'container', 'worker', 'import'];
 
+// These finish on their own page, with their own submit: no Configure or Review.
+const OWN_PAGE: readonly AppSource[] = ['container', 'worker', 'import'];
+
 /** Empty needs no setup; every other source has a page of its own. */
 export function hasSetup(source?: AppSource): boolean {
   return source !== undefined && WITH_SETUP.includes(source);
@@ -24,9 +27,11 @@ export function stationFor(i: {
   sourceValid: boolean;
   nameValid: boolean;
 }): Station {
-  const fallback: Station = hasSetup(i.source) ? 'setup' : 'sources';
+  // Only a source the person chose has a Setup to fall back to.
+  const fallback: Station = i.named && hasSetup(i.source) ? 'setup' : 'sources';
   if (i.step === 'review' || i.step === 'configure') {
     if (!i.sourceValid) return fallback;
+    if (i.source && OWN_PAGE.includes(i.source)) return 'setup';
     return i.step === 'review' && i.nameValid ? 'review' : 'configure';
   }
   if (i.step === 'setup')

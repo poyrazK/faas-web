@@ -3,7 +3,7 @@
 
    Motion snaps on a beat: a move takes a fraction of the loop on a sharp
    in-out curve, then holds. Every loop starts and ends on the composed
-   frame, and animations are declared only under [data-active]: a scene at
+   frame (bar Git's commit, which lands again from the top), and animations are declared only under [data-active]: a scene at
    rest has none, so leaving a cell snaps it back rather than freezing it
    mid-move. */
 
@@ -180,7 +180,8 @@
   }
 }
 
-/* A commit steps down the trunk. */
+/* A commit steps down the trunk, and the next one lands at the top: the one
+   loop that restarts with a cut, on purpose. */
 .nab-scene[data-active] .a-drop {
   animation-name: nab-drop;
   animation-duration: 2.8s;

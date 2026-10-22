@@ -47,7 +47,7 @@ describe('NewAppStage', () => {
   it('Track: shows only the current station and a named way back', async () => {
     const onBack = vi.fn();
     render(
-      <NewAppStage layout="track" station="setup" back={{ label: 'Sources', onBack }}>
+      <NewAppStage layout="track" station="setup" label="setup" back={{ label: 'Sources', onBack }}>
         <p>setup fields</p>
       </NewAppStage>
     );
@@ -60,12 +60,17 @@ describe('NewAppStage', () => {
   // controls in the page at once, and a quick click hit the old one.
   it('swaps stations at once, never holding the old one while the new slides in', () => {
     const { rerender } = render(
-      <NewAppStage layout="track" station="sources">
+      <NewAppStage layout="track" station="sources" label="sources">
         <p>grid</p>
       </NewAppStage>
     );
     rerender(
-      <NewAppStage layout="track" station="setup" back={{ label: 'Sources', onBack: vi.fn() }}>
+      <NewAppStage
+        layout="track"
+        station="setup"
+        label="setup"
+        back={{ label: 'Sources', onBack: vi.fn() }}
+      >
         <p>setup fields</p>
       </NewAppStage>
     );
@@ -75,7 +80,7 @@ describe('NewAppStage', () => {
 
   it('Track: no way back from the first station', () => {
     render(
-      <NewAppStage layout="track" station="sources">
+      <NewAppStage layout="track" station="sources" label="sources">
         <p>grid</p>
       </NewAppStage>
     );
@@ -84,13 +89,23 @@ describe('NewAppStage', () => {
 
   it('Fold: puts the strip beside every station after Sources', () => {
     const { rerender } = render(
-      <NewAppStage layout="fold" station="sources" strip={<nav aria-label="strip" />}>
+      <NewAppStage
+        layout="fold"
+        station="sources"
+        label="sources"
+        strip={<nav aria-label="strip" />}
+      >
         <p>grid</p>
       </NewAppStage>
     );
     expect(screen.queryByRole('navigation', { name: 'strip' })).not.toBeInTheDocument();
     rerender(
-      <NewAppStage layout="fold" station="configure" strip={<nav aria-label="strip" />}>
+      <NewAppStage
+        layout="fold"
+        station="configure"
+        label="configure"
+        strip={<nav aria-label="strip" />}
+      >
         <p>configure</p>
       </NewAppStage>
     );
@@ -98,8 +113,73 @@ describe('NewAppStage', () => {
   });
 });
 
+describe('NewAppStage focus', () => {
+  // The control that moved the wizard on leaves with its station; focus goes
+  // to the new station, named, instead of falling to the page body.
+  it('moves focus to the new station when the focused control went with the old one', () => {
+    const { rerender } = render(
+      <NewAppStage layout="track" station="sources" label="Choose a source">
+        <button type="button">Template</button>
+      </NewAppStage>
+    );
+    screen.getByRole('button', { name: 'Template' }).focus();
+    rerender(
+      <NewAppStage layout="track" station="setup" label="Template">
+        <p>catalog</p>
+      </NewAppStage>
+    );
+    expect(document.activeElement).toBe(screen.getByRole('region', { name: 'Template' }));
+  });
+
+  it('leaves focus alone when it survived the change, as on the strip', () => {
+    const strip = <button type="button">Empty</button>;
+    const { rerender } = render(
+      <NewAppStage layout="fold" station="setup" label="Git repository" strip={strip}>
+        <p>git</p>
+      </NewAppStage>
+    );
+    screen.getByRole('button', { name: 'Empty' }).focus();
+    rerender(
+      <NewAppStage layout="fold" station="configure" label="Configure" strip={strip}>
+        <p>configure</p>
+      </NewAppStage>
+    );
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Empty' }));
+  });
+
+  it('does not steal focus on first render', () => {
+    render(
+      <NewAppStage layout="track" station="sources" label="Choose a source">
+        <p>sources</p>
+      </NewAppStage>
+    );
+    expect(document.activeElement).toBe(document.body);
+  });
+});
+
+describe('NewAppStage persistent content', () => {
+  // Import's form outlives station changes (its draft must survive), yet it
+  // belongs in the station's column, beside the way back.
+  it('places persistent content in the station column', () => {
+    render(
+      <NewAppStage
+        layout="track"
+        station="setup"
+        label="Import"
+        back={{ label: 'Sources', onBack: vi.fn() }}
+        persistent={<p>import form</p>}
+      >
+        {null}
+      </NewAppStage>
+    );
+    expect(screen.getByText('import form').closest('[role="region"]')).toBe(
+      screen.getByRole('region', { name: 'Import' })
+    );
+  });
+});
+
 describe('NewAppStrip', () => {
-  it('lies flat as a row of swatches in a narrow column', () => {
+  it('lies flat as a row of glyphs in a narrow column', () => {
     render(<NewAppStrip selected="git" onSelect={vi.fn()} />);
     expect(screen.getByRole('navigation', { name: 'Sources' })).toHaveClass(
       'flex-row',

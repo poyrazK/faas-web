@@ -72,7 +72,7 @@ Both layouts render the same stations; only placement and motion differ.
 
 **Fold**
 
-- Leaving Sources animates the bento into a vertical strip of the six sources down the left of the content (`motion` layout animation, 420ms). Each cell becomes a 3rem row: a static colour swatch, the name, and the selected state.
+- Leaving Sources animates the bento into a vertical strip of the six sources down the left of the content (`motion` layout animation, 420ms). Each cell becomes a 3rem row: the source's pixel glyph, the name, and the selected state.
 - The strip stays switchable: picking another source goes to its Setup.
 - The station content sits beside the strip, and the strip persists through Configure and Review.
 - With reduced motion, the fold happens without animation.
@@ -84,7 +84,7 @@ Both layouts render the same stations; only placement and motion differ.
 - The choice is stored in local storage under `gregale.dev.newAppLayout`, read inside try/catch.
 - Production uses Track until Bahadir chooses; the chosen layout then becomes the only one, and the other is deleted in a follow-up.
 
-**On small screens** (the content column under 40rem): Fold's strip collapses to a horizontal row of swatches above the station, and Track keeps its sliver.
+**On small screens** (the content column under 40rem): Fold's strip collapses to a horizontal row of glyphs above the station, and Track keeps its sliver.
 
 ### 3. Source scenes
 
@@ -110,7 +110,7 @@ Six vector scenes, one per source, replace v1's diagram previews. They are drawn
 **Motion**
 
 - The scene shows its composed frame until its cell is hovered, focused or selected; then it loops. This matches v1's "alive on hover".
-- Every loop starts and ends on the composed frame. Spins use the shape's own symmetry (half a turn, or a quarter turn for the pillar), so no loop jumps.
+- Every loop starts and ends on the composed frame, except Git's commit, which lands again from the top. Spins use the shape's own symmetry (half a turn, or a quarter turn for the pillar), so no loop jumps.
 - Animations are declared only under `[data-active]`, so leaving a cell snaps it back instead of freezing it mid-move.
 - Moves use a sharp in-out curve (`cubic-bezier(0.83, 0, 0.17, 1)`) and then hold. Reduced motion shows the composed frame always.
 
