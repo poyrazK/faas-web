@@ -167,4 +167,16 @@ describe('Use from code', () => {
     );
     await waitFor(() => expect(mocks.restart).toHaveBeenCalled());
   });
+
+  it('toasts what happened and leaves the variables to the notice, said once', async () => {
+    const user = userEvent.setup();
+    mount();
+    await user.click(screen.getByRole('button', { name: 'Connect api-gateway' }));
+    const notice = await screen.findByRole('status', { name: 'Apply the new variables' });
+    expect(notice).toHaveTextContent('New instances read GREGALE_S3_ASSETS_*.');
+    expect(mocks.toast).toHaveBeenCalledWith({
+      kind: 'success',
+      title: 'Connected assets to api-gateway',
+    });
+  });
 });

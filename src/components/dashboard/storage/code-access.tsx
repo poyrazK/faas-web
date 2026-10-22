@@ -136,11 +136,9 @@ function ConnectForm({
       void qc.invalidateQueries({ queryKey: bindingKey(slug, bucketId) });
       void qc.invalidateQueries({ queryKey: s3CredentialKey(slug, bucketId) });
       onConnected(binding.prefix);
-      toast({
-        kind: 'success',
-        title: `Connected ${slug}`,
-        description: `New instances read ${binding.prefix}_*.`,
-      });
+      // The Apply notice says which variables new instances read; the toast
+      // only says what happened, rather than repeating it.
+      toast({ kind: 'success', title: `Connected ${bucketName} to ${slug}` });
     },
     onError: (error) =>
       toast({
