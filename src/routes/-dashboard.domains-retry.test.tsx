@@ -25,6 +25,8 @@ let domains: Record<string, unknown>[];
 let retry: (domain: string) => unknown;
 let readd: (body: Record<string, unknown>) => unknown;
 let post: ReturnType<typeof spyApi>;
+let get: ReturnType<typeof spyApi>;
+let domainsFail = false;
 
 const problem = (status: number, code: string, title: string) => ({
   data: undefined,
@@ -46,7 +48,9 @@ beforeEach(() => {
       response: new Response(null, { status: 202 }),
     };
   };
-  spyApi('GET').mockImplementation(async (path) => {
+  domainsFail = false;
+  get = spyApi('GET').mockImplementation(async (path) => {
+    if (path === '/v1/domains' && domainsFail) throw new Error('offline');
     const data =
       path === '/v1/apps'
         ? [{ id: APP_ID, slug: 'api' }]
@@ -98,7 +102,75 @@ async function mount() {
 
 const rowOf = (host: string) => screen.getByText(host).closest('tr') as HTMLElement;
 
+const domainReads = () => get.mock.calls.filter(([path]) => path === '/v1/domains').length;
+
 describe('Domain verification retry', () => {
+  it('has no Verify button on a pending domain: /verify does not look up the TXT record', async () => {
+    await mount();
+    expect(within(rowOf('alpha.example.com')).queryByRole('button', { name: 'Verify' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Verify' })).toBeNull();
+  });
+
+  it('re-reads the domains 5 s and 20 s after a retry is queued, so the result shows up', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      await mount();
+      await user.click(
+        within(rowOf('alpha.example.com')).getByRole('button', { name: 'Check again' })
+      );
+      await waitFor(() =>
+        expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Checking again' }))
+      );
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+      const afterRetry = domainReads();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000);
+      });
+      expect(domainReads()).toBe(afterRetry + 1);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15_000);
+      });
+      expect(domainReads()).toBe(afterRetry + 2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('says so when the domain is gone after a 409, instead of doing nothing', async () => {
+    retry = () => {
+      domains = domains.filter((d) => d.domain !== 'alpha.example.com');
+      return problem(409, 'validation_failed', 'Domain cannot be retried');
+    };
+    await mount();
+    await userEvent.click(
+      within(rowOf('alpha.example.com')).getByRole('button', { name: 'Check again' })
+    );
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'alpha.example.com is no longer listed' })
+      )
+    );
+  });
+
+  it('says so when the re-read fails after a 409', async () => {
+    retry = () => {
+      domainsFail = true;
+      return problem(409, 'validation_failed', 'Domain cannot be retried');
+    };
+    await mount();
+    await userEvent.click(
+      within(rowOf('alpha.example.com')).getByRole('button', { name: 'Check again' })
+    );
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 'error', title: 'Could not read the domain’s state' })
+      )
+    );
+  });
+
   it('offers Check again for an unverified domain only, and says it is checking', async () => {
     await mount();
     expect(

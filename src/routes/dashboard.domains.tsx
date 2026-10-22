@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { Activity, Plus, Trash } from 'iconoir-react';
 import { CopyIconButton } from '@/components/ui/copy-button';
@@ -15,7 +15,6 @@ import {
   useDeleteDomain,
   useDomains,
   useRetryDomain,
-  useVerifyDomain,
 } from '@/lib/api/queries';
 import { DomainDoctor } from '@/components/dashboard/domain-doctor';
 import { slugIndex } from '@/lib/api/adapters';
@@ -64,6 +63,9 @@ interface DomainRow {
   txtRecord: string | null;
 }
 
+/** Re-read the domains this long after a retry is queued. */
+const RECHECK_DELAYS_MS = [5_000, 20_000];
+
 function formatDate(value: string | null | undefined): string {
   if (!value) return '—';
   const ms = Date.parse(value);
@@ -78,7 +80,6 @@ function DomainsPage() {
   const apps = appQuery.data;
   const addDomain = useAddDomain();
   const deleteDomain = useDeleteDomain();
-  const verifyDomain = useVerifyDomain();
   const retryDomain = useRetryDomain();
   // Hostnames whose TXT challenge the API refused to retry because it ran out.
   const [expired, setExpired] = useState<ReadonlySet<string>>(new Set());
@@ -121,6 +122,15 @@ function DomainsPage() {
     }));
   }, [data, apps]);
 
+  // After a retry is queued the poller runs on its own schedule, so look again
+  // a little later rather than leaving the row looking unchanged.
+  const recheckTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const clearRechecks = () => {
+    recheckTimers.current.forEach(clearTimeout);
+    recheckTimers.current = [];
+  };
+  useEffect(() => clearRechecks, []);
+
   const markExpired = (domain: string, on: boolean) =>
     setExpired((prev) => {
       const next = new Set(prev);
@@ -143,14 +153,28 @@ function DomainsPage() {
         title: 'Checking again',
         description: 'The TXT record will be looked up again shortly.',
       });
+      clearRechecks();
+      recheckTimers.current = RECHECK_DELAYS_MS.map((ms) => setTimeout(() => void refetch(), ms));
     } catch (err) {
       if (!(err instanceof ApiError && err.status === 409)) {
         toast({ kind: 'error', title: 'Could not check again', description: errorMessage(err) });
         return;
       }
+      // A failed refetch keeps the previous data, so check the error, not the rows.
       const fresh = await refetch().catch(() => undefined);
-      const row = fresh?.data?.find((x) => x.domain === domain);
-      if (!row) return;
+      if (!fresh || fresh.isError) {
+        toast({
+          kind: 'error',
+          title: 'Could not read the domain’s state',
+          description: 'Reload the list to see whether it verified or expired.',
+        });
+        return;
+      }
+      const row = fresh.data?.find((x) => x.domain === domain);
+      if (!row) {
+        toast({ kind: 'info', title: `${domain} is no longer listed` });
+        return;
+      }
       if (row.verified) {
         toast({ kind: 'success', title: `${domain} verified` });
       } else {
@@ -264,37 +288,6 @@ function DomainsPage() {
                 Check again
               </Button>
             ))}
-          {!d.verified && (
-            <Button
-              size="sm"
-              variant="secondary"
-              busy={verifyDomain.isPending && verifyDomain.variables === d.domain}
-              onClick={() => {
-                void verifyDomain
-                  .mutateAsync(d.domain)
-                  .then((row) =>
-                    toast(
-                      row.verified
-                        ? { kind: 'success', title: `${d.domain} verified` }
-                        : {
-                            kind: 'info',
-                            title: 'Not verified yet',
-                            description: 'DNS has not propagated. Run the doctor to see why.',
-                          }
-                    )
-                  )
-                  .catch((err: unknown) =>
-                    toast({
-                      kind: 'error',
-                      title: 'Could not verify',
-                      description: errorMessage(err),
-                    })
-                  );
-              }}
-            >
-              Verify
-            </Button>
-          )}
 
           <IconButton
             type="button"
