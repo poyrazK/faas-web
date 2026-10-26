@@ -3,7 +3,7 @@ import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Link } from '@tanstack/react-router';
 import { CopyButton } from '@/components/docs/copy-button';
-import { DOC_ENTRIES } from '@/lib/docs-manifest';
+import { resolveDocHref } from '@/lib/docs-links';
 import { slugifyHeading } from '@/lib/docs-content';
 
 /**
@@ -189,16 +189,6 @@ const COMPONENTS: Components = {
 
   strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
 };
-
-function resolveDocHref(href: string, sourcePath?: string): string {
-  if (!sourcePath || /^(?:[a-z][a-z0-9+.-]*:|[/#?])/i.test(href)) return href;
-  const resolved = new URL(href, `https://source.invalid/${sourcePath}`);
-  const path = resolved.pathname.slice(1);
-  const published = DOC_ENTRIES.find((entry) => entry.source === path);
-  return published
-    ? `/docs/${published.slug}${resolved.search}${resolved.hash}`
-    : `https://github.com/poyrazK/faas/blob/main/${path}${resolved.search}${resolved.hash}`;
-}
 
 export function Markdown({ source, sourcePath }: { source: string; sourcePath?: string }) {
   return (

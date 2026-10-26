@@ -82,6 +82,13 @@ export const DOC_SECTIONS: DocSection[] = [
         summary:
           'Interactive flows, saved log views, Job and workflow recovery, required secrets, and shell completion for the gregale CLI.',
       },
+      {
+        slug: 'agents',
+        source: 'docs/agents.md',
+        title: 'Use Gregale from coding agents',
+        summary:
+          'Give Claude Code, Codex or Cursor a scoped key, the non-interactive CLI contract, the management MCP server, and the Gregale plugin.',
+      },
     ],
   },
   {
