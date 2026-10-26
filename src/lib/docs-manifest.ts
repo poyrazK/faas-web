@@ -192,6 +192,13 @@ export const DOC_SECTIONS: DocSection[] = [
     blurb: 'What the platform can tell you about a request.',
     entries: [
       {
+        slug: 'logs',
+        source: 'docs/logs.md',
+        title: 'Logs',
+        summary:
+          'Live tail, archived logs of parked instances, retention by plan, filters and log drains.',
+      },
+      {
         slug: 'tracing',
         source: 'docs/tracing.md',
         title: 'Request tracing',
