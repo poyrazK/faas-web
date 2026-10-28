@@ -137,7 +137,8 @@ export const DOC_SECTIONS: DocSection[] = [
         slug: 'apps',
         source: 'docs/apps.md',
         title: 'Apps',
-        summary: 'Create, configure, scale, rename and restore apps, and open a shell in a fresh VM.',
+        summary:
+          'Create, configure, scale, rename and restore apps, and open a shell in a fresh VM.',
       },
       {
         slug: 'functions',
