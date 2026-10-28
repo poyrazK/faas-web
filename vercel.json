@@ -35,6 +35,11 @@
       "dest": "https://api.gregale.dev/status/slo.json"
     },
     {
+      "src": "^/\\.well-known/security\\.txt$",
+      "methods": ["GET", "HEAD"],
+      "dest": "https://api.gregale.dev/.well-known/security.txt"
+    },
+    {
       "src": "^/auth(?:/(.*))?$",
       "methods": ["GET", "HEAD", "POST", "OPTIONS"],
       "dest": "https://api.gregale.dev/auth/$1"

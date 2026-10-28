@@ -16,15 +16,18 @@ import { DOC_ENTRIES, findDoc } from './docs-manifest.ts';
  *   slug (`orgs` and `account.md` → `/docs/account`). The docs route
  *   redirects them, and `vercel.json` / `_redirects` do the same at the edge
  *   so the link never reaches the SPA as a soft 404.
- * - `UNPUBLISHED_DOCS` — catalog paths with no page yet, each with the reason.
- *   The test fails when upstream adds a path that is in neither list, which
- *   is the moment someone has to decide whether it ships.
+ * - `UNPUBLISHED_DOCS` — catalog paths with no page yet, each with the reason:
+ *   upstream's `unpublished` mark, plus any `LOCAL_HOLDS`. The test fails when
+ *   upstream adds a path that is in neither, which is the moment someone has
+ *   to decide whether it ships.
  */
 
 interface CatalogRoute {
   path: string;
   source?: string;
   external?: boolean;
+  /** Why upstream does not publish this page (a preview or internal capability). */
+  unpublished?: string;
 }
 
 export const CATALOG_ROUTES: CatalogRoute[] = (catalog as { routes: CatalogRoute[] }).routes;
@@ -53,39 +56,27 @@ export const DOC_ALIASES: Record<string, string> = {
  * someone made, not an oversight; the test keeps the list honest in both
  * directions (a path that is now published must leave it).
  */
+/**
+ * Pages faas-web holds back although upstream would publish them, each with
+ * the reason. Upstream's own reasons come from the catalog below.
+ */
+const LOCAL_HOLDS: Record<string, string> = {};
+
+/**
+ * Catalog paths that resolve to no page, and why. Upstream marks a page
+ * `unpublished` only when it documents preview or internal capabilities; its
+ * `docs-links-check` refuses that mark on a GA or beta capability's page
+ * (poyrazK/faas#5709). The test keeps the list honest in both directions (a
+ * path that is now published must leave it).
+ */
 export const UNPUBLISHED_DOCS: Record<string, string> = {
-  alerts: 'upstream page carries Prometheus and migration notes; needs upstream cut first',
-  'api-hosting': 'internal roadmap, not a customer document',
-  apps: 'upstream page carries a roadmap paragraph and an operator-gated note',
-  automations: 'upstream page interleaves platform migration and rollout steps',
-  auth: 'upstream page documents operator OAuth and apid configuration',
-  billing: 'upstream page carries provider internals and a remaining-gaps section',
-  'change-timeline': 'feature is an internal preview',
-  crons: 'alias of event-driven',
-  'data-api': 'upstream page carries operator enablement and staging qualification notes',
-  'data-api-onboarding': 'upstream page ends with an internal pilot plan',
-  'data-pipelines': 'feature is staging-only and the page is mostly operator procedure',
-  datadog: 'feature is an internal preview',
-  'durable-entity-development': 'feature gates are off in production',
-  errors: 'upstream page gives operator remedies for several codes',
-  executions:
-    'published until 2026-10-20; upstream page carries apid/schedd flags, scheduler metrics and operator image publication steps',
-  'event-driven': 'operator rollout notes from line 687 on; the first part is clean',
-  'exclusive-operations': 'upstream page carries an open release gate and implementation notes',
-  functions: 'upstream page links ops acceptance docs; the rest is customer content',
-  issues: 'upstream page carries a staging hostname and operator Slack/Linear setup',
-  jobs: 'upstream intro exposes daemons, storage layout, and control-plane flags',
-  'managed-postgres': 'operator preview; no contiguous customer section',
-  mcp: 'operator thresholds and runbook links throughout; also too long for one page',
-  networking: 'first 160 lines describe internal network design',
-  'object-storage':
-    'published until 2026-10-20; upstream page opens with the install procedure (Ansible, systemd, /etc/faas, loopback listeners) and carries migration order throughout',
-  operations: 'feature is internal and not launched',
-  postgres: 'alias of managed-postgres',
-  profiling: 'feature is internal',
-  realtime: 'page hands off to an operator guide for limits and recovery',
-  secrets: 'upstream page carries fleet topology and vmmd upgrade order',
-  'service-map': 'feature is an internal preview',
+  ...Object.fromEntries(
+    CATALOG_ROUTES.filter((route) => !route.external && route.unpublished).map((route) => [
+      route.path,
+      route.unpublished as string,
+    ])
+  ),
+  ...LOCAL_HOLDS,
 };
 
 /**

@@ -39,12 +39,13 @@ describe('docs manifest', () => {
     }
   });
 
-  it('holds the capability pages whose upstream text is half operator procedure', () => {
-    // The capability registry still sends `docs_url` for these; the dashboard
-    // drops the link (`safeCapabilityDocs`) rather than 404 on it.
+  it('holds the pages upstream marks unpublished', () => {
+    // Preview and internal capabilities; the capability registry still sends
+    // `docs_url` for them, and the dashboard drops the link
+    // (`safeCapabilityDocs`) rather than 404 on it.
     for (const slug of ['object-storage', 'executions']) {
       expect(findDoc(slug), slug).toBeUndefined();
-      expect(UNPUBLISHED_DOCS[slug], slug).toMatch(/published until 2026-10-20/);
+      expect(UNPUBLISHED_DOCS[slug], slug).toMatch(/(preview|internal) capability/);
     }
     expect(findDoc('runtime-go')).toBeUndefined();
   });
@@ -219,7 +220,7 @@ describe('upstream customer-pages catalog', () => {
   it('collapses a child path onto its parent guide', () => {
     expect(resolveDocPath('domains/verify')).toEqual({ alias: 'custom-domains' });
     expect(resolveDocPath('build/limits')).toEqual({ slug: 'build' });
-    expect(resolveDocPath('alerts/presets')).toBeUndefined();
+    expect(resolveDocPath('mcp/hosting')).toBeUndefined();
     expect(resolveDocPath('/docs-does-not-exist/')).toBeUndefined();
   });
 
