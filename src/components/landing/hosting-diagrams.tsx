@@ -1,5 +1,5 @@
 export type HostingDiagramKind =
-  'compute' | 'scale' | 'domain' | 'trace' | 'secrets' | 'previews' | 'objects';
+  'compute' | 'domain' | 'trace' | 'secrets' | 'previews' | 'objects';
 
 /** Explanatory schematics, not live infrastructure, measured timings or customer data. */
 export function HostingDiagram({ kind }: { kind: HostingDiagramKind }) {
@@ -117,44 +117,6 @@ export function HostingDiagram({ kind }: { kind: HostingDiagramKind }) {
           <text className="hosting-note" x="210" y="200">
             Separate runtime boundaries
           </text>
-        </>
-      )}
-      {kind === 'scale' && (
-        <>
-          <path className="hosting-grid" d="M 30 114 H 390 M 210 16 V 126" />
-          <path
-            className="hosting-route"
-            d="M 87 95 C 131 95 137 45 191 45 M 229 45 C 279 45 281 95 333 95"
-          />
-          <path
-            className="hosting-signal hosting-draw"
-            pathLength="1"
-            d="M 87 95 C 131 95 137 45 191 45 M 229 45 C 279 45 281 95 333 95"
-          />
-          <circle className="hosting-surface" cx="60" cy="95" r="27" />
-          <path className="hosting-ink" d="M 64 79 a 16 16 0 1 0 12 25 a 16 16 0 0 1 -12 -25 Z" />
-          <circle className="hosting-surface" cx="210" cy="45" r="19" />
-          <path className="hosting-ink-accent" d="M 201 45 h 18 m -6 -6 6 6 -6 6" />
-          <circle
-            className="hosting-surface hosting-accent hosting-arrive"
-            cx="360"
-            cy="95"
-            r="27"
-          />
-          <path className="hosting-ink-accent" d="M 360 78 V 94 M 349 83 a 17 17 0 1 0 22 0" />
-          <text className="hosting-label" x="60" y="144">
-            Parked
-          </text>
-          <text className="hosting-label" x="210" y="94">
-            Request
-          </text>
-          <text className="hosting-label" x="360" y="144">
-            Awake
-          </text>
-          <path
-            className="hosting-route hosting-return"
-            d="M 360 161 V 172 Q 360 184 348 184 H 72 Q 60 184 60 172 V 161 m -4 5 4 -5 4 5"
-          />
         </>
       )}
       {kind === 'domain' && (

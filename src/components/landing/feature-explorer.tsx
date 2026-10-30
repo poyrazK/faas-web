@@ -2,10 +2,11 @@ import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 're
 import { Link } from '@tanstack/react-router';
 import { ArrowRight } from 'iconoir-react';
 import { HostingDiagram, type HostingDiagramKind } from './hosting-diagrams';
+import { Pillars } from './textures/pillars';
 import './feature-explorer.css';
 
 type Availability = 'Public beta' | 'Preview' | 'In development';
-type Diagram = 'deploy' | 'flow' | 'orbit' | HostingDiagramKind;
+type Diagram = 'deploy' | 'flow' | 'orbit' | 'pillars' | HostingDiagramKind;
 interface Feature {
   id: string;
   title: string;
@@ -47,8 +48,8 @@ const GROUPS: { title: string; availability: string; features: Feature[] }[] = [
         description:
           'Let eligible idle applications park and wake when traffic returns. The first request waits for the wake; long-running workers have different lifecycle behavior.',
         availability: 'Public beta',
-        diagram: 'scale',
-        caption: 'Idle → wake → serve → park',
+        diagram: 'pillars',
+        caption: 'Instances wake where requests land, then park again.',
         doc: 'scale-to-zero',
       },
       {
@@ -168,6 +169,15 @@ function Wiring() {
 
 function FeatureDiagram({ kind }: { kind: Diagram }) {
   if (kind === 'deploy') return <DeploymentDiagram />;
+  // Scale to zero, drawn as a field of parked instances: the pointer plays the
+  // request, the pillars around it wake, and they settle back when it leaves.
+  // Touch screens get an ambient drift, reduced motion the resting frame.
+  if (kind === 'pillars')
+    return (
+      <div className="feature-pillars">
+        <Pillars tokens={{ '--texture-ink': 'var(--brand)' }} />
+      </div>
+    );
   if (kind !== 'flow' && kind !== 'orbit') return <HostingDiagram kind={kind} />;
   return (
     <svg viewBox="0 0 300 120" fill="none" aria-hidden="true" className="feature-diagram">

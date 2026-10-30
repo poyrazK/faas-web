@@ -49,6 +49,20 @@ describe('feature explorer', () => {
     );
   });
 
+  it('draws scale to zero as the interactive pillars field, and only there', async () => {
+    const user = userEvent.setup();
+    renderFeatures();
+    await user.click(await screen.findByRole('tab', { name: 'Scale to zero' }));
+    const scale = screen.getByRole('tabpanel', { name: 'Scale to zero' });
+    expect(scale.querySelector('[data-texture="pillars"]')).not.toBeNull();
+    expect(scale).toHaveTextContent('Instances wake where requests land, then park again.');
+
+    await user.click(screen.getByRole('tab', { name: 'Isolated compute' }));
+    const compute = screen.getByRole('tabpanel', { name: 'Isolated compute' });
+    expect(compute.querySelector('[data-texture="pillars"]')).toBeNull();
+    expect(compute.querySelector('svg.hosting-diagram')).not.toBeNull();
+  });
+
   it.each([
     ['PR previews', 'Public beta', '/docs/preview-environments', /deployed-app limit/],
     ['Object storage', 'Preview', undefined, /availability depends on the storage rollout/],
