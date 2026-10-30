@@ -70,7 +70,7 @@ describe('uploadTarball', () => {
         return ok({ upload_id: 'u2', chunk_size: 5, total_size: 10, expires_at: '' }, 201);
       if (c.method === 'PATCH') {
         patched += 1;
-        return patched === 2 ? refused(409, 'conflict') : ok(undefined);
+        return patched === 2 ? refused(409, 'upload_session_offset_conflict') : ok(undefined);
       }
       if (c.method === 'GET') return ok({ upload_id: 'u2', received_bytes: 5, chunk_size: 5 });
       if (c.path === '/v1/uploads/{id}/commit') return ok({ id: 'dep-2' }, 201);
@@ -113,5 +113,60 @@ describe('uploadTarball', () => {
       code: 'application_standards_pending',
     });
     expect(calls.filter((c) => c.path === '/v1/uploads/{id}/commit')).toHaveLength(1);
+  });
+});
+
+describe('uploadTarball when a chunk does not land', () => {
+  it('resumes from the server offset after the connection drops mid-chunk', async () => {
+    let patched = 0;
+    const calls = server((c) => {
+      if (c.method === 'POST' && c.path === '/v1/uploads')
+        return ok({ upload_id: 'u5', chunk_size: 5, total_size: 10, expires_at: '' }, 201);
+      if (c.method === 'PATCH') {
+        patched += 1;
+        if (patched === 2) throw new TypeError('Failed to fetch');
+        return ok(undefined);
+      }
+      if (c.method === 'GET') return ok({ upload_id: 'u5', received_bytes: 5, chunk_size: 5 });
+      if (c.path === '/v1/uploads/{id}/commit') return ok({ id: 'dep-5' }, 201);
+      throw new Error(`unexpected ${c.method} ${c.path}`);
+    });
+    const dep = await uploadTarball({ slug: 'alpha', file: new Blob(['abcdefghij']) });
+    expect(dep.id).toBe('dep-5');
+    expect(calls.filter((c) => c.method === 'PATCH').map(offset)).toEqual(['0', '5', '5']);
+  });
+
+  it('stops on a cancelled session instead of re-sending forever', async () => {
+    // apid answers 409 upload_session_already_cancelled; re-reading would
+    // return the same offset and loop (faas handlers_upload_session.go).
+    const calls = server((c) => {
+      if (c.method === 'POST' && c.path === '/v1/uploads')
+        return ok({ upload_id: 'u6', chunk_size: 5, total_size: 10, expires_at: '' }, 201);
+      if (c.method === 'PATCH') return refused(409, 'upload_session_already_cancelled');
+      if (c.method === 'GET') return ok({ upload_id: 'u6', received_bytes: 0, chunk_size: 5 });
+      throw new Error(`unexpected ${c.method} ${c.path}`);
+    });
+    await expect(
+      uploadTarball({ slug: 'alpha', file: new Blob(['abcdefghij']) })
+    ).rejects.toMatchObject({
+      code: 'upload_session_already_cancelled',
+    });
+    expect(calls.filter((c) => c.method === 'PATCH')).toHaveLength(1);
+  });
+
+  it('gives up after a bounded number of resumes when the offset never advances', async () => {
+    const calls = server((c) => {
+      if (c.method === 'POST' && c.path === '/v1/uploads')
+        return ok({ upload_id: 'u7', chunk_size: 5, total_size: 10, expires_at: '' }, 201);
+      if (c.method === 'PATCH') return refused(409, 'upload_session_offset_conflict');
+      if (c.method === 'GET') return ok({ upload_id: 'u7', received_bytes: 0, chunk_size: 5 });
+      throw new Error(`unexpected ${c.method} ${c.path}`);
+    });
+    await expect(
+      uploadTarball({ slug: 'alpha', file: new Blob(['abcdefghij']) })
+    ).rejects.toMatchObject({
+      code: 'upload_session_offset_conflict',
+    });
+    expect(calls.filter((c) => c.method === 'PATCH').length).toBeLessThanOrEqual(6);
   });
 });

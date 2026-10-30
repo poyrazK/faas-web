@@ -2693,7 +2693,11 @@ route('GET', '/v1/uploads/{id}', ({ params }) => {
 route('PATCH', '/v1/uploads/{id}', ({ params, req }) => {
   const u = uploadSession(params.id);
   if (Number(req.headers['upload-offset']) !== u.received)
-    throw new Problem(409, 'conflict', 'Upload-Offset does not match the received bytes.');
+    throw new Problem(
+      409,
+      'upload_session_offset_conflict',
+      'Upload-Offset does not match the received bytes.'
+    );
   // readBody has consumed the stream as text; the header carries the byte count.
   u.received += Number(req.headers['content-length'] ?? 0);
   return {};

@@ -17,6 +17,8 @@ async function sha256Hex(file: Blob): Promise<string> {
 }
 
 const COMMIT_ATTEMPTS = 3;
+/** Resumes from the server offset before an upload gives up on making progress. */
+const MAX_RESUMES = 5;
 
 /**
  * The console's half of `gregale deploy --tarball`, on the resumable upload
@@ -45,6 +47,7 @@ export async function uploadTarball(input: {
     })
   );
   let offset = 0;
+  let resumes = 0;
   while (offset < file.size) {
     const chunk = file.slice(offset, offset + session.chunk_size);
     try {
@@ -59,9 +62,13 @@ export async function uploadTarball(input: {
       );
       offset += chunk.size;
     } catch (error) {
-      // Branching on status, not code, is deliberate: apid documents the
-      // offset mismatch only as a 409 on this route (openapi PATCH /v1/uploads/{id}).
-      if (!(error instanceof ApiError) || error.status !== 409) throw error;
+      // Resume from the server's offset when the chunk may not have landed: a
+      // dropped connection, or upload_session_offset_conflict. apid records
+      // bytes only after a whole chunk is read, so re-reading is safe. Any
+      // other refusal (cancelled, committed, expired) is final.
+      const resumable =
+        !(error instanceof ApiError) || error.code === 'upload_session_offset_conflict';
+      if (!resumable || ++resumes > MAX_RESUMES) throw error;
       const state = await unwrap(
         api.GET('/v1/uploads/{id}', { params: { path: { id: session.upload_id } }, signal })
       );
