@@ -102,6 +102,11 @@ const status = (code: number, body: unknown) => ({ __status: code, body });
 
 const latency = () => Number(process.env.MOCK_LATENCY ?? 180) + Math.random() * 160;
 
+const HIDDEN_AT_BOOT = new Set(
+  (process.env.MOCK_HIDDEN_CAPABILITIES ?? '').split(',').filter(Boolean)
+);
+const hiddenCapabilities = new Set(HIDDEN_AT_BOOT);
+
 route('GET', '/v1/capabilities', ({ res }) => {
   res.setHeader('Cache-Control', 'no-store');
   const raw = process.env.MOCK_PLAN ?? db.account.plan;
@@ -112,9 +117,69 @@ route('GET', '/v1/capabilities', ({ res }) => {
   );
   // Catalog ids whose platform flag is off for the account, as apid lists them
   // (internal ones included); the console hides those tabs and pages.
-  const hidden = (process.env.MOCK_HIDDEN_CAPABILITIES ?? '').split(',').filter(Boolean);
+  const hidden = [...hiddenCapabilities];
   return hidden.length ? { ...registry, hidden_capabilities: hidden } : registry;
 });
+
+// Self-serve previews (faas ADR-20261021080640). Joining one turns its
+// capability on, so a page hidden by MOCK_HIDDEN_CAPABILITIES appears.
+const PREVIEWS = [
+  {
+    key: 'events',
+    capability: 'events',
+    label: 'Events',
+    description: 'Publish, subscribe to and replay application events.',
+    retire_by: '2027-03-31',
+    eligible: true,
+  },
+  {
+    key: 'realtime',
+    capability: 'realtime',
+    label: 'Realtime',
+    description: 'Channels, presence and occupancy for live clients.',
+    eligible: true,
+  },
+  {
+    key: 'gitlab',
+    capability: 'gitlab-deploys',
+    label: 'GitLab deploys',
+    description: 'Connect GitLab projects and deploy on push.',
+    eligible: false,
+  },
+];
+const joinedPreviews = new Set<string>();
+function previewView(p: (typeof PREVIEWS)[number]) {
+  const joined = joinedPreviews.has(p.key);
+  return {
+    key: p.key,
+    label: p.label,
+    description: p.description,
+    ...(p.retire_by ? { retire_by: p.retire_by } : {}),
+    joined,
+    eligible: p.eligible,
+    enabled: joined || !hiddenCapabilities.has(p.capability),
+  };
+}
+function changePreview(key: string, join: boolean) {
+  const p = PREVIEWS.find((x) => x.key === key);
+  if (!p) throw new Problem(404, 'preview_not_offered', 'Not a preview open to self-serve.');
+  if (join && !p.eligible)
+    throw new Problem(403, 'preview_plan_not_eligible', 'Your plan cannot join this preview.');
+  if (join) {
+    joinedPreviews.add(key);
+    hiddenCapabilities.delete(p.capability);
+  } else {
+    joinedPreviews.delete(key);
+    if (HIDDEN_AT_BOOT.has(p.capability)) hiddenCapabilities.add(p.capability);
+  }
+  return previewView(p);
+}
+route('GET', '/v1/previews', () => ({ items: PREVIEWS.map(previewView) }));
+route('PUT', '/v1/previews/{key}', ({ params }) => changePreview(params.key, true));
+route('DELETE', '/v1/previews/{key}', ({ params }) => changePreview(params.key, false));
+route('GET', '/v1/orgs/{slug}/previews', () => ({ items: PREVIEWS.map(previewView) }));
+route('PUT', '/v1/orgs/{slug}/previews/{key}', ({ params }) => changePreview(params.key, true));
+route('DELETE', '/v1/orgs/{slug}/previews/{key}', ({ params }) => changePreview(params.key, false));
 
 // --- Public status -----------------------------------------------------------
 
