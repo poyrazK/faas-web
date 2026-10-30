@@ -18,7 +18,7 @@ import { useUnsavedGuard } from '@/lib/use-unsaved-guard';
 import { Modal } from '@/components/ui/modal';
 import { ErrorState, LoadingState, Panel, UnreachableState, queryPhase } from './primitives';
 import { RegistryCredentialsPanel } from './app-core-panels';
-import { SupplyChainPanel } from './supply-chain-panel';
+import { GatedSupplyChainPanel } from './supply-chain-gate';
 import { StaticEgressIP, StreamingCapNote } from './app-insights';
 import { PurgeCacheControl } from './app-lifecycle';
 import { publicAppUrl } from '@/lib/app-url';
@@ -769,7 +769,7 @@ export function AppConfiguration({ slug }: { slug: string }) {
       </Panel>
       {/* Keyed on the id so a rename or a fresh read reseeds the draft. */}
       <ConfigForm key={`${account?.id}:${data.id}:${data.slug}`} app={data} />
-      <SupplyChainPanel slug={data.slug} />
+      <GatedSupplyChainPanel slug={data.slug} />
       <RegistryCredentialsPanel slug={data.slug} />
       <RenamePanel key={`rename:${data.slug}`} app={data} />
       <DangerZone app={data} />

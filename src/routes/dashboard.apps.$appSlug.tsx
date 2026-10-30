@@ -1,9 +1,14 @@
 import {
+  APP_TAB_CAPABILITY,
   AppTabNavigation,
   appTabPanelLabel,
   resolveAppTab,
+  visibleAppTabs,
   type AppTab,
 } from '@/components/dashboard/app-tab-navigation';
+import { CapabilityGate } from '@/components/dashboard/capability-gate';
+import { useCapabilityRegistry } from '@/lib/api/capabilities';
+import { capabilityAccess } from '@/lib/capability-state';
 import { AutomationsBody } from '@/components/dashboard/automations-body';
 import { automationSearchPatch, validateJobsSearch } from '@/components/dashboard/jobs-search';
 import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
@@ -190,6 +195,12 @@ function FunctionDetailPage() {
   const { appSlug } = useParams({ from: '/dashboard/apps/$appSlug' });
   const search = Route.useSearch();
   const { tab = 'Overview', deployment: selectedDeploymentId, releaseSection } = search;
+  // Tabs whose capability apid hides for this account (faas capgate, #5319).
+  const registry = useCapabilityRegistry();
+  const visibleTabs = visibleAppTabs((id) =>
+    capabilityAccess(registry.query.data, id, registry.phase)
+  );
+  const tabCapability = APP_TAB_CAPABILITY[tab];
   const navigate = Route.useNavigate();
   // Preserve nested investigations when the operator leaves and returns to a tab.
   const setTab = (next: Tab) =>
@@ -381,6 +392,7 @@ function FunctionDetailPage() {
         tab={tab}
         onSelect={(next) => void setTab(next)}
         panelId={`${tabsId}-panel`}
+        visible={visibleTabs}
       />
 
       <div
@@ -391,193 +403,174 @@ function FunctionDetailPage() {
         {/* Keyed by tab, so switching cross-fades the panel in rather than
             hard-swapping — the tab strip above stays put either way. */}
         <Swap id={tab}>
-          <div className="flex flex-col gap-6">
-            {tab === 'Automations' && (
-              <AutomationsBody
-                fixedSlug={appSlug}
-                search={search}
-                onSelection={(patch) => {
-                  void navigate({
-                    search: (current) => ({
-                      ...current,
-                      ...automationSearchPatch({ ...current, ...patch }),
-                    }),
-                    hash: true,
-                  });
-                }}
-              />
-            )}
-            {tab === 'Overview' && <PreviewDiscovery slug={appSlug} />}
-            {tab === 'Overview' && (
-              <AppOverview
-                app={fn}
-                releases={releases}
-                metrics={metrics}
-                metricsAccess={
-                  authLoading || account === null
-                    ? 'checking'
-                    : paidAccess
-                      ? 'available'
-                      : 'restricted'
-                }
-                onNavigate={(next, id) =>
-                  void navigate({
-                    search: (current) => ({
-                      ...current,
-                      tab: next,
-                      ...(id ? { deployment: id, releaseSection: 'overview' as const } : {}),
-                    }),
-                    hash: true,
-                    resetScroll: false,
-                  })
-                }
-                onDeploy={() => {
-                  setDeploySubmissionError(null);
-                  setDeployOpen(true);
-                }}
-                onRetryReleases={() => void appDeploymentQuery.refetch()}
-                onRetryMetrics={() => void metrics.refetch()}
-              />
-            )}
-            {tab === 'Metrics' &&
-              (authLoading || account === null ? (
-                <LoadingState message="Checking plan access…" />
-              ) : !paidAccess ? (
-                <PlanGate
-                  feature="Per-app metrics"
-                  description="Request, latency, cold-start, error, and SLO signals are available on Hobby and above."
-                />
-              ) : (
-                <div className="flex flex-col gap-6">
-                  <div className="flex justify-end">
-                    <RangeSelector
-                      value={range}
-                      onChange={setRange}
-                      options={METRIC_RANGES.map((r) => ({ key: r, label: r }))}
-                    />
-                  </div>
-
-                  {/* Scalars, not a series: `/v1/apps/{slug}/metrics` returns one
-                aggregate per window. The sparkline charts that used to sit here
-                were drawn from a seeded PRNG and are gone with it. */}
-                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                    {metricsDegraded && (
-                      <p
-                        className="text-xs text-muted-foreground sm:col-span-2 xl:col-span-4"
-                        role="status"
-                      >
-                        Metrics are degraded ({metrics.data?.source}), so no figures can be read for
-                        this window.
-                      </p>
-                    )}
-                    <StatTile
-                      label="Requests"
-                      value={metrics.data ? formatCompact(metrics.data.request_count) : '—'}
-                      state={metricsTileState}
-                    />
-                    <StatTile
-                      label="Error rate"
-                      value={metrics.data ? metrics.data.error_rate_pct.toFixed(2) : '—'}
-                      unit="%"
-                      deltaGood={false}
-                      state={metricsTileState}
-                    />
-                    <StatTile
-                      label="Cold starts"
-                      value={metrics.data ? metrics.data.cold_start_pct.toFixed(2) : '—'}
-                      unit="%"
-                      state={metricsTileState}
-                    />
-                    <StatTile
-                      label="Wake p95 (fleet)"
-                      value={metrics.data ? formatMs(metrics.data.wake_p95_ms) : '—'}
-                      state={metricsTileState}
-                    />
-                  </div>
-
-                  <Panel
-                    title="Response latency"
-                    description="2xx traffic over the selected window"
-                  >
-                    {metricsPhase === 'unreachable' ? (
-                      <UnreachableState onRetry={() => void metrics.refetch()} />
-                    ) : metricsPhase === 'error' ? (
-                      <ErrorState error={metrics.error} onRetry={() => void metrics.refetch()} />
-                    ) : metricsPhase === 'loading' ? (
-                      <LoadingState message="Querying metrics…" />
-                    ) : (
-                      <div className="grid gap-4 p-5 sm:grid-cols-3">
-                        <StatTile
-                          label="p50"
-                          value={formatMs(metrics.data?.latency_p50_ms ?? 0)}
-                          state={metricsTileState}
-                        />
-                        <StatTile
-                          label="p95"
-                          value={formatMs(metrics.data?.latency_p95_ms ?? 0)}
-                          state={metricsTileState}
-                        />
-                        <StatTile
-                          label="p99"
-                          value={formatMs(metrics.data?.latency_p99_ms ?? 0)}
-                          state={metricsTileState}
-                        />
-                      </div>
-                    )}
-                  </Panel>
-                  <AppHealthPanel slug={fn.id} />
-                  <SloPanel slug={fn.id} />
-                  <AppAnalyticsPanel slug={fn.id} />
-                  <div className="grid gap-4 xl:grid-cols-2">
-                    <AwakeRoutesPanel slug={fn.id} since="7d" />
-                    <DependencyLatencyPanel slug={fn.id} since="24h" />
-                  </div>
-                  <WakeTimelinePanel slug={fn.id} />
-                  <AppUsagePanel slug={fn.id} />
-                </div>
-              ))}
-
-            {tab === 'Invoke' && (
-              <DeploymentCapability
-                slug={fn.id}
-                resource="Invoke"
-                phase={deploymentPhase}
-                error={deploymentError}
-                hasRunnable={hasRunnable}
-                onRetry={() => void appDeploymentQuery.refetch()}
-              >
-                <InvokePanel slug={fn.id} />
-              </DeploymentCapability>
-            )}
-
-            {tab === 'Deployments' && (
-              <>
-                <ImageDeploymentPanel key={appSlug} slug={appSlug} />
-                <DeploymentHistoryPanel
-                  slug={fn.id}
-                  selectedDeploymentId={selectedDeploymentId}
-                  buildTimings={buildTimings}
-                  onSelect={(id) =>
+          <TabCapabilityGate capability={tabCapability} title={tab}>
+            <div className="flex flex-col gap-6">
+              {tab === 'Automations' && (
+                <AutomationsBody
+                  fixedSlug={appSlug}
+                  search={search}
+                  onSelection={(patch) => {
                     void navigate({
                       search: (current) => ({
                         ...current,
-                        tab: 'Deployments',
-                        deployment: id,
-                        releaseSection: undefined,
+                        ...automationSearchPatch({ ...current, ...patch }),
+                      }),
+                      hash: true,
+                    });
+                  }}
+                />
+              )}
+              {tab === 'Overview' && <PreviewDiscovery slug={appSlug} />}
+              {tab === 'Overview' && (
+                <AppOverview
+                  app={fn}
+                  releases={releases}
+                  metrics={metrics}
+                  metricsAccess={
+                    authLoading || account === null
+                      ? 'checking'
+                      : paidAccess
+                        ? 'available'
+                        : 'restricted'
+                  }
+                  onNavigate={(next, id) =>
+                    void navigate({
+                      search: (current) => ({
+                        ...current,
+                        tab: next,
+                        ...(id ? { deployment: id, releaseSection: 'overview' as const } : {}),
                       }),
                       hash: true,
                       resetScroll: false,
                     })
                   }
-                  actions={<ClearObsoleteDeploymentsButton slug={fn.id} />}
+                  onDeploy={() => {
+                    setDeploySubmissionError(null);
+                    setDeployOpen(true);
+                  }}
+                  onRetryReleases={() => void appDeploymentQuery.refetch()}
+                  onRetryMetrics={() => void metrics.refetch()}
                 />
-                <Panel
-                  title="Deploy an archive"
-                  description="For source that is not in a connected repository — the console's half of `gregale deploy --tarball`."
+              )}
+              {tab === 'Metrics' &&
+                (authLoading || account === null ? (
+                  <LoadingState message="Checking plan access…" />
+                ) : !paidAccess ? (
+                  <PlanGate
+                    feature="Per-app metrics"
+                    description="Request, latency, cold-start, error, and SLO signals are available on Hobby and above."
+                  />
+                ) : (
+                  <div className="flex flex-col gap-6">
+                    <div className="flex justify-end">
+                      <RangeSelector
+                        value={range}
+                        onChange={setRange}
+                        options={METRIC_RANGES.map((r) => ({ key: r, label: r }))}
+                      />
+                    </div>
+
+                    {/* Scalars, not a series: `/v1/apps/{slug}/metrics` returns one
+                aggregate per window. The sparkline charts that used to sit here
+                were drawn from a seeded PRNG and are gone with it. */}
+                    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                      {metricsDegraded && (
+                        <p
+                          className="text-xs text-muted-foreground sm:col-span-2 xl:col-span-4"
+                          role="status"
+                        >
+                          Metrics are degraded ({metrics.data?.source}), so no figures can be read
+                          for this window.
+                        </p>
+                      )}
+                      <StatTile
+                        label="Requests"
+                        value={metrics.data ? formatCompact(metrics.data.request_count) : '—'}
+                        state={metricsTileState}
+                      />
+                      <StatTile
+                        label="Error rate"
+                        value={metrics.data ? metrics.data.error_rate_pct.toFixed(2) : '—'}
+                        unit="%"
+                        deltaGood={false}
+                        state={metricsTileState}
+                      />
+                      <StatTile
+                        label="Cold starts"
+                        value={metrics.data ? metrics.data.cold_start_pct.toFixed(2) : '—'}
+                        unit="%"
+                        state={metricsTileState}
+                      />
+                      <StatTile
+                        label="Wake p95 (fleet)"
+                        value={metrics.data ? formatMs(metrics.data.wake_p95_ms) : '—'}
+                        state={metricsTileState}
+                      />
+                    </div>
+
+                    <Panel
+                      title="Response latency"
+                      description="2xx traffic over the selected window"
+                    >
+                      {metricsPhase === 'unreachable' ? (
+                        <UnreachableState onRetry={() => void metrics.refetch()} />
+                      ) : metricsPhase === 'error' ? (
+                        <ErrorState error={metrics.error} onRetry={() => void metrics.refetch()} />
+                      ) : metricsPhase === 'loading' ? (
+                        <LoadingState message="Querying metrics…" />
+                      ) : (
+                        <div className="grid gap-4 p-5 sm:grid-cols-3">
+                          <StatTile
+                            label="p50"
+                            value={formatMs(metrics.data?.latency_p50_ms ?? 0)}
+                            state={metricsTileState}
+                          />
+                          <StatTile
+                            label="p95"
+                            value={formatMs(metrics.data?.latency_p95_ms ?? 0)}
+                            state={metricsTileState}
+                          />
+                          <StatTile
+                            label="p99"
+                            value={formatMs(metrics.data?.latency_p99_ms ?? 0)}
+                            state={metricsTileState}
+                          />
+                        </div>
+                      )}
+                    </Panel>
+                    <AppHealthPanel slug={fn.id} />
+                    <SloPanel slug={fn.id} />
+                    <AppAnalyticsPanel slug={fn.id} />
+                    <div className="grid gap-4 xl:grid-cols-2">
+                      <AwakeRoutesPanel slug={fn.id} since="7d" />
+                      <DependencyLatencyPanel slug={fn.id} since="24h" />
+                    </div>
+                    <WakeTimelinePanel slug={fn.id} />
+                    <AppUsagePanel slug={fn.id} />
+                  </div>
+                ))}
+
+              {tab === 'Invoke' && (
+                <DeploymentCapability
+                  slug={fn.id}
+                  resource="Invoke"
+                  phase={deploymentPhase}
+                  error={deploymentError}
+                  hasRunnable={hasRunnable}
+                  onRetry={() => void appDeploymentQuery.refetch()}
                 >
-                  <TarballDeploy
+                  <InvokePanel slug={fn.id} />
+                </DeploymentCapability>
+              )}
+
+              {tab === 'Deployments' && (
+                <>
+                  <ImageDeploymentPanel key={appSlug} slug={appSlug} />
+                  <DeploymentHistoryPanel
                     slug={fn.id}
-                    onDeployed={(id) =>
+                    selectedDeploymentId={selectedDeploymentId}
+                    buildTimings={buildTimings}
+                    onSelect={(id) =>
                       void navigate({
                         search: (current) => ({
                           ...current,
@@ -586,155 +579,176 @@ function FunctionDetailPage() {
                           releaseSection: undefined,
                         }),
                         hash: true,
-                        replace: true,
-                      })
-                    }
-                  />
-                </Panel>
-                {selectedDeploymentId && (
-                  <ReleaseDetailPanel
-                    key={selectedDeploymentId}
-                    deploymentId={selectedDeploymentId}
-                    appSlug={fn.id}
-                    timing={buildTimings.get(selectedDeploymentId)}
-                    fallbackBuildId={buildIdsByDeployment.get(selectedDeploymentId)}
-                    section={releaseSection ?? 'overview'}
-                    onSectionChange={(next) =>
-                      void navigate({
-                        search: (current) => ({ ...current, releaseSection: next }),
-                        hash: true,
                         resetScroll: false,
                       })
                     }
-                    onClose={() =>
+                    actions={<ClearObsoleteDeploymentsButton slug={fn.id} />}
+                  />
+                  <Panel
+                    title="Deploy an archive"
+                    description="For source that is not in a connected repository — the console's half of `gregale deploy --tarball`."
+                  >
+                    <TarballDeploy
+                      slug={fn.id}
+                      onDeployed={(id) =>
+                        void navigate({
+                          search: (current) => ({
+                            ...current,
+                            tab: 'Deployments',
+                            deployment: id,
+                            releaseSection: undefined,
+                          }),
+                          hash: true,
+                          replace: true,
+                        })
+                      }
+                    />
+                  </Panel>
+                  {selectedDeploymentId && (
+                    <ReleaseDetailPanel
+                      key={selectedDeploymentId}
+                      deploymentId={selectedDeploymentId}
+                      appSlug={fn.id}
+                      timing={buildTimings.get(selectedDeploymentId)}
+                      fallbackBuildId={buildIdsByDeployment.get(selectedDeploymentId)}
+                      section={releaseSection ?? 'overview'}
+                      onSectionChange={(next) =>
+                        void navigate({
+                          search: (current) => ({ ...current, releaseSection: next }),
+                          hash: true,
+                          resetScroll: false,
+                        })
+                      }
+                      onClose={() =>
+                        void navigate({
+                          search: (current) => ({
+                            ...current,
+                            tab: 'Deployments',
+                            deployment: undefined,
+                            releaseSection: undefined,
+                          }),
+                          hash: true,
+                          resetScroll: false,
+                        })
+                      }
+                    />
+                  )}
+                </>
+              )}
+
+              {tab === 'Activity' && <AppActivityTimeline slug={fn.id} />}
+              {tab === 'Logs' && (
+                <DeploymentCapability
+                  slug={fn.id}
+                  resource="Logs"
+                  phase={deploymentPhase}
+                  error={deploymentError}
+                  hasRunnable={hasRunnable}
+                  onRetry={() => void appDeploymentQuery.refetch()}
+                >
+                  <LogsBody
+                    slug={fn.id}
+                    filters={logFilters(search)}
+                    onFilters={(filters, replace) => {
                       void navigate({
+                        replace,
                         search: (current) => ({
                           ...current,
-                          tab: 'Deployments',
-                          deployment: undefined,
-                          releaseSection: undefined,
+                          ...logsSearchPatch(logsSearch(filters)),
                         }),
                         hash: true,
-                        resetScroll: false,
-                      })
-                    }
+                      });
+                    }}
                   />
-                )}
-              </>
-            )}
-
-            {tab === 'Activity' && <AppActivityTimeline slug={fn.id} />}
-            {tab === 'Logs' && (
-              <DeploymentCapability
-                slug={fn.id}
-                resource="Logs"
-                phase={deploymentPhase}
-                error={deploymentError}
-                hasRunnable={hasRunnable}
-                onRetry={() => void appDeploymentQuery.refetch()}
-              >
-                <LogsBody
+                </DeploymentCapability>
+              )}
+              {tab === 'Log drains' && <LogDrainsBody slug={fn.id} />}
+              {tab === 'Errors' && <ErrorsBody slug={fn.id} />}
+              {tab === 'Issues' && (
+                <IssuesBody
+                  accountId={account?.id ?? ''}
                   slug={fn.id}
-                  filters={logFilters(search)}
-                  onFilters={(filters, replace) => {
+                  search={search}
+                  onSearch={(patch) =>
                     void navigate({
-                      replace,
+                      search: (current) => ({ ...current, ...patch }),
+                      hash: true,
+                      resetScroll: false,
+                    })
+                  }
+                />
+              )}
+              {tab === 'Routes' && (
+                <RoutesBody
+                  slug={fn.id}
+                  baseUrl={fn.visibility === 'internal' ? undefined : fn.url}
+                />
+              )}
+              {tab === 'Environment' && (
+                <>
+                  <EnvironmentSection
+                    title="Variables"
+                    description="Plain configuration the app reads at start. Values are visible to anyone with access to this app."
+                  >
+                    <EnvBody slug={fn.id} />
+                  </EnvironmentSection>
+                  <EnvironmentSection
+                    title="Secrets"
+                    description="Sealed at rest and write-only: once saved, a value can be replaced or rotated but never read back."
+                  >
+                    <SecretsBody slug={fn.id} />
+                  </EnvironmentSection>
+                </>
+              )}
+              {tab === 'Queues' && <QueuesBody slug={fn.id} />}
+              {tab === 'Upstreams' && <UpstreamsBody slug={fn.id} />}
+              {tab === 'Services' && <ServiceBindings slug={fn.id} />}
+              {tab === 'MCP' && <McpGuidance key={appSlug} slug={appSlug} />}
+              {tab === 'Alerts' && <AlertsBody slug={fn.id} />}
+              {tab === 'Webhooks' && (
+                <WebhooksHub
+                  accountId={account?.id ?? ''}
+                  slug={fn.id}
+                  direction={search.webhookDirection ?? 'outbound'}
+                  onDirection={(next) =>
+                    void navigate({
                       search: (current) => ({
                         ...current,
-                        ...logsSearchPatch(logsSearch(filters)),
+                        webhookDirection: next === 'inbound' ? 'inbound' : undefined,
                       }),
                       hash: true,
-                    });
-                  }}
+                    })
+                  }
                 />
-              </DeploymentCapability>
-            )}
-            {tab === 'Log drains' && <LogDrainsBody slug={fn.id} />}
-            {tab === 'Errors' && <ErrorsBody slug={fn.id} />}
-            {tab === 'Issues' && (
-              <IssuesBody
-                accountId={account?.id ?? ''}
-                slug={fn.id}
-                search={search}
-                onSearch={(patch) =>
-                  void navigate({
-                    search: (current) => ({ ...current, ...patch }),
-                    hash: true,
-                    resetScroll: false,
-                  })
-                }
-              />
-            )}
-            {tab === 'Routes' && (
-              <RoutesBody
-                slug={fn.id}
-                baseUrl={fn.visibility === 'internal' ? undefined : fn.url}
-              />
-            )}
-            {tab === 'Environment' && (
-              <>
-                <EnvironmentSection
-                  title="Variables"
-                  description="Plain configuration the app reads at start. Values are visible to anyone with access to this app."
-                >
-                  <EnvBody slug={fn.id} />
-                </EnvironmentSection>
-                <EnvironmentSection
-                  title="Secrets"
-                  description="Sealed at rest and write-only: once saved, a value can be replaced or rotated but never read back."
-                >
-                  <SecretsBody slug={fn.id} />
-                </EnvironmentSection>
-              </>
-            )}
-            {tab === 'Queues' && <QueuesBody slug={fn.id} />}
-            {tab === 'Upstreams' && <UpstreamsBody slug={fn.id} />}
-            {tab === 'Services' && <ServiceBindings slug={fn.id} />}
-            {tab === 'MCP' && <McpGuidance key={appSlug} slug={appSlug} />}
-            {tab === 'Alerts' && <AlertsBody slug={fn.id} />}
-            {tab === 'Webhooks' && (
-              <WebhooksHub
-                accountId={account?.id ?? ''}
-                slug={fn.id}
-                direction={search.webhookDirection ?? 'outbound'}
-                onDirection={(next) =>
-                  void navigate({
-                    search: (current) => ({
-                      ...current,
-                      webhookDirection: next === 'inbound' ? 'inbound' : undefined,
-                    }),
-                    hash: true,
-                  })
-                }
-              />
-            )}
-            {tab === 'Edge rules' && <EdgeRulesBody slug={fn.id} />}
-            {tab === 'Debugger' && (
-              <DebugBody
-                slug={fn.id}
-                search={search}
-                onSelect={(patch) =>
-                  void navigate({
-                    search: (current) => ({ ...current, ...patch }),
-                    hash: true,
-                    resetScroll: false,
-                  })
-                }
-              />
-            )}
-            {tab === 'Mirrors' && <MirrorsBody slug={fn.id} />}
-            {tab === 'Tenant surfaces' && <TenantSurfacesBody slug={fn.id} />}
-            {tab === 'OpenAPI' && <OpenAPIBody slug={fn.id} />}
-            {tab === 'Consumers' && <ApiConsumers slug={fn.id} />}
-            {tab === 'Consumer plans' && <ApiConsumerPlans slug={fn.id} />}
+              )}
+              {tab === 'Edge rules' && <EdgeRulesBody slug={fn.id} />}
+              {tab === 'Debugger' && (
+                <DebugBody
+                  slug={fn.id}
+                  search={search}
+                  onSelect={(patch) =>
+                    void navigate({
+                      search: (current) => ({ ...current, ...patch }),
+                      hash: true,
+                      resetScroll: false,
+                    })
+                  }
+                />
+              )}
+              {tab === 'Mirrors' && <MirrorsBody slug={fn.id} />}
+              {tab === 'Tenant surfaces' && <TenantSurfacesBody slug={fn.id} />}
+              {tab === 'OpenAPI' && <OpenAPIBody slug={fn.id} />}
+              {tab === 'Consumers' && <ApiConsumers slug={fn.id} />}
+              {tab === 'Consumer plans' && <ApiConsumerPlans slug={fn.id} />}
 
-            {tab === 'Configuration' && (
-              <>
-                <AppConfiguration slug={fn.id} />
-                <PrewarmPanel slug={fn.id} />
-              </>
-            )}
-          </div>
+              {tab === 'Configuration' && (
+                <>
+                  <AppConfiguration slug={fn.id} />
+                  <PrewarmPanel slug={fn.id} />
+                </>
+              )}
+            </div>
+          </TabCapabilityGate>
         </Swap>
       </div>
 
@@ -845,5 +859,23 @@ function FunctionDetailPage() {
         </div>
       </Modal>
     </div>
+  );
+}
+
+/** Gated tab bodies mount only when the account has the tab's capability. */
+function TabCapabilityGate({
+  capability,
+  title,
+  children,
+}: {
+  capability: string | undefined;
+  title: string;
+  children: ReactNode;
+}) {
+  if (!capability) return <>{children}</>;
+  return (
+    <CapabilityGate capability={capability} title={title}>
+      {children}
+    </CapabilityGate>
   );
 }
