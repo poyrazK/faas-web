@@ -30,8 +30,9 @@ describe('DevLayoutSwitch', () => {
     const onChange = vi.fn();
     render(<DevLayoutSwitch layout="track" onChange={onChange} />);
     expect(screen.getByRole('radio', { name: 'Track' })).toBeChecked();
-    // Bottom centre: bottom-left covered the sidebar's Collapse.
-    expect(screen.getByRole('radiogroup')).toHaveClass('left-1/2', '-translate-x-1/2');
+    // Top centre, in the header's empty middle: bottom-left covered the
+    // sidebar's Collapse, and bottom-centre the catalog's Continue bar.
+    expect(screen.getByRole('radiogroup')).toHaveClass('top-3', 'left-1/2', '-translate-x-1/2');
     await userEvent.click(screen.getByRole('radio', { name: 'Fold' }));
     expect(onChange).toHaveBeenCalledWith('fold');
   });

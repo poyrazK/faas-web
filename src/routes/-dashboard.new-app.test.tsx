@@ -325,8 +325,7 @@ describe('New App source flow', () => {
     // Template's own station: the catalog is the way on, so no Continue yet.
     expect(router.state.location.search.step).toBe('setup');
     expect(screen.queryByRole('button', { name: 'Continue' })).not.toBeInTheDocument();
-    const card = (await screen.findByRole('heading', { name: 'hello-python' })).closest('article')!;
-    await user.click(within(card).getByRole('button', { name: 'Use template' }));
+    await user.click(await screen.findByRole('button', { name: 'hello-python' }));
     expect(router.state.location.pathname).toBe('/dashboard/apps/new');
     expect(router.state.location.search).toMatchObject({
       source: 'template',
@@ -345,7 +344,7 @@ describe('New App source flow', () => {
   it('keeps the created app scaffold tied to its submitted template after browser Back', async () => {
     const user = userEvent.setup();
     const router = await mount('/dashboard/apps/new?source=template');
-    await user.click(screen.getByRole('button', { name: 'Use template' }));
+    await user.click(screen.getByRole('button', { name: 'hello-python' }));
     await user.click(screen.getByRole('button', { name: 'Continue' }));
     await user.click(await screen.findByRole('button', { name: 'Review' }));
     await user.click(await screen.findByRole('button', { name: 'Create app' }));

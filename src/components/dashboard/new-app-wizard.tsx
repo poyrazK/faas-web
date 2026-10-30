@@ -810,6 +810,17 @@ function CreateAppWizard({
   // which finishes the flow itself; Import's form is mounted below, kept
   // alive across source switches, and shown in this station's place.
   function renderSetup() {
+    const continueButton = (
+      <Button
+        variant="cta"
+        type="submit"
+        form={`${uid}-source-form`}
+        className="h-10 gap-2 rounded-lg"
+      >
+        Continue
+        <ArrowRight className="h-4 w-4" />
+      </Button>
+    );
     if (source === 'container' || source === 'worker')
       return <ImageDeployForm kind={source === 'worker' ? 'worker' : 'http'} />;
     if (source === 'import') return null;
@@ -856,12 +867,24 @@ function CreateAppWizard({
             />
           </div>
         ) : source === 'git' ? (
-          <div className="grid gap-4 border border-border bg-card p-5 sm:grid-cols-[1fr_auto]">
-            <div className="flex min-w-0 flex-col gap-1.5">
-              <label htmlFor={`${uid}-repository`} className={LABEL}>
-                Repository
-              </label>
+          <>
+            {/* One panel: which repository, then which ref of it. */}
+            <div className="overflow-hidden rounded-[var(--console-surface-radius)] border border-border bg-card">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-border px-4 py-3">
+                <label
+                  id={`${uid}-repository-label`}
+                  htmlFor={`${uid}-repository`}
+                  className="text-sm font-medium"
+                >
+                  Repository
+                </label>
+                <span className="text-xs text-muted-foreground">
+                  What your GitHub App installation can see
+                </span>
+              </div>
               <RepoPicker
+                variant="list"
+                labelledBy={`${uid}-repository-label`}
                 id={`${uid}-repository`}
                 name="repository"
                 form={`${uid}-source-form`}
@@ -873,42 +896,43 @@ function CreateAppWizard({
                 }}
                 className={CONTROL}
               />
-              {repoError && <FieldError id={`${uid}-repository-error`}>{repoError}</FieldError>}
+              {repoError && (
+                <div className="border-t border-border px-4 py-2">
+                  <FieldError id={`${uid}-repository-error`}>{repoError}</FieldError>
+                </div>
+              )}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border px-4 py-3">
+                <label htmlFor={`${uid}-ref`} className="text-sm font-medium">
+                  Ref
+                </label>
+                <Input
+                  id={`${uid}-ref`}
+                  name="ref"
+                  form={`${uid}-source-form`}
+                  {...fieldErrorProps(refError, `${uid}-ref-error`)}
+                  value={ref}
+                  onChange={(e) => setRef(e.target.value)}
+                  placeholder="main"
+                  maxLength={200}
+                  spellCheck={false}
+                  className={cn(CONTROL, 'h-8 w-44 font-mono')}
+                />
+                <span className="text-xs text-muted-foreground">
+                  A branch, tag, or commit SHA. Picking a repository fills its default branch.
+                </span>
+                {refError && (
+                  <div className="basis-full">
+                    <FieldError id={`${uid}-ref-error`}>{refError}</FieldError>
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="flex flex-col gap-1.5 sm:w-40">
-              <label htmlFor={`${uid}-ref`} className={LABEL}>
-                Ref
-              </label>
-              <Input
-                id={`${uid}-ref`}
-                name="ref"
-                form={`${uid}-source-form`}
-                {...fieldErrorProps(refError, `${uid}-ref-error`)}
-                value={ref}
-                onChange={(e) => setRef(e.target.value)}
-                placeholder="main"
-                maxLength={200}
-                spellCheck={false}
-                className={cn(CONTROL, 'font-mono')}
-              />
-              {refError && <FieldError id={`${uid}-ref-error`}>{refError}</FieldError>}
-            </div>
-            <p className="text-[13px] leading-5 text-muted-foreground sm:col-span-2">
-              Choose a repository your connected GitHub account has granted Gregale access to. The
-              ref can be a branch, tag, or commit SHA.
-            </p>
             {renderScanHint()}
-          </div>
+          </>
         ) : null}
 
         {source === 'template' && (
           <>
-            {picked && (
-              <p role="status" className="text-sm text-muted-foreground">
-                Selected template: <strong>{template?.name ?? catalogTemplate?.name}</strong>.
-                Create the app, then deploy the scaffold from the CLI.
-              </p>
-            )}
             {templateSlug && !picked && !catalog.isPending && (
               <p role="status" className="text-sm text-muted-foreground">
                 This template is unavailable. Choose a starter below or another source.
@@ -916,6 +940,7 @@ function CreateAppWizard({
             )}
             <TemplateCatalog
               selected={templateSlug}
+              action={picked ? continueButton : undefined}
               onChooseEmpty={() => setSource('empty')}
               onSelect={(slug) =>
                 changeSearch({
@@ -931,18 +956,10 @@ function CreateAppWizard({
 
         {/* Continue only where it can lead somewhere: without GitHub the way
             on is the connect notice, and without a pick it is the catalog. */}
-        {((source === 'git' && githubConnected) || (source === 'template' && picked)) && (
-          <div className="flex justify-end">
-            <Button
-              variant="cta"
-              type="submit"
-              form={`${uid}-source-form`}
-              className="h-10 gap-2 rounded-lg"
-            >
-              Continue
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-          </div>
+        {/* Template's Continue rides in the catalog's bar beside the chosen
+            starter, which stays in view; Git's sits under its panel. */}
+        {source === 'git' && githubConnected && (
+          <div className="flex justify-end">{continueButton}</div>
         )}
       </div>
     );

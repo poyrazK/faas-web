@@ -50,7 +50,7 @@ export function DevLayoutSwitch({
     <div
       role="radiogroup"
       aria-label="New app layout (dev only)"
-      className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 flex items-center gap-1 rounded-full border border-border bg-popover p-1 font-mono text-[11px] shadow-elevation-3"
+      className="fixed top-3 left-1/2 z-50 -translate-x-1/2 flex items-center gap-1 rounded-full border border-border bg-popover p-1 font-mono text-[11px] shadow-elevation-3"
     >
       <span className="px-2 text-muted-foreground">Layout</span>
       {(['track', 'fold'] as const).map((l) => (
