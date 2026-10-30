@@ -82,7 +82,9 @@ export function TemplateCatalog({
   // a selection the list may not hold (a template link outside the catalog).
   const chosen = list.find((t) => t.name === selected)?.name ?? (action ? selected : undefined);
 
-  const tile = (t: TemplateView) => {
+  // One starter: a row in its category's list, laid out like New app's
+  // source list (mark, name, one line), with a check once it is chosen.
+  const row = (t: TemplateView) => {
     const { runtime, mark } = look(t);
     const on = selected === t.name;
     return (
@@ -94,48 +96,41 @@ export function TemplateCatalog({
         aria-labelledby={`${uid}-${t.name}`}
         aria-describedby={`${uid}-${t.name}-desc`}
         className={cn(
-          'group flex min-w-0 items-start gap-3 rounded-lg border bg-card p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
-          on
-            ? 'border-brand bg-brand/5'
-            : 'border-border hover:border-border-secondary hover:bg-accent/40'
+          // Rows round with the list, so hover, selection and focus follow its corners.
+          'flex w-full items-center gap-3.5 px-4 py-3.5 text-left transition-colors first:rounded-t-[11px] last:rounded-b-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand',
+          on ? 'bg-accent/50' : 'hover:bg-accent/40'
         )}
       >
         <span
           aria-hidden="true"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted font-mono text-[11px] font-semibold text-muted-foreground"
+          className={cn(
+            'flex h-9 w-9 shrink-0 items-center justify-center rounded-md font-mono text-[11px] font-semibold transition-colors',
+            on ? 'bg-brand/15 text-brand' : 'bg-muted text-muted-foreground'
+          )}
         >
           {mark}
         </span>
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="flex items-center gap-2">
-            <span id={`${uid}-${t.name}`} className="truncate font-mono text-[13px] font-semibold">
+          <span className="flex min-w-0 items-center gap-2">
+            <span id={`${uid}-${t.name}`} className="truncate font-mono text-sm font-medium">
               {t.name}
             </span>
-            {runtime && (
-              <span className="shrink-0 rounded border border-border px-1.5 text-[10.5px] leading-4 text-muted-foreground">
-                {runtime}
-              </span>
-            )}
-            <Check
-              aria-hidden
-              className={cn(
-                'ml-auto h-4 w-4 shrink-0 text-brand',
-                on ? 'opacity-100' : 'opacity-0'
-              )}
-            />
+            {runtime && <span className="shrink-0 text-xs text-muted-foreground">{runtime}</span>}
           </span>
-          <span id={`${uid}-${t.name}-desc`} className="text-xs leading-5 text-muted-foreground">
+          <span id={`${uid}-${t.name}-desc`} className="text-[13px] text-muted-foreground">
             {t.description}
           </span>
         </span>
+        <Check
+          aria-hidden
+          className={cn('h-4 w-4 shrink-0 text-brand', on ? 'opacity-100' : 'opacity-0')}
+        />
       </button>
     );
   };
 
   return (
-    // Sized by its own width: it sits beside the New app rail, or beside the
-    // Fold layout's strip, so the window says little about the room it has.
-    <div className="@container flex flex-col gap-5">
+    <div className="flex flex-col gap-6">
       <p className="text-sm text-muted-foreground">Pick a starter to prefill your app.</p>
       {phase === 'empty' ? (
         <EmptyState
@@ -188,16 +183,16 @@ export function TemplateCatalog({
             <section
               key={category}
               aria-labelledby={`${uid}-cat-${category}`}
-              className="flex flex-col gap-2.5"
+              className="flex flex-col gap-3"
             >
               <h2
                 id={`${uid}-cat-${category}`}
-                className="font-mono text-[10.5px] uppercase tracking-[0.08em] text-muted-foreground"
+                className="text-sm font-medium text-muted-foreground"
               >
                 {CATEGORY[category].label}
               </h2>
-              <div className="grid grid-cols-1 gap-2 @xl:grid-cols-2">
-                {list.filter((t) => t.category === category).map(tile)}
+              <div className="flex flex-col divide-y divide-border rounded-xl border border-border bg-card">
+                {list.filter((t) => t.category === category).map(row)}
               </div>
             </section>
           ))}

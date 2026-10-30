@@ -172,10 +172,9 @@ function RepoList({
     );
 
   return (
-    // Sized by its own width: rows stack their details under the name when narrow.
-    <div className="@container flex flex-col">
+    <div className="flex flex-col">
       {long && (
-        <div className="flex flex-col gap-2 border-b border-border px-4 py-2.5">
+        <div className="flex flex-col gap-2.5 border-b border-border px-4 py-3">
           <div className="relative">
             <Search
               aria-hidden
@@ -233,9 +232,13 @@ function RepoList({
         aria-label={labelledBy ? undefined : 'Repository'}
         aria-invalid={control['aria-invalid']}
         aria-describedby={control['aria-describedby']}
-        className="flex max-h-[19rem] flex-col divide-y divide-border overflow-y-auto"
+        className={cn(
+          'flex flex-col divide-y divide-border',
+          // Five rows need no scrolling; the whole list, on request, does.
+          all && 'max-h-[26rem] overflow-y-auto'
+        )}
       >
-        {shown.map((r) => {
+        {shown.map((r, i) => {
           const [owner, name] = r.full_name.includes('/')
             ? [
                 r.full_name.slice(0, r.full_name.indexOf('/') + 1),
@@ -245,7 +248,13 @@ function RepoList({
           return (
             <label
               key={r.id}
-              className="group flex min-h-12 cursor-pointer items-center gap-3 px-4 py-2 transition-colors hover:bg-accent/50 has-checked:bg-accent/50 has-focus-visible:ring-2 has-focus-visible:ring-inset has-focus-visible:ring-brand"
+              className={cn(
+                'group flex cursor-pointer items-center gap-3.5 px-4 py-3 transition-colors hover:bg-accent/40 has-checked:bg-accent/50 has-focus-visible:ring-2 has-focus-visible:ring-inset has-focus-visible:ring-brand',
+                // A row at the card's edge rounds with it, so its highlight
+                // follows the corner instead of being clipped by it.
+                i === 0 && !long && 'rounded-t-[11px]',
+                i === shown.length - 1 && hidden === 0 && 'rounded-b-[11px]'
+              )}
             >
               <input
                 type="radio"
@@ -260,23 +269,24 @@ function RepoList({
               />
               <span
                 aria-hidden="true"
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted font-mono text-xs font-semibold uppercase text-muted-foreground"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted font-mono text-xs font-semibold uppercase text-muted-foreground transition-colors group-has-checked:bg-brand/15 group-has-checked:text-brand"
               >
                 {name.charAt(0)}
               </span>
-              <span className="flex min-w-0 flex-1 flex-col gap-0.5 @md:flex-row @md:items-center @md:gap-3">
-                <span className="min-w-0 flex-1 truncate font-mono text-[13px]">
+              {/* Like New app's source list: the name, then one line under it. */}
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="min-w-0 truncate font-mono text-sm">
                   <span className="text-muted-foreground">{owner}</span>
-                  <span className="font-semibold text-foreground">{name}</span>
+                  <span className="font-medium text-foreground">{name}</span>
                 </span>
-                <span id={`${uid}-${r.id}-meta`} className="flex shrink-0 items-center gap-3">
+                <span id={`${uid}-${r.id}-meta`} className="flex items-center gap-3">
                   {r.private && (
-                    <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+                    <span className="inline-flex shrink-0 items-center gap-1 text-[13px] text-muted-foreground">
                       <Lock aria-hidden className="h-3 w-3" />
                       Private
                     </span>
                   )}
-                  <span className="inline-flex shrink-0 items-center gap-1 font-mono text-xs text-muted-foreground">
+                  <span className="inline-flex shrink-0 items-center gap-1 font-mono text-[13px] text-muted-foreground">
                     <GitBranch aria-hidden className="h-3 w-3" />
                     <span className="sr-only">default branch </span>
                     {r.default_branch}

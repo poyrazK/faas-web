@@ -760,6 +760,8 @@ function CreateAppWizard({
                 this form by id rather than by nesting. */}
         <form
           id={`${uid}-source-form`}
+          // Empty: its controls join it by id. Hidden, it takes no gap.
+          hidden
           noValidate
           aria-label="Choose a source"
           onSubmit={(event) => {
@@ -812,11 +814,13 @@ function CreateAppWizard({
       return <ImageDeployForm kind={source === 'worker' ? 'worker' : 'http'} />;
     if (source === 'import') return null;
     return (
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-8">
         {/* GitHub's own connect form lives here, so this station's
                 controls join the form by id rather than by nesting. */}
         <form
           id={`${uid}-source-form`}
+          // Empty: its controls join it by id. Hidden, it takes no gap.
+          hidden
           noValidate
           aria-label="Set up the source"
           onSubmit={(event) => {
@@ -846,40 +850,39 @@ function CreateAppWizard({
           </div>
         ) : source === 'git' ? (
           <>
-            {/* One panel: which repository, then which ref of it. */}
-            <div className="overflow-hidden rounded-[var(--console-surface-radius)] border border-border bg-card">
-              <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-border px-4 py-3">
-                <label
-                  id={`${uid}-repository-label`}
-                  htmlFor={`${uid}-repository`}
-                  className="text-sm font-medium"
-                >
-                  Repository
-                </label>
+            {/* Which repository, then which ref of it: each a quiet heading
+                over its control, like New app's source list. */}
+            <div className="flex flex-col gap-3">
+              <label
+                id={`${uid}-repository-label`}
+                htmlFor={`${uid}-repository`}
+                className="text-sm font-medium text-muted-foreground"
+              >
+                Repository
+              </label>
+              <div className="rounded-xl border border-border bg-card">
+                <RepoPicker
+                  variant="list"
+                  labelledBy={`${uid}-repository-label`}
+                  id={`${uid}-repository`}
+                  name="repository"
+                  form={`${uid}-source-form`}
+                  {...fieldErrorProps(repoError, `${uid}-repository-error`)}
+                  value={repo}
+                  onChange={(nextRepo, defaultBranch) => {
+                    setRepo(nextRepo);
+                    if (defaultBranch) setRef(defaultBranch);
+                  }}
+                  className={CONTROL}
+                />
               </div>
-              <RepoPicker
-                variant="list"
-                labelledBy={`${uid}-repository-label`}
-                id={`${uid}-repository`}
-                name="repository"
-                form={`${uid}-source-form`}
-                {...fieldErrorProps(repoError, `${uid}-repository-error`)}
-                value={repo}
-                onChange={(nextRepo, defaultBranch) => {
-                  setRepo(nextRepo);
-                  if (defaultBranch) setRef(defaultBranch);
-                }}
-                className={CONTROL}
-              />
-              {repoError && (
-                <div className="border-t border-border px-4 py-2">
-                  <FieldError id={`${uid}-repository-error`}>{repoError}</FieldError>
-                </div>
-              )}
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border px-4 py-3">
-                <label htmlFor={`${uid}-ref`} className="text-sm font-medium">
-                  Ref
-                </label>
+              {repoError && <FieldError id={`${uid}-repository-error`}>{repoError}</FieldError>}
+            </div>
+            <div className="flex flex-col gap-3">
+              <label htmlFor={`${uid}-ref`} className="text-sm font-medium text-muted-foreground">
+                Ref
+              </label>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                 <Input
                   id={`${uid}-ref`}
                   name="ref"
@@ -890,15 +893,13 @@ function CreateAppWizard({
                   placeholder="main"
                   maxLength={200}
                   spellCheck={false}
-                  className={cn(CONTROL, 'h-8 w-44 font-mono')}
+                  className={cn(CONTROL, 'w-56 font-mono')}
                 />
-                <span className="text-xs text-muted-foreground">Branch, tag, or commit SHA</span>
-                {refError && (
-                  <div className="basis-full">
-                    <FieldError id={`${uid}-ref-error`}>{refError}</FieldError>
-                  </div>
-                )}
+                <span className="text-[13px] text-muted-foreground">
+                  Branch, tag, or commit SHA
+                </span>
               </div>
+              {refError && <FieldError id={`${uid}-ref-error`}>{refError}</FieldError>}
             </div>
             {renderScanHint()}
           </>

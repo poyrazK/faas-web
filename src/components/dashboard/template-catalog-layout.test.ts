@@ -4,15 +4,13 @@ import { describe, expect, it } from 'vitest';
 
 const source = readFileSync(resolve('src/components/dashboard/template-catalog.tsx'), 'utf8');
 
-// The catalog sits in a column whose width is not the window's (beside the
-// New app rail, or beside Fold's strip): at 496px its viewport-sized three
-// columns pushed every card's action past its edge. Two columns at most, and
-// only once its own width has room for them.
+// The catalog sits in a column whose width is not the window's: columns
+// sized by the viewport once pushed every card's action past its edge. It is
+// one list per category now, like New app's source list, so it never splits
+// into columns at all.
 describe('template catalog layout', () => {
-  it('sizes its grid by its own width, not the window', () => {
-    expect(source).toMatch(/@container/);
-    expect(source).toMatch(/@xl:grid-cols-2/);
-    expect(source).not.toMatch(/grid-cols-3/);
-    expect(source).not.toMatch(/\blg:grid-cols-/);
+  it('lays starters out as one list, never in columns', () => {
+    expect(source).not.toMatch(/grid-cols-/);
+    expect(source).toMatch(/divide-y/);
   });
 });
