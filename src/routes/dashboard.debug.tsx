@@ -3,6 +3,7 @@ import { PageHeader } from '@/components/dashboard/primitives';
 import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
 import { DebugBody } from '@/components/dashboard/debug-body';
 import { validateDebugSearch } from '@/components/dashboard/debug-search';
+import { WakeDrawer } from '@/components/dashboard/wake-drawer';
 import { consoleHead } from '@/lib/seo';
 
 export const Route = createFileRoute('/dashboard/debug')({
@@ -66,6 +67,18 @@ function DebugPage() {
           </p>
         )}
       </AppScope>
+      <WakeDrawer
+        slug={available ? slug : undefined}
+        wakeId={search.wake}
+        onClose={() =>
+          void navigate({
+            search: (current) => ({ ...current, wake: undefined }),
+            replace: true,
+            hash: true,
+            resetScroll: false,
+          })
+        }
+      />
     </div>
   );
 }
