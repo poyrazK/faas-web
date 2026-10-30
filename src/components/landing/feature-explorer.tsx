@@ -1,12 +1,28 @@
 import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Link } from '@tanstack/react-router';
 import { ArrowRight } from 'iconoir-react';
-import { HostingDiagram, type HostingDiagramKind } from './hosting-diagrams';
+import { SourceDeploysFigure } from './figures/source-deploys';
+import { IsolatedComputeFigure } from './figures/isolated-compute';
+import { CustomDomainsFigure } from './figures/custom-domains';
+import { LogsTracesFigure } from './figures/logs-traces';
+import { SecretsConfigFigure } from './figures/secrets-config';
+import { PrPreviewsFigure } from './figures/pr-previews';
+import { ObjectStorageFigure } from './figures/object-storage';
 import { Pillars } from './textures/pillars';
 import './feature-explorer.css';
 
 type Availability = 'Public beta' | 'Preview' | 'In development';
-type Diagram = 'deploy' | 'flow' | 'orbit' | 'pillars' | HostingDiagramKind;
+type Diagram =
+  | 'deploy'
+  | 'compute'
+  | 'pillars'
+  | 'domain'
+  | 'trace'
+  | 'secrets'
+  | 'previews'
+  | 'objects'
+  | 'flow'
+  | 'orbit';
 interface Feature {
   id: string;
   title: string;
@@ -59,7 +75,7 @@ const GROUPS: { title: string; availability: string; features: Feature[] }[] = [
           'Put your API on your own domain. Verify DNS and follow certificate issuance in one place.',
         availability: 'Public beta',
         diagram: 'domain',
-        caption: 'Your domain → your application',
+        caption: 'Your domain, routed to your app over TLS.',
         doc: 'custom-domains',
       },
       {
@@ -79,7 +95,7 @@ const GROUPS: { title: string; availability: string; features: Feature[] }[] = [
           'Keep secrets out of your repository. Gregale seals stored values and injects them into your runtime as environment variables.',
         availability: 'Public beta',
         diagram: 'secrets',
-        caption: 'Configuration outside your source.',
+        caption: 'Values sealed, never shown back.',
         doc: 'storage',
       },
       {
@@ -99,7 +115,7 @@ const GROUPS: { title: string; availability: string; features: Feature[] }[] = [
           'Store files in private buckets outside your app’s runtime. Object storage is in preview; availability depends on the storage rollout.',
         availability: 'Preview',
         diagram: 'objects',
-        caption: 'Object buckets, not persistent VM disks.',
+        caption: 'Private buckets, outside your app’s runtime.',
       },
     ],
   },
@@ -168,7 +184,13 @@ function Wiring() {
 }
 
 function FeatureDiagram({ kind }: { kind: Diagram }) {
-  if (kind === 'deploy') return <DeploymentDiagram />;
+  if (kind === 'deploy') return <SourceDeploysFigure />;
+  if (kind === 'compute') return <IsolatedComputeFigure />;
+  if (kind === 'domain') return <CustomDomainsFigure />;
+  if (kind === 'trace') return <LogsTracesFigure />;
+  if (kind === 'secrets') return <SecretsConfigFigure />;
+  if (kind === 'previews') return <PrPreviewsFigure />;
+  if (kind === 'objects') return <ObjectStorageFigure />;
   // Scale to zero, drawn as a field of parked instances: the pointer plays the
   // request, the pillars around it wake, and they settle back when it leaves.
   // Touch screens get an ambient drift, reduced motion the resting frame.
@@ -178,7 +200,6 @@ function FeatureDiagram({ kind }: { kind: Diagram }) {
         <Pillars tokens={{ '--texture-ink': 'var(--brand)' }} />
       </div>
     );
-  if (kind !== 'flow' && kind !== 'orbit') return <HostingDiagram kind={kind} />;
   return (
     <svg viewBox="0 0 300 120" fill="none" aria-hidden="true" className="feature-diagram">
       {kind === 'flow' && (
@@ -216,67 +237,6 @@ function FeatureDiagram({ kind }: { kind: Diagram }) {
           <circle cx="188" cy="111" r="5" />
         </>
       )}
-    </svg>
-  );
-}
-
-/** An illustrative deployment, never presented as live account activity. */
-function DeploymentDiagram() {
-  return (
-    <svg viewBox="0 0 420 210" fill="none" aria-hidden="true" className="deployment-diagram">
-      <path
-        className="deployment-guide"
-        d="M 0 178 H 420 M 58 26 V 188 M 210 26 V 188 M 362 26 V 188"
-      />
-      <path className="deployment-track" d="M 112 103 H 156 M 264 103 H 308" />
-      <path
-        className="deployment-transfer deployment-transfer-first"
-        pathLength="1"
-        d="M 112 103 H 156"
-      />
-      <path
-        className="deployment-transfer deployment-transfer-second"
-        pathLength="1"
-        d="M 264 103 H 308"
-      />
-      <path className="deployment-arrow" d="m 148 99 4 4 -4 4 M 300 99 l 4 4 -4 4" />
-
-      <g className="deployment-step">
-        <rect x="4" y="48" width="108" height="110" rx="8" />
-        <path d="M 48 73 V 97 Q 48 105 58 105 H 68 M 48 85 H 58 Q 68 85 68 77" />
-        <circle cx="48" cy="73" r="4" />
-        <circle cx="68" cy="73" r="4" />
-        <circle cx="68" cy="105" r="4" />
-        <text x="58" y="138">
-          Commit
-        </text>
-      </g>
-      <g className="deployment-step">
-        <rect x="156" y="48" width="108" height="110" rx="8" />
-        <path d="m 210 70 19 10 -19 10 -19 -10 Z M 191 90 l 19 10 19 -10 M 191 100 l 19 10 19 -10" />
-        <text x="210" y="138">
-          Build
-        </text>
-      </g>
-      <g className="deployment-step deployment-runtime">
-        <rect x="308" y="48" width="108" height="110" rx="8" />
-        <rect x="344" y="71" width="36" height="36" rx="5" />
-        <path d="m 353 89 6 6 12 -13" />
-        <text x="362" y="138">
-          Running
-        </text>
-      </g>
-      <g className="deployment-labels">
-        <text x="58" y="199">
-          Repository
-        </text>
-        <text x="210" y="199">
-          Image
-        </text>
-        <text x="362" y="199">
-          Deployment
-        </text>
-      </g>
     </svg>
   );
 }

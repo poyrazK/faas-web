@@ -254,175 +254,6 @@
   color: var(--muted-foreground);
   font-size: 11px;
 }
-
-.deployment-diagram,
-.hosting-diagram {
-  display: block;
-  width: 100%;
-  height: 165px;
-  overflow: visible;
-  stroke-width: 1.25;
-}
-
-.hosting-grid {
-  stroke: #81938a;
-  stroke-opacity: 0.16;
-  stroke-dasharray: 2 5;
-}
-.hosting-boundary {
-  stroke: #8aa596;
-  stroke-dasharray: 4 4;
-}
-.hosting-surface {
-  fill: var(--background);
-  stroke: #bdcec3;
-}
-.hosting-accent {
-  fill: #eef7f1;
-  stroke: #98c4ad;
-}
-.hosting-route {
-  stroke: #a0b3a8;
-}
-.hosting-return {
-  stroke-dasharray: 3 5;
-}
-.hosting-ink {
-  stroke: #73897c;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-.hosting-ink-accent,
-.hosting-signal {
-  stroke: var(--brand);
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-.hosting-signal {
-  stroke-width: 1.75;
-  stroke-dasharray: 1;
-}
-.hosting-label,
-.hosting-span-label {
-  fill: var(--foreground);
-  font-size: 16px;
-  font-weight: 500;
-}
-.hosting-label,
-.hosting-note,
-.hosting-domain-name {
-  text-anchor: middle;
-}
-.hosting-note,
-.hosting-domain-name,
-.hosting-secret-key {
-  fill: var(--muted-foreground);
-  font-family: var(--font-mono);
-  font-size: 12px;
-}
-.hosting-domain-name {
-  fill: var(--foreground);
-  font-size: 15px;
-}
-.hosting-secret-mask {
-  fill: var(--brand);
-}
-.feature-detail-content[data-animate='true'] .hosting-draw {
-  animation: feature-connection-draw 850ms cubic-bezier(0.4, 0, 0.2, 1) 120ms both;
-}
-.feature-detail-content[data-animate='true'] .hosting-boundary.hosting-draw {
-  animation-name: hosting-boundary-reveal;
-}
-.feature-detail-content[data-animate='true'] .hosting-arrive {
-  animation: feature-content-enter 400ms ease-out 650ms both;
-}
-.feature-detail-content[data-animate='true'] .hosting-span {
-  animation: hosting-span-reveal 500ms cubic-bezier(0.22, 0.8, 0.25, 1) both;
-  transform-box: fill-box;
-  transform-origin: left center;
-}
-.feature-detail-content[data-animate='true'] .hosting-span-second {
-  animation-delay: 180ms;
-}
-.feature-detail-content[data-animate='true'] .hosting-span-third {
-  animation-delay: 360ms;
-}
-@keyframes hosting-boundary-reveal {
-  from {
-    opacity: 0.25;
-  }
-  to {
-    opacity: 1;
-  }
-}
-@keyframes hosting-span-reveal {
-  from {
-    opacity: 0;
-    transform: translateX(-6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-.deployment-guide {
-  stroke: #81938a;
-  stroke-opacity: 0.16;
-  stroke-dasharray: 2 5;
-}
-.deployment-track,
-.deployment-arrow {
-  stroke: #a0b3a8;
-}
-.deployment-transfer {
-  stroke: var(--brand);
-  stroke-width: 1.75;
-  stroke-dasharray: 1;
-}
-.deployment-step > rect:first-child {
-  fill: var(--background);
-  stroke: #c4d1c9;
-}
-.deployment-step path,
-.deployment-step circle,
-.deployment-step > rect:not(:first-child) {
-  stroke: #73897c;
-}
-.deployment-step circle {
-  fill: var(--background);
-}
-.deployment-step text {
-  fill: var(--foreground);
-  font-size: 16px;
-  font-weight: 500;
-  text-anchor: middle;
-}
-.deployment-runtime > rect:first-child {
-  fill: #eef7f1;
-  stroke: #98c4ad;
-}
-.deployment-runtime path,
-.deployment-runtime > rect:not(:first-child) {
-  stroke: var(--brand);
-}
-.deployment-labels text {
-  fill: var(--muted-foreground);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  text-anchor: middle;
-}
-.feature-detail-content[data-animate='true'] .deployment-transfer {
-  animation: feature-connection-draw 460ms ease-in-out both;
-}
-.feature-detail-content[data-animate='true'] .deployment-transfer-first {
-  animation-delay: 180ms;
-}
-.feature-detail-content[data-animate='true'] .deployment-transfer-second {
-  animation-delay: 580ms;
-}
-.feature-detail-content[data-animate='true'] .deployment-runtime path {
-  animation: feature-content-enter 300ms ease-out 880ms both;
-}
 .feature-guide {
   display: inline-flex;
   align-items: center;
@@ -546,46 +377,17 @@
   .feature-description {
     font-size: 15px;
   }
-  .deployment-step text,
-  .hosting-label,
-  .hosting-span-label {
-    font-size: 20px;
-  }
-  .deployment-labels text,
-  .hosting-note,
-  .hosting-secret-key {
-    font-size: 14px;
-  }
-  .hosting-domain-name {
-    font-size: 18px;
-  }
 }
 
 @media (max-width: 359px) {
   .feature-detail {
     min-height: 36.5rem;
   }
-  .deployment-step text,
-  .hosting-label,
-  .hosting-span-label {
-    font-size: 22px;
-  }
-  .deployment-labels text,
-  .hosting-note,
-  .hosting-secret-key {
-    font-size: 16px;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .feature-detail-content[data-animate='true'],
-  .feature-connection path[data-animate='true'],
-  .feature-detail-content[data-animate='true'] .deployment-transfer,
-  .feature-detail-content[data-animate='true'] .deployment-runtime path,
-  .feature-detail-content[data-animate='true'] .hosting-draw,
-  .feature-detail-content[data-animate='true'] .hosting-boundary.hosting-draw,
-  .feature-detail-content[data-animate='true'] .hosting-arrive,
-  .feature-detail-content[data-animate='true'] .hosting-span {
+  .feature-connection path[data-animate='true'] {
     animation: none;
   }
   .feature-explorer button,
