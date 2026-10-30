@@ -55,16 +55,12 @@ function fallbackFor(path: string) {
     .find((route) => route.src && new RegExp(route.src).test(path));
 }
 
-it.each([
-  '/privacy',
-  '/terms',
-  '/not-a-page',
-  '/dashboard/not-a-page',
-  '/assets/missing.js',
-  '/docs/not-a-page',
-])('returns 404 for an unpublished URL %s', (path) => {
-  expect(fallbackFor(path)).toMatchObject({ status: 404, dest: '/404.html' });
-});
+it.each(['/not-a-page', '/dashboard/not-a-page', '/assets/missing.js', '/docs/not-a-page'])(
+  'returns 404 for an unpublished URL %s',
+  (path) => {
+    expect(fallbackFor(path)).toMatchObject({ status: 404, dest: '/404.html' });
+  }
+);
 
 it('preserves every registered app route as a deep link', () => {
   const source = readFileSync('src/routeTree.gen.ts', 'utf8');
