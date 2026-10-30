@@ -3,29 +3,50 @@ import { ArrowLeft } from 'iconoir-react';
 import { cn } from '@/lib/utils';
 import type { SummaryRow } from './new-app-summary';
 
-/** The page's heading row: the way back, the title and what the page is for. */
+/**
+ * The page's heading row. With no rail, it names the current step and says
+ * where it falls ("Step 2 of 3"), and it holds the one way back: to the apps
+ * from the first page, or one step back from the others.
+ */
 export function NewAppHeader({
+  step,
   title,
   description,
   back,
 }: {
+  step?: string;
   title: string;
-  description: string;
-  back: boolean;
+  description?: string;
+  back?: 'apps' | { label: string; onBack: () => void };
 }) {
+  const backClass =
+    'group inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand';
   return (
-    <header className="flex flex-col gap-3 lg:col-span-2">
-      {back && (
-        <Link
-          to="/dashboard/apps"
-          className="inline-flex w-fit items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <ArrowLeft className="h-3 w-3" />
+    <header className="flex flex-col gap-4">
+      {back === 'apps' ? (
+        <Link to="/dashboard/apps" className={backClass}>
+          <ArrowLeft aria-hidden className="h-4 w-4" />
           All apps
         </Link>
-      )}
-      <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-      {description && <p className="max-w-2xl text-sm text-muted-foreground">{description}</p>}
+      ) : back ? (
+        <button
+          type="button"
+          onClick={back.onBack}
+          aria-label={`Back to ${back.label}`}
+          className={backClass}
+        >
+          <ArrowLeft
+            aria-hidden
+            className="h-4 w-4 transition-transform group-hover:-translate-x-0.5 motion-reduce:transform-none"
+          />
+          {back.label}
+        </button>
+      ) : null}
+      <div className="flex flex-col gap-1.5">
+        {step && <p className="text-xs font-medium text-muted-foreground">{step}</p>}
+        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+        {description && <p className="max-w-2xl text-sm text-muted-foreground">{description}</p>}
+      </div>
     </header>
   );
 }
@@ -39,8 +60,9 @@ export function NewAppReviewGrid({ rows }: { rows: SummaryRow[] }) {
   const rest = rows.filter((r) => r.key !== 'name' && r.key !== 'url');
   return (
     <section aria-labelledby="new-app-review" className="flex flex-col gap-3">
+      {/* The page is titled Review; its card is the summary. */}
       <h2 id="new-app-review" className="text-sm font-medium text-muted-foreground">
-        Review
+        Summary
       </h2>
       {/* Two lists in one card: a dl takes only one wrapper level around each
           term, so the lead is a list of its own. */}

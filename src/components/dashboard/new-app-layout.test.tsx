@@ -1,19 +1,17 @@
 import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { NewAppStage } from './new-app-layout';
 
 describe('NewAppStage', () => {
-  it('shows only the current station and a named way back', async () => {
-    const onBack = vi.fn();
+  // The way back lives in the page header now; the stage holds only the station.
+  it('shows only the current station, with no way back of its own', () => {
     render(
-      <NewAppStage station="setup" label="setup" back={{ label: 'Sources', onBack }}>
+      <NewAppStage station="setup" label="setup">
         <p>setup fields</p>
       </NewAppStage>
     );
     expect(screen.getByText('setup fields')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Back to Sources' }));
-    expect(onBack).toHaveBeenCalled();
+    expect(screen.queryByRole('button')).toBeNull();
   });
 
   // A station that lingered through an exit animation left two stations'
@@ -25,21 +23,12 @@ describe('NewAppStage', () => {
       </NewAppStage>
     );
     rerender(
-      <NewAppStage station="setup" label="setup" back={{ label: 'Sources', onBack: vi.fn() }}>
+      <NewAppStage station="setup" label="setup">
         <p>setup fields</p>
       </NewAppStage>
     );
     expect(screen.queryByText('choices')).not.toBeInTheDocument();
     expect(screen.getByText('setup fields')).toBeInTheDocument();
-  });
-
-  it('has no way back from the first station', () => {
-    render(
-      <NewAppStage station="sources" label="sources">
-        <p>choices</p>
-      </NewAppStage>
-    );
-    expect(screen.queryByRole('button', { name: /Back to/ })).not.toBeInTheDocument();
   });
 });
 
@@ -97,12 +86,7 @@ describe('NewAppStage persistent content', () => {
   // belongs in the station's column, under the way back.
   it('places persistent content in the station column', () => {
     render(
-      <NewAppStage
-        station="setup"
-        label="Import"
-        back={{ label: 'Sources', onBack: vi.fn() }}
-        persistent={<p>import form</p>}
-      >
+      <NewAppStage station="setup" label="Import" persistent={<p>import form</p>}>
         {null}
       </NewAppStage>
     );

@@ -266,7 +266,7 @@ describe('New App source flow', () => {
     );
     await act(async () => router.history.forward());
     expect(await screen.findByLabelText('App name')).toHaveValue('saved-draft');
-    await user.click(screen.getByRole('button', { name: 'Back' }));
+    await user.click(screen.getByRole('button', { name: 'Back to Sources' }));
     await user.click(await screen.findByRole('button', { name: /^Git repository/ }));
     expect(await screen.findByLabelText('Repository')).toBeInTheDocument();
     await act(async () => router.history.back());
@@ -332,7 +332,7 @@ describe('New App source flow', () => {
     });
     await user.click(screen.getByRole('button', { name: 'Continue' }));
     expect(await screen.findByLabelText('App name')).toHaveValue('hello-python');
-    await user.click(screen.getByRole('button', { name: 'Back' }));
+    await user.click(screen.getByRole('button', { name: 'Back to Setup' }));
     await user.click(await screen.findByRole('button', { name: 'Back to Sources' }));
     await user.click(await screen.findByRole('button', { name: /^Empty app/ }));
     expect(router.state.location.search.template).toBeUndefined();
@@ -450,7 +450,9 @@ describe('New App source flow', () => {
       screen.getByLabelText('Choose a .tar.gz'),
       new File(['tarball'], 'repo.tar.gz', { type: 'application/gzip' })
     );
-    await user.click(screen.getByRole('link', { name: 'All apps' }));
+    // "All apps" is on the first page; the import draft stays mounted there.
+    await user.click(screen.getByRole('button', { name: 'Back to Sources' }));
+    await user.click(await screen.findByRole('link', { name: 'All apps' }));
     expect(window.confirm).toHaveBeenCalledWith('Discard unsaved changes?');
     expect(router.state.location.pathname).toBe('/dashboard/apps/new');
   });
@@ -484,9 +486,9 @@ describe('New App source flow', () => {
     expect(screen.queryByText('App ready')).not.toBeInTheDocument();
     await act(async () => rejectCreate(new Error('Creation unavailable')));
     expect(await screen.findByRole('button', { name: 'Create app' })).toBeEnabled();
-    await user.click(screen.getByRole('button', { name: 'Back' }));
+    await user.click(screen.getByRole('button', { name: 'Back to Configure' }));
     await screen.findByLabelText('App name');
-    await user.click(screen.getByRole('button', { name: 'Back' }));
+    await user.click(screen.getByRole('button', { name: 'Back to Sources' }));
     await user.click(await screen.findByRole('button', { name: /^Import/ }));
     expect(await screen.findByText('repo.tar.gz')).toBeVisible();
     expect(screen.getByLabelText('Project slug')).toHaveValue('sample');
@@ -523,7 +525,13 @@ describe('New App source flow', () => {
       await waitFor(() => expect(router.state.location.pathname).toBe('/dashboard/apps/new'));
       expect(router.state.location.search).toMatchObject({ source, ...search });
       expect(router.state.location.hash).toBe(hash.replace(/^#/, ''));
-      expect(screen.getByRole('heading', { name: 'New app' })).toBeInTheDocument();
+      // Each page names its step: the redirect lands on that source's own page.
+      expect(
+        screen.getByRole('heading', {
+          level: 1,
+          name: source === 'template' ? 'Pick a starter' : 'Import a project',
+        })
+      ).toBeInTheDocument();
     }
   );
 });

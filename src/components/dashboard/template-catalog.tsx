@@ -131,7 +131,6 @@ export function TemplateCatalog({
 
   return (
     <div className="flex flex-col gap-6">
-      <p className="text-sm text-muted-foreground">Pick a starter to prefill your app.</p>
       {phase === 'empty' ? (
         <EmptyState
           message="The catalog is empty on this deployment."

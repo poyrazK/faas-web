@@ -5,7 +5,7 @@ import { RepoPicker } from '@/components/dashboard/repo-picker';
 import { GitHubConnectForm } from '@/components/dashboard/github-connect-form';
 import { motion, useReducedMotion } from 'motion/react';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { ArrowLeft, ArrowRight, NavArrowDown } from 'iconoir-react';
+import { ArrowRight, NavArrowDown } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
@@ -1103,11 +1103,8 @@ function CreateAppWizard({
           </div>
         </details>
 
-        <div className="flex items-center justify-between">
-          <Button type="button" variant="ghost" onClick={() => setStep(0)} className="gap-2">
-            <ArrowLeft className="h-4 w-4" />
-            Back
-          </Button>
+        {/* The way back is in the header; this row holds only the way on. */}
+        <div className="flex justify-end">
           <Button variant="cta" type="submit" className="h-10 gap-2 rounded-lg">
             Review
             <ArrowRight className="h-4 w-4" />
@@ -1168,11 +1165,7 @@ function CreateAppWizard({
             {blockedReason}
           </p>
         )}
-        <div className="flex items-center justify-between">
-          <Button variant="ghost" onClick={() => setStep(1)} className="gap-2">
-            <ArrowLeft className="h-4 w-4" />
-            Back
-          </Button>
+        <div className="flex justify-end">
           <Button
             variant="cta"
             disabled={
@@ -1193,24 +1186,73 @@ function CreateAppWizard({
     );
   }
 
+  // Each page names its own step. The flows with a Configure and a Review
+  // (Git, Template, Empty) count three steps; the sources that finish on
+  // their own page are one page, so they carry no count.
+  function header(): Parameters<typeof NewAppHeader>[0] {
+    const counted = source === 'git' || source === 'template' || source === 'empty';
+    const of = (n: number) => (counted ? `Step ${n} of 3` : undefined);
+    if (station === 'sources')
+      return onboarding
+        ? {
+            title: 'Deploy your first app',
+            description: 'Choose a Git repository, configure it, and watch the real build go live.',
+          }
+        : { title: 'New app', description: 'Choose how to start.', back: 'apps' };
+    if (station === 'setup') {
+      const back = onboarding ? undefined : { label: 'Sources', onBack: toSources };
+      if (onboarding)
+        return {
+          step: of(1),
+          title: 'Deploy your first app',
+          description: 'Choose a repository and the ref to build.',
+        };
+      const page: Record<AppSource, { title: string; description: string }> = {
+        git: { title: 'Pick a repository', description: 'Choose what to build and which ref.' },
+        template: {
+          title: 'Pick a starter',
+          description:
+            'Pick a starter to prefill your app. The CLI writes its code once the app exists.',
+        },
+        empty: { title: 'Empty app', description: '' },
+        container: {
+          title: 'Run a container image',
+          description: 'An HTTP image you already built.',
+        },
+        worker: { title: 'Run a worker', description: 'A background process with no HTTP port.' },
+        import: {
+          title: 'Import a project',
+          description: 'Scan a repository with several services and create them together.',
+        },
+      };
+      return { step: of(1), back, ...page[source ?? 'git'] };
+    }
+    if (station === 'configure')
+      return {
+        step: of(2),
+        title: 'Configure',
+        description: 'Name it and choose how it runs.',
+        back: hasSetup(source)
+          ? { label: 'Setup', onBack: () => setStep(0) }
+          : onboarding
+            ? undefined
+            : { label: 'Sources', onBack: toSources },
+      };
+    return {
+      step: of(3),
+      title: 'Review',
+      description:
+        source === 'git' ? 'Check the details, then deploy.' : 'Check the details, then create.',
+      back: { label: 'Configure', onBack: () => setStep(1) },
+    };
+  }
+
   const form = (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-8 text-[length:var(--console-body-size,0.875rem)] leading-[var(--console-body-leading,1.5714)]">
       {/* One tree, before and during creation: the content column swaps the
           station for the completion, so the import draft below it (and the
           rest of the form state) survives a failed attempt from any source. */}
-      {!deploying && (
-        <NewAppHeader
-          title={onboarding ? 'Deploy your first app' : 'New app'}
-          description={
-            onboarding
-              ? 'Choose a Git repository, configure its runtime, and watch the real build go live.'
-              : template
-                ? `Starting from the ${template.name} template — source, runtime, and memory are prefilled; the scaffold arrives once the app exists.`
-                : 'Choose a source to create your app.'
-          }
-          back={!onboarding}
-        />
-      )}
+      {!deploying && <NewAppHeader {...header()} />}
       <div className="@container flex min-w-0 flex-col gap-6">
         {deploying && renderCompletion()}
         {/* The stage stays mounted while creating, emptied and hidden, so the
@@ -1226,15 +1268,6 @@ function CreateAppWizard({
                   : station === 'configure'
                     ? 'Configure'
                     : 'Review'
-            }
-            back={
-              station !== 'sources' && !onboarding
-                ? station === 'setup' || (station === 'configure' && !hasSetup(source))
-                  ? { label: 'Sources', onBack: toSources }
-                  : station === 'configure'
-                    ? { label: 'Setup', onBack: () => setStep(0) }
-                    : { label: 'Configure', onBack: () => setStep(1) }
-                : undefined
             }
             persistent={
               // Kept mounted through source switches and creation, including a

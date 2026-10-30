@@ -292,7 +292,7 @@ describe('NewAppWizard repository prefill', () => {
     await user.type(screen.getByLabelText('Repository'), 'gregale/first');
     await user.click(screen.getByRole('button', { name: /continue/i }));
     await nameApp(user, 'my-own-name');
-    await user.click(screen.getByRole('button', { name: 'Back' }));
+    await user.click(screen.getByRole('button', { name: 'Back to Setup' }));
     const repository = await screen.findByLabelText('Repository');
     await user.clear(repository);
     await user.type(repository, 'gregale/second');
@@ -960,7 +960,7 @@ describe('NewAppWizard Git submission', () => {
     await screen.findByRole('button', { name: 'Deploy app' });
     expect(screen.getByText('256 MB')).toBeInTheDocument();
     expect(screen.getByText('One instance kept resident')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Back' }));
+    await user.click(screen.getByRole('button', { name: 'Back to Configure' }));
     await waitFor(() =>
       expect(screen.getByText('256 MB · One instance kept resident')).toBeVisible()
     );
