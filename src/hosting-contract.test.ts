@@ -46,6 +46,16 @@ describe('public hosting contract', () => {
   });
 });
 
+it('serves the platform security.txt at the apex', () => {
+  // RFC 9116 discovery starts at https://gregale.dev/.well-known/security.txt.
+  // apid's edge owns the one copy; the apex proxies it rather than keeping a
+  // second file that drifts.
+  const route = config.routes.find(
+    (candidate) => candidate.src && new RegExp(candidate.src).test('/.well-known/security.txt')
+  );
+  expect(route?.dest).toBe('https://api.gregale.dev/.well-known/security.txt');
+});
+
 /** Model only the post-filesystem fallbacks: published documents and assets
  * have already resolved; missing routes must never receive the landing shell. */
 function fallbackFor(path: string) {
