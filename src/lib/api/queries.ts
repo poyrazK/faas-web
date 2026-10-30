@@ -14,6 +14,7 @@ import { api, issueCSRF, unwrap } from './client';
 import { ApiError } from './errors';
 import { isDeploymentTerminal } from '../deployment-status';
 import type { components, paths } from './schema';
+import { uploadTarball, type DeployOptions } from './uploads';
 
 /**
  * Query hooks over the REST surface.
@@ -3534,28 +3535,17 @@ export function useTrigger(id: string) {
 
 /**
  * Deploy a source tarball the customer picked, the console's equivalent of
- * `gregale deploy --tarball`. Multipart: openapi-fetch skips the serializer
- * when `body` is undefined, so the body is passed through as `never`.
+ * `gregale deploy --tarball`, through the resumable upload session
+ * (`/v1/uploads`) that replaced the deprecated multipart route.
  */
 export function useDeployTarball(slug: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: {
       file: File;
-      sidecar?: components['schemas']['SourceTarballDeployRequest'];
-    }) =>
-      unwrap(
-        api.POST('/v1/apps/{slug}/deployments/source-tarball', {
-          params: { path: { slug } },
-          body: input as never,
-          bodySerializer: () => {
-            const form = new FormData();
-            form.append('tarball', input.file);
-            if (input.sidecar) form.append('sidecar', JSON.stringify(input.sidecar));
-            return form;
-          },
-        })
-      ),
+      options?: DeployOptions;
+      onProgress?: (sent: number, total: number) => void;
+    }) => uploadTarball({ slug, ...input }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.deployments });
       void qc.invalidateQueries({ queryKey: keys.appDeployments(slug) });
