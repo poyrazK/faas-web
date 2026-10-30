@@ -116,6 +116,10 @@ it("says who can see a company's invoices when the member's role cannot", async 
     expect(reads).toEqual(['/v1/orgs/{slug}/invoices']);
     // The FOCUS export reads the signed-in account's own costs.
     expect(screen.queryByText(/FOCUS/)).toBeNull();
+    // The company portal needs the owner and a fresh step-up (faas
+    // server.go:4709, OrgActionChangePlan); it is not offered here yet.
+    expect(screen.queryByRole('button', { name: 'Billing portal' })).toBeNull();
+    expect(screen.getByText(/Acme's owner opens its billing portal/)).toBeInTheDocument();
   } finally {
     workspace.org = null;
     workspace.label = 'Personal';

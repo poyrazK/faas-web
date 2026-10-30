@@ -95,7 +95,9 @@ describe('company billing reads', () => {
     forbid = true;
     render(<OrgUsage org="acme" label="Acme" />, { wrapper });
     expect(
-      await screen.findByText("Only Acme's owners and billing admins can see its usage.")
+      // Usage needs only membership (OrgActionView), so the refusal names the
+      // member's role rather than claiming only owners may see it.
+      await screen.findByText('Your role in Acme cannot see its usage.')
     ).toBeInTheDocument();
     expect(calls.some((c) => c.path.startsWith('/v1/usage'))).toBe(false);
   });

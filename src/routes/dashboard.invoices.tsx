@@ -135,30 +135,38 @@ function InvoicesBody() {
             : "Billing history. Payment methods and PDFs live in the provider's portal."
         }
         actions={
-          <Button
-            size="sm"
-            variant="outline"
-            className="gap-1.5"
-            disabled={portal.isPending}
-            onClick={() => {
-              void portal
-                .mutateAsync()
-                .then((result) => {
-                  // A full-page navigation, not a fetch — it is another origin.
-                  if (result.url) window.location.href = result.url;
-                })
-                .catch((err: unknown) =>
-                  toast({
-                    kind: 'error',
-                    title: 'Could not open the billing portal',
-                    description: errorMessage(err),
+          org ? (
+            // The company portal needs the owner and a fresh step-up (faas
+            // server.go:4709, OrgActionChangePlan); it follows plan changes.
+            <p className="text-xs text-muted-foreground">
+              {label}'s owner opens its billing portal.
+            </p>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5"
+              disabled={portal.isPending}
+              onClick={() => {
+                void portal
+                  .mutateAsync()
+                  .then((result) => {
+                    // A full-page navigation, not a fetch — it is another origin.
+                    if (result.url) window.location.href = result.url;
                   })
-                );
-            }}
-          >
-            <OpenNewWindow className="h-3.5 w-3.5" />
-            Billing portal
-          </Button>
+                  .catch((err: unknown) =>
+                    toast({
+                      kind: 'error',
+                      title: 'Could not open the billing portal',
+                      description: errorMessage(err),
+                    })
+                  );
+              }}
+            >
+              <OpenNewWindow className="h-3.5 w-3.5" />
+              Billing portal
+            </Button>
+          )
         }
       />
       {org && listError instanceof ApiError && listError.code === 'org_role_forbidden' ? (

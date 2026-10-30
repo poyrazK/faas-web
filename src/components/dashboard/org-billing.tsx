@@ -9,10 +9,21 @@ import { InlinePhase, Panel, queryPhase } from './primitives';
  * billing subject (GET /v1/orgs/{slug}/…), which the same apid handlers serve.
  */
 
-/** The role refusal in words that name the organization (faas authz org_role_forbidden). */
-export function orgBillingMessage(err: unknown, label: string, what: string): string {
+/**
+ * The role refusal in words that name the organization (faas authz
+ * org_role_forbidden). Invoices need an owner or billing admin
+ * (OrgActionManageBilling); status and usage need only membership
+ * (OrgActionView), so their refusal names the member's role instead.
+ */
+export function orgBillingMessage(
+  err: unknown,
+  label: string,
+  what: 'invoices' | 'usage' | 'plan'
+): string {
   if (err instanceof ApiError && err.code === 'org_role_forbidden')
-    return `Only ${label}'s owners and billing admins can see its ${what}.`;
+    return what === 'invoices'
+      ? `Only ${label}'s owners and billing admins can see its invoices.`
+      : `Your role in ${label} cannot see its ${what}.`;
   return errorMessage(err);
 }
 
