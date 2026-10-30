@@ -23,3 +23,7 @@ components.json
 
 # Vendored upstream docs-URL catalog, pulled by `npm run docs:pull`; kept byte-identical.
 content/customer-pages.json
+
+# Vendored faas capability inventory and catalog, pulled by `npm run capabilities:pull`;
+# kept byte-identical so a refresh diffs against upstream.
+content/capabilities
