@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { CapabilityGate } from './capability-gate';
+import { CapabilityGate, withCapability } from './capability-gate';
 
 const access = vi.hoisted(() => ({ value: 'on' as string }));
 vi.mock('@/lib/api/capabilities', () => ({
@@ -39,5 +39,22 @@ describe('CapabilityGate', () => {
       </CapabilityGate>
     );
     expect(screen.getByRole('status')).toHaveTextContent(/checking availability/i);
+  });
+});
+
+describe('withCapability', () => {
+  it('gates a whole page, so a bookmarked URL to a hidden page never mounts it', () => {
+    access.value = 'off';
+    const Page = vi.fn(() => <p>page body</p>);
+    const Gated = withCapability('events', 'Events', Page);
+    render(<Gated />);
+    expect(Page).not.toHaveBeenCalled();
+    expect(screen.getByRole('status')).toHaveTextContent(/not enabled for this account/i);
+  });
+  it('renders the page when the capability is on', () => {
+    access.value = 'on';
+    const Gated = withCapability('events', 'Events', () => <p>page body</p>);
+    render(<Gated />);
+    expect(screen.getByText('page body')).toBeInTheDocument();
   });
 });

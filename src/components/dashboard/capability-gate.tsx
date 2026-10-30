@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 import { useCapabilityAccess } from '@/lib/api/capabilities';
 import type { CapabilityAccess } from '@/lib/capability-state';
 import { Panel } from './primitives';
@@ -53,4 +53,24 @@ export function CapabilityGate({
       </div>
     </Panel>
   );
+}
+
+/**
+ * A route component behind its capability, so a bookmarked URL to a page the
+ * nav hides explains itself instead of calling routes apid answers with 404.
+ */
+export function withCapability<P extends object>(
+  capability: string,
+  title: string,
+  Page: ComponentType<P>
+) {
+  function Gated(props: P) {
+    return (
+      <CapabilityGate capability={capability} title={title}>
+        <Page {...props} />
+      </CapabilityGate>
+    );
+  }
+  Gated.displayName = `withCapability(${capability})`;
+  return Gated;
 }
