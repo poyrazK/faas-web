@@ -12,32 +12,32 @@ export const SOURCES: readonly SourceOption[] = [
   {
     id: 'git',
     name: 'Git repository',
-    desc: 'Build and deploy one service from a branch, tag, or commit, right from the console.',
+    desc: 'Build and deploy a branch, tag, or commit.',
   },
   {
     id: 'template',
     name: 'Template',
-    desc: 'Start with sample code. Create the app here, then deploy it with the CLI.',
+    desc: 'Start from a ready-made starter.',
   },
   {
     id: 'empty',
     name: 'Empty app',
-    desc: 'Create the app without a deployment. Add code from the CLI or CI later.',
+    desc: 'Create it now, deploy code later.',
   },
   {
     id: 'container',
     name: 'Container image',
-    desc: 'Deploy an immutable HTTP image by digest. No GitHub connection required.',
+    desc: 'Run an HTTP image you already built.',
   },
   {
     id: 'worker',
     name: 'Long-lived worker',
-    desc: 'Deploy a pinned OCI worker without an HTTP listener. Hobby or above.',
+    desc: 'Run a background process with no HTTP port.',
   },
   {
     id: 'import',
     name: 'Import',
-    desc: 'A repository with several services (Compose, Procfile, k8s, Render, Fly, or serverless), scanned and created together as a project.',
+    desc: 'Turn a repository with several services into a project.',
   },
 ];
 

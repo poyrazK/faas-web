@@ -26,15 +26,16 @@ describe('NewAppBento', () => {
     expect(names).toEqual(['git', 'template', 'empty', 'container', 'worker', 'import']);
     expect(
       within(groups[0]).getByRole('button', { name: 'Git repository' })
-    ).toHaveAccessibleDescription(/one service from a branch, tag, or commit/);
+    ).toHaveAccessibleDescription('Build and deploy a branch, tag, or commit.');
   });
 
-  it('numbers the cells and names their group in an eyebrow', () => {
+  // A cell says what it is and one line of what it does: no group eyebrow
+  // or number repeated in every cell (the groups stay for assistive tech).
+  it("shows each cell's name and one line, and nothing else", () => {
     setup();
     const git = screen.getByRole('button', { name: 'Git repository' });
-    expect(git).toHaveTextContent('01');
-    expect(git).toHaveTextContent('From code');
-    expect(screen.getByRole('button', { name: 'Import' })).toHaveTextContent('06');
+    expect(git).toHaveTextContent(/^Git repositoryBuild and deploy a branch, tag, or commit\.$/);
+    expect(git).not.toHaveTextContent('From code');
   });
 
   it('joins the source form by name, so focus-first-error can find a cell', () => {
@@ -95,12 +96,5 @@ describe('NewAppBento', () => {
     expect(playing()).toEqual(['git', 'template']);
     await userEvent.unhover(screen.getByRole('button', { name: 'Template' }));
     expect(playing()).toEqual(['git']);
-  });
-
-  it('numbers nothing in onboarding, where there is one cell', () => {
-    setup({ single: true, selected: 'git' });
-    const git = screen.getByRole('button', { name: 'Git repository' });
-    expect(git).not.toHaveTextContent('01');
-    expect(git).not.toHaveTextContent('From code');
   });
 });

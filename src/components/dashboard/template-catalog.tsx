@@ -21,14 +21,11 @@ import { cn } from '@/lib/utils';
  * that stays in view with the caller's `action` (the wizard's Continue).
  */
 
-const CATEGORY: Record<TemplateView['category'], { label: string; blurb: string }> = {
-  hello: { label: 'Hello', blurb: 'First-touch smoke tests: the smallest server per runtime.' },
-  function: { label: 'Functions', blurb: 'The function contract per runtime, ready to extend.' },
-  'stateless-contract': {
-    label: 'Stateless services',
-    blurb: 'Workers, receivers and APIs that keep their state in the platform, not the instance.',
-  },
-  ai: { label: 'AI', blurb: 'Model-backed apps with the platform doing the scaling.' },
+const CATEGORY: Record<TemplateView['category'], { label: string }> = {
+  hello: { label: 'Hello' },
+  function: { label: 'Functions' },
+  'stateless-contract': { label: 'Stateless services' },
+  ai: { label: 'AI' },
 };
 
 const CATEGORY_ORDER: TemplateView['category'][] = [
@@ -148,9 +145,7 @@ export function TemplateCatalog({
     // Sized by its own width: it sits beside the New app rail, or beside the
     // Fold layout's strip, so the window says little about the room it has.
     <div className="@container flex flex-col gap-5">
-      <p className="text-sm text-muted-foreground">
-        Pick a starter to prefill your app. Its scaffold comes from the CLI once the app exists.
-      </p>
+      <p className="text-sm text-muted-foreground">Pick a starter to prefill your app.</p>
       {phase === 'empty' ? (
         <EmptyState
           message="The catalog is empty on this deployment."
@@ -204,15 +199,12 @@ export function TemplateCatalog({
               aria-labelledby={`${uid}-cat-${category}`}
               className="flex flex-col gap-2.5"
             >
-              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
-                <h2
-                  id={`${uid}-cat-${category}`}
-                  className="font-mono text-[10.5px] uppercase tracking-[0.08em] text-muted-foreground"
-                >
-                  {CATEGORY[category].label}
-                </h2>
-                <p className="text-xs text-muted-foreground">{CATEGORY[category].blurb}</p>
-              </div>
+              <h2
+                id={`${uid}-cat-${category}`}
+                className="font-mono text-[10.5px] uppercase tracking-[0.08em] text-muted-foreground"
+              >
+                {CATEGORY[category].label}
+              </h2>
               <div className="grid grid-cols-1 gap-2 @xl:grid-cols-2">
                 {list.filter((t) => t.category === category).map(tile)}
               </div>

@@ -1,19 +1,18 @@
-/* The New app scenes: flat signal colours on a dark screen with hairline
-   guides, after the reel they were drawn from. Art tokens only (index.css).
+/* The New app scenes: isometric pictures on a dark screen ruled like
+   isometric paper. Art tokens only (index.css).
 
-   Motion snaps on a beat: a move takes a fraction of the loop on a sharp
-   in-out curve, then holds. Every loop starts and ends on the composed
-   frame (bar Git's commit, which lands again from the top), and animations are declared only under [data-active]: a scene at
-   rest has none, so leaving a cell snaps it back rather than freezing it
-   mid-move. */
+   Each box names one tone (--c); its faces are shaded from it, the lid lit
+   and the right face in shade, so a scene never writes a colour. Animations
+   are declared only under [data-active]: a scene at rest shows its composed
+   frame, and leaving a cell snaps it back rather than freezing it mid-move. */
 
 .nab-scene {
   --nab-snap: cubic-bezier(0.83, 0, 0.17, 1);
+  --nab-ease: cubic-bezier(0.45, 0, 0.2, 1);
   background-color: var(--art-ground);
   background-image:
-    linear-gradient(var(--art-guide) 1px, transparent 1px),
-    linear-gradient(90deg, var(--art-guide) 1px, transparent 1px);
-  background-size: 2.5rem 2.5rem;
+    repeating-linear-gradient(30deg, var(--art-guide) 0 1px, transparent 1px 1.75rem),
+    repeating-linear-gradient(150deg, var(--art-guide) 0 1px, transparent 1px 1.75rem);
   background-position: center center;
 }
 .nab-scene > svg {
@@ -21,150 +20,172 @@
   inset: 0.75rem;
   width: calc(100% - 1.5rem);
   height: calc(100% - 1.5rem);
+  overflow: visible;
 }
 
-.nab-scene [class^='a-'] {
-  transform-box: fill-box;
-  transform-origin: center;
+/* Faces: lit lid, toned front, shaded side. Each face is stroked in its own
+   fill so neighbouring faces meet without a hairline seam; the lid's edge
+   catches the light. */
+.nab-scene .iso-t {
+  fill: color-mix(in oklab, var(--c) 72%, white);
+  stroke: color-mix(in oklab, var(--c) 40%, white);
+  stroke-width: 0.6;
+  stroke-linejoin: round;
+}
+.nab-scene .iso-l {
+  fill: var(--c);
+  stroke: var(--c);
+  stroke-width: 0.4;
+  stroke-linejoin: round;
+}
+.nab-scene .iso-r {
+  fill: color-mix(in oklab, var(--c) 60%, black);
+  stroke: color-mix(in oklab, var(--c) 60%, black);
+  stroke-width: 0.4;
+  stroke-linejoin: round;
+}
+.nab-scene .iso-shadow {
+  fill: black;
+  opacity: 0.45;
+  filter: blur(3px);
+}
+.nab-scene .iso-led {
+  fill: var(--c);
+}
+.nab-scene .iso-line {
+  fill: none;
+  stroke: var(--art-light);
+  stroke-width: 0.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.85;
+}
+.nab-scene .iso-wire {
+  fill: none;
+  stroke: var(--art-light);
+  stroke-width: 0.8;
+  stroke-dasharray: 2 2.5;
+  opacity: 0.55;
+}
+
+.nab-scene[data-active] [class*='a-'] {
   animation-fill-mode: both;
   animation-iteration-count: infinite;
+}
+
+/* Work travels along a wire, appearing and leaving at its ends. */
+.nab-scene[data-active] .a-travel {
+  animation-name: nab-travel;
+  animation-duration: 2.1s;
+  animation-timing-function: linear;
+}
+@keyframes nab-travel {
+  0% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  88% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--dx), var(--dy));
+    opacity: 0;
+  }
+}
+
+/* The kit's last block lifts out and drops back into its slot. */
+.nab-scene[data-active] .a-drop {
+  animation-name: nab-drop;
+  animation-duration: 2.4s;
   animation-timing-function: var(--nab-snap);
 }
-
-/* Git's branches pull into the trunk and burst back out, one after another. */
-.nab-scene[data-active] .a-grow {
-  transform-origin: right center;
-  animation-name: nab-grow;
-  animation-duration: 3.6s;
-}
-@keyframes nab-grow {
+@keyframes nab-drop {
   0%,
-  6% {
-    transform: scaleX(1);
-  }
-  16% {
-    transform: scaleX(0);
-  }
-  30%,
+  20%,
   100% {
-    transform: scaleX(1);
+    transform: translateY(0);
+  }
+  50%,
+  62% {
+    transform: translateY(-22px);
   }
 }
 
-/* Half a turn: every shape that spins is symmetric under it, so the loop's
-   end is its start. */
-.nab-scene[data-active] .a-spin {
-  animation-name: nab-spin;
+/* The empty app's outline hovers. */
+.nab-scene[data-active] .a-float {
+  animation-name: nab-float;
   animation-duration: 2.4s;
+  animation-timing-function: var(--nab-ease);
 }
-@keyframes nab-spin {
+@keyframes nab-float {
   0%,
-  35% {
-    transform: rotate(0deg);
-  }
-  65%,
   100% {
-    transform: rotate(180deg);
+    transform: translateY(0);
   }
-}
-
-/* The pillar's ring: a quarter turn, the same symmetry. */
-.nab-scene[data-active] .a-turn {
-  animation-name: nab-turn;
-  animation-duration: 3.2s;
-}
-@keyframes nab-turn {
-  0%,
-  30% {
-    transform: rotate(0deg);
-  }
-  55%,
-  100% {
-    transform: rotate(90deg);
-  }
-}
-
-/* The loader: eight snaps of an eighth of a turn. */
-.nab-scene[data-active] .a-ring {
-  animation-name: nab-ring;
-  animation-duration: 3.2s;
-}
-@keyframes nab-ring {
-  0% {
-    transform: rotate(0deg);
-  }
-  5%,
-  12.5% {
-    transform: rotate(45deg);
-  }
-  17.5%,
-  25% {
-    transform: rotate(90deg);
-  }
-  30%,
-  37.5% {
-    transform: rotate(135deg);
-  }
-  42.5%,
   50% {
-    transform: rotate(180deg);
+    transform: translateY(-5px);
   }
-  55%,
-  62.5% {
-    transform: rotate(225deg);
-  }
-  67.5%,
-  75% {
-    transform: rotate(270deg);
-  }
-  80%,
-  87.5% {
-    transform: rotate(315deg);
-  }
-  92.5%,
+}
+
+/* An image's layers open apart and settle. */
+.nab-scene[data-active] .a-lift {
+  animation-name: nab-lift;
+  animation-duration: 2.6s;
+  animation-timing-function: var(--nab-snap);
+}
+@keyframes nab-lift {
+  0%,
+  15%,
   100% {
+    transform: translate(0, 0);
+  }
+  45%,
+  70% {
+    transform: translate(var(--dx), var(--dy));
+  }
+}
+
+/* A light circles the worker's lid, and never stops. */
+.nab-scene[data-active] .a-orbit {
+  animation-name: nab-orbit;
+  animation-duration: 2.4s;
+  animation-timing-function: linear;
+}
+@keyframes nab-orbit {
+  to {
     transform: rotate(360deg);
   }
 }
 
-/* Cells and nodes leave and come back on a staggered wave. */
-.nab-scene[data-active] .a-pop {
-  animation-name: nab-pop;
-  animation-duration: 3.2s;
+/* Import's services rise out of the floor one after another. */
+.nab-scene[data-active] .a-rise {
+  transform-box: fill-box;
+  transform-origin: bottom center;
+  animation-name: nab-rise;
+  animation-duration: 3s;
+  animation-timing-function: var(--nab-snap);
 }
-@keyframes nab-pop {
+@keyframes nab-rise {
   0%,
-  4% {
-    transform: scale(1);
-  }
-  14% {
-    transform: scale(0);
-  }
-  30%,
-  100% {
-    transform: scale(1);
-  }
-}
-
-/* The dot matrix breathes out from its centre. */
-.nab-scene[data-active] .a-breathe {
-  animation-name: nab-breathe;
-  animation-duration: 2.8s;
-}
-@keyframes nab-breathe {
-  0%,
-  100% {
-    transform: scale(1);
+  8% {
+    transform: translateY(0);
+    opacity: 1;
   }
   18% {
-    transform: scale(0.3);
+    transform: translateY(10px);
+    opacity: 0;
   }
-  40% {
-    transform: scale(1);
+  40%,
+  100% {
+    transform: translateY(0);
+    opacity: 1;
   }
 }
 
-/* A cursor's blink, hard on and off. */
+/* Status lights, hard on and off. */
 .nab-scene[data-active] .a-blink {
   animation-name: nab-blink;
   animation-duration: 1.2s;
@@ -176,65 +197,7 @@
     opacity: 1;
   }
   50% {
-    opacity: 0.2;
-  }
-}
-
-/* A commit steps down the trunk, and the next one lands at the top: the one
-   loop that restarts with a cut, on purpose. */
-.nab-scene[data-active] .a-drop {
-  animation-name: nab-drop;
-  animation-duration: 2.8s;
-  animation-timing-function: steps(8, jump-none);
-}
-@keyframes nab-drop {
-  from {
-    transform: translateY(0);
-  }
-  to {
-    transform: translateY(140px);
-  }
-}
-
-/* Import: the line rewinds, sweeps the repository, and settles; the
-   services come out once it has passed. */
-.nab-scene[data-active] .a-scan {
-  animation-name: nab-scan;
-  animation-duration: 3.6s;
-}
-@keyframes nab-scan {
-  0%,
-  4% {
-    transform: translateX(0);
-  }
-  14% {
-    transform: translateX(-82px);
-    animation-timing-function: linear;
-  }
-  70% {
-    transform: translateX(18px);
-  }
-  80%,
-  100% {
-    transform: translateX(0);
-  }
-}
-.nab-scene[data-active][data-preview='import'] .a-pop {
-  animation-name: nab-emit;
-  animation-duration: 3.6s;
-}
-@keyframes nab-emit {
-  0%,
-  8% {
-    transform: scale(1);
-  }
-  12%,
-  72% {
-    transform: scale(0);
-  }
-  82%,
-  100% {
-    transform: scale(1);
+    opacity: 0.25;
   }
 }
 
@@ -246,7 +209,7 @@
 }
 @keyframes nab-march {
   to {
-    stroke-dashoffset: -5;
+    stroke-dashoffset: -4.5;
   }
 }
 

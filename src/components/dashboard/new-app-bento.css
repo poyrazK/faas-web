@@ -57,7 +57,7 @@
   }
   .nab-grid:not([data-single]) .nab-cell[data-source='git'] .nab-preview {
     height: auto;
-    min-height: 14rem;
+    min-height: 16rem;
     flex: 1;
   }
 }
@@ -76,8 +76,8 @@
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 0.875rem;
-  padding: 1rem;
+  gap: 1rem;
+  padding: 0.75rem 0.75rem 1.25rem;
   text-align: left;
   background: var(--card);
   color: var(--card-foreground);
@@ -127,7 +127,7 @@
 .nab-preview {
   position: relative;
   display: grid;
-  height: 9.5rem;
+  height: 10.5rem;
   place-items: center;
   overflow: hidden;
   border: 1px solid var(--border);

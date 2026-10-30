@@ -180,10 +180,10 @@ describe('NewAppWizard source picker', () => {
     expect(project).toHaveAccessibleName('Bring an existing project');
     const importCard = within(project).getByRole('button', { name: 'Import' });
     expect(importCard).toHaveAccessibleDescription(
-      /several services \(Compose, Procfile, k8s, Render, Fly, or serverless\), scanned and created together as a project/
+      'Turn a repository with several services into a project.'
     );
     expect(screen.getByRole('button', { name: 'Git repository' })).toHaveAccessibleDescription(
-      /one service from a branch, tag, or commit/
+      'Build and deploy a branch, tag, or commit.'
     );
   });
 
@@ -639,7 +639,7 @@ describe('NewAppWizard Git submission', () => {
     mocks.account.github_install_id = '';
     render(<NewAppWizard />);
     const container = screen.getByRole('button', { name: 'Container image' });
-    expect(container).toHaveAccessibleDescription(/Deploy an immutable HTTP image/);
+    expect(container).toHaveAccessibleDescription('Run an HTTP image you already built.');
     await userEvent.click(container);
     expect(await screen.findByText('HTTP image setup')).toBeInTheDocument();
     expect(screen.queryByText('Connect GitHub first')).not.toBeInTheDocument();

@@ -878,9 +878,6 @@ function CreateAppWizard({
                 >
                   Repository
                 </label>
-                <span className="text-xs text-muted-foreground">
-                  What your GitHub App installation can see
-                </span>
               </div>
               <RepoPicker
                 variant="list"
@@ -917,9 +914,7 @@ function CreateAppWizard({
                   spellCheck={false}
                   className={cn(CONTROL, 'h-8 w-44 font-mono')}
                 />
-                <span className="text-xs text-muted-foreground">
-                  A branch, tag, or commit SHA. Picking a repository fills its default branch.
-                </span>
+                <span className="text-xs text-muted-foreground">Branch, tag, or commit SHA</span>
                 {refError && (
                   <div className="basis-full">
                     <FieldError id={`${uid}-ref-error`}>{refError}</FieldError>

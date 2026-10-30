@@ -1,554 +1,359 @@
-import { useId, type CSSProperties, type ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
+import { cn } from '@/lib/utils';
 import type { AppSource } from './new-app-source';
 import './new-app-scenes.css';
 
 /**
- * The New app source scenes, drawn after a motion reel: flat, hard-edged
- * geometry in signal colours on a dark screen, with hairline guides and
- * motion that snaps on a beat. Each source borrows one of the reel's motifs:
+ * The New app source scenes: small isometric pictures of what each source
+ * does, in the art palette on a dark screen.
  *
- *   Git        a trunk with branches bursting off it, and a merged asterisk
- *   Template   a checker grid of colour that fills in on a wave
- *   Empty      a dot matrix, densest at its centre, breathing outward
- *   Container  a pillar: a core in a ring of layers, wired to its corners
- *   Worker     three spinners that never stop
- *   Import     a repository scanned, then split into three services
+ *   Git        a repository's branch graph builds onto a live server
+ *   Template   a starter kit, its last block dropping into place
+ *   Empty      a footprint with nothing on it yet but an outline
+ *   Container  an image's layers, opening apart and settling
+ *   Worker     jobs queue into a machine that keeps running, and leave done
+ *   Import     one repository becomes three services
  *
- * A scene at rest shows its composed frame; `active` (hovered, focused or
- * selected) plays its loop, which starts and ends on that frame (Git's commit
- * alone restarts from the top). Colours are
- * the art tokens in `index.css`, so no colour is written here.
+ * Shapes are boxes in isometric space, shaded per face in CSS from one tone,
+ * so a scene names tokens and never a colour. A scene at rest shows its
+ * composed frame; `active` (hovered, focused or selected) plays its loop.
  */
 
-type Art = 'mute' | 'light' | 'magenta' | 'cyan' | 'orange' | 'yellow' | 'lime' | 'blue' | 'pink';
+type Art =
+  'slate' | 'mute' | 'light' | 'magenta' | 'cyan' | 'orange' | 'yellow' | 'lime' | 'blue' | 'pink';
+type P = [number, number];
+type V = [number, number, number];
 
 const art = (name: Art) => `var(--art-${name})`;
-const delay = (ms: number): CSSProperties => ({ animationDelay: `${ms}ms` });
+const U = 8;
+const COS = Math.sqrt(3) / 2;
 
-/** A bar `length` long that ends at (x, y), pointing left, turned by `turn` degrees. */
-function Branch({
+/** Isometric space to the SVG's: x runs down-right, y down-left, z up. */
+const pt = (x: number, y: number, z = 0): P => [(x - y) * COS * U, (x + y) * 0.5 * U - z * U];
+const pts = (...p: P[]) => p.map(([a, b]) => `${a.toFixed(2)},${b.toFixed(2)}`).join(' ');
+/** A move along the isometric axes, as the CSS translate a loop animates. */
+const move = (dx: number, dy: number, dz = 0) => {
+  const [a, b] = pt(dx, dy, dz);
+  return { '--dx': `${a.toFixed(2)}px`, '--dy': `${b.toFixed(2)}px` } as CSSProperties;
+};
+const wait = (ms: number): CSSProperties => ({ animationDelay: `${ms}ms` });
+
+function Box({
+  at: [x, y, z],
+  size: [w, d, h],
+  tone,
+  className,
+  style,
+  children,
+}: {
+  at: V;
+  size: V;
+  tone: Art;
+  className?: string;
+  style?: CSSProperties;
+  children?: ReactNode;
+}) {
+  return (
+    <g className={cn('iso', className)} style={{ '--c': art(tone), ...style } as CSSProperties}>
+      <polygon
+        className="iso-l"
+        points={pts(
+          pt(x, y + d, z + h),
+          pt(x + w, y + d, z + h),
+          pt(x + w, y + d, z),
+          pt(x, y + d, z)
+        )}
+      />
+      <polygon
+        className="iso-r"
+        points={pts(
+          pt(x + w, y, z + h),
+          pt(x + w, y + d, z + h),
+          pt(x + w, y + d, z),
+          pt(x + w, y, z)
+        )}
+      />
+      <polygon
+        className="iso-t"
+        points={pts(
+          pt(x, y, z + h),
+          pt(x + w, y, z + h),
+          pt(x + w, y + d, z + h),
+          pt(x, y + d, z + h)
+        )}
+      />
+      {children}
+    </g>
+  );
+}
+
+/** The soft shadow a box casts on the floor. */
+function Shadow({ at: [x, y], size: [w, d] }: { at: [number, number]; size: [number, number] }) {
+  const o = 0.5;
+  return (
+    <polygon
+      className="iso-shadow"
+      points={pts(
+        pt(x + o, y + o),
+        pt(x + w + o, y + o),
+        pt(x + w + o, y + d + o),
+        pt(x + o, y + d + o)
+      )}
+    />
+  );
+}
+
+/** A run of status lights along a box's left face (the one facing +y). */
+function Lights({
   x,
   y,
-  length,
-  turn,
-  color,
-  wait,
+  z,
+  n,
+  tone,
+  blink,
 }: {
   x: number;
   y: number;
-  length: number;
-  turn: number;
-  color: Art;
-  wait: number;
+  z: number;
+  n: number;
+  tone: Art;
+  blink?: boolean;
 }) {
   return (
-    <g transform={`rotate(${turn} ${x} ${y})`}>
-      <rect
-        className="a-grow"
-        style={delay(wait)}
-        x={x - length}
-        y={y - 3.5}
-        width={length}
-        height={7}
-        fill={art(color)}
-      />
+    <g style={{ '--c': art(tone) } as CSSProperties}>
+      {Array.from({ length: n }, (_, i) => (
+        <polygon
+          key={i}
+          className={cn('iso-led', blink && 'a-blink')}
+          style={blink ? wait(i * 220) : undefined}
+          points={pts(
+            pt(x + i * 0.9, y, z),
+            pt(x + i * 0.9 + 0.55, y, z),
+            pt(x + i * 0.9 + 0.55, y, z - 0.3),
+            pt(x + i * 0.9, y, z - 0.3)
+          )}
+        />
+      ))}
     </g>
   );
 }
 
 function Git() {
-  const trunk = 150;
-  // Three bursts off the trunk; the middle one carries the merged branch.
-  const bursts: { y: number; bars: [Art, number, number][] }[] = [
-    {
-      y: 44,
-      bars: [
-        ['magenta', 45, 46],
-        ['yellow', 0, 44],
-        ['blue', -45, 46],
-      ],
-    },
-    {
-      y: 90,
-      bars: [
-        ['orange', 45, 40],
-        ['magenta', 0, 48],
-        ['yellow', -45, 40],
-      ],
-    },
-    {
-      y: 136,
-      bars: [
-        ['magenta', 45, 46],
-        ['yellow', 0, 44],
-        ['blue', -45, 46],
-      ],
-    },
-  ];
   return (
-    <svg viewBox="4 0 180 180" preserveAspectRatio="xMidYMid meet">
-      <g className="a-spin" style={delay(500)}>
-        <rect x={68 - 3.5} y={56} width={7} height={68} fill={art('orange')} />
-        <rect x={34} y={90 - 3.5} width={68} height={7} fill={art('yellow')} />
-        <rect
-          x={34}
-          y={90 - 3.5}
-          width={68}
-          height={7}
-          fill={art('magenta')}
-          transform="rotate(45 68 90)"
+    <svg viewBox="-43 -17 158 111" preserveAspectRatio="xMidYMid meet">
+      <Shadow at={[0, 0]} size={[6, 5]} />
+      <Shadow at={[11, 0.5]} size={[5, 4]} />
+      {/* The repository, its branch graph drawn on the lid. */}
+      <Box at={[0, 0, 0]} size={[6, 5, 1.1]} tone="slate" />
+      {/* main, and a branch that forks off it and merges back */}
+      <polyline className="iso-line" points={pts(pt(0.6, 3.6, 1.1), pt(5.4, 3.6, 1.1))} />
+      <polyline
+        className="iso-line"
+        points={pts(pt(1.9, 3.6, 1.1), pt(1.9, 1.6, 1.1), pt(4.3, 1.6, 1.1), pt(4.3, 3.6, 1.1))}
+      />
+      <Box at={[0.75, 3.3, 1.1]} size={[0.6, 0.6, 0.45]} tone="orange" />
+      <Box at={[2.5, 1.3, 1.1]} size={[0.6, 0.6, 0.45]} tone="magenta" />
+      <Box at={[3.4, 1.3, 1.1]} size={[0.6, 0.6, 0.45]} tone="magenta" />
+      <Box at={[4.55, 3.3, 1.1]} size={[0.6, 0.6, 0.45]} tone="cyan" />
+      {/* The build travels to the server. */}
+      <polyline className="iso-wire a-march" points={pts(pt(6, 2.5), pt(11, 2.5))} />
+      {[0, 1, 2].map((i) => (
+        <Box
+          key={i}
+          className="a-travel"
+          style={{ ...move(4, 0), ...wait(i * 700) }}
+          at={[6.3, 2.05, 0]}
+          size={[0.9, 0.9, 0.9]}
+          tone="orange"
         />
-        <rect
-          x={34}
-          y={90 - 3.5}
-          width={68}
-          height={7}
-          fill={art('blue')}
-          transform="rotate(-45 68 90)"
-        />
-      </g>
-      {bursts.map((b, i) =>
-        b.bars.map(([color, turn, length], j) => (
-          <Branch
-            key={`${i}-${j}`}
-            x={trunk}
-            y={b.y}
-            length={length}
-            turn={turn}
-            color={color}
-            wait={i * 160 + j * 60}
-          />
-        ))
-      )}
-      <rect x={trunk - 4} y={14} width={8} height={52} fill={art('orange')} />
-      <rect x={trunk - 4} y={66} width={8} height={48} fill={art('blue')} />
-      <rect x={trunk - 4} y={114} width={8} height={52} fill={art('orange')} />
-      {/* A commit lands on the trunk, step by step. */}
-      <rect className="a-drop" x={trunk - 6} y={14} width={12} height={12} fill={art('light')} />
+      ))}
+      {/* The server it lands on, live. */}
+      <Box at={[11, 0.5, 0]} size={[5, 4, 1.5]} tone="slate" />
+      <Lights x={11.6} y={4.5} z={1.05} n={4} tone="lime" blink />
+      <Box at={[11, 0.5, 1.5]} size={[5, 4, 1.5]} tone="slate" />
+      <Lights x={11.6} y={4.5} z={2.55} n={4} tone="lime" blink />
+      <Box className="a-blink" at={[13, 2, 3]} size={[1, 1, 0.3]} tone="lime" />
     </svg>
   );
 }
 
-// Seven columns by five rows; '.' is a gap. The reel's checker, re-coloured.
-const CHECKER = ['.y.m.o.', 'l.o.m.c', '.c.l.y.', 'y.m.b.c', '.o.y.m.'];
-const LETTER: Record<string, Art> = {
-  y: 'yellow',
-  m: 'magenta',
-  o: 'orange',
-  l: 'lime',
-  c: 'cyan',
-  b: 'blue',
-};
-
 function Template() {
-  const size = 18;
-  const x0 = 37;
-  const y0 = 25;
+  const slots: { i: number; j: number; tone: Art }[] = [
+    { i: 0, j: 0, tone: 'yellow' },
+    { i: 1, j: 0, tone: 'lime' },
+    { i: 2, j: 0, tone: 'cyan' },
+    { i: 0, j: 1, tone: 'magenta' },
+    { i: 1, j: 1, tone: 'orange' },
+  ];
   return (
-    <svg viewBox="0 0 200 140" preserveAspectRatio="xMidYMid meet">
-      <rect
-        x={25.5}
-        y={15.5}
-        width={149}
-        height={109}
-        fill="none"
-        stroke={art('mute')}
-        strokeWidth={0.75}
+    <svg viewBox="-43 -19 99 79" preserveAspectRatio="xMidYMid meet">
+      <Shadow at={[0, 0]} size={[7, 5]} />
+      <Box at={[0, 0, 0]} size={[7, 5, 0.7]} tone="slate" />
+      {slots.map((s) => (
+        <Box
+          key={`${s.i}${s.j}`}
+          at={[0.6 + s.i * 2.2, 0.5 + s.j * 2.2, 0.7]}
+          size={[1.7, 1.7, 1.2]}
+          tone={s.tone}
+        />
+      ))}
+      {/* The last block of the kit, dropping into its slot. */}
+      <Box
+        className="a-drop"
+        at={[0.6 + 2 * 2.2, 0.5 + 2.2, 0.7]}
+        size={[1.7, 1.7, 1.2]}
+        tone="blue"
       />
-      {/* Ticks on the frame, the colour of the cells they line up with. */}
-      <rect x={x0 + size} y={14} width={size} height={2} fill={art('yellow')} />
-      <rect x={x0 + 3 * size} y={14} width={size} height={2} fill={art('magenta')} />
-      <rect x={x0 + size} y={124} width={size} height={2} fill={art('orange')} />
-      <rect x={x0 + 3 * size} y={124} width={size} height={2} fill={art('yellow')} />
-      <rect x={24} y={y0 + size} width={2} height={size} fill={art('lime')} />
-      <rect x={174} y={y0 + 3 * size} width={2} height={size} fill={art('cyan')} />
-      {CHECKER.flatMap((row, r) =>
-        [...row].map((ch, c) =>
-          ch === '.' ? null : (
-            <rect
-              key={`${r}-${c}`}
-              className="a-pop"
-              style={delay((r + c) * 70)}
-              x={x0 + c * size}
-              y={y0 + r * size}
-              width={size}
-              height={size}
-              fill={art(LETTER[ch])}
-            />
-          )
-        )
-      )}
     </svg>
   );
 }
 
 function Empty() {
-  const step = 11;
-  const cx = 80;
-  const cy = 60;
-  const sizes = [0, 5.5, 4.6, 3.6, 2.7, 1.9, 1.3];
-  const dots: ReactNode[] = [];
-  for (let j = -4; j <= 4; j++)
-    for (let i = -6; i <= 6; i++) {
-      const d = Math.max(Math.abs(i), Math.abs(j));
-      if (d === 0) continue;
-      const s = sizes[Math.min(d, 6)];
-      dots.push(
-        <rect
-          key={`${i},${j}`}
-          className="a-breathe"
-          style={delay(d * 90)}
-          x={cx + i * step - s / 2}
-          y={cy + j * step - s / 2}
-          width={s}
-          height={s}
-          fill={art('magenta')}
-        />
-      );
-    }
+  const [x, y, z, s, h] = [0.7, 0.7, 1.2, 3.6, 2.6];
+  const c: Record<string, P> = {
+    a: pt(x, y, z),
+    b: pt(x + s, y, z),
+    c: pt(x + s, y + s, z),
+    d: pt(x, y + s, z),
+    A: pt(x, y, z + h),
+    B: pt(x + s, y, z + h),
+    C: pt(x + s, y + s, z + h),
+    D: pt(x, y + s, z + h),
+  };
+  const edges = ['ab', 'bc', 'cd', 'da', 'AB', 'BC', 'CD', 'DA', 'aA', 'bB', 'cC', 'dD'];
   return (
-    <svg viewBox="0 0 160 120" preserveAspectRatio="xMidYMid meet">
-      {[-1, 1].flatMap((sx) =>
-        [-1, 1].map((sy) => (
+    <svg viewBox="-43 -37 85 89" preserveAspectRatio="xMidYMid meet">
+      <Shadow at={[0, 0]} size={[5, 5]} />
+      <Box at={[0, 0, 0]} size={[5, 5, 0.25]} tone="slate" />
+      <polyline className="iso-line" points={pts(pt(2.1, 2.5, 0.25), pt(2.9, 2.5, 0.25))} />
+      <polyline className="iso-line" points={pts(pt(2.5, 2.1, 0.25), pt(2.5, 2.9, 0.25))} />
+      {/* What will be here: only an outline so far. */}
+      <g className="a-float">
+        {edges.map((e) => (
           <line
-            key={`${sx}${sy}`}
-            x1={cx + sx * 6}
-            y1={cy + sy * 6}
-            x2={cx + sx * 3 * step}
-            y2={cy + sy * 3 * step}
-            stroke={art('magenta')}
-            strokeWidth={0.6}
-            strokeOpacity={0.6}
+            key={e}
+            className="iso-wire a-march"
+            x1={c[e[0]][0]}
+            y1={c[e[0]][1]}
+            x2={c[e[1]][0]}
+            y2={c[e[1]][1]}
           />
-        ))
-      )}
-      {dots}
-      <rect
-        x={cx - 6}
-        y={cy - 6}
-        width={12}
-        height={12}
-        fill={art('magenta')}
-        fillOpacity={0.3}
-        stroke={art('magenta')}
-        strokeWidth={0.75}
-      />
-      <rect className="a-blink" x={cx - 3} y={cy - 3} width={6} height={6} fill={art('magenta')} />
+        ))}
+      </g>
     </svg>
   );
 }
 
 function Container() {
-  const cx = 80;
-  const cy = 60;
-  const corners = [
-    [-56, -44],
-    [56, -44],
-    [56, 44],
-    [-56, 44],
+  const layers: { z: number; tone: Art; lift: number }[] = [
+    { z: 0, tone: 'blue', lift: 0 },
+    { z: 1.1, tone: 'cyan', lift: 0.9 },
+    { z: 2.2, tone: 'light', lift: 1.8 },
   ];
-  const ring: { x: number; y: number; diamond: boolean }[] = [];
-  for (let k = 0; k < 8; k++) {
-    const a = (k * Math.PI) / 4;
-    const r = k % 2 ? 24 : 21;
-    ring.push({ x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r, diamond: k % 2 === 1 });
-  }
   return (
-    <svg viewBox="14 8 132 104" preserveAspectRatio="xMidYMid meet">
-      {corners.map(([dx, dy], i) => (
-        <line
-          key={i}
-          x1={cx}
-          y1={cy}
-          x2={cx + dx}
-          y2={cy + dy}
-          stroke={art('lime')}
-          strokeOpacity={0.5}
-          strokeWidth={0.6}
+    <svg viewBox="-43 -32 85 84" preserveAspectRatio="xMidYMid meet">
+      <Shadow at={[0, 0]} size={[5, 5]} />
+      {layers.map((l) => (
+        <Box
+          key={l.tone}
+          className="a-lift"
+          style={move(0, 0, l.lift)}
+          at={[0, 0, l.z]}
+          size={[5, 5, 0.8]}
+          tone={l.tone}
         />
       ))}
-      <line
-        x1={cx}
-        y1={cy - 40}
-        x2={cx}
-        y2={cy + 40}
-        stroke={art('lime')}
-        strokeOpacity={0.35}
-        strokeWidth={0.6}
-      />
-      <line
-        x1={cx - 40}
-        y1={cy}
-        x2={cx + 40}
-        y2={cy}
-        stroke={art('lime')}
-        strokeOpacity={0.35}
-        strokeWidth={0.6}
-      />
-      {[
-        [0, -40],
-        [40, 0],
-        [0, 40],
-        [-40, 0],
-      ].map(([dx, dy], i) => (
-        <rect
-          key={i}
-          x={cx + dx - 3.5}
-          y={cy + dy - 3.5}
-          width={7}
-          height={7}
-          fill={art('yellow')}
-          fillOpacity={0.4}
-        />
-      ))}
-      <g className="a-turn" style={delay(300)}>
-        {ring.map((p, i) => (
-          <rect
-            key={i}
-            x={p.x - 5}
-            y={p.y - 5}
-            width={10}
-            height={10}
-            fill={art('lime')}
-            fillOpacity={0.35}
-            stroke={art('lime')}
-            strokeWidth={0.75}
-            transform={p.diamond ? `rotate(45 ${p.x} ${p.y})` : undefined}
-          />
-        ))}
-      </g>
-      <rect
-        x={cx - 11}
-        y={cy - 11}
-        width={22}
-        height={22}
-        fill={art('yellow')}
-        fillOpacity={0.22}
-        stroke={art('yellow')}
-        strokeWidth={0.75}
-      />
-      <rect className="a-blink" x={cx - 6} y={cy - 6} width={12} height={12} fill={art('lime')} />
-      {corners.map(([dx, dy], i) => (
-        <rect
-          key={i}
-          className="a-pop"
-          style={delay(900 + i * 120)}
-          x={cx + dx - 4}
-          y={cy + dy - 4}
-          width={8}
-          height={8}
-          fill={art('yellow')}
-        />
-      ))}
+      {/* The digest it is pinned by, as a tag on the image. */}
+      <Box at={[3.4, 5, 2.5]} size={[1.4, 0.15, 0.35]} tone="orange" />
     </svg>
   );
 }
 
 function Worker() {
-  // Eight tangential pills around a ring: the reel's loader.
-  const pills: Art[] = ['blue', 'orange', 'lime', 'yellow', 'orange', 'magenta', 'pink', 'pink'];
+  // The lane runs straight across the screen: along x and against y.
+  const lane = (t: number): V => [t, -t, 0];
+  const [mx, my] = [5, -6.5];
+  const r = 1.4;
+  const [cx, cy] = pt(mx + 2.25, my + 2.25, 2.2);
   return (
-    <svg viewBox="0 0 300 110" preserveAspectRatio="xMidYMid meet">
-      <g transform="translate(60 55)">
-        <g className="a-spin">
-          <rect x={-7} y={-25} width={14} height={50} rx={7} fill={art('orange')} />
-          <rect x={-25} y={-7} width={50} height={14} rx={7} fill={art('yellow')} />
-          <rect x={-7} y={-7} width={14} height={14} fill={art('light')} />
-          {[
-            [-1, -1],
-            [1, -1],
-            [1, 1],
-            [-1, 1],
-          ].map(([sx, sy], i) => (
-            <rect
-              key={i}
-              x={sx * 17 - 4.5}
-              y={sy * 17 - 4.5}
-              width={9}
-              height={9}
-              rx={2.5}
-              fill={art('pink')}
-            />
-          ))}
+    <svg viewBox="-14 -32 237 74" preserveAspectRatio="xMidYMid meet">
+      <polyline className="iso-wire a-march" points={pts(pt(0.5, -0.5), pt(13.5, -13.5))} />
+      {[0, 1, 2].map((i) => (
+        <Box
+          key={i}
+          className="a-travel"
+          style={{ ...move(3, -3), ...wait(i * 800) }}
+          at={lane(i * 1.3)}
+          size={[0.9, 0.9, 0.9]}
+          tone="magenta"
+        />
+      ))}
+      <Shadow at={[mx, my]} size={[4.5, 4.5]} />
+      <Box at={[mx, my, 0]} size={[4.5, 4.5, 2.2]} tone="slate" />
+      <Lights x={mx + 0.6} y={my + 4.5} z={1.6} n={4} tone="lime" blink />
+      {/* It keeps running: a light circling the lid. */}
+      <ellipse
+        className="iso-line"
+        cx={cx}
+        cy={cy}
+        rx={1.2247 * r * U}
+        ry={0.7071 * r * U}
+        fill="none"
+      />
+      <g transform={`translate(${cx} ${cy}) scale(1 0.5774)`}>
+        <g className="a-orbit">
+          <circle cx={1.2247 * r * U} cy={0} r={2.2} fill={art('lime')} />
         </g>
       </g>
-      <g transform="translate(150 55)">
-        <g className="a-spin" style={delay(400)}>
-          <rect x={-4.5} y={-4.5} width={9} height={9} rx={2.5} fill={art('yellow')} />
-          {[
-            [-1, -1],
-            [1, -1],
-            [1, 1],
-            [-1, 1],
-          ].map(([sx, sy], i) => (
-            <g key={i}>
-              <rect
-                x={sx * 10 - 4}
-                y={sy * 10 - 4}
-                width={8}
-                height={8}
-                rx={2.5}
-                fill={art('pink')}
-              />
-              <rect
-                x={sx * 20 - 4}
-                y={sy * 20 - 4}
-                width={8}
-                height={8}
-                rx={2.5}
-                fill={art('magenta')}
-              />
-            </g>
-          ))}
-          <rect x={-4} y={-30} width={8} height={8} rx={2.5} fill={art('yellow')} />
-          <rect x={-4} y={22} width={8} height={8} rx={2.5} fill={art('yellow')} />
-          <rect x={-30} y={-4} width={8} height={8} rx={2.5} fill={art('pink')} />
-          <rect x={22} y={-4} width={8} height={8} rx={2.5} fill={art('pink')} />
-        </g>
-      </g>
-      <g transform="translate(240 55)">
-        <g className="a-ring">
-          {pills.map((color, k) => (
-            <rect
-              key={k}
-              x={-9}
-              y={-26}
-              width={18}
-              height={10}
-              rx={5}
-              fill={art(color)}
-              transform={`rotate(${k * 45})`}
-            />
-          ))}
-        </g>
-      </g>
+      {[0, 1].map((i) => (
+        <Box
+          key={i}
+          className="a-travel"
+          style={{ ...move(3, -3), ...wait(400 + i * 800) }}
+          at={lane(11 + i * 1.3)}
+          size={[0.7, 0.7, 0.7]}
+          tone="lime"
+        />
+      ))}
     </svg>
   );
 }
 
-// The reel's scan: pixels in frame coordinates (0–100), [colour, x, y, size].
-const PIXELS: [Art, number, number, number][] = [
-  ['lime', 20, 18, 6],
-  ['magenta', 27, 25, 6],
-  ['orange', 40, 14, 11],
-  ['yellow', 30, 31, 11],
-  ['cyan', 53, 31, 11],
-  ['cyan', 79, 35, 6],
-  ['magenta', 19, 47, 11],
-  ['yellow', 64, 47, 11],
-  ['orange', 12, 60, 6],
-  ['magenta', 53, 59, 11],
-  ['lime', 40, 72, 11],
-  ['cyan', 66, 68, 6],
-  ['orange', 73, 75, 6],
-];
-
 function Import() {
-  const clip = `nab-scan-${useId().replace(/[^\w-]/g, '')}`;
-  const fx = 110;
-  const fy = 5;
-  const line = 82;
-  const pixels = (paint?: Art) =>
-    PIXELS.map(([color, x, y, s], i) => (
-      <rect key={i} x={fx + x} y={fy + y} width={s} height={s} fill={art(paint ?? color)} />
-    ));
-  const services: [Art, number][] = [
-    ['cyan', 22],
-    ['magenta', 55],
-    ['yellow', 88],
+  // The services stand in a row straight across the screen, on the lane that
+  // leaves the middle of the repository's right face (x + y = 5.5).
+  const services: { t: number; tone: Art }[] = [
+    { t: 9, tone: 'cyan' },
+    { t: 12.5, tone: 'magenta' },
+    { t: 16, tone: 'yellow' },
   ];
+  const lane = 2.9;
   return (
-    <svg viewBox="26 0 262 110" preserveAspectRatio="xMidYMid meet">
-      <defs>
-        {/* Everything left of the scan line is lit; it moves with the line. */}
-        <clipPath id={clip}>
-          <rect className="a-scan" x={fx - 100} y={fy} width={100 + line} height={100} />
-        </clipPath>
-      </defs>
-      {/* The repository goes in on the left… */}
-      <line
-        className="a-march"
-        x1={52}
-        y1={55}
-        x2={fx}
-        y2={55}
-        stroke={art('light')}
-        strokeOpacity={0.45}
-        strokeWidth={1}
-        strokeDasharray="2 3"
+    <svg viewBox="-25 -31 273 75" preserveAspectRatio="xMidYMid meet">
+      <polyline
+        className="iso-wire a-march"
+        points={pts(pt(5.5, 0), pt(16 + 1.3, -16 + lane + 1.3))}
       />
-      <rect x={36} y={48} width={14} height={14} fill={art('orange')} />
-      {/* …the services come out on the right. */}
-      {services.map(([color, y], i) => (
-        <g key={color}>
-          <line
-            className="a-march"
-            x1={fx + 100}
-            y1={55}
-            x2={262}
-            y2={y}
-            stroke={art('light')}
-            strokeOpacity={0.45}
-            strokeWidth={1}
-            strokeDasharray="2 3"
-          />
-          <rect
-            className="a-pop"
-            style={delay(i * 110)}
-            x={262}
-            y={y - 6}
-            width={12}
-            height={12}
-            fill={art(color)}
-          />
+      <Shadow at={[0, -2.5]} size={[5.5, 5]} />
+      {/* One repository, its services still inside it. */}
+      <Box at={[0, -2.5, 0]} size={[5.5, 5, 1.6]} tone="slate" />
+      {(['cyan', 'magenta', 'yellow'] as const).map((tone, i) => (
+        <Box key={tone} at={[0.6 + i * 1.6, -2, 1.6]} size={[1.2, 4, 0.3]} tone={tone} />
+      ))}
+      {services.map((s, i) => (
+        <g key={s.tone}>
+          <Shadow at={[s.t, -s.t + lane]} size={[2.6, 2.6]} />
+          <Box
+            className="a-rise"
+            style={wait(300 + i * 220)}
+            at={[s.t, -s.t + lane, 0]}
+            size={[2.6, 2.6, 1.8]}
+            tone={s.tone}
+          >
+            <Lights x={s.t + 0.5} y={-s.t + lane + 2.6} z={1.3} n={2} tone="lime" />
+          </Box>
         </g>
       ))}
-      <g>
-        {Array.from({ length: 7 }, (_, k) => (
-          <g key={k}>
-            <line
-              x1={fx + (k + 1) * 12.5}
-              y1={fy}
-              x2={fx + (k + 1) * 12.5}
-              y2={fy + 100}
-              stroke={art('mute')}
-              strokeOpacity={0.35}
-              strokeWidth={0.5}
-            />
-            <line
-              x1={fx}
-              y1={fy + (k + 1) * 12.5}
-              x2={fx + 100}
-              y2={fy + (k + 1) * 12.5}
-              stroke={art('mute')}
-              strokeOpacity={0.35}
-              strokeWidth={0.5}
-            />
-          </g>
-        ))}
-      </g>
-      {pixels('mute')}
-      <g clipPath={`url(#${clip})`}>{pixels()}</g>
-      <g className="a-scan">
-        <rect
-          x={fx + line}
-          y={fy}
-          width={100 - line}
-          height={100}
-          fill={art('mute')}
-          fillOpacity={0.25}
-        />
-        <rect x={fx + line - 0.75} y={fy} width={1.5} height={100} fill={art('light')} />
-      </g>
-      <rect
-        x={fx + 0.5}
-        y={fy + 0.5}
-        width={99}
-        height={99}
-        fill="none"
-        stroke={art('mute')}
-        strokeWidth={1}
-      />
     </svg>
   );
 }
@@ -576,7 +381,7 @@ export function SourceScene({ id, active }: { id: AppSource; active: boolean }) 
   );
 }
 
-// Four-by-four pixel glyphs for Fold's strip, after the reel's small icons.
+// Four-by-four pixel glyphs for Fold's strip.
 const GLYPHS: Record<AppSource, { color: Art; rows: string[] }> = {
   git: { color: 'orange', rows: ['x..x', 'x.x.', 'xx..', 'x...'] },
   template: { color: 'yellow', rows: ['x.x.', '.x.x', 'x.x.', '.x.x'] },

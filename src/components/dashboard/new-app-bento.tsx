@@ -30,10 +30,8 @@ export function NewAppBento({
 }) {
   // The cell under the pointer or focus plays its scene; the rest hold still.
   const [hot, setHot] = useState<AppSource | null>(null);
-  const cell = (id: AppSource, group: string) => {
-    // SOURCES is in group order, so its position is the cell's number.
-    const index = SOURCES.findIndex((option) => option.id === id) + 1;
-    const s = SOURCES[index - 1];
+  const cell = (id: AppSource) => {
+    const s = SOURCES.find((option) => option.id === id)!;
     return (
       <button
         key={id}
@@ -56,18 +54,14 @@ export function NewAppBento({
           <span key={c} aria-hidden="true" className="nab-mark" data-corner={c} />
         ))}
         <SourceScene id={id} active={hot === id || selected === id} />
-        {/* One cell numbers nothing: onboarding shows Git alone. */}
-        {!single && (
-          <span className="flex items-center justify-between gap-3 font-mono text-[10.5px] uppercase tracking-[0.08em] text-muted-foreground">
-            <span>{group}</span>
-            <span>{String(index).padStart(2, '0')}</span>
-          </span>
-        )}
-        <span className="flex min-w-0 flex-col gap-1">
-          <span id={`${uid}-${id}-name`} className="text-sm font-medium text-foreground">
+        <span className="flex min-w-0 flex-col gap-1 px-1">
+          <span
+            id={`${uid}-${id}-name`}
+            className="text-[15px] font-medium leading-5 text-foreground"
+          >
             {s.name}
           </span>
-          <span id={`${uid}-${id}-desc`} className="text-xs leading-5 text-muted-foreground">
+          <span id={`${uid}-${id}-desc`} className="text-[13px] leading-5 text-muted-foreground">
             {s.desc}
           </span>
         </span>
@@ -79,7 +73,7 @@ export function NewAppBento({
     return (
       <div className="nab-wrap">
         <div className="nab-grid" data-single="">
-          {cell('git', SOURCE_GROUPS[0].title)}
+          {cell('git')}
         </div>
       </div>
     );
@@ -98,7 +92,7 @@ export function NewAppBento({
             <h2 id={`${uid}-group-${g}`} className="sr-only">
               {group.title}
             </h2>
-            {group.sources.map((id) => cell(id, group.title))}
+            {group.sources.map((id) => cell(id))}
           </div>
         ))}
       </div>

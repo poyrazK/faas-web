@@ -9,11 +9,12 @@ const ALL: AppSource[] = ['git', 'template', 'empty', 'container', 'worker', 'im
 const css = readFileSync(resolve('src/components/dashboard/new-app-scenes.css'), 'utf8');
 const tokens = readFileSync(resolve('src/index.css'), 'utf8');
 
-/** Every colour an SVG paints with, from fill and stroke. */
+/** Every colour an SVG paints with: fill and stroke, and the tone (--c) a box shades its faces from. */
 function paints(root: Element) {
-  return [...root.querySelectorAll('*')].flatMap((el) =>
-    ['fill', 'stroke'].map((a) => el.getAttribute(a)).filter((v): v is string => Boolean(v))
-  );
+  return [...root.querySelectorAll('*')].flatMap((el) => [
+    ...['fill', 'stroke'].map((a) => el.getAttribute(a)).filter((v): v is string => Boolean(v)),
+    ...[...(el.getAttribute('style') ?? '').matchAll(/--c:\s*([^;]+)/g)].map((m) => m[1].trim()),
+  ]);
 }
 
 describe('SourceScene', () => {
@@ -85,6 +86,7 @@ describe('art tokens', () => {
     const block = /:root,\s*\.console\s*\{([^}]*--art-ground[^}]*)\}/.exec(tokens)?.[1] ?? '';
     for (const name of [
       'ground',
+      'slate',
       'guide',
       'mute',
       'light',
