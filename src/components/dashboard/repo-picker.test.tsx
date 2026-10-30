@@ -92,21 +92,80 @@ describe('the list variant', () => {
     expect(onChange).toHaveBeenCalledWith('poyrazK/imgpipe', 'master');
   });
 
-  it('offers a filter once the list is long, keeping the chosen repository in view', async () => {
-    mocks.data = Array.from({ length: 9 }, (_, i) => ({
+  const many = (n: number, owner: (i: number) => string = () => 'acme-corp') =>
+    Array.from({ length: n }, (_, i) => ({
       id: i,
-      full_name: `acme-corp/service-${i}`,
+      full_name: `${owner(i)}/service-${String(i).padStart(2, '0')}`,
       default_branch: 'main',
       private: false,
     }));
-    renderList('acme-corp/service-8');
-    await userEvent.type(
-      screen.getByRole('searchbox', { name: 'Filter repositories' }),
-      'service-3'
+  const values = () => screen.getAllByRole('radio').map((r) => (r as HTMLInputElement).value);
+
+  // Forty repositories at once is a wall, not a choice: a long list shows a
+  // handful, pins the chosen one on top, and leads with search.
+  it('shows a handful of a long list, the chosen one first, and says how many are hidden', () => {
+    mocks.data = many(40);
+    renderList('acme-corp/service-31');
+    expect(values()).toEqual([
+      'acme-corp/service-31',
+      'acme-corp/service-00',
+      'acme-corp/service-01',
+      'acme-corp/service-02',
+      'acme-corp/service-03',
+    ]);
+    expect(screen.getByRole('searchbox', { name: 'Search repositories' })).toHaveAttribute(
+      'placeholder',
+      'Search 40 repositories'
     );
-    expect(screen.getAllByRole('radio').map((r) => (r as HTMLInputElement).value)).toEqual([
-      'acme-corp/service-3',
-      'acme-corp/service-8',
+    expect(screen.getByText(/5 of 40 shown/)).toBeInTheDocument();
+  });
+
+  it('narrows by search, still capped, keeping the chosen repository in view', async () => {
+    mocks.data = many(40);
+    renderList('acme-corp/service-31');
+    await userEvent.type(
+      screen.getByRole('searchbox', { name: 'Search repositories' }),
+      'service-1'
+    );
+    expect(values()).toEqual([
+      'acme-corp/service-31',
+      'acme-corp/service-10',
+      'acme-corp/service-11',
+      'acme-corp/service-12',
+      'acme-corp/service-13',
+    ]);
+    expect(screen.getByText(/5 of 11 matches/)).toBeInTheDocument();
+  });
+
+  it('picks the top match on Enter, and moves into the list on ArrowDown', async () => {
+    mocks.data = many(40);
+    const onChange = vi.fn();
+    renderList('', onChange);
+    const search = screen.getByRole('searchbox', { name: 'Search repositories' });
+    await userEvent.type(search, 'service-27{Enter}');
+    expect(onChange).toHaveBeenCalledWith('acme-corp/service-27', 'main');
+    await userEvent.clear(search);
+    await userEvent.type(search, '{ArrowDown}');
+    expect(screen.getByRole('radio', { name: 'acme-corp/service-00' })).toHaveFocus();
+  });
+
+  it('shows the whole list on request', async () => {
+    mocks.data = many(40);
+    renderList();
+    await userEvent.click(screen.getByRole('button', { name: 'Show all 40' }));
+    expect(screen.getAllByRole('radio')).toHaveLength(40);
+  });
+
+  it('filters by owner when the repositories span several', async () => {
+    mocks.data = many(12, (i) => (i % 3 ? 'acme-corp' : 'poyrazK'));
+    renderList();
+    const owners = screen.getByRole('group', { name: 'Owner' });
+    await userEvent.click(within(owners).getByRole('button', { name: /poyrazK\s*4/ }));
+    expect(values()).toEqual([
+      'poyrazK/service-00',
+      'poyrazK/service-03',
+      'poyrazK/service-06',
+      'poyrazK/service-09',
     ]);
   });
 

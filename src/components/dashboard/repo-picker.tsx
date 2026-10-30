@@ -1,5 +1,5 @@
-import { useId, useState, type ComponentProps } from 'react';
-import { Check, GitBranch, Lock } from 'iconoir-react';
+import { useId, useRef, useState, type ComponentProps } from 'react';
+import { Check, GitBranch, Lock, Search } from 'iconoir-react';
 import { Select } from '@/components/ui/field';
 import { FIELD } from '@/components/ui/field';
 import { Button } from '@/components/ui/button';
@@ -19,8 +19,9 @@ import { cn } from '@/lib/utils';
  * one control, so a `<label htmlFor>` names it and validation can focus it.
  *
  * `variant="list"` shows the repositories as a list of choices instead of a
- * select: owner, name, privacy and default branch at a glance, filterable once
- * the list is long. Its rows are radios under `name`, in a radio group named
+ * select: owner, name, privacy and default branch at a glance. A long list
+ * leads with search (and owner chips when it spans several owners) and shows
+ * five rows, the chosen one pinned first, until asked for all. Its rows are radios under `name`, in a radio group named
  * by `labelledBy`, so the form and its validation see one field.
  */
 type ControlProps = Pick<
@@ -123,8 +124,10 @@ export function RepoPicker({
 
 type Repo = { id: number; full_name: string; default_branch: string; private: boolean };
 
-// A long list gets a filter; a short one reads at a glance without it.
+// A short list reads at a glance. A long one leads with search and shows a
+// handful at a time, so forty repositories never arrive as a wall.
 const FILTER_FROM = 7;
+const SHOWN = 5;
 const TONES = ['lime', 'cyan', 'magenta', 'yellow', 'orange', 'blue'] as const;
 
 /** A stable tone per repository, so its tile keeps its colour between visits. */
@@ -150,12 +153,25 @@ function RepoList({
   control: ControlProps;
 }) {
   const uid = useId();
+  const group = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState('');
+  const [owner, setOwner] = useState<string | null>(null);
+  const [all, setAll] = useState(false);
+  const long = repos.length >= FILTER_FROM;
   const q = query.trim().toLowerCase();
-  // The chosen repository stays in view whatever the filter says.
-  const shown = q
-    ? repos.filter((r) => r.full_name.toLowerCase().includes(q) || r.full_name === value)
-    : repos;
+  const ownerOf = (r: Repo) => r.full_name.split('/')[0];
+  const owners = [...new Set(repos.map(ownerOf))].map((o) => ({
+    name: o,
+    count: repos.filter((r) => ownerOf(r) === o).length,
+  }));
+  const matches = repos.filter(
+    (r) => (!owner || ownerOf(r) === owner) && (!q || r.full_name.toLowerCase().includes(q))
+  );
+  // The chosen repository stays in view, first, whatever narrows the list.
+  const chosen = repos.find((r) => r.full_name === value);
+  const candidates = chosen ? [chosen, ...matches.filter((r) => r !== chosen)] : matches;
+  const shown = long && !all ? candidates.slice(0, SHOWN) : candidates;
+  const hidden = candidates.length - shown.length;
 
   if (pending)
     return (
@@ -167,20 +183,59 @@ function RepoList({
   return (
     // Sized by its own width: rows stack their details under the name when narrow.
     <div className="@container flex flex-col">
-      {repos.length >= FILTER_FROM && (
-        <div className="border-b border-border px-4 py-2.5">
-          <input
-            type="search"
-            aria-label="Filter repositories"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={`Filter ${repos.length} repositories`}
-            spellCheck={false}
-            className={cn(FIELD, 'h-8 font-mono text-[13px]')}
-          />
+      {long && (
+        <div className="flex flex-col gap-2 border-b border-border px-4 py-2.5">
+          <div className="relative">
+            <Search
+              aria-hidden
+              className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+            />
+            <input
+              type="search"
+              aria-label="Search repositories"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                // Enter takes the top match rather than submitting the form;
+                // ArrowDown steps into the list.
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  if (q && matches[0]) onChange(matches[0].full_name, matches[0].default_branch);
+                } else if (e.key === 'ArrowDown') {
+                  e.preventDefault();
+                  group.current?.querySelector<HTMLInputElement>('input[type="radio"]')?.focus();
+                }
+              }}
+              placeholder={`Search ${repos.length} repositories`}
+              spellCheck={false}
+              className={cn(FIELD, 'h-8 pl-8 font-mono text-[13px]')}
+            />
+          </div>
+          {owners.length > 1 && (
+            <div role="group" aria-label="Owner" className="flex flex-wrap gap-1.5">
+              {[{ name: null, count: repos.length }, ...owners].map((o) => (
+                <button
+                  key={o.name ?? '*'}
+                  type="button"
+                  aria-pressed={owner === o.name}
+                  onClick={() => setOwner(o.name)}
+                  className={cn(
+                    'inline-flex h-6 items-center gap-1.5 rounded-full border px-2.5 font-mono text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
+                    owner === o.name
+                      ? 'border-foreground bg-foreground text-background'
+                      : 'border-border text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  {o.name ?? 'All'}
+                  <span className="opacity-70">{o.count}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
       <div
+        ref={group}
         role="radiogroup"
         id={control.id}
         aria-labelledby={labelledBy}
@@ -245,12 +300,27 @@ function RepoList({
             </label>
           );
         })}
-        {shown.length === 0 && (
+        {matches.length === 0 && q && (
           <p className="px-4 py-6 text-sm text-muted-foreground">
             No repository matches “{query}”.
           </p>
         )}
       </div>
+      {hidden > 0 && (
+        <div className="flex items-center justify-between gap-3 border-t border-border px-4 py-2 text-xs text-muted-foreground">
+          <span>
+            {shown.length} of {candidates.length} {q || owner ? 'matches ' : ''}shown
+            {q ? '' : ' · search to find the rest'}
+          </span>
+          <button
+            type="button"
+            onClick={() => setAll(true)}
+            className="shrink-0 font-medium text-foreground hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+          >
+            Show all {candidates.length}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
