@@ -245,7 +245,7 @@ function RepoList({
           return (
             <label
               key={r.id}
-              className="group flex min-h-12 cursor-pointer items-center gap-3 px-4 py-2 transition-colors hover:bg-accent/50 has-checked:bg-brand/5 has-checked:shadow-[inset_2px_0_0_var(--brand)] has-focus-visible:ring-2 has-focus-visible:ring-inset has-focus-visible:ring-brand"
+              className="group flex min-h-12 cursor-pointer items-center gap-3 px-4 py-2 transition-colors hover:bg-accent/50 has-checked:bg-accent/50 has-focus-visible:ring-2 has-focus-visible:ring-inset has-focus-visible:ring-brand"
             >
               <input
                 type="radio"

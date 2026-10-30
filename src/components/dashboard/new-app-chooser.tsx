@@ -2,6 +2,7 @@ import type { ComponentType, SVGProps } from 'react';
 import {
   ArrowRight,
   Box3dPoint,
+  Check,
   GitBranch,
   Import,
   NavArrowRight,
@@ -71,7 +72,12 @@ export function NewAppChooser({
             : 'border-border hover:border-border-secondary hover:bg-accent/30'
         )}
       >
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground">
+        <span
+          className={cn(
+            'flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-colors',
+            selected === 'git' ? 'bg-brand/15 text-brand' : 'bg-muted text-foreground'
+          )}
+        >
           <Git aria-hidden className="h-5 w-5" />
         </span>
         <span className="flex min-w-0 flex-1 flex-col gap-1">
@@ -97,7 +103,7 @@ export function NewAppChooser({
           <h2 id={`${uid}-others`} className="text-sm font-medium text-muted-foreground">
             Other ways to start
           </h2>
-          <div className="flex flex-col divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
+          <div className="flex flex-col divide-y divide-border rounded-xl border border-border bg-card">
             {OTHERS.map((id) => {
               const Icon = ICON[id];
               return (
@@ -105,13 +111,18 @@ export function NewAppChooser({
                   key={id}
                   {...choice(id)}
                   className={cn(
-                    'group flex w-full items-center gap-3.5 px-4 py-3.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand',
-                    selected === id
-                      ? 'bg-brand/5 shadow-[inset_2px_0_0_var(--brand)]'
-                      : 'hover:bg-accent/40'
+                    // Rows round with the list, so a hover, a selection or a
+                    // focus ring follows its corners instead of being clipped.
+                    'group flex w-full items-center gap-3.5 px-4 py-3.5 text-left transition-colors first:rounded-t-[11px] last:rounded-b-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand',
+                    selected === id ? 'bg-accent/50' : 'hover:bg-accent/40'
                   )}
                 >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted text-foreground">
+                  <span
+                    className={cn(
+                      'flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-colors',
+                      selected === id ? 'bg-brand/15 text-brand' : 'bg-muted text-foreground'
+                    )}
+                  >
                     <Icon aria-hidden className="h-[18px] w-[18px]" />
                   </span>
                   <span className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -122,10 +133,14 @@ export function NewAppChooser({
                       {copy(id).desc}
                     </span>
                   </span>
-                  <NavArrowRight
-                    aria-hidden
-                    className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-foreground motion-reduce:transform-none"
-                  />
+                  {selected === id ? (
+                    <Check aria-hidden className="h-4 w-4 shrink-0 text-brand" />
+                  ) : (
+                    <NavArrowRight
+                      aria-hidden
+                      className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-foreground motion-reduce:transform-none"
+                    />
+                  )}
                 </button>
               );
             })}
