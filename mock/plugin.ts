@@ -6516,6 +6516,28 @@ route('POST', '/v1/projects/scan/source-ref', async ({ body }) => {
   } satisfies components['schemas']['PlanResponse'];
 });
 route('GET', '/v1/projects', () => projectSummaries());
+// A company's projects (faas org_project_routes.go), including one a teammate
+// created: GET /v1/projects lists only the signed-in account's own.
+const teammateProject = {
+  slug: 'acme-billing',
+  workload_count: 1,
+  created_at: '2026-10-02T09:00:00Z',
+} as const;
+route('GET', '/v1/orgs/{organization}/projects', ({ params }) => {
+  const org = requireOrgRole(params.organization, ANY_MEMBER);
+  if (org.personal) return projectSummaries();
+  return params.organization === 'acme-corp'
+    ? [{ ...projectSummaries()[0], ...teammateProject }]
+    : [];
+});
+route('GET', '/v1/orgs/{organization}/projects/{slug}', ({ params }) => {
+  requireOrgRole(params.organization, ANY_MEMBER);
+  const found = projects.find((p) => p.slug === params.slug);
+  if (found) return found;
+  if (params.slug === teammateProject.slug && projects[0])
+    return { ...projects[0], slug: teammateProject.slug, name: 'acme-billing' };
+  throw new Problem(404, 'not_found', `project ${params.slug} not found`);
+});
 route('GET', '/v1/projects/{slug}', ({ params }) => {
   const project = projects.find((item) => item.slug === params.slug);
   if (!project) throw new Problem(404, 'not_found', 'Project not found.');
