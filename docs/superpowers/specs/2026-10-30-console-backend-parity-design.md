@@ -269,6 +269,18 @@ value: the products Gregale markets first, then the ones that follow from them.
 | 10 | C54, F114, F115 | MCP and AI | MCP readiness and diagnostics; AI gateway routes, canaries, traces and tokens; integration binding budget and usage | L |
 | 11 | E104, C53, C21, F110, C58, E101, D83 | The rest | Operations and work policies, disposable runs, app tasks, Data API usage, developer environments, inbox and outbox, OpenAPI diff and apply | S–M each |
 
+## Gaps the ledger audit added
+
+The first ledger PR audited every customer row against `main`. These gaps were
+not in the wave tables above and join their tier's wave:
+
+| Wave | Rows |
+|---|---|
+| 0 | A2 tarball deploys through `/v1/uploads` |
+| 1 | E92 cron occurrences and command-run cancel; C47 health probes and restart policy shown (CLI command meanwhile) |
+| 2 | A17 single-app deploy diff; A23 deploy queue controls; B34 release command status; C48 snapshot lifecycle hooks shown (CLI meanwhile); C50 warm pool and warm snapshots |
+| 3 | A6 GitLab; A21 app tasks; D71 static egress IP; D81 async routes; D88 route monitor; E101 inbox and outbox; F111 durable entities; F113 live queries; G124 trace ingest settings; H147 application Auth; I160 management MCP server (CLI) |
+
 ## Out of scope
 
 - **Internal tier (42 rows).** Includes feature flags, route requirements and
