@@ -5,6 +5,10 @@ import type { components } from '../src/lib/api/schema';
 import * as db from './data';
 import * as automationMock from './automations';
 import { registerMonetizationMock } from './monetization';
+import { registerMigrationVerification } from './migration-verification';
+import { registerMigrationCutover } from './migration-cutover';
+import { migrationConnectionKeyError } from '../src/lib/migration-connections';
+import { publicBuildURLKeyError, publicBuildURLError } from '../src/lib/migration-public-urls';
 import * as logDrainMock from './log-drains';
 import { mockCapabilities } from './capabilities';
 import { registerEventMocks } from './events';
@@ -4339,7 +4343,9 @@ route('POST', '/v1/domains', ({ body }) => {
     .trim();
   if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(domain)) throw new Problem(400, 'invalid_domain');
   if (db.domains.some((d) => d.domain === domain)) throw new Problem(409, 'domain_exists');
-  const a = db.appBySlug(String(body.app_slug ?? '')) ?? db.apps[0];
+  const identifier = String(body.app_id ?? body.app_slug ?? '');
+  const a = db.appBySlug(identifier) ?? db.apps.find((item) => item.id === identifier);
+  if (!a) throw new Problem(404, 'not_found', 'No such app.');
   const created = {
     domain,
     app_id: a.id,
@@ -6422,6 +6428,7 @@ const SOURCE_REF_SCANS: Record<
       root_dir: name === 'web' ? 'frontend' : '',
       dockerfile: 'Dockerfile',
       command: name === 'worker' ? ['node', 'worker.js'] : [],
+      depends_on: name === 'web' ? ['api'] : [],
       class: name === 'worker' ? ('worker' as const) : ('http' as const),
       ports: name === 'worker' ? [] : [8080],
       source: `compose.yaml: ${name}`,
@@ -6431,6 +6438,76 @@ const SOURCE_REF_SCANS: Record<
   },
 };
 
+const reviewedMigrationHashes = new Map<string, string>();
+const reviewedMigrationPlans = new Map<string, components['schemas']['PlanResponse']>();
+const migrationReceipts = new Map<
+  string,
+  { digest: string; response: components['schemas']['ApplyResponse'] }
+>();
+
+const reservedMigrationAppNames = new Set([
+  'account',
+  'admin',
+  'api',
+  'assets',
+  'billing',
+  'cdn',
+  'console',
+  'dashboard',
+  'docs',
+  'help',
+  'login',
+  'logout',
+  'mail',
+  'ns',
+  'operations',
+  'security',
+  'signup',
+  'static',
+  'status',
+  'support',
+  'www',
+]);
+function suggestedMigrationAppName(project: string, name: string) {
+  const raw = `${project}-${name}`;
+  let normalized = raw
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, '-')
+    .replace(/^-+|-+$/g, '');
+  if (
+    raw === normalized &&
+    normalized.length <= 40 &&
+    !normalized.startsWith('tag-') &&
+    !/^pr-(0|[1-9][0-9]*)-.+/.test(normalized)
+  )
+    return normalized;
+  if (normalized.startsWith('tag-') || /^pr-(0|[1-9][0-9]*)-.+/.test(normalized))
+    normalized = `app-${normalized}`;
+  return `${normalized.slice(0, 31).replace(/-+$/g, '')}-${createHash('sha256').update(raw).digest('hex').slice(0, 8)}`;
+}
+function migrationAppNameReasons(
+  projectSlug: string,
+  workloads: NonNullable<components['schemas']['PlanResponse']['workloads']>
+) {
+  const project = projects.find((p) => p.slug === projectSlug);
+  const seen = new Set<string>();
+  return workloads.flatMap((w) => {
+    const slug = w.app_slug ?? w.name;
+    const reasons: string[] = [];
+    if (!/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(slug) || slug.startsWith('tag-'))
+      reasons.push(`${w.name}: use 3–40 lowercase letters, digits or internal hyphens.`);
+    if (reservedMigrationAppNames.has(slug) || /^pr-(0|[1-9][0-9]*)-.+/.test(slug))
+      reasons.push(`${w.name}: app name ${slug} is reserved.`);
+    if (seen.has(slug)) reasons.push(`${w.name}: choose distinct app names.`);
+    seen.add(slug);
+    const member = project?.workloads.find((a) => a.workload_name === w.name);
+    if (member && member.slug !== slug)
+      reasons.push(`${w.name}: retain the existing app name ${member.slug}.`);
+    if (db.appBySlug(slug) && member?.slug !== slug)
+      reasons.push(`${w.name}: app name ${slug} is already taken.`);
+    return reasons;
+  });
+}
 route('POST', '/v1/projects/scan/source-ref', async ({ body }) => {
   const repo = String(body.repo ?? '');
   const ref = String(body.ref ?? '');
@@ -6438,21 +6515,472 @@ route('POST', '/v1/projects/scan/source-ref', async ({ body }) => {
     throw new Problem(400, 'validation_failed', 'repo and ref are required.');
   const scan = SOURCE_REF_SCANS[repo];
   if (!scan) throw new Problem(404, 'not_found', 'The installation cannot read that repository.');
-  return {
-    project_slug: String(body.project_slug ?? ''),
-    repo_full_name: repo,
+  const only = Array.isArray(body.only) ? body.only.map(String) : [];
+  const projectSlug = String(body.project_slug ?? '');
+  const overrides = (body.app_slugs ?? {}) as Record<string, string>;
+  if (Object.keys(overrides).some((name) => !scan.workloads.some((w) => w.name === name)))
+    throw new Problem(400, 'validation_failed', 'Use exact repository service names.');
+  const project = projects.find((p) => p.slug === projectSlug);
+  const workloads = scan.workloads
+    .filter((workload) => !only.length || only.includes(workload.name))
+    .map((w) => ({
+      ...w,
+      app_slug:
+        overrides[w.name] ??
+        project?.workloads.find((a) => a.workload_name === w.name)?.slug ??
+        (body.migration ? suggestedMigrationAppName(projectSlug, w.name) : w.name),
+    }));
+  for (const workload of workloads)
+    Object.assign(workload, { public_url: `https://${workload.app_slug}.gregale.dev` });
+  const nameReasons = migrationAppNameReasons(projectSlug, workloads);
+  if (only.some((name) => !scan.workloads.some((workload) => workload.name === name)))
+    throw new Problem(400, 'validation_failed', 'Selected service was not found. Scan again.');
+  const plan = {
+    project_slug: projectSlug,
+    ...(body.migration ? {} : { repo_full_name: repo }),
     scan_source: scan.scan_source,
     tier: db.account.plan,
-    workloads: scan.workloads,
-    managed: [],
+    workloads,
+    managed:
+      repo === 'acme-corp/checkout'
+        ? [
+            {
+              name: 'postgres',
+              kind: 'postgres',
+              env_hint: 'DATABASE_URL',
+              source: 'compose.yaml: db',
+              image: 'postgres:16',
+            },
+          ]
+        : [],
     crons: [],
     observed_apps: db.apps.length,
     observed_crons: 0,
     limit_apps: 25,
     limit_crons: 20,
-    can_apply: true,
+    can_apply: nameReasons.length === 0,
+    can_apply_reasons: nameReasons,
     plan_token: `mock-source-ref-${hex(8)}`,
   } satisfies components['schemas']['PlanResponse'];
+  reviewedMigrationPlans.set(plan.plan_token, plan);
+  reviewedMigrationHashes.set(
+    plan.plan_token,
+    createHash('sha256')
+      .update(JSON.stringify({ repo, ref, project: plan.project_slug, workloads: scan.workloads }))
+      .digest('hex')
+  );
+  return plan;
+});
+function applyReviewedMigration({ body, req }: Parameters<Handler>[0], keyOverride?: string) {
+  const key = keyOverride ?? String(req.headers['idempotency-key'] ?? '');
+  const digest = createHash('sha256').update(JSON.stringify(body)).digest('hex');
+  const receipt = migrationReceipts.get(key);
+  if (receipt) {
+    if (receipt.digest !== digest) throw new Problem(409, 'idempotency_conflict');
+    return receipt.response;
+  }
+  const plan = reviewedMigrationPlans.get(String(body.plan_token ?? ''));
+  if (!plan) throw new Problem(410, 'preview_expired', 'Scan your repository again.');
+  const only = Array.isArray(body.only) ? body.only.map(String) : [];
+  const workloads = (plan.workloads ?? []).filter(
+    (workload) => !only.length || only.includes(workload.name)
+  );
+  if (workloads.length !== 1) throw new Problem(400, 'validation_failed', 'Choose one service.');
+  const workload = workloads[0];
+  const blockers = migrationAppNameReasons(plan.project_slug, workloads);
+  if (blockers.length) throw new Problem(409, 'workload_slug_conflict', blockers.join(' '));
+  const appSlug = workload.app_slug ?? workload.name;
+  let a = db.appBySlug(appSlug);
+  if (!a) {
+    const appRequest: IncomingMessage = keyOverride
+      ? Object.assign(Object.create(req) as IncomingMessage, {
+          headers: { ...req.headers, 'idempotency-key': `${keyOverride}/app` },
+        })
+      : req;
+    createMockApp(
+      {
+        slug: appSlug,
+        type: workload.dockerfile ? 'app' : 'function',
+        runtime: 'node24',
+        ram_mb: 256,
+        max_concurrency: 1,
+      },
+      appRequest
+    );
+    a = db.appBySlug(appSlug);
+  }
+  if (!a) throw new Problem(503, 'capacity');
+  // Keep only names in mock metadata; never retain supplied plaintext values.
+  const configuration = body.initial_secrets as Record<string, Record<string, string>> | undefined;
+  const connections = body.service_connections as
+    components['schemas']['ProjectServiceConnections'] | undefined;
+  const now = new Date().toISOString();
+  const secrets = db.secrets.get(a.slug) ?? [];
+  for (const name of new Set([
+    ...Object.keys(configuration?.[workload.name] ?? {}),
+    ...Object.keys(connections?.[workload.name] ?? {}),
+  ])) {
+    if (!secrets.some((secret) => secret.key === name))
+      secrets.push({
+        key: name,
+        scope: 'default',
+        secret_class: 'persistent',
+        kid: db.id().slice(0, 8),
+        delivery_version: 1,
+        delivered_version: 1,
+        delivery_status: 'delivered',
+        created_at: now,
+        updated_at: now,
+      });
+  }
+  db.secrets.set(a.slug, secrets);
+  const deployment = startSourceDeployment(a, 'tarball', `Reviewed source for ${workload.name}`);
+  let project = projects.find((project) => project.slug === plan.project_slug);
+  if (!project) {
+    project = {
+      id: db.id(),
+      slug: plan.project_slug,
+      scan_source: plan.scan_source,
+      workload_count: 0,
+      created_at: now,
+      updated_at: now,
+      exclusions: [],
+      workloads: [],
+    };
+    projects.push(project);
+  }
+  if (!project.workloads.some((item) => item.slug === a.slug))
+    project.workloads.push({ slug: a.slug, workload_name: workload.name, status: a.status });
+  const response: components['schemas']['ApplyResponse'] = {
+    ...plan,
+    project_id: project.id,
+    apps: [{ id: a.id, slug: a.slug }],
+    unchanged: [],
+    builds: [
+      {
+        slug: a.slug,
+        app_id: a.id,
+        deployment_id: deployment.id,
+        build_id: deployment.build_id ?? undefined,
+      },
+    ],
+  };
+  if (key) migrationReceipts.set(key, { digest, response });
+  return response;
+}
+route('POST', '/v1/projects/apply-plan', applyReviewedMigration);
+
+const projectMigrationJournals = new Map<
+  string,
+  { digest: string; record: components['schemas']['ProjectMigration'] }
+>();
+const migrationBuildTargets = new Map<string, string[]>();
+function pinMigrationBuildTargets(
+  record: components['schemas']['ProjectMigration'],
+  names?: string[]
+) {
+  for (const service of record.services) {
+    if (
+      !service.build_dependencies?.length ||
+      !service.deployment_id ||
+      (names && !names.includes(service.name))
+    )
+      continue;
+    migrationBuildTargets.set(
+      service.deployment_id,
+      service.build_dependencies.map(
+        (name) => record.services.find((s) => s.name === name)?.deployment_id ?? ''
+      )
+    );
+    const tracked = trackedDeployment(service.deployment_id);
+    if (tracked)
+      tracked.waitForBuildDependencies = migrationBuildTargets.get(service.deployment_id);
+    service.build_wait = {
+      status: 'waiting',
+      detail: 'Waiting for the selected APIs before building.',
+      deadline_at: new Date(Date.now() + 30 * 60_000).toISOString(),
+    };
+  }
+}
+function refreshProjectMigration(record: components['schemas']['ProjectMigration']) {
+  record.status = 'tracking';
+  for (const service of record.services) {
+    const dep = db.deployments.find((d) => d.id === service.deployment_id);
+    service.status = dep?.status ?? 'pending';
+    const wait = service.build_wait;
+    if (dep?.status === 'live' && wait?.status === 'waiting') {
+      wait.status = 'ready';
+      wait.detail = '';
+      delete wait.code;
+    }
+    if (dep && wait && !['failed', 'cancelled', 'superseded', 'live'].includes(dep.status)) {
+      const pins = migrationBuildTargets.get(dep.id) ?? [];
+      const targets = pins.map((id) => db.deployments.find((d) => d.id === id));
+      if (
+        wait.status === 'failed' ||
+        targets.some((d) => !d || ['failed', 'cancelled', 'superseded'].includes(d.status)) ||
+        (wait.status === 'waiting' && Date.now() >= Date.parse(wait.deadline_at))
+      ) {
+        wait.status = 'failed';
+        wait.code = 'build_dependency_failed';
+        wait.detail = 'An API is unavailable. Fix it, then retry the affected migration services.';
+        dep.status = 'failed';
+        service.status = 'failed';
+        service.reason = wait.code;
+      } else if (targets.some((d) => d?.status !== 'live' || d.traffic_percent !== 100)) {
+        wait.status = 'waiting';
+        wait.detail = `Waiting for API ${service.build_dependencies?.join(', ')} before building.`;
+        dep.status = 'pending';
+        service.status = 'waiting';
+      } else if (wait.status === 'waiting') {
+        wait.status = 'ready';
+        wait.detail = '';
+        delete wait.code;
+        service.status = dep.status;
+      }
+    }
+    if (['failed', 'cancelled', 'superseded', 'pending'].includes(service.status))
+      record.status = 'attention';
+  }
+  return record;
+}
+route('POST', '/v1/project-migrations', (context) => {
+  const { body } = context;
+  const id = String(body.id ?? '');
+  const digest = createHash('sha256').update(JSON.stringify(body)).digest('hex');
+  const existing = projectMigrationJournals.get(id);
+  if (existing) {
+    if (existing.digest !== digest) throw new Problem(409, 'conflict');
+    return refreshProjectMigration(existing.record);
+  }
+  const plan = reviewedMigrationPlans.get(String(body.plan_token ?? ''));
+  if (!plan) throw new Problem(410, 'preview_expired');
+  const only = Array.isArray(body.only) ? body.only.map(String) : [];
+  const selected = (plan.workloads ?? []).filter((w) => only.includes(w.name));
+  const buildDependencies = (body.build_dependencies ?? {}) as Record<string, string[]>;
+  for (const [caller, targets] of Object.entries(buildDependencies)) {
+    const workload = selected.find((w) => w.name === caller);
+    if (
+      !workload ||
+      !Array.isArray(targets) ||
+      targets.length > 10 ||
+      new Set(targets).size !== targets.length ||
+      targets.some(
+        (target) =>
+          target === caller || !only.includes(target) || !workload.depends_on?.includes(target)
+      )
+    )
+      throw new Problem(400, 'validation_failed', 'Review the selected build dependencies.');
+  }
+  const connections = body.service_connections as
+    components['schemas']['ProjectServiceConnections'] | undefined;
+  const values = body.initial_secrets as Record<string, Record<string, string>> | undefined;
+  if (
+    !plan.can_apply ||
+    migrationAppNameReasons(plan.project_slug, selected).length > 0 ||
+    new Set(only).size !== only.length ||
+    selected.length !== only.length ||
+    !selected.length ||
+    selected.length > 10 ||
+    selected.some((w) => !['http', 'graphql'].includes(w.class ?? '') || w.image)
+  )
+    throw new Problem(400, 'validation_failed');
+  for (const [caller, mappings] of Object.entries(connections ?? {})) {
+    const workload = selected.find((w) => w.name === caller);
+    if (!workload || Object.keys(mappings).length > 10)
+      throw new Problem(
+        400,
+        'validation_failed',
+        'Choose a selected caller and at most ten variables.'
+      );
+    for (const [key, target] of Object.entries(mappings)) {
+      if (
+        migrationConnectionKeyError(key) ||
+        target === caller ||
+        !only.includes(target) ||
+        !workload.depends_on?.includes(target) ||
+        Object.hasOwn(values?.[caller] ?? {}, key)
+      )
+        throw new Problem(
+          400,
+          'validation_failed',
+          'Choose a runtime key and a selected declared dependency without a duplicate supplied value.'
+        );
+    }
+  }
+  const publicConnections = body.public_service_connections as
+    components['schemas']['ProjectServiceConnections'] | undefined;
+  const publicURLs: Record<string, Record<string, string>> = structuredClone(
+    (body.public_build_urls ?? {}) as Record<string, Record<string, string>>
+  );
+  for (const [caller, mappings] of Object.entries(publicConnections ?? {})) {
+    const workload = selected.find((w) => w.name === caller);
+    if (!workload) throw new Problem(400, 'validation_failed');
+    publicURLs[caller] ??= {};
+    for (const [key, target] of Object.entries(mappings)) {
+      const dependency = selected.find((w) => w.name === target);
+      if (
+        target === caller ||
+        !workload.depends_on?.includes(target) ||
+        !dependency?.public_url ||
+        Object.hasOwn(publicURLs[caller], key)
+      )
+        throw new Problem(
+          400,
+          'validation_failed',
+          'Choose a selected public dependency without a duplicate value.'
+        );
+      publicURLs[caller][key] = dependency.public_url;
+    }
+  }
+  for (const [caller, urls] of Object.entries(publicURLs)) {
+    if (!only.includes(caller) || Object.keys(urls).length > 10)
+      throw new Problem(400, 'validation_failed');
+    for (const [key, value] of Object.entries(urls)) {
+      if (
+        publicBuildURLKeyError(key) ||
+        publicBuildURLError(value) ||
+        Object.hasOwn(values?.[caller] ?? {}, key) ||
+        Object.hasOwn(connections?.[caller] ?? {}, key)
+      )
+        throw new Problem(
+          400,
+          'validation_failed',
+          'Use a reviewed public HTTPS URL without a duplicate secret value.'
+        );
+    }
+  }
+  const now = new Date().toISOString();
+  const record: components['schemas']['ProjectMigration'] = {
+    id,
+    project: plan.project_slug,
+    source_sha256: reviewedMigrationHashes.get(plan.plan_token)!,
+    version: 1,
+    status: 'prepared',
+    created_at: now,
+    updated_at: now,
+    services: [],
+  };
+  projectMigrationJournals.set(id, { digest, record });
+  for (const workload of selected) {
+    const applied = applyReviewedMigration(
+      { ...context, body: { ...body, only: [workload.name] } },
+      `${id}/${workload.name}/1`
+    );
+    const app = applied.apps?.find((a) => a.slug === (workload.app_slug ?? workload.name));
+    const build = applied.builds?.[0];
+    record.project_id = applied.project_id;
+    record.services.push({
+      name: workload.name,
+      app: app?.slug,
+      app_id: app?.id,
+      deployment_id: build?.deployment_id,
+      build_id: build?.build_id,
+      build_dependencies: [...(buildDependencies[workload.name] ?? [])],
+      attempt: 1,
+      status: 'pending',
+      depends_on: workload.depends_on ?? [],
+      required_env_keys: workload.required_env_keys ?? [],
+      configured_keys: [
+        ...new Set([
+          ...Object.keys(values?.[workload.name] ?? {}),
+          ...Object.keys(connections?.[workload.name] ?? {}),
+          ...Object.keys(publicURLs[workload.name] ?? {}),
+        ]),
+      ].sort(),
+      ...(connections?.[workload.name]
+        ? { service_connections: { ...connections[workload.name] } }
+        : {}),
+      ...(publicConnections?.[workload.name]
+        ? { public_service_connections: { ...publicConnections[workload.name] } }
+        : {}),
+      ...(publicURLs[workload.name] ? { public_build_urls: { ...publicURLs[workload.name] } } : {}),
+    });
+  }
+  pinMigrationBuildTargets(record);
+  return refreshProjectMigration(record);
+});
+route('GET', '/v1/project-migrations', ({ query }) => ({
+  migrations: [...projectMigrationJournals.values()]
+    .map((r) => r.record)
+    .filter((r) => !query.get('project') || r.project === query.get('project'))
+    .reverse()
+    .map(refreshProjectMigration),
+}));
+route('GET', '/v1/project-migrations/{migration}', ({ params }) => {
+  const entry = projectMigrationJournals.get(params.migration);
+  if (!entry) throw new Problem(404, 'not_found');
+  return refreshProjectMigration(entry.record);
+});
+route('POST', '/v1/project-migrations/{migration}/resume', (context) => {
+  const { body, params } = context;
+  const entry = projectMigrationJournals.get(params.migration);
+  if (!entry) throw new Problem(404, 'not_found');
+  const record = refreshProjectMigration(entry.record);
+  if (body.expected_version !== record.version)
+    throw new Problem(409, 'conflict', 'Reload the migration before resuming.');
+  const only = Array.isArray(body.only) ? body.only.map(String) : [];
+  if (!only.length || only.some((name) => !record.services.some((s) => s.name === name)))
+    throw new Problem(400, 'validation_failed', 'Select unfinished services.');
+  const token = String(body.plan_token ?? '');
+  const plan = reviewedMigrationPlans.get(token);
+  if (!plan) throw new Problem(410, 'preview_expired');
+  if (
+    reviewedMigrationHashes.get(token) !== record.source_sha256 ||
+    plan.project_slug !== record.project
+  )
+    throw new Problem(400, 'validation_failed', 'Review the original source revision.');
+  const unfinished = record.services.filter(
+    (s) =>
+      only.includes(s.name) && ['pending', 'failed', 'cancelled', 'superseded'].includes(s.status)
+  );
+  if (
+    unfinished.some((s) => {
+      const w = plan.workloads?.find((w) => w.name === s.name);
+      return !w || (w.app_slug ?? w.name) !== (s.app ?? s.name);
+    })
+  )
+    throw new Problem(400, 'validation_failed', 'Resume with the saved app names.');
+  if (migrationAppNameReasons(record.project, plan.workloads ?? []).length)
+    throw new Problem(409, 'workload_slug_conflict');
+  for (const service of unfinished) {
+    const values = body.initial_secrets as Record<string, Record<string, string>> | undefined;
+    if (
+      [
+        ...Object.keys(service.service_connections ?? {}),
+        ...Object.keys(service.public_build_urls ?? {}),
+      ].some((key) => Object.hasOwn(values?.[service.name] ?? {}, key))
+    )
+      throw new Problem(
+        400,
+        'validation_failed',
+        'Saved service connections cannot be replaced by supplied values.'
+      );
+  }
+  for (const service of unfinished) {
+    service.attempt++;
+    const applied = applyReviewedMigration(
+      {
+        ...context,
+        body: {
+          ...body,
+          only: [service.name],
+          service_connections: { [service.name]: service.service_connections ?? {} },
+        },
+      },
+      `${record.id}/${service.name}/${service.attempt}`
+    );
+    const build = applied.builds?.[0];
+    service.deployment_id = build?.deployment_id;
+    service.build_id = build?.build_id;
+  }
+  pinMigrationBuildTargets(
+    record,
+    unfinished.map((s) => s.name)
+  );
+  record.updated_at = new Date().toISOString();
+  record.version++;
+  return refreshProjectMigration(record);
 });
 route('GET', '/v1/projects', () => projectSummaries());
 route('GET', '/v1/projects/{slug}', ({ params }) => {
@@ -6775,6 +7303,8 @@ route('GET', '/v1/workflows/runs/{id}/steps/{step}/attempts', ({ params }) => {
 });
 
 registerEventMocks(route, Problem, NO_CONTENT);
+const migrationVerification = registerMigrationVerification(route, Problem);
+registerMigrationCutover(route, Problem, migrationVerification);
 
 // --- Plumbing ------------------------------------------------------------------
 

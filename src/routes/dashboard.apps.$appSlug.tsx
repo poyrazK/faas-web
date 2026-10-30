@@ -92,6 +92,7 @@ import {
 } from '@/components/dashboard/releases-search';
 import { AppActivityTimeline } from '@/components/dashboard/resource-activity';
 import { DeploymentHistoryPanel } from '@/components/dashboard/deployment-history';
+import { MigrationCutover } from '@/components/dashboard/migration-cutover';
 import { ClearObsoleteDeploymentsButton } from '@/components/dashboard/deployment-actions';
 import { Modal } from '@/components/ui/modal';
 import { pageHead, useDocumentTitle } from '@/lib/seo';
@@ -570,6 +571,11 @@ function FunctionDetailPage() {
                     })
                   }
                   actions={<ClearObsoleteDeploymentsButton slug={fn.id} />}
+                />
+                <MigrationCutover
+                  key={appSlug}
+                  app={appSlug}
+                  deployment={deploymentItems.find((item) => item.status === 'live')?.id ?? ''}
                 />
                 <Panel
                   title="Deploy an archive"
