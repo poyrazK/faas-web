@@ -70,6 +70,9 @@ export const CELLS: readonly { x: number; y: number }[] = Array.from({ length: 1
   y: 18 + 58 * Math.floor(i / 6),
 }));
 
+/** Keyboard focus point: the centre of column 3, row 1; the grid's own centre is a gap. */
+export const COMPUTE_FOCUS = [243, 100] as const;
+
 export function cellAt(px: number, py: number): number {
   return CELLS.findIndex((c) => px >= c.x && px <= c.x + 56 && py >= c.y && py <= c.y + 48);
 }
@@ -110,6 +113,8 @@ export const ROWS = 6;
 export const rowCentre = (r: number) => 30 + 28 * r;
 export const rowSeal = (r: number, py: number, active: number) =>
   active * Math.max(0, 1 - Math.abs(py - rowCentre(r)) / 14);
+/** Keyboard focus point: row 2's seal; the frame's centre falls between rows 2 and 3. */
+export const SECRETS_FOCUS = [223, 86] as const;
 export const dotX = (d: number, seal: number) => lerp(132 + 26 * d, 223, seal);
 
 // PR previews: a branch forks and merges.

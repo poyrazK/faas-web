@@ -1,5 +1,5 @@
 import { Profiler, type ComponentType } from 'react';
-import { act, fireEvent, render } from '@testing-library/react';
+import { act, fireEvent, render, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { SourceDeploysFigure } from './source-deploys';
 import { IsolatedComputeFigure } from './isolated-compute';
@@ -122,5 +122,32 @@ describe('Hosting figures', () => {
     expect(objects).toHaveLength(24);
     expect(objects[0]).toHaveAttribute('x', '36');
     expect(objects[0]).toHaveAttribute('y', '68');
+  });
+
+  it('wakes visibly on keyboard focus: a compute cell swells and a secret row seals', async () => {
+    const compute = render(
+      <div tabIndex={0} data-testid="compute-host">
+        <IsolatedComputeFigure />
+      </div>
+    );
+    fireEvent.focusIn(compute.getByTestId('compute-host'));
+    await waitFor(() => {
+      const widths = [...compute.container.querySelectorAll('[data-part="core"]')].map((c) =>
+        parseFloat(c.getAttribute('width')!)
+      );
+      expect(Math.max(...widths)).toBeGreaterThan(20);
+    });
+    const secrets = render(
+      <div tabIndex={0} data-testid="secrets-host">
+        <SecretsConfigFigure />
+      </div>
+    );
+    fireEvent.focusIn(secrets.getByTestId('secrets-host'));
+    await waitFor(() => {
+      const seals = [...secrets.container.querySelectorAll('[data-part="seal"]')].map((s) =>
+        parseFloat(s.getAttribute('fill-opacity')!)
+      );
+      expect(Math.max(...seals)).toBeGreaterThan(0.5);
+    });
   });
 });

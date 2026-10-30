@@ -1,11 +1,11 @@
 import { type MotionValue, motion, useTransform } from 'motion/react';
-import { ROWS, dotX, rowCentre, rowSeal } from './geometry';
+import { ROWS, SECRETS_FOCUS, dotX, rowCentre, rowSeal } from './geometry';
 import { FigureFrame, useFigure } from './figure-frame';
 
 /** Values stay sealed: the hovered row's dots gather into one solid block. */
 export function SecretsConfigFigure() {
   return (
-    <FigureFrame name="secrets-config">
+    <FigureFrame name="secrets-config" focus={SECRETS_FOCUS}>
       {Array.from({ length: ROWS }, (_, r) => (
         <Row key={r} r={r} />
       ))}

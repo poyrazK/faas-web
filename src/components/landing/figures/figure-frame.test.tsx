@@ -118,13 +118,41 @@ describe('FigureFrame', () => {
   });
 
   it('centres and wakes on keyboard focus of the panel, and rests on blur', () => {
-    const { frame, host } = mount();
-    fireEvent.pointerMove(frame, { clientX: 294, clientY: 50 });
+    const { host } = mount();
     fireEvent.focusIn(host);
     expect(seen!.pointer.x.get()).toBe(210);
     expect(seen!.pointer.y.get()).toBe(100);
     expect(seen!.pointer.target.get()).toBe(1);
     fireEvent.focusOut(host);
+    expect(seen!.pointer.target.get()).toBe(0);
+  });
+
+  it('wakes at its own focus point when a figure names one', () => {
+    const view = render(
+      <div tabIndex={0} data-testid="host">
+        <FigureFrame name="probe" focus={[243, 86]}>
+          <Probe />
+        </FigureFrame>
+      </div>
+    );
+    fireEvent.focusIn(view.getByTestId('host'));
+    expect(seen!.pointer.x.get()).toBe(243);
+    expect(seen!.pointer.y.get()).toBe(86);
+    expect(seen!.pointer.target.get()).toBe(1);
+  });
+
+  it('leaves the pointer where the mouse is when a click focuses the panel', () => {
+    const { frame, host } = mount();
+    fireEvent.pointerEnter(frame, { clientX: 294, clientY: 50 });
+    fireEvent.pointerMove(frame, { clientX: 294, clientY: 50 });
+    fireEvent.focusIn(host);
+    expect(seen!.pointer.x.get()).toBe(252);
+    expect(seen!.pointer.y.get()).toBe(50);
+    expect(seen!.pointer.target.get()).toBe(1);
+    // Focus leaving while the mouse is still over the figure keeps it awake.
+    fireEvent.focusOut(host);
+    expect(seen!.pointer.target.get()).toBe(1);
+    fireEvent.pointerLeave(frame);
     expect(seen!.pointer.target.get()).toBe(0);
   });
 

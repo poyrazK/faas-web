@@ -67,7 +67,17 @@ export function toFigure(
  * pointer becomes motion values. Figures derive their attributes from those
  * values with `useTransform`, so moving the pointer never renders React.
  */
-export function FigureFrame({ name, children }: { name: string; children: ReactNode }) {
+export function FigureFrame({
+  name,
+  focus = [REST_X, REST_Y],
+  children,
+}: {
+  name: string;
+  /** Where keyboard focus wakes the figure; it must land on something that reacts. */
+  focus?: readonly [number, number];
+  children: ReactNode;
+}) {
+  const [focusX, focusY] = focus;
   const ref = useRef<HTMLDivElement>(null);
   const reduced = Boolean(useReducedMotion());
   const x = useMotionValue(REST_X);
@@ -79,6 +89,9 @@ export function FigureFrame({ name, children }: { name: string; children: ReactN
   const inView = useInView(ref, { amount: 0.2 });
   const [coarse, setCoarse] = useState(false);
   const rect = useRef<DOMRect | null>(null);
+  // A click inside the focusable panel also fires focus; while the mouse is over
+  // the figure, focus must not move the pointer or put the figure to rest.
+  const hovering = useRef(false);
   const measuredAt = useRef(0);
 
   const state = useMemo<FigureState>(
@@ -100,18 +113,22 @@ export function FigureFrame({ name, children }: { name: string; children: ReactN
     if (!root || reduced) return;
     const host = root.closest('[tabindex]') ?? root.parentElement ?? root;
     const onFocus = () => {
-      x.set(REST_X);
-      y.set(REST_Y);
+      if (!hovering.current) {
+        x.set(focusX);
+        y.set(focusY);
+      }
       target.set(1);
     };
-    const onBlur = () => target.set(0);
+    const onBlur = () => {
+      if (!hovering.current) target.set(0);
+    };
     host.addEventListener('focusin', onFocus);
     host.addEventListener('focusout', onBlur);
     return () => {
       host.removeEventListener('focusin', onFocus);
       host.removeEventListener('focusout', onBlur);
     };
-  }, [reduced, x, y, target]);
+  }, [reduced, x, y, target, focusX, focusY]);
 
   // Touch screens have no hover, so the figure acts on itself while in view.
   const drifting = !reduced && coarse && inView;
@@ -155,10 +172,13 @@ export function FigureFrame({ name, children }: { name: string; children: ReactN
     measuredAt.current = performance.now();
   };
   const onPointerEnter = (e: PointerEvent) => {
-    if (!ignore(e)) measure();
+    if (ignore(e)) return;
+    hovering.current = true;
+    measure();
   };
   const onPointerMove = (e: PointerEvent) => {
     if (ignore(e)) return;
+    hovering.current = true;
     if (!rect.current || performance.now() - measuredAt.current > REMEASURE_MS) measure();
     const point = rect.current && toFigure(e.clientX, e.clientY, rect.current);
     if (!point) return;
@@ -167,7 +187,9 @@ export function FigureFrame({ name, children }: { name: string; children: ReactN
     target.set(1);
   };
   const onPointerLeave = (e: PointerEvent) => {
-    if (!ignore(e)) target.set(0);
+    if (ignore(e)) return;
+    hovering.current = false;
+    target.set(0);
   };
 
   return (

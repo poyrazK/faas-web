@@ -1,11 +1,11 @@
 import { type MotionValue, motion, useTransform } from 'motion/react';
-import { CELLS, cellAt, cellCore } from './geometry';
+import { CELLS, COMPUTE_FOCUS, cellAt, cellCore } from './geometry';
 import { FigureFrame, useFigure } from './figure-frame';
 
 /** One cell reacts; its neighbours stay perfectly still. */
 export function IsolatedComputeFigure() {
   return (
-    <FigureFrame name="isolated-compute">
+    <FigureFrame name="isolated-compute" focus={COMPUTE_FOCUS}>
       <IsolatedCompute />
     </FigureFrame>
   );

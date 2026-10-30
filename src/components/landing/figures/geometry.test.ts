@@ -7,6 +7,7 @@ import {
   cellAt,
   cellCore,
   CELLS,
+  COMPUTE_FOCUS,
   COMMITS,
   deployBar,
   deployDotRadius,
@@ -25,6 +26,7 @@ import {
   rowCentre,
   rowSeal,
   ROWS,
+  SECRETS_FOCUS,
   shackleLift,
   spanCrossed,
   SPANS,
@@ -92,6 +94,11 @@ describe('isolated compute', () => {
     expect(cellAt(45, 70)).toBe(-1);
   });
 
+  it('focuses on a cell, not on the gap at the centre of the grid', () => {
+    expect(cellAt(210, 100)).toBe(-1);
+    expect(cellAt(...COMPUTE_FOCUS)).toBeGreaterThanOrEqual(0);
+  });
+
   it('swells only the hovered cell, scaled by active', () => {
     expect(cellCore(4, 4, 1)).toEqual({ size: 30, stroke: 2.5 });
     expect(cellCore(4, 4, 0)).toEqual({ size: 12, stroke: 1 });
@@ -138,6 +145,11 @@ describe('secrets and config', () => {
     expect(rowSeal(2, midpoint, 1)).toBe(0);
     expect(rowSeal(3, midpoint, 1)).toBe(0);
     expect(rowSeal(2, rowCentre(2), 0)).toBe(0);
+  });
+
+  it('focuses on a row, not on the midpoint between rows at the centre', () => {
+    expect(rowSeal(2, 100, 1)).toBe(0);
+    expect(rowSeal(2, SECRETS_FOCUS[1], 1)).toBe(1);
   });
 
   it('gathers the dots to the centre as the row seals', () => {
