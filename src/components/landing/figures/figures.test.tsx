@@ -4,11 +4,19 @@ import { describe, expect, it, vi } from 'vitest';
 import { SourceDeploysFigure } from './source-deploys';
 import { IsolatedComputeFigure } from './isolated-compute';
 import { CustomDomainsFigure } from './custom-domains';
+import { LogsTracesFigure } from './logs-traces';
+import { SecretsConfigFigure } from './secrets-config';
+import { PrPreviewsFigure } from './pr-previews';
+import { ObjectStorageFigure } from './object-storage';
 
 const FIGURES: [string, ComponentType][] = [
   ['source-deploys', SourceDeploysFigure],
   ['isolated-compute', IsolatedComputeFigure],
   ['custom-domains', CustomDomainsFigure],
+  ['logs-traces', LogsTracesFigure],
+  ['secrets-config', SecretsConfigFigure],
+  ['pr-previews', PrPreviewsFigure],
+  ['object-storage', ObjectStorageFigure],
 ];
 
 function frameOf(container: HTMLElement, name: string) {
@@ -81,5 +89,35 @@ describe('Hosting figures', () => {
     const rings = container.querySelectorAll('[data-part="ring"]');
     expect(rings).toHaveLength(3);
     for (const ring of rings) expect(ring).toHaveAttribute('r', '14');
+  });
+
+  it('logs and traces rests with a faint waterfall and no ticks', () => {
+    const { container } = render(<LogsTracesFigure />);
+    expect(container.querySelectorAll('[data-part="span"]')).toHaveLength(7);
+    const ticks = container.querySelectorAll('[data-part="tick"]');
+    expect(ticks).toHaveLength(7);
+    for (const tick of ticks) expect(tick).toHaveAttribute('x2', '352');
+  });
+
+  it('secrets and config rests as six rows of dots with nothing sealed', () => {
+    const { container } = render(<SecretsConfigFigure />);
+    expect(container.querySelectorAll('[data-part="dot"]')).toHaveLength(48);
+    const seals = container.querySelectorAll('[data-part="seal"]');
+    expect(seals).toHaveLength(6);
+    for (const seal of seals) expect(seal).toHaveAttribute('fill-opacity', '0');
+  });
+
+  it('pr previews rests as a straight line of commits with no visible node', () => {
+    const { container } = render(<PrPreviewsFigure />);
+    expect(container.querySelectorAll('[data-part="commit"]')).toHaveLength(9);
+    expect(container.querySelector('[data-part="node"]')).toHaveAttribute('stroke-opacity', '0');
+  });
+
+  it('object storage rests with every object in the app frame', () => {
+    const { container } = render(<ObjectStorageFigure />);
+    const objects = container.querySelectorAll('[data-part="object"]');
+    expect(objects).toHaveLength(24);
+    expect(objects[0]).toHaveAttribute('x', '36');
+    expect(objects[0]).toHaveAttribute('y', '68');
   });
 });
