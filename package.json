@@ -14,6 +14,7 @@
     "api:pull": "curl -fsSL https://raw.githubusercontent.com/poyrazK/faas/main/api/openapi.yaml -o api/openapi.yaml && npm run api:types",
     "docs:pull": "node scripts/pull-docs.mjs",
     "capabilities:pull": "node scripts/pull-capabilities.mjs",
+    "parity": "node scripts/parity-report.mjs",
     "smoke:hosting": "node scripts/smoke-hosting.mjs",
     "og": "node scripts/og-image.mjs",
     "lint": "eslint . --max-warnings 8",

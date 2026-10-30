@@ -113,5 +113,14 @@ paths are checked against `api/openapi.yaml` by `src/lib/mock-spec-drift.test.ts
 - **A new route needs a `head`.** Use `consoleHead('<segment>')` for console
   pages or `pageHead({ title })` elsewhere (`src/lib/seo.ts`), or the page
   inherits the bare brand title. See the Page titles section in `README.md`.
+- **The parity ledger tracks the backend.** `src/lib/parity/ledger.ts` has one
+  entry per GA/beta/preview row of faas's capability inventory
+  (`content/capabilities/`, pulled by `npm run capabilities:pull`), and
+  `npm run parity` prints coverage by tier. A console change that adds or
+  completes a customer capability updates its row's status and gap. Weekly,
+  run `npm run api:pull` and `npm run capabilities:pull`, fix what stops
+  compiling, and give every new ledger-test failure an entry (status `none`, a
+  gap, its tier's wave). `content/capabilities/*` is vendored: never hand-edit
+  it.
 - **Adding a console page means touching `nav-config.ts` too**, or the page
   exists but is unreachable from the sidebar, breadcrumb, and ⌘K palette.
