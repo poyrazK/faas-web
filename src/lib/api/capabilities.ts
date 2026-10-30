@@ -5,13 +5,17 @@ import type { components } from './schema';
 import { retryPolicy } from './queries';
 import { useAuth } from '../auth';
 import { capabilityAccess, capabilityViewState } from '../capability-state';
+import { useActiveOrg } from '../workspace';
 
 export type Capability = components['schemas']['CapabilityStatus'];
 export type CapabilityRegistry = components['schemas']['CapabilitiesResponse'];
 export const capabilityKey = (accountId: string) => ['account', accountId, 'capabilities'] as const;
 export function useCapabilities(accountId: string) {
+  // hidden_capabilities follows the X-Active-Org workspace (faas flagSubject),
+  // so each workspace has its own entry under the account's key.
+  const org = useActiveOrg();
   return useQuery({
-    queryKey: capabilityKey(accountId),
+    queryKey: [...capabilityKey(accountId), org ?? 'personal'],
     queryFn: ({ signal }) => unwrap(api.GET('/v1/capabilities', { signal })),
     enabled: Boolean(accountId),
     retry: retryPolicy,
@@ -29,11 +33,10 @@ export function useCapabilityRegistry() {
     if (id && plan && registryPlan && plan !== registryPlan)
       void cache.invalidateQueries({ queryKey: capabilityKey(id) });
   }, [cache, id, plan, registryPlan]);
-  const phase = query.isError
-    ? 'error'
-    : !id || query.isPending || query.isFetching || registryPlan !== plan
-      ? 'loading'
-      : 'ready';
+  // A cached registry for the current plan keeps deciding through a background
+  // refetch or a failed one: gated content must not unmount on window focus.
+  const current = Boolean(id) && query.data !== undefined && registryPlan === plan;
+  const phase = current ? 'ready' : query.isError ? 'error' : 'loading';
   return { query, phase, plan, accountId: id } as const;
 }
 export function useCapability(key: string) {
