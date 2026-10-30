@@ -42,6 +42,7 @@ function PrPreviews() {
         height={30}
         rx={5}
         fill="var(--background)"
+        fillOpacity={active}
         strokeOpacity={active}
       />
       <motion.circle

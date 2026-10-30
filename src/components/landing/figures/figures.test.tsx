@@ -110,7 +110,10 @@ describe('Hosting figures', () => {
   it('pr previews rests as a straight line of commits with no visible node', () => {
     const { container } = render(<PrPreviewsFigure />);
     expect(container.querySelectorAll('[data-part="commit"]')).toHaveLength(9);
-    expect(container.querySelector('[data-part="node"]')).toHaveAttribute('stroke-opacity', '0');
+    const node = container.querySelector('[data-part="node"]');
+    expect(node).toHaveAttribute('stroke-opacity', '0');
+    // Its background fill would otherwise mask a stretch of the main line.
+    expect(node).toHaveAttribute('fill-opacity', '0');
   });
 
   it('object storage rests with every object in the app frame', () => {
