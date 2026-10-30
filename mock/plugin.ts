@@ -2908,6 +2908,74 @@ route('POST', '/v1/postgres/databases', ({ body }) => {
   return status(201, database);
 });
 route('GET', '/v1/postgres/databases/{id}', ({ params }) => pgDatabase(params.id));
+// A company's databases (faas org_postgres_routes.go): its own list, separate
+// from the signed-in account's. acme-corp starts with one.
+const orgPg = new Map<string, Record<string, unknown>[]>([
+  [
+    'acme-corp',
+    [
+      {
+        id: 'pg-acme-ledger',
+        name: 'acme-ledger',
+        region: 'fra',
+        postgres_major: 16,
+        service_class: 'production',
+        availability: 'single_zone',
+        scale_to_zero: false,
+        storage_limit_bytes: 20 * 1024 ** 3,
+        restore_window_seconds: 7 * 24 * 3600,
+        restore_source_database_id: null,
+        restore_point_in_time: null,
+        state: 'available',
+        last_error_code: null,
+        created_at: '2026-10-05T10:00:00Z',
+        updated_at: '2026-10-05T10:00:00Z',
+      },
+    ],
+  ],
+]);
+const orgDatabases = (org: string) => {
+  requireOrgRole(org, ANY_MEMBER);
+  if (!orgPg.has(org)) orgPg.set(org, []);
+  return orgPg.get(org)!;
+};
+route('GET', '/v1/orgs/{organization}/postgres/databases', ({ params }) => {
+  pgGate();
+  return { items: orgDatabases(params.organization) };
+});
+route('POST', '/v1/orgs/{organization}/postgres/databases', ({ params, body }) => {
+  pgGate();
+  const list = orgDatabases(params.organization);
+  const now = new Date().toISOString();
+  const database = {
+    id: db.id(),
+    name: String(body.name ?? '').trim(),
+    region: String(body.region ?? 'fra'),
+    postgres_major: Number(body.postgres_major ?? 16),
+    service_class: String(body.service_class ?? 'development'),
+    availability: String(body.availability ?? 'single_zone'),
+    scale_to_zero: body.scale_to_zero !== false,
+    storage_limit_bytes: Number(body.storage_limit_bytes ?? 10 * 1024 ** 3),
+    restore_window_seconds: Number(body.restore_window_seconds ?? 7 * 24 * 3600),
+    restore_source_database_id: null,
+    restore_point_in_time: null,
+    state: 'available',
+    last_error_code: null,
+    created_at: now,
+    updated_at: now,
+  };
+  list.push(database);
+  return status(201, database);
+});
+route('GET', '/v1/orgs/{organization}/postgres/databases/{id}', ({ params }) => {
+  const row = orgDatabases(params.organization).find((d) => d.id === params.id);
+  if (!row) throw new Problem(404, 'managed_postgres_not_found', 'no such database');
+  return row;
+});
+route('GET', '/v1/orgs/{organization}/postgres/databases/{id}/bindings', ({ params }) => {
+  orgDatabases(params.organization);
+  return { items: [] };
+});
 route('DELETE', '/v1/postgres/databases/{id}', ({ params }) => {
   const database = pgDatabase(params.id);
   database.state = 'deleting';

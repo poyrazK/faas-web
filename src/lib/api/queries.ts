@@ -3582,12 +3582,26 @@ export function useDeployTarball(slug: string) {
 export type PostgresDatabase = components['schemas']['ManagedPostgresDatabase'];
 export type PostgresBinding = components['schemas']['ManagedPostgresBinding'];
 
-const postgresKey = ['postgres', 'databases'] as const;
+/**
+ * Databases belong to the active workspace: the account's own, or a company's
+ * under `/v1/orgs/{organization}/postgres/…` (faas org_postgres_routes.go, the
+ * same shapes). Nothing is read until the workspace is known.
+ */
+const postgresKey = (org: string | null) => ['postgres', org ?? 'personal', 'databases'] as const;
 
 export function usePostgresDatabases() {
+  const { org, ready } = useWorkspaceTarget();
   return useQuery({
-    queryKey: postgresKey,
-    queryFn: () => unwrap(api.GET('/v1/postgres/databases', {})),
+    queryKey: postgresKey(org),
+    queryFn: () =>
+      org
+        ? unwrap(
+            api.GET('/v1/orgs/{organization}/postgres/databases', {
+              params: { path: { organization: org } },
+            })
+          )
+        : unwrap(api.GET('/v1/postgres/databases', {})),
+    enabled: ready,
     // Provisioning finishes on the provider's clock, not the browser's.
     refetchInterval: (query) =>
       (query.state.data?.items ?? []).some(
@@ -3599,47 +3613,87 @@ export function usePostgresDatabases() {
 }
 
 export function usePostgresDatabase(id: string) {
+  const { org, ready } = useWorkspaceTarget();
   return useQuery({
-    queryKey: [...postgresKey, id],
-    queryFn: () => unwrap(api.GET('/v1/postgres/databases/{id}', { params: { path: { id } } })),
-    enabled: Boolean(id),
+    queryKey: [...postgresKey(org), id],
+    queryFn: () =>
+      org
+        ? unwrap(
+            api.GET('/v1/orgs/{organization}/postgres/databases/{id}', {
+              params: { path: { organization: org, id } },
+            })
+          )
+        : unwrap(api.GET('/v1/postgres/databases/{id}', { params: { path: { id } } })),
+    enabled: Boolean(id) && ready,
   });
 }
 
 export function useCreatePostgresDatabase() {
   const qc = useQueryClient();
+  const { org } = useWorkspaceTarget();
   return useMutation({
     mutationFn: (body: components['schemas']['CreateManagedPostgresDatabaseRequest']) =>
-      unwrap(api.POST('/v1/postgres/databases', { body })),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: postgresKey }),
+      org
+        ? unwrap(
+            api.POST('/v1/orgs/{organization}/postgres/databases', {
+              params: { path: { organization: org } },
+              body,
+            })
+          )
+        : unwrap(api.POST('/v1/postgres/databases', { body })),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: postgresKey(org) }),
   });
 }
 
 export function useDeletePostgresDatabase() {
   const qc = useQueryClient();
+  const { org } = useWorkspaceTarget();
   return useMutation({
     mutationFn: (id: string) =>
-      unwrap(api.DELETE('/v1/postgres/databases/{id}', { params: { path: { id } } })),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: postgresKey }),
+      org
+        ? unwrap(
+            api.DELETE('/v1/orgs/{organization}/postgres/databases/{id}', {
+              params: { path: { organization: org, id } },
+            })
+          )
+        : unwrap(api.DELETE('/v1/postgres/databases/{id}', { params: { path: { id } } })),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: postgresKey(org) }),
   });
 }
 
 /** Point-in-time restore: always into a new database, never over the old one. */
 export function useRestorePostgresDatabase() {
   const qc = useQueryClient();
+  const { org } = useWorkspaceTarget();
   return useMutation({
     mutationFn: ({ id, ...body }: { id: string; name: string; point_in_time: string }) =>
-      unwrap(api.POST('/v1/postgres/databases/{id}/restore', { params: { path: { id } }, body })),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: postgresKey }),
+      org
+        ? unwrap(
+            api.POST('/v1/orgs/{organization}/postgres/databases/{id}/restore', {
+              params: { path: { organization: org, id } },
+              body,
+            })
+          )
+        : unwrap(
+            api.POST('/v1/postgres/databases/{id}/restore', { params: { path: { id } }, body })
+          ),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: postgresKey(org) }),
   });
 }
 
 export function usePostgresBindings(id: string) {
+  const { org, ready } = useWorkspaceTarget();
   return useQuery({
-    queryKey: [...postgresKey, id, 'bindings'],
+    queryKey: [...postgresKey(org), id, 'bindings'],
     queryFn: () =>
-      unwrap(api.GET('/v1/postgres/databases/{id}/bindings', { params: { path: { id } } })),
-    enabled: Boolean(id),
+      org
+        ? unwrap(
+            api.GET('/v1/orgs/{organization}/postgres/databases/{id}/bindings', {
+              params: { path: { organization: org, id } },
+            })
+          )
+        : unwrap(api.GET('/v1/postgres/databases/{id}/bindings', { params: { path: { id } } })),
+    enabled: Boolean(id) && ready,
     refetchInterval: (query) =>
       (query.state.data?.items ?? []).some(
         (b) => b.state === 'provisioning' || b.state === 'deleting'
@@ -3650,35 +3704,58 @@ export function usePostgresBindings(id: string) {
 }
 
 export function usePostgresBinding(id: string) {
+  const { org, ready } = useWorkspaceTarget();
   return useQuery({
-    queryKey: ['postgres', 'bindings', id],
-    queryFn: () => unwrap(api.GET('/v1/postgres/bindings/{id}', { params: { path: { id } } })),
-    enabled: Boolean(id),
+    queryKey: ['postgres', org ?? 'personal', 'bindings', id],
+    queryFn: () =>
+      org
+        ? unwrap(
+            api.GET('/v1/orgs/{organization}/postgres/bindings/{id}', {
+              params: { path: { organization: org, id } },
+            })
+          )
+        : unwrap(api.GET('/v1/postgres/bindings/{id}', { params: { path: { id } } })),
+    enabled: Boolean(id) && ready,
   });
 }
 
 /** Credentials never reach the browser: the app gets them as a secret. */
 export function useCreatePostgresBinding(databaseId: string) {
   const qc = useQueryClient();
+  const { org } = useWorkspaceTarget();
   return useMutation({
     mutationFn: (body: components['schemas']['CreateManagedPostgresBindingRequest']) =>
-      unwrap(
-        api.POST('/v1/postgres/databases/{id}/bindings', {
-          params: { path: { id: databaseId } },
-          body,
-        })
-      ),
+      org
+        ? unwrap(
+            api.POST('/v1/orgs/{organization}/postgres/databases/{id}/bindings', {
+              params: { path: { organization: org, id: databaseId } },
+              body,
+            })
+          )
+        : unwrap(
+            api.POST('/v1/postgres/databases/{id}/bindings', {
+              params: { path: { id: databaseId } },
+              body,
+            })
+          ),
     onSuccess: () =>
-      void qc.invalidateQueries({ queryKey: [...postgresKey, databaseId, 'bindings'] }),
+      void qc.invalidateQueries({ queryKey: [...postgresKey(org), databaseId, 'bindings'] }),
   });
 }
 
 export function useDeletePostgresBinding(databaseId: string) {
   const qc = useQueryClient();
+  const { org } = useWorkspaceTarget();
   return useMutation({
     mutationFn: (id: string) =>
-      unwrap(api.DELETE('/v1/postgres/bindings/{id}', { params: { path: { id } } })),
+      org
+        ? unwrap(
+            api.DELETE('/v1/orgs/{organization}/postgres/bindings/{id}', {
+              params: { path: { organization: org, id } },
+            })
+          )
+        : unwrap(api.DELETE('/v1/postgres/bindings/{id}', { params: { path: { id } } })),
     onSuccess: () =>
-      void qc.invalidateQueries({ queryKey: [...postgresKey, databaseId, 'bindings'] }),
+      void qc.invalidateQueries({ queryKey: [...postgresKey(org), databaseId, 'bindings'] }),
   });
 }
