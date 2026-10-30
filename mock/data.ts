@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { components } from '../src/lib/api/schema';
 
 /**
@@ -446,6 +447,12 @@ for (const app of apps) {
       build_id: buildId,
       image_digest: digest(),
       kind,
+      // Source deployments record the upstream commit; image ones have none.
+      // Derived from the build id, not drawn from the seeded stream, so every
+      // other fixture keeps the value it already had.
+      ...(kind === 'github'
+        ? { commit_sha: createHash('sha1').update(buildId).digest('hex') }
+        : {}),
       status,
       error:
         status === 'failed'

@@ -6,6 +6,7 @@ import { IconButton } from '@/components/ui/icon-button';
 import { FIELD, useFormValidation } from '@/components/ui/field';
 import { Switch } from '@/components/ui/switch';
 import { Modal } from '@/components/ui/modal';
+import { Timestamp } from '@/components/ui/timestamp';
 import { InlinePhase, PageHeader, Panel, queryPhase } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { useToast } from '@/components/ui/toast';
@@ -126,7 +127,9 @@ function RunHistory({
             <dt>Outcome</dt>
             <dd>{execution.outcome}</dd>
             <dt>Started</dt>
-            <dd>{execution.started_at}</dd>
+            <dd>
+              <Timestamp value={execution.started_at} />
+            </dd>
             <dt>Duration</dt>
             <dd>{execution.duration_ms != null ? `${execution.duration_ms} ms` : '—'}</dd>
             <dt>Attempts</dt>
@@ -163,7 +166,7 @@ function RunHistory({
                 Execution {r.id}
               </button>
               <Pill label={r.outcome} color={OUTCOME_COLOR[r.outcome]} />
-              <span className="text-xs text-muted-foreground">{formatWhen(r.started_at)}</span>
+              <Timestamp value={r.started_at} className="text-xs text-muted-foreground" />
               <span className="font-mono text-xs [font-variant-numeric:tabular-nums]">
                 {r.duration_ms != null ? `${(r.duration_ms / 1000).toFixed(1)}s` : '—'}
               </span>
