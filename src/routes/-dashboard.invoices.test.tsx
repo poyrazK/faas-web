@@ -14,6 +14,12 @@ import { Route as Invoices } from './dashboard.invoices';
 import { spyApi } from '@/test/api';
 
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
+const workspace = vi.hoisted(() => ({
+  org: null as string | null,
+  label: 'Personal',
+  ready: true,
+}));
+vi.mock('@/lib/api/workspace-apps', () => ({ useWorkspaceTarget: () => workspace }));
 
 const invoice = {
   id: 'invoice-1',
@@ -87,4 +93,31 @@ it('loads older invoices without losing the current page', async () => {
   await userEvent.click(await screen.findByRole('button', { name: 'Load older invoices' }));
   expect(await screen.findByText('INV-002')).toBeInTheDocument();
   expect(reads).toContain('/v1/invoices:{"limit":50,"before":"invoice-cursor-1"}');
+});
+
+it("says who can see a company's invoices when the member's role cannot", async () => {
+  workspace.org = 'acme';
+  workspace.label = 'Acme';
+  spyApi('GET').mockImplementation(async (path) => {
+    reads.push(path);
+    return {
+      error: { code: 'org_role_forbidden', title: 'Forbidden', status: 403 },
+      response: new Response(
+        JSON.stringify({ code: 'org_role_forbidden', title: 'Forbidden', status: 403 }),
+        { status: 403, headers: { 'content-type': 'application/problem+json' } }
+      ),
+    } as never;
+  });
+  try {
+    await mount();
+    expect(
+      await screen.findByText("Only Acme's owners and billing admins can see its invoices.")
+    ).toBeInTheDocument();
+    expect(reads).toEqual(['/v1/orgs/{slug}/invoices']);
+    // The FOCUS export reads the signed-in account's own costs.
+    expect(screen.queryByText(/FOCUS/)).toBeNull();
+  } finally {
+    workspace.org = null;
+    workspace.label = 'Personal';
+  }
 });

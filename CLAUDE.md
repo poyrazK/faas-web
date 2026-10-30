@@ -49,12 +49,17 @@ paths are checked against `api/openapi.yaml` by `src/lib/mock-spec-drift.test.ts
 - **The workspace is an organization.** The breadcrumb switcher stores the
   choice per account (`lib/workspace.ts`) and the API client sends it as
   `X-Active-Org`, which org settings, members, and keys follow. `/v1/apps` and
-  `/v1/projects` ignore it: they stay the signed-in account's, and the UI says
-  so. Apps reach a shared workspace through its URL (ADR-061) — new apps are
-  created with `POST /v1/orgs/{slug}/apps` and Projects shows that workspace's
-  inventory from `GET /v1/orgs/{slug}/apps` (`lib/api/workspace-apps.ts`); the
-  personal workspace keeps `POST /v1/apps`. Every `/v1/apps/{slug}/…` route is
-  still creator-scoped, so never link a workspace app the account did not create.
+  `/v1/projects` ignore it: they stay the signed-in account's. A company's own
+  data comes from org-scoped routes — `/v1/orgs/{slug}/apps` (inventory and
+  create, `lib/api/workspace-apps.ts`), `/v1/orgs/{slug}/billing/status`,
+  `/usage`, `/invoices`, `/billing/portal` and `/plan` (`lib/api/org-billing.ts`),
+  plus org projects and Postgres. Read the active workspace with
+  `useWorkspaceTarget()` and branch on its `org`, never show the personal
+  account's numbers in a company workspace. Company members reach an app's
+  `/v1/apps/{slug}/…` routes through the app's `org_id` (faas
+  ADR-202610171901, `pkg/apid/appaccess/routes.go`), so app pages work for
+  members; company billing refuses a member without the right role with
+  `org_role_forbidden`, which the page explains by naming the organization.
 - **Per-app resources need an app picker.** Secrets, env, alerts, webhooks,
   queues, upstreams, routes, and logs are all `/v1/apps/{slug}/…` with no
   account-wide read. Use `useSelectedApp` + `AppSelect`.

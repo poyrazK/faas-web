@@ -6,9 +6,11 @@ import { InlinePhase, PageHeader, queryPhase } from '@/components/dashboard/prim
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { useToast } from '@/components/ui/toast';
 import { useBillingPortal, useInfiniteInvoices } from '@/lib/api/queries';
-import { errorMessage } from '@/lib/api/errors';
+import { ApiError, errorMessage } from '@/lib/api/errors';
 import { consoleHead } from '@/lib/seo';
 import { FocusExport } from '@/components/dashboard/focus-export';
+import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
+import { orgBillingMessage } from '@/components/dashboard/org-billing';
 
 export const Route = createFileRoute('/dashboard/invoices')({
   component: InvoicesPage,
@@ -54,7 +56,17 @@ function formatDay(value: string): string {
 }
 
 function InvoicesPage() {
+  // Until the workspace is bound, a chosen company reads as null: wait, so
+  // the personal history is never read or shown in a company workspace.
+  const { ready } = useWorkspaceTarget();
+  if (!ready) return <PageHeader title="Invoices" />;
+  return <InvoicesBody />;
+}
+
+function InvoicesBody() {
   const { toast } = useToast();
+  // A company workspace reads the organization's billing subject (same handler).
+  const { org, label } = useWorkspaceTarget();
   const invoices = useInfiniteInvoices();
   const portal = useBillingPortal();
   const data = useMemo(
@@ -117,7 +129,11 @@ function InvoicesPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Invoices"
-        description="Billing history. Payment methods and PDFs live in the provider's portal."
+        description={
+          org
+            ? `${label}'s billing history. Payment methods and PDFs live in the provider's portal.`
+            : "Billing history. Payment methods and PDFs live in the provider's portal."
+        }
         actions={
           <Button
             size="sm"
@@ -145,18 +161,24 @@ function InvoicesPage() {
           </Button>
         }
       />
-      <ResourceTable
-        rows={rows}
-        columns={columns}
-        initialSort={{ key: 'createdAt', dir: 'desc' }}
-        searchKeys={['number', 'status']}
-        searchPlaceholder="Filter by invoice number…"
-        emptyMessage="No invoices yet."
-        minWidth="min-w-[760px]"
-        loading={listLoading}
-        error={listError}
-        onRetry={() => void invoices.refetch()}
-      />
+      {org && listError instanceof ApiError && listError.code === 'org_role_forbidden' ? (
+        <p role="status" className="text-sm text-muted-foreground">
+          {orgBillingMessage(listError, label, 'invoices')}
+        </p>
+      ) : (
+        <ResourceTable
+          rows={rows}
+          columns={columns}
+          initialSort={{ key: 'createdAt', dir: 'desc' }}
+          searchKeys={['number', 'status']}
+          searchPlaceholder="Filter by invoice number…"
+          emptyMessage="No invoices yet."
+          minWidth="min-w-[760px]"
+          loading={listLoading}
+          error={listError}
+          onRetry={() => void invoices.refetch()}
+        />
+      )}
       {data.length > 0 && Boolean(invoices.error) && (
         <div className="flex flex-wrap items-center justify-center gap-3">
           <InlinePhase phase={queryPhase({ error: invoices.error })} error={invoices.error} />
@@ -185,7 +207,8 @@ function InvoicesPage() {
           </Button>
         </div>
       )}
-      <FocusExport />
+      {/* The FOCUS export covers the signed-in account's own costs. */}
+      {!org && <FocusExport />}
     </div>
   );
 }

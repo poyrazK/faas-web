@@ -17,6 +17,8 @@ import { useConfirm } from '@/components/ui/confirm';
 import { errorMessage } from '@/lib/api/errors';
 import { consoleHead } from '@/lib/seo';
 import { SpendCap } from '@/components/dashboard/spend-cap';
+import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
+import { OrgPlanSummary } from '@/components/dashboard/org-billing';
 
 export const Route = createFileRoute('/dashboard/plans')({
   component: PlansPage,
@@ -145,7 +147,21 @@ function BillingControlsPanel() {
   );
 }
 
+/** A company workspace shows the organization's plan; its owner changes it. */
 function PlansPage() {
+  const { org, label, ready } = useWorkspaceTarget();
+  // Until the workspace is bound, a chosen company reads as null: wait.
+  if (!ready) return <PageHeader title="Plans" />;
+  if (!org) return <PersonalPlans />;
+  return (
+    <div className="flex flex-col gap-6">
+      <PageHeader title="Plans" description={`The plan ${label} pays for.`} />
+      <OrgPlanSummary org={org} label={label} />
+    </div>
+  );
+}
+
+function PersonalPlans() {
   const { toast } = useToast();
   const { account, refreshAccount } = useAuth();
   const changePlan = useChangePlan();
