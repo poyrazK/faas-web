@@ -1,18 +1,15 @@
 import { MemorySelect } from './memory-select';
-import { RestoreTarget } from '@/components/restore-target';
-import { RESTORE_CONTEXT } from '@/lib/platform-claims';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { useUnsavedGuard } from '@/lib/use-unsaved-guard';
 import { RepoPicker } from '@/components/dashboard/repo-picker';
 import { GitHubConnectForm } from '@/components/dashboard/github-connect-form';
 import { motion, useReducedMotion } from 'motion/react';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { ArrowLeft, ArrowRight } from 'iconoir-react';
+import { ArrowLeft, ArrowRight, NavArrowDown } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { FieldError, Select, fieldErrorProps, useFormValidation } from '@/components/ui/field';
-import { FormField } from '@/components/ui/form-field';
 import { appNameError, appNameFromRepo } from './new-app-validation';
 import { SCAN_SOURCE_LABEL, scanUnavailableReason } from './scan-source';
 import { useToast } from '@/components/ui/toast';
@@ -33,6 +30,7 @@ import { NewAppChooser } from './new-app-chooser';
 import { NewAppHeader, NewAppReviewGrid } from './new-app-rail';
 import { hasSetup, stationFor, stepForStation, type Station } from './new-app-station';
 import { NewAppStage } from './new-app-layout';
+import { SettingRow, SettingsSection } from './new-app-settings';
 import { sourceName } from './new-app-sources';
 import { ImageDeployForm } from './image-deploy-form';
 import { CopyIconButton } from '@/components/ui/copy-button';
@@ -84,8 +82,6 @@ const APP_TYPES: { id: 'function' | 'app'; label: string; desc: string }[] = [
 // Scoped pilot sizing, with light-onboarding fallbacks.
 const CONTROL =
   'h-[var(--console-control-height,2.25rem)] rounded-[var(--console-control-radius,0.375rem)]';
-const LABEL =
-  'text-[length:var(--console-label-size,0.875rem)] leading-[var(--console-label-leading,1.4286)] font-medium';
 
 interface NewAppWizardProps {
   search?: NewAppSearch;
@@ -940,6 +936,7 @@ function CreateAppWizard({
   }
 
   function renderConfigure() {
+    const nameShown = (nameTouched || configureValidation.submitAttempted) && nameError;
     return (
       <form
         onSubmit={(event) => {
@@ -947,157 +944,164 @@ function CreateAppWizard({
           if (configureValidation.validate({ name: nameError }, event.currentTarget)) setStep(2);
         }}
         noValidate
-        className="flex flex-col gap-5"
+        className="flex flex-col gap-8"
       >
-        <Panel className="rounded-none border-border">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <FormField
+        <SettingsSection id={`${uid}-app-settings`} title="App">
+          <SettingRow label="App name" htmlFor="new-app-name">
+            <Input
               id="new-app-name"
-              label="App name"
-              error={nameError}
-              showError={nameTouched || configureValidation.submitAttempted}
-            >
-              {(props) => (
-                <Input
-                  {...props}
-                  name="name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value.toLowerCase())}
-                  onBlur={() => setNameTouched(true)}
-                  className={cn(CONTROL, 'font-mono')}
-                />
-              )}
-            </FormField>
-
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor={`${uid}-type`} className={LABEL}>
-                Type
-              </label>
-              <Select
-                id={`${uid}-type`}
-                name="type"
-                aria-describedby={`${uid}-type-hint`}
-                value={appType}
-                onChange={(e) => setAppType(e.target.value as 'function' | 'app')}
-                className={CONTROL}
+              name="name"
+              aria-describedby={nameShown ? 'new-app-name-error' : undefined}
+              aria-invalid={nameShown ? true : undefined}
+              value={name}
+              onChange={(e) => setName(e.target.value.toLowerCase())}
+              onBlur={() => setNameTouched(true)}
+              className={cn(CONTROL, 'font-mono')}
+            />
+            {nameShown && (
+              <p
+                id="new-app-name-error"
+                role="alert"
+                className="text-[13px] leading-5 text-destructive"
               >
-                {APP_TYPES.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.label}
-                  </option>
-                ))}
-              </Select>
-              <span id={`${uid}-type-hint`} className="text-[13px] leading-5 text-muted-foreground">
+                {nameError}
+              </p>
+            )}
+          </SettingRow>
+
+          <SettingRow
+            label="Type"
+            htmlFor={`${uid}-type`}
+            hintId={`${uid}-type-hint`}
+            hint={
+              <>
                 {APP_TYPES.find((t) => t.id === appType)?.desc}
                 {detectedType && appTypeDraft === null && (
                   <> Detected from {detectedFrom} — change it if that is wrong.</>
                 )}
-              </span>
-            </div>
+              </>
+            }
+          >
+            <Select
+              id={`${uid}-type`}
+              name="type"
+              aria-describedby={`${uid}-type-hint`}
+              value={appType}
+              onChange={(e) => setAppType(e.target.value as 'function' | 'app')}
+              className={CONTROL}
+            >
+              {APP_TYPES.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.label}
+                </option>
+              ))}
+            </Select>
+          </SettingRow>
 
-            {appType === 'function' && (
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor={`${uid}-runtime`} className={LABEL}>
-                  Runtime
-                </label>
-                <Select
-                  id={`${uid}-runtime`}
-                  name="runtime"
-                  value={runtime}
-                  onChange={(e) => setRuntime(e.target.value as Runtime)}
-                  className={CONTROL}
-                >
-                  {RUNTIMES.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.label}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            )}
-
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor={`${uid}-visibility`} className={LABEL}>
-                App visibility
-              </label>
+          {appType === 'function' && (
+            <SettingRow label="Runtime" htmlFor={`${uid}-runtime`}>
               <Select
-                id={`${uid}-visibility`}
-                name="visibility"
-                aria-describedby={`${uid}-visibility-hint`}
-                value={visibility}
-                onChange={(event) => setVisibility(event.target.value as 'public' | 'internal')}
+                id={`${uid}-runtime`}
+                name="runtime"
+                value={runtime}
+                onChange={(e) => setRuntime(e.target.value as Runtime)}
                 className={CONTROL}
               >
-                <option value="public">Public edge and internal service</option>
-                <option value="internal">Internal service only</option>
+                {RUNTIMES.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.label}
+                  </option>
+                ))}
               </Select>
-              <span
-                id={`${uid}-visibility-hint`}
-                className="text-[13px] leading-5 text-muted-foreground"
-              >
-                Internal apps have no public platform URL or custom-domain route. Authenticated
-                same-account service calls remain subject to caller policy.
+            </SettingRow>
+          )}
+
+          <SettingRow
+            label="App visibility"
+            htmlFor={`${uid}-visibility`}
+            hintId={`${uid}-visibility-hint`}
+            hint={
+              <>
+                Internal apps have no public platform URL or custom-domain route.
                 {visibility === 'internal' && !privateAvailable
                   ? ' Checking private-app availability before creation.'
                   : ''}
+              </>
+            }
+          >
+            <Select
+              id={`${uid}-visibility`}
+              name="visibility"
+              aria-describedby={`${uid}-visibility-hint`}
+              value={visibility}
+              onChange={(event) => setVisibility(event.target.value as 'public' | 'internal')}
+              className={CONTROL}
+            >
+              <option value="public">Public edge and internal service</option>
+              <option value="internal">Internal service only</option>
+            </Select>
+          </SettingRow>
+          {/* No region picker: this is a one-box platform and the API
+              exposes no region to choose. */}
+        </SettingsSection>
+
+        {/* Resources keep sensible defaults, so they stay folded, with what
+            they are set to shown on the fold. */}
+        <details className="group/res rounded-xl border border-border bg-card">
+          <summary className="flex min-h-14 cursor-pointer list-none items-center gap-3 rounded-xl px-4 py-3 focus-visible:outline-2 focus-visible:outline-brand [&::-webkit-details-marker]:hidden">
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="text-sm font-medium">Resource settings</span>
+              <span className="text-[13px] text-muted-foreground">
+                {selectedMemoryMb} MB ·{' '}
+                {effectiveScaleToZero ? 'Parks when idle' : 'One instance kept resident'}
               </span>
-            </div>
-
-            {/* No region picker: this is a one-box platform and the API
-                    exposes no region to choose. */}
-          </div>
-
-          <p className="mt-6 text-[13px] leading-5 text-muted-foreground">
-            {selectedMemoryMb} MB ·{' '}
-            {effectiveScaleToZero ? 'Parks when idle' : 'One instance kept resident'}
-          </p>
-          <details className="mt-4 border-t border-border pt-2">
-            <summary className="min-h-11 cursor-pointer content-center rounded text-sm font-medium focus-visible:outline-2 focus-visible:outline-brand">
-              Resource settings
-            </summary>
-            <div className="mt-4">
-              <span className={LABEL}>Memory</span>
-              <div className="mt-2">
-                <MemorySelect
-                  value={selectedMemoryMb}
-                  maxMb={limitsLoading ? undefined : account?.limits.ram_mb}
-                  onChange={setMemoryMb}
-                />
-              </div>
-              {account ? (
-                <p className="mt-2 text-[13px] leading-5 text-muted-foreground">
-                  {account.plan} plan · up to {account.limits.ram_mb} MB per instance
-                </p>
-              ) : limitsLoading ? (
-                <p className="mt-2 text-xs text-muted-foreground" role="status">
-                  Checking plan limits…
-                </p>
-              ) : null}
-            </div>
-
-            <div className="mt-6 flex items-start justify-between gap-6 border-t border-border pt-5">
-              <div>
-                <p className="text-sm font-medium">Scale to zero</p>
-                <p className="mt-1 max-w-md text-[13px] leading-5 text-muted-foreground">
-                  Snapshot the microVM when idle. <RestoreTarget />. {RESTORE_CONTEXT}
-                </p>
-                {account && !canKeepResident && (
-                  <p id="scale-to-zero-plan-note" className="mt-1 text-xs text-muted-foreground">
-                    Keeping an instance resident requires a paid plan.
-                  </p>
-                )}
-              </div>
+            </span>
+            <NavArrowDown
+              aria-hidden
+              className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open/res:rotate-180 motion-reduce:transition-none"
+            />
+          </summary>
+          <div className="@container flex flex-col divide-y divide-border border-t border-border">
+            <SettingRow
+              label="Memory"
+              hint={
+                account ? (
+                  `${account.plan} plan · up to ${account.limits.ram_mb} MB per instance`
+                ) : limitsLoading ? (
+                  <span role="status">Checking plan limits…</span>
+                ) : undefined
+              }
+            >
+              <MemorySelect
+                value={selectedMemoryMb}
+                maxMb={limitsLoading ? undefined : account?.limits.ram_mb}
+                onChange={setMemoryMb}
+              />
+            </SettingRow>
+            <SettingRow
+              label="Scale to zero"
+              hint={
+                <>
+                  Park the app when idle; the next request wakes it.
+                  {account && !canKeepResident && (
+                    <span id="scale-to-zero-plan-note" className="mt-1 block">
+                      Keeping an instance resident requires a paid plan.
+                    </span>
+                  )}
+                </>
+              }
+            >
               <Switch
                 checked={effectiveScaleToZero}
                 disabled={!canKeepResident}
                 onCheckedChange={setScaleToZero}
                 aria-label="Scale to zero"
                 aria-describedby={!canKeepResident ? 'scale-to-zero-plan-note' : undefined}
-                className="mt-1 data-[state=checked]:bg-brand"
+                className="data-[state=checked]:bg-brand"
               />
-            </div>
-          </details>
-        </Panel>
+            </SettingRow>
+          </div>
+        </details>
 
         <div className="flex items-center justify-between">
           <Button type="button" variant="ghost" onClick={() => setStep(0)} className="gap-2">
@@ -1115,30 +1119,24 @@ function CreateAppWizard({
 
   function renderReview() {
     return (
-      <div className="flex flex-col gap-5">
-        <Panel className="rounded-none border-border">
-          <NewAppReviewGrid rows={rows} />
-          <p className="mt-4 text-xs text-muted-foreground">
+      <div className="flex flex-col gap-6">
+        <NewAppReviewGrid rows={rows} />
+        <div className="flex flex-col gap-2 text-[13px] leading-5 text-muted-foreground">
+          <p>
             {visibility === 'internal'
               ? 'Internal apps get no public URL; other apps in this account call them through service routing.'
               : 'The URL follows the app name; the platform confirms it when the app is created.'}
           </p>
           {workspace.org && (
-            <p className="mt-4 text-xs text-muted-foreground">
+            <p>
               Created in {workspace.label}, so it is listed in that workspace. You stay its owner:
               its settings, quota, and billing remain with your account.
             </p>
           )}
-
           {account && (
-            <div
+            <p
               role={quotaExceeded ? 'alert' : 'status'}
-              className={cn(
-                'mt-5 rounded-lg border px-3 py-2 text-xs',
-                quotaExceeded
-                  ? 'border-[color:var(--status-critical)]/35 text-muted-foreground'
-                  : 'border-border text-muted-foreground'
-              )}
+              className={cn(quotaExceeded && 'text-foreground')}
             >
               {quotaExceeded ? (
                 <>
@@ -1157,9 +1155,9 @@ function CreateAppWizard({
                   app.
                 </>
               )}
-            </div>
+            </p>
           )}
-        </Panel>
+        </div>
 
         {blockedReason && (
           <p
