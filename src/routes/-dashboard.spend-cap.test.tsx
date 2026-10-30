@@ -104,14 +104,14 @@ async function mount(
 }
 it('shows the cap standing on Usage and edits the cap in a modal', async () => {
   await mount();
-  expect(await screen.findByText('€0.00 of €10.00 overage used.')).toBeInTheDocument();
+  expect(await screen.findByText('$0.00 of $10.00 overage used.')).toBeInTheDocument();
   expect(screen.getByText('Within the cap')).toBeInTheDocument();
-  expect(screen.queryByRole('spinbutton', { name: 'Cap (EUR)' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('spinbutton', { name: 'Cap (USD)' })).not.toBeInTheDocument();
   const manage = screen.getByRole('button', { name: 'Change cap' });
   await userEvent.click(manage);
   expect(
     within(screen.getByRole('dialog', { name: 'Spend cap' })).getByRole('spinbutton', {
-      name: 'Cap (EUR)',
+      name: 'Cap (USD)',
     })
   ).toHaveValue(10);
   await userEvent.keyboard('{Escape}');
@@ -120,7 +120,7 @@ it('shows the cap standing on Usage and edits the cap in a modal', async () => {
 });
 it('edits the same cap on Plans and reflects it back on Usage', async () => {
   const router = await mount('/dashboard/plans');
-  const input = await screen.findByRole('spinbutton', { name: 'Cap (EUR)' });
+  const input = await screen.findByRole('spinbutton', { name: 'Cap (USD)' });
   expect(input).toHaveValue(10);
   await userEvent.clear(input);
   await userEvent.type(input, '12.50');
@@ -133,7 +133,7 @@ it('edits the same cap on Plans and reflects it back on Usage', async () => {
   await act(async () => {
     await router.navigate({ to: '/dashboard/usage' });
   });
-  expect(await screen.findByText('€0.00 of €12.50 overage used.')).toBeInTheDocument();
+  expect(await screen.findByText('$0.00 of $12.50 overage used.')).toBeInTheDocument();
 });
 it('distinguishes zero overage from no cap and updates after clearing', async () => {
   cap = 0;
@@ -153,7 +153,7 @@ it('does not claim there is no cap when reading fails and permits retry', async 
   expect(screen.queryByText('No cap')).not.toBeInTheDocument();
   readFails = false;
   await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
-  expect(await screen.findByText('€0.00 of €10.00 overage used.')).toBeInTheDocument();
+  expect(await screen.findByText('$0.00 of $10.00 overage used.')).toBeInTheDocument();
 });
 
 it('refreshes a pristine cached editor but preserves an unsaved draft', async () => {
@@ -161,8 +161,8 @@ it('refreshes a pristine cached editor but preserves an unsaved draft', async ()
   client.setQueryData(['account', 'overage-cap'], { overage_cap_cents: 1000 });
   cap = 0;
   await mount('/dashboard/plans', client);
-  expect(await screen.findByText('€0.00 · No overage allowed')).toBeInTheDocument();
-  const input = screen.getByRole('spinbutton', { name: 'Cap (EUR)' });
+  expect(await screen.findByText('$0.00 · No overage allowed')).toBeInTheDocument();
+  const input = screen.getByRole('spinbutton', { name: 'Cap (USD)' });
   expect(input).toHaveValue(0);
   await userEvent.clear(input);
   await userEvent.type(input, '5.50');
@@ -170,18 +170,18 @@ it('refreshes a pristine cached editor but preserves an unsaved draft', async ()
   await act(async () => {
     await client.invalidateQueries({ queryKey: ['account', 'overage-cap'] });
   });
-  expect(await screen.findByText('€25.00')).toBeInTheDocument();
+  expect(await screen.findByText('$25.00')).toBeInTheDocument();
   expect(input).toHaveValue(5.5);
 });
 
 it('keeps the saved cap and draft unchanged when saving fails', async () => {
   await mount('/dashboard/plans');
-  const input = await screen.findByRole('spinbutton', { name: 'Cap (EUR)' });
+  const input = await screen.findByRole('spinbutton', { name: 'Cap (USD)' });
   await userEvent.clear(input);
   await userEvent.type(input, '5.50');
   mockedApi('POST').mockRejectedValueOnce(new Error('Save unavailable'));
   await userEvent.click(screen.getByRole('button', { name: 'Set cap' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('Save unavailable');
-  expect(screen.getByText('€10.00')).toBeInTheDocument();
+  expect(screen.getByText('$10.00')).toBeInTheDocument();
   expect(input).toHaveValue(5.5);
 });
