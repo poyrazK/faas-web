@@ -4,7 +4,7 @@ import { api, unwrap } from './client';
 import type { components } from './schema';
 import { retryPolicy } from './queries';
 import { useAuth } from '../auth';
-import { capabilityViewState } from '../capability-state';
+import { capabilityAccess, capabilityViewState } from '../capability-state';
 
 export type Capability = components['schemas']['CapabilityStatus'];
 export type CapabilityRegistry = components['schemas']['CapabilitiesResponse'];
@@ -43,6 +43,15 @@ export function useCapability(key: string) {
     accountId,
     capability,
     state: capabilityViewState(capability, phase, plan),
+    refresh: () => void query.refetch(),
+  };
+}
+/** The account's access to one catalog capability (see `capabilityAccess`). */
+export function useCapabilityAccess(id: string) {
+  const { query, phase } = useCapabilityRegistry();
+  return {
+    access: capabilityAccess(query.data, id, phase),
+    capability: query.data?.capabilities.find((entry) => entry.key === id),
     refresh: () => void query.refetch(),
   };
 }
