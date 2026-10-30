@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { useCapability } from '@/lib/api/capabilities';
 import { useApps } from '@/lib/api/queries';
-import { ApiError, errorMessage } from '@/lib/api/errors';
+import { ApiError } from '@/lib/api/errors';
 import type { UsageWindow } from '@/lib/api/monetization';
 import { CapabilityNotice } from './capability-notice';
 import { Panel } from './primitives';
@@ -44,7 +44,12 @@ export function MonetizationGate({ title, children }: { title: string; children:
   );
 }
 
-export type ToastSpec = { kind: 'info' | 'error'; title: string; description?: string };
+export type ToastSpec = {
+  kind: 'info' | 'error';
+  title: string;
+  description?: string;
+  error?: unknown;
+};
 
 /**
  * A failed write, in the API's own terms. Codes are the stable part of the
@@ -56,16 +61,16 @@ export function explainWrite(err: unknown, action: string, conflict?: string): T
       return {
         kind: 'error',
         title: conflict ?? `Could not ${action}: it conflicts with the current state`,
-        description: errorMessage(err),
+        error: err,
       };
     if (err.code === 'validation_failed')
       return {
         kind: 'error',
         title: `Could not ${action}: check the values`,
-        description: errorMessage(err),
+        error: err,
       };
     if (err.code.startsWith('plan_limit') || err.status === 402)
-      return { kind: 'info', title: 'Plan limit reached', description: errorMessage(err) };
+      return { kind: 'info', title: 'Plan limit reached', error: err };
     if (err.code === 'not_found')
       return {
         kind: 'info',
@@ -73,7 +78,7 @@ export function explainWrite(err: unknown, action: string, conflict?: string): T
         description: 'It was changed or removed elsewhere.',
       };
   }
-  return { kind: 'error', title: `Could not ${action}`, description: errorMessage(err) };
+  return { kind: 'error', title: `Could not ${action}`, error: err };
 }
 
 const pad = (n: number) => String(n).padStart(2, '0');

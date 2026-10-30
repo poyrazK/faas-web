@@ -13,7 +13,6 @@ import {
   useSetAppSecurity,
   useTrustedSigners,
 } from '@/lib/api/queries';
-import { errorMessage } from '@/lib/api/errors';
 
 /**
  * Signed-deploy enforcement and the trusted-publisher list —
@@ -70,7 +69,7 @@ export function SupplyChainPanel({ slug }: { slug: string }) {
                 })
               )
               .catch((err: unknown) =>
-                toast({ kind: 'error', title: 'Could not change', description: errorMessage(err) })
+                toast({ kind: 'error', title: 'Could not change', error: err })
               )
           }
           aria-label="Require signed deploys"
@@ -117,7 +116,7 @@ export function SupplyChainPanel({ slug }: { slug: string }) {
                         toast({
                           kind: 'error',
                           title: 'Could not remove',
-                          description: errorMessage(err),
+                          error: err,
                         })
                       );
                   }}
@@ -143,7 +142,7 @@ export function SupplyChainPanel({ slug }: { slug: string }) {
                 toast({ kind: 'success', title: 'Publisher added' });
               })
               .catch((err: unknown) =>
-                toast({ kind: 'error', title: 'Could not add', description: errorMessage(err) })
+                toast({ kind: 'error', title: 'Could not add', error: err })
               );
           }}
         >

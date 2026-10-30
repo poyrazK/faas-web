@@ -14,7 +14,6 @@ import {
 import { useAuth, type Plan } from '@/lib/auth';
 import { Panel } from '@/components/dashboard/primitives';
 import { useConfirm } from '@/components/ui/confirm';
-import { errorMessage } from '@/lib/api/errors';
 import { consoleHead } from '@/lib/seo';
 import { SpendCap } from '@/components/dashboard/spend-cap';
 
@@ -100,7 +99,7 @@ function BillingControlsPanel() {
                   })
                 )
                 .catch((err: unknown) =>
-                  toast({ kind: 'error', title: 'Could not retry', description: errorMessage(err) })
+                  toast({ kind: 'error', title: 'Could not retry', error: err })
                 )
             }
           >
@@ -134,7 +133,7 @@ function BillingControlsPanel() {
                 })
               )
               .catch((err: unknown) =>
-                toast({ kind: 'error', title: 'Could not cancel', description: errorMessage(err) })
+                toast({ kind: 'error', title: 'Could not cancel', error: err })
               );
           }}
         >
@@ -165,7 +164,7 @@ function PlansPage() {
       })
       .catch((err: unknown) => {
         setPending(null);
-        toast({ kind: 'error', title: 'Could not change plan', description: errorMessage(err) });
+        toast({ kind: 'error', title: 'Could not change plan', error: err });
       });
   };
 
@@ -190,7 +189,7 @@ function PlansPage() {
                   toast({
                     kind: 'error',
                     title: 'Could not open the billing portal',
-                    description: errorMessage(err),
+                    error: err,
                   })
                 );
             }}

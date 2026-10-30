@@ -112,7 +112,7 @@ export function SpendCapEditor({ initialCents }: { initialCents: number | null }
       toast({
         kind: 'error',
         title: value === null ? 'Could not clear cap' : 'Could not set cap',
-        description: errorMessage(err),
+        error: err,
       });
     }
   };
