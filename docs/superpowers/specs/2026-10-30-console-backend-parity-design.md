@@ -144,11 +144,13 @@ A single source of truth for "is this on for this account":
   app tabs in `app-tab-navigation.tsx` declare a `capability`, and are hidden when it is
   absent. Pages behind a gate render a "Not enabled for this account" state
   that links to Previews, not an error.
-- **Backstop.** A `404` from a gated route, when the gate says the capability is
-  off, renders the same state.
-- **`hidden_capabilities`.** These are capabilities the account could join
-  self-serve. They render a "Join preview" call to action instead of the
-  disabled state.
+- **`hidden_capabilities`.** This lists every catalog capability, internal ones
+  included, whose platform flag is off for the account
+  (`handlers_capabilities.go:65`). A capability on that list is off. One that
+  is absent from it is on, unless the registry entry says the plan is not
+  entitled. This keeps internal pages, such as Routes, working for the
+  accounts that have them. What an account can join self-serve comes from
+  `/v1/previews`, and the off state links there.
 - **Previews panel** in Settings: `GET /v1/previews` and `PUT`/`DELETE
   /v1/previews/{key}` for the personal workspace, and the
   `/v1/orgs/{slug}/previews…` equivalents for a company workspace, for flags
