@@ -37,18 +37,11 @@ const CATEGORY_ORDER: TemplateView['category'][] = [
 
 // The runtime a starter is written in, from its name's suffix. The API does
 // not report it; every runtime-specific starter in the catalog ends in one.
-const RUNTIME: { suffix: string; label: string; mark: string; tone: string }[] = [
-  { suffix: '-node', label: 'Node.js', mark: 'JS', tone: 'lime' },
-  { suffix: '-python', label: 'Python', mark: 'PY', tone: 'yellow' },
-  { suffix: '-go', label: 'Go', mark: 'GO', tone: 'cyan' },
+const RUNTIME: { suffix: string; label: string; mark: string }[] = [
+  { suffix: '-node', label: 'Node.js', mark: 'JS' },
+  { suffix: '-python', label: 'Python', mark: 'PY' },
+  { suffix: '-go', label: 'Go', mark: 'GO' },
 ];
-const CATEGORY_TONE: Record<TemplateView['category'], string> = {
-  hello: 'lime',
-  function: 'blue',
-  'stateless-contract': 'magenta',
-  ai: 'orange',
-};
-
 function look(t: TemplateView) {
   const runtime = RUNTIME.find((r) => t.name.endsWith(r.suffix));
   return {
@@ -59,7 +52,6 @@ function look(t: TemplateView) {
         .replace(/[^a-z0-9]/gi, '')
         .slice(0, 2)
         .toUpperCase(),
-    tone: runtime?.tone ?? CATEGORY_TONE[t.category],
   };
 }
 
@@ -91,7 +83,7 @@ export function TemplateCatalog({
   const chosen = list.find((t) => t.name === selected)?.name ?? (action ? selected : undefined);
 
   const tile = (t: TemplateView) => {
-    const { runtime, mark, tone } = look(t);
+    const { runtime, mark } = look(t);
     const on = selected === t.name;
     return (
       <button
@@ -110,8 +102,7 @@ export function TemplateCatalog({
       >
         <span
           aria-hidden="true"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[var(--art-ground)] font-mono text-[11px] font-semibold"
-          style={{ color: `var(--art-${tone})` }}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted font-mono text-[11px] font-semibold text-muted-foreground"
         >
           {mark}
         </span>
@@ -224,20 +215,20 @@ export function TemplateCatalog({
               <span className="font-mono font-semibold text-foreground">{chosen}</span>. Create the
               app, then write the scaffold:
             </p>
-            <div className="flex min-w-0 items-center gap-1 rounded-md bg-[var(--art-ground)] py-1 pl-3 pr-1">
+            <div className="flex min-w-0 items-center gap-1 rounded-md bg-muted py-1 pl-3 pr-1">
               <span
                 aria-hidden="true"
-                className="select-none font-mono text-xs text-[var(--art-mute)]"
+                className="select-none font-mono text-xs text-muted-foreground"
               >
                 $
               </span>
-              <code className="min-w-0 overflow-x-auto whitespace-nowrap font-mono text-xs text-[var(--art-light)]">
+              <code className="min-w-0 overflow-x-auto whitespace-nowrap font-mono text-xs text-foreground">
                 gregale init --template {chosen}
               </code>
               <CopyIconButton
                 text={`gregale init --template ${chosen}`}
                 label={`gregale init --template ${chosen}`}
-                className="ml-auto text-[var(--art-light)] hover:bg-transparent hover:text-[var(--art-light)]"
+                className="ml-auto"
               />
             </div>
           </div>

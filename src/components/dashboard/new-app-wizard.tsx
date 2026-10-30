@@ -29,10 +29,10 @@ import { TemplateCatalog } from '@/components/dashboard/template-catalog';
 import { ProjectImport } from '@/components/dashboard/project-import';
 import { NewAppCapabilities } from './new-app-capabilities';
 import { summaryRows } from './new-app-summary';
-import { NewAppBento } from './new-app-bento';
-import { NewAppHeader, NewAppRail, NewAppReviewGrid } from './new-app-rail';
+import { NewAppChooser } from './new-app-chooser';
+import { NewAppHeader, NewAppReviewGrid } from './new-app-rail';
 import { hasSetup, stationFor, stepForStation, type Station } from './new-app-station';
-import { NewAppStage, NewAppStrip, type NewAppLayout } from './new-app-layout';
+import { NewAppStage } from './new-app-layout';
 import { sourceName } from './new-app-sources';
 import { ImageDeployForm } from './image-deploy-form';
 import { CopyIconButton } from '@/components/ui/copy-button';
@@ -100,8 +100,6 @@ interface NewAppWizardProps {
   onAppCreated?: () => void;
   /** Allows onboarding to make a deliberate hand-off to the account connection screen. */
   onConnectGitHub?: () => void;
-  /** Track or Fold; the route passes the dev choice. Track otherwise. */
-  layout?: NewAppLayout;
 }
 
 export function NewAppWizard(props: NewAppWizardProps) {
@@ -130,7 +128,6 @@ function CreateAppWizard({
   onDeploymentAccepted,
   onAppCreated,
   onConnectGitHub,
-  layout = 'track',
 }: NewAppWizardProps) {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -780,7 +777,8 @@ function CreateAppWizard({
               });
           }}
         />
-        <NewAppBento
+        {/* Each choice moves the wizard on; there is no separate Continue. */}
+        <NewAppChooser
           uid={uid}
           formId={`${uid}-source-form`}
           selected={source}
@@ -791,17 +789,6 @@ function CreateAppWizard({
         {sourceLevelError && <FieldError id={`${uid}-source-error`}>{sourceLevelError}</FieldError>}
 
         {!onboarding && <NewAppCapabilities />}
-        <div className="flex justify-end">
-          <Button
-            variant="cta"
-            type="submit"
-            form={`${uid}-source-form`}
-            className="h-10 gap-2 rounded-lg"
-          >
-            Continue
-            <ArrowRight className="h-4 w-4" />
-          </Button>
-        </div>
       </div>
     );
   }
@@ -826,15 +813,6 @@ function CreateAppWizard({
     if (source === 'import') return null;
     return (
       <div className="flex flex-col gap-4">
-        {onboarding && (
-          <NewAppBento
-            uid={uid}
-            formId={`${uid}-source-form`}
-            selected="git"
-            onSelect={setSource}
-            single
-          />
-        )}
         {/* GitHub's own connect form lives here, so this station's
                 controls join the form by id rather than by nesting. */}
         <form
@@ -1217,7 +1195,7 @@ function CreateAppWizard({
   }
 
   const form = (
-    <div className="mx-auto grid w-full max-w-5xl gap-8 text-[length:var(--console-body-size,0.875rem)] leading-[var(--console-body-leading,1.5714)] lg:grid-cols-[17.5rem_minmax(0,1fr)] lg:items-start">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-8 text-[length:var(--console-body-size,0.875rem)] leading-[var(--console-body-leading,1.5714)]">
       {/* One tree, before and during creation: the content column swaps the
           station for the completion, so the import draft below it (and the
           rest of the form state) survives a failed attempt from any source. */}
@@ -1234,21 +1212,12 @@ function CreateAppWizard({
           back={!onboarding}
         />
       )}
-      {!deploying && (
-        <NewAppRail
-          step={step as 0 | 1 | 2}
-          rows={station === 'review' ? [] : rows}
-          stepCount={source === 'container' || source === 'worker' || source === 'import' ? 1 : 3}
-          sourceLabel={station !== 'sources' && source ? sourceName(source) : undefined}
-        />
-      )}
-      <div className={cn('@container flex min-w-0 flex-col gap-6', deploying && 'lg:col-span-2')}>
+      <div className="@container flex min-w-0 flex-col gap-6">
         {deploying && renderCompletion()}
         {/* The stage stays mounted while creating, emptied and hidden, so the
             import draft in its persistent slot survives a failed attempt. */}
         <div hidden={deploying}>
           <NewAppStage
-            layout={layout}
             station={station}
             label={
               station === 'sources'
@@ -1260,18 +1229,13 @@ function CreateAppWizard({
                     : 'Review'
             }
             back={
-              layout === 'track' && station !== 'sources' && !onboarding
+              station !== 'sources' && !onboarding
                 ? station === 'setup' || (station === 'configure' && !hasSetup(source))
                   ? { label: 'Sources', onBack: toSources }
                   : station === 'configure'
                     ? { label: 'Setup', onBack: () => setStep(0) }
                     : { label: 'Configure', onBack: () => setStep(1) }
                 : undefined
-            }
-            strip={
-              layout === 'fold' && !onboarding ? (
-                <NewAppStrip selected={source} onSelect={setSource} />
-              ) : undefined
             }
             persistent={
               // Kept mounted through source switches and creation, including a

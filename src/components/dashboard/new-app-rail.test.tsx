@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { NewAppHeader, NewAppRail, NewAppReviewGrid } from './new-app-rail';
+import { NewAppHeader, NewAppReviewGrid } from './new-app-rail';
 import type { SummaryRow } from './new-app-summary';
 
 vi.mock('@tanstack/react-router', () => ({
@@ -21,67 +21,6 @@ describe('NewAppHeader', () => {
       'href',
       '/dashboard/apps'
     );
-  });
-});
-
-describe('NewAppRail', () => {
-  it('is a named landmark that marks the current step and the ones done', () => {
-    render(<NewAppRail step={1} rows={[]} />);
-    expect(screen.getByRole('complementary', { name: 'New app progress' })).toBeInTheDocument();
-    const steps = within(screen.getByRole('list', { name: 'App creation steps' })).getAllByRole(
-      'listitem'
-    );
-    expect(steps.map((s) => s.textContent?.replace(/\d+/g, '').trim())).toEqual([
-      'Source',
-      'Configure',
-      'Review',
-    ]);
-    expect(steps[1]).toHaveAttribute('aria-current', 'step');
-    expect(steps[0]).toHaveAttribute('data-state', 'done');
-    expect(steps[2]).toHaveAttribute('data-state', 'upcoming');
-    expect(screen.queryByRole('heading', { level: 1 })).not.toBeInTheDocument();
-  });
-
-  it('names the chosen source under step one, and shows one step for self-contained sources', () => {
-    const { rerender } = render(<NewAppRail step={0} rows={[]} sourceLabel="Template" />);
-    expect(screen.getAllByRole('listitem')[0]).toHaveTextContent('Template');
-    rerender(<NewAppRail step={0} rows={[]} stepCount={1} sourceLabel="Container image" />);
-    expect(screen.getAllByRole('listitem')).toHaveLength(1);
-  });
-
-  // On a phone the header, steps and summary stacked above the station and
-  // pushed its first control off the first screen.
-  it('keeps to one compact row of steps on narrow screens, the summary from lg up', () => {
-    render(<NewAppRail step={0} rows={rows} />);
-    expect(screen.getByRole('list', { name: 'App creation steps' })).toHaveClass(
-      'flex-row',
-      'lg:flex-col'
-    );
-    expect(screen.getByText("What you'll get").parentElement).toHaveClass('hidden', 'lg:flex');
-  });
-
-  it('scrolls itself when taller than the screen', () => {
-    render(<NewAppRail step={0} rows={rows} />);
-    expect(screen.getByRole('complementary')).toHaveClass('lg:overflow-y-auto');
-  });
-
-  it('hides the steps when there is no step (Import)', () => {
-    render(<NewAppRail step={undefined} rows={[]} />);
-    expect(screen.queryByRole('list', { name: 'App creation steps' })).not.toBeInTheDocument();
-  });
-
-  it('lists only what is known, and nothing at all when the list is empty', () => {
-    const { rerender } = render(<NewAppRail step={0} rows={rows} />);
-    // "Source" is also a step label, so read the row from its value.
-    expect(screen.getByText('Git repository').previousElementSibling).toHaveTextContent('Source');
-    expect(screen.getByText("What you'll get")).toBeInTheDocument();
-    rerender(<NewAppRail step={2} rows={[]} />);
-    expect(screen.queryByText("What you'll get")).not.toBeInTheDocument();
-  });
-
-  it('wraps long values instead of overflowing', () => {
-    render(<NewAppRail step={0} rows={rows} />);
-    expect(screen.getByText('a-forty-character-app-name-that-is-long')).toHaveClass('break-words');
   });
 });
 

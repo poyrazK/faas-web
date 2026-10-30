@@ -128,15 +128,6 @@ type Repo = { id: number; full_name: string; default_branch: string; private: bo
 // handful at a time, so forty repositories never arrive as a wall.
 const FILTER_FROM = 7;
 const SHOWN = 5;
-const TONES = ['lime', 'cyan', 'magenta', 'yellow', 'orange', 'blue'] as const;
-
-/** A stable tone per repository, so its tile keeps its colour between visits. */
-function tone(name: string) {
-  let h = 0;
-  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  return TONES[h % TONES.length];
-}
-
 function RepoList({
   repos,
   pending,
@@ -208,7 +199,7 @@ function RepoList({
               }}
               placeholder={`Search ${repos.length} repositories`}
               spellCheck={false}
-              className={cn(FIELD, 'h-8 pl-8 font-mono text-[13px]')}
+              className={cn(FIELD, 'h-8 w-full pl-8 font-mono text-[13px]')}
             />
           </div>
           {owners.length > 1 && (
@@ -269,8 +260,7 @@ function RepoList({
               />
               <span
                 aria-hidden="true"
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[var(--art-ground)] font-mono text-xs font-semibold uppercase"
-                style={{ color: `var(--art-${tone(r.full_name)})` }}
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted font-mono text-xs font-semibold uppercase text-muted-foreground"
               >
                 {name.charAt(0)}
               </span>

@@ -250,26 +250,6 @@
   --foil-glare-shade: 205 218 228;
 }
 
-/* The New app scenes' palette: flat signal colours on a near-black screen,
-   from the reel the scenes were drawn after. Like Foil it is one material in
-   either polarity: the preview is a dark screen set into the card, so the
-   colours keep their contrast whatever surrounds it. Decorative only. */
-:root,
-.console {
-  --art-ground: #141414;
-  --art-slate: #3a404a;
-  --art-guide: #262626;
-  --art-mute: #3d3d3d;
-  --art-light: #e6e6e6;
-  --art-magenta: #f04ef6;
-  --art-cyan: #37cdfa;
-  --art-orange: #ee3f04;
-  --art-yellow: #fadc0a;
-  --art-lime: #7ad915;
-  --art-blue: #1ea2f7;
-  --art-pink: #f9befc;
-}
-
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

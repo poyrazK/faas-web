@@ -163,22 +163,17 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('NewAppWizard source picker', () => {
-  it('groups sources with the Git path first and names each card by its title', () => {
+  it('leads with Git and lists the other ways to start, each named by its title', () => {
     render(<NewAppWizard />);
-    const groups = screen.getAllByRole('group');
-    expect(groups).toHaveLength(3);
-    const [code, image, project] = groups;
-    const expectCards = (group: HTMLElement, names: string[]) => {
-      const cards = within(group).getAllByRole('button');
-      expect(cards).toHaveLength(names.length);
-      cards.forEach((card, index) => expect(card).toHaveAccessibleName(names[index]));
-    };
-    expect(code).toHaveAccessibleName('From code');
-    expectCards(code, ['Git repository', 'Template', 'Empty app']);
-    expect(image).toHaveAccessibleName('From an image');
-    expectCards(image, ['Container image', 'Long-lived worker']);
-    expect(project).toHaveAccessibleName('Bring an existing project');
-    const importCard = within(project).getByRole('button', { name: 'Import' });
+    const others = screen.getByRole('group', { name: 'Other ways to start' });
+    within(others)
+      .getAllByRole('button')
+      .forEach((card, index) =>
+        expect(card).toHaveAccessibleName(
+          ['Template', 'Empty app', 'Container image', 'Long-lived worker', 'Import'][index]
+        )
+      );
+    const importCard = within(others).getByRole('button', { name: 'Import' });
     expect(importCard).toHaveAccessibleDescription(
       'Turn a repository with several services into a project.'
     );
@@ -187,25 +182,18 @@ describe('NewAppWizard source picker', () => {
     );
   });
 
-  it("fills the rail's summary as you go and hands it to review", async () => {
+  it('gathers what you chose into the review', async () => {
     const user = userEvent.setup();
     render(<NewAppWizard />);
-    const rail = screen.getByRole('complementary', { name: 'New app progress' });
-    // "Source" is also a step label in the rail, so read the row from its value.
-    expect(within(rail).getByText('Git repository').previousElementSibling).toHaveTextContent(
-      'Source'
-    );
-    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(screen.getByRole('button', { name: 'Git repository' }));
     await user.type(await screen.findByLabelText('Repository'), 'gregale/demo');
-    expect(within(rail).getByText('Repository').nextElementSibling).toHaveTextContent(
-      'gregale/demo@main'
-    );
     await user.click(screen.getByRole('button', { name: 'Continue' }));
     await screen.findByLabelText('App name');
-    expect(within(rail).getByText('Memory').nextElementSibling).toHaveTextContent('128 MB');
     await user.click(screen.getByRole('button', { name: 'Review' }));
     await screen.findByRole('button', { name: 'Deploy app' });
-    expect(within(rail).queryByText("What you'll get")).not.toBeInTheDocument();
+    expect(screen.getByText('Repository').nextElementSibling).toHaveTextContent(
+      'gregale/demo@main'
+    );
     expect(screen.getByText('Memory').nextElementSibling).toHaveTextContent('128 MB');
   });
 
@@ -227,7 +215,7 @@ describe('NewAppWizard source picker', () => {
     render(<NewAppWizard />);
     await user.click(screen.getByRole('button', { name: 'Container image' }));
     expect(await screen.findByText('HTTP image setup')).toBeInTheDocument();
-    expect(screen.getByRole('complementary', { name: 'New app progress' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Container image' })).toBeInTheDocument();
   });
 
   it('goes straight to Configure for an empty app', async () => {
@@ -244,8 +232,8 @@ describe('NewAppWizard source picker', () => {
       'aria-pressed',
       'true'
     );
-    // Git's fields are on its own station, one Continue away.
-    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    // Git's fields are on its own station: its card goes there.
+    await user.click(screen.getByRole('button', { name: 'Git repository' }));
     expect(await screen.findByLabelText('Repository')).toBeInTheDocument();
   });
 
@@ -402,17 +390,6 @@ describe('NewAppWizard repository prefill', () => {
 });
 
 describe('NewAppWizard validation', () => {
-  it('explains an empty Continue with no source and focuses the first source', async () => {
-    mocks.account.github_install_id = '';
-    const user = userEvent.setup();
-    render(<NewAppWizard />);
-    await user.click(screen.getByRole('button', { name: 'Continue' }));
-    const git = screen.getByRole('button', { name: 'Git repository' });
-    expect(git).toHaveFocus();
-    expect(git).toHaveAccessibleDescription(/Choose where the code comes from to continue\./);
-    expect(screen.queryByLabelText('App name')).not.toBeInTheDocument();
-  });
-
   // On Git's own page without GitHub, the way on is the connect notice; a
   // Continue there could only fail on a control that is no longer on screen.
   it('asks for a GitHub connection instead of doing nothing', async () => {

@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   createMemoryHistory,
@@ -179,8 +179,8 @@ describe('New App source flow', () => {
     for (const name of ['Empty app', 'Template', 'Import']) {
       expect(screen.getByRole('button', { name })).toHaveAttribute('aria-pressed', 'false');
     }
-    // Git's fields are on its own station, one Continue away.
-    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    // Git's fields are on its own station: choosing its card goes there.
+    await user.click(screen.getByRole('button', { name: 'Git repository' }));
     expect(await screen.findByLabelText('Repository')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Continue' }));
     expect(screen.getByLabelText('Repository')).toHaveFocus();
@@ -213,7 +213,7 @@ describe('New App source flow', () => {
     mocks.workspace = { org: 'acme-corp', label: 'Acme Corp' };
     const user = userEvent.setup();
     await mount('/dashboard/apps/new?source=empty');
-    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(screen.getByRole('button', { name: 'Empty app' }));
     await user.type(await screen.findByLabelText('App name'), 'team-api');
     await user.click(screen.getByRole('button', { name: 'Review' }));
     const workspace = (await screen.findByText('Workspace')).parentElement!;
@@ -237,7 +237,7 @@ describe('New App source flow', () => {
     );
     const user = userEvent.setup();
     await mount('/dashboard/apps/new?source=empty');
-    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(screen.getByRole('button', { name: 'Empty app' }));
     await user.type(await screen.findByLabelText('App name'), 'team-api');
     await user.click(screen.getByRole('button', { name: 'Review' }));
     await user.click(await screen.findByRole('button', { name: 'Create app' }));
@@ -257,7 +257,7 @@ describe('New App source flow', () => {
       'aria-pressed',
       'true'
     );
-    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(screen.getByRole('button', { name: /^Empty app/ }));
     await user.type(await screen.findByLabelText('App name'), 'saved-draft');
     await act(async () => router.history.back());
     expect(await screen.findByRole('button', { name: /^Empty app/ })).toHaveAttribute(
@@ -285,9 +285,8 @@ describe('New App source flow', () => {
     async (slug, runtime) => {
       const user = userEvent.setup();
       await mount(`/dashboard/apps/new?template=${slug}`);
-      // A template link lands on Template's own station; the rail names it.
-      const rail = screen.getByRole('complementary', { name: 'New app progress' });
-      expect(within(rail).getAllByRole('listitem')[0]).toHaveTextContent('Template');
+      // A template link lands on Template's own station.
+      expect(screen.getByRole('region', { name: 'Template' })).toBeInTheDocument();
       await user.click(await screen.findByRole('button', { name: 'Continue' }));
       expect(await screen.findByLabelText('App name')).toHaveValue(slug);
       expect(screen.getByLabelText('Runtime')).toHaveValue(runtime);
@@ -365,8 +364,8 @@ describe('New App source flow', () => {
       error: null,
       scanning: false,
     };
-    // Git's fields are on its own station, one Continue away.
-    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    // Git's fields are on its own station: choosing its card goes there.
+    await user.click(screen.getByRole('button', { name: 'Git repository' }));
     await user.type(await screen.findByLabelText('Repository'), 'acme/Checkout_Service');
     await user.clear(screen.getByLabelText('Ref'));
     await user.type(screen.getByLabelText('Ref'), 'develop');
@@ -383,10 +382,8 @@ describe('New App source flow', () => {
   it('scans, reviews and applies an import within New App using the existing project endpoint contract', async () => {
     const user = userEvent.setup();
     const router = await mount('/dashboard/apps/new?source=import&slug=sample&branch=develop');
-    // Import's own station; the rail names it as the only step.
-    const rail = screen.getByRole('complementary', { name: 'New app progress' });
-    expect(within(rail).getAllByRole('listitem')).toHaveLength(1);
-    expect(within(rail).getByRole('listitem')).toHaveTextContent('Import');
+    // Import's own station.
+    expect(screen.getByRole('region', { name: 'Import' })).toBeInTheDocument();
     expect(screen.getByLabelText('Project slug')).toHaveValue('sample');
     expect(screen.getByLabelText('Branch')).toHaveValue('develop');
     expect(screen.queryByRole('button', { name: 'Continue' })).not.toBeInTheDocument();

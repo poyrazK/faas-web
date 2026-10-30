@@ -3,6 +3,16 @@
 **Status:** approved in conversation on 2026-10-21; awaiting review of this written spec.
 **Branch:** `feat/new-app-bento`, building on v1 (`docs/superpowers/specs/2026-10-20-new-app-bento-design.md`, head 63a0910).
 
+## Revision, 2026-10-30: simpler
+
+After four rounds on the previews, Bahadir chose the simplest direction: **icons only** and **Git first, then the rest**.
+
+- Sources is one primary Git card, then a compact list titled "Other ways to start". Each source shows a line icon, its name, and one line. Choosing one moves on, so there is no separate Continue.
+- There is no side rail, and no Track or Fold. The page is one centred column, and a station shows a plain "← Back" link above it.
+- The scenes, the bento, the dev layout switch and the art palette are gone.
+
+The sections below are the history that led here. §2 (layouts) and §3 (scenes) are superseded.
+
 ## Why
 
 v1 put the rail and the bento in place, but Bahadir's walkthrough (2026-10-21) showed two problems:

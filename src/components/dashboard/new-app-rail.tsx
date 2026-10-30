@@ -1,20 +1,7 @@
 import { Link } from '@tanstack/react-router';
-import { ArrowLeft, Check } from 'iconoir-react';
+import { ArrowLeft } from 'iconoir-react';
 import { cn } from '@/lib/utils';
 import type { SummaryRow } from './new-app-summary';
-
-const STEPS = ['Source', 'Configure', 'Review'] as const;
-
-function Item({ row }: { row: SummaryRow }) {
-  return (
-    <div className="flex min-w-0 flex-col gap-0.5">
-      <dt className="text-[11px] text-muted-foreground">{row.label}</dt>
-      <dd className={cn('break-words text-[13px] text-foreground', row.mono && 'font-mono')}>
-        {row.value}
-      </dd>
-    </div>
-  );
-}
 
 /** The page's heading row: the way back, the title and what the page is for. */
 export function NewAppHeader({
@@ -44,94 +31,7 @@ export function NewAppHeader({
 }
 
 /**
- * The New app rail: where you are and what you are making. Sticky beside the
- * step on wide screens, stacked above it on narrow ones. Its summary fills in
- * as the person goes; Review shows the same rows in full, so the wizard passes
- * an empty list there and the rail shows only the steps.
- */
-export function NewAppRail({
-  step,
-  rows,
-  stepCount = 3,
-  sourceLabel,
-}: {
-  step?: 0 | 1 | 2;
-  rows: SummaryRow[];
-  /** Container, Worker and Import finish in their own form: one step. */
-  stepCount?: 1 | 3;
-  /** The chosen source, named under step one once it is picked. */
-  sourceLabel?: string;
-}) {
-  return (
-    <aside
-      aria-label="New app progress"
-      className="flex flex-col gap-6 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto"
-    >
-      {step !== undefined && (
-        // A compact row on narrow screens, so the station's first control
-        // stays on the first screen; a vertical list beside it from lg up.
-        <ol
-          aria-label="App creation steps"
-          className="flex flex-row flex-wrap gap-x-5 gap-y-1 lg:flex-col lg:gap-1 lg:border-l lg:border-border"
-        >
-          {STEPS.slice(0, stepCount).map((label, i) => {
-            const state = i < step ? 'done' : i === step ? 'current' : 'upcoming';
-            return (
-              <li
-                key={label}
-                data-state={state}
-                aria-current={state === 'current' ? 'step' : undefined}
-                className={cn(
-                  'flex items-center gap-2 py-1 text-sm transition-colors lg:-ml-px lg:gap-3 lg:border-l lg:py-1.5 lg:pl-4',
-                  state === 'current'
-                    ? 'text-foreground lg:border-brand'
-                    : 'text-muted-foreground lg:border-transparent'
-                )}
-              >
-                <span
-                  aria-hidden="true"
-                  className={cn(
-                    'w-5 font-mono text-[11px]',
-                    state === 'current' ? 'text-brand' : 'text-muted-foreground'
-                  )}
-                >
-                  {state === 'done' ? (
-                    <Check className="h-3.5 w-3.5 text-[color:var(--status-good)]" />
-                  ) : (
-                    String(i + 1).padStart(2, '0')
-                  )}
-                </span>
-                {label}
-                {i === 0 && sourceLabel && (
-                  <span className="ml-auto truncate pr-2 text-xs text-muted-foreground">
-                    {sourceLabel}
-                  </span>
-                )}
-              </li>
-            );
-          })}
-        </ol>
-      )}
-
-      {rows.length > 0 && (
-        // The summary needs the room beside the station; Review shows it whole.
-        <div className="hidden flex-col gap-3 border-t border-border pt-5 lg:flex">
-          <p className="font-mono text-[10.5px] uppercase tracking-[0.08em] text-muted-foreground">
-            What you'll get
-          </p>
-          <dl className="flex flex-col gap-3">
-            {rows.map((row) => (
-              <Item key={row.key} row={row} />
-            ))}
-          </dl>
-        </div>
-      )}
-    </aside>
-  );
-}
-
-/**
- * Review: the summary at full size, on the bento's hairline grid. Name and
+ * Review: the summary at full size, on a hairline grid. Name and
  * the public URL lead as the hero cell; the rest follow two to a row.
  */
 export function NewAppReviewGrid({ rows }: { rows: SummaryRow[] }) {
