@@ -8,11 +8,9 @@ export type CacheEdgeRule = Omit<EdgeRule, 'action' | 'kind'> & {
 };
 
 /**
- * The upstream spec leaves `EdgeRuleCacheAction` out of the edge-rule action
- * union (and `cache` from the kind enum), although apid accepts and returns `kind: 'cache'` rules (ADR-122).
- * Fixtures are written against the real cache schema and widened here, once,
- * so a test never has to pretend a cache rule is some other kind.
+ * A cache edge rule fixture. The upstream union carries `EdgeRuleCacheAction`
+ * and the `cache` kind again (ADR-122), so the fixture is an EdgeRule as it is.
  */
 export function cacheEdgeRule(rule: CacheEdgeRule): EdgeRule {
-  return rule as unknown as EdgeRule;
+  return rule;
 }

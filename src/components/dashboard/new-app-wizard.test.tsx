@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import type { NewAppSearch } from './new-app-source';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
+import { FUNCTION_STARTERS } from '@/lib/function-starters';
 import userEvent from '@testing-library/user-event';
 import { NewAppWizard } from './new-app-wizard';
 import { ApiError } from '@/lib/api/errors';
@@ -12,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   addWorkflow: vi.fn(),
   bindRepo: vi.fn(),
   deployFromRef: vi.fn(),
+  deployFunction: vi.fn(),
   updateApp: vi.fn(),
   toast: vi.fn(),
   issueCSRF: vi.fn(),
@@ -33,7 +35,10 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('@tanstack/react-router', () => ({
+vi.mock('@tanstack/react-router', async (importOriginal) => ({
+  // newAppPath writes the URL a GitHub connection returns to with the real one.
+  defaultStringifySearch: (await importOriginal<typeof import('@tanstack/react-router')>())
+    .defaultStringifySearch,
   Link: ({ children }: { children: ReactNode }) => <a>{children}</a>,
   useNavigate: () => vi.fn(),
 }));
@@ -44,22 +49,44 @@ vi.mock('./image-deploy-form', () => ({
   ),
 }));
 vi.mock('./project-import', () => ({ ProjectImport: () => null }));
+// jsdom has no CompressionStream; the archive is checked uncompressed.
+vi.mock('@/lib/tar', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/tar')>()),
+  gzip: async (bytes: Uint8Array<ArrayBuffer>) => new Blob([bytes]),
+}));
 vi.mock('@/lib/api/logs', () => ({
   useLogStream: () => ({ lines: [], status: 'streaming', reason: null }),
 }));
-vi.mock('@/components/dashboard/repo-picker', () => ({
-  // The real picker forwards id/name/form/ARIA to its control; so does this,
-  // so label association is asserted through the wizard's own <label>.
-  RepoPicker: ({
-    onChange,
-    className: _className,
-    ...control
-  }: {
-    value: string;
-    onChange: (value: string) => void;
-    className?: string;
-  }) => <input {...control} onChange={(event) => onChange(event.target.value)} />,
-}));
+vi.mock('@/components/dashboard/repo-picker', async () => {
+  const { useEffect } = await import('react');
+  return {
+    // The real picker forwards id/name/form/ARIA to its control; so does this,
+    // so label association is asserted through the wizard's own <label>. Its
+    // installation lists every repository except team/hidden.
+    RepoPicker: ({
+      onChange,
+      onAvailabilityChange,
+      className: _className,
+      variant: _variant,
+      labelledBy: _labelledBy,
+      unlistedNote: _unlistedNote,
+      ...control
+    }: {
+      value: string;
+      onChange: (value: string) => void;
+      onAvailabilityChange?: (available: boolean) => void;
+      className?: string;
+      variant?: string;
+      labelledBy?: string;
+      unlistedNote?: string;
+    }) => {
+      useEffect(() => {
+        onAvailabilityChange?.(control.value !== 'team/hidden');
+      }, [control.value, onAvailabilityChange]);
+      return <input {...control} onChange={(event) => onChange(event.target.value)} />;
+    },
+  };
+});
 vi.mock('@/components/ui/toast', () => ({
   useToast: () => ({ toast: mocks.toast }),
 }));
@@ -111,6 +138,8 @@ vi.mock('@/lib/api/queries', () => ({
   }),
   useBindRepoFor: () => ({ mutateAsync: mocks.bindRepo }),
   useDeployFromRefFor: () => ({ mutateAsync: mocks.deployFromRef }),
+  useDeployFunctionSourceFor: () => ({ mutateAsync: mocks.deployFunction }),
+  useInvokeApp: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useUpdateAppFor: () => ({ mutateAsync: mocks.updateApp }),
   useSourceRefScan: (input: unknown) => mocks.scan(input),
   // The wizard reads the starter catalog to prefill from a `?template=` name.
@@ -163,43 +192,86 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('NewAppWizard source picker', () => {
-  it('groups sources with the Git path first and names each card by its title', () => {
+  it('leads with Git and lists the other ways to start, each named by its title', () => {
     render(<NewAppWizard />);
-    const groups = screen.getAllByRole('group');
-    expect(groups).toHaveLength(3);
-    const [code, image, project] = groups;
-    const expectCards = (group: HTMLElement, names: string[]) => {
-      const cards = within(group).getAllByRole('button');
-      expect(cards).toHaveLength(names.length);
-      cards.forEach((card, index) => expect(card).toHaveAccessibleName(names[index]));
-    };
-    expect(code).toHaveAccessibleName('From code');
-    expectCards(code, ['Git repository', 'Template', 'Empty app']);
-    expect(image).toHaveAccessibleName('From an image');
-    expectCards(image, ['Container image', 'Long-lived worker']);
-    expect(project).toHaveAccessibleName('Bring an existing project');
-    const importCard = within(project).getByRole('button', { name: 'Import' });
+    const others = screen.getByRole('group', { name: 'Other ways to start' });
+    within(others)
+      .getAllByRole('button')
+      .forEach((card, index) =>
+        expect(card).toHaveAccessibleName(
+          ['Function', 'Template', 'Empty app', 'Container image', 'Long-lived worker', 'Import'][
+            index
+          ]
+        )
+      );
+    const importCard = within(others).getByRole('button', { name: 'Import' });
     expect(importCard).toHaveAccessibleDescription(
-      /several services \(Compose, Procfile, k8s, Render, Fly, or serverless\), scanned and created together as a project/
+      'Turn a repository with several services into a project.'
     );
     expect(screen.getByRole('button', { name: 'Git repository' })).toHaveAccessibleDescription(
-      /one service from a branch, tag, or commit/
+      'Build and deploy a function or an app from a branch, tag, or commit.'
     );
   });
 
-  it('preselects Git when GitHub is connected', () => {
+  it('gathers what you chose into the review', async () => {
+    const user = userEvent.setup();
+    render(<NewAppWizard />);
+    await user.click(screen.getByRole('button', { name: 'Git repository' }));
+    await user.type(await screen.findByLabelText('Repository'), 'gregale/demo');
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await screen.findByLabelText('App name');
+    await user.click(screen.getByRole('button', { name: 'Review' }));
+    await screen.findByRole('button', { name: 'Deploy app' });
+    expect(screen.getByText('Repository').nextElementSibling).toHaveTextContent(
+      'gregale/demo@main'
+    );
+    expect(screen.getByText('Memory').nextElementSibling).toHaveTextContent('128 MB');
+  });
+
+  it('moves to the chosen source’s own station, and back to the sources', async () => {
+    const user = userEvent.setup();
+    render(<NewAppWizard />);
+    await user.click(screen.getByRole('button', { name: 'Template' }));
+    expect(await screen.findByText(/Pick a starter to prefill your app/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Git repository' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Back to Sources' }));
+    expect(await screen.findByRole('button', { name: 'Template' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
+  });
+
+  it('opens a container image inside the wizard, not on another page', async () => {
+    const user = userEvent.setup();
+    render(<NewAppWizard />);
+    await user.click(screen.getByRole('button', { name: 'Container image' }));
+    expect(await screen.findByText('HTTP image setup')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Container image' })).toBeInTheDocument();
+  });
+
+  it('goes straight to Configure for an empty app', async () => {
+    const user = userEvent.setup();
+    render(<NewAppWizard />);
+    await user.click(screen.getByRole('button', { name: 'Empty app' }));
+    expect(await screen.findByLabelText('App name')).toBeInTheDocument();
+  });
+
+  it('preselects Git when GitHub is connected', async () => {
+    const user = userEvent.setup();
     render(<NewAppWizard />);
     expect(screen.getByRole('button', { name: 'Git repository' })).toHaveAttribute(
       'aria-pressed',
       'true'
     );
-    expect(screen.getByLabelText('Repository')).toBeInTheDocument();
+    // Git's fields are on its own station: its card goes there.
+    await user.click(screen.getByRole('button', { name: 'Git repository' }));
+    expect(await screen.findByLabelText('Repository')).toBeInTheDocument();
   });
 
   it('leaves the choice open without a GitHub connection', () => {
     mocks.account.github_install_id = '';
     render(<NewAppWizard />);
-    expect(screen.getAllByRole('button', { pressed: false })).toHaveLength(6);
+    expect(screen.getAllByRole('button', { pressed: false })).toHaveLength(7);
     expect(screen.queryByRole('button', { pressed: true })).not.toBeInTheDocument();
   });
 
@@ -251,7 +323,7 @@ describe('NewAppWizard repository prefill', () => {
     await user.type(screen.getByLabelText('Repository'), 'gregale/first');
     await user.click(screen.getByRole('button', { name: /continue/i }));
     await nameApp(user, 'my-own-name');
-    await user.click(screen.getByRole('button', { name: 'Back' }));
+    await user.click(screen.getByRole('button', { name: 'Back to Setup' }));
     const repository = await screen.findByLabelText('Repository');
     await user.clear(repository);
     await user.type(repository, 'gregale/second');
@@ -349,25 +421,23 @@ describe('NewAppWizard repository prefill', () => {
 });
 
 describe('NewAppWizard validation', () => {
-  it('explains an empty Continue with no source and focuses the first source', async () => {
-    mocks.account.github_install_id = '';
-    const user = userEvent.setup();
-    render(<NewAppWizard />);
-    await user.click(screen.getByRole('button', { name: 'Continue' }));
-    const git = screen.getByRole('button', { name: 'Git repository' });
-    expect(git).toHaveFocus();
-    expect(git).toHaveAccessibleDescription(/Choose where the code comes from to continue\./);
-    expect(screen.queryByLabelText('App name')).not.toBeInTheDocument();
-  });
-
+  // On Git's own page without GitHub, the way on is the connect notice; a
+  // Continue there could only fail on a control that is no longer on screen.
   it('asks for a GitHub connection instead of doing nothing', async () => {
     mocks.account.github_install_id = '';
     const user = userEvent.setup();
     render(<NewAppWizard />);
     await user.click(screen.getByRole('button', { name: 'Git repository' }));
-    await user.click(screen.getByRole('button', { name: 'Continue' }));
-    expect(screen.getByText(/Connect GitHub to deploy from a repository/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Git repository' })).toHaveFocus();
+    expect(await screen.findByText('Connect GitHub first')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Continue' })).not.toBeInTheDocument();
+  });
+
+  it('offers Continue on the template page only once a template is picked', async () => {
+    const user = userEvent.setup();
+    render(<NewAppWizard />);
+    await user.click(screen.getByRole('button', { name: 'Template' }));
+    await screen.findByText(/Pick a starter to prefill your app/);
+    expect(screen.queryByRole('button', { name: 'Continue' })).not.toBeInTheDocument();
   });
 
   it('shows an inline error on the repository and focuses it', async () => {
@@ -577,7 +647,7 @@ describe('NewAppWizard Git submission', () => {
     mocks.account.github_install_id = '';
     render(<NewAppWizard />);
     const container = screen.getByRole('button', { name: 'Container image' });
-    expect(container).toHaveAccessibleDescription(/Deploy an immutable HTTP image/);
+    expect(container).toHaveAccessibleDescription('Run an HTTP image you already built.');
     await userEvent.click(container);
     expect(await screen.findByText('HTTP image setup')).toBeInTheDocument();
     expect(screen.queryByText('Connect GitHub first')).not.toBeInTheDocument();
@@ -891,6 +961,27 @@ describe('NewAppWizard Git submission', () => {
     expect(posted?.get('return_to')).toBe('/dashboard/apps/new?source=git');
   });
 
+  // A repository and commit carried in from a compatibility check survive the
+  // round trip through GitHub, instead of returning to an empty Git page.
+  it('returns from GitHub with the checked repository and commit', async () => {
+    mocks.account.github_install_id = '';
+    let posted: FormData | undefined;
+    const submit = vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(function (
+      this: HTMLFormElement
+    ) {
+      posted = new FormData(this);
+    });
+    const sha = 'c'.repeat(40);
+    render(<NewAppWizard search={{ source: 'git', repo: 'team/api', ref: sha }} />);
+    expect(screen.getByText(`team/api@${sha}`)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Connect GitHub' }));
+    await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    expect(posted?.get('return_to')).toBe(
+      `/dashboard/apps/new?source=git&repo=team%2Fapi&ref=${sha}`
+    );
+  });
+
   it('keeps resource defaults available behind a named disclosure', async () => {
     const user = userEvent.setup();
     render(<NewAppWizard onboarding />);
@@ -921,7 +1012,7 @@ describe('NewAppWizard Git submission', () => {
     await screen.findByRole('button', { name: 'Deploy app' });
     expect(screen.getByText('256 MB')).toBeInTheDocument();
     expect(screen.getByText('One instance kept resident')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Back' }));
+    await user.click(screen.getByRole('button', { name: 'Back to Configure' }));
     await waitFor(() =>
       expect(screen.getByText('256 MB · One instance kept resident')).toBeVisible()
     );
@@ -1002,9 +1093,10 @@ describe('NewAppWizard Git submission', () => {
     expect(screen.queryByRole('region', { name: 'Call it' })).not.toBeInTheDocument();
     mocks.deploymentStatus = 'live';
     rerender(<NewAppWizard onboarding onDeploymentAccepted={onDeploymentAccepted} />);
+    // `publicAppUrl` normalises through `new URL`, hence the trailing slash.
     expect(screen.getByRole('link', { name: 'Open app' })).toHaveAttribute(
       'href',
-      'https://demo-app.example'
+      'https://demo-app.example/'
     );
     const callIt = screen.getByRole('region', { name: 'Call it' });
     expect(callIt).toHaveTextContent('curl -i https://demo-app.example');
@@ -1083,5 +1175,97 @@ describe('NewAppWizard Git submission', () => {
     expect(mocks.bindRepo).toHaveBeenCalledTimes(1);
     expect(mocks.deployFromRef).toHaveBeenCalledTimes(2);
     expect(mocks.addWorkflow).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('NewAppWizard function written here', () => {
+  it('writes, configures and deploys a function with no repository', async () => {
+    mocks.deployFunction.mockResolvedValue({ id: 'dep-1', status: 'pending' });
+    const user = userEvent.setup();
+    render(<NewAppWizard />);
+    await user.click(screen.getByRole('button', { name: 'Function' }));
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Write a function' })
+    ).toBeInTheDocument();
+    expect(screen.getByText('Step 1 of 3')).toBeInTheDocument();
+
+    // An untouched starter follows the language.
+    await user.click(screen.getByRole('radio', { name: 'Python' }));
+    const editor = screen.getByRole('textbox', { name: 'handler.py' });
+    expect(editor).toHaveValue(FUNCTION_STARTERS.python.code);
+
+    // Nothing to deploy is said where it is fixed.
+    await user.clear(editor);
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(editor).toHaveFocus();
+    expect(editor).toHaveAccessibleDescription(/Write the handler, or upload a file\./);
+    await user.type(editor, 'async def handler(event, ctx):{enter}    return {{}}');
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+
+    // Configure: a function by construction, on this language's versions.
+    await nameApp(user, 'hello-fn');
+    expect(screen.queryByLabelText('Type')).not.toBeInTheDocument();
+    const runtimes = [...(screen.getByLabelText('Runtime') as HTMLSelectElement).options];
+    expect(runtimes.map((o) => o.value)).toEqual(['python312', 'python313']);
+    await user.click(screen.getByRole('button', { name: 'Review' }));
+
+    expect(await screen.findByText('First deploy')).toBeInTheDocument();
+    expect(screen.getByText('First deploy').nextElementSibling).toHaveTextContent(
+      'handler.py, right after create'
+    );
+    await user.click(screen.getByRole('button', { name: 'Create app' }));
+
+    await waitFor(() => expect(mocks.deployFunction).toHaveBeenCalledTimes(1));
+    expect(mocks.addWorkflow).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'hello-fn', type: 'function', runtime: 'python312' })
+    );
+    const { slug, runtime, archive } = mocks.deployFunction.mock.calls[0][0];
+    expect(slug).toBe('demo-app');
+    expect(runtime).toBe('python312');
+    const tar = new TextDecoder().decode(await (archive as Blob).arrayBuffer());
+    expect(tar).toContain('handler.py');
+    expect(tar).toContain('async def handler(event, ctx):\n    return {}');
+  });
+});
+
+describe('NewAppWizard repository from a compatibility check', () => {
+  it('deploys the checked commit without binding auto-deploys to a SHA', async () => {
+    const user = userEvent.setup();
+    function Journey() {
+      const [search, setSearch] = useState<NewAppSearch>({
+        source: 'git',
+        repo: 'team/checked-api',
+        ref: 'a'.repeat(40),
+      });
+      return <NewAppWizard onboarding search={search} onSearchChange={setSearch} />;
+    }
+    render(<Journey />);
+    expect(screen.getByLabelText('Repository')).toHaveValue('team/checked-api');
+    expect(screen.getByLabelText('Ref')).toHaveValue('a'.repeat(40));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await nameApp(user, 'checked-api');
+    await user.click(screen.getByRole('button', { name: 'Review' }));
+    await user.click(await screen.findByRole('button', { name: 'Deploy app' }));
+    await waitFor(() =>
+      expect(mocks.deployFromRef).toHaveBeenCalledWith({
+        slug: 'demo-app',
+        repo: 'team/checked-api',
+        ref: 'a'.repeat(40),
+        format: 'tarball',
+      })
+    );
+    expect(mocks.bindRepo).toHaveBeenCalledWith(
+      expect.objectContaining({ repo: 'team/checked-api', branch: '' })
+    );
+  });
+
+  it('stops on a repository the installation cannot see, and says why', async () => {
+    const user = userEvent.setup();
+    render(<NewAppWizard onboarding search={{ source: 'git', repo: 'team/hidden' }} />);
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    const repository = screen.getByLabelText('Repository');
+    expect(repository).toHaveFocus();
+    expect(repository).toHaveAccessibleDescription(/installation cannot see this repository/);
+    expect(screen.queryByLabelText('App name')).not.toBeInTheDocument();
   });
 });

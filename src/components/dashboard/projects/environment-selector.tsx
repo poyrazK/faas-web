@@ -12,6 +12,7 @@ import { EnvironmentDiffView } from './environment-diff';
 import { StageQueueOverview } from './stage-queue-bindings';
 import { EnvironmentReadiness, type ReadinessSearch } from './environment-readiness';
 import type { components } from '@/lib/api/schema';
+import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
 const selectClass =
   'h-9 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring';
 type Props = {
@@ -124,7 +125,26 @@ function SelectedEnvironment({
     </>
   );
 }
+/**
+ * Environment routes resolve the project under the signed-in account
+ * (faas ProjectBySlug(acct.ID, slug)), so in a company workspace they would
+ * read a same-named personal project. Company environments are preview (A20,
+ * Wave 3); until then the panel says so and reads nothing.
+ */
 export function ProjectEnvironments(props: Props) {
+  const { org, label } = useWorkspaceTarget();
+  if (org)
+    return (
+      <Panel title="Environments">
+        <p role="status" className="text-sm text-muted-foreground">
+          Environments for {label}'s projects are not available in the console yet.
+        </p>
+      </Panel>
+    );
+  return <PersonalProjectEnvironments {...props} />;
+}
+
+function PersonalProjectEnvironments(props: Props) {
   const { accountId, projectId, slug, environment, compare, onChange } = props;
   const query = useProjectEnvironments(accountId, slug);
   if (query.isError) return <ErrorState error={query.error} onRetry={() => void query.refetch()} />;

@@ -19,6 +19,7 @@ vi.mock('@tanstack/react-router', () => ({
 }));
 vi.mock('@/lib/store', () => ({ useData: () => ({ workflows: [] }) }));
 vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { id: 'account1' } }) }));
+vi.mock('./nav-access', () => ({ useCapabilityOff: () => () => false }));
 vi.mock('@/lib/api/palette', () => ({
   usePaletteResources: (_account: string, _open: boolean, query: string) => ({
     enabled: Boolean(query.trim()),
