@@ -1,3 +1,5 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { bindWorkspaceAccount } from '@/lib/workspace';
 import { render, screen } from '@testing-library/react';
 import {
   createMemoryHistory,
@@ -65,7 +67,14 @@ async function mount() {
     history: createMemoryHistory({ initialEntries: ['/dashboard/'] }),
   });
   await router.load();
-  render(<RouterProvider router={router} />);
+  // The shell binds the workspace and provides a query client; the overview's
+  // allowance waits for the first and reads through the second.
+  bindWorkspaceAccount('account-attention');
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>
+  );
 }
 
 beforeEach(() => {
