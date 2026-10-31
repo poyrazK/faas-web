@@ -2,6 +2,7 @@ import { createFileRoute, redirect } from '@tanstack/react-router';
 import { useSweepNavigate } from '@/components/sweep-link';
 import { NewAppWizard } from '@/components/dashboard/new-app-wizard';
 import { Button } from '@/components/ui/button';
+import { ConfirmProvider } from '@/components/ui/confirm';
 import { PixelBeams } from '@/components/landing/shaders/pixel-beams';
 import { beginOnboardingGitHubConnect, markOnboarded, readSession, useAuth } from '@/lib/auth';
 import { pageHead } from '@/lib/seo';
@@ -54,13 +55,16 @@ function OnboardingPage() {
       </header>
 
       <main className="relative px-5 py-10 sm:py-14">
-        <NewAppWizard
-          onboarding
-          search={{ ...search, source: 'git' }}
-          onSearchChange={(next, options) => void navigate({ search: next, ...options })}
-          onDeploymentAccepted={finishDeployment}
-          onConnectGitHub={beginOnboardingGitHubConnect}
-        />
+        <ConfirmProvider>
+          <NewAppWizard
+            onboarding
+            search={{ ...search, source: 'git' }}
+            onSearchChange={(next, options) => void navigate({ search: next, ...options })}
+            onDeploymentAccepted={finishDeployment}
+            onAppCreated={markOnboarded}
+            onConnectGitHub={beginOnboardingGitHubConnect}
+          />
+        </ConfirmProvider>
       </main>
     </div>
   );

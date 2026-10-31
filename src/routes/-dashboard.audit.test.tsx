@@ -10,8 +10,8 @@ import {
 } from '@tanstack/react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { api } from '@/lib/api/client';
 import { Route as Audit } from './dashboard.audit';
+import { spyApi } from '@/test/api';
 
 const firstEntry = {
   id: 'entry-1',
@@ -58,7 +58,7 @@ async function mount() {
 
 beforeEach(() => {
   failOlder = false;
-  vi.spyOn(api, 'GET').mockImplementation(async (path, options) => {
+  spyApi('GET').mockImplementation(async (path, options) => {
     const query = (options as { params?: { query?: { before?: string; limit?: number } } })?.params
       ?.query;
     if (path !== '/v1/audit-log') throw new Error(`Unexpected GET ${path}`);

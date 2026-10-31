@@ -49,7 +49,7 @@ describe('TearDownPreviewButton', () => {
       )
     );
     await waitFor(() => expect(destroy).toHaveBeenCalledWith('pr-42-api-gateway'));
-    expect(navigate).toHaveBeenCalledWith({ to: '/dashboard/workflows' });
+    expect(navigate).toHaveBeenCalledWith({ to: '/dashboard/apps' });
   });
 
   it('explains preview_not_found instead of reporting a failure', async () => {

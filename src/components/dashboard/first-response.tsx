@@ -1,7 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { CopyIconButton } from '@/components/ui/copy-button';
 
 const BODY_LIMIT = 16_384;
 
@@ -58,7 +57,6 @@ function RequestCheck({ endpoint }: { endpoint: string }) {
   const active = useRef<AbortController | null>(null);
   const url = requestUrl(endpoint, path);
   const successful = result !== null && result.status >= 200 && result.status < 300;
-  const command = url ? `curl --include --max-time 20 '${url.replace(/'/g, "'\\''")}'` : '';
 
   useEffect(
     () => () => {
@@ -105,8 +103,8 @@ function RequestCheck({ endpoint }: { endpoint: string }) {
       if (active.current === controller)
         setError(
           controller.signal.aborted
-            ? 'The request timed out after 20 seconds. Your app may still be waking. Try again, open the URL, or run the copied request.'
-            : 'The browser could not read a response. The app may restrict cross-origin access (CORS), redirect, or be unreachable. Open the URL or run the copied request to check it directly.'
+            ? 'The request timed out after 20 seconds. Your app may still be waking. Try again, open the URL, or run the request under Call it.'
+            : 'The browser could not read a response. The app may restrict cross-origin access (CORS), redirect, or be unreachable. Open the URL, or run the request under Call it.'
         );
     } finally {
       window.clearTimeout(timeout);
@@ -118,83 +116,90 @@ function RequestCheck({ endpoint }: { endpoint: string }) {
   }
 
   return (
-    <section aria-label="Verify your API" className="mt-6 border-t border-border pt-5">
-      <h3 className="text-base font-medium">
+    <section aria-labelledby={`${pathId}-title`} className="flex flex-col gap-3">
+      <h2 id={`${pathId}-title`} className="text-sm font-medium text-muted-foreground">
         {successful ? 'First response received' : 'Verify your API'}
-      </h3>
-      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-        Send a GET request to your public endpoint. Choose a read-only route, such as a health
-        check. This can wake your app and use compute allowance; no account cookies are sent.
-      </p>
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          void send();
-        }}
-        className="mt-4 flex flex-wrap items-end gap-3"
-      >
-        <div className="min-w-0 flex-1 basis-48">
-          <label htmlFor={pathId} className="text-sm font-medium">
-            Request path
-          </label>
-          <Input
-            id={pathId}
-            value={path}
-            onChange={(event) => changePath(event.target.value)}
-            maxLength={2048}
-            spellCheck={false}
-            className="mt-1.5 font-mono"
-            aria-invalid={!url || undefined}
-          />
-        </div>
-        <Button type="submit" variant="cta" busy={pending} disabled={!url}>
-          Send GET request
-        </Button>
-      </form>
-      {!url && (
-        <p role="alert" className="mt-2 text-sm text-destructive">
-          Use an HTTPS app endpoint and a path starting with a single /.
-        </p>
-      )}
-      <div aria-live="polite" aria-atomic="true">
-        {pending && (
-          <p className="mt-4 text-sm text-muted-foreground">Waiting for your app to respond…</p>
-        )}
-        {error && (
-          <p role="alert" className="mt-4 text-sm text-muted-foreground">
-            {error}
+      </h2>
+      <div className="flex flex-col divide-y divide-border rounded-xl border border-border bg-card">
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void send();
+          }}
+          className="flex flex-col gap-3 px-4 py-4"
+        >
+          <p className="text-[13px] leading-5 text-muted-foreground">
+            Send a GET request to your public endpoint, to a read-only route such as a health check.
+            It can wake your app and use compute allowance; no account cookies are sent.
           </p>
-        )}
-        {result && (
-          <div className="mt-4">
-            <p className={successful ? 'text-sm text-status-good' : 'text-sm text-status-warning'}>
-              HTTP {result.status}
-              {successful
-                ? ' · Public endpoint responded successfully.'
-                : ' · The endpoint responded, but this route did not return a successful status. Check the path and app logs.'}
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex min-w-0 flex-1 basis-48 flex-col gap-1.5">
+              <label htmlFor={pathId} className="text-sm font-medium">
+                Request path
+              </label>
+              <Input
+                id={pathId}
+                value={path}
+                onChange={(event) => changePath(event.target.value)}
+                maxLength={2048}
+                spellCheck={false}
+                className="font-mono"
+                aria-invalid={!url || undefined}
+              />
+            </div>
+            <Button type="submit" variant="cta" busy={pending} disabled={!url}>
+              Send GET request
+            </Button>
+          </div>
+          {!url && (
+            <p role="alert" className="text-[13px] text-destructive">
+              Use an HTTPS app endpoint and a path starting with a single /.
             </p>
-            <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-lg border border-border bg-background p-3 font-mono text-xs">
-              {result.body || '(Empty response body)'}
-            </pre>
+          )}
+        </form>
+        <div aria-live="polite" aria-atomic="true" className="empty:hidden">
+          {pending && (
+            <p className="px-4 py-3 text-[13px] text-muted-foreground">
+              Waiting for your app to respond…
+            </p>
+          )}
+          {error && (
+            <p role="alert" className="px-4 py-3 text-[13px] text-muted-foreground">
+              {error}
+            </p>
+          )}
+          {result && (
+            <div className="flex flex-col gap-2 px-4 py-3">
+              <p
+                className={successful ? 'text-sm text-status-good' : 'text-sm text-status-warning'}
+              >
+                HTTP {result.status}
+                {successful
+                  ? ' · Public endpoint responded successfully.'
+                  : ' · The endpoint responded, but this route did not return a successful status. Check the path and app logs.'}
+              </p>
+              <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted p-3 font-mono text-xs">
+                {result.body || '(Empty response body)'}
+              </pre>
+            </div>
+          )}
+        </div>
+        {url && (
+          <div className="flex items-center justify-between gap-3 px-4 py-3">
+            <span className="min-w-0 truncate font-mono text-[13px] text-muted-foreground">
+              {url}
+            </span>
+            <a
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0 text-[13px] text-brand underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-brand"
+            >
+              Open request URL
+            </a>
           </div>
         )}
       </div>
-      {url && (
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <a
-            href={url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sm text-brand underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-brand"
-          >
-            Open request URL
-          </a>
-          <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-border bg-background p-2">
-            <code className="min-w-0 flex-1 overflow-x-auto text-xs">{command}</code>
-            <CopyIconButton text={command} label="Copy test request" />
-          </div>
-        </div>
-      )}
     </section>
   );
 }

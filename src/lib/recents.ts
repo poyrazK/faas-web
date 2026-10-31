@@ -50,7 +50,7 @@ export function readRecents(): RecentVisit[] {
   }
 }
 
-/** `/dashboard/workflows/api-gateway` → section "Apps", detail "api-gateway". */
+/** `/dashboard/apps/api-gateway` → section "Apps", detail "api-gateway". */
 export function recentLabel(path: string): { section: string; detail?: string } {
   const segments = path
     .replace(/^\/dashboard\//, '')

@@ -19,11 +19,11 @@ describe('first-run entry points', () => {
     render(<RouterProvider router={router} />);
     expect(screen.getByRole('link', { name: 'Deploy from GitHub' })).toHaveAttribute(
       'href',
-      '/dashboard/workflows/new?source=git'
+      '/dashboard/apps/new?source=git'
     );
     expect(screen.getByRole('link', { name: 'Explore templates' })).toHaveAttribute(
       'href',
-      '/dashboard/workflows/new?source=template'
+      '/dashboard/apps/new?source=template'
     );
     const cli = screen.getByText('Prefer the CLI?').closest('details');
     expect(cli).not.toHaveAttribute('open');

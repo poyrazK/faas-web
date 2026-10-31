@@ -1,42 +1,94 @@
 import { defaultStringifySearch } from '@tanstack/react-router';
+import { resourceId } from '@/lib/resource-id';
 
-export type AppSource = 'git' | 'empty' | 'template' | 'import';
+export interface DeploymentRecoveryContext {
+  app: string;
+  repo: string;
+  ref: string;
+  deployment?: string;
+  phase?: 'submitting' | 'rejected' | 'unknown';
+}
+
+export function validateRecovery(value: unknown): DeploymentRecoveryContext | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const raw = value as Record<string, unknown>;
+  if (
+    typeof raw.app !== 'string' ||
+    !/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(raw.app) ||
+    typeof raw.repo !== 'string' ||
+    raw.repo.length > 512 ||
+    !isValidGitHubRepo(raw.repo) ||
+    typeof raw.ref !== 'string' ||
+    !isValidGitRef(raw.ref) ||
+    (raw.deployment !== undefined && !resourceId(raw.deployment))
+  )
+    return undefined;
+  return {
+    app: raw.app,
+    repo: raw.repo.trim(),
+    ref: raw.ref.trim(),
+    deployment: resourceId(raw.deployment),
+    phase:
+      raw.phase === 'submitting' || raw.phase === 'rejected' || raw.phase === 'unknown'
+        ? raw.phase
+        : undefined,
+  };
+}
+
+export type AppSource =
+  'git' | 'function' | 'container' | 'worker' | 'empty' | 'template' | 'import';
 export interface NewAppSearch {
   source?: AppSource;
   template?: string;
-  step?: 'configure' | 'review';
+  step?: 'source' | 'setup' | 'configure' | 'review';
   slug?: string;
   branch?: string;
+  /** A repository and exact ref carried in from a compatibility check. */
   repo?: string;
   ref?: string;
+  recovery?: DeploymentRecoveryContext;
 }
 
 export function validateNewAppSearch(search: Record<string, unknown>): NewAppSearch {
   return {
     source:
       search.source === 'git' ||
+      search.source === 'function' ||
+      search.source === 'container' ||
+      search.source === 'worker' ||
       search.source === 'empty' ||
       search.source === 'template' ||
       search.source === 'import'
         ? search.source
         : undefined,
     template: typeof search.template === 'string' ? search.template : undefined,
-    step: search.step === 'configure' || search.step === 'review' ? search.step : undefined,
+    step:
+      search.step === 'source' ||
+      search.step === 'setup' ||
+      search.step === 'configure' ||
+      search.step === 'review'
+        ? search.step
+        : undefined,
     slug: typeof search.slug === 'string' ? search.slug : undefined,
     branch: typeof search.branch === 'string' ? search.branch : undefined,
     repo: typeof search.repo === 'string' && search.repo.length <= 512 ? search.repo : undefined,
     ref: typeof search.ref === 'string' && search.ref.length <= 200 ? search.ref : undefined,
+    recovery: validateRecovery(search.recovery),
   };
 }
 
-/** Carry only wizard fields across full-page authentication and GitHub redirects. */
+/**
+ * New app's URL for a search, keeping only the wizard's own fields: what a
+ * full-page redirect (sign-in, OAuth, GitHub installation) must carry back.
+ */
 export function newAppPath(search: NewAppSearch, onboarding = false): string {
   const params: Record<string, string> = {};
   const validated = validateNewAppSearch(search as Record<string, unknown>);
   for (const key of ['source', 'repo', 'ref', 'template', 'step', 'slug', 'branch'] as const) {
-    if (validated[key]) params[key] = validated[key];
+    const value = validated[key];
+    if (value) params[key] = value;
   }
-  const path = onboarding ? '/onboarding' : '/dashboard/workflows/new';
+  const path = onboarding ? '/onboarding' : '/dashboard/apps/new';
   return `${path}${defaultStringifySearch(params)}`;
 }
 const GITHUB_REPO = /^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/;

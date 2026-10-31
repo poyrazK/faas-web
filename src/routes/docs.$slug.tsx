@@ -1,11 +1,12 @@
 import { useEffect } from 'react';
-import { createFileRoute, Link, notFound } from '@tanstack/react-router';
+import { createFileRoute, Link, notFound, redirect } from '@tanstack/react-router';
 import { ArrowLeft, ArrowRight, ArrowUpRight } from 'iconoir-react';
 import { CopyButton } from '@/components/docs/copy-button';
 import { Markdown } from '@/components/docs/markdown';
 import { OnThisPage } from '@/components/docs/toc';
 import { DOC_SECTIONS, docNeighbours, findDoc } from '@/lib/docs-manifest';
 import { docSource, extractHeadings, readingMinutes, stripTitle } from '@/lib/docs-content';
+import { DOC_ALIASES } from '@/lib/docs-catalog';
 import { pageHead } from '@/lib/seo';
 
 export const Route = createFileRoute('/docs/$slug')({
@@ -13,6 +14,10 @@ export const Route = createFileRoute('/docs/$slug')({
   // real 404 — the router's not-found boundary — instead of a page that renders
   // empty with a 200.
   loader: ({ params }) => {
+    // A single-segment catalog alias (`/docs/orgs`) matches this route before
+    // the catch-all; send it to the page it means.
+    const alias = DOC_ALIASES[params.slug];
+    if (alias) throw redirect({ to: '/docs/$slug', params: { slug: alias }, replace: true });
     const entry = findDoc(params.slug);
     const source = docSource(params.slug);
     if (!entry || !source) throw notFound();

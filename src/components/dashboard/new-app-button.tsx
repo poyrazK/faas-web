@@ -72,7 +72,7 @@ export function NewAppButton() {
   return (
     <Link
       ref={ref}
-      to="/dashboard/workflows/new"
+      to="/dashboard/apps/new"
       aria-label="New app"
       className="depth-btn depth-foil"
       onPointerMove={onPointerMove}

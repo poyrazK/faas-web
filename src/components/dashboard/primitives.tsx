@@ -12,6 +12,7 @@ import {
 import type { LogLevel, RunState } from '@/lib/mock-data';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import { CountUp } from './motion';
+import { SegmentedControl } from './tabs';
 import { BreatheRing } from '@/components/amicro/breathe-ring';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -330,29 +331,13 @@ export function RangeSelector<T extends string>({
   }
 
   return (
-    <div
-      role="group"
-      aria-label="Time range"
-      className="flex rounded-md border border-border p-0.5"
-    >
-      {options.map((opt) => (
-        <button
-          key={opt.key}
-          type="button"
-          disabled={disabled}
-          aria-pressed={value === opt.key}
-          onClick={() => onChange(opt.key)}
-          className={cn(
-            'pressable rounded px-2.5 py-1 text-xs disabled:opacity-50',
-            value === opt.key
-              ? 'bg-muted text-foreground'
-              : 'text-muted-foreground hover:text-foreground'
-          )}
-        >
-          {opt.label}
-        </button>
-      ))}
-    </div>
+    <SegmentedControl
+      label="Time range"
+      value={value}
+      options={options}
+      onChange={onChange}
+      disabled={disabled}
+    />
   );
 }
 

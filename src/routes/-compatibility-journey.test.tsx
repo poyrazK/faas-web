@@ -23,7 +23,10 @@ afterEach(() => vi.restoreAllMocks());
 
 async function mount(path: string, level = 'green') {
   const sha = 'b'.repeat(40);
-  vi.spyOn(api, 'GET').mockImplementation(
+  vi.spyOn(
+    api as unknown as { GET: (...args: unknown[]) => Promise<unknown> },
+    'GET'
+  ).mockImplementation(
     async () =>
       ({
         data: {
@@ -85,7 +88,7 @@ describe('compatibility to deployment', () => {
     );
     expect(router.state.location.pathname).toBe('/signup');
     expect(router.state.location.search.next).toBe(
-      `/dashboard/workflows/new?source=git&repo=team%2Fapi&ref=${'b'.repeat(40)}`
+      `/dashboard/apps/new?source=git&repo=team%2Fapi&ref=${'b'.repeat(40)}`
     );
   });
 
@@ -124,7 +127,7 @@ async function guardRedirect(
 }
 
 describe('authentication journey guards', () => {
-  const next = '/dashboard/workflows/new?source=git&repo=team%2Fapi&ref=release%2Fv2';
+  const next = '/dashboard/apps/new?source=git&repo=team%2Fapi&ref=release%2Fv2';
   it('allows the OAuth callback to restore its saved destination even when a session hint already exists', async () => {
     window.localStorage.setItem('gregale.session', JSON.stringify({ email: 'user@example.com' }));
     markOAuthPending(next);

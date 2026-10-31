@@ -66,12 +66,12 @@ describe('palette resource results', () => {
   it.each([
     [
       'Deployment deployment-id',
-      '/dashboard/deployments',
+      '/dashboard/releases',
       { deployment: 'deployment-id', releaseSection: 'overview' },
     ],
     ['api.example.com', '/dashboard/domains', { doctor: 'api.example.com' }],
     ['api-bot', '/dashboard/settings', { section: 'api-keys', scope: 'personal', key: 'key-id' }],
-    ['Invocation invocation-id', '/dashboard/traces', { invocation: 'invocation-id' }],
+    ['Invocation invocation-id', '/dashboard/invocations', { invocation: 'invocation-id' }],
   ])('opens the detail destination for %s', async (label, to, params) => {
     await search('api');
     await userEvent.click(
@@ -85,7 +85,7 @@ describe('palette resource results', () => {
     await search('invocation-id');
     await userEvent.keyboard('{End}{Enter}');
     expect(mocks.navigate).toHaveBeenCalledWith({
-      to: '/dashboard/traces',
+      to: '/dashboard/invocations',
       search: { invocation: 'invocation-id' },
     });
   });

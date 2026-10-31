@@ -36,15 +36,15 @@ try {
 /** Account-level pages, plus the per-app routes that still resolve standalone. */
 const PAGES = [
   '',
-  'workflows',
-  'deployments',
+  'apps',
+  'releases',
   'builds',
   'crons',
-  'workers',
+  'instances',
   'domains',
   'edge-rules',
   'storage',
-  'traces',
+  'invocations',
   'audit',
   'usage',
   'invoices',
@@ -57,9 +57,9 @@ const PAGES = [
   'env',
   'logs',
   'metrics',
-  'apis',
+  'routes',
   'queues',
-  'databases',
+  'upstreams',
   'alerts',
   'webhooks',
 ];
@@ -69,8 +69,7 @@ const APP_TABS = [
   'Deployments',
   'Logs',
   'Routes',
-  'Secrets',
-  'Env',
+  'Environment',
   'Queues',
   'Upstreams',
   'Alerts',
@@ -211,7 +210,7 @@ const slug = await page.evaluate(async (base) => {
 
 if (slug && !OVERVIEW_ONLY) {
   for (const tab of APP_TABS)
-    await visit(`${BASE}/dashboard/workflows/${slug}?tab=${tab}`, `app.${tab}`);
+    await visit(`${BASE}/dashboard/apps/${slug}?tab=${tab}`, `app.${tab}`);
 } else if (!OVERVIEW_ONLY) {
   console.log(
     'tour: no apps in this workspace — skipped the app tabs (expected under MOCK_EMPTY=1)'

@@ -46,8 +46,6 @@ const dep = (id: string, status = 'live') => ({
   kind: 'github',
   status,
   created_at: '2026-09-06T10:00:00Z',
-  rollback_on_5xx: false,
-  first_5xx_count: 0,
 });
 
 beforeEach(() => {

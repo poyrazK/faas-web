@@ -11,7 +11,13 @@ const usage = vi.hoisted(() => ({
 vi.mock('@tanstack/react-router', () => ({ createFileRoute: () => (options: unknown) => options }));
 vi.mock('@/lib/api/queries', () => ({
   useUsageSummary: () => ({
-    data: { month: '2026-08', used_gb_hours: 1, included_gb_hours: 50, overage_gb_hours: 0 },
+    data: {
+      month: '2026-08',
+      used_gb_hours: 1,
+      included_gb_hours: 50,
+      overage_gb_hours: 0,
+      overage_cents: 0,
+    },
     isPending: false,
     error: null,
     refetch: vi.fn(),
@@ -20,6 +26,8 @@ vi.mock('@/lib/api/queries', () => ({
   usePerAppUsage: () => ({ data: usage.rows, isPending: false, error: null }),
   useSetOverageCap: () => ({ mutateAsync: setCap, isPending: false }),
   useOverageCap: () => ({ data: { overage_cap_cents: null }, isPending: false, error: null }),
+  useBillingForecast: () => ({ data: undefined, isPending: true, error: null }),
+  useSpendCapHistory: () => ({ data: { events: [] }, isPending: false, error: null }),
 }));
 vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { plan: 'hobby', app_count: 1 } }) }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }));
@@ -81,7 +89,7 @@ describe('spend-cap validation', () => {
   it('converts decimal euro amounts to exact whole cents', async () => {
     setCap.mockReset().mockResolvedValue({ overage_cap_cents: 110 });
     render(<UsagePage />);
-    await userEvent.click(screen.getByRole('button', { name: 'Manage spend cap' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Set a cap' }));
     const cap = screen.getByRole('spinbutton', { name: 'Cap (EUR)' });
 
     await userEvent.type(cap, '0.29{Enter}');
@@ -95,7 +103,7 @@ describe('spend-cap validation', () => {
   it('treats zero as a zero-overage ceiling and clears only with null', async () => {
     setCap.mockReset().mockResolvedValue({ overage_cap_cents: 0 });
     render(<UsagePage />);
-    await userEvent.click(screen.getByRole('button', { name: 'Manage spend cap' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Set a cap' }));
     const cap = screen.getByRole('spinbutton', { name: 'Cap (EUR)' });
 
     await userEvent.type(cap, '0{Enter}');
@@ -112,7 +120,7 @@ describe('spend-cap validation', () => {
 
   it('rejects malformed amounts, then preserves the value through API failure and retry', async () => {
     render(<UsagePage />);
-    await userEvent.click(screen.getByRole('button', { name: 'Manage spend cap' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Set a cap' }));
     const cap = screen.getByRole('spinbutton', { name: 'Cap (EUR)' });
 
     await userEvent.type(cap, '-1');

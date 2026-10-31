@@ -10,8 +10,8 @@ import {
 } from '@tanstack/react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { api } from '@/lib/api/client';
 import { Route as Invoices } from './dashboard.invoices';
+import { spyApi } from '@/test/api';
 
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 
@@ -59,7 +59,7 @@ async function mount() {
 
 beforeEach(() => {
   reads = [];
-  vi.spyOn(api, 'GET').mockImplementation(async (path, options) => {
+  spyApi('GET').mockImplementation(async (path, options) => {
     const query = (options as { params?: { query?: { before?: string; limit?: number } } })?.params
       ?.query;
     reads.push(`${path}:${JSON.stringify(query ?? {})}`);

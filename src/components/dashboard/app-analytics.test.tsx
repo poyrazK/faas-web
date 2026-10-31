@@ -14,7 +14,7 @@ vi.mock('@/lib/api/queries', () => ({
     useAppAnalyticsTimeseries(slug, since, options) as unknown,
 }));
 vi.mock('@/components/dither-kit', () => ({
-  Area: () => null,
+  Area: ({ dataKey }: { dataKey: string }) => <span data-testid="series">{dataKey}</span>,
   AreaChart: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="chart">{children}</div>
   ),
@@ -113,6 +113,47 @@ describe('AppAnalyticsPanel', () => {
   it('draws the hourly series, which the API zero-fills', () => {
     render(<AppAnalyticsPanel slug="api" />);
     expect(screen.getByTestId('chart')).toBeInTheDocument();
+  });
+
+  it('switches the chart between traffic, latency and cold starts', async () => {
+    render(<AppAnalyticsPanel slug="api" />);
+    const series = () => screen.getAllByTestId('series').map((el) => el.textContent);
+    expect(series()).toEqual(['requests', 'error_requests']);
+    await userEvent.click(screen.getByRole('button', { name: 'Latency' }));
+    expect(series()).toEqual(['p50_ms', 'p95_ms', 'p99_ms']);
+    expect(screen.getByText('Hours without requests are left out.')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Cold starts' }));
+    expect(series()).toEqual(['cold_boots']);
+  });
+
+  it('never plots a zero-filled idle hour as a 0 ms latency', async () => {
+    useAppAnalyticsTimeseries.mockReturnValue(
+      ready({
+        slug: 'api',
+        bucket: '1h',
+        points: ['2026-09-08T08:00:00Z', '2026-09-08T09:00:00Z'].map((start) => ({
+          start,
+          requests: 0,
+          error_requests: 0,
+          error_rate_pct: 0,
+          cold_boots: 0,
+          p50_ms: 0,
+          p95_ms: 0,
+          p99_ms: 0,
+        })),
+      })
+    );
+    render(<AppAnalyticsPanel slug="api" />);
+    await userEvent.click(screen.getByRole('button', { name: 'Latency' }));
+    expect(screen.queryByTestId('chart')).not.toBeInTheDocument();
+    expect(
+      screen.getByText('No requests in this window, so there is no latency to plot.')
+    ).toBeInTheDocument();
+  });
+
+  it('offers grouping by consumer', () => {
+    render(<AppAnalyticsPanel slug="api" />);
+    expect(screen.getByRole('option', { name: 'Consumer' })).toBeInTheDocument();
   });
 
   it('asks for the dimension the reader picked', async () => {

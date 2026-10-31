@@ -2,7 +2,6 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { api } from './client';
 import { ApiError } from './errors';
 import {
   activityOutcome,
@@ -12,6 +11,7 @@ import {
   useResourceActivity,
   type ResourceActivity,
 } from './resource-activity';
+import { spyApi } from '@/test/api';
 
 const app = 'a'.repeat(32),
   release = 'b'.repeat(32);
@@ -38,7 +38,7 @@ const setup = () => {
 
 describe('resource activity contract', () => {
   it('resolves persisted app attribution across personal and shared orgs', async () => {
-    const get = vi.spyOn(api, 'GET').mockImplementation(async (path, options) => {
+    const get = spyApi('GET').mockImplementation(async (path, options) => {
       if (path === '/v1/orgs') return reply({ orgs: [{ slug: 'personal' }, { slug: 'team' }] });
       const slug = (options as { params: { path: { slug: string } } }).params.path.slug;
       return reply({
@@ -52,7 +52,7 @@ describe('resource activity contract', () => {
     expect(get).toHaveBeenCalledTimes(3);
   });
   it('never substitutes the personal org when inventory is unavailable', async () => {
-    vi.spyOn(api, 'GET').mockImplementation(async (path) =>
+    spyApi('GET').mockImplementation(async (path) =>
       path === '/v1/orgs'
         ? reply({ orgs: [{ slug: 'personal' }] })
         : ({
@@ -63,8 +63,7 @@ describe('resource activity contract', () => {
     await expect(resolveActivityWorkspace(app)).rejects.toBeInstanceOf(ApiError);
   });
   it('reports absent attribution and rejects conflicting inventories', async () => {
-    const get = vi
-      .spyOn(api, 'GET')
+    const get = spyApi('GET')
       .mockResolvedValueOnce(reply({ orgs: [{ slug: 'personal' }] }))
       .mockResolvedValueOnce(reply({ apps: [] }));
     expect(await resolveActivityWorkspace(app)).toBeNull();
@@ -102,8 +101,7 @@ describe('resource activity contract', () => {
     expect(activityOutcome(kind)).toBe(expected)
   );
   it('paginates with the opaque cursor and server-side app/kind/actor filters', async () => {
-    const get = vi
-      .spyOn(api, 'GET')
+    const get = spyApi('GET')
       .mockResolvedValueOnce(reply({ items: [row('2')], next_before: 'opaque/?+cursor' }))
       .mockResolvedValueOnce(reply({ items: [row('1')] }));
     const { wrapper } = setup();
@@ -138,7 +136,7 @@ describe('resource activity contract', () => {
     await waitFor(() => expect(hook.result.current.hasNextPage).toBe(false));
   });
   it('preserves loaded evidence when an older-page permission read fails', async () => {
-    vi.spyOn(api, 'GET')
+    spyApi('GET')
       .mockResolvedValueOnce(reply({ items: [row('2')], next_before: 'older' }))
       .mockRejectedValueOnce(
         new ApiError({ status: 403, code: 'forbidden', title: 'Membership revoked' })
@@ -155,7 +153,7 @@ describe('resource activity contract', () => {
     expect(hook.result.current.data?.pages[0].items[0].id).toBe('2');
   });
   it('isolates accounts and filter histories and stops repeated cursors', async () => {
-    vi.spyOn(api, 'GET')
+    spyApi('GET')
       .mockResolvedValueOnce(reply({ items: [row('2')], next_before: 'repeat' }))
       .mockResolvedValueOnce(reply({ items: [row('1')], next_before: 'repeat' }))
       .mockResolvedValue(reply({ items: [row('9')] }));

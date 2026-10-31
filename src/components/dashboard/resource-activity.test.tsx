@@ -13,12 +13,12 @@ vi.mock('@tanstack/react-router', () => ({
     children,
   }: {
     to: string;
-    params?: { workflowId: string };
+    params?: { appSlug: string };
     search?: Record<string, string>;
     children: ReactNode;
   }) => (
     <a
-      href={`${to.replace('$workflowId', params?.workflowId ?? '')}${search ? '?' + new URLSearchParams(search) : ''}`}
+      href={`${to.replace('$appSlug', params?.appSlug ?? '')}${search ? '?' + new URLSearchParams(search) : ''}`}
     >
       {children}
     </a>
@@ -113,16 +113,13 @@ describe('resource activity timeline', () => {
     expect(screen.getByText('Outcome: Failed')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'View affected release' })).toHaveAttribute(
       'href',
-      `/dashboard/deployments?deployment=${release}&releaseSection=audit`
+      `/dashboard/releases?deployment=${release}&releaseSection=audit`
     );
     expect(
       screen
         .getAllByRole('link', { name: 'View affected configuration' })
         .map((link) => link.getAttribute('href'))
-    ).toEqual([
-      '/dashboard/workflows/api?tab=Configuration',
-      '/dashboard/workflows/api?tab=Env+vars',
-    ]);
+    ).toEqual(['/dashboard/apps/api?tab=Configuration', '/dashboard/apps/api?tab=Environment']);
     expect(screen.getByRole('link', { name: 'View affected domain' })).toHaveAttribute(
       'href',
       '/dashboard/domains?q=api.example.com'
@@ -151,7 +148,7 @@ describe('resource activity timeline', () => {
     expect(screen.queryByText('deploy.failed summary')).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'View all app activity' })).toHaveAttribute(
       'href',
-      '/dashboard/workflows/api?tab=Activity'
+      '/dashboard/apps/api?tab=Activity'
     );
   });
   it('changes server filters and clears them on account changes', async () => {

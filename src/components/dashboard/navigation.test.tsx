@@ -103,9 +103,11 @@ function attentionClient() {
     {
       id: 'app-api',
       slug: 'api',
-      status: 'failed',
+      visibility: 'public',
+      status: 'active',
       type: 'app',
       ram_mb: 256,
+      vcpu: 1,
       cpu_millicores: 250,
       configured_resources: { memory_mb: 256, cpu_millicores: 250 },
       max_concurrency: 1,
@@ -121,20 +123,37 @@ function attentionClient() {
         cpu_weight: 100,
         max_instances: 1,
         concurrency_per_instance: 80,
+        concurrency_queue_depth: 10,
+        concurrency_queue_wait_ms: 5000,
         app_request_rate_rps: 10,
         app_request_burst: 20,
         account_request_rate_rpm: 100,
         request_budget_ms: 30000,
         request_budget_max_ms: 30000,
         response_write_timeout_s: 30,
+        request_body_max_bytes: 10_485_760,
       },
+      build_cache_hit_rate_pct: 0,
       url: 'https://api.example.test',
       manifest: { entrypoint: ['node', 'server.js'], head_wakes: false, crawler_policy: 'wake' },
       autoscale_target_rps: 0,
       autoscale_target_cpu_pct: 0,
     },
   ]);
-  client.setQueryData([...keys.deployments, 50], { items: [] });
+  // App status is a lifecycle state with no failure value, so the live check
+  // that needs attention here is the app's recent failed deployment.
+  client.setQueryData<components['schemas']['DeploymentListResponse']>([...keys.deployments, 50], {
+    items: [
+      {
+        id: 'dep-api',
+        app_id: 'app-api',
+        image_digest: 'sha256:0123',
+        kind: 'github',
+        status: 'failed',
+        created_at: new Date(Date.now() - 60 * 60_000).toISOString(),
+      },
+    ],
+  });
   client.setQueryData<components['schemas']['UsageSummaryResponse']>(keys.usageSummary, {
     month: '2026-10',
     used_gb_hours: 45,
@@ -156,9 +175,9 @@ describe('global Needs Attention dropdown', () => {
     expect(dialog).not.toHaveAttribute('aria-modal', 'true');
     expect(document.body.style.overflow).not.toBe('hidden');
     expect(screen.queryByRole('button', { name: 'Close dialog' })).not.toBeInTheDocument();
-    expect(within(dialog).getByRole('link', { name: 'View logs for api' })).toHaveAttribute(
+    expect(within(dialog).getByRole('link', { name: 'View deployment dep-api' })).toHaveAttribute(
       'href',
-      '/dashboard/workflows/api?tab=Logs'
+      '/dashboard/releases?deployment=dep-api'
     );
     expect(within(dialog).getByRole('link', { name: 'Review usage' })).toBeInTheDocument();
     await user.keyboard('{Escape}');
@@ -168,13 +187,13 @@ describe('global Needs Attention dropdown', () => {
     expect(trigger).toHaveFocus();
   });
 
-  it('dismisses the dropdown when an investigation link navigates to app logs', async () => {
+  it('dismisses the dropdown when an investigation link navigates to the failed deployment', async () => {
     const user = userEvent.setup();
     const router = await renderShell('/dashboard', undefined, attentionClient());
     await user.click(screen.getByRole('button', { name: 'Needs Attention' }));
-    await user.click(screen.getByRole('link', { name: 'View logs for api' }));
+    await user.click(screen.getByRole('link', { name: 'View deployment dep-api' }));
     await waitFor(() =>
-      expect(router.state.location.href).toBe('/dashboard/workflows/api?tab=Logs')
+      expect(router.state.location.href).toBe('/dashboard/releases?deployment=dep-api')
     );
     await waitFor(() =>
       expect(screen.queryByRole('dialog', { name: 'Needs Attention' })).not.toBeInTheDocument()
@@ -233,18 +252,21 @@ describe('global Needs Attention dropdown', () => {
  */
 const RAIL = [
   'Overview',
-  'All apps',
+  'All projects',
   'Templates',
   'Import',
   'Jobs',
   'Releases',
-  'Instances',
   'Domains',
+  'Customers',
   'Storage',
   'Postgres',
+  'Events',
+  'Integrations',
   'Analytics',
   'Debugger',
   'Invocations',
+  'Instances',
   'Audit Log',
   'Usage',
   'Invoices',
@@ -260,7 +282,7 @@ const RAIL = [
  * `aria-current="page"` last and unconditionally, so a second link to the same
  * URL would be a second current page that no prop can suppress.
  */
-const RAIL_PARENTS = ['Apps', 'Data', 'Observe', 'Billing'];
+const RAIL_PARENTS = ['Projects', 'Data', 'Observe', 'Billing'];
 
 /** The group headings that give the rail its scent. */
 const RAIL_GROUPS = ['Build', 'Operate', 'Account'];
@@ -276,10 +298,10 @@ function sectionsNav(hub: string) {
 }
 const GROUPS = [
   {
-    hub: 'Apps',
-    anchor: '/dashboard/workflows',
+    hub: 'Projects',
+    anchor: '/dashboard/projects',
     links: [
-      ['All apps', '/dashboard/workflows'],
+      ['All projects', '/dashboard/projects'],
       ['Templates', '/dashboard/templates'],
       ['Import', '/dashboard/import'],
     ],
@@ -297,7 +319,8 @@ const GROUPS = [
     anchor: '/dashboard/debug',
     links: [
       ['Debugger', '/dashboard/debug'],
-      ['Invocations', '/dashboard/traces'],
+      ['Invocations', '/dashboard/invocations'],
+      ['Instances', '/dashboard/instances'],
       ['Audit Log', '/dashboard/audit'],
     ],
   },
@@ -439,8 +462,8 @@ describe('dashboard navigation foundation', () => {
     const sections = screen.getByRole('navigation', { name: 'App sections' });
     for (const [label, path] of [
       ['Logs', 'logs'],
-      ['Routes', 'apis'],
-      ['Upstreams', 'databases'],
+      ['Routes', 'routes'],
+      ['Upstreams', 'upstreams'],
       ['Edge rules', 'edge-rules'],
       ['OpenAPI', 'openapi'],
     ]) {
@@ -456,7 +479,9 @@ describe('dashboard navigation foundation', () => {
     // Edge rules is an app section with no rail row of its own, so the rail
     // shows the branch rather than claiming a current page it does not have.
     expect(
-      within(screen.getByRole('navigation', { name: 'Main' })).getByRole('button', { name: 'Apps' })
+      within(screen.getByRole('navigation', { name: 'Main' })).getByRole('button', {
+        name: 'Projects',
+      })
     ).toBeInTheDocument();
     expect(
       within(screen.getByRole('navigation', { name: 'App sections' })).getByRole('link', {
@@ -537,24 +562,39 @@ describe('dashboard navigation foundation', () => {
   });
 
   it('identifies only the current page in a hub anchor breadcrumb', async () => {
-    await renderShell('/dashboard/deployments');
+    await renderShell('/dashboard/debug');
     const breadcrumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
-    expect(within(breadcrumb).getByText('Releases')).toBeInTheDocument();
-    expect(within(breadcrumb).getByText('Deployments')).toHaveAttribute('aria-current', 'page');
+    expect(within(breadcrumb).getByText('Observe')).toBeInTheDocument();
+    expect(within(breadcrumb).getByText('Debugger')).toHaveAttribute('aria-current', 'page');
     expect(breadcrumb.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
   });
 
-  it('preserves an Apps list bookmark when its primary destination is reselected', async () => {
-    const router = await renderShell('/dashboard/workflows?q=api&state=running#list');
-    const link = within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', {
-      name: 'All apps',
-    });
-    expect(link).toHaveAttribute('href', '/dashboard/workflows?q=api&state=running#list');
-    await userEvent.click(link);
-    expect(router.state.location.href).toBe('/dashboard/workflows?q=api&state=running#list');
+  it('names the Releases page once, as its own title does', async () => {
+    await renderShell('/dashboard/releases');
+    const breadcrumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    expect(within(breadcrumb).getByText('Releases')).toHaveAttribute('aria-current', 'page');
+    expect(within(breadcrumb).queryByText('Deployments')).not.toBeInTheDocument();
   });
 
-  it.each(['/dashboard/workflows', '/dashboard/workflows/'])(
+  it('preserves a Projects bookmark when its primary destination is reselected', async () => {
+    const router = await renderShell('/dashboard/projects?q=api#list');
+    const link = within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', {
+      name: 'All projects',
+    });
+    expect(link).toHaveAttribute('href', '/dashboard/projects?q=api#list');
+    await userEvent.click(link);
+    expect(router.state.location.href).toBe('/dashboard/projects?q=api#list');
+  });
+
+  it('files apps under Projects: no Apps row, and app pages light Projects', async () => {
+    await renderShell('/dashboard/apps/api');
+    const main = screen.getByRole('navigation', { name: 'Main' });
+    expect(within(main).queryByRole('link', { name: 'All apps' })).toBeNull();
+    expect(within(main).queryByRole('button', { name: 'Apps' })).toBeNull();
+    expect(within(main).getByRole('button', { name: 'Projects' })).toBeInTheDocument();
+  });
+
+  it.each(['/dashboard/apps', '/dashboard/apps/'])(
     'omits app sections from the All apps page at %s',
     async (path) => {
       await renderShell(path);
@@ -673,11 +713,11 @@ describe('dashboard navigation foundation', () => {
   });
 
   it.each([
-    ['/dashboard/builds', 'Releases', 'Builds', '/dashboard/deployments'],
+    ['/dashboard/builds', 'Releases', 'Builds', '/dashboard/releases'],
     ['/dashboard/team', 'Settings', 'Team', '/dashboard/settings'],
-    ['/dashboard/workflows/api', 'Apps', 'Public API', '/dashboard/workflows'],
-    ['/dashboard/workflows/missing', 'Apps', 'App', '/dashboard/workflows'],
-    ['/dashboard/workflows/new', 'Apps', 'New app', '/dashboard/workflows'],
+    ['/dashboard/apps/api', 'Projects', 'Public API', '/dashboard/projects'],
+    ['/dashboard/apps/missing', 'Projects', 'App', '/dashboard/projects'],
+    ['/dashboard/apps/new', 'Projects', 'New app', '/dashboard/projects'],
   ])(
     'shows a linked parent hub and meaningful current breadcrumb at %s',
     async (path, hub, current, anchor) => {
@@ -707,12 +747,12 @@ describe('dashboard navigation foundation', () => {
       .find((option) => option.textContent === 'Tail logs — Public API');
     expect(command).toBeDefined();
     await user.click(command!);
-    await waitFor(() => expect(router.state.location.pathname).toBe('/dashboard/workflows/api'));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/dashboard/apps/api'));
     expect(router.state.location.search).toEqual({ tab: 'Logs' });
   });
 
   it.each([
-    ['Releases', '/dashboard/deployments'],
+    ['Releases', '/dashboard/releases'],
     ['Analytics', '/dashboard/analytics'],
     ['Builds', '/dashboard/builds'],
     ['Data', '/dashboard/storage'],
