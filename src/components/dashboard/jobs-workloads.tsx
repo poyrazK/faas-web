@@ -7,10 +7,12 @@ import { JobCreateDialog } from './job-create-dialog';
 import { JobRuns } from '@/components/dashboard/job-runs';
 import { JobTasks } from '@/components/dashboard/job-tasks';
 import { JobDefinition, JobRunDetail } from '@/components/dashboard/job-detail';
+import { CliCommand } from '@/components/dashboard/cli-command';
 import { Button } from '@/components/ui/button';
 import { CopyIconButton } from '@/components/ui/copy-button';
 import { Tooltip, TooltipProvider } from '@/components/ui/tooltip';
 import { useInfiniteJobs, useJobs } from '@/lib/api/queries';
+import { cliJobRemoveCommand, cliJobRunCommand } from '@/lib/cli-commands';
 import type { JobsSelectionProps } from './jobs-search';
 
 /**
@@ -247,9 +249,21 @@ export function WorkloadsBody({ search, onSelection }: JobsSelectionProps) {
         {job && (
           <Panel
             title={`Definition — ${job}`}
-            description="Current configuration. Further changes can be made with the CLI."
+            description="Current configuration. To change it, use gregale jobs update with the fields to change."
           >
             <JobDefinition name={job} />
+            <div className="mt-5 flex flex-col gap-3 border-t border-border pt-4">
+              <CliCommand
+                label="Start a run with one task. This starts real, billed work right away."
+                copyLabel={`run command for ${job}`}
+                command={cliJobRunCommand(job)}
+              />
+              <CliCommand
+                label="Delete this workload. The CLI does not ask first."
+                copyLabel={`delete command for ${job}`}
+                command={cliJobRemoveCommand(job)}
+              />
+            </div>
           </Panel>
         )}
 

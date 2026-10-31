@@ -15,9 +15,11 @@ import {
   useDomains,
   useVerifyDomain,
 } from '@/lib/api/queries';
+import { CliCommand } from '@/components/dashboard/cli-command';
 import { DomainDoctor } from '@/components/dashboard/domain-doctor';
 import { slugIndex } from '@/lib/api/adapters';
 import { errorMessage } from '@/lib/api/errors';
+import { cliDomainSetDefaultCommand } from '@/lib/cli-commands';
 import { FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
 import { cn } from '@/lib/utils';
 
@@ -55,6 +57,8 @@ interface DomainRow {
   domain: string;
   app: string;
   verified: boolean;
+  /** True when this domain is already its app's default. */
+  isDefault: boolean;
   verifiedAt: string | null;
   txtRecord: string | null;
 }
@@ -104,16 +108,31 @@ function DomainsPage() {
       domain: d.domain,
       app: bySlug.get(d.app_id) ?? d.app_id,
       verified: d.verified,
+      isDefault: d.default === true,
       verifiedAt: d.verified_at ?? null,
       txtRecord: d.txt_record ?? null,
     }));
   }, [data, apps]);
 
+  // A domain can be made its app's default only once verified, and there is
+  // nothing to do for one that already is. Each eligible domain gets its own
+  // command, so every app with a candidate is covered.
+  const defaultCandidates = rows
+    .filter((row) => row.verified && !row.isDefault)
+    .sort((a, b) => a.domain.localeCompare(b.domain));
+
   const columns: Column<DomainRow>[] = [
     {
       key: 'domain',
       label: 'Domain',
-      render: (d) => <span className="font-mono">{d.domain}</span>,
+      // Marked so it is clear why the default is missing from set-default below.
+      // Stacked under the hostname so it does not squeeze an already narrow column.
+      render: (d) => (
+        <span className="flex flex-col items-start gap-1">
+          <span className="font-mono">{d.domain}</span>
+          {d.isDefault && <Pill label="default" />}
+        </span>
+      ),
     },
     {
       key: 'verified',
@@ -390,6 +409,24 @@ function DomainsPage() {
         error={error}
         onRetry={() => void refetch()}
       />
+
+      {defaultCandidates.length > 0 && (
+        <Panel
+          title="Set a default domain"
+          description="The console does not set an app's default domain. Only a verified domain can be the default, and the new one replaces the app's current default."
+        >
+          <div className="flex flex-col gap-3">
+            {defaultCandidates.map((row) => (
+              <CliCommand
+                key={row.domain}
+                label={`Make ${row.domain} the default domain for ${row.app}`}
+                copyLabel={`set-default command for ${row.domain}`}
+                command={cliDomainSetDefaultCommand(row.domain)}
+              />
+            ))}
+          </div>
+        </Panel>
+      )}
 
       {doctorFor && (
         <Modal
