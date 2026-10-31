@@ -6,7 +6,8 @@ type Deployment = components['schemas']['DeploymentResponse'];
  * carries the same jsonb untyped, so it is read through `readStageState`. */
 type StageState =
   paths['/v1/deployments/{id}/stages']['get']['responses'][200]['content']['application/json'];
-type StageName = NonNullable<StageState['current']>;
+// `current` is '' when no stage runs; a stage name is never empty.
+type StageName = Exclude<NonNullable<StageState['current']>, ''>;
 const STAGE_NAMES: readonly StageName[] = [
   'source_download',
   'dependency_restore',
@@ -18,26 +19,35 @@ const STAGE_NAMES: readonly StageName[] = [
 const isStage = (value: unknown): value is StageName =>
   typeof value === 'string' && (STAGE_NAMES as readonly string[]).includes(value);
 
+type StageRow = StageState['history'][number];
+const ROW_STATUSES: readonly StageRow['status'][] = ['completed', 'failed', 'cancelled'];
+const isRowStatus = (value: unknown): value is StageRow['status'] =>
+  typeof value === 'string' && (ROW_STATUSES as readonly string[]).includes(value);
+const isoOrNull = (value: unknown) => (typeof value === 'string' ? value : null);
+
 /** Keep only well-formed stage rows; anything else is treated as not recorded. */
 export function readStageState(raw: unknown): StageState | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
   const value = raw as Record<string, unknown>;
-  const history = Array.isArray(value.history)
+  const history: StageRow[] = Array.isArray(value.history)
     ? value.history.flatMap((row) => {
         if (!row || typeof row !== 'object') return [];
         const r = row as Record<string, unknown>;
-        if (!isStage(r.name) || (r.status !== 'completed' && r.status !== 'failed')) return [];
+        if (!isStage(r.name) || !isRowStatus(r.status)) return [];
         return [
           {
             name: r.name,
-            status: r.status as 'completed' | 'failed',
-            duration_ms: typeof r.duration_ms === 'number' ? r.duration_ms : undefined,
-            reason: typeof r.reason === 'string' ? r.reason : undefined,
+            status: r.status,
+            started_at: isoOrNull(r.started_at),
+            ended_at: isoOrNull(r.ended_at),
+            duration_ms: typeof r.duration_ms === 'number' ? r.duration_ms : 0,
+            ...(typeof r.reason === 'string' ? { reason: r.reason } : {}),
           },
         ];
       })
     : [];
-  const current = isStage(value.current) ? value.current : undefined;
+  // apid sends '' when no stage is running (DeploymentStageState.current).
+  const current = isStage(value.current) ? value.current : '';
   if (!history.length && !current) return undefined;
   return { current, history };
 }
@@ -76,6 +86,7 @@ const PRESETS: Record<string, string> = {
   balanced: 'balanced canary',
   aggressive: 'fast canary',
   '1-10-50-100': '1 → 10 → 50 → 100%',
+  adaptive: 'adaptive canary',
 };
 
 const ORDER: PhaseKey[] = ['build', 'verify', 'prepare', 'rollout', 'serve'];
@@ -95,7 +106,7 @@ export function releaseProcess(deployment: Deployment): ReleasePhase[] {
   const shipped = phase === 'live' || phase === 'superseded';
   const stage = readStageState(deployment.stage_state);
   const history = stage?.history ?? [];
-  const current = stage?.current;
+  const current = stage?.current || undefined;
 
   const prep = (key: 'build' | 'verify' | 'prepare'): ReleasePhase => {
     const names = STAGES[key];
@@ -108,6 +119,14 @@ export function releaseProcess(deployment: Deployment): ReleasePhase[] {
         state: 'failed',
         detail: failed.reason || `${failed.name?.replace(/_/g, ' ')} failed`,
       };
+    const cancelled = rows.find((row) => row.status === 'cancelled');
+    if (cancelled)
+      return {
+        key,
+        label: LABELS[key],
+        state: 'skipped',
+        detail: `${cancelled.name.replace(/_/g, ' ')} cancelled`,
+      };
     if (current && names.includes(current) && !shipped)
       return {
         key,
@@ -115,8 +134,9 @@ export function releaseProcess(deployment: Deployment): ReleasePhase[] {
         state: phase === 'failed' ? 'failed' : 'active',
         detail: current.replace(/_/g, ' '),
       };
-    if (rows.length) {
-      const ms = rows.reduce((sum, row) => sum + (row.duration_ms ?? 0), 0);
+    const completed = rows.filter((row) => row.status === 'completed');
+    if (completed.length) {
+      const ms = completed.reduce((sum, row) => sum + row.duration_ms, 0);
       return {
         key,
         label: LABELS[key],
