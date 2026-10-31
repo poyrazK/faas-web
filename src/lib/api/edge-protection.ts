@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, unwrap } from './client';
-import type { EdgeRule } from './queries';
+import { ruleAction } from './edge-rules';
+import { edgeRuleListFilters, type EdgeRule } from './queries';
 import type { components } from './schema';
 
 /**
@@ -84,11 +85,6 @@ export function useAttackMode(slug: string) {
   });
 }
 
-/** Every cache entry holding edge rules: the attack-mode rule shows in them. */
-const edgeRulesPredicate = {
-  predicate: (q: { queryKey: readonly unknown[] }) => q.queryKey.includes('edge-rules'),
-};
-
 function useAttackModeSwitch<T>(slug: string, send: (arg: T) => Promise<AttackMode>) {
   const qc = useQueryClient();
   return useMutation({
@@ -101,7 +97,7 @@ function useAttackModeSwitch<T>(slug: string, send: (arg: T) => Promise<AttackMo
       // it, so after a failure the answer is read again rather than assumed.
       if (error) void qc.invalidateQueries({ queryKey: attackModeKey(slug) });
       void qc.invalidateQueries({ queryKey: edgeProtectionKey(slug) });
-      void qc.invalidateQueries(edgeRulesPredicate);
+      void qc.invalidateQueries(edgeRuleListFilters);
     },
   });
 }
@@ -138,21 +134,18 @@ export function useUpdateCorsPreset() {
       unwrap(api.PATCH('/v1/cors-presets/{id}', { params: { path: { id } }, body })),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['cors-presets'] });
-      void qc.invalidateQueries(edgeRulesPredicate);
+      void qc.invalidateQueries(edgeRuleListFilters);
     },
   });
 }
 
-/** A CORS rule's preset reference, from either action shape. */
-function presetIdOf(action: unknown): string | null | undefined {
-  // apid sends the action wrapped by kind, {"kind":"cors","cors":{…}}
-  // (faas pkg/apid/edgerules/rules.go:46-47, pkg/state/types.go:8648); the
-  // vendored spec and older payloads have it flat.
-  const a = action as { cors?: { cors_preset_id?: string | null }; cors_preset_id?: string | null };
-  return a?.cors?.cors_preset_id ?? a?.cors_preset_id;
-}
-
 /** The CORS rules that take their policy from the preset `id`. */
 export function corsPresetUsers(rules: EdgeRule[] | undefined, id: string): EdgeRule[] {
-  return (rules ?? []).filter((rule) => rule.kind === 'cors' && presetIdOf(rule.action) === id);
+  // ruleAction reads apid's wrapped action ({"kind":"cors","cors":{…}}) and
+  // the flat one the vendored spec documents.
+  return (rules ?? []).filter(
+    (rule) =>
+      rule.kind === 'cors' &&
+      (ruleAction(rule) as { cors_preset_id?: string | null } | undefined)?.cors_preset_id === id
+  );
 }
