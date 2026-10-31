@@ -19,6 +19,7 @@ import { Modal } from '@/components/ui/modal';
 import { ErrorState, LoadingState, Panel, UnreachableState, queryPhase } from './primitives';
 import { RegistryCredentialsPanel } from './app-core-panels';
 import { GatedSupplyChainPanel } from './supply-chain-gate';
+import { DeployTokensPanel } from './deploy-tokens';
 import { StaticEgressIP, StreamingCapNote } from './app-insights';
 import { PurgeCacheControl } from './app-lifecycle';
 import { publicAppUrl } from '@/lib/app-url';
@@ -810,6 +811,7 @@ export function AppConfiguration({ slug }: { slug: string }) {
       <ConfigForm key={`${account?.id}:${data.id}:${data.slug}`} app={data} />
       <GatedSupplyChainPanel slug={data.slug} />
       <RegistryCredentialsPanel slug={data.slug} />
+      <DeployTokensPanel slug={data.slug} />
       <RenamePanel key={`rename:${data.slug}`} app={data} />
       <DangerZone app={data} />
     </div>
