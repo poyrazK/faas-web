@@ -49,6 +49,20 @@ describe('feature explorer', () => {
     );
   });
 
+  it('draws scale to zero as the interactive pillars field, and only there', async () => {
+    const user = userEvent.setup();
+    renderFeatures();
+    await user.click(await screen.findByRole('tab', { name: 'Scale to zero' }));
+    const scale = screen.getByRole('tabpanel', { name: 'Scale to zero' });
+    expect(scale.querySelector('[data-texture="pillars"]')).not.toBeNull();
+    expect(scale).toHaveTextContent('Instances wake where requests land, then park again.');
+
+    await user.click(screen.getByRole('tab', { name: 'Isolated compute' }));
+    const compute = screen.getByRole('tabpanel', { name: 'Isolated compute' });
+    expect(compute.querySelector('[data-texture="pillars"]')).toBeNull();
+    expect(compute.querySelector('[data-figure="isolated-compute"]')).not.toBeNull();
+  });
+
   it.each([
     ['PR previews', 'Public beta', '/docs/preview-environments', /deployed-app limit/],
     ['Object storage', 'Preview', undefined, /availability depends on the storage rollout/],
@@ -136,5 +150,31 @@ describe('feature explorer', () => {
         expect(within(panel!).getAllByRole('heading', { level: 3 })).toHaveLength(1);
       }
     }
+  });
+
+  it.each([
+    ['Source deploys', 'source-deploys', 'An illustrated path from commit to running app.'],
+    ['Isolated compute', 'isolated-compute', 'Your app. Its own runtime boundary.'],
+    ['Custom domains', 'custom-domains', 'Your domain, routed to your app over TLS.'],
+    ['Logs & traces', 'logs-traces', 'Illustrative spans, not measured request timings.'],
+    ['Secrets & config', 'secrets-config', 'Values sealed, never shown back.'],
+    ['PR previews', 'pr-previews', 'A separate preview, before the merge.'],
+    ['Object storage', 'object-storage', 'Private buckets, outside your app’s runtime.'],
+  ] as const)('draws %s as its own figure with its caption', async (name, figure, caption) => {
+    const user = userEvent.setup();
+    renderFeatures();
+    await user.click(await screen.findByRole('tab', { name }));
+    const panel = screen.getByRole('tabpanel', { name });
+    expect(panel.querySelector(`[data-figure="${figure}"]`)).not.toBeNull();
+    expect(panel).toHaveTextContent(caption);
+  });
+
+  it('keeps the connected-work diagrams as they were', async () => {
+    const user = userEvent.setup();
+    renderFeatures();
+    await user.click(await screen.findByRole('tab', { name: /connected work/i }));
+    const panel = screen.getByRole('tabpanel', { name: 'Service connections' });
+    expect(panel.querySelector('svg.feature-diagram')).not.toBeNull();
+    expect(panel.querySelector('[data-figure]')).toBeNull();
   });
 });
