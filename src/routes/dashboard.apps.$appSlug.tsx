@@ -71,6 +71,7 @@ import { PrewarmPanel } from '@/components/dashboard/prewarm';
 import { InvokePanel, SloPanel } from '@/components/dashboard/app-core-panels';
 import { AppUsagePanel, WakeTimelinePanel } from '@/components/dashboard/app-insights';
 import { AppAnalyticsPanel } from '@/components/dashboard/app-analytics';
+import { CustomMetricsPanel } from '@/components/dashboard/custom-metrics';
 import {
   AppHealthPanel,
   AwakeRoutesPanel,
@@ -531,6 +532,7 @@ function FunctionDetailPage() {
                     <AppHealthPanel slug={fn.id} />
                     <SloPanel slug={fn.id} />
                     <AppAnalyticsPanel slug={fn.id} />
+                    <CustomMetricsPanel slug={fn.id} />
                     <div className="grid gap-4 xl:grid-cols-2">
                       <AwakeRoutesPanel slug={fn.id} since="7d" />
                       <DependencyLatencyPanel slug={fn.id} since="24h" />

@@ -183,6 +183,17 @@ const entries: Capability[] = [
     enabled: true,
   },
   {
+    key: 'custom-metrics',
+    name: 'Custom metrics',
+    category: 'observability',
+    description: 'Send your own metrics, including over OTLP.',
+    maturity: 'beta',
+    plans: PAID,
+    docs_url: '/docs/apps',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
+  {
     key: 'declarative-response-caching',
     name: 'Declarative response caching',
     category: 'delivery',

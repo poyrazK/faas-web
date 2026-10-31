@@ -847,10 +847,11 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 122,
     name: 'Custom metrics and OTLP metric ingest',
-    status: 'none',
-    surfaces: [],
-    gap: 'Custom metrics',
-    wave: 2,
+    status: 'partial',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Metrics'],
+    capability: 'custom-metrics',
+    gap: 'OTLP metric ingest setup: the exporter endpoint and settings are not shown',
+    wave: 3,
   },
   // G124 · preview
   {
