@@ -5596,6 +5596,67 @@ function requireOrgRole(slug: string, roles: string[], mutable = false) {
   if (!role || !roles.includes(role)) throw new Problem(403, 'org_role_forbidden');
   return org;
 }
+// Company billing (faas org_billing_routes.go): status and usage for any
+// member, invoices for owners and billing admins. MOCK_ORG_ROLE overrides the
+// signed-in member's role, to see a refusal.
+function requireOrgBillingRole(slug: string, roles: string[]) {
+  const forced = process.env.MOCK_ORG_ROLE;
+  if (forced && !roles.includes(forced)) throw new Problem(403, 'org_role_forbidden');
+  return requireOrgRole(slug, forced ? [...roles, forced] : roles);
+}
+const ANY_MEMBER = ['owner', 'admin', 'developer', 'viewer', 'billing', 'member'];
+route('GET', '/v1/orgs/{slug}/billing/status', ({ params }) => {
+  requireOrgBillingRole(params.slug, ANY_MEMBER);
+  return {
+    mode: 'live',
+    enabled: true,
+    provider: 'stripe',
+    plan: 'pro',
+    account_status: 'active',
+    customer_configured: true,
+    subscription_configured: true,
+    usage_reconciliation_enabled: true,
+  };
+});
+route('GET', '/v1/orgs/{slug}/usage', ({ params }) => {
+  requireOrgBillingRole(params.slug, ANY_MEMBER);
+  return inventoryForOrg(params.slug).map((app, i) => ({
+    app_id: app.id,
+    mb_seconds: 3_686_400 * (i + 2),
+    requests: 12_400 * (i + 1),
+    included_gb_hours: 1000,
+    cold_boots: 4 + i,
+  }));
+});
+route('GET', '/v1/orgs/{slug}/invoices', ({ params }) => {
+  requireOrgBillingRole(params.slug, ['owner', 'billing']);
+  return {
+    items: [
+      {
+        id: 'org-inv-1',
+        number: 'ACME-0042',
+        provider: 'stripe',
+        provider_invoice_id: 'in_acme_0042',
+        status: 'paid',
+        period_start: '2026-09-01T00:00:00Z',
+        period_end: '2026-09-30T23:59:59Z',
+        subtotal_cents: 4900,
+        tax_cents: 0,
+        total_cents: 4900,
+        amount_paid_cents: 4900,
+        currency: 'usd',
+        pdf_available: true,
+        created_at: '2026-10-01T00:00:00Z',
+      },
+    ],
+    next_before: null,
+  };
+});
+route('GET', '/v1/orgs/{slug}/billing/portal', ({ params }) => {
+  requireOrgBillingRole(params.slug, ['owner']);
+  return { url: 'https://billing.example.test/portal/acme', payment_method: 'card' };
+});
+
 route('GET', '/v1/orgs', () => ({
   orgs: db.orgs
     .filter((org) => org.status !== 'deleted_pending')

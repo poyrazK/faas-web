@@ -14,6 +14,7 @@ import { api, issueCSRF, unwrap } from './client';
 import { ApiError } from './errors';
 import { isDeploymentTerminal } from '../deployment-status';
 import type { components, paths } from './schema';
+import { useWorkspaceTarget } from './workspace-apps';
 import { uploadTarball, type DeployOptions } from './uploads';
 
 /**
@@ -1848,15 +1849,21 @@ export function useInvoices() {
  * The invoices page uses this instead of silently dropping older billing
  * records after the server's default page.
  */
+/**
+ * Invoice history for the active workspace: the organization's own billing
+ * subject in a company workspace (GET /v1/orgs/{slug}/invoices, the same
+ * handler and shape), the account's otherwise.
+ */
 export function useInfiniteInvoices(limit = 50) {
+  const { org } = useWorkspaceTarget();
   return useInfiniteQuery({
-    queryKey: [...keys.invoices, 'history', limit],
-    queryFn: ({ pageParam }) =>
-      unwrap(
-        api.GET('/v1/invoices', {
-          params: { query: { limit, ...(pageParam ? { before: pageParam } : {}) } },
-        })
-      ),
+    queryKey: [...keys.invoices, 'history', org ?? 'personal', limit],
+    queryFn: ({ pageParam }) => {
+      const query = { limit, ...(pageParam ? { before: pageParam } : {}) };
+      return org
+        ? unwrap(api.GET('/v1/orgs/{slug}/invoices', { params: { path: { slug: org }, query } }))
+        : unwrap(api.GET('/v1/invoices', { params: { query } }));
+    },
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.next_before ?? undefined,
     retry: retryPolicy,
@@ -2804,9 +2811,14 @@ export function useStorageUsage(day: string) {
  * Returns a URL to the provider's hosted portal rather than a page we render —
  * card details never touch this app.
  */
+/** The billing portal of the active workspace's billing subject. */
 export function useBillingPortal() {
+  const { org } = useWorkspaceTarget();
   return useMutation({
-    mutationFn: () => unwrap(api.GET('/v1/billing/portal', {})),
+    mutationFn: () =>
+      org
+        ? unwrap(api.GET('/v1/orgs/{slug}/billing/portal', { params: { path: { slug: org } } }))
+        : unwrap(api.GET('/v1/billing/portal', {})),
   });
 }
 

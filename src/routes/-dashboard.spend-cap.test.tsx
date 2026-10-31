@@ -10,6 +10,7 @@ import {
 } from '@tanstack/react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, expect, it, vi } from 'vitest';
+import { bindWorkspaceAccount } from '@/lib/workspace';
 import { api } from '@/lib/api/client';
 import { Route as Plans } from './dashboard.plans';
 import { Route as Usage } from './dashboard.usage';
@@ -34,6 +35,8 @@ vi.mock('@/components/dashboard/object-storage-usage', () => ({
 let cap: number | null;
 let readFails: boolean;
 beforeEach(() => {
+  // The shell binds the workspace to the signed-in account; these pages wait for it.
+  bindWorkspaceAccount('account-spend-cap');
   cap = 1000;
   readFails = false;
   spyApi('GET').mockImplementation(async (path) => {
