@@ -5,9 +5,8 @@ import { FUNCTION_STARTERS, languageOf, type FunctionLanguage } from '@/lib/func
 import { gzip, tarball } from '@/lib/tar';
 import { RepoPicker } from '@/components/dashboard/repo-picker';
 import { GitHubConnectForm } from '@/components/dashboard/github-connect-form';
-import { motion, useReducedMotion } from 'motion/react';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { ArrowRight, NavArrowDown } from 'iconoir-react';
+import { ArrowRight, Check, NavArrowDown, RefreshDouble } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
@@ -16,7 +15,6 @@ import { appNameError, appNameFromRepo } from './new-app-validation';
 import { SCAN_SOURCE_LABEL, scanUnavailableReason } from './scan-source';
 import { useToast } from '@/components/ui/toast';
 import { DeploymentProgress } from '@/components/dashboard/deployment-progress';
-import { PageHeader, Panel } from '@/components/dashboard/primitives';
 import {
   isValidGitHubRepo,
   isValidGitRef,
@@ -65,8 +63,6 @@ import { predictedAppUrl } from '@/lib/app-url';
 import { FirstDeploymentRecovery } from './first-deployment-recovery';
 
 type SourceField = 'source-git' | 'source-template' | 'repository' | 'ref' | 'handler';
-
-const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
 /** The set `apid` accepts on `POST /v1/apps`; anything else is a 400. */
 const RUNTIMES: { id: Runtime; label: string }[] = [
@@ -139,7 +135,6 @@ function CreateAppWizard({
   const { account, loading: authLoading } = useAuth();
   const workspace = useWorkspaceTarget();
   const privateCapability = useCapability('private-apps');
-  const reduce = useReducedMotion();
   const [localSearch, setLocalSearch] = useState<NewAppSearch>({
     source: onboarding ? 'git' : undefined,
     template: initialTemplateSlug,
@@ -622,14 +617,28 @@ function CreateAppWizard({
           }}
         />
       );
+    // Git and functions deploy right away, so their progress is the page;
+    // Template and Empty end at the app, with the command that deploys it.
+    const tracked = source === 'git' || source === 'function';
+    const command = (text: string, label: string) => (
+      <div className="flex min-w-0 items-center gap-1 rounded-md bg-muted py-1 pl-3 pr-1">
+        <span aria-hidden className="select-none font-mono text-xs text-muted-foreground">
+          $
+        </span>
+        <code className="min-w-0 overflow-x-auto whitespace-nowrap font-mono text-xs text-foreground">
+          {text}
+        </code>
+        <CopyIconButton text={text} label={label} className="ml-auto" />
+      </div>
+    );
     return (
-      <div className="mx-auto flex max-w-2xl flex-col gap-6">
-        <PageHeader
-          title={onboarding ? 'Your first deployment' : 'New app'}
+      <div className="flex flex-col gap-8">
+        <NewAppHeader
+          title={onboarding ? 'Your first deployment' : name}
           description="Track the app and its first deployment from the platform state."
         />
 
-        {source === 'git' || source === 'function' ? (
+        {tracked ? (
           <DeploymentProgress
             source={
               source === 'function'
@@ -646,114 +655,123 @@ function CreateAppWizard({
             appSlug={createdId ?? undefined}
           />
         ) : !createdId ? (
-          <Panel title="Creating app">
-            <p role="status" className="text-sm text-muted-foreground">
-              Saving your configuration. No deployment has started yet.
-            </p>
-          </Panel>
-        ) : !template && catalogTemplate ? (
-          <Panel
-            title={`${catalogTemplate.name} scaffold`}
-            description="The app exists — the CLI writes this template's files into an empty directory, then deploys them."
-          >
-            <p className="text-xs text-muted-foreground">{catalogTemplate.description}</p>
-            <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-border bg-background p-3">
-              <code className="font-mono text-xs text-foreground">
-                gregale init --template {catalogTemplate.name} && gregale deploy --app {name}
-              </code>
-              <CopyIconButton
-                text={`gregale init --template ${catalogTemplate.name} && gregale deploy --app ${name}`}
-                label="Copy the CLI commands"
-              />
+          <div className="flex items-start gap-3.5 rounded-xl border border-border bg-card px-4 py-4">
+            <span
+              aria-hidden
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted text-brand"
+            >
+              <RefreshDouble className="h-[18px] w-[18px] animate-spin motion-reduce:animate-none" />
+            </span>
+            <div className="flex min-w-0 flex-col gap-1">
+              <h2 className="text-base font-medium">Creating app</h2>
+              <p role="status" className="text-[13px] leading-5 text-muted-foreground">
+                Saving your configuration. No deployment has started yet.
+              </p>
             </div>
-          </Panel>
-        ) : template ? (
-          <Panel
-            title={`${template.name} scaffold`}
-            description="The app exists — this code is its first deployment."
-          >
-            <div className="flex items-center justify-between gap-3">
-              <p className="font-mono text-xs text-muted-foreground">{template.filename}</p>
-              <CopyIconButton text={template.code} label={`Copy ${template.filename}`} />
-            </div>
-            <pre className="mt-2 max-h-72 overflow-auto rounded-lg border border-border bg-background p-3 font-mono text-xs leading-relaxed text-foreground">
-              {template.code}
-            </pre>
-            <ol className="mt-4 flex list-decimal flex-col gap-1.5 pl-5 text-sm text-muted-foreground">
-              {template.steps.map((s) => (
-                <li key={s}>
-                  {s === 'gregale deploy --app' ? (
-                    <code className="rounded bg-background px-1.5 py-0.5 font-mono text-xs text-foreground">
-                      gregale deploy --app {name}
-                    </code>
-                  ) : (
-                    s
-                  )}
-                </li>
-              ))}
-            </ol>
-          </Panel>
+          </div>
         ) : (
-          <Panel title="App ready" description="No deployment was started.">
-            <p className="text-sm text-muted-foreground">
-              The app is ready for its first deployment from the CLI or CI.
-            </p>
-            <code className="mt-4 block overflow-x-auto rounded-lg border border-border bg-background p-3 font-mono text-xs text-foreground">
-              gregale deploy --app {name}
-            </code>
-          </Panel>
-        )}
-
-        {createdId && (
-          <motion.div
-            initial={reduce ? false : { opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: reduce ? 0 : 0.3, ease: EASE }}
-            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-4"
-          >
-            {source !== 'git' && (
-              <div className="min-w-0">
-                <p className="text-xs text-muted-foreground">
+          <section aria-labelledby={`${uid}-next`} className="flex flex-col gap-3">
+            <h2 id={`${uid}-next`} className="text-sm font-medium text-muted-foreground">
+              Next step
+            </h2>
+            <div className="flex flex-col divide-y divide-border rounded-xl border border-border bg-card">
+              <div className="flex items-start gap-3.5 px-4 py-4">
+                <span
+                  aria-hidden
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-brand/15 text-brand"
+                >
+                  <Check className="h-[18px] w-[18px]" />
+                </span>
+                <div className="flex min-w-0 flex-col gap-1">
+                  <h3 className="text-base font-medium">
+                    {!template && catalogTemplate
+                      ? `${catalogTemplate.name} scaffold`
+                      : template
+                        ? `${template.name} scaffold`
+                        : 'App ready'}
+                  </h3>
+                  <p className="text-[13px] leading-5 text-muted-foreground">
+                    {!template && catalogTemplate
+                      ? "The app exists. The CLI writes this template's files into an empty directory, then deploys them."
+                      : template
+                        ? 'The app exists. This code is its first deployment.'
+                        : 'No deployment was started. The app is ready for its first one, from the CLI or CI.'}
+                  </p>
+                </div>
+              </div>
+              {!template && catalogTemplate ? (
+                <div className="px-4 py-4">
+                  {command(
+                    `gregale init --template ${catalogTemplate.name} && gregale deploy --app ${name}`,
+                    'the CLI commands'
+                  )}
+                </div>
+              ) : template ? (
+                <div className="flex flex-col gap-3 px-4 py-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-mono text-[13px] text-muted-foreground">
+                      {template.filename}
+                    </p>
+                    <CopyIconButton text={template.code} label={`Copy ${template.filename}`} />
+                  </div>
+                  <pre className="max-h-72 overflow-auto rounded-md bg-muted p-3 font-mono text-xs leading-relaxed text-foreground">
+                    {template.code}
+                  </pre>
+                  <ol className="flex list-decimal flex-col gap-1.5 pl-5 text-[13px] text-muted-foreground">
+                    {template.steps.map((st) => (
+                      <li key={st}>
+                        {st === 'gregale deploy --app' ? (
+                          <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground">
+                            gregale deploy --app {name}
+                          </code>
+                        ) : (
+                          st
+                        )}
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              ) : (
+                <div className="px-4 py-4">
+                  {command(`gregale deploy --app ${name}`, `gregale deploy --app ${name}`)}
+                </div>
+              )}
+              <div className="flex flex-col gap-0.5 px-4 py-3">
+                <p className="text-[13px] text-muted-foreground">
                   {visibility === 'internal'
                     ? 'Internal service only'
                     : 'App endpoint · available after deployment'}
                 </p>
-                <p className="break-all font-mono text-xs text-muted-foreground">
+                <p className="break-all font-mono text-sm">
                   {visibility === 'internal'
                     ? 'No public endpoint'
                     : (createdUrl ?? 'Waiting for the endpoint…')}
                 </p>
               </div>
-            )}
-            {source === 'git' && (
-              <p className="text-xs text-muted-foreground">
-                Manage settings and future deployments from the app page.
-              </p>
-            )}
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => navigate({ to: '/dashboard/apps' })}
-              >
-                All apps
-              </Button>
-              <Button
-                variant={source === 'git' ? 'outline' : 'cta'}
-                size="sm"
-                className="gap-1.5 rounded-md"
-                onClick={() =>
-                  navigate({
-                    to: '/dashboard/apps/$appSlug',
-                    params: { appSlug: createdId },
-                  })
-                }
-              >
-                View app
-                <ArrowRight className="h-3.5 w-3.5" />
-              </Button>
             </div>
-          </motion.div>
+          </section>
+        )}
+
+        {createdId && (
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => navigate({ to: '/dashboard/apps' })}>
+              All apps
+            </Button>
+            <Button
+              variant={tracked ? 'outline' : 'cta'}
+              size="sm"
+              className="gap-1.5 rounded-md"
+              onClick={() =>
+                navigate({
+                  to: '/dashboard/apps/$appSlug',
+                  params: { appSlug: createdId },
+                })
+              }
+            >
+              View app
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Button>
+          </div>
         )}
       </div>
     );
