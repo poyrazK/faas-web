@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
-import { ApiError, errorMessage } from '@/lib/api/errors';
+import { ApiError } from '@/lib/api/errors';
 import {
   useAdvanceCanary,
   useClearObsoleteDeployments,
@@ -74,7 +74,7 @@ export function AdvanceCanaryButton({ deployment }: { deployment: Deployment }) 
         });
         return;
       }
-      toast({ kind: 'error', title: 'Could not advance', description: errorMessage(err) });
+      toast({ kind: 'error', title: 'Could not advance', error: err });
     }
   };
 
@@ -129,7 +129,7 @@ export function ReorderDeploymentControl({ deployment }: { deployment: Deploymen
         });
         return;
       }
-      toast({ kind: 'error', title: 'Could not reorder', description: errorMessage(err) });
+      toast({ kind: 'error', title: 'Could not reorder', error: err });
     }
   };
 
@@ -194,7 +194,7 @@ export function ClearObsoleteDeploymentsButton({ slug }: { slug: string }) {
         });
         return;
       }
-      toast({ kind: 'error', title: 'Could not clear', description: errorMessage(err) });
+      toast({ kind: 'error', title: 'Could not clear', error: err });
     }
   };
 

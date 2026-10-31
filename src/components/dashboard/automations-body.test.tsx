@@ -17,12 +17,14 @@ const state = vi.hoisted(() => ({
   refetch: vi.fn(),
   source: 'dashboard',
 }));
+const asked = vi.hoisted(() => ({ key: '' }));
 vi.mock('@/lib/api/capabilities', () => ({
-  useCapability: () => ({
-    capability: state.maturity
-      ? { key: 'workflows-and-jobs', maturity: state.maturity }
-      : undefined,
-  }),
+  useCapability: (key: string) =>
+    (asked.key = key) && {
+      capability: state.maturity
+        ? { key: 'workflows-and-jobs', maturity: state.maturity }
+        : undefined,
+    },
 }));
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children }: { children: ReactNode }) => <a>{children}</a>,
@@ -123,6 +125,12 @@ beforeEach(() => {
   state.remove.mockReset().mockResolvedValue(undefined);
   state.refetch.mockReset().mockResolvedValue({ error: null });
   state.source = 'dashboard';
+});
+it('reads the automations capability, not the jobs one', () => {
+  // Automations is its own catalog entry (internal), not workflows-and-jobs
+  // (faas pkg/productcap/catalog.json).
+  render(<AutomationsBody search={{ app: 'alpha', automation: 'orders' }} onSelection={vi.fn()} />);
+  expect(asked.key).toBe('automations');
 });
 it('keeps authoring discoverable while runtime execution is disabled', () => {
   render(<AutomationsBody search={{ app: 'alpha', automation: 'orders' }} onSelection={vi.fn()} />);

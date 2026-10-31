@@ -119,3 +119,22 @@ it('freezes the reviewed form while the final context read is pending', async ()
   await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
   expect(patch.mock.calls[0][1]).toMatchObject({ allowed_service_callers: [] });
 });
+
+it('shows a project policy as set by the project, never as a choice', () => {
+  render(
+    <ServicePolicyEditor
+      accountId="account-1"
+      plan="free"
+      slug="billing"
+      app={app as never}
+      inventoryComplete
+    />
+  );
+  // apid: "Project-managed and preview apps reject non-null changes" (PATCH
+  // /v1/apps/{slug} service_binding_policy), so it is shown, not offered.
+  expect(
+    screen.getByRole('option', {
+      name: 'Project services, declared targets elsewhere (set by the project)',
+    })
+  ).toBeDisabled();
+});

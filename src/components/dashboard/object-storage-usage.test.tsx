@@ -54,15 +54,15 @@ describe('ObjectStorageUsagePanel', () => {
     expect(screen.getByText('$4.128')).toBeInTheDocument();
   });
 
-  it('falls back to EUR when no charges block names a currency', () => {
+  it('falls back to the account currency, USD, when no charges block names one', () => {
     const current = useObjectStorageUsage();
     useObjectStorageUsage.mockReturnValue({
       ...current,
       data: { usage: current.data.usage, policy: current.data.policy },
     });
     render(<ObjectStorageUsagePanel />);
-    // cost_millicents is documented as EUR; only `charges` carries a currency.
-    expect(screen.getByText('€4.128')).toBeInTheDocument();
+    // Account amounts are USD (faas pkg/financial/currency.go, ADR-1430).
+    expect(screen.getByText('$4.128')).toBeInTheDocument();
   });
 
   it('says so when the report is stale rather than presenting it as current', () => {

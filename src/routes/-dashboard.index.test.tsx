@@ -1,3 +1,5 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { spyApi } from '@/test/api';
 import {
   createMemoryHistory,
   createRootRoute,
@@ -38,8 +40,32 @@ vi.mock('@/lib/store', () => ({
   }),
 }));
 
+// The capability registry is a query; these pages render without a client here.
+vi.mock('@/lib/api/capabilities', async (original) => ({
+  ...(await original<typeof import('@/lib/api/capabilities')>()),
+  useCapabilityRegistry: () => ({ query: { data: undefined }, phase: 'loading' }),
+  useCapabilityAccess: () => ({ access: 'on', refresh: () => {} }),
+}));
 vi.mock('@/lib/auth', () => ({
   useAuth: () => ({ account: { status: 'active', plan }, user: { name: 'Ada Lovelace' } }),
+}));
+
+const workspace = vi.hoisted(() => ({
+  org: null as string | null,
+  label: 'Personal',
+  ready: true,
+}));
+vi.mock('@/lib/api/workspace-apps', () => ({ useWorkspaceTarget: () => workspace }));
+const companyUsage = vi.hoisted(() => ({
+  rows: [
+    {
+      app_id: 'a',
+      mb_seconds: 2 * 1024 * 3600,
+      requests: 1,
+      included_gb_hours: 1000,
+      cpu_usec: 3.6e9,
+    },
+  ],
 }));
 
 vi.mock('@/lib/api/queries', async (importOriginal) => {
@@ -154,7 +180,11 @@ describe('overview analytics window', () => {
         routeTree: root.addChildren([overview, analytics]),
         history: createMemoryHistory({ initialEntries: [`/dashboard?range=${range}`] }),
       });
-      render(<RouterProvider router={router} />);
+      render(
+        <QueryClientProvider client={new QueryClient()}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>
+      );
       const link = await screen.findByRole('link', { name: 'Analytics' });
       expect(link).toHaveAttribute('href', `/dashboard/analytics?window=${window}`);
       if (input === 'keyboard') {
@@ -178,7 +208,11 @@ describe('overview analytics window', () => {
       history: createMemoryHistory({ initialEntries: ['/dashboard'] }),
     });
 
-    render(<RouterProvider router={router} />);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    );
     expect(await screen.findByText('100')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: '7d' }));
@@ -199,7 +233,13 @@ function renderOverview() {
     routeTree: root.addChildren([overview]),
     history: createMemoryHistory({ initialEntries: ['/dashboard'] }),
   });
-  return render(<RouterProvider router={router} />);
+  // The company allowance is a real query; personal reads are mocked above.
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={client}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>
+  );
 }
 
 it('gates Free metrics and range controls while preserving usage and instance reads', async () => {
@@ -231,4 +271,23 @@ it('shows unknown paid metrics for a degraded rollup instead of measured zeroes'
   expect(await screen.findByText('metrics degraded — unknowns read as —')).toBeInTheDocument();
   expect(screen.queryByText('Metrics is available on Hobby and above')).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: '7d' })).toBeEnabled();
+});
+
+it("shows the company's compute allowance in a company workspace, not the signed-in account's", async () => {
+  workspace.org = 'acme';
+  workspace.label = 'Acme';
+  const get = spyApi('GET').mockImplementation(async (path: string) => ({
+    data: path === '/v1/orgs/{slug}/usage' ? companyUsage.rows : {},
+    response: new Response(null, { status: 200 }),
+  }));
+  try {
+    renderOverview();
+    // Personal: 80 of 100 GB-h left. Company: 998 of 1,000.
+    expect(await screen.findByText('of 1,000 this period')).toBeInTheDocument();
+    expect(screen.queryByText('of 100 this period')).not.toBeInTheDocument();
+    expect(get).toHaveBeenCalledWith('/v1/orgs/{slug}/usage', expect.anything());
+  } finally {
+    workspace.org = null;
+    workspace.label = 'Personal';
+  }
 });

@@ -24,6 +24,10 @@ vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn() }));
 vi.mock('@/components/dashboard/spend-cap', () => ({ SpendCap: () => null }));
 vi.mock('@/components/auth/mfa-provider', () => ({ useMfa: () => ({ openMfa: mocks.openMfa }) }));
 vi.mock('@/lib/external-navigation', () => ({ goToExternal: mocks.goToExternal }));
+// The personal workspace: company plans are covered in -dashboard.plans-workspace.
+vi.mock('@/lib/api/workspace-apps', () => ({
+  useWorkspaceTarget: () => ({ org: null, label: 'Personal', ready: true }),
+}));
 vi.mock('@/lib/api/queries', () => ({
   useChangePlan: () => ({ mutateAsync: mocks.changePlan, isPending: false }),
   useBillingPortal: () => ({ mutateAsync: vi.fn(), isPending: false }),

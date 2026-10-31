@@ -91,27 +91,28 @@ export function explainPostgres(err: unknown): {
   kind: 'info' | 'error';
   title: string;
   description?: string;
+  error?: unknown;
 } {
   if (err instanceof ApiError) {
     switch (err.code) {
       case 'managed_postgres_not_in_plan':
-        return { kind: 'info', title: 'Not on your plan', description: errorMessage(err) };
+        return { kind: 'info', title: 'Not on your plan', error: err };
       case 'managed_postgres_quota_exceeded':
-        return { kind: 'info', title: 'Database limit reached', description: errorMessage(err) };
+        return { kind: 'info', title: 'Database limit reached', error: err };
       case 'managed_postgres_unsupported':
         return {
           kind: 'error',
           title: 'Not supported',
-          description: errorMessage(err),
+          error: err,
         };
       case 'managed_postgres_conflict':
         return {
           kind: 'error',
           title: 'That name or binding is taken',
-          description: errorMessage(err),
+          error: err,
         };
       case 'managed_postgres_invalid':
-        return { kind: 'error', title: 'The request was rejected', description: errorMessage(err) };
+        return { kind: 'error', title: 'The request was rejected', error: err };
       case 'managed_postgres_unavailable':
       case 'managed_postgres_usage_stale':
         return {
@@ -123,7 +124,7 @@ export function explainPostgres(err: unknown): {
         return { kind: 'info', title: 'Already gone', description: 'It was removed elsewhere.' };
     }
   }
-  return { kind: 'error', title: 'Could not complete that', description: errorMessage(err) };
+  return { kind: 'error', title: 'Could not complete that', error: err };
 }
 
 export function PostgresDatabases() {

@@ -15,10 +15,12 @@ import {
 import { useAuth, type Plan } from '@/lib/auth';
 import { Panel } from '@/components/dashboard/primitives';
 import { useConfirm } from '@/components/ui/confirm';
-import { ApiError, errorMessage } from '@/lib/api/errors';
+import { ApiError } from '@/lib/api/errors';
 import { goToExternal } from '@/lib/external-navigation';
 import { consoleHead } from '@/lib/seo';
 import { SpendCap } from '@/components/dashboard/spend-cap';
+import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
+import { OrgPlanSummary } from '@/components/dashboard/org-billing';
 
 export const Route = createFileRoute('/dashboard/plans')({
   component: PlansPage,
@@ -102,7 +104,7 @@ function BillingControlsPanel() {
                   })
                 )
                 .catch((err: unknown) =>
-                  toast({ kind: 'error', title: 'Could not retry', description: errorMessage(err) })
+                  toast({ kind: 'error', title: 'Could not retry', error: err })
                 )
             }
           >
@@ -136,7 +138,7 @@ function BillingControlsPanel() {
                 })
               )
               .catch((err: unknown) =>
-                toast({ kind: 'error', title: 'Could not cancel', description: errorMessage(err) })
+                toast({ kind: 'error', title: 'Could not cancel', error: err })
               );
           }}
         >
@@ -155,7 +157,21 @@ const PENDING_POLL_WINDOW_MS = 3 * 60_000;
 
 const planName = (id: Plan) => PLANS.find((p) => p.id === id)?.name ?? id;
 
+/** A company workspace shows the organization's plan; its owner changes it. */
 function PlansPage() {
+  const { org, label, ready } = useWorkspaceTarget();
+  // Until the workspace is bound, a chosen company reads as null: wait.
+  if (!ready) return <PageHeader title="Plans" />;
+  if (!org) return <PersonalPlans />;
+  return (
+    <div className="flex flex-col gap-6">
+      <PageHeader title="Plans" description={`The plan ${label} pays for.`} />
+      <OrgPlanSummary org={org} label={label} />
+    </div>
+  );
+}
+
+function PersonalPlans() {
   const { toast } = useToast();
   const { account, refreshAccount } = useAuth();
   const { openMfa } = useMfa();
@@ -279,7 +295,7 @@ function PlansPage() {
           });
           return;
         }
-        toast({ kind: 'error', title: 'Could not change plan', description: errorMessage(err) });
+        toast({ kind: 'error', title: 'Could not change plan', error: err });
       });
 
   const confirm = () => {
@@ -310,7 +326,7 @@ function PlansPage() {
                   toast({
                     kind: 'error',
                     title: 'Could not open the billing portal',
-                    description: errorMessage(err),
+                    error: err,
                   })
                 );
             }}
