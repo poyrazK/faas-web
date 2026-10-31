@@ -239,7 +239,7 @@ export function EdgeRuleDialog({
         if (Object.keys(mapped).length) setFieldErrors(mapped);
         return;
       }
-      toast({ kind: 'error', title: 'Could not save the rule', description: errorMessage(err) });
+      toast({ kind: 'error', title: 'Could not save the rule', error: err });
     };
 
     if (editing && rule) {

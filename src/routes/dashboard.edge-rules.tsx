@@ -18,7 +18,6 @@ import {
   type EdgeRule,
 } from '@/lib/api/queries';
 import { slugIndex } from '@/lib/api/adapters';
-import { errorMessage } from '@/lib/api/errors';
 import { consoleHead } from '@/lib/seo';
 import { CorsPresetsPanel } from '@/components/dashboard/cors-presets';
 import { EdgeRulesExtras } from '@/components/dashboard/edge-rules/edge-rules-extras';
@@ -122,9 +121,7 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
     void updateRule
       .mutateAsync({ id: r.id, enabled })
       .then(() => toast({ kind: 'success', title: enabled ? 'Rule enabled' : 'Rule paused' }))
-      .catch((err: unknown) =>
-        toast({ kind: 'error', title: 'Could not update', description: errorMessage(err) })
-      );
+      .catch((err: unknown) => toast({ kind: 'error', title: 'Could not update', error: err }));
   };
 
   /**
@@ -142,9 +139,7 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
       updateRule.mutateAsync({ id: neighbour.id, priority: r.priority }),
     ])
       .then(() => toast({ kind: 'success', title: 'Order changed' }))
-      .catch((err: unknown) =>
-        toast({ kind: 'error', title: 'Could not reorder', description: errorMessage(err) })
-      );
+      .catch((err: unknown) => toast({ kind: 'error', title: 'Could not reorder', error: err }));
   };
 
   const columns: Column<EdgeRuleRow>[] = [
@@ -247,7 +242,7 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
                 toast({
                   kind: 'error',
                   title: 'Could not delete',
-                  description: errorMessage(err),
+                  error: err,
                 })
               );
           }}

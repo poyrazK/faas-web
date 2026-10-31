@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   createMemoryHistory,
@@ -97,6 +97,37 @@ async function mount(entry: string) {
 }
 
 describe('invocation detail links', () => {
+  it('shows when each invocation was created, with the exact time on hover', async () => {
+    await mount('/dashboard/invocations');
+    const when = await screen.findByRole('time');
+    expect(when).toHaveAttribute('dateTime', '2026-09-01T00:00:00.000Z');
+    expect(when).toHaveAttribute('title', expect.stringContaining('2026'));
+    expect(when).toHaveTextContent(/ago$/);
+  });
+  it('offers the full invocation ID to copy from the list without opening the drawer', async () => {
+    const { router } = await mount('/dashboard/invocations');
+    expect(screen.getByText('aaaaaaaaaaaa…')).toHaveAttribute('title', listedId);
+    await userEvent.click(screen.getByRole('button', { name: `Copy: invocation ID ${listedId}` }));
+    expect(router.state.location.search.invocation).toBeUndefined();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+  it('shows the invocation ID in full with a copy button in the drawer', async () => {
+    await mount(`/dashboard/invocations?invocation=${olderId}`);
+    const dialog = await screen.findByRole('dialog', { name: 'POST /work' });
+    expect(within(dialog).getByText(olderId)).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole('button', { name: `Copy: invocation ID ${olderId}` })
+    ).toBeInTheDocument();
+  });
+  it('keeps the ID copyable when the invocation cannot be read', async () => {
+    mocks.errorStatus = 404;
+    await mount(`/dashboard/invocations?invocation=${olderId}`);
+    expect(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: `Copy: invocation ID ${olderId}`,
+      })
+    ).toBeInTheDocument();
+  });
   it('describes the async work it lists and sends HTTP requests to the Debugger', async () => {
     await mount('/dashboard/invocations');
     expect(screen.queryByText(/Every request into your apps/)).not.toBeInTheDocument();
@@ -111,7 +142,7 @@ describe('invocation detail links', () => {
   });
   it('writes row selection to the URL and follows back/forward navigation', async () => {
     const { router, history } = await mount('/dashboard/invocations');
-    await userEvent.click(screen.getByText(listedId));
+    await userEvent.click(screen.getByText('aaaaaaaaaaaa…'));
     await waitFor(() => expect(router.state.location.search.invocation).toBe(listedId));
     await act(async () => {
       history.back();
