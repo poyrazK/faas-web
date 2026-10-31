@@ -63,6 +63,8 @@ export const keys = {
   auditLog: ['audit-log'] as const,
   appSecrets: (slug: string) => ['apps', slug, 'secrets'] as const,
   appEnv: (slug: string) => ['apps', slug, 'env'] as const,
+  /** Config history and guard (ADR-1451); every env or secret write moves both. */
+  appConfig: (slug: string) => ['apps', slug, 'config'] as const,
   appAlerts: (slug: string) => ['apps', slug, 'alerts'] as const,
   appRegistryCredentials: (slug: string) => ['apps', slug, 'registry-credentials'] as const,
 };
@@ -1937,7 +1939,10 @@ export function useSetSecret(slug: string) {
           body: { value },
         })
       ),
-    onSuccess: () => qc.invalidateQueries({ queryKey: keys.appSecrets(slug) }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.appConfig(slug) });
+      return qc.invalidateQueries({ queryKey: keys.appSecrets(slug) });
+    },
   });
 }
 
@@ -1952,7 +1957,10 @@ export function useDeleteSecret(slug: string) {
         secrets: old.secrets?.filter((s) => s.key !== key),
       })),
     onError: (_err, _key, rollback) => rollback?.(),
-    onSettled: () => qc.invalidateQueries({ queryKey: keys.appSecrets(slug) }),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: keys.appConfig(slug) });
+      return qc.invalidateQueries({ queryKey: keys.appSecrets(slug) });
+    },
   });
 }
 
@@ -1973,7 +1981,10 @@ export function useSetEnv(slug: string) {
       unwrap(
         api.PUT('/v1/apps/{slug}/env/{key}', { params: { path: { slug, key } }, body: { value } })
       ),
-    onSuccess: () => qc.invalidateQueries({ queryKey: keys.appEnv(slug) }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.appConfig(slug) });
+      return qc.invalidateQueries({ queryKey: keys.appEnv(slug) });
+    },
   });
 }
 
@@ -1988,7 +1999,10 @@ export function useDeleteEnv(slug: string) {
         env: old.env?.filter((v) => v.key !== key),
       })),
     onError: (_err, _key, rollback) => rollback?.(),
-    onSettled: () => qc.invalidateQueries({ queryKey: keys.appEnv(slug) }),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: keys.appConfig(slug) });
+      return qc.invalidateQueries({ queryKey: keys.appEnv(slug) });
+    },
   });
 }
 

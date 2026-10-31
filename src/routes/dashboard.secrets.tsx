@@ -24,6 +24,7 @@ import { cn } from '@/lib/utils';
 const KEY_RULE = /^[A-Z][A-Z0-9_]*$/;
 import { formatRelative } from '@/lib/mock-data';
 import { consoleHead } from '@/lib/seo';
+import { configChangeNote } from '@/lib/config-history';
 
 export const Route = createFileRoute('/dashboard/secrets')({
   component: SecretsPage,
@@ -92,12 +93,16 @@ export function SecretsBody({ slug }: { slug: string }) {
   const saveSecret = (name: string) =>
     void setSecret
       .mutateAsync({ key: name, value })
-      .then(() => {
+      .then((saved) => {
         setKey('');
         setValue('');
         setKeyTouched(false);
         setUnappliedFor(slug);
-        toast({ kind: 'success', title: 'Secret saved' });
+        toast({
+          kind: 'success',
+          title: 'Secret saved',
+          description: configChangeNote(saved?.config_change),
+        });
       })
       .catch((err: unknown) => toast({ kind: 'error', title: 'Could not save', error: err }));
 

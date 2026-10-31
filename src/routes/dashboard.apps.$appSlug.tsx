@@ -48,6 +48,7 @@ import {
 import { RoutesBody } from './dashboard.routes';
 import { SecretsBody } from './dashboard.secrets';
 import { EnvBody } from './dashboard.env';
+import { ConfigHistory } from '@/components/dashboard/config-history';
 import { QueuesBody } from './dashboard.queues';
 import { UpstreamsBody } from './dashboard.upstreams';
 import { AlertsBody } from './dashboard.alerts';
@@ -687,6 +688,12 @@ function FunctionDetailPage() {
                     description="Sealed at rest and write-only: once saved, a value can be replaced or rotated but never read back."
                   >
                     <SecretsBody slug={fn.id} />
+                  </EnvironmentSection>
+                  <EnvironmentSection
+                    title="History"
+                    description="Every change to variables and secrets is a revision you can roll back to, and the config guard undoes a change that breaks the app."
+                  >
+                    <ConfigHistory slug={fn.id} />
                   </EnvironmentSection>
                 </>
               )}
