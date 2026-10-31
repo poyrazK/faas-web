@@ -17,12 +17,12 @@ internal surfaces are out of scope.
 capability on `main` (167 rows, kept complete by faas's
 `make capability-coverage-check` gate), and tiers each one:
 
-| Tier | Rows | Meaning upstream | What the console owes it |
-|---|---|---|---|
-| GA | 46 | On for every account; the v1.0 charge bar | Complete surface |
-| beta | 32 | On for every account, labelled beta | Complete surface, labelled beta |
-| preview | 48 | Off by default; released per account by a platform flag | Complete surface, shown only when the account has it |
-| internal | 42 | Hidden from customers; frozen until after v1.0 | Nothing new. Existing pages are gated, not extended |
+| Tier     | Rows | Meaning upstream                                        | What the console owes it                             |
+| -------- | ---- | ------------------------------------------------------- | ---------------------------------------------------- |
+| GA       | 46   | On for every account; the v1.0 charge bar               | Complete surface                                     |
+| beta     | 32   | On for every account, labelled beta                     | Complete surface, labelled beta                      |
+| preview  | 48   | Off by default; released per account by a platform flag | Complete surface, shown only when the account has it |
+| internal | 42   | Hidden from customers; frozen until after v1.0          | Nothing new. Existing pages are gated, not extended  |
 
 ## Where the console stands
 
@@ -64,6 +64,7 @@ Measured on the baseline commits.
 
   App pages already work for members (ADR-202610171901), which makes the
   workspace note in CLAUDE.md out of date.
+
 - **Contract drift is small.** Re-vendoring the upstream spec gives 9 type
   errors and 1 deliberate tripwire test to flip. About 70 operations the
   console already calls gained fields or states it ignores: release policy,
@@ -82,6 +83,7 @@ capability has no entry. Work then proceeds in **waves by tier**: foundations,
 then GA gaps, then beta, then preview.
 
 Two other approaches were considered and rejected:
+
 - **Page by page.** GA gaps would wait behind preview work on earlier pages,
   and nothing would stop the drift from recurring.
 - **Contract only, features as they come.** This is how the console fell
@@ -97,16 +99,16 @@ Nothing in later waves starts until the console PRs in 0.1, and all of 0.2 and
 New work is not stacked on the open PRs. Each one is landed, refreshed or
 closed.
 
-| PRs | Disposition |
-|---|---|
-| #204 → #206 (stacked), #207 → #211 (stacked), #205, #208, #210, #212 | Mark ready and land in that order. Resolve the known Domains-table and `useFreshRestart` overlaps at merge time |
-| #195 service migrations (Poyraz) | Land. It covers capability A7 |
-| #202 USD plan catalog | Land together with the forecast fix in 0.2. USD is now confirmed by the forecast enum |
-| #125 observed app health (Poyraz), #143 usage trend, #168 compatibility checks | Rebase. Then fold #125 into G137 (wave 2), #143 into H151 (wave 1) and #168 into A16 (wave 1), or close each one if superseded |
-| #123 budgets (stale, conflicting) | Close. It is superseded by H152 (wave 2) |
-| #22 phase-1 CLI gaps (stale since 2026-09-01) | Close. Its surfaces are re-derived from the ledger |
-| #170 canvas | Keep parked. It is outside parity |
-| #203, #197, #196, #214, #215, #178, #167, #124, #40, #28 (site, landing, docs, security) | Outside this plan. Tracked separately |
+| PRs                                                                                      | Disposition                                                                                                                    |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| #204 → #206 (stacked), #207 → #211 (stacked), #205, #208, #210, #212                     | Mark ready and land in that order. Resolve the known Domains-table and `useFreshRestart` overlaps at merge time                |
+| #195 service migrations (Poyraz)                                                         | Land. It covers capability A7                                                                                                  |
+| #202 USD plan catalog                                                                    | Land together with the forecast fix in 0.2. USD is now confirmed by the forecast enum                                          |
+| #125 observed app health (Poyraz), #143 usage trend, #168 compatibility checks           | Rebase. Then fold #125 into G137 (wave 2), #143 into H151 (wave 1) and #168 into A16 (wave 1), or close each one if superseded |
+| #123 budgets (stale, conflicting)                                                        | Close. It is superseded by H152 (wave 2)                                                                                       |
+| #22 phase-1 CLI gaps (stale since 2026-09-01)                                            | Close. Its surfaces are re-derived from the ledger                                                                             |
+| #170 canvas                                                                              | Keep parked. It is outside parity                                                                                              |
+| #203, #197, #196, #214, #215, #178, #167, #124, #40, #28 (site, landing, docs, security) | Outside this plan. Tracked separately                                                                                          |
 
 ### 0.2 Contract refresh
 
@@ -136,6 +138,7 @@ Three PRs, in this order:
 ### 0.3 One capability gate
 
 A single source of truth for "is this on for this account":
+
 - **`useCapabilities()`** in `src/lib/api/capabilities.ts`. It is one cached
   `GET /v1/capabilities` per session; it refetches on window focus and after a
   preview join or leave.
@@ -152,7 +155,7 @@ A single source of truth for "is this on for this account":
   accounts that have them. What an account can join self-serve comes from
   `/v1/previews`, and the off state links there.
 - **Previews panel** in Settings: `GET /v1/previews` and `PUT`/`DELETE
-  /v1/previews/{key}` for the personal workspace, and the
+/v1/previews/{key}` for the personal workspace, and the
   `/v1/orgs/{slug}/previews…` equivalents for a company workspace, for flags
   marked `self_serve` (ADR-20261021080640).
 
@@ -163,6 +166,7 @@ doctor, the supply-chain panel, the automations key, and Customers (gated on
 ### 0.4 Workspace correctness
 
 When a company workspace is active, these pages read org-scoped routes:
+
 - **Billing:** `/v1/orgs/{slug}/billing/status`, `/usage` and `PATCH …/plan`.
 - **Projects:** `/v1/orgs/{organization}/projects…`, reusing the personal
   project components with a scoped base URL.
@@ -197,6 +201,7 @@ ADR-202610171901.
 
   Internal rows may be listed (status `none`, gap "internal tier") but are not
   required.
+
 - **`npm run parity`** prints coverage by tier. It is the progress number for
   this plan.
 
@@ -209,45 +214,45 @@ tier's wave, using the same table format.
 All on for every account. S = a panel on an existing page, M = a new tab or
 page, L = a section.
 
-| Row | Capability | Gap to close | Size | Placement |
-|---|---|---|---|---|
-| A1 | Apps | "Recently deleted": `GET /v1/deleted-apps`, `POST …/{id}/restore` (the slug restore in #208 covers only the grace window) | S | Apps list |
-| A5 | GitHub | Status, sync and disconnect (`GET/DELETE …/install/bind`, `POST …/install/sync`) | S | App source settings |
-| A11 | App config | New app fields: `release_policy`, `release_probe_paths`, `function_concurrency` | S | Configuration |
-| A13 | Deploy tokens | List, create, rotate and revoke (admin scope plus step-up) | S | App › Configure |
-| A16 | Stateless-contract checks | Land or replace #168; show source-review results on the deployment | M | Deployment detail |
-| A19 | Projects | Update and delete; project previews; reads of new fields (`depends_on`, `org_id`) | M | Project detail |
-| B24, B25 | Rollback, rollouts | Deployment detail: diff, runtime upgrade preview, promote, rollback status, rollout observation; new deployment fields (`scheduled_release`, `rollout_hold`, `rollout_decision`, `configuration`) | M | Deployment drawer |
-| B27 | PR previews | Create a preview; preview by slug | S | Releases |
-| C44 | Service wake-ahead | Read and set | S | App › Services |
-| C60 | Env vars | History, rollback and config guard. Every env or secret write opens a guard the console drops today | S | Environment |
-| C61 | Secrets | References and revocations | S | Secrets |
-| D63 | Custom domains | Domain detail and default. Mostly done by #206 and #208; finish here | S | Domains |
-| D66 | Service bindings | Verification runs, release policy, queue canaries | L | App › Services |
-| G138 | Audit log | Request audit (opt-in) and route-customer usage | S | Observe |
-| H151 | Plans and billing | Billing identity (`PATCH /v1/account/billing`), billing status, invoice refresh, account usage; fold in #143 | S | Settings › Billing |
+| Row      | Capability                | Gap to close                                                                                                                                                                                      | Size | Placement           |
+| -------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | ------------------- |
+| A1       | Apps                      | "Recently deleted": `GET /v1/deleted-apps`, `POST …/{id}/restore` (the slug restore in #208 covers only the grace window)                                                                         | S    | Apps list           |
+| A5       | GitHub                    | Status, sync and disconnect (`GET/DELETE …/install/bind`, `POST …/install/sync`)                                                                                                                  | S    | App source settings |
+| A11      | App config                | New app fields: `release_policy`, `release_probe_paths`, `function_concurrency`                                                                                                                   | S    | Configuration       |
+| A13      | Deploy tokens             | List, create, rotate and revoke (admin scope plus step-up)                                                                                                                                        | S    | App › Configure     |
+| A16      | Stateless-contract checks | Land or replace #168; show source-review results on the deployment                                                                                                                                | M    | Deployment detail   |
+| A19      | Projects                  | Update and delete; project previews; reads of new fields (`depends_on`, `org_id`)                                                                                                                 | M    | Project detail      |
+| B24, B25 | Rollback, rollouts        | Deployment detail: diff, runtime upgrade preview, promote, rollback status, rollout observation; new deployment fields (`scheduled_release`, `rollout_hold`, `rollout_decision`, `configuration`) | M    | Deployment drawer   |
+| B27      | PR previews               | Create a preview; preview by slug                                                                                                                                                                 | S    | Releases            |
+| C44      | Service wake-ahead        | Read and set                                                                                                                                                                                      | S    | App › Services      |
+| C60      | Env vars                  | History, rollback and config guard. Every env or secret write opens a guard the console drops today                                                                                               | S    | Environment         |
+| C61      | Secrets                   | References and revocations                                                                                                                                                                        | S    | Secrets             |
+| D63      | Custom domains            | Domain detail and default. Mostly done by #206 and #208; finish here                                                                                                                              | S    | Domains             |
+| D66      | Service bindings          | Verification runs, release policy, queue canaries                                                                                                                                                 | L    | App › Services      |
+| G138     | Audit log                 | Request audit (opt-in) and route-customer usage                                                                                                                                                   | S    | Observe             |
+| H151     | Plans and billing         | Billing identity (`PATCH /v1/account/billing`), billing status, invoice refresh, account usage; fold in #143                                                                                      | S    | Settings › Billing  |
 
 ## Wave 2: beta gaps
 
 All on for every account and labelled beta in the UI.
 
-| Row | Capability | Gap to close | Size | Placement |
-|---|---|---|---|---|
-| B26 | Deployment aliases | List, set, remove | S | Deployments |
-| D74 | Edge rules | Versions and rollback, rule lists, suggestions, WAF review; `challenge` and `penalty` kinds | M | Networking › Edge |
-| D75 | CORS presets | Edit | S | Networking › Edge |
-| D76 | Edge protection | Pre-auth observations, attack mode | S–M | Networking › Edge |
-| E93 | Jobs | Retry a task, replay failed runs, artifacts download, registry credentials, schedule fields (on top of #208) | M | Jobs detail |
-| E94 | Workflows | Runs (list, cancel, resume, retry a step, events, callbacks), schedules, insights (attention, outcomes, performance), recovery policy | L | App › Automate › Workflows |
-| E95 | Delayed tasks | List | S | App › Queues |
-| E96 | Async invocations | Keyed replay; new fields (`work_policy_name`, `deadline_at`, destinations) | S | Invocations |
-| E103 | Outbound webhooks | Account release webhooks and deliveries; webhook health and attempts | M | Webhooks |
-| G119 | Log drains | Drain detail and delivery health; `datadog` kind | S | Logs › Drains |
-| G122 | Custom metrics | List and define | S | App › Metrics |
-| G125 | Alerts | Notification channels (beta, all paid plans, no flag), with `channel_ids` on rules; rule-form catch-up (about 24 metrics, baseline comparisons, `slo_id`, `synthetic_check_id`, `log_query`); alert detail | M | Alerts › Channels |
-| G134 | Debug | Request replay and export, debug status, regression review | M | App › Debugger |
-| G137 | App health assessment | Fold in or replace #125 | S | Overview |
-| H152 | Budgets | Policies, projections, alerts and channels, automatic stops | M | Billing › Budgets |
+| Row  | Capability            | Gap to close                                                                                                                                                                                               | Size | Placement                  |
+| ---- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | -------------------------- |
+| B26  | Deployment aliases    | List, set, remove                                                                                                                                                                                          | S    | Deployments                |
+| D74  | Edge rules            | Versions and rollback, rule lists, suggestions, WAF review; `challenge` and `penalty` kinds                                                                                                                | M    | Networking › Edge          |
+| D75  | CORS presets          | Edit                                                                                                                                                                                                       | S    | Networking › Edge          |
+| D76  | Edge protection       | Pre-auth observations, attack mode                                                                                                                                                                         | S–M  | Networking › Edge          |
+| E93  | Jobs                  | Retry a task, replay failed runs, artifacts download, registry credentials, schedule fields (on top of #208)                                                                                               | M    | Jobs detail                |
+| E94  | Workflows             | Runs (list, cancel, resume, retry a step, events, callbacks), schedules, insights (attention, outcomes, performance), recovery policy                                                                      | L    | App › Automate › Workflows |
+| E95  | Delayed tasks         | List                                                                                                                                                                                                       | S    | App › Queues               |
+| E96  | Async invocations     | Keyed replay; new fields (`work_policy_name`, `deadline_at`, destinations)                                                                                                                                 | S    | Invocations                |
+| E103 | Outbound webhooks     | Account release webhooks and deliveries; webhook health and attempts                                                                                                                                       | M    | Webhooks                   |
+| G119 | Log drains            | Drain detail and delivery health; `datadog` kind                                                                                                                                                           | S    | Logs › Drains              |
+| G122 | Custom metrics        | List and define                                                                                                                                                                                            | S    | App › Metrics              |
+| G125 | Alerts                | Notification channels (beta, all paid plans, no flag), with `channel_ids` on rules; rule-form catch-up (about 24 metrics, baseline comparisons, `slo_id`, `synthetic_check_id`, `log_query`); alert detail | M    | Alerts › Channels          |
+| G134 | Debug                 | Request replay and export, debug status, regression review                                                                                                                                                 | M    | App › Debugger             |
+| G137 | App health assessment | Fold in or replace #125                                                                                                                                                                                    | S    | Overview                   |
+| H152 | Budgets               | Policies, projections, alerts and channels, automatic stops                                                                                                                                                | M    | Billing › Budgets          |
 
 ## Wave 3: preview gaps
 
@@ -255,31 +260,31 @@ These are shown only when `/v1/capabilities` reports the capability, or offered
 through "Join preview" when it is self-serve. They are ordered by customer
 value: the products Gregale markets first, then the ones that follow from them.
 
-| Order | Row | Capability | Gap to close | Size |
-|---|---|---|---|---|
-| 1 | F108 | Object storage (after #211) | Versioning toggle and version restore, lifecycle editing, CORS, tags, encryption, object lock, multipart uploads, upload routes, notifications and compute triggers, write receipts | L |
-| 2 | F109 | Managed Postgres | Usage, compute cap and its `suspended` state, resize, compute policy, cutovers | M |
-| 3 | E98, E99, E97 | Events and queues | Events hub: subscriptions, deliveries, schemas, acknowledgements, delivery controls, replays and recoveries. Unified dead-letter ledger. Trigger `delivery` mode and the `realtime` kind | L |
-| 4 | F112 | Realtime | Endpoints, connections, occupancy, send and publish. The preview family (consumer groups, history, push) follows | L |
-| 5 | B28–B31, B35–B37 | Release controls | Approvals and policy, freezes, gates, scheduled releases, route-health gate, mirror detail, alert-triggered rollbacks | L |
-| 6 | A20 | Environments | Create, config, secrets and routes; promotions, approvals and rollback; release sets; GitOps | L |
-| 7 | D68–D70 | Private networking | Private networks and peerings; TCP and UDP listeners | L |
-| 8 | C55, C56, G168, G135 | Production debugging | Forks, crash snapshots, profile captures, debugger evidence. None of these has a CLI command, so the console is their first UI | M each |
-| 9 | G127–G129 | Reliability | Issues workflow (policies, Linear, saved views), SLOs, synthetic checks | L |
-| 10 | C54, F114, F115 | MCP and AI | MCP readiness and diagnostics; AI gateway routes, canaries, traces and tokens; integration binding budget and usage | L |
-| 11 | E104, C53, C21, F110, C58, E101, D83 | The rest | Operations and work policies, disposable runs, app tasks, Data API usage, developer environments, inbox and outbox, OpenAPI diff and apply | S–M each |
+| Order | Row                                  | Capability                  | Gap to close                                                                                                                                                                             | Size     |
+| ----- | ------------------------------------ | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| 1     | F108                                 | Object storage (after #211) | Versioning toggle and version restore, lifecycle editing, CORS, tags, encryption, object lock, multipart uploads, upload routes, notifications and compute triggers, write receipts      | L        |
+| 2     | F109                                 | Managed Postgres            | Usage, compute cap and its `suspended` state, resize, compute policy, cutovers                                                                                                           | M        |
+| 3     | E98, E99, E97                        | Events and queues           | Events hub: subscriptions, deliveries, schemas, acknowledgements, delivery controls, replays and recoveries. Unified dead-letter ledger. Trigger `delivery` mode and the `realtime` kind | L        |
+| 4     | F112                                 | Realtime                    | Endpoints, connections, occupancy, send and publish. The preview family (consumer groups, history, push) follows                                                                         | L        |
+| 5     | B28–B31, B35–B37                     | Release controls            | Approvals and policy, freezes, gates, scheduled releases, route-health gate, mirror detail, alert-triggered rollbacks                                                                    | L        |
+| 6     | A20                                  | Environments                | Create, config, secrets and routes; promotions, approvals and rollback; release sets; GitOps                                                                                             | L        |
+| 7     | D68–D70                              | Private networking          | Private networks and peerings; TCP and UDP listeners                                                                                                                                     | L        |
+| 8     | C55, C56, G168, G135                 | Production debugging        | Forks, crash snapshots, profile captures, debugger evidence. None of these has a CLI command, so the console is their first UI                                                           | M each   |
+| 9     | G127–G129                            | Reliability                 | Issues workflow (policies, Linear, saved views), SLOs, synthetic checks                                                                                                                  | L        |
+| 10    | C54, F114, F115                      | MCP and AI                  | MCP readiness and diagnostics; AI gateway routes, canaries, traces and tokens; integration binding budget and usage                                                                      | L        |
+| 11    | E104, C53, C21, F110, C58, E101, D83 | The rest                    | Operations and work policies, disposable runs, app tasks, Data API usage, developer environments, inbox and outbox, OpenAPI diff and apply                                               | S–M each |
 
 ## Gaps the ledger audit added
 
 The first ledger PR audited every customer row against `main`. These gaps were
 not in the wave tables above and join their tier's wave:
 
-| Wave | Rows |
-|---|---|
-| 0 | A2 tarball deploys through `/v1/uploads` |
-| 1 | E92 cron occurrences and command-run cancel; C47 health probes and restart policy shown (CLI command meanwhile) |
-| 2 | A17 single-app deploy diff; A23 deploy queue controls; B34 release command status; C48 snapshot lifecycle hooks shown (CLI meanwhile); C50 warm pool and warm snapshots |
-| 3 | A6 GitLab; A21 app tasks; D71 static egress IP; D81 async routes; D88 route monitor; E101 inbox and outbox; F111 durable entities; F113 live queries; G124 trace ingest settings; H147 application Auth; I160 management MCP server (CLI) |
+| Wave | Rows                                                                                                                                                                                                                                      |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0    | A2 tarball deploys through `/v1/uploads`                                                                                                                                                                                                  |
+| 1    | E92 cron occurrences and command-run cancel; C47 health probes and restart policy shown (CLI command meanwhile)                                                                                                                           |
+| 2    | A17 single-app deploy diff; A23 deploy queue controls; B34 release command status; C48 snapshot lifecycle hooks shown (CLI meanwhile); C50 warm pool and warm snapshots                                                                   |
+| 3    | A6 GitLab; A21 app tasks; D71 static egress IP; D81 async routes; D88 route monitor; E101 inbox and outbox; F111 durable entities; F113 live queries; G124 trace ingest settings; H147 application Auth; I160 management MCP server (CLI) |
 
 ## Out of scope
 
@@ -304,7 +309,7 @@ not in the wave tables above and join their tier's wave:
 - **Small.** One ledger row, or a few closely related rows, per PR, sized for a
   single reviewer.
 - **Updates the ledger.** It moves its rows' `status` and `gap`, so `npm run
-  parity` goes up.
+parity` goes up.
 - **Decided from the backend code.** Semantics come from faas `main`: handler,
   ADR, docs. The PR body has a "What the backend does" section with file:line
   references. Open questions are not left for the backend owner.

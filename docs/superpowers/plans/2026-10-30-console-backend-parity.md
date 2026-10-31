@@ -5,6 +5,7 @@
 **Goal:** Land Wave 0 of the parity spec, then work Waves 1–3 from the ledger it creates. Wave 0 covers the backlog, the contract refresh, one capability gate, workspace correctness and the parity ledger.
 
 **Architecture:**
+
 - Each numbered PR below is a separate branch off `origin/main`, opened after the backlog in Task 1 has landed.
 - The capability gate extends the existing `src/lib/api/capabilities.ts` with one pure rule, `capabilityAccess`, which reads `hidden_capabilities`. Nav, app tabs and pages all consult that rule.
 - The ledger vendors faas's capability inventory and maps each GA, beta and preview row to a console surface. A Vitest test fails on any drift.
@@ -65,6 +66,7 @@ for n in 204 206 207 211 205 208 210 212; do gh pr ready $n --repo poyrazK/faas-
 ```
 
 Landing order: #204, then #206 (stacked on it), #207, then #211 (stacked on it), #205, #208, #210, #212. After each merge, rebase the next PR onto `main` and run the four verification commands from Global constraints before asking for review again. Two conflicts are already known:
+
 - the Domains table, between #206 and #208;
 - `useFreshRestart`, between #204 and #211. Keep one copy, in `src/lib/api/queries.ts`.
 
@@ -96,6 +98,7 @@ git commit -m "docs(parity): record the backlog outcome"
 Branch: `fix/console-usd`. If #202 is still open, rebase onto it so the landing plan catalog and the console agree.
 
 **Files:**
+
 - Create: `src/lib/money.ts`, `src/lib/money.test.ts`
 - Modify:
   - `src/components/dashboard/spend-control.tsx` (`eur` at :17–18, copy at :189)
@@ -108,6 +111,7 @@ Branch: `fix/console-usd`. If #202 is still open, rebase onto it so the landing 
   - `src/components/dashboard/spend-control.test.ts` (test title)
 
 **Interfaces:**
+
 - Produces: `ACCOUNT_CURRENCY: 'USD'`, `formatCents(cents: number): string`, `formatMillicents(millicents: number): string`, all in `@/lib/money`.
 
 - [ ] **Step 1: Write the failing tests.**
@@ -216,6 +220,7 @@ euro amount outside the plan catalog."
 Branch: `chore/revendor-spec`. The generated diff is about 170k lines, so keep the hand-written diff small. Spec §0.2, item 2.
 
 **Files:**
+
 - Modify (regenerated): `api/openapi.yaml`, `src/lib/api/schema.d.ts`
 - Modify: `src/lib/release-process.ts`, `src/lib/release-process.test.ts`
 - Modify: `src/lib/service-policy.ts:10`, `src/lib/api/bindings.ts:17`, `src/components/dashboard/service-policy-editor.tsx:277-278`
@@ -227,6 +232,7 @@ Branch: `chore/revendor-spec`. The generated diff is about 170k lines, so keep t
 - Test: `src/lib/release-process.test.ts`, `src/lib/service-policy.test.ts` (create if absent), `src/components/dashboard/trigger-form-model.test.ts` (create if absent)
 
 **Interfaces:**
+
 - Produces:
   - `readStageState(raw: unknown): StageState | undefined`, where `StageState['current']` is `StageName | ''` and history rows carry `started_at`, `ended_at`, `duration_ms` and `status: 'completed' | 'failed' | 'cancelled'`;
   - `ServiceBindingPolicy = 'account' | 'declared' | 'project'`;
@@ -249,11 +255,21 @@ it('reads an idle stage as no current stage, not an unknown one', () => {
   const state = readStageState({
     current: '',
     history: [
-      { name: 'image_build', status: 'completed', started_at: null, ended_at: null, duration_ms: 4000 },
+      {
+        name: 'image_build',
+        status: 'completed',
+        started_at: null,
+        ended_at: null,
+        duration_ms: 4000,
+      },
     ],
   });
   expect(state?.current).toBe('');
-  expect(state?.history[0]).toMatchObject({ name: 'image_build', status: 'completed', duration_ms: 4000 });
+  expect(state?.history[0]).toMatchObject({
+    name: 'image_build',
+    status: 'completed',
+    duration_ms: 4000,
+  });
 });
 
 it('keeps cancelled stage rows instead of dropping them', () => {
@@ -272,9 +288,15 @@ it('shows a cancelled build as skipped with the reason, not as pending', () => {
   const phases = releaseProcess({
     ...baseDeployment,
     status: 'cancelled',
-    stage_state: { current: '', history: [{ name: 'image_build', status: 'cancelled', duration_ms: 10 }] },
+    stage_state: {
+      current: '',
+      history: [{ name: 'image_build', status: 'cancelled', duration_ms: 10 }],
+    },
   } as Deployment);
-  expect(phases.find((p) => p.key === 'build')).toMatchObject({ state: 'skipped', detail: 'image build cancelled' });
+  expect(phases.find((p) => p.key === 'build')).toMatchObject({
+    state: 'skipped',
+    detail: 'image build cancelled',
+  });
 });
 ```
 
@@ -323,6 +345,7 @@ export function readStageState(raw: unknown): StageState | undefined {
 ```
 
 In `releaseProcess`:
+
 - Change `const current = stage?.current;` to `const current = stage?.current || undefined;`.
 - Inside `prep`, right after the `failed` branch, add:
 
@@ -385,7 +408,9 @@ Add a render test for the editor. Put it in the existing `service-policy-editor`
 ```tsx
 it('offers the project policy', async () => {
   renderEditor(); // the file's existing helper
-  expect(screen.getByRole('option', { name: 'Project services, declared targets elsewhere' })).toBeInTheDocument();
+  expect(
+    screen.getByRole('option', { name: 'Project services, declared targets elsewhere' })
+  ).toBeInTheDocument();
 });
 ```
 
@@ -414,14 +439,14 @@ export function allowedBrokerKinds(limits: TriggerLimits): CreatableBrokerKind[]
 }
 ```
 
-  - Change the signature `sourceDraft(kind: BrokerKind)` to `sourceDraft(kind: CreatableBrokerKind)`, and delete its `case 'sqs_compat':` branch. Existing `sqs_compat` triggers are still read through the other functions, which keep their branches.
-  - `trigger-create.tsx`: make the labels `Record<CreatableBrokerKind, string>` and drop `sqs_compat`. Add a `RECOVERY` entry: `trigger_kind_unavailable: 'That event source is no longer offered. Use a Platform queue trigger instead.',`.
-  - In `trigger-detail.tsx` and `trigger-source-fields.tsx`, wherever a kind is shown from a `Record`, add `realtime: 'Realtime channel'` if tsc asks for it.
-  - `ai-gateway.tsx`, `BUDGET_LABELS`: `tag_daily_cost: 'Tag daily cost',`.
-  - `mock/events.ts`:
-    - In the `aiRoutes` fixture, add `strategy: 'ordered',`.
-    - In the AI usage item, add zeroes for `bad_feedback`, `cache_saved_millicents`, `cached_requests`, `code_session_gb`, `empty_requests`, `evaluated_requests`, `evaluation_errors`, `evaluation_score_sum`, `file_searches`, `good_feedback`, `input_audio_tokens`, `invalid_json_requests`, `output_audio_tokens`, `prompt_cache_saved_millicents`, `refused_requests`, `tool_error_requests`, `truncated_requests`, `video_seconds` and `web_searches`.
-    - In the AI alert, add `tag: null`.
+- Change the signature `sourceDraft(kind: BrokerKind)` to `sourceDraft(kind: CreatableBrokerKind)`, and delete its `case 'sqs_compat':` branch. Existing `sqs_compat` triggers are still read through the other functions, which keep their branches.
+- `trigger-create.tsx`: make the labels `Record<CreatableBrokerKind, string>` and drop `sqs_compat`. Add a `RECOVERY` entry: `trigger_kind_unavailable: 'That event source is no longer offered. Use a Platform queue trigger instead.',`.
+- In `trigger-detail.tsx` and `trigger-source-fields.tsx`, wherever a kind is shown from a `Record`, add `realtime: 'Realtime channel'` if tsc asks for it.
+- `ai-gateway.tsx`, `BUDGET_LABELS`: `tag_daily_cost: 'Tag daily cost',`.
+- `mock/events.ts`:
+  - In the `aiRoutes` fixture, add `strategy: 'ordered',`.
+  - In the AI usage item, add zeroes for `bad_feedback`, `cache_saved_millicents`, `cached_requests`, `code_session_gb`, `empty_requests`, `evaluated_requests`, `evaluation_errors`, `evaluation_score_sum`, `file_searches`, `good_feedback`, `input_audio_tokens`, `invalid_json_requests`, `output_audio_tokens`, `prompt_cache_saved_millicents`, `refused_requests`, `tool_error_requests`, `truncated_requests`, `video_seconds` and `web_searches`.
+  - In the AI alert, add `tag: null`.
 
 - [ ] **Step 8: Flip the cache tripwire.** It was written to fail once upstream fixed the edge-rule union.
   - In `src/lib/api/cache.contract.test.ts:27`, change `it.fails(` to `it(` and delete the comment above it that explains the tripwire.
@@ -466,6 +491,7 @@ Regenerates schema.d.ts and fixes what stopped compiling:
 ### Task 4: Deploy a tarball through resumable uploads (PR "feat(console): resumable tarball deploys")
 
 Branch: `feat/resumable-uploads`. Spec §0.2, item 3.
+
 - `POST /v1/apps/{slug}/deployments/source-tarball` is deprecated. Its documented sunset was 2026-10-01.
 - Its replacement is:
   - `POST /v1/uploads` with `{app_slug, total_size, sha256_hex?, deploy_options?}`, which returns `201 {upload_id, chunk_size, total_size, expires_at}`.
@@ -474,12 +500,14 @@ Branch: `feat/resumable-uploads`. Spec §0.2, item 3.
   - `POST /v1/uploads/{id}/commit` with an optional `Deployment-Attempt-ID` header (32 hex). It answers 201 with the deployment, or 202 when it recovers an attempt that was already accepted.
 
 **Files:**
+
 - Create: `src/lib/api/uploads.ts`, `src/lib/api/uploads.test.ts`
 - Modify: `src/lib/api/queries.ts:3534-3563` (`useDeployTarball`)
 - Modify: `src/components/dashboard/tarball-deploy.tsx` (progress line), `src/components/dashboard/tarball-deploy.test.tsx`
 - Modify: `mock/plugin.ts` (four routes)
 
 **Interfaces:**
+
 - Produces:
   - `uploadTarball(input: { slug: string; file: Blob; options?: DeployOptions; onProgress?: (sent: number, total: number) => void; signal?: AbortSignal }): Promise<Deployment>`
   - `type DeployOptions = components['schemas']['UploadDeployOptions']`
@@ -499,7 +527,12 @@ function server(script: (call: Call) => Response) {
   vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
     const req = new Request(input, init);
     const body = req.method === 'PATCH' ? await req.arrayBuffer() : undefined;
-    const call = { method: req.method, url: new URL(req.url).pathname, headers: req.headers, size: body?.byteLength };
+    const call = {
+      method: req.method,
+      url: new URL(req.url).pathname,
+      headers: req.headers,
+      size: body?.byteLength,
+    };
     calls.push(call);
     return script(call);
   });
@@ -548,12 +581,23 @@ describe('uploadTarball', () => {
         if (patched === 2) return json(409, { code: 'conflict', title: 'offset', status: 409 });
         return new Response(null, { status: 200 });
       }
-      if (c.method === 'GET') return json(200, { upload_id: 'u2', received_bytes: 5, total_size: 10, chunk_size: 5, status: 'open', app_slug: 'alpha', expires_at: '' });
+      if (c.method === 'GET')
+        return json(200, {
+          upload_id: 'u2',
+          received_bytes: 5,
+          total_size: 10,
+          chunk_size: 5,
+          status: 'open',
+          app_slug: 'alpha',
+          expires_at: '',
+        });
       if (c.url === '/v1/uploads/u2/commit') return json(201, { id: 'dep-2' });
       return json(500, {});
     });
     await uploadTarball({ slug: 'alpha', file: new Blob(['abcdefghij']) });
-    expect(calls.filter((c) => c.method === 'PATCH').map((c) => c.headers.get('upload-offset'))).toEqual(['0', '5', '5']);
+    expect(
+      calls.filter((c) => c.method === 'PATCH').map((c) => c.headers.get('upload-offset'))
+    ).toEqual(['0', '5', '5']);
   });
 
   it('recovers a lost commit reply with the same attempt id', async () => {
@@ -571,7 +615,9 @@ describe('uploadTarball', () => {
     });
     const dep = await uploadTarball({ slug: 'alpha', file: new Blob(['abc']) });
     expect(dep.id).toBe('dep-3');
-    const ids = calls.filter((c) => c.url.endsWith('/commit')).map((c) => c.headers.get('deployment-attempt-id'));
+    const ids = calls
+      .filter((c) => c.url.endsWith('/commit'))
+      .map((c) => c.headers.get('deployment-attempt-id'));
     expect(ids[0]).toBe(ids[1]);
   });
 });
@@ -702,6 +748,7 @@ export function useDeployTarball(slug: string) {
 ```
 
 Import `uploadTarball` and `type DeployOptions` from `./uploads`, and update the doc comment above the hook to name the upload session. Then, in `tarball-deploy.tsx`:
+
 - Rename `sidecar:` to `options:`. The reason and tag fields exist on `UploadDeployOptions`.
 - Add `const [sent, setSent] = useState<number | null>(null);` and pass `onProgress: (s, t) => setSent(Math.round((s / t) * 100))`.
 - Render `{sent !== null && deploy.isPending && <p className="text-xs text-muted-foreground" role="status">Uploading… {sent}%</p>}` under the button.
@@ -712,7 +759,10 @@ In `tarball-deploy.test.tsx`, change the expected `mutateAsync` argument from `s
 - [ ] **Step 6: Add the mock routes.** These go in `mock/plugin.ts`, at column 0, near the other deployment routes. The sessions live in memory.
 
 ```ts
-const uploads = new Map<string, { slug: string; total: number; received: number; deployment?: string }>();
+const uploads = new Map<
+  string,
+  { slug: string; total: number; received: number; deployment?: string }
+>();
 route('POST', '/v1/uploads', ({ body }) => {
   const id = randomUUID();
   uploads.set(id, { slug: String(body.app_slug), total: Number(body.total_size), received: 0 });
@@ -778,16 +828,19 @@ sends chunks at the server's chunk size, resumes from received_bytes on
 Branch: `fix/capability-gate`. This task depends on Task 3: `hidden_capabilities` has to be in the generated types.
 
 **Files:**
+
 - Modify: `src/lib/capability-state.ts`, `src/lib/api/capabilities.ts`
 - Test: `src/lib/capability-state.test.ts` (create or extend), `src/lib/api/capabilities.test.tsx`
 
 **Interfaces:**
+
 - Produces:
   - `type CapabilityAccess = 'loading' | 'on' | 'off' | 'plan-not-entitled' | 'runtime-unavailable' | 'registry-error'`
   - `capabilityAccess(registry: CapabilityRegistry | undefined, id: string, phase: 'loading' | 'error' | 'ready'): CapabilityAccess`
   - `useCapabilityAccess(id: string): { access: CapabilityAccess; capability?: Capability; refresh: () => void }`
 
 The rule (faas `handlers_capabilities.go:40-66`, `pkg/api/capabilities.go:25-39`):
+
 - `hidden_capabilities` lists every catalog capability, internal ones included, whose flag is off for this account. A listed id is `off`.
 - Internal capabilities never appear in `capabilities[]`, so an id that is absent from both lists is `on`. That is an internal capability released to this account.
 - An entry that is present but has `enabled: false` is `plan-not-entitled` or `runtime-unavailable`, depending on its `unavailable_reason`.
@@ -806,8 +859,20 @@ const registry = (over: Record<string, unknown> = {}) =>
     plan: 'pro',
     capabilities: [
       { key: 'traffic-mirroring', maturity: 'preview', plans: ['pro'], enabled: true },
-      { key: 'issues', maturity: 'preview', plans: ['scale'], enabled: false, unavailable_reason: 'plan_not_entitled' },
-      { key: 'object-storage', maturity: 'preview', plans: ['pro'], enabled: false, unavailable_reason: 'runtime_unavailable' },
+      {
+        key: 'issues',
+        maturity: 'preview',
+        plans: ['scale'],
+        enabled: false,
+        unavailable_reason: 'plan_not_entitled',
+      },
+      {
+        key: 'object-storage',
+        maturity: 'preview',
+        plans: ['pro'],
+        enabled: false,
+        unavailable_reason: 'runtime_unavailable',
+      },
     ],
     ...over,
   }) as never;
@@ -823,7 +888,9 @@ describe('capabilityAccess', () => {
     expect(capabilityAccess(r, 'route-insights', 'ready')).toBe('off');
   });
   it('treats an internal capability that is not hidden as released to this account', () => {
-    expect(capabilityAccess(registry({ hidden_capabilities: [] }), 'route-insights', 'ready')).toBe('on');
+    expect(capabilityAccess(registry({ hidden_capabilities: [] }), 'route-insights', 'ready')).toBe(
+      'on'
+    );
   });
   it('treats everything as on when the server has no capability gate', () => {
     // hidden_capabilities is omitted by servers without the gate (faas handlers_capabilities.go:65)
@@ -846,12 +913,7 @@ Expected: FAIL, because `capabilityAccess` isn't exported.
 
 ```ts
 export type CapabilityAccess =
-  | 'loading'
-  | 'on'
-  | 'off'
-  | 'plan-not-entitled'
-  | 'runtime-unavailable'
-  | 'registry-error';
+  'loading' | 'on' | 'off' | 'plan-not-entitled' | 'runtime-unavailable' | 'registry-error';
 
 /**
  * Whether a catalog capability is usable by this account, read the way apid
@@ -870,7 +932,9 @@ export function capabilityAccess(
   if (registry.hidden_capabilities?.includes(id)) return 'off';
   const entry = registry.capabilities.find((c) => c.key === id);
   if (!entry || entry.enabled) return 'on';
-  return entry.unavailable_reason === 'runtime_unavailable' ? 'runtime-unavailable' : 'plan-not-entitled';
+  return entry.unavailable_reason === 'runtime_unavailable'
+    ? 'runtime-unavailable'
+    : 'plan-not-entitled';
 }
 ```
 
@@ -911,11 +975,13 @@ on, and a server without the gate hides nothing."
 ### Task 6: Gate the app tabs, nav and wrongly keyed pages (PR "fix(console): one capability gate", part 2)
 
 Same branch as Task 5.
+
 - Since faas #5319, capgate answers 404 for an unreleased capability. The Routes, Upstreams, Mirrors, Tenant surfaces and Debugger tabs, the domain doctor and the supply-chain panel all hit that for default accounts.
 - The automations editor checks `workflows-and-jobs`, but its capability is `automations`.
 - Customers checks only `api-monetization`, but its tenant routes are `platform-tenants`.
 
 **Files:**
+
 - Modify: `src/components/dashboard/app-tab-navigation.tsx`
 - Modify: `src/routes/dashboard.apps.$appSlug.tsx` (the tab bodies, around :668-726)
 - Modify: `src/components/dashboard/nav-config.ts` (`NavItem.capability?`) and the sidebar and palette renderers that read nav-config. Find them with `grep -rln "NAV_GROUPS\|navGroups" src/components/dashboard`.
@@ -926,6 +992,7 @@ Same branch as Task 5.
 - Test: `src/components/dashboard/app-tab-navigation.test.tsx`, `src/components/dashboard/capability-gate.test.tsx`
 
 **Interfaces:**
+
 - Consumes: `useCapabilityAccess` and `CapabilityAccess` from Task 5.
 - Produces:
   - `APP_TAB_CAPABILITY: Partial<Record<AppTab, string>>`
@@ -934,20 +1001,20 @@ Same branch as Task 5.
 
 The tab-to-capability map, using faas `pkg/productcap/catalog.json` ids:
 
-| Tab | Capability | Tier |
-|---|---|---|
-| Routes | `route-insights` | internal |
-| Upstreams | `data-upstreams` | internal |
-| Mirrors | `traffic-mirroring` | preview |
-| Tenant surfaces | `tenant-surfaces` | preview |
-| Debugger | `production-debugger` | preview |
-| Issues, Errors | `issues` | preview |
-| MCP | `mcp-hosting` | preview |
-| OpenAPI | `openapi-contract-preview` | preview |
-| Consumers | `api-consumers` | internal |
-| Consumer plans | `api-monetization` | internal |
-| Automations | `automations` | internal |
-| Queues | `queues` | preview |
+| Tab             | Capability                 | Tier     |
+| --------------- | -------------------------- | -------- |
+| Routes          | `route-insights`           | internal |
+| Upstreams       | `data-upstreams`           | internal |
+| Mirrors         | `traffic-mirroring`        | preview  |
+| Tenant surfaces | `tenant-surfaces`          | preview  |
+| Debugger        | `production-debugger`      | preview  |
+| Issues, Errors  | `issues`                   | preview  |
+| MCP             | `mcp-hosting`              | preview  |
+| OpenAPI         | `openapi-contract-preview` | preview  |
+| Consumers       | `api-consumers`            | internal |
+| Consumer plans  | `api-monetization`         | internal |
+| Automations     | `automations`              | internal |
+| Queues          | `queues`                   | preview  |
 
 Tabs not in the map are GA or beta and always show.
 
@@ -959,7 +1026,9 @@ import { visibleAppTabs, APP_TAB_CAPABILITY } from './app-tab-navigation';
 
 describe('visibleAppTabs', () => {
   it('hides tabs whose capability is off and keeps GA tabs', () => {
-    const tabs = visibleAppTabs((id) => (id === 'traffic-mirroring' || id === 'route-insights' ? 'off' : 'on'));
+    const tabs = visibleAppTabs((id) =>
+      id === 'traffic-mirroring' || id === 'route-insights' ? 'off' : 'on'
+    );
     expect(tabs).not.toContain('Mirrors');
     expect(tabs).not.toContain('Routes');
     expect(tabs).toContain('Deployments');
@@ -993,19 +1062,34 @@ vi.mock('@/lib/api/capabilities', () => ({
 describe('CapabilityGate', () => {
   it('renders children only when on, so their queries never run otherwise', () => {
     access.value = 'on';
-    render(<CapabilityGate capability="traffic-mirroring" title="Mirrors"><p>body</p></CapabilityGate>);
+    render(
+      <CapabilityGate capability="traffic-mirroring" title="Mirrors">
+        <p>body</p>
+      </CapabilityGate>
+    );
     expect(screen.getByText('body')).toBeInTheDocument();
   });
   it('says the feature is not enabled and links to Previews when off (deep link to a hidden tab)', () => {
     access.value = 'off';
-    render(<CapabilityGate capability="traffic-mirroring" title="Mirrors"><p>body</p></CapabilityGate>);
+    render(
+      <CapabilityGate capability="traffic-mirroring" title="Mirrors">
+        <p>body</p>
+      </CapabilityGate>
+    );
     expect(screen.queryByText('body')).toBeNull();
     expect(screen.getByRole('status')).toHaveTextContent(/not enabled for this account/i);
-    expect(screen.getByRole('link', { name: /previews/i })).toHaveAttribute('href', '/dashboard/settings?section=previews');
+    expect(screen.getByRole('link', { name: /previews/i })).toHaveAttribute(
+      'href',
+      '/dashboard/settings?section=previews'
+    );
   });
   it('shows a spinner-free checking state while loading', () => {
     access.value = 'loading';
-    render(<CapabilityGate capability="traffic-mirroring" title="Mirrors"><p>body</p></CapabilityGate>);
+    render(
+      <CapabilityGate capability="traffic-mirroring" title="Mirrors">
+        <p>body</p>
+      </CapabilityGate>
+    );
     expect(screen.getByRole('status')).toHaveTextContent(/checking availability/i);
   });
 });
@@ -1050,7 +1134,10 @@ export function CapabilityGate({
   if (access === 'on') return <>{children}</>;
   return (
     <Panel title={title}>
-      <div role="status" className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+      <div
+        role="status"
+        className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground"
+      >
         <span>{MESSAGES[access]}</span>
         {access === 'off' && (
           <a className="text-brand underline" href="/dashboard/settings?section=previews">
@@ -1107,6 +1194,7 @@ export function visibleAppTabs(access: (id: string) => CapabilityAccess): AppTab
 ```
 
 `AppTabNavigation` then takes a `visible: readonly AppTab[]` prop:
+
 - It filters each group's `tabs` by `visible`.
 - It drops groups that end up with no tabs.
 
@@ -1118,6 +1206,7 @@ const visible = visibleAppTabs((id) => capabilityAccess(query.data, id, phase));
 ```
 
 In the same route file:
+
 - Wrap each gated tab body in `<CapabilityGate capability={APP_TAB_CAPABILITY[tab]!} title={tab}>`. A deep link to a hidden tab then shows the notice instead of calling the route.
 - If the selected `tab` isn't in `visible`, keep it selected so the notice renders. Don't redirect: the URL is the person's.
 
@@ -1146,15 +1235,18 @@ Expected: PASS. If an existing test renders a gated tab without a registry, give
 
 ```ts
 const hidden = (process.env.MOCK_HIDDEN_CAPABILITIES ?? '').split(',').filter(Boolean);
-return { ...mockCapabilities(plan, (process.env.MOCK_UNAVAILABLE_CAPABILITIES ?? '').split(',')), ...(hidden.length ? { hidden_capabilities: hidden } : {}) };
+return {
+  ...mockCapabilities(plan, (process.env.MOCK_UNAVAILABLE_CAPABILITIES ?? '').split(',')),
+  ...(hidden.length ? { hidden_capabilities: hidden } : {}),
+};
 ```
 
-  - Document `MOCK_HIDDEN_CAPABILITIES` in CLAUDE.md's dev:mock paragraph.
-  - Run `MOCK_API=1 MOCK_HIDDEN_CAPABILITIES=route-insights,data-upstreams,traffic-mirroring,tenant-surfaces,production-debugger npx vite --port 3301`, then:
-    - Open an app. Routes, Upstreams, Mirrors, Tenant surfaces and Debugger are gone.
-    - Open `?tab=Debugger`. It shows "Not enabled for this account" with the Previews link.
-    - The network log has no 404s.
-    - Restart without the variable and all tabs are back.
+- Document `MOCK_HIDDEN_CAPABILITIES` in CLAUDE.md's dev:mock paragraph.
+- Run `MOCK_API=1 MOCK_HIDDEN_CAPABILITIES=route-insights,data-upstreams,traffic-mirroring,tenant-surfaces,production-debugger npx vite --port 3301`, then:
+  - Open an app. Routes, Upstreams, Mirrors, Tenant surfaces and Debugger are gone.
+  - Open `?tab=Debugger`. It shows "Not enabled for this account" with the Previews link.
+  - The network log has no 404s.
+  - Restart without the variable and all tabs are back.
 
 - [ ] **Step 9: Verify and commit.** Run all four verification commands.
 
@@ -1177,15 +1269,18 @@ a deep link shows why. Automations checks 'automations', not
 Branch: `feat/previews-settings`.
 
 The API (faas ADR-20261021080640):
+
 - `GET /v1/previews` returns `{items: Preview[]}`, where each `Preview` is `{key, label, description, retire_by?, joined, eligible, enabled}`.
 - `PUT /v1/previews/{key}` joins and `DELETE /v1/previews/{key}` leaves. Errors: `preview_plan_not_eligible` (403), `preview_not_offered` (404), `preview_full` (409).
 - A company workspace uses the same routes under `/v1/orgs/{slug}/previews…`.
 
 **Files:**
+
 - Create: `src/lib/api/previews.ts`, `src/components/dashboard/previews-settings.tsx`, `src/components/dashboard/previews-settings.test.tsx`
 - Modify: `src/components/dashboard/settings-search.ts` (add `['previews', 'Previews']` after `integrations`), `src/routes/dashboard.settings.tsx` (render the section), `mock/plugin.ts`
 
 **Interfaces:**
+
 - Consumes: `useWorkspaceTarget()` from `src/lib/api/workspace-apps.ts`, which returns `{ org: string | null; label }`, and `capabilityKey(accountId)`.
 - Produces: `usePreviews()`, `useJoinPreview()`, `useLeavePreview()`.
 
@@ -1214,9 +1309,31 @@ vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => confirm }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 
 const items = [
-  { key: 'realtime', label: 'Realtime', description: 'Channels.', retire_by: '2027-01-31', joined: false, eligible: true, enabled: false },
-  { key: 'events', label: 'Events', description: 'Event hub.', joined: true, eligible: true, enabled: true },
-  { key: 'gitlab', label: 'GitLab', description: 'GitLab deploys.', joined: false, eligible: false, enabled: false },
+  {
+    key: 'realtime',
+    label: 'Realtime',
+    description: 'Channels.',
+    retire_by: '2027-01-31',
+    joined: false,
+    eligible: true,
+    enabled: false,
+  },
+  {
+    key: 'events',
+    label: 'Events',
+    description: 'Event hub.',
+    joined: true,
+    eligible: true,
+    enabled: true,
+  },
+  {
+    key: 'gitlab',
+    label: 'GitLab',
+    description: 'GitLab deploys.',
+    joined: false,
+    eligible: false,
+    enabled: false,
+  },
 ];
 let calls: { method: string; path: string }[] = [];
 let joinStatus = 200;
@@ -1231,10 +1348,16 @@ beforeEach(() => {
     const path = new URL(req.url).pathname;
     calls.push({ method: req.method, path });
     const json = (status: number, body: unknown) =>
-      new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { 'content-type': 'application/json' },
+      });
     if (req.method === 'GET') return json(200, { items });
     if (req.method === 'PUT' && joinStatus === 409)
-      return new Response(JSON.stringify({ code: 'preview_full', title: 'Full', status: 409 }), { status: 409, headers: { 'content-type': 'application/problem+json' } });
+      return new Response(JSON.stringify({ code: 'preview_full', title: 'Full', status: 409 }), {
+        status: 409,
+        headers: { 'content-type': 'application/problem+json' },
+      });
     return json(200, items[0]);
   });
 });
@@ -1243,7 +1366,11 @@ afterEach(() => vi.unstubAllGlobals());
 function renderPanel() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const spy = vi.spyOn(qc, 'invalidateQueries');
-  render(<QueryClientProvider client={qc}><PreviewsSettings /></QueryClientProvider>);
+  render(
+    <QueryClientProvider client={qc}>
+      <PreviewsSettings />
+    </QueryClientProvider>
+  );
   return spy;
 }
 
@@ -1254,7 +1381,9 @@ describe('PreviewsSettings', () => {
     expect(row).toHaveTextContent('Channels.');
     expect(row).toHaveTextContent(new Date('2027-01-31').toLocaleDateString());
     await userEvent.click(within(row).getByRole('button', { name: 'Join' }));
-    await waitFor(() => expect(calls).toContainEqual({ method: 'PUT', path: '/v1/previews/realtime' }));
+    await waitFor(() =>
+      expect(calls).toContainEqual({ method: 'PUT', path: '/v1/previews/realtime' })
+    );
     expect(spy).toHaveBeenCalledWith({ queryKey: ['account', 'account', 'capabilities'] });
   });
   it('confirms before leaving', async () => {
@@ -1262,7 +1391,9 @@ describe('PreviewsSettings', () => {
     const row = (await screen.findByText('Events')).closest('li')!;
     await userEvent.click(within(row).getByRole('button', { name: 'Leave' }));
     expect(confirm).toHaveBeenCalled();
-    await waitFor(() => expect(calls).toContainEqual({ method: 'DELETE', path: '/v1/previews/events' }));
+    await waitFor(() =>
+      expect(calls).toContainEqual({ method: 'DELETE', path: '/v1/previews/events' })
+    );
   });
   it('explains an ineligible preview and a full one', async () => {
     joinStatus = 409;
@@ -1319,10 +1450,18 @@ function usePreviewChange(method: 'PUT' | 'DELETE') {
     mutationFn: (key: string) => {
       if (org) {
         const opts = { params: { path: { slug: org, key } } };
-        return unwrap(method === 'PUT' ? api.PUT('/v1/orgs/{slug}/previews/{key}', opts) : api.DELETE('/v1/orgs/{slug}/previews/{key}', opts));
+        return unwrap(
+          method === 'PUT'
+            ? api.PUT('/v1/orgs/{slug}/previews/{key}', opts)
+            : api.DELETE('/v1/orgs/{slug}/previews/{key}', opts)
+        );
       }
       const opts = { params: { path: { key } } };
-      return unwrap(method === 'PUT' ? api.PUT('/v1/previews/{key}', opts) : api.DELETE('/v1/previews/{key}', opts));
+      return unwrap(
+        method === 'PUT'
+          ? api.PUT('/v1/previews/{key}', opts)
+          : api.DELETE('/v1/previews/{key}', opts)
+      );
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: previewsKey(org) });
@@ -1382,20 +1521,22 @@ Branch: `fix/workspace-billing`.
 
 **The org routes:**
 
-| Purpose | Route |
-|---|---|
+| Purpose        | Route                                |
+| -------------- | ------------------------------------ |
 | Billing status | `GET /v1/orgs/{slug}/billing/status` |
-| Usage | `GET /v1/orgs/{slug}/usage` |
-| Invoices | `GET /v1/orgs/{slug}/invoices` |
+| Usage          | `GET /v1/orgs/{slug}/usage`          |
+| Invoices       | `GET /v1/orgs/{slug}/invoices`       |
 | Billing portal | `GET /v1/orgs/{slug}/billing/portal` |
-| Plan change | `PATCH /v1/orgs/{slug}/plan` |
+| Plan change    | `PATCH /v1/orgs/{slug}/plan`         |
 
 **Files:**
+
 - Create: `src/lib/api/org-billing.ts`, `src/lib/api/org-billing.test.tsx`, `src/components/dashboard/org-billing.tsx`
 - Modify: `src/routes/dashboard.plans.tsx`, `src/routes/dashboard.usage.tsx`, `src/routes/dashboard.invoices.tsx`, `CLAUDE.md` (the workspace paragraph)
 - Test: `src/routes/-dashboard.invoices.test.tsx`, `src/routes/dashboard.usage.test.tsx`
 
 **Interfaces:**
+
 - Consumes: `useWorkspaceTarget()`.
 - Produces: `useOrgBillingStatus(org)`, `useOrgUsage(org)`, `useOrgInvoices(org)`, `useOrgBillingPortal(org)`, `useChangeOrgPlan(org)`.
   - Each hook takes `org: string` and is enabled only when `org` is non-empty.
@@ -1430,41 +1571,61 @@ beforeEach(() => {
     const path = new URL(req.url).pathname;
     calls.push({ method: req.method, path });
     if (forbid)
-      return new Response(JSON.stringify({ code: 'org_role_forbidden', title: 'Forbidden', status: 403 }), {
-        status: 403,
-        headers: { 'content-type': 'application/problem+json' },
-      });
+      return new Response(
+        JSON.stringify({ code: 'org_role_forbidden', title: 'Forbidden', status: 403 }),
+        {
+          status: 403,
+          headers: { 'content-type': 'application/problem+json' },
+        }
+      );
     const body = path.endsWith('/invoices') ? { invoices: [] } : {};
-    return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
   });
 });
 afterEach(() => vi.unstubAllGlobals());
 
 const wrap = (ui: React.ReactNode) =>
-  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{ui}</QueryClientProvider>);
+  render(
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+    >
+      {ui}
+    </QueryClientProvider>
+  );
 
 describe('company billing', () => {
   it('reads the organization invoices, never the personal ones', async () => {
     wrap(<OrgInvoices org="acme" label="Acme" />);
-    await waitFor(() => expect(calls).toContainEqual({ method: 'GET', path: '/v1/orgs/acme/invoices' }));
+    await waitFor(() =>
+      expect(calls).toContainEqual({ method: 'GET', path: '/v1/orgs/acme/invoices' })
+    );
     expect(calls.some((c) => c.path === '/v1/invoices')).toBe(false);
     expect(screen.getByRole('heading', { name: /Acme/ })).toBeInTheDocument();
   });
   it('tells a member without a billing role who can see the invoices', async () => {
     forbid = true;
     wrap(<OrgInvoices org="acme" label="Acme" />);
-    expect(await screen.findByText("Only Acme's owners and billing admins can see its invoices.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Only Acme's owners and billing admins can see its invoices.")
+    ).toBeInTheDocument();
     expect(calls.some((c) => c.path === '/v1/invoices')).toBe(false);
   });
   it('reads the organization usage', async () => {
     wrap(<OrgUsage org="acme" label="Acme" />);
-    await waitFor(() => expect(calls).toContainEqual({ method: 'GET', path: '/v1/orgs/acme/usage' }));
+    await waitFor(() =>
+      expect(calls).toContainEqual({ method: 'GET', path: '/v1/orgs/acme/usage' })
+    );
   });
   it('changes the organization plan, not the personal one', async () => {
     wrap(<OrgPlan org="acme" label="Acme" />);
     await userEvent.click(await screen.findByRole('button', { name: 'Switch to Pro' }));
     await userEvent.click(screen.getByRole('button', { name: 'Confirm switch' }));
-    await waitFor(() => expect(calls).toContainEqual({ method: 'PATCH', path: '/v1/orgs/acme/plan' }));
+    await waitFor(() =>
+      expect(calls).toContainEqual({ method: 'PATCH', path: '/v1/orgs/acme/plan' })
+    );
   });
 });
 ```
@@ -1488,34 +1649,45 @@ const k = (org: string, part: string) => ['orgs', org, 'billing', part] as const
 export function useOrgBillingStatus(org: string) {
   return useQuery({
     queryKey: k(org, 'status'),
-    queryFn: ({ signal }) => unwrap(api.GET('/v1/orgs/{slug}/billing/status', { params: { path: { slug: org } }, signal })),
+    queryFn: ({ signal }) =>
+      unwrap(
+        api.GET('/v1/orgs/{slug}/billing/status', { params: { path: { slug: org } }, signal })
+      ),
     enabled: Boolean(org),
   });
 }
 export function useOrgUsage(org: string) {
   return useQuery({
     queryKey: k(org, 'usage'),
-    queryFn: ({ signal }) => unwrap(api.GET('/v1/orgs/{slug}/usage', { params: { path: { slug: org } }, signal })),
+    queryFn: ({ signal }) =>
+      unwrap(api.GET('/v1/orgs/{slug}/usage', { params: { path: { slug: org } }, signal })),
     enabled: Boolean(org),
   });
 }
 export function useOrgInvoices(org: string) {
   return useQuery({
     queryKey: k(org, 'invoices'),
-    queryFn: ({ signal }) => unwrap(api.GET('/v1/orgs/{slug}/invoices', { params: { path: { slug: org } }, signal })),
+    queryFn: ({ signal }) =>
+      unwrap(api.GET('/v1/orgs/{slug}/invoices', { params: { path: { slug: org } }, signal })),
     enabled: Boolean(org),
   });
 }
 export function useOrgBillingPortal(org: string) {
   return useMutation({
-    mutationFn: () => unwrap(api.GET('/v1/orgs/{slug}/billing/portal', { params: { path: { slug: org } } })),
+    mutationFn: () =>
+      unwrap(api.GET('/v1/orgs/{slug}/billing/portal', { params: { path: { slug: org } } })),
   });
 }
 export function useChangeOrgPlan(org: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (plan: string) =>
-      unwrap(api.PATCH('/v1/orgs/{slug}/plan', { params: { path: { slug: org } }, body: { plan } as never })),
+      unwrap(
+        api.PATCH('/v1/orgs/{slug}/plan', {
+          params: { path: { slug: org } },
+          body: { plan } as never,
+        })
+      ),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['orgs', org, 'billing'] }),
   });
 }
@@ -1563,10 +1735,12 @@ Branch: `fix/workspace-projects`.
 **The org routes:** `GET /v1/orgs/{organization}/projects` and `GET|PATCH|DELETE /v1/orgs/{organization}/projects/{slug}`.
 
 **Files:**
+
 - Modify: `src/lib/api/projects.ts`, `src/routes/dashboard.projects.index.tsx`, `src/routes/dashboard.projects.$projectSlug.tsx`
 - Test: `src/lib/api/projects-workspace.test.tsx` (create)
 
 **Interfaces:**
+
 - Consumes: `useWorkspaceTarget()`.
 - Produces: `useProjects()` and `useProject(slug)`, which keep their names but read the org routes when `org` is set. Their query keys include `org ?? 'personal'`.
 
@@ -1597,7 +1771,9 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 const wrapper = ({ children }: { children: ReactNode }) => (
-  <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{children}</QueryClientProvider>
+  <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+    {children}
+  </QueryClientProvider>
 );
 
 describe('projects in a workspace', () => {
@@ -1632,7 +1808,12 @@ export function useProjects() {
     queryKey: ['projects', org ?? 'personal'],
     queryFn: ({ signal }) =>
       org
-        ? unwrap(api.GET('/v1/orgs/{organization}/projects', { params: { path: { organization: org } }, signal }))
+        ? unwrap(
+            api.GET('/v1/orgs/{organization}/projects', {
+              params: { path: { organization: org } },
+              signal,
+            })
+          )
         : unwrap(api.GET('/v1/projects', { signal })),
   });
 }
@@ -1661,10 +1842,12 @@ teammates are visible."
 Branch: `fix/workspace-postgres`. The org routes are `GET|POST /v1/orgs/{organization}/postgres/databases`, `GET …/postgres/capabilities` and `GET …/postgres/usage`, plus the per-database routes under the same prefix. Find those with `grep -n "'/v1/orgs/{organization}/postgres" src/lib/api/schema.d.ts`.
 
 **Files:**
+
 - Modify: `src/lib/api/queries.ts` (`usePostgresDatabases`, around :3572, and its siblings), `src/routes/dashboard.postgres.tsx`
 - Test: `src/lib/api/postgres-workspace.test.tsx` (create)
 
 **Interfaces:**
+
 - Produces: the existing Postgres hooks keep their names and read org routes when `useWorkspaceTarget().org` is set. Their keys become `['postgres', org ?? 'personal', …]`.
 
 - [ ] **Step 1: Write the failing test.**
@@ -1685,13 +1868,18 @@ beforeEach(() => {
   paths = [];
   vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
     paths.push(new URL(new Request(input, init).url).pathname);
-    return new Response(JSON.stringify({ databases: [] }), { status: 200, headers: { 'content-type': 'application/json' } });
+    return new Response(JSON.stringify({ databases: [] }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
   });
 });
 afterEach(() => vi.unstubAllGlobals());
 
 const wrapper = ({ children }: { children: ReactNode }) => (
-  <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{children}</QueryClientProvider>
+  <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+    {children}
+  </QueryClientProvider>
 );
 
 describe('Postgres in a workspace', () => {
@@ -1730,12 +1918,14 @@ Postgres reads /v1/orgs/{organization}/postgres/* in a company workspace."
 Branch: `feat/parity-ledger`.
 
 **Files:**
+
 - Create: `scripts/pull-capabilities.mjs`
 - Create: `content/capabilities/ga-capability-inventory.md` and `content/capabilities/catalog.json` (vendored)
 - Create: `src/lib/parity/inventory.ts`, `src/lib/parity/inventory.test.ts`
 - Modify: `package.json` (`"capabilities:pull": "node scripts/pull-capabilities.mjs"`), `.prettierignore` (`content/capabilities`)
 
 **Interfaces:**
+
 - Produces:
   - `type Tier = 'GA' | 'beta' | 'preview' | 'internal'`
   - `interface InventoryRow { row: number; section: string; name: string; tier: Tier; catalog: string[] }`
@@ -1781,12 +1971,26 @@ describe('parseInventory', () => {
   it('reads row number, section, name, tier and catalog ids', () => {
     expect(parseInventory(SAMPLE)).toEqual([
       { row: 13, section: 'A', name: 'Per-app deploy tokens for CI', tier: 'GA', catalog: [] },
-      { row: 20, section: 'A', name: 'Environments and Environment GitOps (field ownership)', tier: 'preview', catalog: ['environments', 'environment-gitops'] },
-      { row: 168, section: 'G', name: 'On-demand profile captures', tier: 'preview', catalog: ['profile-captures'] },
+      {
+        row: 20,
+        section: 'A',
+        name: 'Environments and Environment GitOps (field ownership)',
+        tier: 'preview',
+        catalog: ['environments', 'environment-gitops'],
+      },
+      {
+        row: 168,
+        section: 'G',
+        name: 'On-demand profile captures',
+        tier: 'preview',
+        catalog: ['profile-captures'],
+      },
     ]);
   });
   it('parses the vendored inventory into unique row numbers with known tiers', () => {
-    const rows = parseInventory(readFileSync(resolve('content/capabilities/ga-capability-inventory.md'), 'utf8'));
+    const rows = parseInventory(
+      readFileSync(resolve('content/capabilities/ga-capability-inventory.md'), 'utf8')
+    );
     expect(rows.length).toBeGreaterThanOrEqual(167);
     expect(new Set(rows.map((r) => r.row)).size).toBe(rows.length);
     expect(rows.every((r) => ['GA', 'beta', 'preview', 'internal'].includes(r.tier))).toBe(true);
@@ -1830,7 +2034,11 @@ export function parseInventory(markdown: string): InventoryRow[] {
       continue;
     }
     if (!section || !/^\| \d+ \|/.test(line)) continue;
-    const cells = line.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
+    const cells = line
+      .trim()
+      .replace(/^\||\|$/g, '')
+      .split('|')
+      .map((c) => c.trim());
     const tier = cells[cells.length - 1].replace(/[`*]/g, '') as Tier;
     if (!TIERS.includes(tier)) continue;
     const catalog = cells[3].includes('MISSING')
@@ -1867,9 +2075,11 @@ parity ledger is checked against what faas says customers can do."
 Same branch as Task 11.
 
 **Files:**
+
 - Create: `src/lib/parity/ledger.ts`, `src/lib/parity/ledger.test.ts`
 
 **Interfaces:**
+
 - Consumes: `parseInventory` and `InventoryRow` from Task 11, `APP_DETAIL_TABS` from `app-tab-navigation.tsx`, and `SETTINGS_SECTIONS` from `settings-search.ts`.
 - Produces:
   - `type ParityStatus = 'full' | 'partial' | 'cli' | 'none'`
@@ -1888,25 +2098,37 @@ import { SETTINGS_SECTIONS } from '@/components/dashboard/settings-search';
 import { parseInventory } from './inventory';
 import { LEDGER } from './ledger';
 
-const inventory = parseInventory(readFileSync(resolve('content/capabilities/ga-capability-inventory.md'), 'utf8'));
+const inventory = parseInventory(
+  readFileSync(resolve('content/capabilities/ga-capability-inventory.md'), 'utf8')
+);
 const catalog = new Set(
-  (JSON.parse(readFileSync(resolve('content/capabilities/catalog.json'), 'utf8')) as { capabilities: { id: string }[] }).capabilities.map((c) => c.id)
+  (
+    JSON.parse(readFileSync(resolve('content/capabilities/catalog.json'), 'utf8')) as {
+      capabilities: { id: string }[];
+    }
+  ).capabilities.map((c) => c.id)
 );
 const routes = new Set(
-  [...readFileSync(resolve('src/routeTree.gen.ts'), 'utf8').matchAll(/^\s+'(\/[^']*)': typeof /gm)].map((m) => m[1])
+  [
+    ...readFileSync(resolve('src/routeTree.gen.ts'), 'utf8').matchAll(/^\s+'(\/[^']*)': typeof /gm),
+  ].map((m) => m[1])
 );
 const byRow = new Map(LEDGER.map((e) => [e.row, e]));
 const customer = inventory.filter((r) => r.tier !== 'internal');
 
 describe('parity ledger', () => {
   it('has an entry for every GA, beta and preview capability', () => {
-    const missing = customer.filter((r) => !byRow.has(r.row)).map((r) => `${r.section}${r.row} ${r.name}`);
+    const missing = customer
+      .filter((r) => !byRow.has(r.row))
+      .map((r) => `${r.section}${r.row} ${r.name}`);
     expect(missing).toEqual([]);
   });
   it('names each row exactly as upstream does, so a renumber is caught', () => {
     const drift = LEDGER.flatMap((e) => {
       const up = inventory.find((r) => r.row === e.row);
-      return up && up.name !== e.name ? [`row ${e.row}: ledger "${e.name}" vs upstream "${up.name}"`] : [];
+      return up && up.name !== e.name
+        ? [`row ${e.row}: ledger "${e.name}" vs upstream "${up.name}"`]
+        : [];
     });
     expect(drift).toEqual([]);
   });
@@ -1937,9 +2159,12 @@ describe('parity ledger', () => {
       if (e.status === 'full' && e.gap) problems.push('full with a gap');
       if (e.status !== 'full' && !e.gap) problems.push('not full but no gap');
       if (e.status === 'cli' && !e.cli) problems.push('cli without a command');
-      if ((e.status === 'full' || e.status === 'partial') && e.surfaces.length === 0) problems.push('no surface');
-      if (up?.tier === 'preview' && e.status !== 'none' && !e.capability) problems.push('preview surface without a capability gate');
-      if (e.capability && !catalog.has(e.capability)) problems.push(`unknown catalog id ${e.capability}`);
+      if ((e.status === 'full' || e.status === 'partial') && e.surfaces.length === 0)
+        problems.push('no surface');
+      if (up?.tier === 'preview' && e.status !== 'none' && !e.capability)
+        problems.push('preview surface without a capability gate');
+      if (e.capability && !catalog.has(e.capability))
+        problems.push(`unknown catalog id ${e.capability}`);
       return problems.map((p) => `row ${e.row}: ${p}`);
     });
     expect(bad).toEqual([]);
@@ -1990,85 +2215,86 @@ export const LEDGER: LedgerEntry[] = [
 
   **Rows the spec already names:**
 
-| Row | Status | Wave | Gap |
-|---|---|---|---|
-| A1 | `partial` | 1 | Recently deleted: /v1/deleted-apps list and restore |
-| A2 | `full` once Task 4 lands | – | – |
-| A5 | `partial` | 1 | GitHub status, sync and disconnect |
-| A11 | `partial` | 1 | release_policy, release_probe_paths and function_concurrency not shown |
-| A13 | `none` | 1 | Deploy tokens |
-| A16 | `none` | 1 | Source-review results on the deployment |
-| A19 | `partial` | 1 | Update, delete, project previews and new fields |
-| B24 | `partial` | 1 | Deployment diff, runtime upgrade preview, promote, rollback status and rollout observation |
-| B25 | `partial` | 1 | Same as B24 |
-| B26 | `none` | 2 | – |
-| B27 | `partial` | 1 | Create a preview, and preview by slug |
-| B28–B31 | `none` | 3 | – |
-| B35 | `partial` | 3 | – |
-| B36 | `partial` | 3 | – |
-| B37 | `none` | 3 | – |
-| C21 | `none` | 3 | – |
-| C44 | `none` | 1 | – |
-| C53 | `none` | 3 | – |
-| C54 | `partial` | 3 | – |
-| C55 | `none` | 3 | – |
-| C56 | `none` | 3 | – |
-| C58 | `none` | 3 | – |
-| C60 | `partial` | 1 | History, rollback and config guard |
-| C61 | `partial` | 1 | References and revocations |
-| D63 | `partial` | 1 | – |
-| D66 | `partial` | 1 | – |
-| D68–D70 | `none` | 3 | – |
-| D74 | `partial` | 2 | – |
-| D75 | `partial` | 2 | – |
-| D76 | `none` | 2 | – |
-| D83 | `partial` | 3 | – |
-| E93 | `partial` | 2 | – |
-| E94 | `partial` | 2 | – |
-| E95 | `partial` | 2 | – |
-| E96 | `partial` | 2 | – |
-| E97 | `partial` | 3 | – |
-| E98 | `partial` | 3 | – |
-| E99 | `partial` | 3 | – |
-| E101 | `none` | 3 | – |
-| E103 | `partial` | 2 | – |
-| E104 | `none` | 3 | – |
-| F108 | `partial` | 3 | – |
-| F109 | `partial` | 3 | – |
-| F110 | `none` | 3 | – |
-| F112 | `none` | 3 | – |
-| F114 | `partial` | 3 | – |
-| F115 | `partial` | 3 | – |
-| G119 | `partial` | 2 | – |
-| G122 | `none` | 2 | – |
-| G125 | `partial` | 2 | – |
-| G127 | `partial` | 3 | – |
-| G128 | `none` | 3 | – |
-| G129 | `none` | 3 | – |
-| G134 | `partial` | 2 | – |
-| G135 | `partial` | 3 | – |
-| G137 | `none` | 2 | – |
-| G138 | `partial` | 1 | – |
-| G168 | `none` | 3 | – |
-| H151 | `partial` | 1 | – |
-| H152 | `none` | 2 | – |
+| Row     | Status                   | Wave | Gap                                                                                        |
+| ------- | ------------------------ | ---- | ------------------------------------------------------------------------------------------ |
+| A1      | `partial`                | 1    | Recently deleted: /v1/deleted-apps list and restore                                        |
+| A2      | `full` once Task 4 lands | –    | –                                                                                          |
+| A5      | `partial`                | 1    | GitHub status, sync and disconnect                                                         |
+| A11     | `partial`                | 1    | release_policy, release_probe_paths and function_concurrency not shown                     |
+| A13     | `none`                   | 1    | Deploy tokens                                                                              |
+| A16     | `none`                   | 1    | Source-review results on the deployment                                                    |
+| A19     | `partial`                | 1    | Update, delete, project previews and new fields                                            |
+| B24     | `partial`                | 1    | Deployment diff, runtime upgrade preview, promote, rollback status and rollout observation |
+| B25     | `partial`                | 1    | Same as B24                                                                                |
+| B26     | `none`                   | 2    | –                                                                                          |
+| B27     | `partial`                | 1    | Create a preview, and preview by slug                                                      |
+| B28–B31 | `none`                   | 3    | –                                                                                          |
+| B35     | `partial`                | 3    | –                                                                                          |
+| B36     | `partial`                | 3    | –                                                                                          |
+| B37     | `none`                   | 3    | –                                                                                          |
+| C21     | `none`                   | 3    | –                                                                                          |
+| C44     | `none`                   | 1    | –                                                                                          |
+| C53     | `none`                   | 3    | –                                                                                          |
+| C54     | `partial`                | 3    | –                                                                                          |
+| C55     | `none`                   | 3    | –                                                                                          |
+| C56     | `none`                   | 3    | –                                                                                          |
+| C58     | `none`                   | 3    | –                                                                                          |
+| C60     | `partial`                | 1    | History, rollback and config guard                                                         |
+| C61     | `partial`                | 1    | References and revocations                                                                 |
+| D63     | `partial`                | 1    | –                                                                                          |
+| D66     | `partial`                | 1    | –                                                                                          |
+| D68–D70 | `none`                   | 3    | –                                                                                          |
+| D74     | `partial`                | 2    | –                                                                                          |
+| D75     | `partial`                | 2    | –                                                                                          |
+| D76     | `none`                   | 2    | –                                                                                          |
+| D83     | `partial`                | 3    | –                                                                                          |
+| E93     | `partial`                | 2    | –                                                                                          |
+| E94     | `partial`                | 2    | –                                                                                          |
+| E95     | `partial`                | 2    | –                                                                                          |
+| E96     | `partial`                | 2    | –                                                                                          |
+| E97     | `partial`                | 3    | –                                                                                          |
+| E98     | `partial`                | 3    | –                                                                                          |
+| E99     | `partial`                | 3    | –                                                                                          |
+| E101    | `none`                   | 3    | –                                                                                          |
+| E103    | `partial`                | 2    | –                                                                                          |
+| E104    | `none`                   | 3    | –                                                                                          |
+| F108    | `partial`                | 3    | –                                                                                          |
+| F109    | `partial`                | 3    | –                                                                                          |
+| F110    | `none`                   | 3    | –                                                                                          |
+| F112    | `none`                   | 3    | –                                                                                          |
+| F114    | `partial`                | 3    | –                                                                                          |
+| F115    | `partial`                | 3    | –                                                                                          |
+| G119    | `partial`                | 2    | –                                                                                          |
+| G122    | `none`                   | 2    | –                                                                                          |
+| G125    | `partial`                | 2    | –                                                                                          |
+| G127    | `partial`                | 3    | –                                                                                          |
+| G128    | `none`                   | 3    | –                                                                                          |
+| G129    | `none`                   | 3    | –                                                                                          |
+| G134    | `partial`                | 2    | –                                                                                          |
+| G135    | `partial`                | 3    | –                                                                                          |
+| G137    | `none`                   | 2    | –                                                                                          |
+| G138    | `partial`                | 1    | –                                                                                          |
+| G168    | `none`                   | 3    | –                                                                                          |
+| H151    | `partial`                | 1    | –                                                                                          |
+| H152    | `none`                   | 2    | –                                                                                          |
 
-  Where the Gap cell shows "–", copy the gap text from the spec's wave tables.
+Where the Gap cell shows "–", copy the gap text from the spec's wave tables.
 
-  **Every other GA, beta and preview row:**
-  - Find its console page: `grep -rn` its routes from the inventory's "Where it lives" column across `src/lib/api`, then follow the hook to its route file.
-  - If a page covers what the row describes, mark it `full` with that route in `surfaces`.
-  - If it covers part, mark it `partial`, with a gap and the wave matching its tier: 1 for GA, 2 for beta, 3 for preview.
-  - If no surface exists and the CLI does it, mark it `cli` with the exact command from faas `cmd/gregale/cli_meta.go`. If there is no CLI command either, mark it `none`.
-  - Rows that are developer tools rather than console surfaces get `cli` with the command or `full` with the docs route, plus a one-line gap explaining why:
-    - I156 `gregale` CLI
-    - I158 SDKs
-    - I161 Docs site
-  - I157, "Web dashboard", is the console itself: `full`, surface `/dashboard`.
+**Every other GA, beta and preview row:**
 
-  **For every preview entry with a surface:** set `capability` to the row's first catalog id from `parseInventory`, or to the id its page gates on in Task 6.
+- Find its console page: `grep -rn` its routes from the inventory's "Where it lives" column across `src/lib/api`, then follow the hook to its route file.
+- If a page covers what the row describes, mark it `full` with that route in `surfaces`.
+- If it covers part, mark it `partial`, with a gap and the wave matching its tier: 1 for GA, 2 for beta, 3 for preview.
+- If no surface exists and the CLI does it, mark it `cli` with the exact command from faas `cmd/gregale/cli_meta.go`. If there is no CLI command either, mark it `none`.
+- Rows that are developer tools rather than console surfaces get `cli` with the command or `full` with the docs route, plus a one-line gap explaining why:
+  - I156 `gregale` CLI
+  - I158 SDKs
+  - I161 Docs site
+- I157, "Web dashboard", is the console itself: `full`, surface `/dashboard`.
 
-  **Gaps found during the audit** that the spec doesn't list go in the spec's wave table for their tier. Commit those spec edits in the same PR.
+**For every preview entry with a surface:** set `capability` to the row's first catalog id from `parseInventory`, or to the id its page gates on in Task 6.
+
+**Gaps found during the audit** that the spec doesn't list go in the spec's wave table for their tier. Commit those spec edits in the same PR.
 
 - [ ] **Step 5: Run the test and confirm it passes.**
 
@@ -2094,11 +2320,13 @@ preview surface has no capability gate."
 Same branch as Tasks 11–12.
 
 **Files:**
+
 - Create: `scripts/parity-report.mjs`, `.github/pull_request_template.md`
 - Modify: `package.json` (`"parity": "node --experimental-strip-types scripts/parity-report.mjs"`), `CLAUDE.md` (Gotchas)
 - Test: `src/lib/parity/coverage.test.ts`, `src/lib/parity/coverage.ts`
 
 **Interfaces:**
+
 - Consumes: `LEDGER` and `parseInventory`.
 - Produces: `coverage(inventory: InventoryRow[], ledger: LedgerEntry[]): Record<'GA' | 'beta' | 'preview', { total: number; full: number; partial: number; cli: number; none: number }>`.
 
@@ -2169,10 +2397,14 @@ import { LEDGER } from '../src/lib/parity/ledger.ts';
 import { coverage } from '../src/lib/parity/coverage.ts';
 
 /** Prints console coverage of faas's customer capabilities, by tier. */
-const inventory = parseInventory(readFileSync('content/capabilities/ga-capability-inventory.md', 'utf8'));
+const inventory = parseInventory(
+  readFileSync('content/capabilities/ga-capability-inventory.md', 'utf8')
+);
 for (const [tier, c] of Object.entries(coverage(inventory, LEDGER))) {
   const pct = c.total ? Math.round(((c.full + c.cli) / c.total) * 100) : 100;
-  console.log(`${tier.padEnd(8)} ${String(pct).padStart(3)}%  full ${c.full}  cli ${c.cli}  partial ${c.partial}  none ${c.none}  of ${c.total}`);
+  console.log(
+    `${tier.padEnd(8)} ${String(pct).padStart(3)}%  full ${c.full}  cli ${c.cli}  partial ${c.partial}  none ${c.none}  of ${c.total}`
+  );
 }
 ```
 
@@ -2182,15 +2414,19 @@ for (const [tier, c] of Object.entries(coverage(inventory, LEDGER))) {
 
 ```md
 <!-- .github/pull_request_template.md -->
+
 ## What changed
 
 ## What the backend does
+
 <!-- Behaviour decided from faas main: handler, ADR, docs — with file:line. -->
 
 ## Parity
+
 Ledger rows touched: <!-- e.g. A13 none → full; C60 partial (gap: rollback) -->
 
 ## Verification
+
 - [ ] `npm run check`
 - [ ] `npx vitest run --maxWorkers=8` exits 0, no "Errors" line
 - [ ] Clicked through against `npm run dev:mock` at 1440 and 390 px
@@ -2218,6 +2454,7 @@ git commit -m "feat(parity): coverage report, PR template and the weekly drift r
 ## Waves 1–3: procedure
 
 Waves 1–3 start once Tasks 1–13 have landed. The spec's wave tables, now mirrored in the ledger, are the backlog, in this order:
+
 1. Wave 1, top to bottom.
 2. Wave 2.
 3. Wave 3, by the order column.
@@ -2238,6 +2475,7 @@ For each item:
 7. **Keep PRs small and unstacked.** One ledger row, or a few closely related rows, per PR. Don't stack on an unmerged parity PR unless the second one needs the first one's code.
 
 **Closing each wave:**
+
 - The last PR of each wave includes `npm run parity` in its body.
 - Wave 1 is done when every GA row is `full`, or `cli` with a reason.
 - Wave 2 is done when every beta row is.
