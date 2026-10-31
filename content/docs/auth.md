@@ -1,0 +1,99 @@
+# Authentication
+
+Log in locally with the CLI; it stores a short-lived session in the operating-system keychain.
+
+```bash
+gregale login
+gregale whoami
+gregale logout
+```
+
+Browser-approved logins mint a 30-day CLI key tied to this device. The CLI
+stores that key's non-secret id and `gregale logout` revokes exactly that key
+before clearing the local keychain. Use `gregale key list` and
+`gregale key delete <id>` to remove a session from a lost device; CLI sessions are
+labelled `cli-login` and never expose their plaintext after creation.
+
+For CI, create a scoped project or organization token and expose it as `FAAS_TOKEN`, or pass it once with `gregale login --token "$FAAS_TOKEN"`. Prefer the narrowest scope and a short expiration. Do not commit tokens or pass them as command-line arguments where process listings can expose them.
+Tokens supplied through `FAAS_TOKEN` or `gregale login --token` remain
+non-owning: logout clears local state but does not revoke a shared CI key.
+
+For a Runs-only agent, mint an account key with `runs:write` instead of the
+default full-access `admin` key:
+
+```sh
+gregale key create agent-runner --scopes runs:write
+```
+
+`runs:read` can inspect the Runs capability contract, receipts, and event
+streams. `runs:write` can submit and cancel runs and includes those read
+permissions so an agent can follow its work. Existing `apps:read` keys retain
+Runs read access, and existing `deploy:write` keys retain submit/cancel access.
+Both scopes remain account-wide; they do not bind a key to an individual run.
+
+Interactive users can enable MFA from the account settings page. Each authenticator code works once: a code that already verified a session is refused if it is sent again, so wait for the next code. A `401` means the session or token is missing/expired; a `403` means the identity is valid but lacks the required project or organization scope. Rotate a compromised token immediately and review the audit log.
+
+For shared applications, the current organization role and the credential's
+scope both apply. Use an organization-bound key to work on a teammate's app;
+see [team application access](organization-app-access.md) for the permission
+matrix and the current migration boundary.
+
+## Dashboard OAuth and PKCE
+
+The Google and GitHub dashboard authorization-code redirects use RFC 7636
+Proof Key for Code Exchange with the `S256` method. Gregale binds a random
+code verifier to the browser callback and sends it to the provider token
+endpoint, preventing an intercepted authorization code from being redeemed
+without the originating browser. This profile covers dashboard sign-in only;
+the separate GitHub App installation callback is not part of the PKCE contract.
+
+## OIDC token exchange
+
+Gregale publishes its supported OAuth token-service capabilities at the RFC
+8414 well-known endpoint:
+
+```bash
+curl https://api.gregale.dev/.well-known/oauth-authorization-server
+```
+
+The metadata advertises the RFC 8693 token-exchange grant, the `deploy:write`
+scope, and JWT subject tokens. It intentionally does not claim a general
+customer authorization server, authorization-code flow, refresh tokens, or
+dynamic client registration.
+
+CI runners can exchange an IdP-issued JWT for a short-lived deploy bearer using
+the RFC 8693 form profile. `audience` is the audience your IdP issued the
+token for; the first exchange pins it in the account's trust policy:
+
+```bash
+curl -X POST https://api.gregale.dev/v1/auth/oidc/exchange \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  --data-urlencode 'grant_type=urn:ietf:params:oauth:grant-type:token-exchange' \
+  --data-urlencode 'subject_token_type=urn:ietf:params:oauth:token-type:jwt' \
+  --data-urlencode "subject_token=$OIDC_TOKEN" \
+  --data-urlencode 'audience=gregale'
+```
+
+The response uses the OAuth token shape (`access_token`, `token_type`,
+`issued_token_type`, `expires_in`, and `scope`). This RFC 8693 profile remains
+deploy-only. The legacy JSON body (`provider`, `token`, and `aud`) also remains
+available and defaults to the same deploy-only bearer. Its optional closed
+`capability: environment-preflight` profile instead grants only
+`project_environments:read` and `project_environments:qualify`. The
+environment-preflight GitHub Action uses that profile to qualify a source
+release set and check promotion policy without receiving deployment or secret
+permissions; see [the Action guide](../.github/actions/environment-preflight/README.md).
+
+For GitHub Actions, first-use account lookup accepts both the legacy
+`repo:OWNER/REPO:...` subject and GitHub's immutable
+`repo:OWNER@OWNER_ID/REPO@REPO_ID:...` form. Gregale uses the owner/repository
+names only to locate an existing GitHub App binding. It verifies and pins the
+complete signed subject, including immutable IDs, in the trust policy.
+## Organization queue permissions
+
+Organization-owned queue operations apply current membership roles alongside
+the credential's scopes and MFA checks. Owners, admins and developers can
+configure bindings and process messages; viewers can inspect metadata and
+counters. Payload inspection requires an operating role. Dead-letter replay
+requires an owner or admin. All five roles can read aggregate usage with the
+corresponding scope. See [organization queues](organization-queues.md).

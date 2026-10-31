@@ -64,7 +64,7 @@ it('creates through the workspace URL only when a shared workspace is chosen', a
 it('targets the personal workspace without reading the org list', () => {
   const get = spyApi('GET');
   const { result } = renderHook(() => useWorkspaceTarget(), wrapper());
-  expect(result.current).toEqual({ org: null, label: 'Personal' });
+  expect(result.current).toEqual({ org: null, label: 'Personal', ready: true });
   expect(get).not.toHaveBeenCalled();
 });
 
@@ -76,10 +76,12 @@ it('names a selected shared workspace, and treats a personal slug as personal', 
   setActiveOrg('acme-corp');
   const { result } = renderHook(() => useWorkspaceTarget(), wrapper());
   // The choice is explicit before the list confirms it.
-  expect(result.current).toEqual({ org: 'acme-corp', label: 'acme-corp' });
-  await waitFor(() => expect(result.current).toEqual({ org: 'acme-corp', label: 'Acme Corp' }));
+  expect(result.current).toEqual({ org: 'acme-corp', label: 'acme-corp', ready: true });
+  await waitFor(() =>
+    expect(result.current).toEqual({ org: 'acme-corp', label: 'Acme Corp', ready: true })
+  );
   act(() => setActiveOrg('me'));
-  expect(result.current).toEqual({ org: null, label: 'Personal' });
+  expect(result.current).toEqual({ org: null, label: 'Personal', ready: true });
 });
 
 it('refreshes quota, the account app list, and the workspace inventory after creation', async () => {

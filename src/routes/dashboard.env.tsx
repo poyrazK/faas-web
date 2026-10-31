@@ -8,7 +8,6 @@ import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-
 import { useToast } from '@/components/ui/toast';
 import { useConfirm } from '@/components/ui/confirm';
 import { useAppEnv, useDeleteEnv, useSetEnv } from '@/lib/api/queries';
-import { errorMessage } from '@/lib/api/errors';
 import { FieldError } from '@/components/ui/field';
 import { cn } from '@/lib/utils';
 
@@ -18,6 +17,7 @@ import { formatRelative } from '@/lib/mock-data';
 import { consoleHead } from '@/lib/seo';
 import { EnvTransferPanel } from '@/components/dashboard/env-transfer';
 import { EnvDiffPanel } from '@/components/dashboard/app-insights';
+import { configChangeNote } from '@/lib/config-history';
 
 export const Route = createFileRoute('/dashboard/env')({
   component: EnvPage,
@@ -123,7 +123,7 @@ export function EnvBody({ slug }: { slug: string }) {
               .mutateAsync(v.key)
               .then(() => toast({ kind: 'success', title: `Deleted ${v.key}` }))
               .catch((err: unknown) =>
-                toast({ kind: 'error', title: 'Could not delete', description: errorMessage(err) })
+                toast({ kind: 'error', title: 'Could not delete', error: err })
               );
           }}
           className="text-muted-foreground transition-colors hover:text-foreground"
@@ -144,14 +144,18 @@ export function EnvBody({ slug }: { slug: string }) {
             if (!keyOk || setEnv.isPending) return;
             void setEnv
               .mutateAsync({ key: key.trim(), value })
-              .then(() => {
+              .then((saved) => {
                 setKey('');
                 setValue('');
                 setKeyTouched(false);
-                toast({ kind: 'success', title: 'Variable saved' });
+                toast({
+                  kind: 'success',
+                  title: 'Variable saved',
+                  description: configChangeNote(saved?.config_change),
+                });
               })
               .catch((err: unknown) =>
-                toast({ kind: 'error', title: 'Could not save', description: errorMessage(err) })
+                toast({ kind: 'error', title: 'Could not save', error: err })
               );
           }}
         >

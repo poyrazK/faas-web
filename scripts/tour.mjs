@@ -86,6 +86,17 @@ const failures = [];
 const pageErrors = [];
 const unmocked = new Set();
 page.on('pageerror', (e) => pageErrors.push(String(e).split('\n')[0]));
+// A blocked font, fetch, style or script is invisible to the DOM checks below
+// and to a user with no console open. Chromium reports each one as a console
+// error naming the directive; the dev server and `vite preview` both send the
+// policy (see src/lib/security-headers.ts), so this is checked on every tour.
+const cspViolations = [];
+page.on('console', (msg) => {
+  const text = msg.text();
+  if (msg.type() === 'error' && /Content Security Policy/.test(text)) {
+    cspViolations.push(text.replace(/\s+/g, ' ').slice(0, 200));
+  }
+});
 page.on('response', (r) => {
   if (r.url().includes('/v1/') && r.status() === 404) unmocked.add(new URL(r.url()).pathname);
 });
@@ -223,6 +234,7 @@ const problems = [
   ...failures,
   ...[...unmocked].map((p) => `unmocked path: ${p}`),
   ...pageErrors.map((e) => `page error: ${e}`),
+  ...[...new Set(cspViolations)].map((v) => `csp violation: ${v}`),
 ];
 
 if (problems.length) {

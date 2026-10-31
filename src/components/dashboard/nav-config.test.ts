@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { railGroupFor } from './nav-config';
+import {
+  NAV_GROUPS,
+  NAV_ITEMS,
+  railGroupFor,
+  visibleNavGroups,
+  visibleNavItems,
+} from './nav-config';
 
 describe('railGroupFor', () => {
   it.each([
@@ -31,5 +37,41 @@ describe('railGroupFor', () => {
     expect(railGroupFor({ to: '/dashboard/integrations', label: 'Integrations' })).toBe(
       'Messaging'
     );
+  });
+});
+
+const off =
+  (...ids: string[]) =>
+  (id: string) =>
+    ids.includes(id);
+const hubLabels = (groups: ReturnType<typeof visibleNavGroups>) =>
+  groups.flatMap((g) => g.items.map((hub) => hub.label));
+
+describe('nav items gated on a capability', () => {
+  it('hides a hub whose capability is off', () => {
+    const labels = hubLabels(visibleNavGroups(NAV_GROUPS, off('events', 'platform-tenants')));
+    expect(labels).not.toContain('Events');
+    expect(labels).not.toContain('Customers');
+    expect(labels).toContain('Domains');
+  });
+  it('hides Object storage and keeps Postgres under the Storage heading', () => {
+    const storage = visibleNavGroups(NAV_GROUPS, off('object-storage')).find(
+      (g) => g.title === 'Storage'
+    );
+    expect(storage?.items.map((hub) => hub.label)).toEqual(['Postgres']);
+  });
+  it('drops a heading once every hub under it is hidden', () => {
+    const titles = visibleNavGroups(NAV_GROUPS, off('object-storage', 'managed-postgres')).map(
+      (g) => g.title
+    );
+    expect(titles).not.toContain('Storage');
+  });
+  it('leaves everything when nothing is off', () => {
+    expect(hubLabels(visibleNavGroups(NAV_GROUPS, off()))).toEqual(hubLabels(NAV_GROUPS));
+  });
+  it('filters the searchable items the palette lists the same way', () => {
+    const labels = visibleNavItems(NAV_ITEMS, off('object-storage')).map((i) => i.label);
+    expect(labels).not.toContain('Object storage');
+    expect(labels).toContain('Postgres');
   });
 });

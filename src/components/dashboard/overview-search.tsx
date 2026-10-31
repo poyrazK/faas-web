@@ -4,10 +4,11 @@ import { BorderBeam } from 'border-beam';
 import { GitBranch, Plus, Search, Upload } from 'iconoir-react';
 import { Kbd } from '@/components/ui/kbd';
 import { PointerGlow } from '@/components/amicro/pointer-glow';
-import { NAV_ITEMS, railGroupFor, type NavIcon } from './nav-config';
+import { NAV_ITEMS, railGroupFor, visibleNavItems, type NavIcon } from './nav-config';
 import { fuzzyMatch, highlightSegments } from '@/lib/fuzzy';
 import type { Workflow } from '@/lib/mock-data';
 import { cn } from '@/lib/utils';
+import { useCapabilityOff } from './nav-access';
 
 /**
  * The overview's search, answered in place.
@@ -39,6 +40,7 @@ export function OverviewSearch({ workflows }: { workflows: Workflow[] }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
 
+  const isOff = useCapabilityOff();
   const items = useMemo<Item[]>(
     () => [
       ...workflows.map((w) => ({
@@ -73,16 +75,18 @@ export function OverviewSearch({ workflows }: { workflows: Workflow[] }) {
         icon: Upload,
         go: () => void navigate({ to: '/dashboard/import' }),
       },
-      ...NAV_ITEMS.filter((n) => n.to !== '/dashboard').map((n) => ({
-        id: `nav-${n.to}-${n.label}`,
-        label: n.label,
-        group: 'Page',
-        keywords: railGroupFor(n),
-        icon: n.icon,
-        go: () => void navigate(n.search ? { to: n.to, search: n.search } : { to: n.to }),
-      })),
+      ...visibleNavItems(NAV_ITEMS, isOff)
+        .filter((n) => n.to !== '/dashboard')
+        .map((n) => ({
+          id: `nav-${n.to}-${n.label}`,
+          label: n.label,
+          group: 'Page',
+          keywords: railGroupFor(n),
+          icon: n.icon,
+          go: () => void navigate(n.search ? { to: n.to, search: n.search } : { to: n.to }),
+        })),
     ],
-    [workflows, navigate]
+    [workflows, navigate, isOff]
   );
 
   const results = useMemo(() => {

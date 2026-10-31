@@ -2,7 +2,13 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useNavigate, useRouterState } from '@tanstack/react-router';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { UTurnArrowLeft, GitBranch, LogOut, Plus, Search, SidebarCollapse } from 'iconoir-react';
-import { NAV_ITEMS, railGroupFor, SECTION_LABELS, type NavIcon } from './nav-config';
+import {
+  NAV_ITEMS,
+  railGroupFor,
+  SECTION_LABELS,
+  visibleNavItems,
+  type NavIcon,
+} from './nav-config';
 import { validateSettingsSearch } from './settings-search';
 import { EASE } from './motion';
 import { Kbd } from '@/components/ui/kbd';
@@ -15,6 +21,7 @@ import { formatCompact } from '@/lib/mock-data';
 import { cn } from '@/lib/utils';
 import { useFocusTrap } from '@/lib/use-focus-trap';
 import { fuzzyMatch, highlightSegments } from '@/lib/fuzzy';
+import { useCapabilityOff } from './nav-access';
 
 /**
  * ⌘K command palette. Navigation, every function by name, and the actions
@@ -107,6 +114,7 @@ export function CommandPalette({
   const close = useCallback(() => onOpenChange(false), [onOpenChange]);
   useFocusTrap(dialogRef, open);
 
+  const isOff = useCapabilityOff();
   const commands = useMemo<Command[]>(() => {
     const go = (to: string, search?: Record<string, string>) => () => {
       close();
@@ -146,7 +154,7 @@ export function CommandPalette({
     return [
       // Driven by the nav config, so a new page becomes reachable by ⌘K the
       // moment it appears in the sidebar.
-      ...NAV_ITEMS.map((item) => ({
+      ...visibleNavItems(NAV_ITEMS, isOff).map((item) => ({
         // Keep existing recent page commands while giving hub aliases their own IDs.
         id: item.search
           ? `nav-${item.to}-${item.search.section}`
@@ -210,7 +218,9 @@ export function CommandPalette({
         id: fn.id,
         label: fn.name,
         group: 'Apps',
-        hint: `${formatCompact(fn.invocations24h)} calls · ${fn.runtime}`,
+        hint: fn.metricsUnavailable
+          ? fn.runtime
+          : `${formatCompact(fn.invocations24h)} requests · ${fn.runtime}`,
         icon: GitBranch,
         run: () => {
           close();
@@ -289,7 +299,17 @@ export function CommandPalette({
         )
       ),
     ];
-  }, [workflows, navigate, location, close, onSignOut, onToggleSidebar, resources, account?.id]);
+  }, [
+    workflows,
+    navigate,
+    location,
+    close,
+    onSignOut,
+    onToggleSidebar,
+    resources,
+    account?.id,
+    isOff,
+  ]);
 
   // Ranked results, or — when the palette opens empty-handed — the recent
   // commands lifted into their own leading group.

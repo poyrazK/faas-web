@@ -51,3 +51,43 @@ describe('API client', () => {
     ]);
   });
 });
+
+describe('a 401 that is not about the session', () => {
+  const answer = (status: number, body: unknown) =>
+    vi.fn(
+      async () =>
+        new Response(JSON.stringify(body), {
+          status,
+          headers: { 'Content-Type': 'application/problem+json' },
+        })
+    ) as unknown as typeof globalThis.fetch;
+
+  it('does not sign out when the credential being acted on has expired', async () => {
+    // Rotating an expired deploy token answers 401 api_key_expired
+    // (faas handlers_deploy_tokens.go, errors.go:5385); the session is fine.
+    const { api } = await clientWith(
+      answer(401, { code: 'api_key_expired', status: 401, title: 'x' })
+    );
+    const { setUnauthorizedHandler } = await import('./client');
+    const signOut = vi.fn();
+    setUnauthorizedHandler(signOut);
+    await api.POST(
+      '/v1/apps/{slug}/deploy-tokens/{id}/rotate' as never,
+      {
+        params: { path: { slug: 'a', id: 't' } },
+      } as never
+    );
+    expect(signOut).not.toHaveBeenCalled();
+  });
+
+  it('still signs out on a 401 about the session', async () => {
+    const { api } = await clientWith(
+      answer(401, { code: 'unauthorized', status: 401, title: 'x' })
+    );
+    const { setUnauthorizedHandler } = await import('./client');
+    const signOut = vi.fn();
+    setUnauthorizedHandler(signOut);
+    await api.GET('/v1/account');
+    expect(signOut).toHaveBeenCalledTimes(1);
+  });
+});

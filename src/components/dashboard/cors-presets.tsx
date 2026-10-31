@@ -15,7 +15,7 @@ import {
 } from '@/components/dashboard/primitives';
 import { PlanGated } from '@/components/dashboard/plan-gated';
 import { Pill } from '@/components/dashboard/resource-table';
-import { ApiError, errorMessage } from '@/lib/api/errors';
+import { ApiError } from '@/lib/api/errors';
 import {
   useApp,
   useCorsPresets,
@@ -53,13 +53,18 @@ function splitList(value: string): string[] {
     .filter(Boolean);
 }
 
-function explain(err: unknown): { kind: 'info' | 'error'; title: string; description?: string } {
+function explain(err: unknown): {
+  kind: 'info' | 'error';
+  title: string;
+  description?: string;
+  error?: unknown;
+} {
   if (err instanceof ApiError) {
     switch (err.code) {
       case 'plan_cors_preset_not_allowed':
-        return { kind: 'info', title: 'Not on your plan', description: errorMessage(err) };
+        return { kind: 'info', title: 'Not on your plan', error: err };
       case 'plan_cors_preset_quota_reached':
-        return { kind: 'info', title: 'Preset limit reached', description: errorMessage(err) };
+        return { kind: 'info', title: 'Preset limit reached', error: err };
       case 'cors_preset_name_conflict':
         return {
           kind: 'error',
@@ -73,7 +78,7 @@ function explain(err: unknown): { kind: 'info' | 'error'; title: string; descrip
           description: 'Browsers refuse credentials for `*`; name the origins instead.',
         };
       case 'cors_preset_invalid':
-        return { kind: 'error', title: 'Preset rejected', description: errorMessage(err) };
+        return { kind: 'error', title: 'Preset rejected', error: err };
       case 'not_found':
         return {
           kind: 'info',
@@ -82,7 +87,7 @@ function explain(err: unknown): { kind: 'info' | 'error'; title: string; descrip
         };
     }
   }
-  return { kind: 'error', title: 'Could not save the preset', description: errorMessage(err) };
+  return { kind: 'error', title: 'Could not save the preset', error: err };
 }
 
 export function CorsPresetsPanel({ slug }: { slug?: string }) {

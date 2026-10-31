@@ -276,6 +276,9 @@ export function ServicePolicyEditor({
           >
             <option value="account">Account</option>
             <option value="declared">Declared targets only</option>
+            <option value="project" disabled>
+              Project services, declared targets elsewhere (set by the project)
+            </option>
           </select>
         </label>
         <label className="flex flex-col gap-1.5">

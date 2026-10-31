@@ -43,6 +43,8 @@ export interface NavItem {
   sidebarIconClassName?: string;
   exact?: boolean;
   search?: Record<string, string>;
+  /** Catalog id (faas pkg/productcap/catalog.json); the item hides when apid hides it. */
+  capability?: string;
 }
 
 export interface NavGroup {
@@ -130,17 +132,18 @@ export const NAV_HUBS: NavHub[] = [
     sidebarIconClassName: 'text-cat-compute/80',
   },
   {
-    // Not "Storage": the heading above already says that word. The page also
-    // carries the app-capacity meter, and its description says so.
+    // Not "Storage": the heading above already says that word.
     to: '/dashboard/storage',
     label: 'Object storage',
     icon: HardDrive,
+    capability: 'object-storage',
     sidebarIconClassName: 'text-cat-storage/80',
   },
   {
     to: '/dashboard/postgres',
     label: 'Postgres',
     icon: Database,
+    capability: 'managed-postgres',
     sidebarIconClassName: 'text-cat-storage/80',
   },
   {
@@ -164,6 +167,7 @@ export const NAV_HUBS: NavHub[] = [
     to: '/dashboard/events',
     label: 'Events',
     icon: DataTransferBoth,
+    capability: 'events',
     sidebarIconClassName: 'text-cat-network/80',
   },
   {
@@ -172,6 +176,7 @@ export const NAV_HUBS: NavHub[] = [
     to: '/dashboard/integrations',
     label: 'Integrations',
     icon: Network,
+    capability: 'outbound-integrations',
     sidebarIconClassName: 'text-cat-network/80',
   },
   {
@@ -182,6 +187,7 @@ export const NAV_HUBS: NavHub[] = [
     to: '/dashboard/customers',
     label: 'Customers',
     icon: Community,
+    capability: 'platform-tenants',
     sidebarIconClassName: 'text-cat-network/80',
   },
   {
@@ -288,6 +294,33 @@ export function railGroupFor(item: Pick<NavItem, 'to' | 'label'>): string | unde
   return NAV_GROUPS.find((group) =>
     group.items.some((hub) => same(hub) || (hub.sections ?? []).some(same))
   )?.title;
+}
+
+/**
+ * The rail without what apid hides for this account: an item whose capability
+ * is off goes, and so does a hub whose every section went.
+ */
+export function visibleNavGroups(groups: NavGroup[], isOff: (id: string) => boolean): NavGroup[] {
+  const shown = (item: NavItem) => !item.capability || !isOff(item.capability);
+  return groups
+    .map((group) => ({
+      ...group,
+      items: group.items.flatMap((hub) => {
+        if (!shown(hub)) return [];
+        if (!hub.sections?.length) return [hub];
+        const sections = hub.sections.filter(shown);
+        return sections.length ? [{ ...hub, sections }] : [];
+      }),
+    }))
+    .filter((group) => group.items.length > 0);
+}
+
+/** Searchable items (palette, overview search) without what apid hides. */
+export function visibleNavItems<T extends NavItem>(
+  items: T[],
+  isOff: (id: string) => boolean
+): T[] {
+  return items.filter((item) => !item.capability || !isOff(item.capability));
 }
 
 /**
