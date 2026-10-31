@@ -511,7 +511,7 @@ export const LEDGER: LedgerEntry[] = [
     name: 'Service bindings, verification and probes',
     status: 'partial',
     surfaces: ['/dashboard/apps/$appSlug?tab=Services'],
-    gap: 'Verification runs, release policy, queue canaries',
+    gap: 'bindings_check_failed in the promote UI, runs status filter, project-wide graph runs, editing service targets',
     wave: 1,
   },
   // D67 · beta
