@@ -71,6 +71,21 @@ function OperatorsContactPage() {
           >
             support@gregale.dev
           </a>
+          <p className="mt-8 max-w-xl leading-relaxed text-muted-foreground">
+            To report a security vulnerability, email{' '}
+            <a href="mailto:security@gregale.dev" className={LINK_CLASS}>
+              security@gregale.dev
+            </a>{' '}
+            and see our{' '}
+            <Link
+              to="/docs/$slug"
+              params={{ slug: 'responsible-disclosure' }}
+              className={LINK_CLASS}
+            >
+              responsible disclosure policy
+            </Link>
+            .
+          </p>
         </section>
       </main>
 

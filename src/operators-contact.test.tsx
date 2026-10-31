@@ -48,4 +48,17 @@ describe('public operator contact information', () => {
       'mailto:support@gregale.dev'
     );
   });
+
+  it('routes vulnerability reports to the security contact', async () => {
+    await renderPublicRoute('/operators-contact');
+    const main = await screen.findByRole('main');
+
+    expect(within(main).getByRole('link', { name: 'security@gregale.dev' })).toHaveAttribute(
+      'href',
+      'mailto:security@gregale.dev'
+    );
+    expect(
+      within(main).getByRole('link', { name: 'responsible disclosure policy' })
+    ).toHaveAttribute('href', '/docs/responsible-disclosure');
+  });
 });
