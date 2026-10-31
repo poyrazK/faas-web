@@ -19,6 +19,7 @@ export const APP_TAB_GROUPS = [
     tabs: [
       'Routes',
       'Upstreams',
+      'Outbound',
       'Services',
       'MCP',
       'Edge rules',

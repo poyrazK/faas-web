@@ -1600,6 +1600,80 @@ export function useCancelJobRun() {
   });
 }
 
+/**
+ * Fan out a run of a job (`POST /v1/jobs/{name}/runs`). The answer is the new
+ * run in `queued`, not a finished one. `idempotencyKey` is chosen by the caller
+ * so a retry of the same intent replays the first run instead of billing a
+ * second.
+ */
+export function useStartJobRun() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      name,
+      tasks,
+      idempotencyKey,
+    }: {
+      name: string;
+      tasks: number;
+      idempotencyKey: string;
+    }) =>
+      unwrap(
+        api.POST('/v1/jobs/{name}/runs', {
+          params: { path: { name }, header: { 'Idempotency-Key': idempotencyKey } },
+          body: { tasks },
+        })
+      ),
+    // Awaited so the run list already holds the new run when the caller
+    // selects it, rather than briefly reporting "Run not found".
+    onSuccess: () => qc.invalidateQueries({ queryKey: [...keys.jobs] }),
+  });
+}
+
+/**
+ * Soft-delete a job. The API answers 409 `job_has_live_instances` while any of
+ * its tasks is still in flight.
+ */
+export function useDeleteJob() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (name: string) => {
+      try {
+        return await unwrap(api.DELETE('/v1/jobs/{name}', { params: { path: { name } } }));
+      } catch (error) {
+        // A delete is a soft delete and every read of a deleted job is a 404,
+        // so a 404 means it is already gone. Succeeding here (rather than in
+        // the caller) lets onSuccess drop the stale list row and detail query.
+        if (error instanceof ApiError && error.status === 404) return undefined;
+        throw error;
+      }
+    },
+    onSuccess: async (_none, name) => {
+      // Refresh the lists, but not the deleted job's own detail and runs: they
+      // would only come back 404 while the page is still showing them.
+      await qc.invalidateQueries({
+        queryKey: keys.jobs,
+        predicate: (query) => query.queryKey[1] !== name,
+      });
+      qc.removeQueries({ queryKey: [...keys.jobs, name] });
+    },
+  });
+}
+
+/**
+ * Pause or resume a job (`PATCH /v1/jobs/{name}` with `status`). apid refuses
+ * the change with 409 while any task is queued or claimed; a paused job answers
+ * 409 to a run start.
+ */
+export function useSetJobStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ name, status }: { name: string; status: 'active' | 'paused' }) =>
+      unwrap(api.PATCH('/v1/jobs/{name}', { params: { path: { name } }, body: { status } })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.jobs }),
+  });
+}
+
 export type Job = components['schemas']['JobResponse'];
 export type JobRun = components['schemas']['JobRunResponse'];
 export type JobTask = components['schemas']['JobTaskResponse'];
@@ -2009,6 +2083,22 @@ export function useVerifyDomain() {
     mutationFn: (domain: string) =>
       unwrap(api.POST('/v1/domains/{domain}/verify', { params: { path: { domain } } })),
     onSettled: () => qc.invalidateQueries({ queryKey: keys.domains }),
+  });
+}
+
+/**
+ * Re-arm polling for a pending domain (`POST /v1/domains/{domain}/retry`, 202,
+ * no body). Only works while the TXT challenge is unexpired: the API answers
+ * 409 for an expired challenge and for a domain that is already verified, and
+ * never extends the window. The caller decides what a 409 means by re-reading
+ * the domain, so this hook does not invalidate on error.
+ */
+export function useRetryDomain() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (domain: string) =>
+      unwrap(api.POST('/v1/domains/{domain}/retry', { params: { path: { domain } } })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.domains }),
   });
 }
 
@@ -3630,7 +3720,7 @@ export function usePostgresBindings(id: string) {
     enabled: Boolean(id),
     refetchInterval: (query) =>
       (query.state.data?.items ?? []).some(
-        (b) => b.state === 'provisioning' || b.state === 'deleting'
+        (b) => b.state === 'provisioning' || b.state === 'deleting' || b.rotation_pending
       )
         ? 5_000
         : false,
@@ -3654,6 +3744,28 @@ export function useCreatePostgresBinding(databaseId: string) {
         api.POST('/v1/postgres/databases/{id}/bindings', {
           params: { path: { id: databaseId } },
           body,
+        })
+      ),
+    onSuccess: () =>
+      void qc.invalidateQueries({ queryKey: [...postgresKey, databaseId, 'bindings'] }),
+  });
+}
+
+/**
+ * Rotate a binding's credential (`POST /v1/postgres/bindings/{id}/rotate`).
+ * The answer is the binding with its new `credential_generation` and a
+ * `rotation_pending` flag: the previous credential stays valid until the app
+ * runtime's rolling refresh completes, so `true` means accepted, not finished.
+ * `idempotencyKey` is chosen by the caller so a retry of the same intent
+ * replays the first answer.
+ */
+export function useRotatePostgresBinding(databaseId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, idempotencyKey }: { id: string; idempotencyKey: string }) =>
+      unwrap(
+        api.POST('/v1/postgres/bindings/{id}/rotate', {
+          params: { path: { id }, header: { 'Idempotency-Key': idempotencyKey } },
         })
       ),
     onSuccess: () =>

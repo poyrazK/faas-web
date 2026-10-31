@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Database, Plus, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
@@ -25,6 +25,8 @@ import {
   usePostgresBindings,
   usePostgresDatabases,
   useRestorePostgresDatabase,
+  useRotatePostgresBinding,
+  type PostgresBinding,
   type PostgresDatabase,
 } from '@/lib/api/queries';
 import { formatRelative } from '@/lib/mock-data';
@@ -343,6 +345,11 @@ function Bindings({ database }: { database: PostgresDatabase }) {
   const apps = useApps();
   const create = useCreatePostgresBinding(database.id);
   const remove = useDeletePostgresBinding(database.id);
+  const rotate = useRotatePostgresBinding(database.id);
+  // One key per intent: a retry after an unknown outcome (the request may have
+  // landed) replays the first answer instead of asking for a second replacement.
+  // After an ApiError the answer is known, so the key is dropped.
+  const rotation = useRef(new Map<string, { generation: number; key: string }>());
   const [appId, setAppId] = useState('');
   const [environmentKey, setEnvironmentKey] = useState('DATABASE_URL');
   const [access, setAccess] = useState<'read_write' | 'read_only'>('read_write');
@@ -352,6 +359,33 @@ function Bindings({ database }: { database: PostgresDatabase }) {
   const appList = apps.data ?? [];
   const chosenApp = appId || appList[0]?.id || '';
   const appName = (id: string) => appList.find((a) => a.id === id)?.slug ?? id.slice(0, 8);
+  // Rotations started here that apid answered as still pending, keyed by
+  // binding id, with the generation each one minted. Polling keeps running
+  // while any binding is pending, so the settle is seen and said once.
+  const settling = useRef(new Map<string, number>());
+
+  const polled = bindings.data;
+  const knownApps = apps.data;
+  useEffect(() => {
+    if (!polled) return;
+    for (const [id, generation] of settling.current) {
+      const binding = polled.items.find((b) => b.id === id);
+      // A read from before the rotation landed still carries the old generation.
+      if (binding && (binding.rotation_pending || binding.credential_generation < generation))
+        continue;
+      settling.current.delete(id);
+      // apid clears the pending flag on a finished refresh (back to ready) and
+      // on a delete; only the first is a rotation completing.
+      if (binding?.state !== 'ready') continue;
+      const app =
+        knownApps?.find((a) => a.id === binding.app_id)?.slug ?? binding.app_id.slice(0, 8);
+      toast({
+        kind: 'success',
+        title: `Credentials rotated to v${binding.credential_generation}`,
+        description: `${app} has finished refreshing onto the new ${binding.environment_key} secret. The previous credential no longer works.`,
+      });
+    }
+  }, [polled, knownApps, toast]);
 
   const submit = async () => {
     try {
@@ -389,6 +423,47 @@ function Bindings({ database }: { database: PostgresDatabase }) {
     }
   };
 
+  const onRotate = async (binding: PostgresBinding) => {
+    if (
+      !(await confirm({
+        title: `Rotate credentials for ${appName(binding.app_id)}?`,
+        description: `This creates a replacement credential and refreshes the app's runtime so it picks up the new ${binding.environment_key} secret. The previous credential keeps working until that rolling refresh completes, then stops. Until then the binding shows rotation pending. The connection string is never shown here.`,
+        confirmLabel: 'Rotate credentials',
+        destructive: true,
+      }))
+    )
+      return;
+    const prior = rotation.current.get(binding.id);
+    const attempt =
+      prior?.generation === binding.credential_generation
+        ? prior
+        : { generation: binding.credential_generation, key: crypto.randomUUID() };
+    rotation.current.set(binding.id, attempt);
+    try {
+      const result = await rotate.mutateAsync({ id: binding.id, idempotencyKey: attempt.key });
+      if (result.rotation_pending) settling.current.set(binding.id, result.credential_generation);
+      toast(
+        result.rotation_pending
+          ? {
+              kind: 'info',
+              title: `Rotation accepted: credentials v${result.credential_generation}`,
+              description: `The app is refreshing onto the new ${result.environment_key} secret. It has not finished: the previous credential keeps working until the refresh completes.`,
+            }
+          : {
+              kind: 'success',
+              title: `Credentials rotated to v${result.credential_generation}`,
+              description: `The app holds the new ${result.environment_key} secret and the previous credential no longer applies.`,
+            }
+      );
+    } catch (err) {
+      // apid stores almost every answer under the key for 24 h, refusals
+      // included, so a retry that reused it would replay the refusal even once
+      // the binding is ready. Keep the key only when the outcome is unknown.
+      if (err instanceof ApiError) rotation.current.delete(binding.id);
+      toast(explainPostgres(err));
+    }
+  };
+
   return (
     <div className="flex flex-col gap-3">
       <p className="label-mono text-muted-foreground">Bound apps</p>
@@ -413,6 +488,9 @@ function Bindings({ database }: { database: PostgresDatabase }) {
               <span className="text-muted-foreground">
                 credentials v{binding.credential_generation}
               </span>
+              {binding.rotation_pending && (
+                <Pill label="rotation pending" color="var(--status-warning)" />
+              )}
               {binding.last_error_code && (
                 <span style={{ color: 'var(--status-critical)' }}>{binding.last_error_code}</span>
               )}
@@ -420,6 +498,20 @@ function Bindings({ database }: { database: PostgresDatabase }) {
                 size="xs"
                 variant="ghost"
                 className="ml-auto"
+                aria-label={`Rotate credentials for ${appName(binding.app_id)}`}
+                title={
+                  binding.rotation_pending
+                    ? 'A rotation is still refreshing the app; wait for it to finish.'
+                    : undefined
+                }
+                onClick={() => void onRotate(binding)}
+                disabled={rotate.isPending || binding.rotation_pending || binding.state !== 'ready'}
+              >
+                Rotate credentials
+              </Button>
+              <Button
+                size="xs"
+                variant="ghost"
                 aria-label={`Remove binding for ${appName(binding.app_id)}`}
                 onClick={() => void onRemove(binding.id, binding.environment_key)}
                 disabled={remove.isPending}
