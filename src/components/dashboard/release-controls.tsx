@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
-import { errorMessage } from '@/lib/api/errors';
 import { useUpdateDeploymentMinInstances, useUpdateDeploymentTraffic } from '@/lib/api/queries';
 import type { components } from '@/lib/api/schema';
 export function DeploymentControls({
@@ -49,7 +48,7 @@ export function DeploymentControls({
                     toast({
                       kind: 'error',
                       title: 'Could not update instances',
-                      description: errorMessage(error),
+                      error: error,
                     })
                   );
               }}
@@ -97,7 +96,7 @@ export function DeploymentControls({
                     toast({
                       kind: 'error',
                       title: 'Could not update traffic',
-                      description: errorMessage(error),
+                      error: error,
                     })
                   );
               }}

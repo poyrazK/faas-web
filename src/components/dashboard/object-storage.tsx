@@ -5,10 +5,17 @@ import { ErrorState, LoadingState, Panel } from './primitives';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
-import { errorMessage } from '@/lib/api/errors';
 import { BucketAccess } from './bucket-access';
+import { CliCommand } from './cli-command';
 import { useCapability } from '@/lib/api/capabilities';
 import { CapabilityNotice } from './capability-notice';
+import {
+  cliBucketEncryptionCommand,
+  cliBucketLifecycleCommand,
+  cliBucketObjectLockCommand,
+  cliBucketUploadsCommand,
+  cliBucketVersioningCommand,
+} from '@/lib/cli-commands';
 import {
   bucketKey,
   objectKey,
@@ -72,7 +79,7 @@ function BucketManager({ slug }: { slug: string }) {
     mutationFn: async (task: () => Promise<unknown>) => task(),
     onSuccess: () => void refresh(),
     onError: (error) => {
-      toast({ kind: 'error', title: 'Storage operation failed', description: errorMessage(error) });
+      toast({ kind: 'error', title: 'Storage operation failed', error: error });
       void refresh();
     },
   });
@@ -225,7 +232,69 @@ function BucketManager({ slug }: { slug: string }) {
           This bucket is {bucket.state}. Retry its operation to finish setup or deletion.
         </p>
       )}
+      {data.enabled && (
+        <BucketCliPanel slug={slug} bucketId={bucket?.id} bucketName={bucket?.name} />
+      )}
     </div>
+  );
+}
+
+/** Bucket features the console does not offer. Each command reads the current
+ *  setting; the CLI changes it. */
+function BucketCliPanel({
+  slug,
+  bucketId,
+  bucketName,
+}: {
+  slug: string;
+  bucketId?: string;
+  bucketName?: string;
+}) {
+  // Copy buttons are named as nouns; the captions above them can be sentences.
+  const copyLabel = (what: string) =>
+    bucketName ? `${what} command for ${bucketName}` : `${what} command`;
+  return (
+    <section
+      aria-labelledby="bucket-cli-heading"
+      className="flex flex-col gap-3 rounded-md border border-border p-3"
+    >
+      <div>
+        <h3 id="bucket-cli-heading" className="text-sm font-medium">
+          More in the CLI
+        </h3>
+        <p className="text-xs text-muted-foreground">
+          The console does not manage these bucket settings.{' '}
+          {bucketId
+            ? 'Each command shows the current setting for the selected bucket.'
+            : 'Select a bucket to fill in its ID.'}
+        </p>
+      </div>
+      <CliCommand
+        label="Versioning: check it, then enable or suspend it"
+        copyLabel={copyLabel('versioning')}
+        command={cliBucketVersioningCommand(slug, bucketId)}
+      />
+      <CliCommand
+        label="Lifecycle rules: read them, then set or clear them"
+        copyLabel={copyLabel('lifecycle')}
+        command={cliBucketLifecycleCommand(slug, bucketId)}
+      />
+      <CliCommand
+        label="Default encryption"
+        copyLabel={copyLabel('encryption')}
+        command={cliBucketEncryptionCommand(slug, bucketId)}
+      />
+      <CliCommand
+        label="Object Lock"
+        copyLabel={copyLabel('Object Lock')}
+        command={cliBucketObjectLockCommand(slug, bucketId)}
+      />
+      <CliCommand
+        label="Multipart uploads in progress"
+        copyLabel={copyLabel('multipart uploads')}
+        command={cliBucketUploadsCommand(slug, bucketId)}
+      />
+    </section>
   );
 }
 
@@ -260,8 +329,7 @@ function ObjectBrowser({
     onSuccess: () => {
       void cache.invalidateQueries({ queryKey: objectKey(slug, bucket.id) });
     },
-    onError: (error) =>
-      toast({ kind: 'error', title: 'Object operation failed', description: errorMessage(error) }),
+    onError: (error) => toast({ kind: 'error', title: 'Object operation failed', error: error }),
   });
   const upload = async (event: FormEvent) => {
     event.preventDefault();

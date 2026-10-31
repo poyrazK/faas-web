@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   createMemoryHistory,
@@ -66,6 +66,7 @@ vi.mock('@/components/dashboard/repo-picker', () => ({
 vi.mock('@/lib/api/queries', () => ({
   useBindRepoFor: () => ({ mutateAsync: mocks.bind }),
   useDeployFromRefFor: () => ({ mutateAsync: mocks.deploy }),
+  useDeployFunctionSourceFor: () => ({ mutateAsync: vi.fn() }),
   useUpdateAppFor: () => ({ mutateAsync: vi.fn() }),
   useSourceRefScan: () => mocks.sourceScan,
   useApps: () => ({ data: [] }),
@@ -155,7 +156,7 @@ describe('New App source flow', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Continue with an empty app' }));
     expect(router.state.location.search.source).toBe('empty');
     expect(mocks.create).not.toHaveBeenCalled();
-    await userEvent.click(screen.getByRole('button', { name: /Continue/ }));
+    // Empty needs no setup: choosing it lands on Configure directly.
     expect(await screen.findByRole('textbox', { name: /App name/ })).toBeInTheDocument();
   });
   it('preserves the template read failure and provides retry', async () => {
@@ -179,16 +180,18 @@ describe('New App source flow', () => {
     for (const name of ['Empty app', 'Template', 'Import']) {
       expect(screen.getByRole('button', { name })).toHaveAttribute('aria-pressed', 'false');
     }
-    expect(screen.getByLabelText('Repository')).toBeInTheDocument();
+    // Git's fields are on its own station: choosing its card goes there.
+    await user.click(screen.getByRole('button', { name: 'Git repository' }));
+    expect(await screen.findByLabelText('Repository')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Continue' }));
     expect(screen.getByLabelText('Repository')).toHaveFocus();
     expect(screen.getByLabelText('Repository')).toHaveAccessibleDescription(
       'Choose a repository to deploy.'
     );
-    expect(router.state.location.search.step).toBeUndefined();
-    await user.click(screen.getByRole('button', { name: /^Empty app/ }));
+    expect(router.state.location.search.step).toBe('setup');
+    await user.click(screen.getByRole('button', { name: 'Back to Sources' }));
+    await user.click(await screen.findByRole('button', { name: /^Empty app/ }));
     expect(router.state.location.search).toMatchObject({ source: 'empty' });
-    await user.click(screen.getByRole('button', { name: 'Continue' }));
     await user.type(await screen.findByLabelText('App name'), 'empty-demo');
     await user.click(screen.getByRole('button', { name: 'Review' }));
     await user.click(await screen.findByRole('button', { name: 'Create app' }));
@@ -211,7 +214,7 @@ describe('New App source flow', () => {
     mocks.workspace = { org: 'acme-corp', label: 'Acme Corp' };
     const user = userEvent.setup();
     await mount('/dashboard/apps/new?source=empty');
-    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(screen.getByRole('button', { name: 'Empty app' }));
     await user.type(await screen.findByLabelText('App name'), 'team-api');
     await user.click(screen.getByRole('button', { name: 'Review' }));
     const workspace = (await screen.findByText('Workspace')).parentElement!;
@@ -235,7 +238,7 @@ describe('New App source flow', () => {
     );
     const user = userEvent.setup();
     await mount('/dashboard/apps/new?source=empty');
-    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(screen.getByRole('button', { name: 'Empty app' }));
     await user.type(await screen.findByLabelText('App name'), 'team-api');
     await user.click(screen.getByRole('button', { name: 'Review' }));
     await user.click(await screen.findByRole('button', { name: 'Create app' }));
@@ -255,7 +258,7 @@ describe('New App source flow', () => {
       'aria-pressed',
       'true'
     );
-    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(screen.getByRole('button', { name: /^Empty app/ }));
     await user.type(await screen.findByLabelText('App name'), 'saved-draft');
     await act(async () => router.history.back());
     expect(await screen.findByRole('button', { name: /^Empty app/ })).toHaveAttribute(
@@ -264,7 +267,7 @@ describe('New App source flow', () => {
     );
     await act(async () => router.history.forward());
     expect(await screen.findByLabelText('App name')).toHaveValue('saved-draft');
-    await user.click(screen.getByRole('button', { name: 'Back' }));
+    await user.click(screen.getByRole('button', { name: 'Back to Sources' }));
     await user.click(await screen.findByRole('button', { name: /^Git repository/ }));
     expect(await screen.findByLabelText('Repository')).toBeInTheDocument();
     await act(async () => router.history.back());
@@ -283,11 +286,9 @@ describe('New App source flow', () => {
     async (slug, runtime) => {
       const user = userEvent.setup();
       await mount(`/dashboard/apps/new?template=${slug}`);
-      expect(screen.getByRole('button', { name: /^Template/ })).toHaveAttribute(
-        'aria-pressed',
-        'true'
-      );
-      await user.click(screen.getByRole('button', { name: 'Continue' }));
+      // A template link lands on Template's own station.
+      expect(screen.getByRole('region', { name: 'Template' })).toBeInTheDocument();
+      await user.click(await screen.findByRole('button', { name: 'Continue' }));
       expect(await screen.findByLabelText('App name')).toHaveValue(slug);
       expect(screen.getByLabelText('Runtime')).toHaveValue(runtime);
       await user.click(screen.getByRole('button', { name: 'Review' }));
@@ -321,14 +322,10 @@ describe('New App source flow', () => {
     const user = userEvent.setup();
     const router = await mount();
     await user.click(screen.getByRole('button', { name: /^Template/ }));
-    await user.click(screen.getByRole('button', { name: 'Continue' }));
-    expect(screen.getByRole('button', { name: 'Template' })).toHaveFocus();
-    expect(screen.getByRole('button', { name: 'Template' })).toHaveAccessibleDescription(
-      /Choose a starter template below, or another source\./
-    );
-    expect(router.state.location.search.step).toBeUndefined();
-    const card = screen.getByRole('heading', { name: 'hello-python' }).closest('article')!;
-    await user.click(within(card).getByRole('button', { name: 'Use template' }));
+    // Template's own station: the catalog is the way on, so no Continue yet.
+    expect(router.state.location.search.step).toBe('setup');
+    expect(screen.queryByRole('button', { name: 'Continue' })).not.toBeInTheDocument();
+    await user.click(await screen.findByRole('button', { name: 'hello-python' }));
     expect(router.state.location.pathname).toBe('/dashboard/apps/new');
     expect(router.state.location.search).toMatchObject({
       source: 'template',
@@ -336,17 +333,18 @@ describe('New App source flow', () => {
     });
     await user.click(screen.getByRole('button', { name: 'Continue' }));
     expect(await screen.findByLabelText('App name')).toHaveValue('hello-python');
-    await user.click(screen.getByRole('button', { name: 'Back' }));
+    await user.click(screen.getByRole('button', { name: 'Back to Setup' }));
+    await user.click(await screen.findByRole('button', { name: 'Back to Sources' }));
     await user.click(await screen.findByRole('button', { name: /^Empty app/ }));
     expect(router.state.location.search.template).toBeUndefined();
-    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    // Empty needs no setup: choosing it lands on Configure directly.
     expect(await screen.findByLabelText('App name')).toHaveValue('');
   });
 
   it('keeps the created app scaffold tied to its submitted template after browser Back', async () => {
     const user = userEvent.setup();
     const router = await mount('/dashboard/apps/new?source=template');
-    await user.click(screen.getByRole('button', { name: 'Use template' }));
+    await user.click(screen.getByRole('button', { name: 'hello-python' }));
     await user.click(screen.getByRole('button', { name: 'Continue' }));
     await user.click(await screen.findByRole('button', { name: 'Review' }));
     await user.click(await screen.findByRole('button', { name: 'Create app' }));
@@ -354,9 +352,22 @@ describe('New App source flow', () => {
     await act(async () => router.history.go(-3));
     expect(screen.getByText('hello-python scaffold')).toBeInTheDocument();
     expect(
-      screen.getByText(/gregale init --template hello-python && gregale deploy --app hello-python/)
+      screen.getByText(
+        'gregale init --template hello-python --path hello-python --deploy --name hello-python'
+      )
     ).toBeInTheDocument();
     expect(mocks.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('hands a created empty app the deploy command the CLI accepts', async () => {
+    const user = userEvent.setup();
+    await mount('/dashboard/apps/new?source=empty');
+    await user.click(screen.getByRole('button', { name: 'Empty app' }));
+    await user.type(await screen.findByRole('textbox', { name: /App name/ }), 'my-api');
+    await user.click(await screen.findByRole('button', { name: 'Review' }));
+    await user.click(await screen.findByRole('button', { name: 'Create app' }));
+    expect(await screen.findByText('gregale deploy --name my-api')).toBeInTheDocument();
+    expect(screen.queryByText(/--app/)).not.toBeInTheDocument();
   });
 
   it('hands a multi-service repository to Import with its project slug and branch', async () => {
@@ -367,7 +378,9 @@ describe('New App source flow', () => {
       error: null,
       scanning: false,
     };
-    await user.type(screen.getByLabelText('Repository'), 'acme/Checkout_Service');
+    // Git's fields are on its own station: choosing its card goes there.
+    await user.click(screen.getByRole('button', { name: 'Git repository' }));
+    await user.type(await screen.findByLabelText('Repository'), 'acme/Checkout_Service');
     await user.clear(screen.getByLabelText('Ref'));
     await user.type(screen.getByLabelText('Ref'), 'develop');
     await user.click(screen.getByRole('button', { name: 'Import as a project' }));
@@ -383,7 +396,8 @@ describe('New App source flow', () => {
   it('scans, reviews and applies an import within New App using the existing project endpoint contract', async () => {
     const user = userEvent.setup();
     const router = await mount('/dashboard/apps/new?source=import&slug=sample&branch=develop');
-    expect(screen.getByRole('button', { name: /^Import/ })).toHaveAttribute('aria-pressed', 'true');
+    // Import's own station.
+    expect(screen.getByRole('region', { name: 'Import' })).toBeInTheDocument();
     expect(screen.getByLabelText('Project slug')).toHaveValue('sample');
     expect(screen.getByLabelText('Branch')).toHaveValue('develop');
     expect(screen.queryByRole('button', { name: 'Continue' })).not.toBeInTheDocument();
@@ -434,8 +448,10 @@ describe('New App source flow', () => {
       new File(['tarball'], 'repo.tar.gz', { type: 'application/gzip' })
     );
     await user.type(screen.getByLabelText('Project slug'), 'draft');
-    await user.click(screen.getByRole('button', { name: /^Empty app/ }));
-    await act(async () => router.history.back());
+    await user.click(screen.getByRole('button', { name: 'Back to Sources' }));
+    await user.click(await screen.findByRole('button', { name: /^Empty app/ }));
+    // Back over "Empty app" and "back to Sources" returns to Import's station.
+    await act(async () => router.history.go(-2));
     expect(await screen.findByText('repo.tar.gz')).toBeVisible();
     expect(screen.getByLabelText('Project slug')).toHaveValue('draft');
     expect(window.confirm).not.toHaveBeenCalled();
@@ -448,7 +464,9 @@ describe('New App source flow', () => {
       screen.getByLabelText('Choose a .tar.gz'),
       new File(['tarball'], 'repo.tar.gz', { type: 'application/gzip' })
     );
-    await user.click(screen.getByRole('link', { name: 'All apps' }));
+    // "All apps" is on the first page; the import draft stays mounted there.
+    await user.click(screen.getByRole('button', { name: 'Back to Sources' }));
+    await user.click(await screen.findByRole('link', { name: 'All apps' }));
     expect(window.confirm).toHaveBeenCalledWith('Discard unsaved changes?');
     expect(router.state.location.pathname).toBe('/dashboard/apps/new');
   });
@@ -469,8 +487,9 @@ describe('New App source flow', () => {
     await user.type(screen.getByLabelText('Branch'), 'feature/import');
     await user.click(screen.getByRole('button', { name: 'Scan' }));
     expect(await screen.findByRole('button', { name: 'Apply plan' })).toBeEnabled();
-    await user.click(screen.getByRole('button', { name: /^Empty app/ }));
-    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(screen.getByRole('button', { name: 'Back to Sources' }));
+    // Empty needs no setup: choosing it lands on Configure directly.
+    await user.click(await screen.findByRole('button', { name: /^Empty app/ }));
     await user.type(await screen.findByLabelText('App name'), 'empty-attempt');
     await user.click(screen.getByRole('button', { name: 'Review' }));
     await user.click(await screen.findByRole('button', { name: 'Create app' }));
@@ -481,9 +500,9 @@ describe('New App source flow', () => {
     expect(screen.queryByText('App ready')).not.toBeInTheDocument();
     await act(async () => rejectCreate(new Error('Creation unavailable')));
     expect(await screen.findByRole('button', { name: 'Create app' })).toBeEnabled();
-    await user.click(screen.getByRole('button', { name: 'Back' }));
+    await user.click(screen.getByRole('button', { name: 'Back to Configure' }));
     await screen.findByLabelText('App name');
-    await user.click(screen.getByRole('button', { name: 'Back' }));
+    await user.click(screen.getByRole('button', { name: 'Back to Sources' }));
     await user.click(await screen.findByRole('button', { name: /^Import/ }));
     expect(await screen.findByText('repo.tar.gz')).toBeVisible();
     expect(screen.getByLabelText('Project slug')).toHaveValue('sample');
@@ -520,7 +539,13 @@ describe('New App source flow', () => {
       await waitFor(() => expect(router.state.location.pathname).toBe('/dashboard/apps/new'));
       expect(router.state.location.search).toMatchObject({ source, ...search });
       expect(router.state.location.hash).toBe(hash.replace(/^#/, ''));
-      expect(screen.getByRole('heading', { name: 'New app' })).toBeInTheDocument();
+      // Each page names its step: the redirect lands on that source's own page.
+      expect(
+        screen.getByRole('heading', {
+          level: 1,
+          name: source === 'template' ? 'Pick a starter' : 'Import a project',
+        })
+      ).toBeInTheDocument();
     }
   );
 });
