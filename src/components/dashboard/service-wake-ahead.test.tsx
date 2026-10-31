@@ -109,6 +109,20 @@ it('keeps the old value and explains a capacity failure by its code', async () =
   expect(await toggle()).not.toBeChecked();
 });
 
+it('does not claim the app is gone when the route answers not_found', async () => {
+  // The platform kill switch answers the same 404 not_found as a missing app
+  // (faas httpkit.NoSuchRoute), so the copy must not pick one.
+  current = { slug: 'api', enabled: false, updated_at: '2026-10-30T12:00:00Z', learned: LEARNED };
+  putAnswer = () => problem(404, 'not_found', 'not found');
+  const user = userEvent.setup();
+  renderWithProviders(<ServiceWakeAhead slug="api" />);
+  await user.click(await toggle());
+
+  expect(await screen.findByText(/wake-ahead is not available for this app/i)).toBeInTheDocument();
+  expect(screen.queryByText(/no longer exists/i)).not.toBeInTheDocument();
+  expect(await toggle()).not.toBeChecked();
+});
+
 it('lists measured services with their shares and 24h outcomes', async () => {
   renderWithProviders(<ServiceWakeAhead slug="api" />);
   const list = await screen.findByRole('list', { name: /measured services/i });

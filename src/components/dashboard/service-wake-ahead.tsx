@@ -23,7 +23,9 @@ function explainError(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.code === 'capacity_unavailable')
       return 'The wake-ahead setting is briefly unavailable. Try again in a moment.';
-    if (error.code === 'not_found') return 'This app no longer exists.';
+    // Also what the platform kill switch answers, so it names neither cause.
+    if (error.code === 'not_found')
+      return 'Wake-ahead is not available for this app right now. Reload the page to check it still exists.';
   }
   return errorMessage(error);
 }
