@@ -12,6 +12,11 @@ it.each(['ab', 'a'.repeat(41), '-api', 'api-', 'my_api', 'my api', 'API'])(
     );
   }
 );
+it('rejects the tag- prefix the API reserves for deployment-alias hostnames', () => {
+  expect(appNameError('tag-api')).toBe(
+    'Names starting with tag- are reserved for deployment-alias hostnames.'
+  );
+});
 it('explains a missing name', () => {
   expect(appNameError('')).toBe('Enter an app name.');
 });

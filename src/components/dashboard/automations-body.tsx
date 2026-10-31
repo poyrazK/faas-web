@@ -128,7 +128,8 @@ function AppAutomations({
   const q = useAutomations(account, slug);
   const { toast } = useToast();
   // The stage comes from the capability registry; nothing is claimed until it answers.
-  const { capability } = useCapability('workflows-and-jobs');
+  // Automations is internal, so the registry omits it and no stage label shows.
+  const { capability } = useCapability('automations');
   const maturity =
     capability?.maturity === 'preview' ? 'preview' : capability?.maturity === 'beta' ? 'beta' : '';
   const [reloadKey, setReloadKey] = useState(0);
