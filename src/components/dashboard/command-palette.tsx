@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useNavigate, useRouterState } from '@tanstack/react-router';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { UTurnArrowLeft, GitBranch, LogOut, Plus, Search, SidebarCollapse } from 'iconoir-react';
-import { NAV_ITEMS, SECTION_LABELS, type NavIcon } from './nav-config';
+import { NAV_ITEMS, railGroupFor, SECTION_LABELS, type NavIcon } from './nav-config';
 import { validateSettingsSearch } from './settings-search';
 import { EASE } from './motion';
 import { Kbd } from '@/components/ui/kbd';
@@ -26,6 +26,8 @@ interface Command {
   label: string;
   group: string;
   hint?: string;
+  /** Matched like `hint`, never rendered: a word a page is filed under. */
+  keywords?: string;
   icon: NavIcon;
   run: () => void;
 }
@@ -151,6 +153,7 @@ export function CommandPalette({
           : `${item.to !== '/dashboard' && item.label !== SECTION_LABELS[item.to.split('/').pop()!] ? 'hub' : 'nav'}-${item.to}`,
         label: item.label,
         group: 'Go to',
+        keywords: railGroupFor(item),
         icon: item.icon,
         run: go(item.to, item.search),
       })),
@@ -318,11 +321,13 @@ export function CommandPalette({
           const onLabel = fuzzyMatch(command.label, q);
           const onGroup = fuzzyMatch(command.group, q);
           const onHint = command.hint ? fuzzyMatch(command.hint, q) : null;
+          const onKeywords = command.keywords ? fuzzyMatch(command.keywords, q) : null;
 
           const best = Math.max(
             onLabel?.score ?? -Infinity,
             (onGroup?.score ?? -Infinity) - 20,
-            (onHint?.score ?? -Infinity) - 30
+            (onHint?.score ?? -Infinity) - 30,
+            (onKeywords?.score ?? -Infinity) - 30
           );
           if (best === -Infinity) return null;
 

@@ -84,7 +84,10 @@ function AppCapacity() {
 function StoragePage() {
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Storage" description="Your app capacity and private object buckets." />
+      <PageHeader
+        title="Object storage"
+        description="Your app capacity and private object buckets."
+      />
       <AppCapacity />
       <ObjectStorage />
     </div>
