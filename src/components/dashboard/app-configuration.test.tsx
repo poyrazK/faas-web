@@ -137,26 +137,19 @@ describe('App deletion contract copy', () => {
       </ConfirmProvider>
     );
     expect(screen.getByText(/7-day grace/)).toBeInTheDocument();
-    expect(screen.getByText(/Apps → Restore a deleted app/)).toBeInTheDocument();
-    expect(screen.queryByText(/no restore action/)).not.toBeInTheDocument();
     expect(
       screen.queryByText(/no grace period|Every deployment, secret|Permanent\./)
     ).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Delete app' }));
     const dialog = screen.getByRole('dialog');
-    expect(dialog).toHaveTextContent(/Apps → Restore a deleted app/);
-    expect(dialog).toHaveTextContent(/within 7 days/);
-    expect(dialog).not.toHaveTextContent(/restore API/);
+    expect(dialog).toHaveTextContent(/restore API/);
     const submit = within(dialog).getByRole('button', { name: 'Delete app' });
     expect(submit).toBeDisabled();
     await userEvent.type(within(dialog).getByRole('textbox'), 'alpha');
     await userEvent.click(submit);
     await waitFor(() => expect(mocks.remove).toHaveBeenCalledWith('alpha'));
     expect(mocks.toast).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: 'App deletion scheduled',
-        description: expect.stringContaining('Apps → Restore a deleted app'),
-      })
+      expect.objectContaining({ title: 'App deletion scheduled' })
     );
     expect(mocks.navigate).toHaveBeenCalledWith({ to: '/dashboard/apps' });
   });

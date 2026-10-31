@@ -669,8 +669,8 @@ function DangerZone({ app }: { app: App }) {
           <p className="text-sm font-medium">Delete {app.slug}</p>
           <p className="mt-1 max-w-lg text-xs leading-relaxed text-muted-foreground">
             The app is hidden from active lists and enters a 7-day grace window before permanent
-            cleanup. To bring it back within 7 days, use Apps → Restore a deleted app and enter this
-            slug. Delete any object storage buckets first.
+            cleanup. Restore it through the API during that window; this console has no restore
+            action. Delete any object storage buckets first.
           </p>
         </div>
         <Button
@@ -682,7 +682,7 @@ function DangerZone({ app }: { app: App }) {
               !(await confirm({
                 title: `Delete ${app.slug}?`,
                 description:
-                  'Traffic to this app stops. To recover it, use Apps → Restore a deleted app within 7 days; after that the app is eligible for permanent cleanup.',
+                  'Traffic to this app stops. Use the restore API within 7 days to recover the app; after the grace window it is eligible for permanent cleanup.',
                 confirmLabel: 'Delete app',
                 destructive: true,
                 typeToConfirm: app.slug,
@@ -695,7 +695,7 @@ function DangerZone({ app }: { app: App }) {
                 toast({
                   kind: 'success',
                   title: 'App deletion scheduled',
-                  description: 'Restore it within 7 days from Apps → Restore a deleted app.',
+                  description: `${app.slug} can be restored through the API within 7 days.`,
                 });
                 void navigate({ to: '/dashboard/apps' });
               })

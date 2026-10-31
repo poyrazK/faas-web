@@ -3,7 +3,6 @@ import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { Plus } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { PageHeader, StateBadge } from '@/components/dashboard/primitives';
-import { RestoreAppButton } from '@/components/dashboard/restore-app-dialog';
 import { ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { SegmentedControl } from '@/components/dashboard/tabs';
 import { Select } from '@/components/ui/field';
@@ -172,19 +171,12 @@ function FunctionsPage() {
         title="Apps"
         description="Every app in this workspace."
         actions={
-          <>
-            <RestoreAppButton
-              onRestored={(slug) =>
-                void navigate({ to: '/dashboard/apps/$appSlug', params: { appSlug: slug } })
-              }
-            />
-            <Button asChild size="sm" className="gap-1.5">
-              <Link to="/dashboard/apps/new">
-                <Plus className="h-3.5 w-3.5" />
-                New app
-              </Link>
-            </Button>
-          </>
+          <Button asChild size="sm" className="gap-1.5">
+            <Link to="/dashboard/apps/new">
+              <Plus className="h-3.5 w-3.5" />
+              New app
+            </Link>
+          </Button>
         }
       />
 
