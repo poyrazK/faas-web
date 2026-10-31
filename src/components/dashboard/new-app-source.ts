@@ -34,11 +34,12 @@ export function validateRecovery(value: unknown): DeploymentRecoveryContext | un
   };
 }
 
-export type AppSource = 'git' | 'container' | 'worker' | 'empty' | 'template' | 'import';
+export type AppSource =
+  'git' | 'function' | 'container' | 'worker' | 'empty' | 'template' | 'import';
 export interface NewAppSearch {
   source?: AppSource;
   template?: string;
-  step?: 'configure' | 'review';
+  step?: 'source' | 'setup' | 'configure' | 'review';
   slug?: string;
   branch?: string;
   recovery?: DeploymentRecoveryContext;
@@ -48,6 +49,7 @@ export function validateNewAppSearch(search: Record<string, unknown>): NewAppSea
   return {
     source:
       search.source === 'git' ||
+      search.source === 'function' ||
       search.source === 'container' ||
       search.source === 'worker' ||
       search.source === 'empty' ||
@@ -56,7 +58,13 @@ export function validateNewAppSearch(search: Record<string, unknown>): NewAppSea
         ? search.source
         : undefined,
     template: typeof search.template === 'string' ? search.template : undefined,
-    step: search.step === 'configure' || search.step === 'review' ? search.step : undefined,
+    step:
+      search.step === 'source' ||
+      search.step === 'setup' ||
+      search.step === 'configure' ||
+      search.step === 'review'
+        ? search.step
+        : undefined,
     slug: typeof search.slug === 'string' ? search.slug : undefined,
     branch: typeof search.branch === 'string' ? search.branch : undefined,
     recovery: validateRecovery(search.recovery),

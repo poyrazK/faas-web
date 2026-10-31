@@ -64,6 +64,8 @@ paths are checked against `api/openapi.yaml` by `src/lib/mock-spec-drift.test.ts
   imports it. It is the sanctioned way to see populated console states while
   `apid` is down — the "no fixture data" rule above is about `src/`, and still
   holds. An unmocked path answers `404 not_mocked` and logs to the dev server.
+  `MOCK_REPOS=<n>` gives the GitHub installation n repositories (the New app
+  list as a large account sees it).
   `MOCK_EMPTY=1` boots the same account with nothing in it, and `MOCK_LATENCY`
   slows responses — between them every read state can be seen on demand.
   `MOCK_HAS_PASSWORD=1` boots with a password already set
@@ -118,3 +120,11 @@ paths are checked against `api/openapi.yaml` by `src/lib/mock-spec-drift.test.ts
   inherits the bare brand title. See the Page titles section in `README.md`.
 - **Adding a console page means touching `nav-config.ts` too**, or the page
   exists but is unreachable from the sidebar, breadcrumb, and ⌘K palette.
+- **Headers live in `src/lib/security-headers.ts`; `vercel.json` is a copy.**
+  `src/hosting-contract.test.ts` fails when they differ. The dev server sends
+  the same policy, so a font, image, script, or fetch from a third-party host
+  is blocked locally — that is the point. Do not add an origin to a directive
+  to make something load; ask whether it should be first-party instead (the
+  fonts are, under `src/fonts/`, hashed into `/assets/`). `npm run build:mock && npm run preview:mock`
+  then `BASE_URL=http://localhost:4173 npm run tour` checks a real build under
+  the production headers; the tour fails on CSP violations.

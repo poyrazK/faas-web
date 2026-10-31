@@ -62,6 +62,13 @@ export function useFormValidation<Name extends string>() {
 
       const control = form.elements.namedItem(firstInvalid[0]);
       if (control instanceof HTMLElement) control.focus();
+      // A group of radios under one name: focus the chosen one, else the first.
+      else if (control instanceof RadioNodeList) {
+        const radios = [...control].filter(
+          (r): r is HTMLInputElement => r instanceof HTMLInputElement
+        );
+        (radios.find((r) => r.checked) ?? radios[0])?.focus();
+      }
       return false;
     },
     []

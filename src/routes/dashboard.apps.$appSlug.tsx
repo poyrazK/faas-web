@@ -30,15 +30,11 @@ import { formatCompact, formatMs } from '@/lib/mock-data';
 import {
   useAppDeployments,
   useAppMetrics,
-  useBindRepo,
   useBuildRecords,
-  useDeployFromRef,
   type MetricsRange,
 } from '@/lib/api/queries';
 import { toDeployment } from '@/lib/api/adapters';
 import { useData } from '@/lib/store';
-import { useToast } from '@/components/ui/toast';
-import { errorMessage } from '@/lib/api/errors';
 import { useAuth } from '@/lib/auth';
 import { isPaidPlan } from '@/lib/plan';
 import { LogsBody } from './dashboard.logs';
@@ -88,7 +84,7 @@ import { AppActionsMenu } from '@/components/dashboard/app-actions-menu';
 import { TarballDeploy } from '@/components/dashboard/tarball-deploy';
 import { ImageDeploymentPanel } from '@/components/dashboard/image-deploy-form';
 import { Swap } from '@/components/dashboard/motion';
-import { RepoPicker } from '@/components/dashboard/repo-picker';
+import { DeployFromGitModal } from '@/components/dashboard/deploy-from-git-modal';
 import { DeploymentProgress } from '@/components/dashboard/deployment-progress';
 import { ReleaseDetailPanel } from '@/components/dashboard/release-detail';
 import {
@@ -98,7 +94,6 @@ import {
 import { AppActivityTimeline } from '@/components/dashboard/resource-activity';
 import { DeploymentHistoryPanel } from '@/components/dashboard/deployment-history';
 import { ClearObsoleteDeploymentsButton } from '@/components/dashboard/deployment-actions';
-import { Modal } from '@/components/ui/modal';
 import { pageHead, useDocumentTitle } from '@/lib/seo';
 import { PlanGate } from '@/components/dashboard/plan-gate';
 import { DeploymentGate } from '@/components/dashboard/deployment-gate';
@@ -219,13 +214,8 @@ function FunctionDetailPage() {
   const { getWorkflow, loading, error, refresh } = useData();
   const { account, loading: authLoading } = useAuth();
   const membership = useProjectMembership(account?.id ?? '');
-  const { toast } = useToast();
-  const deployFromRef = useDeployFromRef(appSlug);
-  const bindRepo = useBindRepo(appSlug);
   const appDeploymentQuery = useAppDeployments(appSlug);
   const [deployOpen, setDeployOpen] = useState(false);
-  const [deployRepo, setDeployRepo] = useState('');
-  const [deployRef, setDeployRef] = useState('main');
   const [activeDeployment, setActiveDeployment] = useState<{
     id: string;
     repo: string;
@@ -752,112 +742,26 @@ function FunctionDetailPage() {
         </Swap>
       </div>
 
-      {/* The one deploy the console can start itself: a Git ref, built
-          server-side. The image constructor wants a registry the browser has
-          no business holding credentials for. */}
-      <Modal
+      <DeployFromGitModal
         open={deployOpen}
         onClose={() => setDeployOpen(false)}
-        title={`Deploy ${fn.name}`}
-        description="Builds the ref from the repository the app is connected to and ships it when the build succeeds."
-        footer={
-          <>
-            <Button variant="ghost" size="sm" onClick={() => setDeployOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              disabled={!/^[^/\s]+\/[^/\s]+$/.test(deployRepo.trim()) || !deployRef.trim()}
-              busy={deployFromRef.isPending}
-              onClick={() => {
-                setDeploySubmissionError(null);
-                void deployFromRef
-                  .mutateAsync({
-                    repo: deployRepo.trim(),
-                    ref: deployRef.trim(),
-                    format: 'tarball',
-                  })
-                  .then((deployment) => {
-                    setActiveDeployment({
-                      id: deployment.id,
-                      repo: deployRepo.trim(),
-                      ref: deployRef.trim(),
-                    });
-                    setDeployOpen(false);
-                    void navigate({
-                      search: (current) => ({
-                        ...current,
-                        tab: 'Deployments',
-                        deployment: deployment.id,
-                        releaseSection: undefined,
-                      }),
-                      hash: true,
-                      replace: true,
-                    });
-                    toast({
-                      kind: 'success',
-                      title: 'Build accepted',
-                      description: `${deployRepo.trim()}@${deployRef.trim()} is queued.`,
-                    });
-                    // Persist the binding so the next deploy (and GitHub
-                    // pushes) know this app's repo. Quiet: failing to bind
-                    // must not spoil an accepted build.
-                    if (account?.github_install_id) {
-                      void bindRepo
-                        .mutateAsync({
-                          installationId: Number(account.github_install_id),
-                          repo: deployRepo.trim(),
-                          branch: deployRef.trim() || 'main',
-                        })
-                        .catch(() => {});
-                    }
-                  })
-                  .catch((err: unknown) => {
-                    setDeploySubmissionError(errorMessage(err));
-                    toast({
-                      kind: 'error',
-                      title: 'Could not start the deploy',
-                      description: errorMessage(err),
-                    });
-                  });
-              }}
-            >
-              Deploy
-            </Button>
-          </>
-        }
-      >
-        <div className="grid gap-4">
-          {deploySubmissionError && (
-            <p role="alert" className="text-xs text-[color:var(--status-critical)]">
-              {deploySubmissionError}
-            </p>
-          )}
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="deploy-git-repository" className="label-mono text-muted-foreground">
-              Repository
-            </label>
-            <RepoPicker
-              id="deploy-git-repository"
-              value={deployRepo}
-              onChange={(repo, defaultBranch) => {
-                setDeployRepo(repo);
-                if (defaultBranch) setDeployRef(defaultBranch);
-              }}
-            />
-          </div>
-          <label className="flex flex-col gap-1.5">
-            <span className="label-mono text-muted-foreground">Ref</span>
-            <input
-              value={deployRef}
-              onChange={(e) => setDeployRef(e.target.value)}
-              placeholder="main, a tag, or a commit"
-              spellCheck={false}
-              className="h-9 rounded-md border border-border bg-background px-3 font-mono text-sm outline-none focus:border-brand/50"
-            />
-          </label>
-        </div>
-      </Modal>
+        appSlug={appSlug}
+        appName={fn.name}
+        onSubmissionError={setDeploySubmissionError}
+        onAccepted={(deployment) => {
+          setActiveDeployment(deployment);
+          void navigate({
+            search: (current) => ({
+              ...current,
+              tab: 'Deployments',
+              deployment: deployment.id,
+              releaseSection: undefined,
+            }),
+            hash: true,
+            replace: true,
+          });
+        }}
+      />
     </div>
   );
 }

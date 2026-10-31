@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 import userEvent from '@testing-library/user-event';
@@ -113,6 +113,20 @@ describe('live deployment', () => {
     );
   });
 
+  it('offers Open app only for an http(s) endpoint', () => {
+    api.status = 'live';
+    render(<DeploymentProgress {...props} endpoint="javascript:alert(1)" appSlug="hello-app" />);
+    expect(screen.queryByRole('link', { name: /Open app/ })).not.toBeInTheDocument();
+  });
+
+  it('opens an http(s) endpoint in a new tab', () => {
+    api.status = 'live';
+    render(<DeploymentProgress {...props} appSlug="hello-app" />);
+    const link = screen.getByRole('link', { name: /Open app/ });
+    expect(link).toHaveAttribute('href', 'https://hello.example/');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  });
+
   it('does not offer a request before the deployment is live', () => {
     api.status = 'building';
     render(<DeploymentProgress {...props} appSlug="hello-app" />);
@@ -195,7 +209,11 @@ describe('first deployment progress', () => {
     expect(screen.queryByRole('link', { name: 'Open app' })).not.toBeInTheDocument();
     api.status = 'live';
     rerender(<DeploymentProgress {...props} />);
-    expect(screen.getByRole('link', { name: 'Open app' })).toHaveAttribute('href', props.endpoint);
+    // `publicAppUrl` normalises through `new URL`, hence the trailing slash.
+    expect(screen.getByRole('link', { name: 'Open app' })).toHaveAttribute(
+      'href',
+      `${props.endpoint}/`
+    );
     api.status = 'superseded';
     rerender(<DeploymentProgress {...props} />);
     expect(screen.queryByRole('link', { name: 'Open app' })).not.toBeInTheDocument();
@@ -263,5 +281,56 @@ describe('first deployment progress', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('GitHub unavailable');
     expect(screen.queryByRole('link', { name: 'Open app' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Review deployment' })).not.toBeInTheDocument();
+  });
+});
+
+describe('deployment stages', () => {
+  // The stages the server has reported, in its order: nothing is simulated.
+  it('marks the stages behind the reported status done and that one current', () => {
+    api.status = 'imaging';
+    render(<DeploymentProgress {...props} />);
+    const items = within(screen.getByRole('list', { name: 'Deployment stages' })).getAllByRole(
+      'listitem'
+    );
+    expect(items.map((li) => li.textContent)).toEqual([
+      'Queued, done',
+      'Build, done',
+      'Image, in progress',
+      'Runtime',
+      'Live',
+    ]);
+    expect(items[2]).toHaveAttribute('aria-current', 'step');
+  });
+
+  it('skips the build for an image, which can report building while it is prepared', () => {
+    api.status = 'building';
+    render(<DeploymentProgress {...props} source={{ kind: 'image', reference: 'r/x' }} />);
+    const items = within(screen.getByRole('list', { name: 'Deployment stages' })).getAllByRole(
+      'listitem'
+    );
+    expect(items.map((li) => li.textContent)).toEqual([
+      'Queued, done',
+      'Image, in progress',
+      'Runtime',
+      'Live',
+    ]);
+  });
+
+  it('shows every stage done once live', () => {
+    api.status = 'live';
+    render(<DeploymentProgress {...props} />);
+    expect(screen.getByRole('list', { name: 'Deployment stages' })).toHaveTextContent('Live, done');
+  });
+
+  it.each(['failed', 'cancelled', 'superseded'])('leaves the stages out when %s', (status) => {
+    api.status = status;
+    render(<DeploymentProgress {...props} />);
+    expect(screen.queryByRole('list', { name: 'Deployment stages' })).toBeNull();
+  });
+
+  it('leaves the stages out for a status it does not know', () => {
+    api.status = 'warming';
+    render(<DeploymentProgress {...props} />);
+    expect(screen.queryByRole('list', { name: 'Deployment stages' })).toBeNull();
   });
 });
