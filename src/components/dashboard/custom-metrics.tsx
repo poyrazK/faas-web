@@ -71,10 +71,10 @@ function CustomMetricsBody({ slug }: { slug: string }) {
   const maturity =
     capability?.maturity === 'beta' ? 'Beta' : capability?.maturity === 'preview' ? 'Preview' : '';
   const freshMinutes = data ? Math.round(data.freshness_seconds / 60) : 5;
-  // A 404 past the capability gate is the app route itself: these routes are
-  // not in apid's organization grants (faas pkg/apid/appaccess/routes.go), so
-  // only the creating account reaches them.
-  const creatorOnly = metrics.error instanceof ApiError && metrics.error.code === 'not_found';
+  // A 404 past the capability gate is the app itself: it was deleted, or the
+  // caller is not its creator — these routes are not in apid's organization
+  // grants (faas pkg/apid/appaccess/routes.go).
+  const notFound = metrics.error instanceof ApiError && metrics.error.code === 'not_found';
 
   const askDelete = async (name: string) => {
     const ok = await confirm({
@@ -142,7 +142,7 @@ function CustomMetricsBody({ slug }: { slug: string }) {
       actions={
         <div className="flex items-center gap-2">
           {maturity && <span className="label-mono text-muted-foreground">{maturity}</span>}
-          {!creatorOnly && (
+          {!notFound && (
             <Button size="sm" className="gap-1.5" onClick={() => setPushing(true)}>
               <Plus className="h-3.5 w-3.5" />
               Push a value
@@ -151,10 +151,11 @@ function CustomMetricsBody({ slug }: { slug: string }) {
         </div>
       }
     >
-      {creatorOnly ? (
+      {notFound ? (
         <p role="status" className="text-sm text-muted-foreground">
-          Custom metrics can be read and pushed only by the account that created this app;
-          organization access does not reach them.
+          Custom metrics for this app could not be found. The app may have been deleted, or it
+          belongs to a company workspace: only the account that created the app can read and push
+          its custom metrics.
         </p>
       ) : (
         <div className="flex flex-col gap-5">
@@ -284,10 +285,8 @@ function MetricHistory({ slug, metric }: { slug: string; metric: CustomMetric })
       {body}
       {access === 'on' && !off && !degraded && points.length >= 2 && (
         <p className="mt-1 text-xs text-muted-foreground">
-          {counter
-            ? 'A counter is drawn as its per-second rate over 5 minutes.'
-            : 'A gap means nothing fresh was pushed then.'}{' '}
-          Kept for 15 days.
+          {counter && 'A counter is drawn as its per-second rate over 5 minutes. '}
+          Only fresh pushes are recorded, for 15 days.
         </p>
       )}
     </section>

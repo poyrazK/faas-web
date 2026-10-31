@@ -297,6 +297,9 @@ it('charts the selected metric’s recorded history and changes range', async ()
   show();
   const chart = await screen.findByTestId('chart');
   expect(chart).toHaveAttribute('data-points', '3');
+  // dither-kit spaces points by index, so a missing stretch is drawn as a
+  // straight line; the caption must not promise a visible gap.
+  expect(screen.queryByText(/gap means/i)).not.toBeInTheDocument();
   expect(seriesCalls()[0][1]).toMatchObject({
     params: { path: { slug: 'api', name: 'orders_pending' }, query: { range: '24h' } },
   });
@@ -345,8 +348,9 @@ it('never asks for history while the history capability is off', async () => {
   expect(seriesCalls()).toHaveLength(0);
 });
 
-it('explains a 404 as the creator-only route it is', async () => {
+it('explains a 404 as either a deleted app or a creator-only route', async () => {
   get.mockImplementation(() => Promise.resolve(problem(404, 'not_found', 'no such app') as never));
   show();
-  expect(await screen.findByText(/only by the account that created this app/)).toBeInTheDocument();
+  const note = await screen.findByText(/may have been deleted/);
+  expect(note.textContent).toMatch(/only the account that created the app/);
 });
