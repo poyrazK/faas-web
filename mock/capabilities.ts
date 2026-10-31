@@ -106,6 +106,17 @@ const entries: Capability[] = [
     enabled: true,
   },
   {
+    key: 'deployment-aliases',
+    name: 'Deployment aliases',
+    category: 'delivery',
+    description: 'Give immutable deployments stable named URLs.',
+    maturity: 'beta',
+    plans: ALL,
+    docs_url: '/docs/deployments',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
+  {
     key: 'workflows-and-jobs',
     name: 'Jobs and workflows',
     category: 'async',

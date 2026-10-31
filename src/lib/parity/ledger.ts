@@ -216,9 +216,9 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 26,
     name: 'Deployment aliases',
-    status: 'none',
-    surfaces: [],
-    gap: 'Deployment aliases',
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Deployments'],
+    capability: 'deployment-aliases',
     wave: 2,
   },
   // B27 · GA

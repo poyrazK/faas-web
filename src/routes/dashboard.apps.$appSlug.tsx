@@ -94,6 +94,7 @@ import {
 import { AppActivityTimeline } from '@/components/dashboard/resource-activity';
 import { DeploymentHistoryPanel } from '@/components/dashboard/deployment-history';
 import { ClearObsoleteDeploymentsButton } from '@/components/dashboard/deployment-actions';
+import { DeploymentAliasesPanel } from '@/components/dashboard/deployment-aliases';
 import { pageHead, useDocumentTitle } from '@/lib/seo';
 import { PlanGate } from '@/components/dashboard/plan-gate';
 import { DeploymentGate } from '@/components/dashboard/deployment-gate';
@@ -573,6 +574,21 @@ function FunctionDetailPage() {
                       })
                     }
                     actions={<ClearObsoleteDeploymentsButton slug={fn.id} />}
+                  />
+                  <DeploymentAliasesPanel
+                    slug={fn.id}
+                    onOpenDeployment={(id) =>
+                      void navigate({
+                        search: (current) => ({
+                          ...current,
+                          tab: 'Deployments',
+                          deployment: id,
+                          releaseSection: undefined,
+                        }),
+                        hash: true,
+                        resetScroll: false,
+                      })
+                    }
                   />
                   <Panel
                     title="Deploy an archive"

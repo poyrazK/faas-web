@@ -15,6 +15,7 @@ import { ResourceActivityTimeline } from './resource-activity';
 import { DeploymentAudit, DeploymentPreviewUrl, DeploymentStages } from './deployment-insights';
 import { DeploymentReleaseSummary } from './deployment-release-summary';
 import { DeploymentLifecycle } from './deployment-lifecycle';
+import { DeploymentAliasesHere } from './deployment-aliases';
 import { DeploymentControls } from './release-controls';
 import { ReleaseProvenance, ReleaseScans } from './release-evidence';
 import { RELEASE_SECTIONS, sourceSize, type ReleaseSection } from './releases-search';
@@ -200,6 +201,7 @@ export function ReleaseDetailPanel({
                     <section aria-label="Process" className="rounded-lg border border-border p-4">
                       <ReleaseProcess phases={releaseProcess(deployment)} />
                     </section>
+                    {slug && <DeploymentAliasesHere slug={slug} deployment={deployment} />}
                     {/* Only a canary has a stable release to be compared against. */}
                     {slug && deployment.canary_total_steps ? (
                       <div className="rounded-lg border border-border p-4">
