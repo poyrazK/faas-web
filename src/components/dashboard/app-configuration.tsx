@@ -30,6 +30,7 @@ import { APP_DELETE_GRACE_DAYS } from '@/lib/api/deleted-apps';
 import { PolicyStatus } from './policy-status';
 import { AppVisibility } from './app-visibility';
 import { usePolicyOperation } from './policy-operation';
+import { HealthProbes } from './health-probes';
 import { AppReleaseSettings } from './app-release-settings';
 
 /**
@@ -808,6 +809,7 @@ export function AppConfiguration({ slug }: { slug: string }) {
       {/* Keyed on the id so a rename or a fresh read reseeds the draft. */}
       <ConfigForm key={`${account?.id}:${data.id}:${data.slug}`} app={data} />
       <AppReleaseSettings key={`release:${account?.id}:${data.id}:${data.slug}`} app={data} />
+      <HealthProbes key={`health:${data.id}:${data.slug}`} app={data} plan={account?.plan} />
       <GatedSupplyChainPanel slug={data.slug} />
       <RegistryCredentialsPanel slug={data.slug} />
       <DeployTokensPanel slug={data.slug} />

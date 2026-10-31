@@ -83,7 +83,7 @@ export function Process() {
           From repository to running API.
         </h2>
         <p className="mt-5 max-w-[34rem] text-base leading-relaxed text-muted-foreground">
-          A first deployment in three steps. Start with a non-critical API during the public beta.
+          A first deployment in three steps.
         </p>
         <Cards items={STEPS} defaultOpen={0} className="mt-10 lg:mt-12" />
       </div>

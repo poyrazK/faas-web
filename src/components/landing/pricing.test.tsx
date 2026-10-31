@@ -20,7 +20,7 @@ describe('beta pricing', () => {
     const pricing = await screen.findByRole('region', { name: /pricing coming soon/i });
     expect(pricing).toHaveAttribute('id', 'pricing');
     expect(
-      within(pricing).getByText(/paid billing and checkout are disabled during beta/i)
+      within(pricing).getByText(/paid billing and checkout open after the beta/i)
     ).toBeInTheDocument();
     expect(within(pricing).getByRole('link', { name: 'Join the beta' })).toHaveAttribute(
       'href',
