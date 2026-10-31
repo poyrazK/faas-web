@@ -18,6 +18,7 @@ import { formatRelative } from '@/lib/mock-data';
 import { consoleHead } from '@/lib/seo';
 import { EnvTransferPanel } from '@/components/dashboard/env-transfer';
 import { EnvDiffPanel } from '@/components/dashboard/app-insights';
+import { configChangeNote } from '@/lib/config-history';
 
 export const Route = createFileRoute('/dashboard/env')({
   component: EnvPage,
@@ -144,11 +145,15 @@ export function EnvBody({ slug }: { slug: string }) {
             if (!keyOk || setEnv.isPending) return;
             void setEnv
               .mutateAsync({ key: key.trim(), value })
-              .then(() => {
+              .then((saved) => {
                 setKey('');
                 setValue('');
                 setKeyTouched(false);
-                toast({ kind: 'success', title: 'Variable saved' });
+                toast({
+                  kind: 'success',
+                  title: 'Variable saved',
+                  description: configChangeNote(saved?.config_change),
+                });
               })
               .catch((err: unknown) =>
                 toast({ kind: 'error', title: 'Could not save', description: errorMessage(err) })
