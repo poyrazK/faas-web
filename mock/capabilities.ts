@@ -183,6 +183,18 @@ const entries: Capability[] = [
     enabled: true,
   },
   {
+    key: 'delayed-execution',
+    name: 'Delayed execution',
+    category: 'async',
+    description:
+      'Schedule a durable one-shot app invocation for a future time without operating a queue, cron service, or external scheduler.',
+    maturity: 'beta',
+    plans: PAID,
+    docs_url: '/docs/event-driven#delayed-tasks',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
+  {
     key: 'worker-pools',
     name: 'Worker pools',
     category: 'async',

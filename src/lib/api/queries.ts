@@ -529,28 +529,111 @@ export function useAccountSecrets() {
 
 export type DelayedTask = components['schemas']['DelayedTaskResponse'];
 
+/** Every delayed-task query — the per-app lists and the by-id reads — so a
+ * write can refresh them all without knowing which ones are mounted. */
+const delayedTasksKey = ['delayed-tasks'] as const;
+
 /** Schedule a one-shot task to fire at a future time. */
 export function useScheduleDelayedTask(slug: string) {
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { scheduledAt: string; payload: Record<string, unknown> }) =>
+    mutationFn: (input: {
+      scheduledAt: string;
+      payload: Record<string, unknown>;
+      /** The request the task makes; apid defaults to POST /. */
+      method?: string;
+      path?: string;
+    }) =>
       unwrap(
         api.POST('/v1/apps/{slug}/delayed-tasks', {
           params: { path: { slug } },
-          body: { scheduled_at: input.scheduledAt, payload: input.payload },
+          body: {
+            scheduled_at: input.scheduledAt,
+            ...(input.method ? { method: input.method } : {}),
+            ...(input.path ? { path: input.path } : {}),
+            payload: input.payload,
+          },
         })
       ),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: delayedTasksKey }),
   });
 }
 
-/** One delayed task's state. The API reads tasks by id only — there is no
- * list endpoint — so the console tracks the ids it created. */
+const POLL_FAST = 5_000;
+const POLL_CEILING = 60_000;
+/** How long past its time a pending task still counts as about to run. */
+const OVERDUE_GRACE = 3 * 60_000;
+
+/**
+ * When to re-read delayed tasks, or `false` to stop. TanStack evaluates a
+ * `refetchInterval` function only after the query updates, so returning
+ * `false` for a task that is not yet due would never wake again: a pending
+ * task always keeps a timer, set to its due time (5 s floor, 60 s ceiling).
+ * Dispatching work and tasks just past their time read every 5 s; a task
+ * long overdue (the scheduler is behind) backs off to the ceiling.
+ */
+export function delayedTaskPollInterval(
+  tasks: readonly DelayedTask[],
+  now = Date.now()
+): number | false {
+  if (tasks.some((t) => t.state === 'dispatching')) return POLL_FAST;
+  let next: number | false = false;
+  for (const t of tasks) {
+    if (t.state !== 'pending') continue;
+    const until = Date.parse(t.scheduled_at) - now;
+    const wait = Number.isNaN(until)
+      ? POLL_CEILING
+      : until > 0
+        ? Math.min(Math.max(until, POLL_FAST), POLL_CEILING)
+        : -until < OVERDUE_GRACE
+          ? POLL_FAST
+          : POLL_CEILING;
+    next = next === false ? wait : Math.min(next, wait);
+  }
+  return next;
+}
+
+/**
+ * One app's delayed tasks, newest first, paged by the API's `next_before`
+ * cursor (faas handlers_invocations.go:812). The rows carry state, schedule,
+ * target and attempts — never the payload or headers, which the API does not
+ * return. Polls on `delayedTaskPollInterval`, so a row does not sit at
+ * "pending" after it has fired.
+ */
+export function useDelayedTasks(slug: string, limit = 20) {
+  return useInfiniteQuery({
+    queryKey: [...delayedTasksKey, 'app', slug, limit],
+    queryFn: ({ pageParam }) =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/delayed-tasks', {
+          params: {
+            path: { slug },
+            query: { limit, ...(pageParam ? { before: pageParam } : {}) },
+          },
+        })
+      ),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.next_before ?? undefined,
+    enabled: Boolean(slug),
+    retry: retryPolicy,
+    refetchInterval: (query) =>
+      query.state.error
+        ? false
+        : delayedTaskPollInterval(query.state.data?.pages.flatMap((page) => page.tasks) ?? []),
+  });
+}
+
+/** One delayed task in full, read by id — the list row's detail. */
 export function useDelayedTask(id: string, options?: { poll?: boolean }) {
   return useQuery({
-    queryKey: ['delayed-tasks', id],
+    queryKey: [...delayedTasksKey, id],
     queryFn: () => unwrap(api.GET('/v1/delayed-tasks/{id}', { params: { path: { id } } })),
     enabled: Boolean(id),
     refetchInterval: options?.poll
-      ? (query) => (query.state.data?.state === 'pending' ? 5_000 : false)
+      ? (query) =>
+          query.state.error || !query.state.data
+            ? false
+            : delayedTaskPollInterval([query.state.data])
       : undefined,
   });
 }
@@ -560,7 +643,7 @@ export function useCancelDelayedTask() {
   return useMutation({
     mutationFn: (id: string) =>
       unwrap(api.DELETE('/v1/delayed-tasks/{id}', { params: { path: { id } } })),
-    onSuccess: (_d, id) => void qc.invalidateQueries({ queryKey: ['delayed-tasks', id] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: delayedTasksKey }),
   });
 }
 

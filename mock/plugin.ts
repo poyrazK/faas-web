@@ -8398,31 +8398,135 @@ route('GET', '/v1/secrets', () => ({
   next_before: null,
 }));
 
-// --- Scheduling: delayed tasks (session-tracked) + cron fire-now state ---
-const delayedTasks = new Map<string, { id: string; scheduled_at: string; state: string }>();
-route('POST', '/v1/apps/{slug}/delayed-tasks', async ({ body }) => {
-  const id = `dt_${hex(10)}`;
-  const t = {
+// --- Scheduling: delayed tasks + cron fire-now state ---
+// Rows mirror faas DelayedTaskResponse (pkg/api/dto.go): like the API, they
+// never carry the payload or headers. Seeded lazily per app, so MOCK_EMPTY
+// (no apps) stays empty, with enough history to page past the first 20.
+type MockDelayedTask = components['schemas']['DelayedTaskResponse'];
+const delayedTasks = new Map<string, MockDelayedTask>();
+const delayedSeeded = new Set<string>();
+/** Pro's per-app pending cap (faas pkg/api/limits.go MaxDelayedTasksPerApp). */
+const DELAYED_TASK_CAP = 50;
+const DELAYED_TARGETS = [
+  ['POST', '/internal/send-reminder'],
+  ['POST', '/month-close'],
+  ['POST', '/webhooks/retry-charge'],
+  ['GET', '/reports/weekly'],
+] as const;
+function seedDelayedTasks(appId: string) {
+  if (delayedSeeded.has(appId)) return;
+  delayedSeeded.add(appId);
+  const H = 3_600_000;
+  const now = Date.now();
+  // [state, created ms ago, runs ms from now, attempts, last error]
+  const shapes: Array<[MockDelayedTask['state'], number, number, number, string?]> = [
+    ['pending', 20 * 60_000, 40 * 60_000, 0],
+    ['pending', 2 * H, 22 * H, 0],
+    ['pending', 26 * H, 6 * 24 * H, 0],
+    ['failed', 5 * H, -4 * H, 4, 'app returned 503 Service Unavailable after 4 attempts'],
+    ['cancelled', 9 * H, 3 * H, 0],
+  ];
+  for (let i = 0; i < 24; i++) {
+    const [state, ago, ahead, attempts, lastError] =
+      shapes[i] ?? (['completed', (10 + i * 7) * H, -(9 + i * 7) * H, 1] as const);
+    const [method, path] = DELAYED_TARGETS[i % DELAYED_TARGETS.length];
+    const created = now - ago;
+    const id = hex(32);
+    delayedTasks.set(id, {
+      id,
+      app_id: appId,
+      scheduled_at: new Date(now + ahead).toISOString(),
+      state,
+      method,
+      path,
+      attempts,
+      ...(lastError ? { last_error: lastError } : {}),
+      ...(state === 'completed' ? { result: { delivered: true, status: 200 } } : {}),
+      created_at: new Date(created).toISOString(),
+      ...(state === 'pending'
+        ? {}
+        : { completed_at: new Date(now + Math.min(ahead, 0)).toISOString() }),
+    });
+  }
+}
+/** A pending task whose time has passed has run (the drain is instant here). */
+function settleDelayedTask(t: MockDelayedTask) {
+  if (t.state === 'pending' && Date.parse(t.scheduled_at) < Date.now()) {
+    t.state = 'completed';
+    t.attempts = 1;
+    t.completed_at = new Date().toISOString();
+  }
+  return t;
+}
+function delayedTaskFor(id: string) {
+  const t = delayedTasks.get(id);
+  if (!t)
+    throw new Problem(
+      404,
+      'invocation_not_found',
+      `no invocation with id "${id}" on this account.`
+    );
+  return settleDelayedTask(t);
+}
+route('GET', '/v1/apps/{slug}/delayed-tasks', ({ params, query }) => {
+  const selected = app(params.slug);
+  seedDelayedTasks(selected.id);
+  const requested = Number(query.get('limit') ?? 20);
+  // apid ignores an out-of-range limit and keeps the default.
+  const limit = Number.isInteger(requested) && requested > 0 && requested <= 200 ? requested : 20;
+  const ordered = [...delayedTasks.values()]
+    .filter((t) => t.app_id === selected.id)
+    .map(settleDelayedTask)
+    .sort((a, b) => Date.parse(b.created_at ?? '') - Date.parse(a.created_at ?? ''));
+  const before = query.get('before');
+  const start = before ? ordered.findIndex((t) => t.id === before) + 1 : 0;
+  const tasks = before && start === 0 ? [] : ordered.slice(start, start + limit);
+  return {
+    tasks,
+    ...(tasks.length === limit ? { next_before: tasks.at(-1)!.id } : {}),
+  };
+});
+route('POST', '/v1/apps/{slug}/delayed-tasks', ({ params, body }) => {
+  const selected = app(params.slug);
+  seedDelayedTasks(selected.id);
+  const pending = [...delayedTasks.values()].filter(
+    (t) => t.app_id === selected.id && settleDelayedTask(t).state === 'pending'
+  ).length;
+  if (pending >= DELAYED_TASK_CAP)
+    throw new Problem(
+      403,
+      'plan_delayed_tasks_cap',
+      `the plan caps this app at ${DELAYED_TASK_CAP} scheduled delayed_tasks; observed ${pending}.`
+    );
+  const at = Date.parse(String(body.scheduled_at ?? ''));
+  if (!Number.isFinite(at) || at <= Date.now())
+    throw new Problem(
+      400,
+      'invalid_scheduled_at',
+      'scheduled_at must be a future timestamp; the server clock rejected the value'
+    );
+  const id = hex(32);
+  const t: MockDelayedTask = {
     id,
-    scheduled_at: String(body.scheduled_at ?? new Date().toISOString()),
+    app_id: selected.id,
+    scheduled_at: new Date(at).toISOString(),
     state: 'pending',
+    method: typeof body.method === 'string' ? body.method : 'POST',
+    path: typeof body.path === 'string' ? body.path : '/',
+    created_at: new Date().toISOString(),
   };
   delayedTasks.set(id, t);
-  return t;
+  return status(201, t);
 });
-route('GET', '/v1/delayed-tasks/{id}', ({ params, res }) => {
-  const t = delayedTasks.get(params.id);
-  if (!t) {
-    res.statusCode = 404;
-    return { type: 'about:blank', title: 'not found', code: 'not_found' };
-  }
-  if (t.state === 'pending' && Date.parse(t.scheduled_at) < Date.now()) t.state = 'completed';
-  return t;
-});
+route('GET', '/v1/delayed-tasks/{id}', ({ params }) => delayedTaskFor(params.id));
+// Cancel stops only a pending task; any other state comes back unchanged.
 route('DELETE', '/v1/delayed-tasks/{id}', ({ params }) => {
-  const t = delayedTasks.get(params.id);
-  if (t) t.state = 'cancelled';
-  return {};
+  const t = delayedTaskFor(params.id);
+  if (t.state === 'pending') {
+    t.state = 'cancelled';
+    t.completed_at = new Date().toISOString();
+  }
+  return t;
 });
 const fireRequests = new Map<string, number>();
 route('GET', '/v1/cron-fire-now-requests/{request_id}', ({ params }) => {
