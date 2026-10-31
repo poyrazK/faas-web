@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
-import { ApiError, errorMessage } from '@/lib/api/errors';
+import { ApiError } from '@/lib/api/errors';
 import { useDropTriggerRecord, useRetryTriggerRecord } from '@/lib/api/queries';
 
 /**
@@ -52,7 +52,7 @@ export function TriggerRecordActions({
           });
           return;
         }
-        toast({ kind: 'error', title: 'Could not retry', description: errorMessage(err) });
+        toast({ kind: 'error', title: 'Could not retry', error: err });
       });
   };
 
@@ -71,9 +71,7 @@ export function TriggerRecordActions({
     void drop
       .mutateAsync({ triggerId, recordId })
       .then(() => toast({ kind: 'success', title: 'Record dropped' }))
-      .catch((err: unknown) =>
-        toast({ kind: 'error', title: 'Could not drop', description: errorMessage(err) })
-      );
+      .catch((err: unknown) => toast({ kind: 'error', title: 'Could not drop', error: err }));
   };
 
   return (

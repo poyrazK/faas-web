@@ -17,7 +17,7 @@ import { PlanGated } from '@/components/dashboard/plan-gated';
 import { Pill } from '@/components/dashboard/resource-table';
 import { slugIndex } from '@/lib/api/adapters';
 import { corsPresetUsers, useUpdateCorsPreset } from '@/lib/api/edge-protection';
-import { ApiError, errorMessage } from '@/lib/api/errors';
+import { ApiError } from '@/lib/api/errors';
 import {
   useApp,
   useApps,
@@ -75,22 +75,18 @@ function splitList(value: string): string[] {
 function explain(
   err: unknown,
   fallback = 'Could not save the preset'
-): { kind: 'info' | 'error'; title: string; description?: string } {
+): { kind: 'info' | 'error'; title: string; error?: unknown } {
   if (err instanceof ApiError) {
     switch (err.code) {
       case 'plan_cors_presets_not_allowed':
-        return { kind: 'info', title: 'Not on your plan', description: errorMessage(err) };
+        return { kind: 'info', title: 'Not on your plan', error: err };
       case 'plan_cors_preset_quota_reached':
-        return { kind: 'info', title: 'Preset limit reached', description: errorMessage(err) };
+        return { kind: 'info', title: 'Preset limit reached', error: err };
       case 'cors_preset_too_large':
-        return {
-          kind: 'error',
-          title: 'Too many entries for your plan',
-          description: errorMessage(err),
-        };
+        return { kind: 'error', title: 'Too many entries for your plan', error: err };
     }
   }
-  return { kind: 'error', title: fallback, description: errorMessage(err) };
+  return { kind: 'error', title: fallback, error: err };
 }
 
 /** "api · api.acme.dev/*" for each rule, in the order the API lists them. */

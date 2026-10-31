@@ -8,14 +8,10 @@ import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-
 import { useToast } from '@/components/ui/toast';
 import { Modal } from '@/components/ui/modal';
 import { useConfirm } from '@/components/ui/confirm';
-import {
-  useAppSecrets,
-  useDeleteSecret,
-  useFreshRestart,
-  useSetSecret,
-  useRotateSecret,
-} from '@/lib/api/queries';
-import { errorMessage } from '@/lib/api/errors';
+import { useAppSecrets, useFreshRestart, useSetSecret, useRotateSecret } from '@/lib/api/queries';
+import { useRevokeSecret, type SecretRevocation } from '@/lib/api/secret-references';
+import { SecretReferences } from '@/components/dashboard/secret-references';
+import { SecretRevocationStatus } from '@/components/dashboard/secret-revocation-status';
 import { EnvImportButton } from '@/components/dashboard/env-import';
 import { SecretValueField } from '@/components/dashboard/secret-value-field';
 import { FieldError } from '@/components/ui/field';
@@ -23,8 +19,9 @@ import { cn } from '@/lib/utils';
 
 /** Mirrors the API's `^[A-Z][A-Z0-9_]*$` CHECK on secret names. */
 const KEY_RULE = /^[A-Z][A-Z0-9_]*$/;
-import { formatRelative } from '@/lib/mock-data';
+import { Timestamp } from '@/components/ui/timestamp';
 import { consoleHead } from '@/lib/seo';
+import { configChangeNote } from '@/lib/config-history';
 
 export const Route = createFileRoute('/dashboard/secrets')({
   component: SecretsPage,
@@ -48,12 +45,6 @@ interface SecretRow {
   kid: string;
 }
 
-function formatWhen(value: string | undefined): string {
-  if (!value) return '—';
-  const ms = Date.parse(value);
-  return Number.isNaN(ms) ? '—' : formatRelative(ms);
-}
-
 /**
  * The secrets body, without the page chrome around it.
  *
@@ -66,7 +57,9 @@ export function SecretsBody({ slug }: { slug: string }) {
   const confirm = useConfirm();
   const { data, isPending, error, refetch } = useAppSecrets(slug);
   const setSecret = useSetSecret(slug);
-  const deleteSecret = useDeleteSecret(slug);
+  const deleteSecret = useRevokeSecret(slug);
+  // The receipt of the last delete: which running instances still hold it.
+  const [revocation, setRevocation] = useState<SecretRevocation | null>(null);
   const rotate = useRotateSecret(slug);
   const freshRestart = useFreshRestart(slug);
   // A write seals the value and stamps the change, but starts nothing:
@@ -93,16 +86,18 @@ export function SecretsBody({ slug }: { slug: string }) {
   const saveSecret = (name: string) =>
     void setSecret
       .mutateAsync({ key: name, value })
-      .then(() => {
+      .then((saved) => {
         setKey('');
         setValue('');
         setKeyTouched(false);
         setUnappliedFor(slug);
-        toast({ kind: 'success', title: 'Secret saved' });
+        toast({
+          kind: 'success',
+          title: 'Secret saved',
+          description: configChangeNote(saved?.config_change),
+        });
       })
-      .catch((err: unknown) =>
-        toast({ kind: 'error', title: 'Could not save', description: errorMessage(err) })
-      );
+      .catch((err: unknown) => toast({ kind: 'error', title: 'Could not save', error: err }));
 
   const applyNow = async () => {
     if (
@@ -124,9 +119,7 @@ export function SecretsBody({ slug }: { slug: string }) {
           description: 'Instances are replaced in the background.',
         });
       })
-      .catch((err: unknown) =>
-        toast({ kind: 'error', title: 'Could not restart', description: errorMessage(err) })
-      );
+      .catch((err: unknown) => toast({ kind: 'error', title: 'Could not restart', error: err }));
   };
 
   const rows = useMemo<SecretRow[]>(
@@ -157,9 +150,7 @@ export function SecretsBody({ slug }: { slug: string }) {
       key: 'updatedAt',
       label: 'Updated',
       numeric: true,
-      render: (s) => (
-        <span className="text-xs text-muted-foreground">{formatWhen(s.updatedAt)}</span>
-      ),
+      render: (s) => <Timestamp value={s.updatedAt} className="text-xs text-muted-foreground" />,
     },
     {
       key: 'id',
@@ -174,7 +165,7 @@ export function SecretsBody({ slug }: { slug: string }) {
               !(await confirm({
                 title: `Delete ${s.key}?`,
                 description:
-                  'Sealed values cannot be recovered. The next boot of this app starts without it.',
+                  'Sealed values cannot be recovered. The next boot of this app starts without it; running instances that cannot reload secrets keep it in memory until they restart.',
                 confirmLabel: 'Delete secret',
                 destructive: true,
               }))
@@ -182,12 +173,15 @@ export function SecretsBody({ slug }: { slug: string }) {
               return;
             void deleteSecret
               .mutateAsync(s.key)
-              .then(() => {
-                setUnappliedFor(slug);
+              .then((receipt) => {
+                // The revocation card says per instance whether a restart is
+                // needed; without a receipt (legacy 204), fall back to the notice.
+                if (receipt?.id) setRevocation(receipt);
+                else setUnappliedFor(slug);
                 toast({ kind: 'success', title: `Deleted ${s.key}` });
               })
               .catch((err: unknown) =>
-                toast({ kind: 'error', title: 'Could not delete', description: errorMessage(err) })
+                toast({ kind: 'error', title: 'Could not delete', error: err })
               );
           }}
           className="text-muted-foreground transition-colors hover:text-foreground"
@@ -290,6 +284,15 @@ export function SecretsBody({ slug }: { slug: string }) {
         </form>
       </Panel>
 
+      {revocation && (
+        <SecretRevocationStatus
+          key={revocation.id}
+          slug={slug}
+          revocation={revocation}
+          onDismiss={() => setRevocation(null)}
+        />
+      )}
+
       <ResourceTable
         rows={rows}
         columns={columns}
@@ -348,7 +351,7 @@ export function SecretsBody({ slug }: { slug: string }) {
                     toast({
                       kind: 'error',
                       title: 'Could not rotate',
-                      description: errorMessage(err),
+                      error: err,
                     })
                   );
               }}
@@ -365,6 +368,8 @@ export function SecretsBody({ slug }: { slug: string }) {
           onChange={setRotateValue}
         />
       </Modal>
+
+      <SecretReferences slug={slug} />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   createMemoryHistory,
@@ -23,8 +23,9 @@ let empty: boolean;
 let doctorFails: boolean;
 let noApps: boolean;
 let appFails: boolean;
+let betaDefault: boolean;
 beforeEach(() => {
-  empty = doctorFails = noApps = appFails = false;
+  empty = doctorFails = noApps = appFails = betaDefault = false;
   spyApi('GET').mockImplementation(async (path) => {
     if (path === '/v1/domains/{domain}/doctor' && doctorFails) throw new Error('DNS probe offline');
     if (path === '/v1/apps' && appFails) throw new Error('App lookup offline');
@@ -43,7 +44,12 @@ beforeEach(() => {
                   verified: false,
                   txt_record: 'verify-alpha',
                 },
-                { domain: 'beta.example.com', app_id: 'app-1', verified: true },
+                {
+                  domain: 'beta.example.com',
+                  app_id: 'app-1',
+                  verified: true,
+                  default: betaDefault,
+                },
               ]
           : { checks: [], stale: true, observed_at: '2026-09-11T00:00:00Z' };
     return { data, response: new Response() } as never;
@@ -90,6 +96,14 @@ async function mount(
 }
 
 describe('Domains operational state', () => {
+  it('marks the domain that is already its app default', async () => {
+    betaDefault = true;
+    await mount();
+    const beta = (await screen.findByText('beta.example.com')).closest('tr')!;
+    const alpha = screen.getByText('alpha.example.com').closest('tr')!;
+    expect(within(beta).getByText('default')).toBeInTheDocument();
+    expect(within(alpha).queryByText('default')).not.toBeInTheDocument();
+  });
   it('offers no Diagnose action when the domain doctor is not enabled for the account', async () => {
     doctor.access = 'off';
     try {
@@ -229,6 +243,13 @@ describe('Domains operational state', () => {
     expect(screen.getAllByText('verify-alpha')).toHaveLength(2);
     await userEvent.hover(screen.getByRole('button', { name: 'Diagnose alpha.example.com' }));
     expect(await screen.findByRole('tooltip')).toHaveTextContent('Diagnose alpha.example.com');
+  });
+
+  it('lets the TXT verification value be copied', async () => {
+    await mount();
+    expect(
+      await screen.findByRole('button', { name: 'Copy: TXT record verify-alpha' })
+    ).toBeInTheDocument();
   });
 
   it('shows the actual doctor error and retries it', async () => {

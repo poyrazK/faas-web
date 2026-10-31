@@ -2,11 +2,13 @@ import { useMemo, useRef, useState } from 'react';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { Activity, Plus, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
+import { CopyIconButton } from '@/components/ui/copy-button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Modal } from '@/components/ui/modal';
 import { InlinePhase, PageHeader, Panel, queryPhase } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { useToast } from '@/components/ui/toast';
+import { Timestamp } from '@/components/ui/timestamp';
 import { useConfirm } from '@/components/ui/confirm';
 import {
   useAddDomain,
@@ -15,9 +17,10 @@ import {
   useDomains,
   useVerifyDomain,
 } from '@/lib/api/queries';
+import { CliCommand } from '@/components/dashboard/cli-command';
 import { DomainDoctor } from '@/components/dashboard/domain-doctor';
 import { slugIndex } from '@/lib/api/adapters';
-import { errorMessage } from '@/lib/api/errors';
+import { cliDomainSetDefaultCommand } from '@/lib/cli-commands';
 import { FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
 import { cn } from '@/lib/utils';
 
@@ -56,14 +59,10 @@ interface DomainRow {
   domain: string;
   app: string;
   verified: boolean;
+  /** True when this domain is already its app's default. */
+  isDefault: boolean;
   verifiedAt: string | null;
   txtRecord: string | null;
-}
-
-function formatDate(value: string | null | undefined): string {
-  if (!value) return '—';
-  const ms = Date.parse(value);
-  return Number.isNaN(ms) ? '—' : new Date(ms).toLocaleDateString();
 }
 
 function DomainsPage() {
@@ -107,16 +106,31 @@ function DomainsPage() {
       domain: d.domain,
       app: bySlug.get(d.app_id) ?? d.app_id,
       verified: d.verified,
+      isDefault: d.default === true,
       verifiedAt: d.verified_at ?? null,
       txtRecord: d.txt_record ?? null,
     }));
   }, [data, apps]);
 
+  // A domain can be made its app's default only once verified, and there is
+  // nothing to do for one that already is. Each eligible domain gets its own
+  // command, so every app with a candidate is covered.
+  const defaultCandidates = rows
+    .filter((row) => row.verified && !row.isDefault)
+    .sort((a, b) => a.domain.localeCompare(b.domain));
+
   const columns: Column<DomainRow>[] = [
     {
       key: 'domain',
       label: 'Domain',
-      render: (d) => <span className="font-mono">{d.domain}</span>,
+      // Marked so it is clear why the default is missing from set-default below.
+      // Stacked under the hostname so it does not squeeze an already narrow column.
+      render: (d) => (
+        <span className="flex flex-col items-start gap-1">
+          <span className="font-mono">{d.domain}</span>
+          {d.isDefault && <Pill label="default" />}
+        </span>
+      ),
     },
     {
       key: 'verified',
@@ -143,9 +157,14 @@ function DomainsPage() {
         d.verified ? (
           <span className="text-xs text-muted-foreground">—</span>
         ) : (
-          <code className="select-all break-all text-xs text-muted-foreground">
-            {d.txtRecord ?? '—'}
-          </code>
+          <span className="flex items-center gap-1">
+            <code className="select-all break-all text-xs text-muted-foreground">
+              {d.txtRecord ?? '—'}
+            </code>
+            {d.txtRecord && (
+              <CopyIconButton text={d.txtRecord} label={`TXT record ${d.txtRecord}`} />
+            )}
+          </span>
         ),
     },
     {
@@ -153,7 +172,7 @@ function DomainsPage() {
       label: 'Verified',
       priority: 'secondary',
       numeric: true,
-      render: (d) => formatDate(d.verifiedAt),
+      render: (d) => <Timestamp value={d.verifiedAt} />,
     },
     {
       key: 'id',
@@ -184,7 +203,7 @@ function DomainsPage() {
                     toast({
                       kind: 'error',
                       title: 'Could not verify',
-                      description: errorMessage(err),
+                      error: err,
                     })
                   );
               }}
@@ -225,7 +244,7 @@ function DomainsPage() {
                   toast({
                     kind: 'error',
                     title: 'Could not remove',
-                    description: errorMessage(err),
+                    error: err,
                   })
                 );
             }}
@@ -260,9 +279,7 @@ function DomainsPage() {
             : undefined,
         });
       })
-      .catch((err: unknown) =>
-        toast({ kind: 'error', title: 'Could not add domain', description: errorMessage(err) })
-      );
+      .catch((err: unknown) => toast({ kind: 'error', title: 'Could not add domain', error: err }));
   };
 
   return (
@@ -395,6 +412,24 @@ function DomainsPage() {
         error={error}
         onRetry={() => void refetch()}
       />
+
+      {defaultCandidates.length > 0 && (
+        <Panel
+          title="Set a default domain"
+          description="The console does not set an app's default domain. Only a verified domain can be the default, and the new one replaces the app's current default."
+        >
+          <div className="flex flex-col gap-3">
+            {defaultCandidates.map((row) => (
+              <CliCommand
+                key={row.domain}
+                label={`Make ${row.domain} the default domain for ${row.app}`}
+                copyLabel={`set-default command for ${row.domain}`}
+                command={cliDomainSetDefaultCommand(row.domain)}
+              />
+            ))}
+          </div>
+        </Panel>
+      )}
 
       {doctorFor && (
         <Modal

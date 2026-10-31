@@ -15,7 +15,7 @@ import {
 import { useAuth, type Plan } from '@/lib/auth';
 import { Panel } from '@/components/dashboard/primitives';
 import { useConfirm } from '@/components/ui/confirm';
-import { ApiError, errorMessage } from '@/lib/api/errors';
+import { ApiError } from '@/lib/api/errors';
 import { goToExternal } from '@/lib/external-navigation';
 import { consoleHead } from '@/lib/seo';
 import { SpendCap } from '@/components/dashboard/spend-cap';
@@ -104,7 +104,7 @@ function BillingControlsPanel() {
                   })
                 )
                 .catch((err: unknown) =>
-                  toast({ kind: 'error', title: 'Could not retry', description: errorMessage(err) })
+                  toast({ kind: 'error', title: 'Could not retry', error: err })
                 )
             }
           >
@@ -138,7 +138,7 @@ function BillingControlsPanel() {
                 })
               )
               .catch((err: unknown) =>
-                toast({ kind: 'error', title: 'Could not cancel', description: errorMessage(err) })
+                toast({ kind: 'error', title: 'Could not cancel', error: err })
               );
           }}
         >
@@ -295,7 +295,7 @@ function PersonalPlans() {
           });
           return;
         }
-        toast({ kind: 'error', title: 'Could not change plan', description: errorMessage(err) });
+        toast({ kind: 'error', title: 'Could not change plan', error: err });
       });
 
   const confirm = () => {
@@ -326,7 +326,7 @@ function PersonalPlans() {
                   toast({
                     kind: 'error',
                     title: 'Could not open the billing portal',
-                    description: errorMessage(err),
+                    error: err,
                   })
                 );
             }}

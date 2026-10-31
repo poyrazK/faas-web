@@ -138,8 +138,11 @@ describe('CorsPresetsPanel', () => {
     await userEvent.type(screen.getByLabelText('Allowed origins'), 'https://a.example');
     await userEvent.click(screen.getByRole('button', { name: /create preset/i }));
     await waitFor(() => expect(toast).toHaveBeenCalled());
+    // The toast renders the problem itself (ProblemHelp), so apid's sentence shows.
     expect(toast).toHaveBeenCalledWith(
-      expect.objectContaining({ description: expect.stringMatching(/already exists/) })
+      expect.objectContaining({
+        error: expect.objectContaining({ message: expect.stringMatching(/already exists/) }),
+      })
     );
   });
 
