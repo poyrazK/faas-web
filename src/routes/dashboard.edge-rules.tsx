@@ -20,6 +20,8 @@ import {
 import { slugIndex } from '@/lib/api/adapters';
 import { consoleHead } from '@/lib/seo';
 import { CorsPresetsPanel } from '@/components/dashboard/cors-presets';
+import { EdgeRulesExtras } from '@/components/dashboard/edge-rules/edge-rules-extras';
+import { ruleAction } from '@/lib/api/edge-rules';
 import { CapabilityNotice } from '@/components/dashboard/capability-notice';
 import { useCapability } from '@/lib/api/capabilities';
 import { useAuth } from '@/lib/auth';
@@ -107,7 +109,7 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
       host: r.match_host || '*',
       path: r.match_path || '/*',
       methods: r.match_methods?.length ? r.match_methods.join(', ') : 'ANY',
-      action: summarise(r.kind, r.action),
+      action: summarise(r.kind, ruleAction(r)),
       enabled: r.enabled,
     }));
   }, [rules, apps]);
@@ -314,6 +316,7 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
       />
 
       <CorsPresetsPanel slug={scoped} />
+      <EdgeRulesExtras slug={scoped} rules={scoped ? (data ?? []) : rules} />
 
       {(creating || editing) && (
         <EdgeRuleDialog

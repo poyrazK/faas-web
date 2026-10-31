@@ -48,6 +48,7 @@ export interface ActionMap {
   throttle: S['EdgeRuleThrottleAction'];
   budget: S['EdgeRuleBudgetAction'];
   cache: S['EdgeRuleCacheAction'];
+  challenge: S['EdgeRuleChallengeAction'];
 }
 
 export type Kind = keyof ActionMap;
@@ -709,6 +710,61 @@ export const KINDS = {
           Requests with Authorization or Cookie bypass the cache. Responses with Set-Cookie,
           Cache-Control: private, or no-store are never stored.
         </p>
+      </div>
+    ),
+  }),
+
+  // limits.go:7587-7594: difficulty 10..22 (default 16), pass 300..86400 s.
+  challenge: def<'challenge'>({
+    label: 'Browser challenge',
+    desc: 'Browsers solve a short proof of work before reaching the app. Verified crawlers and requests with a verified API key or JWT pass; scripts get 403.',
+    paid: true,
+    empty: () => ({ difficulty: 16, pass_ttl_seconds: 3600 }),
+    summary: (a) => {
+      const d = a.difficulty ?? 16;
+      const max = a.max_difficulty && a.max_difficulty > d ? `–${a.max_difficulty}` : '';
+      return `difficulty ${d}${max} · pass ${Math.round((a.pass_ttl_seconds ?? 3600) / 60)} min`;
+    },
+    validate: (a) => {
+      const d = a.difficulty ?? 16;
+      const ttl = a.pass_ttl_seconds ?? 3600;
+      return {
+        ...(Number.isInteger(d) && d >= 10 && d <= 22 ? {} : { difficulty: 'From 10 to 22.' }),
+        ...(Number.isInteger(ttl) && ttl >= 300 && ttl <= 86400
+          ? {}
+          : { pass_ttl_seconds: 'From 300 to 86400 seconds.' }),
+        ...(a.max_difficulty === undefined ||
+        (Number.isInteger(a.max_difficulty) && a.max_difficulty >= d && a.max_difficulty <= 22)
+          ? {}
+          : { max_difficulty: 'From the difficulty up to 22.' }),
+      };
+    },
+    Form: ({ value, onChange, errors }) => (
+      <div className="grid gap-4 sm:grid-cols-3">
+        <NumberField
+          label="Difficulty (bits)"
+          hint="Each extra bit doubles the work. 16 takes a phone about a second."
+          error={errors.difficulty}
+          value={value.difficulty}
+          min={10}
+          onChange={(difficulty) => onChange({ ...value, difficulty })}
+        />
+        <NumberField
+          label="Raise up to (bits)"
+          hint="Optional. Under attack the gateway raises the difficulty to this, and lowers it again."
+          error={errors.max_difficulty}
+          value={value.max_difficulty}
+          min={10}
+          onChange={(max_difficulty) => onChange({ ...value, max_difficulty })}
+        />
+        <NumberField
+          label="Pass lasts (seconds)"
+          hint="How long a solved challenge lets the browser through. 300 to 86400."
+          error={errors.pass_ttl_seconds}
+          value={value.pass_ttl_seconds}
+          min={300}
+          onChange={(pass_ttl_seconds) => onChange({ ...value, pass_ttl_seconds })}
+        />
       </div>
     ),
   }),
