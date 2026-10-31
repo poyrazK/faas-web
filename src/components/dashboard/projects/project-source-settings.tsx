@@ -30,8 +30,8 @@ const validRepo = (repo: string) => /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(re
 /**
  * Repository and production branch (PATCH /v1/projects/{slug}, faas
  * handlers_projects.go:67). A project shared through a company refuses a
- * repository change with `conflict` (handlers_projects.go:82), so its
- * repository is shown, not offered.
+ * non-empty repository with `conflict` (handlers_projects.go:82), so its
+ * repository can be disconnected but not changed.
  */
 export function ProjectSourceSettings({
   accountId,
@@ -77,6 +77,28 @@ export function ProjectSourceSettings({
     return errorMessage(err);
   }
 
+  /** An empty repository unbinds; asked first, since pushes stop deploying. */
+  async function save(body: UpdateProjectRequest) {
+    if (
+      body.repo_full_name === '' &&
+      !(await confirm({
+        title: `Disconnect ${project.repo_full_name}?`,
+        description: `Pushes to ${project.repo_full_name} stop deploying this project. Its apps keep running what they run now. ${
+          shared
+            ? "A company's project can't be connected to a repository again from this setting yet."
+            : 'Connect a repository again here or with gregale project update.'
+        }`,
+        confirmLabel: 'Disconnect',
+      }))
+    )
+      return;
+    setFailure(null);
+    update.mutate(body, {
+      onSuccess: () => toast({ kind: 'success', title: 'Source settings saved' }),
+      onError: (err) => setFailure(explain(err)),
+    });
+  }
+
   return (
     <Panel
       title="Source settings"
@@ -90,20 +112,7 @@ export function ProjectSourceSettings({
           const body: UpdateProjectRequest = {};
           if (repoChanged) body.repo_full_name = repo.trim();
           if (branchChanged) body.production_branch = branch.trim();
-          if (
-            body.repo_full_name === '' &&
-            !(await confirm({
-              title: `Disconnect ${project.repo_full_name}?`,
-              description: `Pushes to ${project.repo_full_name} stop deploying this project. Its apps keep running what they run now. Connect a repository again here or with gregale project update.`,
-              confirmLabel: 'Disconnect',
-            }))
-          )
-            return;
-          setFailure(null);
-          update.mutate(body, {
-            onSuccess: () => toast({ kind: 'success', title: 'Source settings saved' }),
-            onError: (err) => setFailure(explain(err)),
-          });
+          await save(body);
         }}
       >
         {owner && !org && (
@@ -115,9 +124,21 @@ export function ProjectSourceSettings({
               <span className="label-mono text-muted-foreground">Repository</span>
               <span className="break-all text-sm">{project.repo_full_name || 'Not connected'}</span>
               <span className="text-xs text-muted-foreground">
-                The repository of a company's project can't be changed yet; the API needs the
-                company's own GitHub installation for that.
+                A company's project can be disconnected but not moved to another repository yet; the
+                API needs the company's own GitHub installation for that.
               </span>
+              {project.repo_full_name && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="w-fit"
+                  disabled={update.isPending}
+                  onClick={() => void save({ repo_full_name: '' })}
+                >
+                  Disconnect repository
+                </Button>
+              )}
             </div>
           ) : (
             <div className="flex flex-col gap-1.5">

@@ -120,9 +120,7 @@ it("keeps a company project's repository read-only and changes the branch under 
   mount({ org_id: ACME });
   expect(screen.queryByRole('textbox', { name: 'Repository' })).not.toBeInTheDocument();
   expect(screen.getByText('team/shop')).toBeInTheDocument();
-  expect(
-    screen.getByText(/repository of a company's project can't be changed/)
-  ).toBeInTheDocument();
+  expect(screen.getByText(/can be disconnected but not moved/)).toBeInTheDocument();
   // The workspace already names the company; no ownership line repeats it.
   expect(screen.queryByText(/Belongs to/)).not.toBeInTheDocument();
   await userEvent.clear(branch());
@@ -182,4 +180,32 @@ it('explains a refused repository move on a project that turns out to be shared'
 it('says which settings the repository owns', () => {
   mount();
   expect(screen.getByText(/Workloads, their names and the services they call/)).toBeInTheDocument();
+});
+
+it("offers to disconnect a company project's repository, though not to change it", async () => {
+  // A shared project refuses only a non-empty repository (faas
+  // handlers_projects.go:82); an empty one unbinds it.
+  workspace.org = 'acme-corp';
+  workspace.label = 'Acme Corp';
+  const patch = spyApi('PATCH').mockResolvedValue(ok({ ...project, repo_full_name: undefined }));
+  mount({ org_id: ACME });
+  expect(screen.queryByRole('textbox', { name: 'Repository' })).not.toBeInTheDocument();
+  expect(screen.getByText(/can be disconnected but not moved/)).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Disconnect repository' }));
+  const dialog = await screen.findByRole('dialog');
+  expect(within(dialog).getByText(/Pushes to team\/shop stop deploying/)).toBeInTheDocument();
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Disconnect' }));
+  await waitFor(() =>
+    expect(patch).toHaveBeenCalledWith(
+      '/v1/orgs/{organization}/projects/{slug}',
+      expect.objectContaining({ body: { repo_full_name: '' } })
+    )
+  );
+});
+
+it('offers no disconnect for a company project without a repository', () => {
+  workspace.org = 'acme-corp';
+  workspace.label = 'Acme Corp';
+  mount({ org_id: ACME, repo_full_name: undefined } as never);
+  expect(screen.queryByRole('button', { name: 'Disconnect repository' })).not.toBeInTheDocument();
 });
