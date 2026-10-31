@@ -193,3 +193,35 @@ it('says so when the deployment has no queue bindings', async () => {
   renderWithProviders(<QueueCanaries slug="api" />);
   expect(await screen.findByText(/no queue bindings/i)).toBeInTheDocument();
 });
+
+it('polls an in-flight canary read from the inventory until it settles', async () => {
+  canaries[OLD] = { ...canaries[OLD], status: 'dispatching' };
+  items[0] = queueItem({ queue_canary: canaries[OLD] });
+  let reads = 0;
+  spies.GET.mockImplementation(async (path, init) => {
+    if (path === INVENTORY)
+      return {
+        data: {
+          app: 'api',
+          generated_at: '2026-10-31T09:00:00Z',
+          complete: true,
+          verification_deployment_id: DEP,
+          bindings: items,
+        },
+        response: new Response(null, { status: 200 }),
+      };
+    reads += 1;
+    const id = String((init as { params: { path: { canary: string } } }).params.path.canary);
+    const status = reads < 2 ? 'dispatching' : 'succeeded';
+    return {
+      data: { ...canaries[id], status, completed_at: '2026-10-31T09:00:04Z' },
+      response: new Response(null, { status: 200 }),
+    };
+  });
+  renderWithProviders(<QueueCanaries slug="api" />);
+  expect(await within(await row('orders')).findByText('Dispatching')).toBeInTheDocument();
+  expect(
+    await within(await row('orders')).findByText('Succeeded', {}, { timeout: 5000 })
+  ).toBeInTheDocument();
+  expect(reads).toBeGreaterThanOrEqual(2);
+}, 10_000);

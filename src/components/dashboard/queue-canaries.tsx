@@ -154,8 +154,12 @@ function CanaryRow({
   const confirm = useConfirm();
   const [tracked, setTracked] = useState('');
   const [failure, setFailure] = useState('');
-  const live = useQueueCanary(accountId, slug, tracked, true);
-  const canary = (tracked ? live.data : undefined) ?? item.queue_canary;
+  // The inventory is a snapshot: a canary it reports in flight (say, after a
+  // reload) is read directly and polled until it settles, like one published here.
+  const fromInventory = active(item.queue_canary) ? (item.queue_canary?.id ?? '') : '';
+  const watched = tracked || fromInventory;
+  const live = useQueueCanary(accountId, slug, watched, true);
+  const canary = (watched ? live.data : undefined) ?? item.queue_canary;
   const settle = (next: QueueCanary) => {
     client.setQueryData(queueCanaryKey(accountId, slug, next.id), next);
     setTracked(next.id);
