@@ -32,6 +32,13 @@ vi.mock('./deploy-tokens', () => ({ DeployTokensPanel: () => null }));
 vi.mock('./app-insights', () => ({ StaticEgressIP: () => null, StreamingCapNote: () => null }));
 vi.mock('./app-lifecycle', () => ({ PurgeCacheControl: () => null }));
 vi.mock('./app-visibility', () => ({ AppVisibility: () => null }));
+vi.mock('./health-probes', () => ({
+  HealthProbes: ({ app, plan }: { app: { slug: string }; plan?: string }) => (
+    <p>
+      Health and restarts for {app.slug} on {plan}
+    </p>
+  ),
+}));
 vi.mock('./app-release-settings', () => ({
   AppReleaseSettings: ({ app }: { app: { slug: string } }) => (
     <section aria-label="Releases">release settings for {app.slug}</section>
@@ -188,6 +195,14 @@ describe('App deletion contract copy', () => {
     expect(screen.getByRole('button', { name: '2048 MB' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '1024 MB' })).toBeEnabled();
     expect(screen.getByText(/scale plan · up to 1024 MB per instance/)).toBeInTheDocument();
+  });
+  it('shows the health probes and restart contract for the app and the account plan', () => {
+    render(
+      <ConfirmProvider>
+        <AppConfiguration slug="alpha" />
+      </ConfirmProvider>
+    );
+    expect(screen.getByText('Health and restarts for alpha on scale')).toBeInTheDocument();
   });
   it('makes the API-assigned endpoint clickable in configuration', () => {
     render(

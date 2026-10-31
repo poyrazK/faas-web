@@ -351,7 +351,17 @@ export const apps: App[] = APP_SEEDS.map((a, i) => ({
           : a.runtime.startsWith('python')
             ? ['python', '-m', 'app']
             : ['/app/bin/server'],
-    ...(a.slug === 'search-indexer' ? { execution_mode: 'worker' as const } : { port: 8080 }),
+    ...(a.slug === 'search-indexer'
+      ? {
+          execution_mode: 'worker' as const,
+          // A worker's gregale.yaml drain_timeout and stop_signal land here.
+          stop_signal: 'SIGINT',
+          // time.Duration has no JSON marshaller: apid sends nanoseconds,
+          // although the spec calls the field a duration string.
+          stop_grace_period: 45_000_000_000 as unknown as string,
+        }
+      : { port: 8080 }),
+    ...(a.slug === 'api-gateway' ? { startup_deadline_s: 20, max_retries: 4 } : {}),
     head_wakes: false,
     crawler_policy: 'wake',
     healthz: '/healthz',
@@ -473,6 +483,14 @@ for (const app of apps) {
       scan: null,
     };
     dep.stage_state = stageStateFor(status, dep.error ?? null);
+    // Probe overrides are per deployment and echoed on its response
+    // (faas apidserver/handlers_ext.go:6292); one serving release carries some.
+    if (latest && app.slug === 'api-gateway')
+      Object.assign(dep, {
+        has_overrides: true,
+        override_readiness_probe: { path: '/readyz', period_s: 5, failure_threshold: 3 },
+        override_liveness_probe: { path: '/livez', interval_s: 10, consecutive_failures: 3 },
+      });
     deployments.push(dep);
     const dur = int(38, 260);
     builds.push({
