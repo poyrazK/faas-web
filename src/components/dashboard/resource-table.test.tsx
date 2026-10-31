@@ -52,6 +52,19 @@ describe('rendering', () => {
   });
 });
 
+describe('layout', () => {
+  it('keeps the hidden Actions header inside the scroll box, so a phone does not scroll sideways', () => {
+    // sr-only is position: absolute. Without a positioned ancestor inside the
+    // overflow-x box, it is placed against the page and escapes the box's
+    // clipping — at 390px it pushed the page 281px wide (Secrets, Env vars).
+    setup({ rowActions: () => <button type="button">Edit</button> });
+    const hidden = screen.getAllByText('Actions').find((el) => el.classList.contains('sr-only'))!;
+    const scrollBox = hidden.closest('.overflow-x-auto');
+    expect(scrollBox).not.toBeNull();
+    expect(scrollBox).toHaveClass('relative');
+  });
+});
+
 describe('sorting', () => {
   it('sorts text ascending on first click', async () => {
     const user = userEvent.setup();

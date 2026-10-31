@@ -4,9 +4,11 @@ import { InlinePhase, PageHeader, Panel, queryPhase } from '@/components/dashboa
 import { useAppCapacity } from '@/lib/api/queries';
 import { consoleHead } from '@/lib/seo';
 import { ObjectStorage } from '@/components/dashboard/object-storage';
+import { withCapability } from '@/components/dashboard/capability-gate';
 
 export const Route = createFileRoute('/dashboard/storage')({
-  component: StoragePage,
+  // Gated like its nav item: a bookmarked URL explains itself when off.
+  component: withCapability('object-storage', 'Storage', StoragePage),
   head: () => consoleHead('storage'),
 });
 

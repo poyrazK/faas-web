@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Database, Plus, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
+import { CopyableId } from '@/components/ui/copyable-id';
 import { FIELD, Select } from '@/components/ui/field';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/components/ui/toast';
@@ -13,6 +14,7 @@ import {
   UnreachableState,
   queryPhase,
 } from '@/components/dashboard/primitives';
+import { CliCommand } from '@/components/dashboard/cli-command';
 import { PlanGated } from '@/components/dashboard/plan-gated';
 import { Pill } from '@/components/dashboard/resource-table';
 import { ApiError, errorMessage } from '@/lib/api/errors';
@@ -27,6 +29,7 @@ import {
   useRestorePostgresDatabase,
   type PostgresDatabase,
 } from '@/lib/api/queries';
+import { cliPostgresRestoreCommand } from '@/lib/cli-commands';
 import { formatRelative } from '@/lib/mock-data';
 import { cn } from '@/lib/utils';
 
@@ -89,27 +92,28 @@ export function explainPostgres(err: unknown): {
   kind: 'info' | 'error';
   title: string;
   description?: string;
+  error?: unknown;
 } {
   if (err instanceof ApiError) {
     switch (err.code) {
       case 'managed_postgres_not_in_plan':
-        return { kind: 'info', title: 'Not on your plan', description: errorMessage(err) };
+        return { kind: 'info', title: 'Not on your plan', error: err };
       case 'managed_postgres_quota_exceeded':
-        return { kind: 'info', title: 'Database limit reached', description: errorMessage(err) };
+        return { kind: 'info', title: 'Database limit reached', error: err };
       case 'managed_postgres_unsupported':
         return {
           kind: 'error',
           title: 'Not supported',
-          description: errorMessage(err),
+          error: err,
         };
       case 'managed_postgres_conflict':
         return {
           kind: 'error',
           title: 'That name or binding is taken',
-          description: errorMessage(err),
+          error: err,
         };
       case 'managed_postgres_invalid':
-        return { kind: 'error', title: 'The request was rejected', description: errorMessage(err) };
+        return { kind: 'error', title: 'The request was rejected', error: err };
       case 'managed_postgres_unavailable':
       case 'managed_postgres_usage_stale':
         return {
@@ -121,7 +125,7 @@ export function explainPostgres(err: unknown): {
         return { kind: 'info', title: 'Already gone', description: 'It was removed elsewhere.' };
     }
   }
-  return { kind: 'error', title: 'Could not complete that', description: errorMessage(err) };
+  return { kind: 'error', title: 'Could not complete that', error: err };
 }
 
 export function PostgresDatabases() {
@@ -257,6 +261,12 @@ function DatabaseDetail({ database }: { database: PostgresDatabase }) {
   };
 
   const restoreReady = restoreName.trim().length > 0 && !Number.isNaN(Date.parse(pointInTime));
+  // Same values the form submits: the trimmed name and the instant as UTC ISO.
+  const restoreCommand = cliPostgresRestoreCommand(
+    database.id,
+    restoreName.trim() || undefined,
+    Number.isNaN(Date.parse(pointInTime)) ? undefined : new Date(pointInTime).toISOString()
+  );
 
   return (
     <Panel
@@ -275,9 +285,19 @@ function DatabaseDetail({ database }: { database: PostgresDatabase }) {
       }
     >
       <div className="flex flex-col gap-6">
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <span>Database ID</span>
+          <CopyableId value={database.id} label="database ID" full />
+        </div>
         {database.restore_source_database_id && (
-          <p className="text-xs text-muted-foreground">
-            Restored from {database.restore_source_database_id.slice(0, 8)} at{' '}
+          <p className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+            Restored from{' '}
+            <CopyableId
+              value={database.restore_source_database_id}
+              label="source database ID"
+              full
+            />{' '}
+            at{' '}
             {database.restore_point_in_time
               ? new Date(database.restore_point_in_time).toLocaleString()
               : 'an unrecorded point'}
@@ -330,6 +350,11 @@ function DatabaseDetail({ database }: { database: PostgresDatabase }) {
               Restore into a new database
             </Button>
           </div>
+          <CliCommand
+            label="Or restore from the CLI"
+            copyLabel={`restore command for ${database.name}`}
+            command={restoreCommand}
+          />
         </form>
       </div>
     </Panel>
@@ -406,6 +431,7 @@ function Bindings({ database }: { database: PostgresDatabase }) {
               className="flex flex-wrap items-center gap-3 py-2 text-xs first:pt-0 last:pb-0"
             >
               <span className="font-mono">{appName(binding.app_id)}</span>
+              <CopyableId value={binding.id} label="binding ID" />
               <Pill label={binding.state} color={STATE_COLOR[binding.state]} />
               <span className="font-mono text-muted-foreground">{binding.environment_key}</span>
               <span className="text-muted-foreground">{binding.access.replace('_', ' ')}</span>

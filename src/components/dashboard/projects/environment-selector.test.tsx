@@ -3,6 +3,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, expect, it, vi } from 'vitest';
 import { ProjectEnvironments } from './environment-selector';
 import { spyApi } from '@/test/api';
+
+const workspace = vi.hoisted(() => ({
+  org: null as string | null,
+  label: 'Personal',
+  ready: true,
+}));
+vi.mock('@/lib/api/workspace-apps', () => ({ useWorkspaceTarget: () => workspace }));
 afterEach(() => vi.restoreAllMocks());
 const ok = (data: unknown) => ({ data, response: new Response() }) as never;
 const environments = ['production', 'staging'].map((slug) => ({
@@ -73,4 +80,25 @@ it('does not invent a named environment for an empty registry', async () => {
   mount();
   expect(await screen.findByText('No environments')).toBeInTheDocument();
   expect(get).toHaveBeenCalledTimes(1);
+});
+
+it("reads no environments for a company's project, and says why", async () => {
+  // Environment routes are account-scoped (ProjectBySlug(acct.ID, slug)): in a
+  // company workspace they would show a same-named personal project's
+  // environments. Org environments are Wave 3 (A20).
+  workspace.org = 'acme';
+  workspace.label = 'Acme';
+  const get = spyApi('GET').mockResolvedValue(ok(environments));
+  try {
+    mount();
+    expect(
+      await screen.findByText(
+        /Environments for Acme's projects are not available in the console yet/
+      )
+    ).toBeInTheDocument();
+    expect(get).not.toHaveBeenCalled();
+  } finally {
+    workspace.org = null;
+    workspace.label = 'Personal';
+  }
 });
