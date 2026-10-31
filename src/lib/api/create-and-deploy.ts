@@ -15,8 +15,7 @@ export function useCreateAndDeploy() {
   const deployFromRef = useDeployFromRefFor();
 
   const createApp = useCallback(
-    ({ name }: { name: string }) =>
-      addWorkflow({ name, runtime: 'node22', memoryMb: 128, type: 'app' }),
+    ({ name }: { name: string }) => addWorkflow({ name, memoryMb: 128, type: 'app' }),
     [addWorkflow]
   );
 

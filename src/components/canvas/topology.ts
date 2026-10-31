@@ -278,7 +278,8 @@ export function buildTopology(input: TopologyInput): Topology {
         kind: 'cron',
         id: c.id,
         schedule: c.schedule,
-        path: c.path,
+        // Command crons have no path; the node shows what an HTTP cron calls.
+        path: c.path ?? '',
         timezone: c.timezone,
         enabled: c.enabled,
         lastFiredAt: c.last_fired_at ?? null,

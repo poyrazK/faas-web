@@ -153,6 +153,7 @@ describe('buildTopology', () => {
           {
             id: 'c1',
             app_id: 'id-deleted',
+            kind: 'http',
             schedule: '0 2 * * *',
             path: '/',
             enabled: true,
@@ -178,6 +179,7 @@ describe('buildTopology', () => {
           {
             id: 'c1',
             app_id: 'id-billing',
+            kind: 'http',
             schedule: '*/15 * * * *',
             path: '/run',
             enabled: true,
@@ -273,6 +275,7 @@ describe('buildTopology', () => {
                   scope: 'default',
                   region: 'eu',
                   state: 'ready',
+                  public: false,
                   created_at: '',
                 },
               ],

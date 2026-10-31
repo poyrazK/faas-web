@@ -256,8 +256,8 @@ export function Inspector({
           </div>
           {d.kind === 'app' && (
             <Link
-              to="/dashboard/workflows/$workflowId"
-              params={{ workflowId: d.slug }}
+              to="/dashboard/apps/$appSlug"
+              params={{ appSlug: d.slug }}
               className="pressable flex h-7 items-center rounded-lg border border-border-secondary px-2.5 text-[12px] font-semibold hover:bg-accent"
             >
               Open app

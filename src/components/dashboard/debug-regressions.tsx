@@ -238,7 +238,7 @@ function RegressionDetail({
       </Button>
       <a
         className="text-sm underline"
-        href={`/dashboard/deployments?${new URLSearchParams({ deployment: regression.deployment_id })}`}
+        href={`/dashboard/releases?${new URLSearchParams({ deployment: regression.deployment_id })}`}
       >
         Open affected release
       </a>

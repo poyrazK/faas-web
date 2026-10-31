@@ -3,7 +3,23 @@
 # cookie while keeping the API implementation behind the edge.
 /cli-auth    https://api.gregale.dev/cli-auth   200
 /status/slo.json    https://api.gregale.dev/status/slo.json   200
+# RFC 9116: security.txt is canonical on the apex; apid serves the one copy.
+/.well-known/security.txt    https://api.gregale.dev/.well-known/security.txt   200
 /status/incidents/*    /status/incidents/index.html   200
+
+# Docs paths the API and CLI emit that are published under another slug
+# (from content/customer-pages.json; `src/lib/docs.test.ts` keeps this list in step).
+/docs/build/source    /docs/deploy-from-github   301
+/docs/build/source-ref    /docs/deploy-from-source   301
+/docs/builds    /docs/build   301
+/docs/deployments    /docs/deploy-from-github   301
+/docs/deploys    /docs/deploy-from-github   301
+/docs/domains    /docs/custom-domains   301
+/docs/dpa/subprocessors    /docs/subprocessors   301
+/docs/gdpr    /docs/account   301
+/docs/orgs    /docs/account   301
+/docs/sidecars    /docs/companions   301
+/docs/:parent/*    /docs/:parent   301
 
 # Only registered client routes receive the app shell.
 # The built 404.html handles every unmatched URL on Netlify and Cloudflare Pages.
@@ -12,17 +28,23 @@
 /dashboard/alerts    /index.html   200
 /dashboard/analytics    /index.html   200
 /dashboard/apis    /index.html   200
+/dashboard/apps    /index.html   200
 /dashboard/audit    /index.html   200
 /dashboard/builds    /index.html   200
 /dashboard/canvas    /index.html   200
 /dashboard/crons    /index.html   200
+/dashboard/customers    /index.html   200
 /dashboard/databases    /index.html   200
 /dashboard/debug    /index.html   200
 /dashboard/deployments    /index.html   200
 /dashboard/domains    /index.html   200
 /dashboard/edge-rules    /index.html   200
 /dashboard/env    /index.html   200
+/dashboard/events    /index.html   200
 /dashboard/import    /index.html   200
+/dashboard/integrations    /index.html   200
+/dashboard/instances    /index.html   200
+/dashboard/invocations    /index.html   200
 /dashboard/invoices    /index.html   200
 /dashboard/jobs    /index.html   200
 /dashboard/keys    /index.html   200
@@ -33,6 +55,8 @@
 /dashboard/plans    /index.html   200
 /dashboard/postgres    /index.html   200
 /dashboard/queues    /index.html   200
+/dashboard/releases    /index.html   200
+/dashboard/routes    /index.html   200
 /dashboard/secrets    /index.html   200
 /dashboard/security    /index.html   200
 /dashboard/settings    /index.html   200
@@ -44,10 +68,16 @@
 /dashboard/triggers    /index.html   200
 /dashboard/triggers/:triggerId    /index.html   200
 /dashboard/triggers/new    /index.html   200
+/dashboard/upstreams    /index.html   200
 /dashboard/usage    /index.html   200
 /dashboard/webhooks    /index.html   200
 /dashboard/workers    /index.html   200
 /dashboard/workflows    /index.html   200
+/dashboard/projects    /index.html   200
+/dashboard/projects/:projectSlug    /index.html   200
+/dashboard/apps/:appSlug    /index.html   200
+/dashboard/apps/new    /index.html   200
+# Old app paths, kept so the console can redirect them to /dashboard/apps.
 /dashboard/workflows/:workflowId    /index.html   200
 /dashboard/workflows/new    /index.html   200
 /invite/:token    /index.html   200

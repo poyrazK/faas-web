@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
-import { FIELD as BASE_FIELD } from '@/components/ui/field';
+import { FIELD as BASE_FIELD, FieldError } from '@/components/ui/field';
 import { Switch } from '@/components/ui/switch';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
@@ -22,8 +22,13 @@ import { SupplyChainPanel } from './supply-chain-panel';
 import { StaticEgressIP, StreamingCapNote } from './app-insights';
 import { PurgeCacheControl } from './app-lifecycle';
 import { publicAppUrl } from '@/lib/app-url';
+import { appNameError } from './new-app-validation';
 import { useAuth } from '@/lib/auth';
 import { MemorySelect } from './memory-select';
+import { configurationEffects } from '@/lib/api/runtime-policy';
+import { PolicyStatus } from './policy-status';
+import { AppVisibility } from './app-visibility';
+import { usePolicyOperation } from './policy-operation';
 
 /**
  * The app's own settings, editable.
@@ -106,14 +111,33 @@ function NumberField({
   min: number;
   onChange: (n: number) => void;
 }) {
+  // The text is a draft: clamping on each keystroke turned "30" into 530 when
+  // the minimum is 5, because "3" was raised to 5 before the "0" arrived.
+  // Values below the minimum are only raised once the field loses focus.
+  const [text, setText] = useState(String(value));
+  const [synced, setSynced] = useState(value);
+  if (value !== synced) {
+    setSynced(value);
+    if (Number(text) !== value) setText(String(value));
+  }
   return (
     <label className="flex flex-col gap-1.5">
       <span className="label-mono text-muted-foreground">{label}</span>
       <input
         type="number"
         min={min}
-        value={value}
-        onChange={(e) => onChange(Math.max(min, Number(e.target.value) || 0))}
+        value={text}
+        onChange={(e) => {
+          setText(e.target.value);
+          const n = Number(e.target.value);
+          if (e.target.value !== '' && Number.isFinite(n) && n >= min) onChange(n);
+        }}
+        onBlur={() => {
+          const n = Number(text);
+          const next = text !== '' && Number.isFinite(n) ? Math.max(min, n) : Math.max(min, value);
+          setText(String(next));
+          onChange(next);
+        }}
         className={FIELD}
       />
       <span className="text-xs text-muted-foreground">{hint}</span>
@@ -153,6 +177,8 @@ function ConfigForm({ app }: { app: App }) {
   const { toast } = useToast();
   const confirm = useConfirm();
   const update = useUpdateApp(app.slug);
+  const operation = usePolicyOperation(account?.id ?? '', app.slug, app.id, 'configuration');
+  const [savedEffects, setSavedEffects] = useState<ReturnType<typeof configurationEffects>>();
   const diff = useAppDiff(app.slug);
   const [preview, setPreview] = useState<Awaited<ReturnType<typeof diff.mutateAsync>> | null>(null);
   const [draft, setDraft] = useState<Draft>(() => draftFrom(app));
@@ -211,15 +237,19 @@ function ConfigForm({ app }: { app: App }) {
   );
 
   const save = () => {
-    if (memoryBlocked) return;
-    void update
-      .mutateAsync(changes)
+    if (memoryBlocked || operation.busy) return;
+    const effects = configurationEffects(Object.keys(changes));
+    setSavedEffects(undefined);
+    void operation
+      .run(effects.components, () => update.mutateAsync(changes))
       .then((next) => {
+        if (!next) return;
         setDraft(draftFrom(next));
+        setSavedEffects(effects);
         toast({
           kind: 'success',
           title: 'Settings saved',
-          description: `${app.slug} will use them on its next wake.`,
+          description: 'Runtime application is verified separately below.',
         });
       })
       .catch((err: unknown) =>
@@ -232,7 +262,7 @@ function ConfigForm({ app }: { app: App }) {
       <Panel
         lit
         title="Runtime"
-        description="Applied on the next wake. A running instance keeps what it booted with."
+        description="Request, egress and scaling policies can converge live. Memory requires a fresh instance."
         actions={
           <>
             {/* The CLI's deploy --diff, one click before Save: the server
@@ -261,7 +291,7 @@ function ConfigForm({ app }: { app: App }) {
             <Button
               size="sm"
               disabled={!dirty || memoryBlocked}
-              busy={update.isPending}
+              busy={update.isPending || operation.busy}
               onClick={save}
             >
               Save changes
@@ -269,6 +299,21 @@ function ConfigForm({ app }: { app: App }) {
           </>
         }
       >
+        {operation.receipt && operation.receipt.components.length > 0 && (
+          <PolicyStatus accountId={account?.id ?? ''} slug={app.slug} receipt={operation.receipt} />
+        )}
+        {savedEffects?.replacement.length ? (
+          <p className="mb-4 text-xs text-muted-foreground">
+            Saved: {savedEffects.replacement.join(', ')}. Running instances retain their boot
+            configuration; a fresh instance is required.
+          </p>
+        ) : null}
+        {savedEffects?.future.length ? (
+          <p className="mb-4 text-xs text-muted-foreground">
+            Saved: {savedEffects.future.join(', ')}. These settings affect subsequent runtime
+            decisions; no live acknowledgment is available here.
+          </p>
+        ) : null}
         <div className="grid gap-5 sm:grid-cols-2">
           <label className="flex flex-col gap-1.5">
             <span className="label-mono text-muted-foreground">Memory</span>
@@ -378,7 +423,7 @@ function ConfigForm({ app }: { app: App }) {
             <StaticEgressIP slug={app.slug} />
           </div>
           <div className="sm:col-span-2">
-            <PurgeCacheControl slug={app.slug} />
+            <PurgeCacheControl slug={app.slug} appId={app.id} />
           </div>
         </div>
       </Panel>
@@ -411,8 +456,8 @@ function ConfigForm({ app }: { app: App }) {
             onChange={(on) => set('maintenance_mode', on)}
           />
           <Toggle
-            label="Require deploy tokens"
-            hint="Every deployment call must carry a deploy token. Pro and Scale."
+            label="Require API key for app requests"
+            hint="Require an API key to call the app's public URL. Pro and Scale."
             checked={draft.require_authn}
             onChange={(on) => set('require_authn', on)}
           />
@@ -575,22 +620,27 @@ function RenamePanel({ app }: { app: App }) {
   const navigate = useNavigate();
   const rename = useRenameApp(app.slug);
   const [next, setNext] = useState(app.slug);
-  const valid = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(next) && next !== app.slug;
+  // The same rule the create wizard applies, including the reserved tag- prefix.
+  const nameError = next === app.slug ? undefined : appNameError(next);
+  const valid = next !== app.slug && !nameError;
+  const currentUrl = publicAppUrl(app.url)?.replace(/\/$/, '') ?? `the ${app.slug} hostname`;
 
   return (
     <Panel
       title="Name"
       description="The slug is also the subdomain: renaming changes the URL, and the old one stops answering."
     >
+      {/* The error goes under the row, not inside it, so the button stays
+          level with the input when it appears. */}
       <form
-        className="flex flex-wrap items-end gap-3"
+        className="flex flex-col gap-1.5"
         onSubmit={async (e) => {
           e.preventDefault();
           if (!valid || rename.isPending) return;
           if (
             !(await confirm({
               title: `Rename ${app.slug} to ${next}?`,
-              description: `https://${app.slug}.gregale.app stops answering as soon as this lands. Anything pointing at it — a custom domain, a webhook, a cron path — keeps working; anything pointing at the old hostname does not.`,
+              description: `${currentUrl} stops answering as soon as this lands. Anything pointing at it — a custom domain, a webhook, a cron path — keeps working; anything pointing at the old hostname does not.`,
               confirmLabel: 'Rename',
             }))
           )
@@ -600,8 +650,8 @@ function RenamePanel({ app }: { app: App }) {
             .then(() => {
               toast({ kind: 'success', title: `Renamed to ${next}` });
               void navigate({
-                to: '/dashboard/workflows/$workflowId',
-                params: { workflowId: next },
+                to: '/dashboard/apps/$appSlug',
+                params: { appSlug: next },
                 search: { tab: 'Configuration' },
               });
             })
@@ -610,18 +660,32 @@ function RenamePanel({ app }: { app: App }) {
             );
         }}
       >
-        <label className="flex min-w-64 flex-1 flex-col gap-1.5">
-          <span className="label-mono text-muted-foreground">Slug</span>
-          <input
-            value={next}
-            onChange={(e) => setNext(e.target.value.toLowerCase())}
-            spellCheck={false}
-            className={FIELD}
-          />
+        <label htmlFor="rename-slug" className="label-mono text-muted-foreground">
+          Slug
         </label>
-        <Button type="submit" size="sm" variant="outline" disabled={!valid} busy={rename.isPending}>
-          Rename
-        </Button>
+        <div className="flex items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <input
+              id="rename-slug"
+              value={next}
+              onChange={(e) => setNext(e.target.value.toLowerCase())}
+              spellCheck={false}
+              aria-invalid={nameError ? true : undefined}
+              aria-describedby={nameError ? 'rename-slug-error' : undefined}
+              className={FIELD}
+            />
+          </div>
+          <Button
+            type="submit"
+            size="sm"
+            variant="outline"
+            disabled={!valid}
+            busy={rename.isPending}
+          >
+            Rename
+          </Button>
+        </div>
+        {nameError && <FieldError id="rename-slug-error">{nameError}</FieldError>}
       </form>
     </Panel>
   );
@@ -672,7 +736,7 @@ function DangerZone({ app }: { app: App }) {
                   title: 'App deletion scheduled',
                   description: `${app.slug} can be restored through the API within 7 days.`,
                 });
-                void navigate({ to: '/dashboard/workflows' });
+                void navigate({ to: '/dashboard/apps' });
               })
               .catch((err: unknown) =>
                 toast({ kind: 'error', title: 'Could not delete', description: errorMessage(err) })
@@ -687,7 +751,12 @@ function DangerZone({ app }: { app: App }) {
 }
 
 export function AppConfiguration({ slug }: { slug: string }) {
-  const { data, isPending, error, refetch } = useApp(slug);
+  const { account } = useAuth();
+  const { data, isPending, error, refetch } = useApp(
+    slug,
+    { enabled: Boolean(account?.id) },
+    account?.id ?? ''
+  );
   const phase = queryPhase({ error, loading: isPending });
 
   if (phase === 'unreachable') return <UnreachableState onRetry={() => void refetch()} />;
@@ -696,14 +765,24 @@ export function AppConfiguration({ slug }: { slug: string }) {
 
   return (
     <div className="flex flex-col gap-6">
+      <AppVisibility
+        key={`${account?.id ?? ''}:${data.id}`}
+        accountId={account?.id ?? ''}
+        plan={account?.plan ?? 'free'}
+        slug={slug}
+        app={data}
+      />
       <Panel title="About" padded={false}>
         <dl className="grid gap-x-8 gap-y-0 px-5 sm:grid-cols-3">
           {[
             ['Runtime', data.runtime ?? data.type],
             ['Type', data.type],
-            ['Endpoint', data.url],
+            ['Endpoint', data.visibility === 'internal' ? 'Internal only' : data.url],
           ].map(([label, value]) => {
-            const href = label === 'Endpoint' ? publicAppUrl(value) : undefined;
+            const href =
+              label === 'Endpoint' && data.visibility !== 'internal'
+                ? publicAppUrl(value)
+                : undefined;
             return (
               <div key={label} className="flex flex-col gap-1 py-4">
                 <dt className="label-mono text-muted-foreground">{label}</dt>
@@ -728,7 +807,7 @@ export function AppConfiguration({ slug }: { slug: string }) {
         </dl>
       </Panel>
       {/* Keyed on the id so a rename or a fresh read reseeds the draft. */}
-      <ConfigForm key={`${data.id}:${data.slug}`} app={data} />
+      <ConfigForm key={`${account?.id}:${data.id}:${data.slug}`} app={data} />
       <SupplyChainPanel slug={data.slug} />
       <RegistryCredentialsPanel slug={data.slug} />
       <RenamePanel key={`rename:${data.slug}`} app={data} />

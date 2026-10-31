@@ -82,7 +82,7 @@ export function SpendCap({ compact = false }: { compact?: boolean }) {
   );
 }
 
-function SpendCapEditor({ initialCents }: { initialCents: number | null }) {
+export function SpendCapEditor({ initialCents }: { initialCents: number | null }) {
   const { toast } = useToast();
   const mutation = useSetOverageCap();
   // Follow fresh readback until the user starts editing; refetches must not

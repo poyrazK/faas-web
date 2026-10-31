@@ -4,7 +4,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, expect, it, vi } from 'vitest';
 
 const api = vi.hoisted(() => ({ POST: vi.fn() }));
-vi.mock('./client', async (o) => ({ ...(await o<object>()), api }));
+// Binding asks for a CSRF token first (issueCSRF); the test grants one.
+vi.mock('./client', async (o) => ({
+  ...(await o<object>()),
+  api,
+  issueCSRF: vi.fn(async () => 'csrf'),
+}));
 const addWorkflow = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/store', () => ({ useData: () => ({ addWorkflow }) }));
 vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { github_install_id: '42' } }) }));
@@ -19,12 +24,8 @@ describe('useCreateAndDeploy', () => {
     addWorkflow.mockResolvedValue({ id: 'acme-api' });
     const { result } = renderHook(() => useCreateAndDeploy(), { wrapper: wrap });
     await result.current.createApp({ name: 'acme-api' });
-    expect(addWorkflow).toHaveBeenCalledWith({
-      name: 'acme-api',
-      runtime: 'node22',
-      memoryMb: 128,
-      type: 'app',
-    });
+    // An app carries no runtime; only a function does.
+    expect(addWorkflow).toHaveBeenCalledWith({ name: 'acme-api', memoryMb: 128, type: 'app' });
   });
 
   it('binds the repo, then deploys the ref, and returns the deployment', async () => {

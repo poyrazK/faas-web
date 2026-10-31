@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 import userEvent from '@testing-library/user-event';
@@ -12,8 +12,15 @@ const api = vi.hoisted(() => ({
   readFailed: false,
   refetch: vi.fn(),
   navigate: vi.fn(),
+  app: {
+    slug: 'hello-app',
+    type: 'app',
+    visibility: 'public',
+    url: 'https://hello-app.gregale.dev',
+  } as Record<string, unknown>,
 }));
 vi.mock('@/lib/api/queries', () => ({
+  useApp: () => ({ data: api.app, isError: false }),
   useDeployment: () => ({
     data: {
       id: 'deploy-1',
@@ -36,7 +43,23 @@ vi.mock('@/lib/api/logs', () => ({
 }));
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => api.navigate,
-  Link: ({ children, to }: { children: ReactNode; to: string }) => <a href={to}>{children}</a>,
+  Link: ({
+    children,
+    to,
+    params,
+    search,
+  }: {
+    children: ReactNode;
+    to: string;
+    params?: { appSlug?: string };
+    search?: Record<string, string>;
+  }) => (
+    <a
+      href={`${to.replace('$appSlug', params?.appSlug ?? '')}${search?.tab ? `?tab=${search.tab}` : ''}`}
+    >
+      {children}
+    </a>
+  ),
 }));
 
 const props = {
@@ -55,9 +78,103 @@ beforeEach(() => {
   api.fix = '';
   api.readFailed = false;
   api.refetch.mockClear();
+  api.app = {
+    slug: 'hello-app',
+    type: 'app',
+    visibility: 'public',
+    url: 'https://hello-app.gregale.dev',
+  };
+});
+
+describe('live deployment', () => {
+  it('shows how to call the app once it is live', () => {
+    api.status = 'live';
+    render(<DeploymentProgress {...props} appSlug="hello-app" />);
+    expect(screen.getByRole('heading', { name: 'Your app is live' })).toBeInTheDocument();
+    const block = screen.getByRole('region', { name: 'Call it' });
+    expect(block).toHaveTextContent('curl -i https://hello-app.gregale.dev');
+    expect(block).toHaveTextContent('gregale logs hello-app --follow');
+    expect(screen.getByRole('link', { name: 'Open the Invoke tab' })).toHaveAttribute(
+      'href',
+      '/dashboard/apps/hello-app?tab=Invoke'
+    );
+    expect(screen.getByRole('link', { name: 'View logs' })).toHaveAttribute(
+      'href',
+      '/dashboard/apps/hello-app?tab=Logs'
+    );
+  });
+
+  it('shows the bearer header form with a placeholder when the app requires authentication', () => {
+    api.status = 'live';
+    api.app = { ...api.app, require_authn: true };
+    render(<DeploymentProgress {...props} appSlug="hello-app" />);
+    expect(screen.getByRole('region', { name: 'Call it' })).toHaveTextContent(
+      `curl -i -H 'Authorization: Bearer <API_KEY>' https://hello-app.gregale.dev`
+    );
+  });
+
+  it('does not offer a request before the deployment is live', () => {
+    api.status = 'building';
+    render(<DeploymentProgress {...props} appSlug="hello-app" />);
+    expect(screen.queryByRole('region', { name: 'Call it' })).not.toBeInTheDocument();
+  });
 });
 
 describe('first deployment progress', () => {
+  it.each(['failed', 'cancelled', 'superseded'])(
+    'notifies a confirmed terminal %s outcome without retrying a deployment',
+    (status) => {
+      api.status = status;
+      const onTerminal = vi.fn();
+      render(<DeploymentProgress {...props} onTerminal={onTerminal} />);
+      expect(onTerminal).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'deploy-1', app_id: 'app-1', status })
+      );
+    }
+  );
+  it('does not release recovery when a retained terminal response has a current read error', () => {
+    api.status = 'failed';
+    api.readFailed = true;
+    const onTerminal = vi.fn();
+    render(<DeploymentProgress {...props} onTerminal={onTerminal} />);
+    expect(onTerminal).not.toHaveBeenCalled();
+  });
+  it('describes OCI preparation without opening an unsupported build stream', () => {
+    render(
+      <DeploymentProgress
+        appCreated
+        appName="image-app"
+        deploymentId="deploy-1"
+        source={{ kind: 'image', reference: `r/x@sha256:${'a'.repeat(64)}` }}
+      />
+    );
+    expect(screen.getByRole('heading', { name: 'Preparing your image deployment' })).toBeVisible();
+    expect(screen.queryByText('Build output')).not.toBeInTheDocument();
+    expect(screen.getByText(`r/x@sha256:${'a'.repeat(64)}`)).toBeVisible();
+  });
+  it('does not offer an inert build output button for a failed OCI release without a build', () => {
+    api.status = 'failed';
+    render(
+      <DeploymentProgress
+        appCreated
+        appName="image-app"
+        deploymentId="deploy-1"
+        source={{ kind: 'image', reference: 'r/x' }}
+      />
+    );
+    expect(screen.queryByRole('button', { name: 'View build output' })).not.toBeInTheDocument();
+  });
+  it('keeps the recovery instructions inline when its owner supplies retry actions', () => {
+    api.status = 'failed';
+    render(<DeploymentProgress {...props} hideRetryOptions />);
+    expect(
+      screen.getByText(
+        'Your app is saved. Review the cause below, then retry the original deployment or deploy a fix.'
+      )
+    ).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Retry options' })).not.toBeInTheDocument();
+  });
+
   it.each([
     ['pending', 'Queued for build'],
     ['building', 'Building your app'],
@@ -134,7 +251,7 @@ describe('first deployment progress', () => {
     expect(screen.getByText('Build output')).toHaveFocus();
     await userEvent.click(screen.getByRole('button', { name: 'Retry options' }));
     expect(api.navigate).toHaveBeenCalledWith({
-      to: '/dashboard/deployments',
+      to: '/dashboard/releases',
       search: { deployment: 'deploy-1', releaseSection: 'lifecycle' },
     });
   });
@@ -146,5 +263,56 @@ describe('first deployment progress', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('GitHub unavailable');
     expect(screen.queryByRole('link', { name: 'Open app' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Review deployment' })).not.toBeInTheDocument();
+  });
+});
+
+describe('deployment stages', () => {
+  // The stages the server has reported, in its order: nothing is simulated.
+  it('marks the stages behind the reported status done and that one current', () => {
+    api.status = 'imaging';
+    render(<DeploymentProgress {...props} />);
+    const items = within(screen.getByRole('list', { name: 'Deployment stages' })).getAllByRole(
+      'listitem'
+    );
+    expect(items.map((li) => li.textContent)).toEqual([
+      'Queued, done',
+      'Build, done',
+      'Image, in progress',
+      'Runtime',
+      'Live',
+    ]);
+    expect(items[2]).toHaveAttribute('aria-current', 'step');
+  });
+
+  it('skips the build for an image, which can report building while it is prepared', () => {
+    api.status = 'building';
+    render(<DeploymentProgress {...props} source={{ kind: 'image', reference: 'r/x' }} />);
+    const items = within(screen.getByRole('list', { name: 'Deployment stages' })).getAllByRole(
+      'listitem'
+    );
+    expect(items.map((li) => li.textContent)).toEqual([
+      'Queued, done',
+      'Image, in progress',
+      'Runtime',
+      'Live',
+    ]);
+  });
+
+  it('shows every stage done once live', () => {
+    api.status = 'live';
+    render(<DeploymentProgress {...props} />);
+    expect(screen.getByRole('list', { name: 'Deployment stages' })).toHaveTextContent('Live, done');
+  });
+
+  it.each(['failed', 'cancelled', 'superseded'])('leaves the stages out when %s', (status) => {
+    api.status = status;
+    render(<DeploymentProgress {...props} />);
+    expect(screen.queryByRole('list', { name: 'Deployment stages' })).toBeNull();
+  });
+
+  it('leaves the stages out for a status it does not know', () => {
+    api.status = 'warming';
+    render(<DeploymentProgress {...props} />);
+    expect(screen.queryByRole('list', { name: 'Deployment stages' })).toBeNull();
   });
 });

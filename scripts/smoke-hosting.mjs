@@ -6,7 +6,7 @@
  */
 
 const base = (process.env.GREGALE_SITE_URL ?? 'https://gregale.dev').replace(/\/$/, '');
-const paths = ['/', '/dashboard', '/dashboard/workflows', '/dashboard/settings?section=integrations', '/dashboard/workflows/new'];
+const paths = ['/', '/dashboard', '/dashboard/apps', '/dashboard/settings?section=integrations', '/dashboard/apps/new'];
 const required = {
   'content-security-policy': ["frame-ancestors 'none'", "object-src 'none'", "form-action 'self' https://github.com;"],
   'x-content-type-options': ['nosniff'],

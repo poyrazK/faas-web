@@ -11,17 +11,47 @@ import type { components } from '@/lib/api/schema';
 /** Recovery always acts on the selected record, never on the configuration editor. */
 export function DeploymentLifecycle({
   deployment,
+  onRetried,
+  retryLabel,
+  onRetryStateChange,
+  onBusyChange,
+  disabled = false,
 }: {
   deployment: components['schemas']['DeploymentResponse'];
+  onRetried?: (deployment: components['schemas']['DeploymentResponse']) => void;
+  retryLabel?: string;
+  onRetryStateChange?: (phase: 'submitting' | 'rejected' | 'unknown') => void;
+  onBusyChange?: (busy: boolean) => void;
+  disabled?: boolean;
 }) {
   // Reset locks and accepted results if a caller changes the selected release.
-  return <RecoveryActions key={deployment.id} deployment={deployment} />;
+  return (
+    <RecoveryActions
+      key={deployment.id}
+      deployment={deployment}
+      onRetried={onRetried}
+      retryLabel={retryLabel}
+      onRetryStateChange={onRetryStateChange}
+      onBusyChange={onBusyChange}
+      disabled={disabled}
+    />
+  );
 }
 
 function RecoveryActions({
   deployment,
+  onRetried,
+  retryLabel = 'Retry deployment',
+  onRetryStateChange,
+  onBusyChange,
+  disabled,
 }: {
   deployment: components['schemas']['DeploymentResponse'];
+  onRetried?: (deployment: components['schemas']['DeploymentResponse']) => void;
+  retryLabel?: string;
+  onRetryStateChange?: (phase: 'submitting' | 'rejected' | 'unknown') => void;
+  onBusyChange?: (busy: boolean) => void;
+  disabled?: boolean;
 }) {
   const { toast } = useToast();
   const confirm = useConfirm();
@@ -51,9 +81,10 @@ function RecoveryActions({
   const slug = (apps ?? []).find((app) => app.id === deployment.app_id)?.slug;
 
   const recover = async (action: 'cancel' | 'retry') => {
-    if (lock.current || accepted || uncertain || availability.kind !== action) return;
+    if (disabled || lock.current || accepted || uncertain || availability.kind !== action) return;
     lock.current = true;
     setBusy(true);
+    onBusyChange?.(true);
     setFailure(null);
     try {
       if (action === 'cancel' && !slug) {
@@ -90,6 +121,7 @@ function RecoveryActions({
       } else {
         // The API currently rebuilds from the original inputs for every requested
         // stage. Do not offer a checkpoint selector that implies work is skipped.
+        onRetryStateChange?.('submitting');
         const result = await retry.mutateAsync({
           id: deployment.id,
           from_stage: 'source_download',
@@ -98,12 +130,14 @@ function RecoveryActions({
           setAccepted(true);
           if (result.id && result.id !== deployment.id) {
             setResultId(result.id);
+            onRetried?.(result);
             toast({
               kind: 'success',
               title: 'Retry started',
               description: 'View the new attempt below.',
             });
           } else {
+            onRetryStateChange?.('unknown');
             setFailure(
               'The retry was accepted, but the response did not identify a new deployment. Check deployment history before starting another attempt.'
             );
@@ -127,12 +161,16 @@ function RecoveryActions({
       // Disable another retry until the user has inspected history/refreshed.
       if (action === 'retry' && (!(error instanceof ApiError) || error.status >= 500)) {
         setUncertain(true);
+        onRetryStateChange?.('unknown');
         message += ' The outcome is unknown. Check deployment history before retrying again.';
+      } else if (action === 'retry') {
+        onRetryStateChange?.('rejected');
       }
       setFailure(message);
       toast({ kind: 'error', title: `Could not ${action}`, description: message });
     } finally {
       lock.current = false;
+      onBusyChange?.(false);
       if (mounted.current) setBusy(false);
     }
   };
@@ -146,7 +184,7 @@ function RecoveryActions({
           size="xs"
           variant="outline"
           busy={busy || cancel.isPending}
-          disabled={accepted}
+          disabled={disabled || accepted}
           onClick={() => void recover('cancel')}
         >
           Cancel deployment
@@ -162,10 +200,10 @@ function RecoveryActions({
             size="xs"
             variant="outline"
             busy={busy || retry.isPending}
-            disabled={accepted || uncertain}
+            disabled={disabled || accepted || uncertain}
             onClick={() => void recover('retry')}
           >
-            Retry deployment
+            {retryLabel}
           </Button>
         </div>
       )}
@@ -179,7 +217,7 @@ function RecoveryActions({
       )}
       {(uncertain || (accepted && !resultId && availability.kind === 'retry')) && (
         <Link
-          to="/dashboard/deployments"
+          to="/dashboard/releases"
           search={{}}
           className="mt-2 inline-block text-sm text-brand underline-offset-4 hover:underline"
         >
@@ -190,7 +228,7 @@ function RecoveryActions({
         <div role="status" className="mt-3 rounded-md border border-brand/25 p-3 text-sm">
           <p>The retry was accepted as a new deployment. This failed record is unchanged.</p>
           <Link
-            to="/dashboard/deployments"
+            to="/dashboard/releases"
             search={{ deployment: resultId, releaseSection: 'overview' }}
             className="mt-2 inline-block text-brand underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-brand"
           >

@@ -81,8 +81,9 @@ export function IntegrationSettings({ search }: { search: SettingsSearch }) {
               browser.
             </p>
             <div className="flex flex-wrap gap-2">
+              <GitHubConnectForm refresh disabled={!apiReachable} />
               <Button asChild size="sm" className="gap-1.5">
-                <Link to="/dashboard/workflows/new">
+                <Link to="/dashboard/apps/new">
                   Deploy a function
                   <ArrowRight className="h-3.5 w-3.5" />
                 </Link>

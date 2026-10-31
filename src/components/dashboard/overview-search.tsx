@@ -46,8 +46,8 @@ export function OverviewSearch({ workflows }: { workflows: Workflow[] }) {
         icon: GitBranch,
         go: () =>
           void navigate({
-            to: '/dashboard/workflows/$workflowId',
-            params: { workflowId: w.id },
+            to: '/dashboard/apps/$appSlug',
+            params: { appSlug: w.id },
           }),
       })),
       {
@@ -55,7 +55,7 @@ export function OverviewSearch({ workflows }: { workflows: Workflow[] }) {
         label: 'New app',
         group: 'Action',
         icon: Plus,
-        go: () => void navigate({ to: '/dashboard/workflows/new' }),
+        go: () => void navigate({ to: '/dashboard/apps/new' }),
       },
       {
         id: 'templates',

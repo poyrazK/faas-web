@@ -4,14 +4,19 @@ import { Button } from '@/components/ui/button';
 import { issueCSRF } from '@/lib/api/client';
 import { errorMessage } from '@/lib/api/errors';
 
+/** Where Settings sends a connection back to; also what onboarding relies on. */
+const SETTINGS_RETURN = '/dashboard/settings?section=integrations';
+
 export function GitHubConnectForm({
   disabled = false,
+  refresh = false,
   onConnect,
-  returnTo = '/dashboard/settings?section=integrations',
+  returnTo = SETTINGS_RETURN,
 }: {
   disabled?: boolean;
+  refresh?: boolean;
   onConnect?: () => void;
-  /** Where GitHub sends the user back to; apid accepts any `/dashboard/...` path. */
+  /** A `/dashboard/…` path apid returns to after GitHub; others fall back to the account page. */
   returnTo?: string;
 }) {
   const tokenInput = useRef<HTMLInputElement>(null);
@@ -54,13 +59,13 @@ export function GitHubConnectForm({
       <Button
         type="submit"
         size="sm"
-        variant="cta"
+        variant={refresh ? 'outline' : 'cta'}
         className="gap-1.5"
         disabled={disabled}
         busy={pending}
       >
         <Github className="h-3.5 w-3.5" />
-        Connect GitHub
+        {refresh ? 'Refresh GitHub connection' : 'Connect GitHub'}
       </Button>
       {error && (
         <p role="alert" className="max-w-md text-sm text-destructive">

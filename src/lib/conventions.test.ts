@@ -41,4 +41,14 @@ describe('console theming conventions', () => {
     );
     expect(offenders).toEqual([]);
   });
+
+  // A field's label text and its control stack in a column with a gap. A
+  // `block` or bare `text-sm` label lets an inline-block control sit flush
+  // against its text ("Visibility[select]") or directly under it.
+  it('lays labelled fields out as a spaced column', () => {
+    const offenders = [...files, resolve('src/components/ui/confirm.tsx')].filter((f) =>
+      /<label className="(?:block(?: space-y-[0-9.]+)?|text-sm)"/.test(readFileSync(f, 'utf8'))
+    );
+    expect(offenders).toEqual([]);
+  });
 });

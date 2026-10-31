@@ -9,6 +9,7 @@ import {
   type QueryFilters,
   type UseQueryOptions,
 } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import { api, issueCSRF, unwrap } from './client';
 import { ApiError } from './errors';
 import { isDeploymentTerminal } from '../deployment-status';
@@ -101,9 +102,9 @@ type Options<T> = Omit<UseQueryOptions<T, Error>, 'queryKey' | 'queryFn'>;
 
 /** The repos the GitHub App installation can reach — so pickers can list
  * real repos instead of trusting a typed owner/name. */
-export function useInstallRepos(installationId: number | null) {
+export function useInstallRepos(installationId: number | null, accountId?: string) {
   return useQuery({
-    queryKey: ['install', 'repos', installationId],
+    queryKey: ['install', 'repos', accountId, installationId],
     queryFn: () =>
       unwrap(
         api.POST('/v1/install/repos/list', {
@@ -115,24 +116,43 @@ export function useInstallRepos(installationId: number | null) {
   });
 }
 
-type BindRepoInput = { installationId: number; repo: string; branch: string };
+type BindRepoInput = { installationId: number; repo: string; branch?: string };
 
-/** Persist the (account, app, installation, repo, branch) binding. */
-function bindRepo(slug: string, input: BindRepoInput) {
+/**
+ * Persist the (account, app, installation, repo, branch) binding. Leave
+ * `branch` out to let apid use the repository's default branch
+ * (`production_branch` is optional on `install/bind`).
+ */
+async function bindRepo(slug: string, input: BindRepoInput) {
+  const csrf_token = await issueCSRF('bind_app_to_repo');
   return unwrap(
     api.POST('/v1/apps/{slug}/install/bind', {
       params: { path: { slug } },
       body: {
+        csrf_token,
         installation_id: input.installationId,
         repo_full_name: input.repo,
-        production_branch: input.branch,
+        ...(input.branch ? { production_branch: input.branch } : {}),
       },
     })
   );
 }
 
 export function useBindRepo(slug: string) {
-  return useMutation({ mutationFn: (input: BindRepoInput) => bindRepo(slug, input) });
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: BindRepoInput) => bindRepo(slug, input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [...keys.app(slug), 'repo-binding'] }),
+  });
+}
+
+/** The app's current repository binding (cookie session; no credentials). */
+export function useAppRepoBinding(slug: string, options: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: [...keys.app(slug), 'repo-binding'],
+    queryFn: () => unwrap(api.GET('/v1/apps/{slug}/install/bind', { params: { path: { slug } } })),
+    enabled: Boolean(slug) && (options.enabled ?? true),
+  });
 }
 
 /** Slug-in-variables variant for a wizard that creates the app first. */
@@ -292,7 +312,33 @@ export function useSetOverageCap() {
   return useMutation({
     mutationFn: (capCents: number | null) =>
       unwrap(api.POST('/v1/account/overage-cap', { body: { overage_cap_cents: capCents } })),
+    // keys.account prefixes the cap, its history and the forecast.
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.account }),
+  });
+}
+
+/**
+ * Projected charges for the current period, per meter. `available` and
+ * `reason` are per meter; a forecast that cannot be made says why.
+ */
+export function useBillingForecast() {
+  return useQuery({
+    queryKey: [...keys.account, 'billing-forecast'],
+    queryFn: () => unwrap(api.GET('/v1/billing/forecast', {})),
+    retry: retryPolicy,
+    staleTime: 60_000,
+  });
+}
+
+/** Spend cap changes and cap-reached notices, newest first, from the audit log. */
+export function useSpendCapHistory() {
+  return useQuery({
+    queryKey: [...keys.account, 'overage-history'],
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/audit-events', { params: { query: { kind_prefix: 'overage.', limit: 20 } } })
+      ),
+    retry: retryPolicy,
   });
 }
 
@@ -667,13 +713,75 @@ export function useProjectScan() {
     mutationFn: (input: { file: File; slug?: string; branch?: string }) =>
       unwrap(
         api.POST('/v1/projects/scan', {
-          // The typed body is JSON-shaped; the endpoint takes multipart. The
-          // serializer override is openapi-fetch's sanctioned escape hatch.
-          body: undefined as never,
-          bodySerializer: () => projectForm(input),
+          // The generated body is an object shape, but this operation uses
+          // multipart. A real FormData lets fetch set its boundary; undefined
+          // skips serialization entirely in openapi-fetch.
+          body: projectForm(input) as never,
         })
       ),
   });
+}
+
+/** How long the repository/ref pair must hold still before it is scanned. */
+export const SOURCE_REF_SCAN_DEBOUNCE_MS = 600;
+
+/**
+ * Read-only scan of a connected repository at a ref
+ * (`POST /v1/projects/scan/source-ref`), for the new-app wizard's hints.
+ *
+ * Debounced so typing a ref does not fan out a scan per keystroke; keyed by
+ * installation, repo and ref so a pair scanned once is answered from cache
+ * for the session; and the signal is handed to fetch, so a pair the user has
+ * moved away from is aborted rather than left to finish. It is advisory —
+ * nothing waits on it, and it never retries: a failed scan just means no
+ * hint.
+ */
+export function useSourceRefScan({
+  repo,
+  ref,
+  installId,
+  projectSlug,
+  enabled,
+}: {
+  repo: string;
+  ref: string;
+  installId: number | null;
+  projectSlug: string;
+  enabled: boolean;
+}) {
+  const wanted = enabled ? `${installId ?? ''}:${repo}@${ref}` : '';
+  const [settled, setSettled] = useState(wanted);
+  useEffect(() => {
+    if (wanted === settled) return;
+    const timer = setTimeout(() => setSettled(wanted), SOURCE_REF_SCAN_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [wanted, settled]);
+  const ready = enabled && settled === wanted;
+  const query = useQuery({
+    queryKey: ['projects', 'scan', 'source-ref', installId, repo, ref],
+    queryFn: ({ signal }) =>
+      unwrap(
+        api.POST('/v1/projects/scan/source-ref', {
+          body: {
+            repo,
+            ref,
+            project_slug: projectSlug,
+            ...(installId ? { install_id: installId } : {}),
+          },
+          signal,
+        })
+      ),
+    enabled: ready,
+    staleTime: Infinity,
+    gcTime: 30 * 60_000,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  return {
+    plan: enabled ? query.data : undefined,
+    error: enabled && !query.data ? query.error : null,
+    scanning: enabled && !query.data && !query.error && (!ready || query.isFetching),
+  };
 }
 
 /** Apply the plan in one transaction. Echoes the dry-run's plan_token so the
@@ -685,11 +793,12 @@ export function useProjectApply() {
       unwrap(
         api.POST('/v1/projects', {
           params: { query: { plan_token: input.planToken } },
-          body: undefined as never,
-          bodySerializer: () => projectForm(input),
+          body: projectForm(input) as never,
         })
       ),
     onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['projects'] });
+      void qc.invalidateQueries({ queryKey: keys.account });
       void qc.invalidateQueries({ queryKey: keys.apps });
       void qc.invalidateQueries({ queryKey: keys.deployments });
       void qc.invalidateQueries({ queryKey: keys.crons });
@@ -701,18 +810,20 @@ export function useProjectApply() {
  * Apps
  * ------------------------------------------------------------------ */
 
-export function useApps(options?: Options<App[]>) {
+export function useApps(options?: Options<App[]>, accountId?: string) {
   return useQuery({
-    queryKey: keys.apps,
-    queryFn: () => unwrap(api.GET('/v1/apps', {})),
+    queryKey: accountId === undefined ? keys.apps : ['apps', 'account', accountId],
+    queryFn: ({ signal }) => unwrap(api.GET('/v1/apps', { signal })),
     ...options,
+    enabled: (options?.enabled ?? true) && (accountId === undefined || Boolean(accountId)),
   });
 }
 
-export function useApp(slug: string, options?: Options<App>) {
+export function useApp(slug: string, options?: Options<App>, accountId?: string) {
   return useQuery({
-    queryKey: keys.app(slug),
-    queryFn: () => unwrap(api.GET('/v1/apps/{slug}', { params: { path: { slug } } })),
+    queryKey: accountId === undefined ? keys.app(slug) : ['apps', 'account', accountId, slug],
+    queryFn: ({ signal }) =>
+      unwrap(api.GET('/v1/apps/{slug}', { params: { path: { slug } }, signal })),
     enabled: Boolean(slug),
     ...options,
   });
@@ -1156,21 +1267,15 @@ export type RetryStage = components['schemas']['RetryDeploymentRequest']['from_s
  * hand-patched cache is how a console starts lying about state.
  * ------------------------------------------------------------------ */
 
-export function useCreateApp() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: components['schemas']['CreateAppRequest']) =>
-      unwrap(api.POST('/v1/apps', { body })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: keys.apps }),
-  });
-}
-
 export function useDeleteApp() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (slug: string) =>
       unwrap(api.DELETE('/v1/apps/{slug}', { params: { path: { slug } } })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: keys.apps }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.account });
+      void qc.invalidateQueries({ queryKey: keys.apps });
+    },
   });
 }
 
@@ -2330,6 +2435,9 @@ export type OpenAPIDocument =
 export type EdgeRuleSuggestion = components['schemas']['EdgeRuleSuggestion'];
 
 const appOpenAPIKey = (slug: string) => ['apps', slug, 'openapi'] as const;
+const openAPIFilters: QueryFilters = {
+  predicate: (query) => query.queryKey[0] === 'apps' && query.queryKey[2] === 'openapi',
+};
 
 /**
  * `manual_import` is the customer's own document verbatim and 404s with
@@ -2492,11 +2600,11 @@ export function useRetryDelivery(slug: string, id: string) {
  * Edge rules and queues
  * ------------------------------------------------------------------ */
 
-export function useEdgeRules(enabled = true) {
+export function useEdgeRules(enabled = true, accountId?: string) {
   return useQuery({
-    queryKey: ['edge-rules'],
-    queryFn: () => unwrap(api.GET('/v1/edge-rules', {})),
-    enabled,
+    queryKey: accountId === undefined ? ['edge-rules'] : ['edge-rules', 'account', accountId],
+    queryFn: ({ signal }) => unwrap(api.GET('/v1/edge-rules', { signal })),
+    enabled: enabled && (accountId === undefined || Boolean(accountId)),
   });
 }
 
@@ -2514,7 +2622,8 @@ export function useDeleteEdgeRule() {
     onMutate: (id) =>
       applyOptimistic<EdgeRule[]>(qc, edgeRuleFilters, (old) => old.filter((r) => r.id !== id)),
     onError: (_err, _id, rollback) => rollback?.(),
-    onSettled: () => qc.invalidateQueries(edgeRuleFilters),
+    onSettled: () =>
+      Promise.all([qc.invalidateQueries(edgeRuleFilters), qc.invalidateQueries(openAPIFilters)]),
   });
 }
 
@@ -2713,11 +2822,18 @@ export function useBillingPortal() {
  * bill immediately, so callers must confirm before invoking it — a 402 here
  * means payment is required and carries a link to the provider's checkout.
  */
+/**
+ * A 202 means the provider accepted a deferred change: the account keeps its
+ * current plan until the provider's webhook confirms the new one.
+ */
 export function useChangePlan() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (plan: components['schemas']['ChangePlanRequest']['plan']) =>
-      unwrap(api.PATCH('/v1/account/plan', { body: { plan } })),
+    mutationFn: async (plan: components['schemas']['ChangePlanRequest']['plan']) => {
+      const result = await api.PATCH('/v1/account/plan', { body: { plan } });
+      const account = await unwrap(Promise.resolve(result));
+      return { account, pending: result.response.status === 202 };
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.account }),
   });
 }
@@ -2733,10 +2849,11 @@ export function useAccountSlo(window: AppSLOWindow = '24h') {
  * Organisations
  * ------------------------------------------------------------------ */
 
-export function useOrgs() {
+export function useOrgs(options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ['orgs'],
     queryFn: () => unwrap(api.GET('/v1/orgs', {})),
+    enabled: options.enabled ?? true,
   });
 }
 
@@ -2868,10 +2985,12 @@ export function useUpdateAlert(slug: string) {
 export function useRotateAlertSecret(slug: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
+    // The caller supplies the replacement; apid seals it and never returns it.
+    mutationFn: ({ id, webhookSecret }: { id: string; webhookSecret: string }) =>
       unwrap(
         api.POST('/v1/apps/{slug}/alerts/{id}/rotate-secret', {
           params: { path: { slug, id } },
+          body: { webhook_secret: webhookSecret },
         })
       ),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.appAlerts(slug) }),
@@ -2913,10 +3032,12 @@ export function useDeleteWebhook(slug: string) {
 export function useRotateWebhookSecret(slug: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
+    // The caller supplies the replacement; apid seals it and never returns it.
+    mutationFn: ({ id, webhookSecret }: { id: string; webhookSecret: string }) =>
       unwrap(
         api.POST('/v1/apps/{slug}/webhooks/{id}/rotate-secret', {
           params: { path: { slug, id } },
+          body: { webhook_secret: webhookSecret },
         })
       ),
     onSuccess: () => qc.invalidateQueries({ queryKey: webhookKey(slug) }),
@@ -2988,10 +3109,11 @@ export function useRemoveMember(org: string) {
 export function useRevokeInvitation(org: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (token: string) =>
+    // Revoked by the list's invitation id; the one-time token is never stored.
+    mutationFn: (invitationId: string) =>
       unwrap(
-        api.DELETE('/v1/orgs/{slug}/invitations/{token}', {
-          params: { path: { slug: org, token } },
+        api.DELETE('/v1/orgs/{slug}/invitations/{invitation_id}', {
+          params: { path: { slug: org, invitation_id: invitationId } },
         })
       ),
     onSuccess: () => qc.invalidateQueries({ queryKey: orgKey(org, 'invitations') }),
@@ -3012,6 +3134,38 @@ export function useDeployFromRefFor() {
     }: { slug: string } & components['schemas']['SourceRefDeployRequest']) =>
       unwrap(
         api.POST('/v1/apps/{slug}/deployments/source-ref', { params: { path: { slug } }, body })
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.apps });
+      void qc.invalidateQueries({ queryKey: keys.deployments });
+    },
+  });
+}
+
+/**
+ * A function's first deploy from source the console packed itself: the
+ * handler someone wrote or dropped in New app. apid reads `kind`, `runtime`
+ * and `handler` from the multipart form (pkg/apid/apidserver/deploy_inputs.go);
+ * `handler.handler` keeps the runtime's default handler file
+ * (pkg/api/function_handler.go), which is the file the archive carries.
+ */
+export function useDeployFunctionSourceFor() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { slug: string; archive: Blob; runtime: string }) =>
+      unwrap(
+        api.POST('/v1/apps/{slug}/deployments', {
+          params: { path: { slug: input.slug } },
+          body: input as never,
+          bodySerializer: () => {
+            const form = new FormData();
+            form.append('source', input.archive, 'source.tar.gz');
+            form.append('kind', 'function');
+            form.append('runtime', input.runtime);
+            form.append('handler', 'handler.handler');
+            return form;
+          },
+        })
       ),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.apps });
@@ -3052,11 +3206,15 @@ export type EdgeRule = components['schemas']['EdgeRuleResponse'];
 export type EdgeRuleKind = EdgeRule['kind'];
 export type EdgeRuleAction = EdgeRule['action'];
 
-export function useAppEdgeRules(slug: string) {
+export function useAppEdgeRules(slug: string, accountId?: string) {
   return useQuery({
-    queryKey: ['apps', slug, 'edge-rules'],
-    queryFn: () => unwrap(api.GET('/v1/apps/{slug}/edge-rules', { params: { path: { slug } } })),
-    enabled: Boolean(slug),
+    queryKey:
+      accountId === undefined
+        ? ['apps', slug, 'edge-rules']
+        : ['apps', slug, 'edge-rules', 'account', accountId],
+    queryFn: ({ signal }) =>
+      unwrap(api.GET('/v1/apps/{slug}/edge-rules', { params: { path: { slug } }, signal })),
+    enabled: Boolean(slug) && (accountId === undefined || Boolean(accountId)),
   });
 }
 
@@ -3071,6 +3229,7 @@ export function useCreateEdgeRule() {
     onSuccess: (_rule, { slug }) => {
       void qc.invalidateQueries({ queryKey: ['edge-rules'] });
       void qc.invalidateQueries({ queryKey: ['apps', slug, 'edge-rules'] });
+      void qc.invalidateQueries({ queryKey: appOpenAPIKey(slug) });
     },
   });
 }
@@ -3090,7 +3249,8 @@ export function useUpdateEdgeRule() {
         old.map((r) => (r.id === id ? ({ ...r, ...patch } as EdgeRule) : r))
       ),
     onError: (_err, _vars, rollback) => rollback?.(),
-    onSettled: () => qc.invalidateQueries(edgeRuleFilters),
+    onSettled: () =>
+      Promise.all([qc.invalidateQueries(edgeRuleFilters), qc.invalidateQueries(openAPIFilters)]),
   });
 }
 
@@ -3230,6 +3390,66 @@ export function useAppAnalytics(slug: string, since: string, groupBy: AnalyticsG
   });
 }
 
+/** apid's current health assessment: status, checks, capacity, request signal. */
+export function useAppHealth(slug: string) {
+  return useQuery({
+    queryKey: ['apps', slug, 'health'],
+    queryFn: ({ signal }) =>
+      unwrap(api.GET('/v1/apps/{slug}/health', { params: { path: { slug } }, signal })),
+    enabled: Boolean(slug),
+    retry: retryPolicy,
+    refetchInterval: 30_000,
+  });
+}
+
+/** Recorded health changes and evidence gaps, newest first. */
+export function useAppHealthHistory(slug: string) {
+  return useQuery({
+    queryKey: ['apps', slug, 'health', 'history'],
+    queryFn: ({ signal }) =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/health/history', {
+          params: { path: { slug }, query: { limit: 10 } },
+          signal,
+        })
+      ),
+    enabled: Boolean(slug),
+    retry: retryPolicy,
+  });
+}
+
+/** Which routes keep a scale-to-zero app awake, and what each costs in GB-hours. */
+export function useRouteAwake(slug: string, since: string) {
+  return useQuery({
+    queryKey: ['apps', slug, 'routes', 'awake', since],
+    queryFn: ({ signal }) =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/routes/awake', {
+          params: { path: { slug }, query: { since } },
+          signal,
+        })
+      ),
+    enabled: Boolean(slug),
+    retry: retryPolicy,
+  });
+}
+
+/** Latency and errors per downstream dependency, against a baseline window. */
+export function useDependencyLatency(slug: string, since: string) {
+  return useQuery({
+    queryKey: ['apps', slug, 'debug', 'dependencies', since],
+    queryFn: ({ signal }) =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/debug/dependencies', {
+          params: { path: { slug }, query: { since } },
+          signal,
+        })
+      ),
+    enabled: Boolean(slug),
+    retry: retryPolicy,
+  });
+}
+
 /** Hourly buckets, zero-filled by the API — a real series, so a line is honest. */
 export function useAppAnalyticsTimeseries(
   slug: string,
@@ -3290,15 +3510,36 @@ export function useDebugRequestEvidence(slug: string, reqId: string) {
   });
 }
 
-/** Purge the edge response cache, optionally under one path glob. */
+/** Request an all, path, or tag purge. The API accepts one selector at most. */
 export function usePurgeAppCache(slug: string) {
   return useMutation({
-    mutationFn: (path?: string) =>
+    mutationFn: (selection: { path?: string; tag?: string }) =>
       unwrap(
         api.DELETE('/v1/apps/{slug}/cache', {
-          params: { path: { slug }, query: path ? { path } : {} },
+          params: { path: { slug }, query: selection },
         })
       ),
+  });
+}
+
+/**
+ * Replace every live instance without capturing process memory, so new and
+ * changed environment variables and secrets apply now (`fresh=true`). A plain
+ * restart snapshots memory and would keep the previous environment.
+ */
+export function useFreshRestart(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      unwrap(
+        api.POST('/v1/apps/{slug}/restart', {
+          params: { path: { slug }, query: { fresh: true } },
+        })
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.app(slug) });
+      void qc.invalidateQueries({ queryKey: ['apps', slug, 'wake-timeline'] });
+    },
   });
 }
 
@@ -3314,13 +3555,25 @@ export function useRestartApp(slug: string) {
   });
 }
 
-/** Undo a delete inside the grace window. */
+/**
+ * Undo a delete inside the grace window, by slug. Only `id`, `slug` and
+ * `status` are kept from the response, so nothing secret-bearing lingers in
+ * the mutation cache.
+ */
 export function useRestoreApp() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (slug: string) =>
-      unwrap(api.POST('/v1/apps/{slug}/restore', { params: { path: { slug } } })),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.apps }),
+    retry: false,
+    mutationFn: async (slug: string) => {
+      const app = await unwrap(api.POST('/v1/apps/{slug}/restore', { params: { path: { slug } } }));
+      return { id: app.id, slug: app.slug, status: app.status };
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.apps });
+      void qc.invalidateQueries({ queryKey: keys.deployments });
+      void qc.invalidateQueries({ queryKey: ['projects'] });
+      void qc.invalidateQueries({ queryKey: keys.account });
+    },
   });
 }
 

@@ -98,7 +98,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
         }
       >
         {pending?.typeToConfirm && (
-          <label className="block">
+          <label className="flex flex-col gap-1.5">
             <span className="text-xs text-muted-foreground">
               Type <span className="font-mono text-foreground">{pending.typeToConfirm}</span> to
               confirm

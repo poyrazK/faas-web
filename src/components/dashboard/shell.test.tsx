@@ -68,7 +68,10 @@ describe('DashboardShell', () => {
 
     expect(screen.getByRole('link', { name: 'New app' })).toHaveAttribute(
       'href',
-      '/dashboard/workflows/new'
+      '/dashboard/apps/new'
     );
+    const attention = screen.getByRole('button', { name: 'Needs Attention' });
+    expect(attention.nextElementSibling).toBe(screen.getByRole('link', { name: 'New app' }));
+    expect(attention).toHaveAttribute('aria-haspopup', 'dialog');
   });
 });

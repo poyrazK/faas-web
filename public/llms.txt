@@ -36,7 +36,6 @@ Key facts:
   `gregale` command-line tool.
 - [Node runtime](https://gregale.dev/docs/runtime-node): Node 24 specifics.
 - [Python runtime](https://gregale.dev/docs/runtime-python): Python 3.13 specifics.
-- [Go runtime](https://gregale.dev/docs/runtime-go): Go 1.24 specifics.
 - [Preview environments](https://gregale.dev/docs/preview-environments):
   per-pull-request deployments.
 - [Storage](https://gregale.dev/docs/storage): persistent volumes and object

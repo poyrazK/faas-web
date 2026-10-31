@@ -13,8 +13,8 @@ remain supported; native customer S3 keys are not part of the preview.
 Scale-to-zero economics is the load-bearing reason: an instance
 that holds state would either need to stay warm forever (defeats
 the model) or write state somewhere that survives a wake/park
-cycle (adds a write-amplification layer we can't afford on a
-one-box build). MicroVMs are fungible — every wake boots from the
+cycle (adds a write-amplification layer that would undermine the
+platform's isolation and scale-to-zero economics). MicroVMs are fungible — every wake boots from the
 same snapshot, every park destroys local state — and snapshot
 reuse only works because instances are interchangeable. Local
 filesystem state is ephemeral by design; every wake is a fresh
@@ -26,9 +26,18 @@ Each app's main `drive1` is a writable ext4 upper layer. Its capacity is
 bounded by the plan's ephemeral disk ceiling, exposed as
 `ephemeral_disk_max_mb` in account and app effective-limit responses. The
 legacy `app_layer_max_mb` field remains for compatibility; both names refer to
-the same physical cap. Image builds enforce the ceiling before a snapshot is
-created, so a deployment cannot boot with a larger writable app layer than the
-plan allows.
+the same physical cap. The value is total filesystem capacity, including the
+application files and ext4 metadata; free scratch space is therefore the plan
+capacity minus deployed content and filesystem overhead. Image builds enforce
+the ceiling and provision that full logical capacity before a snapshot is
+created. Unused blocks remain sparse on local SSDs and compressed in the remote
+registry, so logical capacity does not consume an equal amount of physical
+storage or network transfer.
+
+Writes to `drive1` are rate limited per plan (ADR-910): 50 MB/s and 2,000
+operations/s on Free, 100 MB/s and 4,000/s on Hobby, 200 MB/s and 8,000/s on
+Pro and Scale, each after a one-time burst of 256 MiB and 20,000 operations.
+The limit keeps one app's disk flood from slowing its neighbours.
 
 `/tmp` is a separate tmpfs and is also lost when the instance parks. Sidecar
 drives are read-only. Gregale does not attach durable customer volumes, and
@@ -46,7 +55,7 @@ the rest. Tarballs with `VOLUME` directives or top-level
 
 The platform doesn't ship a managed-storage product; it integrates
 with the providers customers already use. Pick the category that
-matches the workload, plug in the URL, and `faas secrets set` the
+matches the workload, plug in the URL, and `gregale secrets set` the
 env vars the runtime injects at wake.
 
 | Category        | Provider                              | Env vars |
@@ -68,7 +77,7 @@ env vars the runtime injects at wake.
 
 ## Wiring it up
 
-`faas secrets set` writes the value to sealed secrets at rest; at
+`gregale secrets set` writes the value to sealed secrets at rest; at
 wake time the runner injects every secret as a plain environment
 variable inside the guest. No SDK lock-in, no special API surface,
 no extra headers — `process.env.DATABASE_URL` is what your code
@@ -77,16 +86,16 @@ reads.
 For a new app, use `gregale deploy --secrets-file <path>` (or
 `gregale init --deploy --secrets-file <path>` for a template). Gregale
 creates the app, seals the bundle, and starts the first deployment in
-that order; run `faas secrets set` only after the app exists.
+that order; run `gregale secrets set` only after the app exists.
 
 For a monorepo project, the same bundle can be applied in one command with
 `gregale deploy --project --secrets-file <path>`. Gregale seals the values
 through the existing per-app secret path for every workload selected by the
-project plan; use `faas secrets set` afterward when one workload needs an
+project plan; use `gregale secrets set` afterward when one workload needs an
 override.
 
 ```sh
-faas secrets set --app <slug> DATABASE_URL='postgres://user:pass@host/db?sslmode=require'
+gregale secrets set --app <slug> DATABASE_URL='postgres://user:pass@host/db?sslmode=require'
 ```
 
 ## Don't
@@ -111,7 +120,7 @@ state will continue to run — the audit row is the operator's only
 signal that the data will not survive the next park.
 
 - **Querying the audit log:**
-  `faas audit-events --kind-prefix=stateless.advisory` lists
+  `gregale audit-events --kind-prefix=stateless.advisory` lists
   recent batches. The dashboard's app-detail page links to the
   same view at `/dashboard/audit-events?kind_prefix=
   stateless.advisory&app_id={uuid}`. The HTTP API is
@@ -121,11 +130,11 @@ signal that the data will not survive the next park.
   (`{app_id, instance, n, sample_path}`) on
   `GET /v1/events`. Operators see a frame within ~2s of the
   guest write. Toggle on the CLI with
-  `faas tail --include-stateless`.
+  `gregale tail --include-stateless`.
 - **Anonymous rows:** if the app row was deleted between wake and
   advisory, the row lands with `subject=NULL`. Pass
   `?include_anonymous=true` on the HTTP query, or
-  `--include-anonymous` on `faas audit-events`, to surface
+  `--include-anonymous` on `gregale audit-events`, to surface
   those rows.
 - **Noise:** a noisy app that writes `/data` on every request
   produces one advisory row per second. ADR-035's "audit rows
@@ -134,20 +143,20 @@ signal that the data will not survive the next park.
 
 ## Templates
 
-`faas init` scaffolds a working project that uses the right
+`gregale init` scaffolds a working project that uses the right
 provider. Each template fails clearly at startup (or in the first
 invocation, for function handlers) if the secrets aren't set.
 
-- `faas init --template=s3-uploader` — port-8080 Node app, multipart
+- `gregale init --template=s3-uploader` — port-8080 Node app, multipart
   upload to S3 / R2 / B2.
-- `faas init --template=slack-bot` — port-8080 Node app, Slack
+- `gregale init --template=slack-bot` — port-8080 Node app, Slack
   Events with HMAC-SHA256 signature verification.
-- `faas init --template=rest-api-postgres` — port-8080 Node app,
+- `gregale init --template=rest-api-postgres` — port-8080 Node app,
   Express + `pg` against a managed PostgreSQL.
-- `faas init --template=cron-worker` — exported handler for Upstash
+- `gregale init --template=cron-worker` — exported handler for Upstash
   QStash invocations, with a Redis-backed progress counter.
 
-See `faas init --help` for the full flag surface and the
+See `gregale init --help` for the full flag surface and the
 `--deploy` chain (materialize + deploy in one command).
 
 ## Data placement (ADR-098 / PR-A, inert)

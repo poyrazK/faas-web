@@ -21,6 +21,7 @@ const bucketList = (names: string[]) =>
       scope: 'default',
       region: 'eu',
       state: 'ready' as const,
+      public: false,
       created_at: '',
     })),
     enabled: true,
@@ -41,6 +42,7 @@ const topo = () =>
       {
         id: 'c1',
         app_id: 'id-billing',
+        kind: 'http',
         schedule: '0 2 * * *',
         path: '/',
         enabled: true,

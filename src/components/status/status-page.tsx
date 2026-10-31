@@ -19,6 +19,12 @@ const stateLabels: Record<PublicStatusState, string> = {
   unknown: 'Unknown',
 };
 
+/** A day before the public launch had nothing to measure — not unknown, not an outage. */
+const dayLabels: Record<PublicStatusDaily['status'], string> = {
+  ...stateLabels,
+  pre_release: 'Before launch',
+};
+
 const overallLabels: Record<PublicStatusState, string> = {
   operational: 'All systems operational',
   maintenance: 'Maintenance in progress',
@@ -250,7 +256,7 @@ function CapabilityRow({ component }: { component: PublicStatusComponent }) {
 
 function DayBar({ day }: { day: PublicStatusDaily }) {
   const uptime = day.uptime_pct === null ? 'No data' : `${day.uptime_pct.toFixed(3)}% uptime`;
-  const label = `${day.date}: ${stateLabels[day.status]}. ${uptime}. ${day.coverage_pct.toFixed(0)}% telemetry coverage.`;
+  const label = `${day.date}: ${dayLabels[day.status]}. ${uptime}. ${day.coverage_pct.toFixed(0)}% telemetry coverage.`;
   return (
     <span
       className={`status-day status-day--${day.status}`}

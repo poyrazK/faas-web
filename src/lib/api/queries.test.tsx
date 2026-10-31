@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { File as NodeFile } from 'node:buffer';
 
 function response() {
   return new Response(JSON.stringify({}), {
@@ -49,6 +50,154 @@ afterEach(() => {
 });
 
 describe('analytics query contracts', () => {
+  it('fetches a fresh action-bound CSRF token before binding the first Git deployment', async () => {
+    const fetchMock = vi.fn(async (request: Request) => {
+      const url = new URL(request.url);
+      if (url.pathname === '/v1/auth/csrf') {
+        expect(url.searchParams.get('action')).toBe('bind_app_to_repo');
+        return new Response(JSON.stringify({ csrf_token: 'bind-proof' }), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      expect(request.method).toBe('POST');
+      expect(url.pathname).toBe('/v1/apps/imgpipe-gateway/install/bind');
+      expect(await request.json()).toMatchObject({
+        installation_id: 42,
+        repo_full_name: 'poyrazK/imgpipe',
+        production_branch: 'master',
+        csrf_token: 'bind-proof',
+      });
+      return response();
+    });
+    stubApiFetch(fetchMock);
+    const { useBindRepoFor } = await import('./queries');
+    const hook = renderHook(() => useBindRepoFor(), { wrapper: queryWrapper(new QueryClient()) });
+    await act(async () => {
+      await hook.result.current.mutateAsync({
+        slug: 'imgpipe-gateway',
+        installationId: 42,
+        repo: 'poyrazK/imgpipe',
+        branch: 'master',
+      });
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('leaves production_branch out of the bind body when no branch is given', async () => {
+    const fetchMock = vi.fn(async (request: Request) => {
+      const url = new URL(request.url);
+      if (url.pathname === '/v1/auth/csrf') {
+        return new Response(JSON.stringify({ csrf_token: 'bind-proof' }), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      const body = await request.json();
+      expect(body).toEqual({
+        installation_id: 42,
+        repo_full_name: 'poyrazK/imgpipe',
+        csrf_token: 'bind-proof',
+      });
+      expect(body).not.toHaveProperty('production_branch');
+      return response();
+    });
+    stubApiFetch(fetchMock);
+    const { useBindRepo } = await import('./queries');
+    const hook = renderHook(() => useBindRepo('imgpipe-gateway'), {
+      wrapper: queryWrapper(new QueryClient()),
+    });
+    await act(async () => {
+      await hook.result.current.mutateAsync({ installationId: 42, repo: 'poyrazK/imgpipe' });
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('restarts an app with fresh=true so new secrets apply', async () => {
+    const fetchMock = vi.fn(async (request: Request) => {
+      const url = urlOf(request);
+      expect(request.method).toBe('POST');
+      expect(url.pathname).toBe('/v1/apps/imgpipe-gateway/restart');
+      expect(url.searchParams.get('fresh')).toBe('true');
+      return new Response(JSON.stringify({ wake_id: 'w1' }), {
+        status: 202,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+    stubApiFetch(fetchMock);
+    const { useFreshRestart } = await import('./queries');
+    const hook = renderHook(() => useFreshRestart('imgpipe-gateway'), {
+      wrapper: queryWrapper(new QueryClient()),
+    });
+    await act(async () => {
+      await hook.result.current.mutateAsync();
+    });
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it('does not submit a repository binding when CSRF issuance fails', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ code: 'capacity', title: 'Could not issue CSRF token', status: 503 }),
+          { status: 503, headers: { 'Content-Type': 'application/problem+json' } }
+        )
+      );
+    stubApiFetch(fetchMock);
+    const { useBindRepoFor } = await import('./queries');
+    const hook = renderHook(() => useBindRepoFor(), { wrapper: queryWrapper(new QueryClient()) });
+    await act(async () => {
+      await expect(
+        hook.result.current.mutateAsync({
+          slug: 'imgpipe-gateway',
+          installationId: 42,
+          repo: 'poyrazK/imgpipe',
+          branch: 'master',
+        })
+      ).rejects.toMatchObject({ code: 'capacity' });
+    });
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+  it.each(['scan', 'apply'])('sends a real multipart source for project %s', async (kind) => {
+    // Match Node's real Request encoder rather than mixing jsdom FormData
+    // with Node File (which jsdom otherwise converts to a string).
+    const nativeForm = await new Response('', {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    }).formData();
+    vi.stubGlobal('FormData', nativeForm.constructor);
+    vi.stubGlobal('File', NodeFile);
+    const fetchMock = vi.fn().mockResolvedValue(response());
+    stubApiFetch(fetchMock);
+    const { useProjectScan, useProjectApply } = await import('./queries');
+    const client = new QueryClient();
+    const hook = renderHook(
+      () => {
+        const scan = useProjectScan();
+        const apply = useProjectApply();
+        return kind === 'scan' ? scan : apply;
+      },
+      { wrapper: queryWrapper(client) }
+    );
+    const file = new NodeFile(['archive-bytes'], 'repo.tar.gz', {
+      type: 'application/gzip',
+    }) as unknown as File;
+    await act(async () => {
+      await hook.result.current.mutateAsync({
+        file,
+        slug: 'shop',
+        branch: 'main',
+        planToken: 'token',
+      });
+    });
+    await waitFor(() => expect(hook.result.current.isSuccess).toBe(true));
+    const request = fetchMock.mock.calls[0][0] as Request;
+    expect(request.headers.get('content-type')).toEqual(
+      expect.stringMatching(/^multipart\/form-data; boundary=/)
+    );
+    const body = await request.formData();
+    expect(body.get('project_slug')).toBe('shop');
+    expect(body.get('production_branch')).toBe('main');
+    expect(await (body.get('source') as Blob).text()).toBe('archive-bytes');
+  });
   it('defaults account SLO requests and cache identity to 24h', async () => {
     const fetchMock = vi.fn().mockResolvedValue(response());
     stubApiFetch(fetchMock);
