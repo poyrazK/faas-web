@@ -11,6 +11,8 @@ import { consoleHead } from '@/lib/seo';
 import { FocusExport } from '@/components/dashboard/focus-export';
 import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
 import { orgBillingMessage } from '@/components/dashboard/org-billing';
+import { InvoiceSource } from '@/components/dashboard/invoice-source';
+import { BillingIdentityPanel } from '@/components/dashboard/billing-identity';
 
 export const Route = createFileRoute('/dashboard/invoices')({
   component: InvoicesPage,
@@ -169,6 +171,7 @@ function InvoicesBody() {
           )
         }
       />
+      <InvoiceSource org={org} />
       {org && listError instanceof ApiError && listError.code === 'org_role_forbidden' ? (
         <p role="status" className="text-sm text-muted-foreground">
           {orgBillingMessage(listError, label, 'invoices')}
@@ -215,8 +218,10 @@ function InvoicesBody() {
           </Button>
         </div>
       )}
-      {/* The FOCUS export covers the signed-in account's own costs. */}
+      {/* The FOCUS export and the billing identity are the signed-in account's own
+          (faas handlers_billing_identity.go:62 writes acct.ID; no org variant). */}
       {!org && <FocusExport />}
+      {!org && <BillingIdentityPanel />}
     </div>
   );
 }
