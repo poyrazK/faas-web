@@ -52,75 +52,15 @@ beforeEach(() => {
   useDomains.mockReset().mockReturnValue(ready([]));
 });
 
-describe('domains page CLI commands', () => {
-  it('gives a set-default command for each verified domain that is not yet the default', () => {
+describe('domains page', () => {
+  // The detail dialog sets a domain as its app's default (POST
+  // /v1/domains/{domain}/default), so the page no longer sends people to the CLI.
+  it('no longer points verified domains at the CLI to become the default', () => {
     useDomains.mockReturnValue(
       ready([domain('b.example.com', true), domain('a.example.com', true)])
     );
     render(<DomainsPage />);
-
-    expect(screen.getByText('gregale domains set-default a.example.com')).toBeInTheDocument();
-    expect(screen.getByText('gregale domains set-default b.example.com')).toBeInTheDocument();
-    expect(screen.getByText(/Make a\.example\.com the default domain for api/)).toBeInTheDocument();
-  });
-
-  it('names each set-default copy button after its domain, as a noun', () => {
-    useDomains.mockReturnValue(
-      ready([domain('b.example.com', true), domain('a.example.com', true)])
-    );
-    render(<DomainsPage />);
-
-    expect(
-      screen.getByRole('button', { name: 'Copy: set-default command for a.example.com' })
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Copy: set-default command for b.example.com' })
-    ).toBeInTheDocument();
-  });
-
-  it('does not offer a domain that is already its app default', () => {
-    useDomains.mockReturnValue(
-      ready([
-        domain('a.example.com', true),
-        domain('b.example.com', true, { default: true }),
-        domain('c.example.com', true),
-      ])
-    );
-    render(<DomainsPage />);
-
-    expect(screen.getByText('gregale domains set-default a.example.com')).toBeInTheDocument();
-    expect(screen.getByText('gregale domains set-default c.example.com')).toBeInTheDocument();
-    expect(screen.queryByText('gregale domains set-default b.example.com')).not.toBeInTheDocument();
-  });
-
-  it('offers a command for every app that has a candidate, not only the first', () => {
-    useDomains.mockReturnValue(
-      ready([domain('a.example.com', true), domain('shop.example.com', true, { app_id: 'app-2' })])
-    );
-    render(<DomainsPage />);
-
-    expect(screen.getByText(/the default domain for api/)).toBeInTheDocument();
-    expect(screen.getByText(/the default domain for web/)).toBeInTheDocument();
-    expect(screen.getByText('gregale domains set-default shop.example.com')).toBeInTheDocument();
-  });
-
-  it('shows nothing when every verified domain is already its app default', () => {
-    useDomains.mockReturnValue(
-      ready([
-        domain('a.example.com', true, { default: true }),
-        domain('shop.example.com', true, { app_id: 'app-2', default: true }),
-      ])
-    );
-    render(<DomainsPage />);
-
-    expect(screen.queryByText(/gregale domains set-default/)).not.toBeInTheDocument();
     expect(screen.queryByText('Set a default domain')).not.toBeInTheDocument();
-  });
-
-  it('offers no set-default command while no domain is verified', () => {
-    useDomains.mockReturnValue(ready([domain('pending.example.com', false)]));
-    render(<DomainsPage />);
-
     expect(screen.queryByText(/gregale domains set-default/)).not.toBeInTheDocument();
   });
 });

@@ -486,7 +486,7 @@ export const LEDGER: LedgerEntry[] = [
     name: 'Custom domains with managed TLS, wildcard domains (Pro+), domain doctor',
     status: 'partial',
     surfaces: ['/dashboard/domains'],
-    gap: 'Domain detail and default (open PRs #206, #208)',
+    gap: 'Wildcard and environment-bound domains cannot be added from the form',
     wave: 1,
   },
   // D64 · GA
@@ -509,7 +509,7 @@ export const LEDGER: LedgerEntry[] = [
     name: 'Service bindings, verification and probes',
     status: 'partial',
     surfaces: ['/dashboard/apps/$appSlug?tab=Services'],
-    gap: 'Verification runs, release policy, queue canaries',
+    gap: 'bindings_check_failed in the promote UI, runs status filter, project-wide graph runs, editing service targets',
     wave: 1,
   },
   // D67 · beta

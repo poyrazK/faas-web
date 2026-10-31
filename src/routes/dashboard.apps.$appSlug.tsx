@@ -68,6 +68,9 @@ import { LogDrainsBody } from '@/components/dashboard/log-drains';
 import { IssuesBody } from '@/components/dashboard/issues-body';
 import { ServiceBindings } from '@/components/dashboard/service-bindings';
 import { AppOutboundBindings } from '@/components/dashboard/outbound/app-outbound-bindings';
+import { BindingReleasePolicy } from '@/components/dashboard/binding-release-policy';
+import { BindingVerificationRuns } from '@/components/dashboard/binding-verification-runs';
+import { QueueCanaries } from '@/components/dashboard/queue-canaries';
 import { McpGuidance } from '@/components/dashboard/mcp-guidance';
 import { validateIssueSearch, type IssueSearch } from '@/components/dashboard/issues-search';
 import { AppConfiguration } from '@/components/dashboard/app-configuration';
@@ -713,7 +716,14 @@ function FunctionDetailPage() {
               {tab === 'Queues' && <QueuesBody slug={fn.id} />}
               {tab === 'Upstreams' && <UpstreamsBody slug={fn.id} />}
               {tab === 'Outbound' && <AppOutboundBindings slug={fn.id} />}
-              {tab === 'Services' && <ServiceBindings slug={fn.id} />}
+              {tab === 'Services' && (
+                <div className="space-y-5">
+                  <ServiceBindings slug={fn.id} />
+                  <BindingReleasePolicy slug={fn.id} />
+                  <BindingVerificationRuns slug={fn.id} />
+                  <QueueCanaries slug={fn.id} />
+                </div>
+              )}
               {tab === 'MCP' && <McpGuidance key={appSlug} slug={appSlug} />}
               {tab === 'Alerts' && <AlertsBody slug={fn.id} />}
               {tab === 'Webhooks' && (
