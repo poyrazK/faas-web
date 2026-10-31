@@ -8,7 +8,10 @@ import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-
 import { useToast } from '@/components/ui/toast';
 import { Modal } from '@/components/ui/modal';
 import { useConfirm } from '@/components/ui/confirm';
-import { useAppSecrets, useDeleteSecret, useSetSecret, useRotateSecret } from '@/lib/api/queries';
+import { useAppSecrets, useSetSecret, useRotateSecret } from '@/lib/api/queries';
+import { useRevokeSecret, type SecretRevocation } from '@/lib/api/secret-references';
+import { SecretReferences } from '@/components/dashboard/secret-references';
+import { SecretRevocationStatus } from '@/components/dashboard/secret-revocation-status';
 import { errorMessage } from '@/lib/api/errors';
 import { EnvImportButton } from '@/components/dashboard/env-import';
 import { FieldError } from '@/components/ui/field';
@@ -59,7 +62,9 @@ export function SecretsBody({ slug }: { slug: string }) {
   const confirm = useConfirm();
   const { data, isPending, error, refetch } = useAppSecrets(slug);
   const setSecret = useSetSecret(slug);
-  const deleteSecret = useDeleteSecret(slug);
+  const deleteSecret = useRevokeSecret(slug);
+  // The receipt of the last delete: which running instances still hold it.
+  const [revocation, setRevocation] = useState<SecretRevocation | null>(null);
   const rotate = useRotateSecret(slug);
   const [rotating, setRotating] = useState<string | null>(null);
   const [rotateValue, setRotateValue] = useState('');
@@ -117,7 +122,7 @@ export function SecretsBody({ slug }: { slug: string }) {
               !(await confirm({
                 title: `Delete ${s.key}?`,
                 description:
-                  'Sealed values cannot be recovered. The next boot of this app starts without it.',
+                  'Sealed values cannot be recovered. The next boot of this app starts without it; running instances that cannot reload secrets keep it in memory until they restart.',
                 confirmLabel: 'Delete secret',
                 destructive: true,
               }))
@@ -125,7 +130,10 @@ export function SecretsBody({ slug }: { slug: string }) {
               return;
             void deleteSecret
               .mutateAsync(s.key)
-              .then(() => toast({ kind: 'success', title: `Deleted ${s.key}` }))
+              .then((receipt) => {
+                if (receipt) setRevocation(receipt);
+                toast({ kind: 'success', title: `Deleted ${s.key}` });
+              })
               .catch((err: unknown) =>
                 toast({ kind: 'error', title: 'Could not delete', description: errorMessage(err) })
               );
@@ -208,6 +216,15 @@ export function SecretsBody({ slug }: { slug: string }) {
         </form>
       </Panel>
 
+      {revocation && (
+        <SecretRevocationStatus
+          key={revocation.id}
+          slug={slug}
+          revocation={revocation}
+          onDismiss={() => setRevocation(null)}
+        />
+      )}
+
       <ResourceTable
         rows={rows}
         columns={columns}
@@ -284,6 +301,8 @@ export function SecretsBody({ slug }: { slug: string }) {
           className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-brand"
         />
       </Modal>
+
+      <SecretReferences slug={slug} />
     </div>
   );
 }

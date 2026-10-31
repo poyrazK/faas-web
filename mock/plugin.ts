@@ -13,6 +13,15 @@ import { isDigestPinnedImage } from '../src/lib/oci-image';
 import { advancePolicy, mockRuntimePolicy } from './runtime-policy';
 import { projects, projectSummaries } from './projects';
 import {
+  readReferences,
+  readRevocation,
+  recordRevocation,
+  removeReference,
+  scopedSecrets,
+  writeReference,
+  type Result,
+} from './secret-references';
+import {
   mockPromotionPreview,
   mockPromotionHistory,
   mockPromotionReceipt,
@@ -876,8 +885,11 @@ route('GET', '/v1/apps/{slug}/routes', ({ params }) => db.routesFor(app(params.s
 // Per-app config
 const listOf = <T>(map: Map<string, T[]>, slug: string) => map.get(app(slug).slug) ?? [];
 
-route('GET', '/v1/apps/{slug}/secrets', ({ params }) => {
-  const secrets = listOf(db.secrets, params.slug);
+route('GET', '/v1/apps/{slug}/secrets', ({ params, query }) => {
+  const scope = query.get('scope') || 'default';
+  // Environment-scoped sealed secrets are the sources secret references name.
+  const secrets =
+    scope === 'default' ? listOf(db.secrets, params.slug) : scopedSecrets(app(params.slug), scope);
   return { secrets, quota_max: 64, count: secrets.length };
 });
 route('PUT', '/v1/apps/{slug}/secrets/{key}', ({ params }) => {
@@ -907,11 +919,40 @@ route('PUT', '/v1/apps/{slug}/secrets/{key}', ({ params }) => {
   db.secrets.set(params.slug, list);
   return created;
 });
-route('DELETE', '/v1/apps/{slug}/secrets/{key}', ({ params }) => {
+route('DELETE', '/v1/apps/{slug}/secrets/{key}', ({ params, req }) => {
   const list = listOf(db.secrets, params.slug);
   const i = list.findIndex((s) => s.key === params.key);
   if (i < 0) throw new Problem(404, 'secret_not_found');
   list.splice(i, 1);
+  // apid keeps the legacy 204 unless the caller asks for the revocation receipt.
+  if (String(req.headers.prefer ?? '').includes('return=representation'))
+    return recordRevocation(app(params.slug), 'default', params.key);
+  return NO_CONTENT;
+});
+route('GET', '/v1/apps/{slug}/secret-revocations/{revocation_id}', ({ params }) => {
+  const out = readRevocation(app(params.slug), params.revocation_id);
+  if (!out)
+    throw new Problem(
+      404,
+      'not_found',
+      `no secret revocation "${params.revocation_id}" on this app.`
+    );
+  return out;
+});
+const answer = <T>(result: Result<T>) => {
+  if ('fail' in result) throw new Problem(result.fail.status, result.fail.code, result.fail.detail);
+  return result.ok;
+};
+route('GET', '/v1/apps/{slug}/secret-references', ({ params, query }) =>
+  answer(readReferences(app(params.slug), query.get('environment') ?? ''))
+);
+route('PUT', '/v1/apps/{slug}/secret-references/{key}', ({ params, query, body }) =>
+  answer(
+    writeReference(app(params.slug), query.get('environment') ?? '', params.key, body.reference)
+  )
+);
+route('DELETE', '/v1/apps/{slug}/secret-references/{key}', ({ params, query }) => {
+  answer(removeReference(app(params.slug), query.get('environment') ?? '', params.key));
   return NO_CONTENT;
 });
 
