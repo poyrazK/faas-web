@@ -16,7 +16,7 @@ function Support() {
     <PublicInfoPage
       eyebrow="Help"
       title="Support"
-      intro="Need help with your Gregale account, deployment, or the Gregale plugin? Email us and include enough context to identify the problem."
+      intro="Need help with your Gregale account, a deployment, or an agent connection? Email us and include enough context to identify the problem."
     >
       <section>
         <h2>Contact us</h2>
@@ -31,6 +31,17 @@ function Support() {
         <p>
           Check the <Link to="/status">status page</Link> for platform incidents and the{' '}
           <Link to="/docs">documentation</Link> for setup and deployment guidance.
+        </p>
+      </section>
+      <section>
+        <h2>Security reports</h2>
+        <p>
+          Report a vulnerability to <a href="mailto:security@gregale.dev">security@gregale.dev</a>{' '}
+          rather than to support. The{' '}
+          <Link to="/docs/$slug" params={{ slug: 'responsible-disclosure' }}>
+            responsible disclosure policy
+          </Link>{' '}
+          explains what to include and what happens next.
         </p>
       </section>
       <section>

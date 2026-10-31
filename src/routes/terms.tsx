@@ -16,16 +16,21 @@ function Terms() {
     <PublicInfoPage
       eyebrow="Trust & safety"
       title="Terms of Service"
-      intro="These terms describe use of the Gregale website, console, API, and Gregale plugin. Last updated October 4, 2026."
+      // TODO(launch): set to the date this text is published.
+      intro="These terms describe use of the Gregale website, console, API, CLI, and agent connections. Last updated October 31, 2026."
     >
+      {/* TODO(launch): the repositories do not say who the contracting party
+          is, which law governs, or how disputes are resolved, and set no
+          warranty disclaimer, liability limit, termination, or minimum-age
+          terms. Each is a legal commitment a publisher has to write; none is
+          implied by leaving it out here. */}
       <section>
         <h2>The service</h2>
         <p>
           Gregale lets you deploy and operate applications from your own source code. Features and
           limits depend on the plan and current beta availability described in the{' '}
-          <a href="/docs/plans">plan documentation</a>. The Gregale plugin provides an additional
-          way to inspect apps and deployments and request deployment actions through your connected
-          account.
+          <a href="/docs/plans">plan documentation</a>. AI agents you connect to Gregale can inspect
+          apps and deployments and request deployment actions with the permissions you grant them.
         </p>
       </section>
       <section>
@@ -51,7 +56,7 @@ function Terms() {
         <p>
           Deployments, rollbacks, and configuration changes can affect live traffic. Review the
           target app and source or rollback destination before approving an action, including an
-          action requested through the plugin. During beta, features may change and some may be
+          action requested by an AI agent. During beta, features may change and some may be
           unavailable. Keep backups of important code and data.
         </p>
       </section>
