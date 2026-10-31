@@ -834,6 +834,7 @@ export const LEDGER: LedgerEntry[] = [
     status: 'full',
     surfaces: ['/dashboard/apps/$appSlug?tab=Log drains'],
     capability: 'log-drains',
+    wave: 2,
   },
   // G121 · GA
   {

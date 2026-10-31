@@ -28,11 +28,17 @@ const HEALTH: Record<string, string> = {
   unknown: 'var(--muted-foreground)',
 };
 
+function bytes(n: number) {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 ** 2) return `${(n / 1024).toFixed(1)} KiB`;
+  return `${(n / 1024 ** 2).toFixed(1)} MiB`;
+}
+
 function Fact({ label, children }: { label: string; children: ReactNode }) {
   return (
     <li className="flex min-w-0 flex-col gap-0.5">
       <span className="label-mono text-muted-foreground">{label}</span>
-      <span className="truncate text-sm tabular-nums">{children}</span>
+      <span className="text-sm break-words tabular-nums">{children}</span>
     </li>
   );
 }
@@ -148,7 +154,7 @@ export function LogDrainDetail({
             </div>
             <ul
               aria-label="Delivery health"
-              className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3 xl:grid-cols-6"
+              className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3"
             >
               <Fact label="Last delivered">
                 {h.last_success_at ? <Timestamp iso={h.last_success_at} /> : 'Never'}
@@ -162,6 +168,13 @@ export function LogDrainDetail({
               <Fact label="Retries">{h.retries_total.toLocaleString()}</Fact>
               <Fact label="Dead-lettered">{h.dead_letter_total.toLocaleString()}</Fact>
               <Fact label="Stream gaps">{h.gaps_total.toLocaleString()}</Fact>
+              <Fact label="Waiting to send">
+                {h.pending_records.toLocaleString()} lines · {bytes(h.pending_bytes)} of{' '}
+                {bytes(h.pending_bytes_capacity)}
+              </Fact>
+              <Fact label="Stream reconnects">{h.stream_reconnects_total.toLocaleString()}</Fact>
+              {/* `active`: whether the log pipeline has a sender running for it. */}
+              <Fact label="Sender">{h.active ? 'Running' : 'Not running'}</Fact>
             </ul>
             {/* Until gatewayd writes its first snapshot apid answers "unknown"
                 stamped with the drain's own update time, not a report. */}

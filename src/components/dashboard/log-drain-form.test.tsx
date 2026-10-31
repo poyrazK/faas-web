@@ -129,6 +129,8 @@ describe('LogDrainFields', () => {
   it('says a stored header is kept, and offers to remove it', () => {
     render(<Harness existing={http} kinds={['http_json', 'otlp']} />);
     expect(screen.getByText(/Leave empty to keep the current header/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Auth header (optional)')).toHaveAttribute('type', 'password');
+    expect(screen.getByLabelText('Auth header (optional)')).toHaveValue('');
     expect(screen.getByRole('checkbox', { name: 'Remove the auth header' })).toBeInTheDocument();
   });
 

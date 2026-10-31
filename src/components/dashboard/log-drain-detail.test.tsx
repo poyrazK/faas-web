@@ -92,6 +92,22 @@ describe('LogDrainDetail', () => {
     expect(within(facts).getByText('Dead-lettered')).toBeInTheDocument();
   });
 
+  it('shows the rest of the snapshot: the backlog, reconnects and whether a sender runs', () => {
+    render(<LogDrainDetail slug="api" drain={drain} onClose={vi.fn()} />);
+    const facts = screen.getByRole('list', { name: 'Delivery health' });
+    expect(within(facts).getByText('Waiting to send').nextSibling).toHaveTextContent(
+      '7 lines · 2.0 KiB of 8.0 MiB'
+    );
+    expect(within(facts).getByText('Stream reconnects').nextSibling).toHaveTextContent('1');
+    expect(within(facts).getByText('Sender').nextSibling).toHaveTextContent('Running');
+    state.health = { ...state.health, active: false };
+    render(<LogDrainDetail slug="api" drain={drain} onClose={vi.fn()} />);
+    expect(
+      within(screen.getAllByRole('list', { name: 'Delivery health' })[1]).getByText('Sender')
+        .nextSibling
+    ).toHaveTextContent('Not running');
+  });
+
   it('says nothing is waiting when the queue is empty, instead of a blank lag', () => {
     state.health = { ...state.health, oldest_pending_at: undefined, last_failure_at: undefined };
     render(<LogDrainDetail slug="api" drain={drain} onClose={vi.fn()} />);

@@ -262,6 +262,7 @@ export function LogDrainFields({
             </label>
             <input
               id={`${id}-auth`}
+              type="password"
               value={draft.auth}
               onChange={(event) => set({ auth: event.target.value })}
               placeholder="Authorization: Bearer …"
