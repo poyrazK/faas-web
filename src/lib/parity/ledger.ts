@@ -831,10 +831,9 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 119,
     name: 'Log drains, log analytics',
-    status: 'partial',
+    status: 'full',
     surfaces: ['/dashboard/apps/$appSlug?tab=Log drains'],
-    gap: 'Drain detail and delivery health; datadog kind',
-    wave: 2,
+    capability: 'log-drains',
   },
   // G121 · GA
   {

@@ -1,6 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from '@/lib/api/errors';
 
 const state = vi.hoisted(() => ({
   drains: [] as unknown[],
@@ -8,6 +9,12 @@ const state = vi.hoisted(() => ({
   update: vi.fn(),
   remove: vi.fn(),
   confirm: vi.fn(),
+  kinds: ['http_json', 'otlp'] as string[],
+  stage: 'Beta',
+}));
+vi.mock('@/lib/api/log-drain-capabilities', () => ({
+  useLogDrainKinds: () => state.kinds,
+  useLogDrainStage: () => state.stage,
 }));
 vi.mock('@/lib/api/log-drains', () => ({
   useLogDrains: () => ({ data: state.drains, isPending: false, error: null, refetch: vi.fn() }),
@@ -25,6 +32,8 @@ vi.mock('@/lib/api/log-drains', () => ({
       queue_capacity: 10000,
       dead_letter_total: 0,
       gaps_total: 0,
+      retries_total: 12,
+      updated_at: '2026-10-01T00:00:00Z',
     },
     isPending: false,
     error: null,
@@ -69,6 +78,8 @@ beforeEach(() => {
   state.update.mockReset().mockResolvedValue(drain);
   state.remove.mockReset().mockResolvedValue(undefined);
   state.confirm.mockReset().mockResolvedValue(true);
+  state.kinds = ['http_json', 'otlp'];
+  state.stage = 'Beta';
 });
 
 describe('LogDrainsBody', () => {
@@ -112,5 +123,67 @@ describe('LogDrainsBody', () => {
       expect.objectContaining({ destructive: true, confirmLabel: 'Delete destination' })
     );
     await waitFor(() => expect(state.remove).toHaveBeenCalledWith('ld-1'));
+  });
+
+  it("labels the surface with the log-drains capability's stage", () => {
+    render(<LogDrainsBody slug="api" />);
+    expect(screen.getByText(/^Beta · Send this app's runtime logs/)).toBeInTheDocument();
+    state.stage = '';
+    render(<LogDrainsBody slug="web" />);
+    expect(screen.getByText(/^Send this app's runtime logs/)).toBeInTheDocument();
+  });
+
+  it('adds a Datadog destination from a site and an API key when Datadog is on', async () => {
+    state.kinds = ['http_json', 'otlp', 'datadog'];
+    render(<LogDrainsBody slug="api" />);
+    await userEvent.click(screen.getByRole('button', { name: 'Add destination' }));
+    const dialog = screen.getByRole('dialog', { name: 'Add a log destination' });
+    await userEvent.selectOptions(within(dialog).getByLabelText('Format'), 'datadog');
+    await userEvent.selectOptions(within(dialog).getByLabelText('Datadog site'), 'eu1');
+    await userEvent.type(within(dialog).getByLabelText('Datadog API key'), 'dd-key');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add destination' }));
+    await waitFor(() =>
+      expect(state.create).toHaveBeenCalledWith({
+        kind: 'datadog',
+        target_url: 'https://http-intake.logs.datadoghq.eu/api/v2/logs',
+        auth_header: 'DD-API-KEY: dd-key',
+        enabled: true,
+      })
+    );
+  });
+
+  it('keeps the dialog open on the plan quota and links to plans', async () => {
+    state.create.mockRejectedValue(
+      new ApiError({
+        status: 403,
+        code: 'plan_log_drain_quota',
+        title: 'Log drain limit reached',
+        detail:
+          'hobby plan caps log drains at 3 for this app; you have 3. Delete one to add another.',
+      })
+    );
+    render(<LogDrainsBody slug="api" />);
+    await userEvent.click(screen.getByRole('button', { name: 'Add destination' }));
+    const dialog = screen.getByRole('dialog', { name: 'Add a log destination' });
+    await userEvent.type(within(dialog).getByLabelText('Endpoint URL'), 'https://x.example.com');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add destination' }));
+    const alert = await within(dialog).findByRole('alert');
+    expect(alert).toHaveTextContent(/caps log drains at 3/);
+    expect(within(alert).getByRole('link', { name: 'View plans' })).toHaveAttribute(
+      'href',
+      '/dashboard/plans'
+    );
+  });
+
+  it('names Datadog destinations by their site in the list', () => {
+    state.drains = [
+      {
+        ...drain,
+        kind: 'datadog',
+        target_url: 'https://http-intake.logs.datadoghq.com/api/v2/logs',
+      },
+    ];
+    render(<LogDrainsBody slug="api" />);
+    expect(screen.getByText(/Datadog · us1/)).toBeInTheDocument();
   });
 });
