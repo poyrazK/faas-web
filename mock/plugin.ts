@@ -595,6 +595,11 @@ function createMockApp(body: Record<string, unknown>, req: IncomingMessage) {
     ram_mb: Number(body.ram_mb ?? 256),
     min_instances: 0,
     status: 'active',
+    // The seeded apps' per-VM bound, which an empty workspace has no row to lend.
+    concurrency_per_vm: 5,
+    release_policy: 'safe',
+    release_probe_paths: undefined,
+    function_concurrency: undefined,
     ...(worker
       ? {
           workload_class: undefined,
@@ -764,6 +769,67 @@ route('POST', '/v1/apps/{slug}/park', ({ params }) => {
   db.setScenario(app(params.slug), 'parked');
   return NO_CONTENT;
 });
+/**
+ * release_policy, release_probe_paths and function_concurrency, validated
+ * the way apid does before anything is written: the lifecycle check answers
+ * 400 validation_failed (faas pkg/apid/apidserver/lifecycle.go:61), and the
+ * capability gate refuses `safe` and probe paths while progressive rollouts
+ * are off (faas pkg/productcap/catalog.json:4279).
+ */
+function applyReleaseSettings(a: db.App, body: Record<string, unknown>) {
+  const policy = body.release_policy;
+  const paths = body.release_probe_paths;
+  const concurrency = body.function_concurrency;
+  if (policy != null && !['safe', 'fast', 'immediate'].includes(String(policy)))
+    throw new Problem(400, 'validation_failed', 'release_policy must be safe, fast or immediate.');
+  if (Array.isArray(paths)) {
+    if (paths.length > 3)
+      throw new Problem(400, 'validation_failed', 'release_probe_paths: at most 3 paths.');
+    const bad = paths.find(
+      (p) => typeof p !== 'string' || !p.startsWith('/') || p.length > 240 || /[?#*\\{}\s]/.test(p)
+    );
+    if (bad !== undefined)
+      throw new Problem(
+        400,
+        'validation_failed',
+        `release_probe_paths: ${JSON.stringify(bad)} must be a concrete absolute path.`
+      );
+    if (new Set(paths).size !== paths.length)
+      throw new Problem(400, 'validation_failed', 'release_probe_paths: a path is listed twice.');
+  }
+  const bound = a.concurrency_per_vm;
+  if (
+    concurrency != null &&
+    (!Number.isInteger(concurrency) || Number(concurrency) < 0 || Number(concurrency) > bound)
+  )
+    throw new Problem(
+      400,
+      'validation_failed',
+      `function_concurrency must be between 0 and ${bound}.`
+    );
+  const rolloutsOff = (process.env.MOCK_UNAVAILABLE_CAPABILITIES ?? '')
+    .split(',')
+    .includes('progressive-rollouts');
+  if (
+    rolloutsOff &&
+    ((policy === 'safe' && a.release_policy !== 'safe') ||
+      (Array.isArray(paths) && paths.length > 0))
+  )
+    throw new Problem(
+      403,
+      'capability_not_released',
+      'Progressive rollouts and rollback is not released to this account.'
+    );
+  if (policy != null) a.release_policy = policy as db.App['release_policy'];
+  if (Array.isArray(paths)) {
+    if (paths.length) a.release_probe_paths = paths as string[];
+    else delete a.release_probe_paths;
+  }
+  if (concurrency != null) {
+    if (Number(concurrency) > 0) a.function_concurrency = Number(concurrency);
+    else delete a.function_concurrency;
+  }
+}
 const PATCHABLE = [
   'ram_mb',
   'idle_timeout_s',
@@ -798,6 +864,7 @@ route('PATCH', '/v1/apps/{slug}', ({ params, body }) => {
       'service_policy_source_managed',
       'Edit this service policy in the project source.'
     );
+  applyReleaseSettings(a, body);
   for (const k of PATCHABLE)
     if (k in body && body[k] !== null) (a as Record<string, unknown>)[k] = body[k];
   if (body.visibility === 'internal' || body.visibility === 'public') {
