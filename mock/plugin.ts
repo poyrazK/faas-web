@@ -6205,14 +6205,15 @@ route('POST', '/dashboard/install/connect', ({ body, req, res }) => {
   );
   return status(303, '');
 });
+const INSTALL_REPOS = [
+  { id: 1001, full_name: 'acme-corp/storefront', default_branch: 'main', private: true },
+  { id: 1002, full_name: 'acme-corp/checkout', default_branch: 'main', private: true },
+  { id: 1003, full_name: 'acme-corp/webhook-router', default_branch: 'master', private: false },
+  { id: 1004, full_name: 'acme-corp/nightly-etl', default_branch: 'main', private: true },
+];
 route('POST', '/v1/install/repos/list', () => {
   requireGitHub();
-  const seeded = [
-    { id: 1001, full_name: 'acme-corp/storefront', default_branch: 'main', private: true },
-    { id: 1002, full_name: 'acme-corp/checkout', default_branch: 'main', private: true },
-    { id: 1003, full_name: 'acme-corp/webhook-router', default_branch: 'master', private: false },
-    { id: 1004, full_name: 'acme-corp/nightly-etl', default_branch: 'main', private: true },
-  ];
+  const seeded = [...INSTALL_REPOS];
   // MOCK_REPOS=<n> pads the installation to n repositories across a few
   // owners, to see the New app repository list as a large account sees it.
   const total = Number(process.env.MOCK_REPOS ?? 0);
@@ -6227,28 +6228,160 @@ route('POST', '/v1/install/repos/list', () => {
     });
   return seeded;
 });
-const repoBindings = new Map<string, { repo_full_name: string; production_branch: string }>();
-route('GET', '/v1/apps/{slug}/install/bind', ({ params }) => {
-  const bound = repoBindings.get(params.slug);
-  const installed = Boolean(db.account.github_install_id);
-  return {
-    state: bound ? 'bound' : installed ? 'installed' : 'not_installed',
-    health: installed ? 'healthy' : 'not_connected',
-    connected: installed,
-    ...(installed ? { installation_id: Number(MOCK_INSTALL_ID) } : {}),
-    last_reconcile_repository_count: 4,
-    last_reconcile_detached_count: 0,
-    ...bound,
+
+// Per-app bindings and the installation's reconcile record, as
+// handlers_github_connection.go projects them. Health is the installation's,
+// so it is shared by every app. Binding a repository the installation cannot
+// see succeeds here (apid would check first) so a sync can show a detach.
+type GitHubStatus = S_['GitHubInstallStatus'];
+const githubBindings = new Map<
+  string,
+  {
+    repo: string;
+    branch: string;
+    id: string;
+    linkedAt: string;
+    activity?: GitHubStatus['activity'];
+  }
+>();
+const githubInstall = { reconciledAt: db.iso(12 * 60_000), repoCount: 4, detached: 0 };
+const GITHUB_MANAGE_CSRF = 'mock-github-manage';
+if (!db.EMPTY) {
+  const sha = '9f2c4e1a7b3d5f60718293a4b5c6d7e8f9012345';
+  githubBindings.set('api-gateway', {
+    repo: 'acme-corp/storefront',
+    branch: 'main',
+    id: 'bind-api-gateway-acme-corp/storefront',
+    linkedAt: db.iso(6 * 86_400_000),
+    activity: {
+      webhook_deliveries: [
+        {
+          event_type: 'push',
+          status: 'succeeded',
+          commit_sha: sha,
+          received_at: db.iso(41 * 60_000),
+          processed_at: db.iso(41 * 60_000),
+          updated_at: db.iso(41 * 60_000),
+        },
+      ],
+      check_updates: [
+        {
+          deployment_id: db.id(),
+          status: 'succeeded',
+          commit_sha: sha,
+          processed_at: db.iso(38 * 60_000),
+          updated_at: db.iso(38 * 60_000),
+        },
+        {
+          deployment_id: db.id(),
+          status: 'dead',
+          commit_sha: 'c71e0b9d2a4f6e8013579bdf2468ace013579bdf',
+          processed_at: null,
+          updated_at: db.iso(26 * 3_600_000),
+        },
+      ],
+    },
+  });
+  githubBindings.set('webhook-router', {
+    repo: 'acme-corp/webhook-router',
+    branch: 'master',
+    id: 'bind-webhook-router-acme-corp/webhook-router',
+    linkedAt: db.iso(20 * 86_400_000),
+  });
+}
+function githubStatus(slug: string): GitHubStatus {
+  const installId = db.account.github_install_id;
+  if (!installId)
+    return {
+      state: 'not_installed',
+      health: 'not_connected',
+      connected: false,
+      last_reconcile_repository_count: 0,
+      last_reconcile_detached_count: 0,
+    };
+  const install = {
+    installation_id: Number(installId),
+    github_login: 'acme-corp',
+    default_branch: 'main',
+    health: 'healthy' as const,
+    last_reconciled_at: githubInstall.reconciledAt,
+    last_reconcile_repository_count: githubInstall.repoCount,
+    last_reconcile_detached_count: githubInstall.detached,
   };
+  const binding = githubBindings.get(slug);
+  if (!binding) return { state: 'installed', connected: false, ...install };
+  return {
+    state: 'bound',
+    connected: true,
+    ...install,
+    repo_full_name: binding.repo,
+    production_branch: binding.branch,
+    binding_id: binding.id,
+    linked_at: binding.linkedAt,
+    activity: binding.activity ?? { webhook_deliveries: [], check_updates: [] },
+  };
+}
+function requireGitHubManageCSRF(body: Record<string, unknown>) {
+  if (body.csrf_token !== GITHUB_MANAGE_CSRF)
+    throw new Problem(400, 'validation_failed', 'please reload the page and try again');
+}
+// GET /install and GET /install/bind are one handler in apid (server.go:5065-5066).
+const githubStatusRead: Handler = ({ params, res }) => {
+  app(params.slug);
+  res.setHeader(
+    'Set-Cookie',
+    `faas_csrf_github_install=${GITHUB_MANAGE_CSRF}; Path=/; HttpOnly; SameSite=Lax`
+  );
+  return { ...githubStatus(params.slug), csrf_token: GITHUB_MANAGE_CSRF };
+};
+route('GET', '/v1/apps/{slug}/install', githubStatusRead);
+route('GET', '/v1/apps/{slug}/install/bind', githubStatusRead);
+route('POST', '/v1/apps/{slug}/install/sync', ({ params, body }) => {
+  requireGitHubManageCSRF(body);
+  app(params.slug);
+  const binding = githubBindings.get(params.slug);
+  if (!binding)
+    throw new Problem(409, 'github_not_bound', 'bind a repository before requesting a sync');
+  if (!db.account.github_install_id)
+    throw new Problem(409, 'github_install_not_found', 'reconnect GitHub before syncing this app');
+  const found = INSTALL_REPOS.some(
+    (repo) => repo.full_name.toLowerCase() === binding.repo.toLowerCase()
+  );
+  if (!found) githubBindings.delete(params.slug);
+  const syncedAt = new Date().toISOString();
+  Object.assign(githubInstall, {
+    reconciledAt: syncedAt,
+    repoCount: INSTALL_REPOS.length,
+    detached: found ? 0 : 1,
+  });
+  return {
+    ...githubStatus(params.slug),
+    sync_result: {
+      detached: !found,
+      remote_repository_count: INSTALL_REPOS.length,
+      synced_at: syncedAt,
+    },
+  };
+});
+route('DELETE', '/v1/apps/{slug}/install/bind', ({ params, body }) => {
+  requireGitHubManageCSRF(body);
+  app(params.slug);
+  // Idempotent, like githubd UnbindAppRepo: no binding is not an error.
+  githubBindings.delete(params.slug);
+  return githubStatus(params.slug);
 });
 route('POST', '/v1/apps/{slug}/install/bind', async ({ params, body }) => {
   requireGitHub();
-  const bound = {
-    repo_full_name: String(body.repo_full_name ?? ''),
-    production_branch: String(body.production_branch ?? 'main'),
+  const repo = String(body.repo_full_name ?? '');
+  const branch = String(body.production_branch ?? 'main');
+  const binding = {
+    repo,
+    branch,
+    id: `bind-${params.slug}-${repo}`,
+    linkedAt: new Date().toISOString(),
   };
-  repoBindings.set(params.slug, bound);
-  return { binding_id: hex(32), ...bound };
+  githubBindings.set(params.slug, binding);
+  return { binding_id: binding.id, repo_full_name: repo, production_branch: branch };
 });
 
 // --- Organisations, org keys, invitations ---

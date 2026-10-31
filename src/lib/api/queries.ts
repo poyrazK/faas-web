@@ -67,6 +67,7 @@ export const keys = {
   appConfig: (slug: string) => ['apps', slug, 'config'] as const,
   appAlerts: (slug: string) => ['apps', slug, 'alerts'] as const,
   appRegistryCredentials: (slug: string) => ['apps', slug, 'registry-credentials'] as const,
+  appGitHub: (slug: string) => ['apps', slug, 'github'] as const,
 };
 
 /** Shared policy: never retry a settled 4xx, retry the rest twice. */
@@ -146,7 +147,13 @@ export function useBindRepo(slug: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: BindRepoInput) => bindRepo(slug, input),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [...keys.app(slug), 'repo-binding'] }),
+    // Both reads of the binding (the deploy dialog's and the GitHub panel's)
+    // show the new one without a reload.
+    onSuccess: () =>
+      Promise.all([
+        qc.invalidateQueries({ queryKey: [...keys.app(slug), 'repo-binding'] }),
+        qc.invalidateQueries({ queryKey: keys.appGitHub(slug) }),
+      ]),
   });
 }
 
