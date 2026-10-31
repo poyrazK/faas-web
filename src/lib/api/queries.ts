@@ -63,6 +63,7 @@ export const keys = {
   appEnv: (slug: string) => ['apps', slug, 'env'] as const,
   appAlerts: (slug: string) => ['apps', slug, 'alerts'] as const,
   appRegistryCredentials: (slug: string) => ['apps', slug, 'registry-credentials'] as const,
+  appGitHub: (slug: string) => ['apps', slug, 'github'] as const,
 };
 
 /** Shared policy: never retry a settled 4xx, retry the rest twice. */
@@ -135,7 +136,12 @@ async function bindRepo(slug: string, input: BindRepoInput) {
 }
 
 export function useBindRepo(slug: string) {
-  return useMutation({ mutationFn: (input: BindRepoInput) => bindRepo(slug, input) });
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: BindRepoInput) => bindRepo(slug, input),
+    // The app's GitHub panel reads the binding; show the new one without a reload.
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.appGitHub(slug) }),
+  });
 }
 
 /** Slug-in-variables variant for a wizard that creates the app first. */
