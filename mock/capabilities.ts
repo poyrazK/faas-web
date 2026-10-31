@@ -183,6 +183,17 @@ const entries: Capability[] = [
     enabled: true,
   },
   {
+    key: 'queue-bindings',
+    name: 'Queue bindings',
+    category: 'async',
+    description: 'Bind queues to workloads.',
+    maturity: 'preview',
+    plans: PAID,
+    docs_url: '/docs/queue-pull-leases',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
+  {
     key: 'declarative-response-caching',
     name: 'Declarative response caching',
     category: 'delivery',

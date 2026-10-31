@@ -11,6 +11,7 @@ import { registerEventMocks } from './events';
 import { mockOpenAPIPreview } from './openapi-preview';
 import { isDigestPinnedImage } from '../src/lib/oci-image';
 import { advancePolicy, mockRuntimePolicy } from './runtime-policy';
+import * as bindingVerification from './binding-verification';
 import { projects, projectSummaries } from './projects';
 import {
   mockPromotionPreview,
@@ -719,19 +720,22 @@ route('GET', '/v1/apps/{slug}/bindings', ({ params, query }) => {
     ...(query.get('scope') ? { scope: query.get('scope') } : {}),
     generated_at: new Date().toISOString(),
     complete: !partial,
-    bindings: (a.service_bindings ?? []).map((binding) => ({
-      type: 'service',
-      name: binding.service,
-      binding: binding.binding,
-      scope: 'app',
-      access: a.service_binding_policy ?? 'account',
-      state: 'configured',
-      runtime_status: 'not_observed',
-      verification_status: 'unknown',
-      http_url: `http://${binding.service}.svc.gregale:10081`,
-      https_url: `https://${binding.service}.internal`,
-      transport: a.service_binding_transport ?? 'http',
-    })),
+    bindings: (a.service_bindings ?? [])
+      .map((binding): S_['AppBindingInventoryItem'] => ({
+        type: 'service',
+        name: binding.service,
+        binding: binding.binding,
+        scope: 'app',
+        access: a.service_binding_policy ?? 'account',
+        state: 'configured',
+        runtime_status: 'not_observed',
+        verification_status: 'unknown',
+        http_url: `http://${binding.service}.svc.gregale:10081`,
+        https_url: `https://${binding.service}.internal`,
+        transport: a.service_binding_transport ?? 'http',
+      }))
+      .concat(bindingVerification.queueInventoryItems(bindingApp(a))),
+    ...(bindingApp(a).live ? { verification_deployment_id: bindingApp(a).live } : {}),
     ...(partial
       ? {
           issues: [
@@ -746,6 +750,108 @@ route('GET', '/v1/apps/{slug}/bindings', ({ params, query }) => {
       : {}),
   };
 });
+// Binding release policy, verification runs and queue canaries (faas
+// ADR-598, ADR-1355, ADR-1352). The api-gateway app is seeded with an
+// enforced policy, a pending run and a queue binding that supports canaries.
+function bindingApp(a: db.App) {
+  const live = db.deployments.find((d) => d.app_id === a.id && d.status === 'live');
+  return { id: a.id, slug: a.slug, live: live?.id };
+}
+function bindingCall<T>(fn: () => T): T {
+  try {
+    return fn();
+  } catch (error) {
+    if (error instanceof bindingVerification.BindingMockProblem)
+      throw new Problem(error.status, error.code, error.detail);
+    throw error;
+  }
+}
+route('GET', '/v1/apps/{slug}/bindings/release-policy', ({ params, query }) =>
+  bindingCall(() =>
+    bindingVerification.readReleasePolicy(bindingApp(app(params.slug)), query.get('scope'))
+  )
+);
+route('PUT', '/v1/apps/{slug}/bindings/release-policy', ({ params, query, body }) =>
+  bindingCall(() =>
+    bindingVerification.writeReleasePolicy(
+      bindingApp(app(params.slug)),
+      query.get('scope'),
+      'base',
+      body
+    )
+  )
+);
+route(
+  'PUT',
+  '/v1/apps/{slug}/bindings/release-policy-with-object-storage',
+  ({ params, query, body }) =>
+    bindingCall(() =>
+      bindingVerification.writeReleasePolicy(
+        bindingApp(app(params.slug)),
+        query.get('scope'),
+        'storage',
+        body
+      )
+    )
+);
+route('PUT', '/v1/apps/{slug}/bindings/release-policy-with-queues', ({ params, query, body }) =>
+  bindingCall(() =>
+    bindingVerification.writeReleasePolicy(
+      bindingApp(app(params.slug)),
+      query.get('scope'),
+      'queues',
+      body
+    )
+  )
+);
+route('GET', '/v1/apps/{slug}/bindings/verification-runs', ({ params, query }) =>
+  bindingCall(() => bindingVerification.listRuns(bindingApp(app(params.slug)), query))
+);
+route('POST', '/v1/apps/{slug}/bindings/verification-runs/review', ({ params, body }) =>
+  bindingCall(() => {
+    const a = bindingApp(app(params.slug));
+    return bindingVerification.reviewRun(a, a.live, body);
+  })
+);
+route('POST', '/v1/apps/{slug}/bindings/verification-runs', ({ params, body }) =>
+  bindingCall(() => status(201, bindingVerification.createRun(bindingApp(app(params.slug)), body)))
+);
+route('GET', '/v1/apps/{slug}/bindings/verification-runs/{run}', ({ params }) =>
+  bindingCall(() => bindingVerification.getRun(bindingApp(app(params.slug)), params.run))
+);
+route('DELETE', '/v1/apps/{slug}/bindings/verification-runs/{run}', ({ params }) =>
+  bindingCall(() => bindingVerification.cancelRun(bindingApp(app(params.slug)), params.run))
+);
+route('GET', '/v1/apps/{slug}/bindings/verification-runs/{run}/diagnostics', ({ params }) =>
+  bindingCall(() => bindingVerification.runDiagnostics(bindingApp(app(params.slug)), params.run))
+);
+route('POST', '/v1/apps/{slug}/bindings/verification-runs/{run}/resume', ({ params }) =>
+  bindingCall(() => bindingVerification.resumeRun(bindingApp(app(params.slug)), params.run))
+);
+route('POST', '/v1/apps/{slug}/bindings/verification-runs/{run}/complete', ({ params }) =>
+  bindingCall(() => bindingVerification.completeRun(bindingApp(app(params.slug)), params.run))
+);
+route('POST', '/v1/apps/{slug}/bindings/verification-runs/{run}/steps/{step}/admit', ({ params }) =>
+  bindingCall(() =>
+    bindingVerification.admitRunStep(bindingApp(app(params.slug)), params.run, Number(params.step))
+  )
+);
+route('POST', '/v1/apps/{slug}/bindings/queue-canaries', ({ params, body }) =>
+  bindingCall(() => {
+    const a = bindingApp(app(params.slug));
+    return status(201, bindingVerification.createQueueCanaryMock(a, a.live, body));
+  })
+);
+route('GET', '/v1/apps/{slug}/bindings/queue-canaries/{canary}', ({ params }) =>
+  bindingCall(() =>
+    bindingVerification.getQueueCanaryMock(bindingApp(app(params.slug)), params.canary)
+  )
+);
+route('DELETE', '/v1/apps/{slug}/bindings/queue-canaries/{canary}', ({ params }) =>
+  bindingCall(() =>
+    bindingVerification.cancelQueueCanaryMock(bindingApp(app(params.slug)), params.canary)
+  )
+);
 route('GET', '/v1/apps/{slug}/policy/status', ({ params }) =>
   mockRuntimePolicy(app(params.slug).id)
 );
