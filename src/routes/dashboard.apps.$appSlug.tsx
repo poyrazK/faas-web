@@ -67,6 +67,7 @@ import { ErrorsBody } from '@/components/dashboard/errors-body';
 import { LogDrainsBody } from '@/components/dashboard/log-drains';
 import { IssuesBody } from '@/components/dashboard/issues-body';
 import { ServiceBindings } from '@/components/dashboard/service-bindings';
+import { AppOutboundBindings } from '@/components/dashboard/outbound/app-outbound-bindings';
 import { BindingReleasePolicy } from '@/components/dashboard/binding-release-policy';
 import { BindingVerificationRuns } from '@/components/dashboard/binding-verification-runs';
 import { QueueCanaries } from '@/components/dashboard/queue-canaries';
@@ -716,6 +717,7 @@ function FunctionDetailPage() {
               )}
               {tab === 'Queues' && <QueuesBody slug={fn.id} />}
               {tab === 'Upstreams' && <UpstreamsBody slug={fn.id} />}
+              {tab === 'Outbound' && <AppOutboundBindings slug={fn.id} />}
               {tab === 'Services' && (
                 <div className="space-y-5">
                   <ServiceBindings slug={fn.id} />

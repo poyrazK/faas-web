@@ -23,6 +23,7 @@ vi.mock('@/lib/api/queries', () => ({
   useAddDomain: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useDeleteDomain: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useVerifyDomain: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useRetryDomain: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 vi.mock('@/lib/api/capabilities', () => ({
   useCapabilityAccess: () => ({ access: 'on', capability: undefined, refresh: vi.fn() }),

@@ -190,6 +190,398 @@ describe('a deployment created through the mock', () => {
   });
 });
 
+describe('PATCH /v1/crons/{id}', () => {
+  async function createCron(slug: string) {
+    const app = await json('/v1/apps', {
+      method: 'POST',
+      body: JSON.stringify({ slug, type: 'app', runtime: 'node24' }),
+    });
+    expect(app.status).toBe(201);
+    const cron = await json('/v1/crons', {
+      method: 'POST',
+      body: JSON.stringify({ app_id: app.body.id, schedule: '0 2 * * *', path: '/run' }),
+    });
+    expect(cron.status).toBe(201);
+    return cron.body as { id: string; timezone: string; skip_if_running: boolean };
+  }
+  const patch = (id: string, body: unknown) =>
+    json(`/v1/crons/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+
+  it('applies timezone, overlap skipping and the other editable fields', async () => {
+    const cron = await createCron('cron-edit-a');
+    const res = await patch(cron.id, {
+      schedule: '30 6 * * *',
+      path: '/nightly',
+      timezone: 'Europe/Istanbul',
+      skip_if_running: true,
+    });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      schedule: '30 6 * * *',
+      path: '/nightly',
+      timezone: 'Europe/Istanbul',
+      skip_if_running: true,
+    });
+    const listed = (await json('/v1/crons')).body.find((c: { id: string }) => c.id === cron.id);
+    expect(listed).toMatchObject({ timezone: 'Europe/Istanbul', skip_if_running: true });
+  });
+
+  it('stores a schedule_policy on create and replaces the whole object on PATCH', async () => {
+    const cron = await createCron('cron-policy-a');
+    const full = {
+      version: 1,
+      overlap: 'skip',
+      missed_runs: 'coalesce_latest',
+      start_deadline_seconds: 900,
+    };
+    const first = await patch(cron.id, { schedule_policy: full });
+    expect(first.body.schedule_policy).toEqual(full);
+    // Omitted fields are not preserved: the object is replaced, not merged.
+    const second = await patch(cron.id, {
+      schedule_policy: { version: 1, overlap: 'replace', missed_runs: 'skip' },
+    });
+    expect(second.body.schedule_policy).toEqual({
+      version: 1,
+      overlap: 'replace',
+      missed_runs: 'skip',
+    });
+    // null is a no-op.
+    const third = await patch(cron.id, { schedule_policy: null });
+    expect(third.body.schedule_policy).toEqual(second.body.schedule_policy);
+  });
+
+  it('refuses an invalid schedule_policy with 400 and changes nothing', async () => {
+    const cron = await createCron('cron-policy-b');
+    const res = await patch(cron.id, {
+      schedule: '30 6 * * *',
+      schedule_policy: { version: 1, overlap: 'queue', missed_runs: 'skip' },
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('validation_failed');
+    const listed = (await json('/v1/crons')).body.find((c: { id: string }) => c.id === cron.id);
+    expect(listed.schedule).toBe('0 2 * * *');
+  });
+
+  it('resets an empty timezone to UTC and leaves unsent fields alone', async () => {
+    const cron = await createCron('cron-edit-b');
+    await patch(cron.id, { timezone: 'Europe/Istanbul', skip_if_running: true });
+    const res = await patch(cron.id, { timezone: '' });
+    expect(res.body).toMatchObject({
+      timezone: 'UTC',
+      skip_if_running: true,
+      schedule: '0 2 * * *',
+      path: '/run',
+    });
+  });
+
+  it('refuses a bad schedule or timezone with a stable code and changes nothing', async () => {
+    const cron = await createCron('cron-edit-c');
+    const badSchedule = await patch(cron.id, { schedule: 'nope' });
+    expect(badSchedule.status).toBe(400);
+    expect(badSchedule.body.code).toBe('invalid_schedule');
+    const badZone = await patch(cron.id, { timezone: 'Mars/Olympus' });
+    expect(badZone.status).toBe(400);
+    expect(badZone.body.code).toBe('invalid_timezone');
+    const listed = (await json('/v1/crons')).body.find((c: { id: string }) => c.id === cron.id);
+    expect(listed).toMatchObject({ schedule: '0 2 * * *', timezone: 'UTC' });
+  });
+});
+
+describe('POST /v1/postgres/bindings/{id}/rotate', () => {
+  async function boundBinding(slug: string) {
+    const app = await json('/v1/apps', {
+      method: 'POST',
+      body: JSON.stringify({ slug, type: 'app', runtime: 'node24' }),
+    });
+    const database = await json('/v1/postgres/databases', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: `${slug}-db`,
+        region: 'fra',
+        postgres_major: 17,
+        service_class: 'development',
+        availability: 'single_zone',
+        scale_to_zero: true,
+      }),
+    });
+    expect(database.status).toBe(201);
+    vi.setSystemTime(Date.now() + 5000);
+    const binding = await json(`/v1/postgres/databases/${database.body.id}/bindings`, {
+      method: 'POST',
+      body: JSON.stringify({
+        app_id: app.body.id,
+        scope: 'default',
+        environment_key: 'DATABASE_URL',
+        access: 'read_write',
+      }),
+    });
+    expect(binding.status).toBe(201);
+    return binding.body as { id: string; credential_generation: number; rotation_pending: boolean };
+  }
+  const rotate = (id: string, key: string) =>
+    json(`/v1/postgres/bindings/${id}/rotate`, {
+      method: 'POST',
+      headers: { 'Idempotency-Key': key },
+    });
+
+  it('starts at generation 1 with no rotation pending', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const binding = await boundBinding('rotate-a');
+    expect(binding).toMatchObject({ credential_generation: 1, rotation_pending: false });
+  });
+
+  it('answers 200 with the next generation pending, then settles', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const binding = await boundBinding('rotate-b');
+    vi.setSystemTime(Date.now() + 5000);
+    const res = await rotate(binding.id, 'k1');
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ credential_generation: 2, rotation_pending: true });
+    vi.setSystemTime(Date.now() + 5000);
+    const settled = await json(`/v1/postgres/bindings/${binding.id}`);
+    expect(settled.body).toMatchObject({ credential_generation: 2, rotation_pending: false });
+  });
+
+  it('joins a rotation already in progress and replays a repeated key', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const binding = await boundBinding('rotate-c');
+    vi.setSystemTime(Date.now() + 5000);
+    await rotate(binding.id, 'k1');
+    const joined = await rotate(binding.id, 'k2');
+    expect(joined.body.credential_generation).toBe(2);
+    const replay = await rotate(binding.id, 'k1');
+    expect(replay.body.credential_generation).toBe(2);
+  });
+
+  it('refuses an unknown binding with the Postgres not-found code', async () => {
+    const res = await rotate('nope', 'k1');
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe('managed_postgres_not_found');
+  });
+});
+
+describe('outbound bindings through the mock', () => {
+  const BASE = '/v1/outbound/integrations';
+  const bindingsOf = (slug: string) => `/v1/apps/${slug}/outbound-bindings`;
+  async function setup(slug: string, name: string) {
+    const app = await json('/v1/apps', {
+      method: 'POST',
+      body: JSON.stringify({ slug, type: 'app', runtime: 'node24' }),
+    });
+    const integration = await json(BASE, {
+      method: 'POST',
+      body: JSON.stringify({
+        name,
+        origin: 'https://api.example.com',
+        allowed_methods: ['GET', 'POST'],
+        allowed_path_prefixes: ['/v1/'],
+      }),
+    });
+    expect(app.status).toBe(201);
+    expect(integration.status).toBe(201);
+    return { app: app.body as { id: string }, integration: integration.body as { id: string } };
+  }
+  const put = (slug: string, id: string) => json(`${bindingsOf(slug)}/${id}`, { method: 'PUT' });
+  const unbind = (slug: string, id: string) =>
+    fetch(`${base}${bindingsOf(slug)}/${id}`, { method: 'DELETE' });
+
+  it('starts empty, binds with the schema’s shape, and stores a repeat bind once', async () => {
+    const { app, integration } = await setup('bind-a', 'bind-a-api');
+    expect((await json(bindingsOf('bind-a'))).body).toEqual({ items: [] });
+
+    const bound = await put('bind-a', integration.id);
+    expect(bound.status).toBe(200);
+    expect(bound.body).toMatchObject({
+      app_id: app.id,
+      integration: { id: integration.id, name: 'bind-a-api' },
+      allowed_methods: ['GET', 'POST'],
+      allowed_path_prefixes: ['/v1/'],
+      daily_request_limit: null,
+    });
+    expect(typeof bound.body.created_at).toBe('string');
+
+    expect((await put('bind-a', integration.id)).status).toBe(200);
+    expect((await json(bindingsOf('bind-a'))).body.items).toHaveLength(1);
+  });
+
+  it('keeps bindings per app', async () => {
+    const { integration } = await setup('bind-b', 'bind-b-api');
+    await json('/v1/apps', {
+      method: 'POST',
+      body: JSON.stringify({ slug: 'bind-b-other', type: 'app', runtime: 'node24' }),
+    });
+    await put('bind-b', integration.id);
+    expect((await json(bindingsOf('bind-b-other'))).body.items).toEqual([]);
+  });
+
+  it('unbinds, answering 204 again when it is already absent', async () => {
+    const { integration } = await setup('bind-c', 'bind-c-api');
+    await put('bind-c', integration.id);
+    expect((await unbind('bind-c', integration.id)).status).toBe(204);
+    expect((await unbind('bind-c', integration.id)).status).toBe(204);
+    expect((await json(bindingsOf('bind-c'))).body.items).toEqual([]);
+  });
+
+  it('refuses an unknown integration or app with not_found', async () => {
+    await setup('bind-d', 'bind-d-api');
+    const missing = '00000000-0000-4000-8000-00000000dead';
+    const noIntegration = await put('bind-d', missing);
+    expect(noIntegration.status).toBe(404);
+    expect(noIntegration.body.code).toBe('not_found');
+    const noApp = await put('no-such-app-anywhere', missing);
+    expect(noApp.status).toBe(404);
+    expect(noApp.body.code).toBe('not_found');
+    expect((await json(bindingsOf('no-such-app-anywhere'))).status).toBe(404);
+  });
+
+  it('drops an app’s binding when its integration is deleted', async () => {
+    const { integration } = await setup('bind-e', 'bind-e-api');
+    await put('bind-e', integration.id);
+    const deleted = await fetch(`${base}${BASE}/${integration.id}`, { method: 'DELETE' });
+    expect(deleted.status).toBe(204);
+    expect((await json(bindingsOf('bind-e'))).body.items).toEqual([]);
+  });
+});
+
+describe('PATCH /v1/jobs/{name}', () => {
+  const patch = (name: string, body: unknown) =>
+    json(`/v1/jobs/${name}`, { method: 'PATCH', body: JSON.stringify(body) });
+  // A fresh job has no runs; the seeded ones all have a queued and a running run.
+  const freshJob = async (name: string) => {
+    const created = await json('/v1/jobs', {
+      method: 'POST',
+      body: JSON.stringify({
+        name,
+        kind: 'batch',
+        image_ref: 'registry.gregale.dev/acme/x:v1',
+        command: ['true'],
+      }),
+    });
+    expect(created.status).toBe(201);
+  };
+  const start = (name: string) =>
+    json(`/v1/jobs/${name}/runs`, { method: 'POST', body: JSON.stringify({ tasks: 1 }) });
+
+  it('pauses and resumes a job, and a paused job refuses a run with 409', async () => {
+    await freshJob('pause-a');
+    expect((await patch('pause-a', { status: 'paused' })).body.status).toBe('paused');
+    expect((await start('pause-a')).status).toBe(409);
+    expect((await patch('pause-a', { status: 'active' })).body.status).toBe('active');
+    expect((await json('/v1/jobs/pause-a')).body.status).toBe('active');
+  });
+
+  it('refuses with 409 validation_failed "Job has active runs" while tasks are queued, then allows it', async () => {
+    await freshJob('pause-b');
+    const run = await start('pause-b');
+    expect(run.status).toBe(201);
+    const refused = await patch('pause-b', { status: 'paused' });
+    expect(refused.status).toBe(409);
+    expect(refused.body).toMatchObject({
+      code: 'validation_failed',
+      detail: 'Job has active runs',
+    });
+    expect((await json('/v1/jobs/pause-b')).body.status).toBe('active');
+    const cancelled = await json(`/v1/jobs/pause-b/runs/${run.body.id}/cancel`, { method: 'POST' });
+    expect(cancelled.status).toBeLessThan(300);
+    expect((await patch('pause-b', { status: 'paused' })).status).toBe(200);
+  });
+
+  it('refuses a status other than active or paused, and an unknown job', async () => {
+    const bad = await patch('nightly-export', { status: 'deleted' });
+    expect(bad.status).toBe(400);
+    expect((await patch('no-such-job', { status: 'paused' })).status).toBe(404);
+  });
+});
+
+describe('POST /v1/jobs/{name}/runs above the plan cap', () => {
+  const start = (tasks: number) =>
+    json('/v1/jobs/nightly-export/runs', { method: 'POST', body: JSON.stringify({ tasks }) });
+
+  it('refuses with 403 job_quota_exceeded carrying limit and observed, instead of clamping', async () => {
+    vi.stubEnv('MOCK_PLAN', 'hobby');
+    const refused = await start(101);
+    expect(refused.status).toBe(403);
+    expect(refused.body).toMatchObject({ code: 'job_quota_exceeded', limit: 100, observed: 101 });
+    const runs = (await json('/v1/jobs/nightly-export/runs')).body.runs as { tasks: number }[];
+    expect(runs.some((r) => r.tasks === 100 || r.tasks === 101)).toBe(false);
+  });
+
+  it('accepts exactly the cap and refuses fewer than one task with 400', async () => {
+    vi.stubEnv('MOCK_PLAN', 'hobby');
+    const ok = await start(100);
+    expect(ok.status).toBe(201);
+    expect(ok.body.tasks).toBe(100);
+    expect((await start(0)).status).toBe(400);
+  });
+});
+
+describe('custom domain verification retry and re-add', () => {
+  const add = async (domain: string, slug: string) => {
+    const app = await json('/v1/apps', {
+      method: 'POST',
+      body: JSON.stringify({ slug, type: 'app', runtime: 'node24' }),
+    });
+    const created = await json('/v1/domains', {
+      method: 'POST',
+      body: JSON.stringify({ domain, app_id: app.body.id }),
+    });
+    return { appId: app.body.id as string, created };
+  };
+  const retry = (domain: string) => fetch(`${base}/v1/domains/${domain}/retry`, { method: 'POST' });
+
+  it('binds by app_id, as the spec says, and returns a TXT record', async () => {
+    const { appId, created } = await add('retry-a.example.com', 'retry-app-a');
+    expect(created.status).toBe(201);
+    expect(created.body).toMatchObject({ domain: 'retry-a.example.com', app_id: appId });
+    expect(created.body.txt_record).toContain('retry-a.example.com');
+  });
+
+  it('answers 202 with no body while the challenge is live, 404 for an unknown domain', async () => {
+    await add('retry-b.example.com', 'retry-app-b');
+    const ok = await retry('retry-b.example.com');
+    expect(ok.status).toBe(202);
+    expect(await ok.text()).toBe('');
+    expect((await retry('nobody.example.com')).status).toBe(404);
+  });
+
+  it('answers 409 once the seven-day challenge has expired, and never extends it', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const t0 = Date.now();
+    await add('retry-c.example.com', 'retry-app-c');
+    vi.setSystemTime(t0 + 6 * 86_400_000);
+    expect((await retry('retry-c.example.com')).status).toBe(202);
+    vi.setSystemTime(t0 + 8 * 86_400_000);
+    expect((await retry('retry-c.example.com')).status).toBe(409);
+  });
+
+  it('re-adding an expired unverified domain re-arms it with a new token and window', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const t0 = Date.now();
+    const { appId, created } = await add('retry-d.example.com', 'retry-app-d');
+    vi.setSystemTime(t0 + 8 * 86_400_000);
+    const again = await json('/v1/domains', {
+      method: 'POST',
+      body: JSON.stringify({ domain: 'retry-d.example.com', app_id: appId }),
+    });
+    expect(again.status).toBe(201);
+    expect(again.body.txt_record).not.toBe(created.body.txt_record);
+    expect((await retry('retry-d.example.com')).status).toBe(202);
+  });
+
+  it('refuses to re-add a domain whose challenge is still live, or already verified, with 409', async () => {
+    const { appId } = await add('retry-e.example.com', 'retry-app-e');
+    const dup = await json('/v1/domains', {
+      method: 'POST',
+      body: JSON.stringify({ domain: 'retry-e.example.com', app_id: appId }),
+    });
+    expect(dup.status).toBe(409);
+    // Verify flips the row on the second press.
+    await json('/v1/domains/retry-e.example.com/verify', { method: 'POST' });
+    await json('/v1/domains/retry-e.example.com/verify', { method: 'POST' });
+    expect((await retry('retry-e.example.com')).status).toBe(409);
+  });
+});
+
 describe('object storage buckets in the mock', () => {
   it('binds a bucket to its app under the default prefix, and counts the credential once', async () => {
     expect(
