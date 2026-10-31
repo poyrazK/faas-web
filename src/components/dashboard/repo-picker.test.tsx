@@ -51,6 +51,32 @@ it('uses the selected repository’s actual default branch', async () => {
   expect(onChange).toHaveBeenCalledWith('poyrazK/imgpipe', 'master');
 });
 
+it('shows a value the installation does not list instead of the placeholder', () => {
+  mocks.data = [{ id: 1, full_name: 'poyrazK/imgpipe', default_branch: 'master', private: false }];
+  render(
+    <RepoPicker value="acme-corp/api-gateway" unlistedNote="bound repository" onChange={vi.fn()} />
+  );
+  const select = screen.getByRole('combobox', { name: 'Repository' });
+  expect(select).toHaveValue('acme-corp/api-gateway');
+  expect(screen.getByRole('option', { selected: true })).toHaveTextContent(
+    'acme-corp/api-gateway (bound repository)'
+  );
+});
+
+it('names an unlisted value even without a caller note', () => {
+  mocks.data = [{ id: 1, full_name: 'poyrazK/imgpipe', default_branch: 'master', private: false }];
+  render(<RepoPicker value="acme-corp/api-gateway" onChange={vi.fn()} />);
+  expect(screen.getByRole('option', { selected: true })).toHaveTextContent(
+    'acme-corp/api-gateway (not listed for this installation)'
+  );
+});
+
+it('does not duplicate a value that is listed', () => {
+  mocks.data = [{ id: 1, full_name: 'poyrazK/imgpipe', default_branch: 'master', private: false }];
+  render(<RepoPicker value="poyrazK/imgpipe" unlistedNote="bound repository" onChange={vi.fn()} />);
+  expect(screen.getAllByRole('option', { name: /poyrazK\/imgpipe/ })).toHaveLength(1);
+});
+
 describe('the list variant', () => {
   const repos = [
     { id: 1, full_name: 'acme-corp/storefront', default_branch: 'main', private: true },
@@ -167,6 +193,17 @@ describe('the list variant', () => {
       'poyrazK/service-06',
       'poyrazK/service-09',
     ]);
+  });
+
+  // Like the select: a value the installation does not list still shows,
+  // rather than leaving the list with nothing chosen.
+  it('pins a chosen repository the installation does not list, and says so', () => {
+    mocks.data = repos;
+    renderList('acme-corp/api-gateway');
+    const pinned = screen.getByRole('radio', { name: 'acme-corp/api-gateway' });
+    expect(pinned).toBeChecked();
+    expect(pinned).toHaveAccessibleDescription(/not listed for this installation/);
+    expect(screen.getAllByRole('radio')[0]).toBe(pinned);
   });
 
   it('has no filter for a short list', () => {

@@ -100,6 +100,69 @@ describe('App deletion contract copy', () => {
     expect(screen.getByText('Desired revision 6 · App scope')).toBeVisible();
     expect(screen.queryByText('Active')).not.toBeInTheDocument();
   });
+  it('lets a number be typed through values below its minimum', async () => {
+    const user = userEvent.setup();
+    // Saving mounts the policy status panel, which reads through React Query.
+    spyApi('GET').mockResolvedValue({ data: status, response: new Response() } as never);
+    render(
+      <QueryClientProvider
+        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
+        <ConfirmProvider>
+          <AppConfiguration slug="alpha" />
+        </ConfirmProvider>
+      </QueryClientProvider>
+    );
+    const idle = screen.getByLabelText(/Idle timeout/);
+    await user.clear(idle);
+    await user.type(idle, '30');
+    expect(idle).toHaveValue(30);
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() =>
+      expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ idle_timeout_s: 30 }))
+    );
+  });
+  it('raises a number left below its minimum once the field loses focus', async () => {
+    const user = userEvent.setup();
+    render(
+      <ConfirmProvider>
+        <AppConfiguration slug="alpha" />
+      </ConfirmProvider>
+    );
+    const idle = screen.getByLabelText(/Idle timeout/);
+    await user.clear(idle);
+    await user.type(idle, '2');
+    expect(idle).toHaveValue(2);
+    await user.tab();
+    expect(idle).toHaveValue(5);
+  });
+  it('names the URL the app actually answers on when confirming a rename', async () => {
+    const user = userEvent.setup();
+    render(
+      <ConfirmProvider>
+        <AppConfiguration slug="alpha" />
+      </ConfirmProvider>
+    );
+    const slug = screen.getByLabelText('Slug');
+    await user.clear(slug);
+    await user.type(slug, 'alpha-two');
+    await user.click(screen.getByRole('button', { name: 'Rename' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('https://alpha.example.test stops answering');
+    expect(dialog).not.toHaveTextContent('gregale.app');
+  });
+  it('refuses a rename onto the reserved tag- prefix', async () => {
+    const user = userEvent.setup();
+    render(
+      <ConfirmProvider>
+        <AppConfiguration slug="alpha" />
+      </ConfirmProvider>
+    );
+    const slug = screen.getByLabelText('Slug');
+    await user.clear(slug);
+    await user.type(slug, 'tag-alpha');
+    expect(screen.getByRole('button', { name: 'Rename' })).toBeDisabled();
+  });
   it('explains live policy convergence separately from boot-time memory', () => {
     render(
       <ConfirmProvider>

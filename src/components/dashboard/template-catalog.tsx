@@ -5,6 +5,7 @@ import { CopyIconButton } from '@/components/ui/copy-button';
 import { EmptyState, InlinePhase, queryPhase } from '@/components/dashboard/primitives';
 import { useTemplates, type TemplateView } from '@/lib/api/queries';
 import { cn } from '@/lib/utils';
+import { cliInitCommand } from '@/lib/cli-commands';
 
 /**
  * The starter catalog, from `GET /v1/templates` — the same 13-entry list the
@@ -12,7 +13,7 @@ import { cn } from '@/lib/utils';
  * here is a name the CLI accepts.
  *
  * A starter prefills the new-app wizard with the template's name; the scaffold
- * itself is written by the CLI (`gregale init --template NAME`), which the
+ * itself is written by the CLI (`gregale init --template NAME --path DIR`), which the
  * wizard shows once the app exists. No fake one-click deploy pretending the
  * CLI step does not exist, and no hand-kept copy of the catalog to drift.
  *
@@ -217,11 +218,11 @@ export function TemplateCatalog({
                 $
               </span>
               <code className="min-w-0 overflow-x-auto whitespace-nowrap font-mono text-xs text-foreground">
-                gregale init --template {chosen}
+                {cliInitCommand(chosen)}
               </code>
               <CopyIconButton
-                text={`gregale init --template ${chosen}`}
-                label={`gregale init --template ${chosen}`}
+                text={cliInitCommand(chosen)}
+                label={cliInitCommand(chosen)}
                 className="ml-auto"
               />
             </div>

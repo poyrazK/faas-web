@@ -23,6 +23,11 @@ import { cn } from '@/lib/utils';
  * leads with search (and owner chips when it spans several owners) and shows
  * five rows, the chosen one pinned first, until asked for all. Its rows are radios under `name`, in a radio group named
  * by `labelledBy`, so the form and its validation see one field.
+ *
+ * A value the installation does not list (an app already bound to a repo the
+ * installation no longer shows, say) is still rendered as an option, labelled
+ * with `unlistedNote`: a select without a matching option falls back to the
+ * placeholder and hides what is about to be deployed.
  */
 type ControlProps = Pick<
   ComponentProps<'input'>,
@@ -35,6 +40,7 @@ export function RepoPicker({
   className,
   variant = 'select',
   labelledBy,
+  unlistedNote = 'not listed for this installation',
   ...control
 }: {
   value: string;
@@ -43,6 +49,7 @@ export function RepoPicker({
   variant?: 'select' | 'list';
   /** The list variant's group name: the id of the caller's visible label. */
   labelledBy?: string;
+  unlistedNote?: string;
 } & ControlProps) {
   const { account } = useAuth();
   const installId = account?.github_install_id ? Number(account.github_install_id) : null;
@@ -95,6 +102,7 @@ export function RepoPicker({
         value={value}
         onChange={onChange}
         labelledBy={labelledBy}
+        unlistedNote={unlistedNote}
         control={control}
       />
     );
@@ -112,6 +120,11 @@ export function RepoPicker({
       className={cn('font-mono', className)}
     >
       <option value="">{repos.isPending ? 'Reading repositories…' : 'Choose a repository…'}</option>
+      {value && !list.some((r) => r.full_name === value) && (
+        <option value={value}>
+          {value} ({unlistedNote})
+        </option>
+      )}
       {list.map((r) => (
         <option key={r.id} value={r.full_name}>
           {r.full_name}
@@ -134,6 +147,7 @@ function RepoList({
   value,
   onChange,
   labelledBy,
+  unlistedNote,
   control,
 }: {
   repos: Repo[];
@@ -141,6 +155,7 @@ function RepoList({
   value: string;
   onChange: (repo: string, defaultBranch?: string) => void;
   labelledBy?: string;
+  unlistedNote: string;
   control: ControlProps;
 }) {
   const uid = useId();
@@ -159,7 +174,13 @@ function RepoList({
     (r) => (!owner || ownerOf(r) === owner) && (!q || r.full_name.toLowerCase().includes(q))
   );
   // The chosen repository stays in view, first, whatever narrows the list.
-  const chosen = repos.find((r) => r.full_name === value);
+  // A chosen repository the installation does not list (one an app is already
+  // bound to, say) still shows, pinned, rather than leaving nothing chosen.
+  const unlisted: Repo | undefined =
+    value && !repos.some((r) => r.full_name === value)
+      ? { id: -1, full_name: value, default_branch: '', private: false }
+      : undefined;
+  const chosen = repos.find((r) => r.full_name === value) ?? unlisted;
   const candidates = chosen ? [chosen, ...matches.filter((r) => r !== chosen)] : matches;
   const shown = long && !all ? candidates.slice(0, SHOWN) : candidates;
   const hidden = candidates.length - shown.length;
@@ -264,7 +285,7 @@ function RepoList({
                 aria-label={r.full_name}
                 aria-describedby={`${uid}-${r.id}-meta`}
                 checked={value === r.full_name}
-                onChange={() => onChange(r.full_name, r.default_branch)}
+                onChange={() => onChange(r.full_name, r.default_branch || undefined)}
                 className="sr-only"
               />
               <span
@@ -286,11 +307,15 @@ function RepoList({
                       Private
                     </span>
                   )}
-                  <span className="inline-flex shrink-0 items-center gap-1 font-mono text-[13px] text-muted-foreground">
-                    <GitBranch aria-hidden className="h-3 w-3" />
-                    <span className="sr-only">default branch </span>
-                    {r.default_branch}
-                  </span>
+                  {r === unlisted ? (
+                    <span className="text-[13px] text-muted-foreground">{unlistedNote}</span>
+                  ) : (
+                    <span className="inline-flex shrink-0 items-center gap-1 font-mono text-[13px] text-muted-foreground">
+                      <GitBranch aria-hidden className="h-3 w-3" />
+                      <span className="sr-only">default branch </span>
+                      {r.default_branch}
+                    </span>
+                  )}
                 </span>
               </span>
               <Check

@@ -352,9 +352,22 @@ describe('New App source flow', () => {
     await act(async () => router.history.go(-3));
     expect(screen.getByText('hello-python scaffold')).toBeInTheDocument();
     expect(
-      screen.getByText(/gregale init --template hello-python && gregale deploy --app hello-python/)
+      screen.getByText(
+        'gregale init --template hello-python --path hello-python --deploy --name hello-python'
+      )
     ).toBeInTheDocument();
     expect(mocks.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('hands a created empty app the deploy command the CLI accepts', async () => {
+    const user = userEvent.setup();
+    await mount('/dashboard/apps/new?source=empty');
+    await user.click(screen.getByRole('button', { name: 'Empty app' }));
+    await user.type(await screen.findByRole('textbox', { name: /App name/ }), 'my-api');
+    await user.click(await screen.findByRole('button', { name: 'Review' }));
+    await user.click(await screen.findByRole('button', { name: 'Create app' }));
+    expect(await screen.findByText('gregale deploy --name my-api')).toBeInTheDocument();
+    expect(screen.queryByText(/--app/)).not.toBeInTheDocument();
   });
 
   it('hands a multi-service repository to Import with its project slug and branch', async () => {

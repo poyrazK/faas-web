@@ -71,11 +71,13 @@ describe('TemplateCatalog', () => {
       />
     );
     const next = screen.getByRole('region', { name: 'Chosen starter' });
-    expect(within(next).getByText('gregale init --template hello-node')).toHaveClass(
-      'whitespace-nowrap'
-    );
     expect(
-      within(next).getByRole('button', { name: /Copy: gregale init --template hello-node/ })
+      within(next).getByText('gregale init --template hello-node --path hello-node')
+    ).toHaveClass('whitespace-nowrap');
+    expect(
+      within(next).getByRole('button', {
+        name: 'Copy: gregale init --template hello-node --path hello-node',
+      })
     ).toBeInTheDocument();
     expect(within(next).getByRole('button', { name: 'Continue' })).toBeInTheDocument();
     expect(screen.getAllByText(/gregale init --template/)).toHaveLength(1);

@@ -35,7 +35,8 @@ import { sourceName } from './new-app-sources';
 import { ImageDeployForm } from './image-deploy-form';
 import { FunctionSource } from './function-source';
 import { CopyIconButton } from '@/components/ui/copy-button';
-import { templateBySlug } from '@/lib/templates';
+import { DEPLOY_STEP, templateBySlug } from '@/lib/templates';
+import { cliDeployCommand, cliInitDeployCommand } from '@/lib/cli-commands';
 import { type Runtime } from '@/lib/mock-data';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import { useData } from '@/lib/store';
@@ -701,10 +702,7 @@ function CreateAppWizard({
               </div>
               {!template && catalogTemplate ? (
                 <div className="px-4 py-4">
-                  {command(
-                    `gregale init --template ${catalogTemplate.name} && gregale deploy --app ${name}`,
-                    'the CLI commands'
-                  )}
+                  {command(cliInitDeployCommand(catalogTemplate.name, name), 'the CLI commands')}
                 </div>
               ) : template ? (
                 <div className="flex flex-col gap-3 px-4 py-4">
@@ -720,9 +718,9 @@ function CreateAppWizard({
                   <ol className="flex list-decimal flex-col gap-1.5 pl-5 text-[13px] text-muted-foreground">
                     {template.steps.map((st) => (
                       <li key={st}>
-                        {st === 'gregale deploy --app' ? (
+                        {st === DEPLOY_STEP ? (
                           <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground">
-                            gregale deploy --app {name}
+                            {cliDeployCommand(name)}
                           </code>
                         ) : (
                           st
@@ -733,7 +731,7 @@ function CreateAppWizard({
                 </div>
               ) : (
                 <div className="px-4 py-4">
-                  {command(`gregale deploy --app ${name}`, `gregale deploy --app ${name}`)}
+                  {command(cliDeployCommand(name), cliDeployCommand(name))}
                 </div>
               )}
               <div className="flex flex-col gap-0.5 px-4 py-3">

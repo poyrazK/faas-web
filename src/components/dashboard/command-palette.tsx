@@ -207,7 +207,9 @@ export function CommandPalette({
         id: fn.id,
         label: fn.name,
         group: 'Apps',
-        hint: `${formatCompact(fn.invocations24h)} calls · ${fn.runtime}`,
+        hint: fn.metricsUnavailable
+          ? fn.runtime
+          : `${formatCompact(fn.invocations24h)} requests · ${fn.runtime}`,
         icon: GitBranch,
         run: () => {
           close();
