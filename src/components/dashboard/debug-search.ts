@@ -16,6 +16,7 @@ export interface DebugSearch extends Record<string, unknown> {
   debugFilter?: (typeof QUICK_FILTERS)[number][0];
   debugWindow?: (typeof WINDOWS)[number];
   request?: string;
+  wake?: string;
   regression?: string;
   debugSource?: string;
   debugMirror?: string;
@@ -27,6 +28,7 @@ export function validateDebugSearch(raw: Record<string, unknown>): DebugSearch {
   for (const key of [
     'app',
     'request',
+    'wake',
     'debugSource',
     'debugMirror',
     'debugRoute',

@@ -21,6 +21,7 @@ import {
   type DitherColor,
 } from '@/components/dither-kit';
 import { cn } from '@/lib/utils';
+import { ProblemHelp } from './problem-help';
 
 /* ------------------------------------------------------------------ *
  * Status — color is always paired with an icon and a text label, so state
@@ -415,13 +416,15 @@ export function InlinePhase({
   }
   if (phase === 'error') {
     return (
-      <p
-        role="alert"
-        className="flex items-start gap-2 text-sm"
-        style={{ color: 'var(--status-critical)' }}
-      >
-        <WarningTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-        {errorMessage(error)}
+      <p role="alert" className="flex items-start gap-2 text-sm">
+        <WarningTriangle
+          className="mt-0.5 h-3.5 w-3.5 shrink-0"
+          style={{ color: 'var(--status-critical)' }}
+        />
+        <span className="flex min-w-0 flex-col gap-1">
+          <span style={{ color: 'var(--status-critical)' }}>{errorMessage(error)}</span>
+          <ProblemHelp error={error} />
+        </span>
         {retry}
       </p>
     );
@@ -552,6 +555,7 @@ export function ErrorState({
     >
       <WarningTriangle className="h-5 w-5" style={{ color: 'var(--status-critical)' }} />
       <p className="max-w-sm text-sm text-muted-foreground">{errorMessage(error)}</p>
+      <ProblemHelp error={error} className="items-center" />
       {onRetry && (
         <button
           type="button"

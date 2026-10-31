@@ -8,7 +8,10 @@ import {
   Outlet,
   RouterProvider,
 } from '@tanstack/react-router';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ConfirmProvider } from '@/components/ui/confirm';
+import { spyApi } from '@/test/api';
 import { Route as Apps } from './dashboard.apps.index';
 
 let empty = true;
@@ -49,10 +52,16 @@ vi.mock('@/lib/store', () => ({
     refresh: vi.fn(),
   }),
 }));
+vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 beforeEach(() => {
   empty = true;
+  spyApi('GET').mockResolvedValue({
+    data: { account_id: 'account-a', apps: [], evaluated_at: '2026-10-31T12:00:00Z' },
+    response: new Response(),
+  });
   metricsUnavailable = false;
 });
+afterEach(() => vi.restoreAllMocks());
 async function mount(entry = '/dashboard/apps') {
   const root = createRootRoute({ component: Outlet });
   const route = createRoute({
@@ -72,7 +81,13 @@ async function mount(entry = '/dashboard/apps') {
   });
   await router.load();
   await act(async () => {
-    render(<RouterProvider router={router} />);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ConfirmProvider>
+          <RouterProvider router={router} />
+        </ConfirmProvider>
+      </QueryClientProvider>
+    );
   });
   return router;
 }
@@ -126,6 +141,11 @@ describe('Apps polish', () => {
     );
     expect(screen.getByRole('columnheader', { name: 'State' })).not.toHaveClass('hidden');
     expect(screen.getByText('More details for alpha')).toBeInTheDocument();
+  });
+  it('keeps recently deleted apps restorable from the Apps page', async () => {
+    await mount();
+    expect(screen.getByRole('heading', { name: 'Recently deleted' })).toBeInTheDocument();
+    expect(await screen.findByText('No apps deleted in the last 7 days.')).toBeInTheDocument();
   });
   it('shows unknown request metrics as missing, not as zero traffic', async () => {
     empty = false;

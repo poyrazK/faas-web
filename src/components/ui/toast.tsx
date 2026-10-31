@@ -11,6 +11,8 @@ import {
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { WarningTriangle, CheckCircle, InfoCircle, Xmark } from 'iconoir-react';
 import { EASE } from '@/components/dashboard/motion';
+import { ProblemHelp } from '@/components/dashboard/problem-help';
+import { errorMessage } from '@/lib/api/errors';
 
 type ToastKind = 'success' | 'error' | 'info';
 
@@ -19,6 +21,12 @@ interface Toast {
   kind: ToastKind;
   title: string;
   description?: string;
+  /**
+   * The failure behind an error toast. Its message becomes the description
+   * when none is given, and an API error adds its code, next step, and docs
+   * link underneath.
+   */
+  error?: unknown;
 }
 
 /** Errors linger — they usually carry something the user has to act on. */
@@ -104,11 +112,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 <Icon className="mt-0.5 h-4 w-4 shrink-0" style={{ color }} />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium">{t.title}</p>
-                  {t.description && (
+                  {(t.description ?? (t.error !== undefined ? errorMessage(t.error) : '')) && (
                     <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-                      {t.description}
+                      {t.description ?? errorMessage(t.error)}
                     </p>
                   )}
+                  {t.error !== undefined && <ProblemHelp error={t.error} className="mt-1.5" />}
                 </div>
                 <button
                   type="button"

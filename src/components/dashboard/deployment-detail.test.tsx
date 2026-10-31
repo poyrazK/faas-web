@@ -35,6 +35,15 @@ vi.mock('./deployment-insights', () => ({
 }));
 vi.mock('./deployment-release-summary', () => ({ DeploymentReleaseSummary: () => null }));
 vi.mock('./rollout-recovery', () => ({ RolloutRecovery: () => null }));
+const marker = (name: string) => () => <p>{name}</p>;
+vi.mock('./deployment-diff', () => ({ DeploymentDiff: marker('diff') }));
+vi.mock('./deployment-rollout-state', () => ({ DeploymentRolloutState: marker('rollout state') }));
+vi.mock('./deployment-promote', () => ({ PromoteDeployment: marker('promote') }));
+vi.mock('./deployment-runtime', () => ({ DeploymentRuntime: marker('runtime base') }));
+vi.mock('./rollback-status', () => ({ RollbackToRelease: marker('rollback to release') }));
+vi.mock('./rollout-observation', () => ({ RolloutObservation: marker('worker rollout') }));
+vi.mock('./deployment-lifecycle', () => ({ DeploymentLifecycle: () => null }));
+vi.mock('./release-controls', () => ({ DeploymentControls: () => null }));
 
 const { DeploymentDetailPanel } = await import('./deployment-detail');
 
@@ -219,5 +228,22 @@ describe('DeploymentDetailPanel app scope', () => {
     render(<DeploymentDetailPanel deploymentId="dep-b" section="output" onClose={vi.fn()} />);
     expect(screen.getByRole('status')).toHaveTextContent('Reconnecting automatically');
     expect(screen.getByText('buffered build output')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['overview', ['rollout state', 'diff', 'rollback to release']],
+    ['lifecycle', ['promote', 'worker rollout']],
+    ['runtime', ['runtime base']],
+  ] as const)('wires the %s section to its deployment detail panels', (section, panels) => {
+    useDeployment.mockReturnValue(ready(deployment({ id: 'dep-a', app_id: 'app-a' })));
+    render(
+      <DeploymentDetailPanel
+        deploymentId="dep-a"
+        appSlug="alpha"
+        section={section}
+        onClose={vi.fn()}
+      />
+    );
+    for (const panel of panels) expect(screen.getByText(panel)).toBeInTheDocument();
   });
 });
