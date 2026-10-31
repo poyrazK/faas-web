@@ -37,7 +37,9 @@ vi.mock('@/lib/api/queries', () => ({
     isError: api.readFailed,
     refetch: api.refetch,
   }),
+  useInvokeApp: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
+vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { plan: 'pro' } }) }));
 vi.mock('@/lib/api/logs', () => ({
   useLogStream: () => ({ lines: [], status: 'streaming', reason: null }),
 }));
@@ -337,10 +339,12 @@ describe('deployment stages', () => {
 
 describe('first response', () => {
   it('keeps exactly one response check as a submitted deployment becomes live and updates', () => {
-    const { rerender } = render(<DeploymentProgress {...props} deploymentId={null} />);
+    const { rerender } = render(
+      <DeploymentProgress {...props} deploymentId={null} appSlug="hello-app" />
+    );
     expect(screen.queryByRole('button', { name: 'Send GET request' })).not.toBeInTheDocument();
     api.status = 'live';
-    for (let i = 0; i < 3; i++) rerender(<DeploymentProgress {...props} />);
+    for (let i = 0; i < 3; i++) rerender(<DeploymentProgress {...props} appSlug="hello-app" />);
     expect(screen.getAllByRole('button', { name: 'Send GET request' })).toHaveLength(1);
   });
 });

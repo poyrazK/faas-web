@@ -670,6 +670,13 @@ route('POST', '/v1/apps/{slug}/deployments', ({ params, body, req }) => {
   imageDeployReceipts.set(key, deployment);
   return status(202, deployment);
 });
+// A sync invoke answers at once with what a small JSON handler would return.
+route('POST', '/v1/apps/{slug}/invoke', ({ params, body }) => {
+  const a = app(params.slug);
+  const method = typeof body.method === 'string' ? body.method : 'POST';
+  const path = typeof body.path === 'string' ? body.path : '/';
+  return { id: db.id(), status: 'completed', result: { ok: true, app: a.slug, method, path } };
+});
 const imageRegistryMetadata = new Map<
   string,
   components['schemas']['AppRegistryCredentialResponse'][]

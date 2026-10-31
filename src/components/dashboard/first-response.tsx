@@ -1,14 +1,24 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { ApiError, errorMessage } from '@/lib/api/errors';
+import { useInvokeApp } from '@/lib/api/queries';
+import { useAuth } from '@/lib/auth';
+import { isPaidPlan } from '@/lib/plan';
 
 const BODY_LIMIT = 16_384;
 
-function requestUrl(endpoint: string, path: string): string | undefined {
+type Outcome = { status: string; body: string; error?: string };
+
+function validPath(path: string): boolean {
+  return path.startsWith('/') && !path.startsWith('//') && !/[\\\s#]/.test(path);
+}
+
+function publicUrl(endpoint: string, path: string): string | undefined {
   try {
     const base = new URL(endpoint);
     if (base.protocol !== 'https:' || base.username || base.password) return undefined;
-    if (!path.startsWith('/') || path.startsWith('//') || /[\\\s#]/.test(path)) return undefined;
+    if (!validPath(path)) return undefined;
     const url = new URL(path, base);
     return url.origin === base.origin ? url.href : undefined;
   } catch {
@@ -16,33 +26,43 @@ function requestUrl(endpoint: string, path: string): string | undefined {
   }
 }
 
-async function responsePreview(response: Response): Promise<string> {
-  const reader = response.body?.getReader();
-  if (!reader) return '';
-  const decoder = new TextDecoder();
-  let length = 0;
-  let text = '';
+// The platform stores a JSON body as-is and any other body as a JSON string.
+function preview(result: unknown): string {
+  if (result === undefined || result === null) return '';
+  let text: string;
   try {
-    while (length < BODY_LIMIT) {
-      const { done, value } = await reader.read();
-      if (done) return text + decoder.decode();
-      const part = value.subarray(0, BODY_LIMIT - length);
-      length += part.length;
-      text += decoder.decode(part, { stream: true });
-    }
-    return `${text}${decoder.decode()}\n… Response preview limited to 16 KB.`;
-  } finally {
-    void reader.cancel().catch(() => {});
+    text = typeof result === 'string' ? result : (JSON.stringify(result, null, 2) ?? '');
+  } catch {
+    text = String(result);
   }
+  return text.length > BODY_LIMIT
+    ? `${text.slice(0, BODY_LIMIT)}\n… Response preview limited to 16 KB.`
+    : text;
 }
 
-/** An explicit public-host request, separate from the platform's deployment status. */
-export function FirstResponse({ endpoint }: { endpoint: string }) {
-  return <RequestCheck key={endpoint} endpoint={endpoint} />;
+function failureMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.code === 'long_poll_timeout')
+      return 'Your app did not answer within the wait, and the request keeps running. It may still be waking. Try again shortly, or see it under Invocations.';
+    if (error.code === 'plan_feature_gated')
+      return 'Sending requests from the console needs a paid plan. Open the request URL instead, or run the request under Call it.';
+  }
+  return errorMessage(error);
 }
 
-function RequestCheck({ endpoint }: { endpoint: string }) {
+/**
+ * An explicit GET sent through the platform's invoke API, separate from the
+ * deployment status. The console's content policy keeps the browser off the
+ * app's own host, so the public URL is offered as a link instead.
+ */
+export function FirstResponse({ slug, endpoint }: { slug: string; endpoint: string }) {
+  return <RequestCheck key={`${slug} ${endpoint}`} slug={slug} endpoint={endpoint} />;
+}
+
+function RequestCheck({ slug, endpoint }: { slug: string; endpoint: string }) {
   const pathId = useId();
+  const { account } = useAuth();
+  const invoke = useInvokeApp();
   const [path, setPath] = useState(() => {
     try {
       const url = new URL(endpoint);
@@ -51,67 +71,39 @@ function RequestCheck({ endpoint }: { endpoint: string }) {
       return '/';
     }
   });
-  const [pending, setPending] = useState(false);
-  const [result, setResult] = useState<{ status: number; body: string } | null>(null);
+  const attempt = useRef(0);
+  const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const active = useRef<AbortController | null>(null);
-  const url = requestUrl(endpoint, path);
-  const successful = result !== null && result.status >= 200 && result.status < 300;
-
-  useEffect(
-    () => () => {
-      active.current?.abort();
-      active.current = null;
-    },
-    []
-  );
+  // Free plans cannot invoke synchronously; an unresolved account still tries.
+  const canSend = account === null || isPaidPlan(account.plan);
+  const valid = validPath(path);
+  const url = publicUrl(endpoint, path);
+  const pending = invoke.isPending;
+  const successful = outcome?.status === 'completed';
 
   function changePath(value: string) {
-    active.current?.abort();
-    active.current = null;
-    setPending(false);
-    setResult(null);
+    // A reply to an earlier path must not land on this one.
+    attempt.current += 1;
+    setOutcome(null);
     setError(null);
     setPath(value);
   }
 
   async function send() {
-    if (!url || active.current) return;
-    const controller = new AbortController();
-    active.current = controller;
-    setPending(true);
-    setResult(null);
+    if (!valid || pending) return;
+    const current = ++attempt.current;
+    setOutcome(null);
     setError(null);
-    const timeout = window.setTimeout(() => controller.abort(), 20_000);
     try {
-      // Do not send account cookies or follow the app to another host. Never
-      // use no-cors: an opaque response cannot verify an HTTP result.
-      const response = await fetch(url, {
-        method: 'GET',
-        credentials: 'omit',
-        mode: 'cors',
-        cache: 'no-store',
-        redirect: 'error',
-        referrerPolicy: 'no-referrer',
-        signal: controller.signal,
-      });
-      if (response.type === 'opaque' || response.status === 0)
-        throw new Error('Unreadable response');
-      const body = await responsePreview(response);
-      if (active.current === controller) setResult({ status: response.status, body });
-    } catch {
-      if (active.current === controller)
-        setError(
-          controller.signal.aborted
-            ? 'The request timed out after 20 seconds. Your app may still be waking. Try again, open the URL, or run the request under Call it.'
-            : 'The browser could not read a response. The app may restrict cross-origin access (CORS), redirect, or be unreachable. Open the URL, or run the request under Call it.'
-        );
-    } finally {
-      window.clearTimeout(timeout);
-      if (active.current === controller) {
-        active.current = null;
-        setPending(false);
-      }
+      const response = await invoke.mutateAsync({ slug, method: 'GET', path });
+      if (attempt.current === current)
+        setOutcome({
+          status: response.status,
+          body: preview(response.result),
+          error: response.error,
+        });
+    } catch (cause) {
+      if (attempt.current === current) setError(failureMessage(cause));
     }
   }
 
@@ -129,8 +121,9 @@ function RequestCheck({ endpoint }: { endpoint: string }) {
           className="flex flex-col gap-3 px-4 py-4"
         >
           <p className="text-[13px] leading-5 text-muted-foreground">
-            Send a GET request to your public endpoint, to a read-only route such as a health check.
-            It can wake your app and use compute allowance; no account cookies are sent.
+            {canSend
+              ? 'Send a GET request through the platform to a read-only route, such as a health check. It reaches your app the way an invocation does rather than over its public URL, and can wake it and use compute allowance.'
+              : 'Sending a request from the console needs a paid plan. Open the request URL to see your app answer, or run the request under Call it.'}
           </p>
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex min-w-0 flex-1 basis-48 flex-col gap-1.5">
@@ -144,16 +137,18 @@ function RequestCheck({ endpoint }: { endpoint: string }) {
                 maxLength={2048}
                 spellCheck={false}
                 className="font-mono"
-                aria-invalid={!url || undefined}
+                aria-invalid={!valid || undefined}
               />
             </div>
-            <Button type="submit" variant="cta" busy={pending} disabled={!url}>
-              Send GET request
-            </Button>
+            {canSend && (
+              <Button type="submit" variant="cta" busy={pending} disabled={!valid}>
+                Send GET request
+              </Button>
+            )}
           </div>
-          {!url && (
+          {!valid && (
             <p role="alert" className="text-[13px] text-destructive">
-              Use an HTTPS app endpoint and a path starting with a single /.
+              Use a path starting with a single /.
             </p>
           )}
         </form>
@@ -168,19 +163,20 @@ function RequestCheck({ endpoint }: { endpoint: string }) {
               {error}
             </p>
           )}
-          {result && (
+          {outcome && (
             <div className="flex flex-col gap-2 px-4 py-3">
               <p
                 className={successful ? 'text-sm text-status-good' : 'text-sm text-status-warning'}
               >
-                HTTP {result.status}
                 {successful
-                  ? ' · Public endpoint responded successfully.'
-                  : ' · The endpoint responded, but this route did not return a successful status. Check the path and app logs.'}
+                  ? 'Your app responded successfully.'
+                  : `The request ${outcome.status === 'failed' ? 'failed' : `ended ${outcome.status}`}${outcome.error ? `: ${outcome.error}` : '.'} Check the path and app logs.`}
               </p>
-              <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted p-3 font-mono text-xs">
-                {result.body || '(Empty response body)'}
-              </pre>
+              {(successful || outcome.body) && (
+                <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted p-3 font-mono text-xs">
+                  {outcome.body || '(Empty response body)'}
+                </pre>
+              )}
             </div>
           )}
         </div>

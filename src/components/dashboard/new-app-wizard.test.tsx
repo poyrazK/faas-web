@@ -139,6 +139,7 @@ vi.mock('@/lib/api/queries', () => ({
   useBindRepoFor: () => ({ mutateAsync: mocks.bindRepo }),
   useDeployFromRefFor: () => ({ mutateAsync: mocks.deployFromRef }),
   useDeployFunctionSourceFor: () => ({ mutateAsync: mocks.deployFunction }),
+  useInvokeApp: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useUpdateAppFor: () => ({ mutateAsync: mocks.updateApp }),
   useSourceRefScan: (input: unknown) => mocks.scan(input),
   // The wizard reads the starter catalog to prefill from a `?template=` name.

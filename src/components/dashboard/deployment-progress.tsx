@@ -376,9 +376,11 @@ export function DeploymentProgress({
         )}
       </div>
 
-      {/* An explicit request to the public host, separate from deployment
+      {/* An explicit request through the platform, separate from deployment
           status: only when asked, and never counted as verification on failure. */}
-      {live && endpoint && <FirstResponse key={`response-${deploymentId}`} endpoint={endpoint} />}
+      {live && endpoint && appSlug && (
+        <FirstResponse key={`response-${deploymentId}`} slug={appSlug} endpoint={endpoint} />
+      )}
       {live && appSlug && <AppCallIt slug={appSlug} />}
     </section>
   );
