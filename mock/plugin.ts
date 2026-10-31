@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createHash, randomBytes } from 'node:crypto';
-import type { Plugin } from 'vite';
+import type { Connect, Logger, Plugin } from 'vite';
 import type { components } from '../src/lib/api/schema';
 import * as db from './data';
 import * as automationMock from './automations';
@@ -640,6 +640,12 @@ function createMockApp(body: Record<string, unknown>, req: IncomingMessage) {
 route('POST', '/v1/apps', ({ body, req }) => createMockApp(body, req));
 route('POST', '/v1/apps/{slug}/deployments', ({ params, body, req }) => {
   const a = app(params.slug);
+  // A source upload (a function written in New app) builds like any tarball.
+  if (String(req.headers['content-type'] ?? '').startsWith('multipart/form-data')) {
+    if (a.type !== 'function')
+      throw new Problem(422, 'invalid_app_type', 'This mock builds uploads for functions only.');
+    return status(202, startSourceDeployment(a, 'tarball', `${a.slug} (uploaded handler)`));
+  }
   if (a.type !== 'app')
     throw new Problem(422, 'invalid_app_type', 'Image deployment requires an app.');
   if (typeof body.image !== 'string' || !isDigestPinnedImage(body.image))
@@ -851,19 +857,49 @@ route('POST', '/v1/apps/{slug}/deployments/source-ref', ({ params, body }) => {
     startSourceDeployment(a, 'github', `${String(body.repo)}@${String(body.ref)}`)
   );
 });
-route('POST', '/v1/apps/{slug}/rollback', ({ params }) => {
+// apid's targets (handlers_ext.go rollbackAppCore): by default the newest
+// superseded deployment; an explicit target may also be a live row at 0%
+// traffic. The target row itself goes live again; no new row is written.
+route('POST', '/v1/apps/{slug}/rollback', ({ params, body }) => {
   const a = app(params.slug);
-  const previous = db.deployments.filter((d) => d.app_id === a.id && d.status === 'succeeded')[0];
-  if (!previous) throw new Problem(409, 'no_previous_deployment', 'Nothing to roll back to.');
-  const dep: db.Deployment = {
-    ...previous,
-    id: db.id(),
-    status: 'active',
-    created_at: db.iso(0),
-    traffic_percent: 100,
-  };
-  db.deployments.unshift(dep);
-  return status(202, dep);
+  const rows = db.deployments.filter((d) => d.app_id === a.id);
+  const ref = typeof body.target_deployment_id === 'string' ? body.target_deployment_id.trim() : '';
+  let target: db.Deployment | undefined;
+  if (ref) {
+    target = rows.find((d) => d.id === ref);
+    if (!target)
+      throw new Problem(
+        404,
+        'rollback_target_not_found',
+        `No rollback-eligible deployment with id "${ref}" belongs to ${a.slug}.`
+      );
+    const zeroTrafficLive = target.status === 'live' && (target.traffic_percent ?? 0) === 0;
+    if (target.status === 'live' && !zeroTrafficLive)
+      throw new Problem(
+        409,
+        'rollback_target_already_live',
+        `Deployment "${ref}" is already the current live deployment.`
+      );
+    if (target.status !== 'superseded' && !zeroTrafficLive)
+      throw new Problem(
+        409,
+        'rollback_target_ineligible',
+        `Deployment "${ref}" has status "${target.status}"; only a superseded or zero-traffic live deployment can be rolled back.`
+      );
+  } else {
+    target = rows.find((d) => d.status === 'superseded');
+    if (!target)
+      throw new Problem(409, 'no_rollback_target', 'No earlier deployment to roll back to.');
+  }
+  const scope = target.scope ?? 'prod';
+  for (const d of rows) {
+    if (d === target || d.status !== 'live' || (d.scope ?? 'prod') !== scope) continue;
+    d.status = 'superseded';
+    d.traffic_percent = 0;
+  }
+  target.status = 'live';
+  target.traffic_percent = 100;
+  return status(202, target);
 });
 route('GET', '/v1/apps/{slug}/metrics', ({ params, query }) =>
   db.metricsFor(app(params.slug), query.get('range') ?? '24h')
@@ -5597,20 +5633,48 @@ route('POST', '/dashboard/install/connect', ({ body, req, res }) => {
 });
 route('POST', '/v1/install/repos/list', () => {
   requireGitHub();
-  return [
+  const seeded = [
     { id: 1001, full_name: 'acme-corp/storefront', default_branch: 'main', private: true },
     { id: 1002, full_name: 'acme-corp/checkout', default_branch: 'main', private: true },
     { id: 1003, full_name: 'acme-corp/webhook-router', default_branch: 'master', private: false },
     { id: 1004, full_name: 'acme-corp/nightly-etl', default_branch: 'main', private: true },
   ];
+  // MOCK_REPOS=<n> pads the installation to n repositories across a few
+  // owners, to see the New app repository list as a large account sees it.
+  const total = Number(process.env.MOCK_REPOS ?? 0);
+  const owners = ['acme-corp', 'acme-labs', 'design-ops'];
+  const words = ['billing', 'search', 'auth', 'media', 'events', 'catalog', 'inbox', 'ledger'];
+  for (let i = seeded.length; i < total; i++)
+    seeded.push({
+      id: 2000 + i,
+      full_name: `${owners[i % owners.length]}/${words[i % words.length]}-${['api', 'worker', 'web', 'cron'][i % 4]}-${i}`,
+      default_branch: i % 5 ? 'main' : 'develop',
+      private: i % 3 !== 0,
+    });
+  return seeded;
 });
-route('POST', '/v1/apps/{slug}/install/bind', async ({ body }) => {
-  requireGitHub();
+const repoBindings = new Map<string, { repo_full_name: string; production_branch: string }>();
+route('GET', '/v1/apps/{slug}/install/bind', ({ params }) => {
+  const bound = repoBindings.get(params.slug);
+  const installed = Boolean(db.account.github_install_id);
   return {
-    binding_id: hex(32),
+    state: bound ? 'bound' : installed ? 'installed' : 'not_installed',
+    health: installed ? 'healthy' : 'not_connected',
+    connected: installed,
+    ...(installed ? { installation_id: Number(MOCK_INSTALL_ID) } : {}),
+    last_reconcile_repository_count: 4,
+    last_reconcile_detached_count: 0,
+    ...bound,
+  };
+});
+route('POST', '/v1/apps/{slug}/install/bind', async ({ params, body }) => {
+  requireGitHub();
+  const bound = {
     repo_full_name: String(body.repo_full_name ?? ''),
     production_branch: String(body.production_branch ?? 'main'),
   };
+  repoBindings.set(params.slug, bound);
+  return { binding_id: hex(32), ...bound };
 });
 
 // --- Organisations, org keys, invitations ---
@@ -5732,6 +5796,7 @@ const MOCK_CSRF_ACTIONS = new Set([
   'mfa_disable',
   'set_password',
   'connect_github',
+  'bind_app_to_repo',
 ]);
 route('GET', '/v1/auth/csrf', ({ query, res }) => {
   const action = query.get('action') ?? '';
@@ -6831,68 +6896,73 @@ const MOCKED_PREFIXES = [
   '/dashboard/install/connect',
 ];
 
+/** What the installer needs from either Vite server; dev and preview both have it. */
+type MockHost = { config: { logger: Logger }; middlewares: Connect.Server };
+
 export function mockApi(): Plugin {
+  const install = (server: MockHost) => {
+    server.config.logger.info(
+      `  ➜  mock api: serving /v1/* from mock/ — no backend needed${db.EMPTY ? ' (empty workspace)' : ''}`
+    );
+    server.middlewares.use((req, res, next) => {
+      const url = new URL(req.url ?? '/', 'http://localhost');
+      const method = req.method ?? 'GET';
+      // GET /login and /signup are this app's own pages; only the POSTs are the API's.
+      const isApi =
+        url.pathname.startsWith('/v1/') ||
+        url.pathname === '/status/slo.json' ||
+        (method !== 'GET' &&
+          MOCKED_PREFIXES.some((p) => url.pathname === p || url.pathname.startsWith(p + '/')));
+      if (!isApi) return next();
+
+      const match = routes.find((r) => r.method === method && r.pattern.test(url.pathname));
+      if (!match) {
+        server.config.logger.warn(`  mock api: no handler for ${method} ${url.pathname}`);
+        return problem(
+          res,
+          new Problem(
+            404,
+            'not_mocked',
+            `The mock API has no handler for ${method} ${url.pathname}.`
+          )
+        );
+      }
+
+      const values = url.pathname.match(match.pattern)!.slice(1).map(decodeURIComponent);
+      const params = Object.fromEntries(match.keys.map((k, i) => [k, values[i]]));
+
+      void (async () => {
+        const body = method === 'GET' ? {} : await readBody(req);
+        await new Promise((r) => setTimeout(r, latency()));
+        // Deployments created here move along their lifecycle as time passes.
+        advanceDeployments(Date.now());
+        try {
+          const out = await match.handler({ params, query: url.searchParams, body, req, res });
+          if (res.writableEnded || res.headersSent) return; // streaming handlers own the response
+          if (out === NO_CONTENT) {
+            res.statusCode = 204;
+            res.end();
+            return;
+          }
+          if (out && typeof out === 'object' && '__status' in out) {
+            const s = out as { __status: number; body: unknown };
+            return json(res, s.__status, s.body);
+          }
+          json(res, 200, out);
+        } catch (err) {
+          if (err instanceof Problem) return problem(res, err);
+          server.config.logger.error(`  mock api: ${method} ${url.pathname} threw: ${String(err)}`);
+          problem(res, new Problem(500, 'mock_error', String(err)));
+        }
+      })();
+    });
+  };
   return {
     name: 'gregale-mock-api',
     apply: 'serve',
-    configureServer(server) {
-      server.config.logger.info(
-        `  ➜  mock api: serving /v1/* from mock/ — no backend needed${db.EMPTY ? ' (empty workspace)' : ''}`
-      );
-      server.middlewares.use((req, res, next) => {
-        const url = new URL(req.url ?? '/', 'http://localhost');
-        const method = req.method ?? 'GET';
-        // GET /login and /signup are this app's own pages; only the POSTs are the API's.
-        const isApi =
-          url.pathname.startsWith('/v1/') ||
-          url.pathname === '/status/slo.json' ||
-          (method !== 'GET' &&
-            MOCKED_PREFIXES.some((p) => url.pathname === p || url.pathname.startsWith(p + '/')));
-        if (!isApi) return next();
-
-        const match = routes.find((r) => r.method === method && r.pattern.test(url.pathname));
-        if (!match) {
-          server.config.logger.warn(`  mock api: no handler for ${method} ${url.pathname}`);
-          return problem(
-            res,
-            new Problem(
-              404,
-              'not_mocked',
-              `The mock API has no handler for ${method} ${url.pathname}.`
-            )
-          );
-        }
-
-        const values = url.pathname.match(match.pattern)!.slice(1).map(decodeURIComponent);
-        const params = Object.fromEntries(match.keys.map((k, i) => [k, values[i]]));
-
-        void (async () => {
-          const body = method === 'GET' ? {} : await readBody(req);
-          await new Promise((r) => setTimeout(r, latency()));
-          // Deployments created here move along their lifecycle as time passes.
-          advanceDeployments(Date.now());
-          try {
-            const out = await match.handler({ params, query: url.searchParams, body, req, res });
-            if (res.writableEnded || res.headersSent) return; // streaming handlers own the response
-            if (out === NO_CONTENT) {
-              res.statusCode = 204;
-              res.end();
-              return;
-            }
-            if (out && typeof out === 'object' && '__status' in out) {
-              const s = out as { __status: number; body: unknown };
-              return json(res, s.__status, s.body);
-            }
-            json(res, 200, out);
-          } catch (err) {
-            if (err instanceof Problem) return problem(res, err);
-            server.config.logger.error(
-              `  mock api: ${method} ${url.pathname} threw: ${String(err)}`
-            );
-            problem(res, new Problem(500, 'mock_error', String(err)));
-          }
-        })();
-      });
-    },
+    configureServer: install,
+    // `vite preview` serves the built bundle; with the mock installed here too,
+    // `npm run preview:mock` tours a real build under the production headers.
+    configurePreviewServer: install,
   };
 }
