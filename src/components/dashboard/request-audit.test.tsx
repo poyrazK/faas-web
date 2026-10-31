@@ -84,18 +84,62 @@ it('asks for the newest 100 of the last 24 hours, and a wider window on request'
   });
 });
 
-it('offers up to 500 when the newest 100 fill the page, then says where the list stops', async () => {
-  answer = (query) => ({
-    app_id: 'app-1',
-    since: '2026-10-30T00:00:00Z',
-    until: '2026-10-31T00:00:00Z',
-    records: Array.from({ length: Number(query.limit) }, (_, i) => record(i + 1)),
-  });
+it('offers up to 500 when the newest 100 fill the page, then pages back by until', async () => {
+  // A full page whatever the cursor; an older page's records start where it ends.
+  answer = (query) => {
+    const until = query.until ? Date.parse(String(query.until)) : Date.now();
+    return {
+      app_id: 'app-1',
+      since: '2026-10-30T00:00:00.000Z',
+      until: new Date(until).toISOString(),
+      records: Array.from({ length: Number(query.limit) }, (_, i) =>
+        record(i + 1, { occurred_at: new Date(until - (i + 1) * 60_000).toISOString() })
+      ),
+    };
+  };
   renderWithProviders(<RequestAuditPanel slug="api" />);
   await userEvent.click(await screen.findByRole('button', { name: /show up to 500/i }));
   await waitFor(() => expect(lastQuery().limit).toBe(500));
-  expect(await screen.findByText(/at most 500 records/i)).toBeInTheDocument();
+  const newest = lastQuery();
+  expect(await screen.findByText(/showing the newest 500/i)).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /show up to 500/i })).not.toBeInTheDocument();
+
+  // until is exclusive (pgstore_request_audit.go), so the oldest shown record's
+  // time is the next page's bound; since stays at the window's start.
+  const oldest = new Date(Date.parse(String(newest.until)) - 500 * 60_000).toISOString();
+  await userEvent.click(screen.getByRole('button', { name: /older records/i }));
+  await waitFor(() => expect(lastQuery().until).toBe(oldest));
+  expect(lastQuery()).toMatchObject({ since: '2026-10-30T00:00:00.000Z', limit: 500 });
+  expect(await screen.findByText(/showing 500 records older than/i)).toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole('button', { name: /newest records/i }));
+  await waitFor(() =>
+    expect(Date.parse(String(lastQuery().until))).toBeGreaterThan(Date.parse(oldest))
+  );
+  expect(await screen.findByText(/showing the newest 500/i)).toBeInTheDocument();
+});
+
+it('says when an older page reaches the start of the window', async () => {
+  let calls = 0;
+  answer = (query) => {
+    calls += 1;
+    const until = query.until ? Date.parse(String(query.until)) : Date.now();
+    const length = calls > 2 ? 3 : Number(query.limit);
+    return {
+      app_id: 'app-1',
+      since: '2026-10-30T00:00:00.000Z',
+      until: new Date(until).toISOString(),
+      records: Array.from({ length }, (_, i) =>
+        record(i + 1, { occurred_at: new Date(until - (i + 1) * 60_000).toISOString() })
+      ),
+    };
+  };
+  renderWithProviders(<RequestAuditPanel slug="api" />);
+  await userEvent.click(await screen.findByRole('button', { name: /show up to 500/i }));
+  await userEvent.click(await screen.findByRole('button', { name: /older records/i }));
+  expect(await screen.findByText(/no older records in this window/i)).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /older records/i })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /newest records/i })).toBeInTheDocument();
 });
 
 it('when nothing was recorded, says collection is off by default and is not a per-app switch', async () => {

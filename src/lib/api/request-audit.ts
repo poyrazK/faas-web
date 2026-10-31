@@ -25,14 +25,23 @@ export type RequestAuditWindow = keyof typeof REQUEST_AUDIT_WINDOWS;
 export const REQUEST_AUDIT_DEFAULT_LIMIT = 100;
 export const REQUEST_AUDIT_MAX_LIMIT = 500;
 
+/** An older page of the same window: its start, and the exclusive end the last page stopped at. */
+export type RequestAuditPage = { since: string; until: string };
+
 /**
- * Exact gateway-observed requests for one app, newest first. `since` and
- * `until` are both sent and computed when the read runs, so the window is
- * exactly what was asked for and never trips the 31-day bound.
+ * Exact gateway-observed requests for one app, newest first. Without `page`,
+ * `since` and `until` are both computed when the read runs, so the window is
+ * exactly what was asked for and never trips the 31-day bound. With `page`,
+ * both are sent as given; it only ever narrows a window that already passed.
  */
-export function useRequestAudit(slug: string, window: RequestAuditWindow, limit: number) {
+export function useRequestAudit(
+  slug: string,
+  window: RequestAuditWindow,
+  limit: number,
+  page?: RequestAuditPage
+) {
   return useQuery({
-    queryKey: ['apps', slug, 'request-audit', window, limit],
+    queryKey: ['apps', slug, 'request-audit', window, limit, page ?? null],
     queryFn: ({ signal }) => {
       const until = Date.now();
       return unwrap(
@@ -40,8 +49,8 @@ export function useRequestAudit(slug: string, window: RequestAuditWindow, limit:
           params: {
             path: { slug },
             query: {
-              since: new Date(until - REQUEST_AUDIT_WINDOWS[window]).toISOString(),
-              until: new Date(until).toISOString(),
+              since: page?.since ?? new Date(until - REQUEST_AUDIT_WINDOWS[window]).toISOString(),
+              until: page?.until ?? new Date(until).toISOString(),
               limit,
             },
           },

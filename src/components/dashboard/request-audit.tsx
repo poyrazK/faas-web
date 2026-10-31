@@ -5,6 +5,7 @@ import {
   REQUEST_AUDIT_MAX_LIMIT,
   REQUEST_AUDIT_WINDOWS,
   useRequestAudit,
+  type RequestAuditPage,
   type RequestAuditRecord,
   type RequestAuditWindow,
 } from '@/lib/api/request-audit';
@@ -131,14 +132,28 @@ const COLUMNS: Column<Row>[] = [
 export function RequestAuditPanel({ slug }: { slug: string }) {
   const [window, setWindow] = useState<RequestAuditWindow>('24h');
   const [limit, setLimit] = useState(REQUEST_AUDIT_DEFAULT_LIMIT);
-  const audit = useRequestAudit(slug, window, limit);
+  // Older pages of the same window, newest cursor last. Empty means the newest.
+  const [pages, setPages] = useState<RequestAuditPage[]>([]);
+  const page = pages.at(-1);
+  const audit = useRequestAudit(slug, window, limit, page);
   const records = audit.data?.records ?? [];
   const phase = queryPhase({
     error: audit.error,
     loading: audit.isPending,
-    isEmpty: records.length === 0,
+    // An empty older page is the end of the window, not collection being off.
+    isEmpty: records.length === 0 && !page,
   });
   const full = records.length >= limit;
+  const oldest = records.at(-1);
+  // `until` is exclusive (faas pgstore_request_audit.go:20), so the oldest
+  // shown record's time starts the next page; `since` stays the window's
+  // start, so the span only narrows and the 31-day bound still holds. Records
+  // sharing that exact instant beyond the cap would be skipped: there is no
+  // event-id cursor to break the tie.
+  const older = () =>
+    audit.data &&
+    oldest &&
+    setPages((current) => [...current, { since: audit.data.since, until: oldest.occurred_at }]);
   const rows: Row[] = records.map((r) => ({ ...r, id: r.event_id }));
 
   return (
@@ -154,6 +169,7 @@ export function RequestAuditPanel({ slug }: { slug: string }) {
             onChange={(e) => {
               setWindow(e.target.value as RequestAuditWindow);
               setLimit(REQUEST_AUDIT_DEFAULT_LIMIT);
+              setPages([]);
             }}
             className="h-8 text-xs"
           >
@@ -191,6 +207,7 @@ export function RequestAuditPanel({ slug }: { slug: string }) {
             searchKeys={['route_template', 'method', 'source_ip', 'consumer_id', 'request_id']}
             searchPlaceholder="Filter route, IP, consumer or request ID…"
             desktopMinWidth="md:min-w-[960px]"
+            emptyMessage="No older records."
           />
           {full && limit < REQUEST_AUDIT_MAX_LIMIT && (
             <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
@@ -205,11 +222,30 @@ export function RequestAuditPanel({ slug }: { slug: string }) {
               </Button>
             </div>
           )}
-          {full && limit >= REQUEST_AUDIT_MAX_LIMIT && (
-            <p className="text-xs text-muted-foreground">
-              Showing the newest {limit}. A read returns at most {REQUEST_AUDIT_MAX_LIMIT} records
-              and there is no export yet, so choose a shorter window to reach older ones.
-            </p>
+          {(page || (full && limit >= REQUEST_AUDIT_MAX_LIMIT)) && (
+            <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+              <span>
+                {!page ? (
+                  `Showing the newest ${records.length}.`
+                ) : full ? (
+                  <>
+                    Showing {records.length} records older than <Timestamp iso={page.until} />.
+                  </>
+                ) : (
+                  'No older records in this window.'
+                )}
+              </span>
+              {full && (
+                <Button size="xs" variant="outline" busy={audit.isFetching} onClick={older}>
+                  Older records
+                </Button>
+              )}
+              {page && (
+                <Button size="xs" variant="ghost" onClick={() => setPages([])}>
+                  Newest records
+                </Button>
+              )}
+            </div>
           )}
         </div>
       )}
