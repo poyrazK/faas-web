@@ -37,7 +37,7 @@
     "d3-shape": "^3.2.0",
     "glimm": "^0.3.0",
     "iconoir-react": "^7.12.1",
-    "motion": "^13.1.0",
+    "motion": "^14.7.1",
     "openapi-fetch": "^0.17.0",
     "radix-ui": "^1.6.7",
     "react": "^19.1.1",
