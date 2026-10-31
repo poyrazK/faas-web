@@ -63,5 +63,11 @@ export function matchesRegression(
   request: components['schemas']['DebugTelemetryRequestItem'],
   regression: Regression
 ) {
-  return request.deployment_id === regression.deployment_id && request.route === regression.route;
+  // A bucket with no deployment or route cannot match; two absences are not equal.
+  return (
+    request.deployment_id !== undefined &&
+    request.route !== undefined &&
+    request.deployment_id === regression.deployment_id &&
+    request.route === regression.route
+  );
 }

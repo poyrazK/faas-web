@@ -11,9 +11,9 @@ import { SECTION_LABELS } from '@/components/dashboard/nav-config';
  */
 
 export const SITE_NAME = 'Gregale';
-export const SITE_TAGLINE = 'Backend hosting, now in beta';
+export const SITE_TAGLINE = 'Your backend, working together';
 export const SITE_DESCRIPTION =
-  'Deploy APIs and functions from your repository. Gregale runs them in isolated microVMs and scales idle apps to zero. Join the beta.';
+  'Bring APIs, services and background work onto one platform. Hosting is in public beta; background jobs, workflows and internal services are in preview.';
 
 /** Brand last, so the distinguishing half survives a truncated tab. */
 function withSiteName(title?: string): string {

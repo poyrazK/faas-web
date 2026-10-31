@@ -41,8 +41,6 @@ function deployment(overrides: Partial<Deployment> = {}): Deployment {
     kind: 'github',
     status: 'live',
     created_at: '2026-09-09T10:00:00Z',
-    rollback_on_5xx: false,
-    first_5xx_count: 0,
     ...overrides,
   };
 }
@@ -177,5 +175,31 @@ describe('DeploymentDetailPanel app scope', () => {
 
     expect(screen.getByText('Deployment ID')).toBeInTheDocument();
     expect(screen.getByText('dep-b')).toBeInTheDocument();
+  });
+  it('keeps recovery visible alongside buffered build output and retries the stream', async () => {
+    const retry = vi.fn();
+    useLogStream.mockReturnValue({
+      lines: [{ id: 'l0', text: 'buffered build output', raw: 'buffered build output', ts: 1 }],
+      status: 'error',
+      canRetry: true,
+      retry,
+    });
+    render(<DeploymentDetailPanel deploymentId="dep-b" section="output" onClose={vi.fn()} />);
+    expect(screen.getByText('buffered build output')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('disconnected');
+    await userEvent.click(screen.getByRole('button', { name: 'Retry log stream' }));
+    expect(retry).toHaveBeenCalledOnce();
+  });
+
+  it('announces reconnecting even when build output already exists', () => {
+    useLogStream.mockReturnValue({
+      lines: [{ id: 'l0', text: 'buffered build output', raw: 'buffered build output', ts: 1 }],
+      status: 'reconnecting',
+      canRetry: false,
+      retry: vi.fn(),
+    });
+    render(<DeploymentDetailPanel deploymentId="dep-b" section="output" onClose={vi.fn()} />);
+    expect(screen.getByRole('status')).toHaveTextContent('Reconnecting automatically');
+    expect(screen.getByText('buffered build output')).toBeInTheDocument();
   });
 });

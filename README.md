@@ -26,7 +26,32 @@ API_ORIGIN=http://localhost:8081 npm run dev
 boots with a password already set (`mock-current-password`), `MOCK_MFA=1` boots
 MFA-enrolled so set-password demands a step-up (any six digits verify), and
 `MOCK_MFA=required` boots with the policy on and nothing enrolled, so it demands
-enrolment first.
+enrolment first. `MOCK_EMPTY=1` boots with GitHub disconnected, and "Connect
+GitHub" connects it and returns with `?github=connected`. Deployments created in
+the mock go `pending → building → imaging → snapshotting → live` over about ten
+seconds; `MOCK_BUILD_FAIL=1` makes new source builds fail at the dependency
+install instead.
+
+### Compatibility to first response
+
+The landing page's **Will it run?** form opens `/will-it-run` for a public GitHub
+repository. A green preflight offers **Deploy this commit**; the canonical
+repository and exact checked SHA travel through signup/sign-in into the app
+wizard (or onboarding for a new account). The check is static analysis, not a
+promise that the application will run. Amber/red results offer a recheck.
+
+Wizard source fields live in the URL. OAuth and GitHub installation round trips
+also use tab-scoped session storage to restore the destination; installation
+handoffs expire after one hour. The connected installation must have access to
+the selected repository. The first build uses the checked SHA, while the binding
+uses the backend's default branch when the ref is a commit.
+
+Once the API reports a live deployment, **Verify your API** lets the user send
+an explicit, credential-free GET to a read-only path on the assigned HTTPS
+endpoint. Only a readable 2xx response is marked successful. Requests time out
+after 20 seconds and previews are bounded to 16 KB. CORS restrictions or redirects
+may prevent browser verification; the public URL and a copyable curl command
+remain available. No request is sent automatically.
 
 ## Scripts
 
@@ -45,6 +70,102 @@ enrolment first.
 | `npm run test:watch` | Vitest in watch mode                                |
 | `npm run format`     | Prettier, write in place                            |
 | `npm run check`      | typecheck + lint + format + tests — run before a PR |
+
+## Feature flags
+
+The console is regularly built ahead of `apid`. A screen whose endpoint ships
+next week still has to live on `main` without reaching customers — a long-lived
+branch is the worse answer, because it drifts until the work it carries is
+silently obsolete.
+
+Flags are **typed build-time Vite configuration**, declared in
+`src/lib/feature-flags.ts`. They are public client configuration and must never
+carry a secret. Everything fails closed: only the exact strings `1` and `true`
+enable a flag, whitespace is not trimmed, and an unset variable is absent from
+the build rather than empty. Changing a flag needs a redeploy, because Vite
+inlines the value into the compiled client.
+
+| Environment variable   | Default | Effect                                        |
+| ---------------------- | ------- | --------------------------------------------- |
+| `VITE_FEATURE_EXAMPLE` | off     | Reference flag. Gates nothing; proves wiring. |
+
+### Adding a flag
+
+One entry in the registry, and read it from there:
+
+```ts
+export const featureFlags = {
+  consoleQueuesV2: enabled(import.meta.env.VITE_FEATURE_CONSOLE_QUEUES_V2),
+} as const;
+```
+
+```tsx
+import { featureFlags } from '@/lib/feature-flags';
+
+if (!featureFlags.consoleQueuesV2) return <QueuesCurrent />;
+```
+
+**Never read `import.meta.env.VITE_FEATURE_*` outside the registry** —
+`src/lib/feature-flags.test.ts` fails the build and names the offending file.
+(`VITE_API_URL` in `lib/api/client.ts` and `import.meta.env.DEV` elsewhere are
+different things and stay as they are.)
+
+**Keep the access literal, and do not freeze the registry.** Both a lookup
+table (`env[FLAGS[key]]`) and an `Object.freeze` wrapper stop Rollup folding the
+comparison, and the difference is not cosmetic: with either one the code behind
+a _disabled_ flag is still emitted into the production bundle, where anyone can
+read an unreleased feature in devtools. Written longhand it folds to `false` and
+the whole branch is eliminated. A test asserts this shape; the registry is
+immutable through its type instead.
+
+Select the variant at **one boundary component**, not scattered through a tree.
+Anything you change outside that boundary ships to both variants and is not
+covered by the env-var rollback.
+
+### Building ahead of the backend
+
+The typed client makes this less free than it looks: `api` is
+`createClient<paths>` over `src/lib/api/schema.d.ts`, generated from the
+vendored `api/openapi.yaml`. An endpoint `apid` has not shipped is a **compile
+error**, not a runtime 404 — and `src/lib/mock-spec-drift.test.ts` refuses to
+let `mock/plugin.ts` answer a path the spec does not contain. So the contract
+comes first, in this order:
+
+1. The endpoint lands in `api/openapi.yaml` upstream, in `poyrazK/faas`.
+2. `npm run api:pull` — types regenerate; the call now compiles.
+3. Add the flag, default off.
+4. Build the UI behind it. Mock the endpoint in `mock/plugin.ts` and work
+   against `npm run dev:mock`; `MOCK_EMPTY=1` and `MOCK_LATENCY` reach the
+   states seeded data does not.
+5. Merge to `main` with the flag off. Production is unaffected, and the new code
+   is not in the production bundle at all.
+6. When `apid` serves it for real, enable on Preview, verify, then Production.
+7. Remove the flag and the superseded implementation.
+
+If the spec has not landed, the frontend is blocked on the **contract**, not on
+the implementation — landing the OpenAPI change upstream is the unblock. Do not
+route around it by hand-writing a fetch: the no-fixtures rule in `src/` still
+holds, and an invented URL is exactly the drift the typed client exists to
+prevent.
+
+### Running with a flag on
+
+Locally, use the gitignored `.env.local`:
+
+```env
+VITE_FEATURE_CONSOLE_QUEUES_V2=1
+```
+
+Or for one command: `VITE_FEATURE_CONSOLE_QUEUES_V2=1 npm run dev:mock`.
+
+On Vercel, Preview and Production are configured separately — enable on Preview
+first, leave Production unset so it stays fail-closed, and flip Production once
+it is verified. Roll back by removing the Production value and redeploying.
+
+Verify in the browser, not in the build log. `/dashboard` is excluded from
+prerendering, so a green build says nothing about which variant renders — though
+the flagged code's presence or absence in `dist/assets/*.js` is a real signal if
+you need to confirm the elimination.
 
 ## Architecture
 
@@ -68,8 +189,15 @@ src/
 [TanStack Router](https://tanstack.com/router) in file-based mode. A file in
 `src/routes/` becomes a route, and `src/routeTree.gen.ts` is regenerated by the
 Vite plugin on every dev run — **never edit it by hand.** Dots are path
-separators, so `dashboard.workflows.$workflowId.tsx` serves
-`/dashboard/workflows/:workflowId`.
+separators, so `dashboard.apps.$appSlug.tsx` serves `/dashboard/apps/:appSlug`.
+
+A page's URL names what its label says. When a page is renamed, its file moves
+and the old path stays as a two-line route whose `beforeLoad` is
+`movedTo(old, new)` (`src/lib/moved-route.ts`), which carries the slug, query
+string, and hash across — `/dashboard/workflows/…` → `/dashboard/apps/…`,
+`workers` → `instances`, `traces` → `invocations`, `apis` → `routes`,
+`databases` → `upstreams`, `deployments` → `releases`. Keep both paths in
+`vercel.json` and `public/_redirects`.
 
 Routes are code-split automatically (`autoCodeSplitting`). The router is
 configured in `src/main.tsx` to preload a route's chunk on hover or focus, and
@@ -119,15 +247,159 @@ Providers wrap the app in `src/routes/__root.tsx`:
 more; `lib/mock-data.ts` survives only for formatters (`formatRelative`,
 `formatCompact`) and a couple of shared types.
 
+The top bar's **Needs Attention** button, immediately before **New app**, opens
+a notification-style dropdown directly beneath the button from any console
+page rather than an inline Overview panel. It has no backdrop or page scroll
+lock. Checks mount only while the dropdown is open and share existing app, deployment, and usage
+queries. It shows reported app failures, failed deployments created in the last
+24 hours (excluding cancellations), and included compute allowance at 80% used
+or above. Each list shows up to three items with direct investigation links.
+Deployment coverage is limited to the latest 50 records, not complete history.
+Unavailable reads stay explicit and never produce an all-clear message.
+Investigation links close the dropdown and navigate to the exact app logs,
+deployment details, or usage page. Escape and the close control restore focus;
+clicking the trigger again or anywhere outside also dismisses it.
+
 Logs are the one exception to the client above: `/v1/apps/{slug}/logs` is an SSE
 stream, so it uses `EventSource` in `lib/api/logs.ts` rather than
 `openapi-fetch`. There is no single response to cache, so no TanStack Query
-either.
+either. Live and build streams retry transport failures after 1, 2, 4, 8, and
+16 seconds, then offer **Retry log stream**. A successful connection resets
+that budget. Pause, server-reported errors, completed streams, and archive
+reads do not automatically retry. Recovery preserves the displayed buffer;
+the API does not guarantee replay of lines missed during a disconnect.
+
+Log investigation URLs on `/dashboard/logs` and the app's Logs tab restore
+`app` (or the app path), `mode`, `level`, `q`, `instance`, and UTC `date`.
+Text filters apply on Enter. Explicit edits add browser history; default archive
+coordinates replace the current entry. Saved views include archive coordinates.
+An unavailable app link does not fall back to another app. Invocation drawers
+use `/dashboard/invocations?invocation=<id>`, including IDs outside loaded history;
+refresh and browser navigation retain that selection. Invalid filters are ignored,
+and unavailable or denied records remain explicit error states.
+
+Environment import is available on Env vars and the app Env tab. File/paste
+imports show additions, overwrites, and redacted invalid/duplicate diagnostics
+before one confirmation. The current API applies keys individually and reports
+partial success; only failed entries remain for a reviewed retry. Quotas count
+all scopes; unmentioned keys are preserved. The selected scope is explicit.
+Imported values never enter query/mutation caches or persistent browser storage.
+There is no export: apid has never served an env-export endpoint, and
+`GET /v1/apps/{slug}/env` never returns plaintext, so the console does not offer
+one.
+
+**API monetization** (capability `api-monetization`, preview) has two homes.
+The app's **Monetize** tab holds **Consumers** — the stable identities of the
+customers calling the app, with keys (plaintext shown once through
+`OneTimeSecret` and never cached), plan assignment from a UTC minute, durable
+usage with a quote that is labelled an estimate, crossed usage alerts, and
+usage statements (snapshot a UTC month, confirmed finalize, handoff receipt
+read) — and **Consumer plans**, whose limits and alert thresholds are the only
+plan fields the API has. Account-level **Customers** (`/dashboard/customers`,
+under Operate) are platform tenants: register idempotently by external
+reference, link existing consumers and surfaces, suspend or resume (which
+blocks linked credentials and hostnames), set immutable tenant prices, and
+read cross-app usage, statements and credential metadata. Every page shows
+`CapabilityNotice` and reads nothing while the capability is unavailable.
+App rate cards, graduated tiers and recording a billing handoff are API-only:
+the console shows them where they appear but does not author them. Hooks live
+in `lib/api/monetization.ts`; the dev mock in `mock/monetization.ts`.
+
+### Waiting on the backend
+
+Two features were built against API work that has not reached `poyrazK/faas`
+main, and were taken out of the console with the spec refresh rather than kept
+calling endpoints that do not exist. Each is one revertable commit away:
+
+- **Deleted-app recovery** (a "Recently deleted" inventory with reviewed
+  restore) — needs [poyrazK/faas#4614](https://github.com/poyrazK/faas/pull/4614)
+  and [poyrazK/faas#4632](https://github.com/poyrazK/faas/pull/4632). Restore by
+  slug, which apid does serve, is kept as `useRestoreApp`.
+- **Companions** (declared helper workloads on the app's Configure tab) — needs
+  [poyrazK/faas#4733](https://github.com/poyrazK/faas/pull/4733).
+
+The command palette searches account-scoped deployment, domain, API-key,
+and invocation metadata while a query is entered. Search results are grouped
+by resource type and open detail URLs. Historical results cover loaded pages;
+use **Search older deployments/invocations** to extend coverage, or paste a
+full ID for a direct lookup. Resource caches exclude key values, invocation
+payloads/results, and domain challenge tokens, and are partitioned by account.
 
 Customer pages do not surface the `/v1/admin/*` routes or operator controls.
 The dedicated operations console is deployed separately at
 `https://operations.gregale.dev`; the CLI device-code flow, OAuth callbacks,
 and the Stripe webhook receiver remain non-UI surfaces in this project.
+
+**Automations** is available in Jobs — the section `/dashboard/jobs` opens on
+unless `?section=` or a workload, schedule, or trigger selection in the link
+names another — and in the app's Automate group. It reads drafts,
+publications, execution availability, definition quotas, and the capability's
+preview/beta stage from the API. The create dialog starts from a template and
+offers **Create and publish** next to **Save as draft**; in an existing
+automation, Publish saves unsaved edits first (**Save and publish**). Either
+way one confirmation names the writes before any happen, the publish targets
+the revision the save returned, and a failed publish after a successful save
+says the draft was kept. The editor opens on name, trigger, schedule, and
+steps: schedule presets work in any timezone, UTC schedules preview their next
+starts live (other zones show the description and defer to Validate), handler
+paths suggest the app's observed routes while accepting any path, and
+dependencies are a "Runs after" picker over the other steps that keeps names
+matching no step. Advanced trigger and step settings, Advanced JSON (which
+preserves other workflow fields), and side-effect-free simulation stay
+collapsed until needed. Writes use the observed version, and conflicts or
+uncertain responses require a fresh read. Manifest takeover is explicit.
+**Delete automation** removes a draft, or a dashboard publication, at the
+observed revision and returns to the list; a definition the YAML manifest also
+declares asks again before ownership returns to the manifest, and a
+manifest-owned one is removed from the YAML rather than from the console.
+Pausing automatic starts leaves accepted work running. Real manual starts
+carry a stable idempotency key for retries with the same input; the run input
+defaults to `{}` and stays collapsed. The workspace shows a one-line health
+summary and Definition / Run history / Published revisions tabs; health tiles,
+paginated runs, and step attempts sit under Run history, and restoring an
+immutable revision creates a draft. The run API does not expose its pinned
+publication revision, so the UI states that limit.
+Mock mode includes these screens; `MOCK_AUTOMATIONS_DISABLED=1` exercises the
+runtime-disabled presentation. No mock data ships in the preview build.
+
+**Events** (`/dashboard/events`, under Operate) reads the account's event
+router: waiting consumers with exact counts and their dominant waiting reason,
+retained storage against plan limits, and retention health. A consumer opens
+its oldest waiting recipients, each with a fresh routing-blocker read. Receipt
+lookup takes a source and event ID, or an app producer key, and shows
+acceptance, routing, and execution per recipient; recipients still routing get
+their blockers in one batch read, and a missing receipt says so. **Preview
+routing** posts only to `/v1/events:preview` and publishes nothing; **Publish**
+(account event or app producer key) asks for confirmation first and prefills a
+stable event ID so a retry deduplicates. Recovery actions the receipt lists are
+shown, not submitted.
+
+**Integrations** (`/dashboard/integrations`) lists managed outbound
+integrations with credential state and today's requests against the daily
+budget. A row opens its overview and usage, credential set/rotate/revoke, the daily
+limit and request policy, the probe policy, and delete. Credentials are
+write-only: a direct PUT (no TanStack mutation, so nothing is cached), cleared
+on success, never rendered back. Operator-provisioned integrations are
+read-only. The **AI gateway** tab (usage by model for one UTC day, budget
+alerts, fallback routes) renders only when capability `ai-gateway` is
+available, and otherwise explains why without calling the AI endpoints. Hooks
+live in `lib/api/events.ts` and `lib/api/outbound.ts`; the dev mock answers both
+from `mock/events.ts`.
+
+App detail navigation has seven tabs — Overview, Delivery, Observe, Connect,
+Monetize, Automate, and Configure — and a segmented control for the pages inside the
+selected one, which remembers the last page opened in each. Env vars and
+secrets share one **Environment** page; `?tab=Secrets` and `?tab=Env vars`
+still resolve to it, and every other existing `?tab=` link is unchanged.
+App creation and configuration share a memory selector that disables sizes
+above the account's reported RAM limit.
+
+**Workspaces** are organizations, chosen in the breadcrumb switcher. With a
+shared one selected, New app (including image deploys) creates through
+`POST /v1/orgs/{slug}/apps` and names the workspace in review, and Projects adds
+an **In this workspace** inventory from `GET /v1/orgs/{slug}/apps`. The full app
+list and projects stay the signed-in account's, and app routes stay with each
+app's creator, so the inventory links only apps the account created.
 
 ### Where the UI and the API disagreed
 
@@ -144,15 +416,17 @@ does, rather than being kept honest-looking with invented data:
 | Metrics   | Line charts from a seeded PRNG | Scalar aggregates per window                      |
 | Plans     | Invented dollar prices         | Real quotas; pricing links to the portal          |
 
-Two concepts were removed entirely rather than faked: **projects** (apps are
-flat per account; the real grouping is orgs, on the Team page) and **regions**
-(it is one box).
+**Regions** were removed rather than faked (it is one box). **Projects** came
+back once the API had them: the Projects page is the console's way in, listing
+each imported repository with its apps and a group of standalone apps that
+belong to no project.
 
-**There are no charts in the console any more.** `/v1/apps/{slug}/metrics`
-returns scalar aggregates over a window, not a time series — one p50, one error
-rate. The charts that used to be here were drawn from a seeded PRNG. Plotting a
-curve between two real numbers would be inventing the shape of an outage, so the
-figures are shown as figures. `dither-kit` is still used by the landing page.
+**Charts are drawn only from real series.** The early console's charts came
+from a seeded PRNG and were removed. `/v1/apps/{slug}/analytics/timeseries`
+now returns zero-filled hourly buckets, and Analytics charts those.
+`/v1/apps/{slug}/metrics`, `/slo` and `/usage` still return scalar aggregates
+over a window — one p50, one error rate — so they are shown as figures:
+plotting a curve between two real numbers would invent the shape of an outage.
 
 ## Documentation
 
@@ -248,6 +522,28 @@ Config for the common hosts is committed:
 - **Netlify / Cloudflare Pages** — `public/_redirects`, copied into `dist/`.
 - **Vercel** — `vercel.json`, which also sets far-future caching on the
   content-hashed `/assets/*` and `no-cache` on `index.html`.
+
+**Browser security headers have one source of truth:** `src/lib/security-headers.ts`.
+`npm run dev` and `npm run preview` apply it from the module, and `vercel.json`
+carries a literal copy of the production set that `src/hosting-contract.test.ts`
+checks for equality — on a mismatch, regenerate the literal from the module.
+The policy is first-party with one named exception: `script-src 'self'`,
+`font-src 'self'`, and `connect-src 'self' https://s3.gregale.dev`, because
+object uploads PUT the file straight to a signed URL on the branded S3 gateway
+(`lib/api/object-storage.ts`). Fonts are self-hosted from `src/fonts/` for the
+same reason (provenance and licenses in its README); Vite content-hashes them
+into `/assets/`, which the immutable cache rule covers. The one keyword
+allowance is `style-src 'unsafe-inline'`: the prerendered public pages carry
+React's `style=""` attributes in their markup, and the overview search's
+border-beam package renders a `<style>` element, so a strict `style-src` blanks
+both until build-time hashes exist. A new external origin is a policy change,
+not a tag in `index.html`, and the dev server blocks it until the module allows
+it; the policy tests name each allowed host and why.
+
+`npm run build:mock` then `npm run preview:mock` serve a built console with the
+mock API behind it under the production headers; point `npm run tour` at
+`http://localhost:4173` before changing the policy — the tour fails on any
+Content-Security-Policy violation.
 
 OAuth uses full-page GETs through `/v1/auth/google` and `/v1/auth/github`,
 including their callback paths. If the API is behind a WAF or bot check, those
@@ -380,6 +676,12 @@ calling a function with the wrong type.
   _plus_ a text label — see `StateBadge` in `components/dashboard/primitives.tsx`.
 - **Comments explain why, not what.** The existing comments carry real design
   reasoning; match that register rather than narrating the code.
+- **Two switchers, one rule** (`dashboard/tabs.tsx`). Underline **tabs**
+  (`TabNav` + `tabClassName` for links, `Tabs` for an in-page tablist) choose
+  which page of a page you are on — one strip per page, state in the URL.
+  **Segments** (`SegmentedControl`, or `SegmentGroup` + `segmentClassName` for
+  links) switch a view inside a panel: a direction, scope, filter, or range. Do
+  not style a switcher with `Button` variants or a one-off class string.
 - **Reuse the shared primitives.** `PageHeader`, `Panel`, `StatTile`,
   `EmptyState`, `RangeSelector` (`dashboard/primitives.tsx`) and
   `ResourceTable` (`dashboard/resource-table.tsx`) already cover the shape
@@ -403,3 +705,63 @@ calling a function with the wrong type.
 Formatting was adopted after the bulk of the code was written; `npm run format`
 was applied across the tree in a single dedicated commit, kept separate so it
 never obscures a real change.
+
+### Release recovery
+
+Release detail offers cancellation only for pending, building, imaging, and
+snapshotting attempts. Live, superseded, cancelled, failed, and unknown states
+explain why cancellation is unavailable. Only a failed record can be retried.
+Both actions require confirmation; a state change during the dialog cancels the
+submission. The retry names the selected original release and starts a new
+attempt from its recorded source/image and release inputs. The backend currently
+rebuilds retained source instead of restoring intermediate checkpoints, so all
+build and security stages run again. Missing original source is an explicit
+rejection; the UI never substitutes current editor configuration.
+
+Recovery refreshes global and app history even on permission or terminal-state
+races. Accepted retries link directly to their new record and disable another
+submission. Retrying is non-idempotent: automatic mutation retries are disabled,
+and a dropped/5xx response directs the user to inspect history before refreshing
+and trying again. It cannot claim failure or start a second attempt while the
+first request's outcome is unknown.
+
+The Git creation journey also keeps recovery inline. A failed first deployment
+shows the API's reported explanation and logs, offers an immutable **Retry original
+deployment**, and separates it from **Deploy a fix**. The latter builds an explicitly
+chosen branch, tag, or commit in the same saved app using its current configuration;
+it neither creates another app nor changes the app's auto-deploy binding. A previous
+commit SHA is not silently preselected as the fixed source. Known environment or
+startup error codes link to the relevant app settings.
+
+An allowlisted `recovery` search object records the app slug, repository, ref,
+deployment ID, and submission phase—never credentials, environment values, or logs.
+Reloading resolves the app and deployment through the API and verifies their
+association before offering actions. A pending or ambiguous submission survives
+refresh as an unknown outcome, with a link to app deployment history and no
+automatic resubmission. Explicit server rejections leave correction available.
+Only a confirmed new deployment changes the saved source and selected attempt.
+
+### Resource activity
+
+The app **Activity** tab and release **Audit context** show the existing curated
+workspace activity feed. The app's stable ID is resolved through accessible
+workspace inventories, including personal and shared workspaces; the console's
+workspace label is not an ownership signal. Every feed request filters by app ID
+on the server. Release views further restrict loaded events to the exact recorded
+deployment ID and link to app-wide config/domain context. No browser event store,
+unscoped fallback, or duplicated audit producer is added.
+
+Events remain newest first with captured actor, UTC timestamp, affected-resource
+links, safe details, and outcomes derived only for known event kinds. Unknown
+kinds explicitly have no reported outcome. Category and actor filters use the API;
+older pages use its opaque cursor. Account/app/filter changes isolate caches and
+selection state. Failed older-page reads keep loaded evidence available to review
+and retry. The timeline polls every 30 seconds while open and can be refreshed.
+
+Workspace membership controls access. The API does not advertise a retention
+expiry; historical coverage can be incomplete for older/deleted resources.
+Deployment forensics remains a distinct, latest-50-row audit without a pagination
+cursor. Its separate limits and permission failures are stated beside the feed.
+The account audit log remains linked for security/account events outside the
+resource timeline. Mock mode includes scoped inventory, curated actor categories,
+config/environment/domain/TLS events, and older pages.

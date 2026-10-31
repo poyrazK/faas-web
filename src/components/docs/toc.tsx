@@ -46,7 +46,7 @@ export function OnThisPage({ headings }: { headings: Heading[] }) {
 
   return (
     <nav aria-label="On this page" className="hidden w-48 shrink-0 xl:block">
-      <div className="sticky top-24">
+      <div className="sticky top-24 max-h-[calc(100vh-7rem)] overflow-y-auto">
         <h2 className="label-mono text-muted-foreground">On this page</h2>
         <ul className="mt-3 flex flex-col border-l border-border">
           {headings.map((h) => {

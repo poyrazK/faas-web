@@ -11,7 +11,13 @@ const usage = vi.hoisted(() => ({
 vi.mock('@tanstack/react-router', () => ({ createFileRoute: () => (options: unknown) => options }));
 vi.mock('@/lib/api/queries', () => ({
   useUsageSummary: () => ({
-    data: { month: '2026-08', used_gb_hours: 1, included_gb_hours: 50, overage_gb_hours: 0 },
+    data: {
+      month: '2026-08',
+      used_gb_hours: 1,
+      included_gb_hours: 50,
+      overage_gb_hours: 0,
+      overage_cents: 0,
+    },
     isPending: false,
     error: null,
     refetch: vi.fn(),
@@ -20,11 +26,23 @@ vi.mock('@/lib/api/queries', () => ({
   usePerAppUsage: () => ({ data: usage.rows, isPending: false, error: null }),
   useSetOverageCap: () => ({ mutateAsync: setCap, isPending: false }),
   useOverageCap: () => ({ data: { overage_cap_cents: null }, isPending: false, error: null }),
+  useBillingForecast: () => ({ data: undefined, isPending: true, error: null }),
+  useSpendCapHistory: () => ({ data: { events: [] }, isPending: false, error: null }),
 }));
 vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { plan: 'hobby', app_count: 1 } }) }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }));
 vi.mock('@/components/dashboard/object-storage-usage', () => ({
   ObjectStorageUsagePanel: () => null,
+}));
+
+const workspace = vi.hoisted(() => ({
+  org: null as string | null,
+  label: 'Personal',
+  ready: true,
+}));
+vi.mock('@/lib/api/workspace-apps', () => ({ useWorkspaceTarget: () => workspace }));
+vi.mock('@/components/dashboard/org-billing', () => ({
+  OrgUsage: ({ label }: { label: string }) => <p>org usage for {label}</p>,
 }));
 
 const { Route } = await import('./dashboard.usage');
@@ -37,6 +55,37 @@ beforeEach(() => {
     .mockRejectedValueOnce(new Error('offline'))
     .mockResolvedValue({ overage_cap_cents: 1250 });
   toast.mockReset();
+});
+
+describe('usage in a company workspace', () => {
+  it('reads no billing at all until the workspace is known', () => {
+    // Before the store is bound, a chosen company reads as null; showing the
+    // personal allowance then would show the wrong subject's numbers.
+    workspace.ready = false;
+    try {
+      render(<UsagePage />);
+      expect(screen.queryByText(/This billing period/)).toBeNull();
+      expect(screen.queryByText(/org usage for/)).toBeNull();
+      expect(screen.getByText('Usage')).toBeInTheDocument();
+    } finally {
+      workspace.ready = true;
+    }
+  });
+
+  it("shows the organization's usage, not the signed-in account's", () => {
+    workspace.org = 'acme';
+    workspace.label = 'Acme';
+    try {
+      render(<UsagePage />);
+      expect(screen.getByText('org usage for Acme')).toBeInTheDocument();
+      // The personal allowance bar and cap belong to the signed-in account.
+      expect(screen.queryByText(/GB-hours by month end/)).toBeNull();
+      expect(screen.queryByRole('spinbutton', { name: 'Cap (EUR)' })).toBeNull();
+    } finally {
+      workspace.org = null;
+      workspace.label = 'Personal';
+    }
+  });
 });
 
 describe('compact per-app usage', () => {
@@ -81,8 +130,8 @@ describe('spend-cap validation', () => {
   it('converts decimal euro amounts to exact whole cents', async () => {
     setCap.mockReset().mockResolvedValue({ overage_cap_cents: 110 });
     render(<UsagePage />);
-    await userEvent.click(screen.getByRole('button', { name: 'Manage spend cap' }));
-    const cap = screen.getByRole('spinbutton', { name: 'Cap (EUR)' });
+    await userEvent.click(screen.getByRole('button', { name: 'Set a cap' }));
+    const cap = screen.getByRole('spinbutton', { name: 'Cap (USD)' });
 
     await userEvent.type(cap, '0.29{Enter}');
     await waitFor(() => expect(setCap).toHaveBeenLastCalledWith(29));
@@ -95,13 +144,13 @@ describe('spend-cap validation', () => {
   it('treats zero as a zero-overage ceiling and clears only with null', async () => {
     setCap.mockReset().mockResolvedValue({ overage_cap_cents: 0 });
     render(<UsagePage />);
-    await userEvent.click(screen.getByRole('button', { name: 'Manage spend cap' }));
-    const cap = screen.getByRole('spinbutton', { name: 'Cap (EUR)' });
+    await userEvent.click(screen.getByRole('button', { name: 'Set a cap' }));
+    const cap = screen.getByRole('spinbutton', { name: 'Cap (USD)' });
 
     await userEvent.type(cap, '0{Enter}');
     await waitFor(() => expect(setCap).toHaveBeenCalledWith(0));
     expect(toast).toHaveBeenLastCalledWith(
-      expect.objectContaining({ title: 'Spend cap set to €0.00' })
+      expect.objectContaining({ title: 'Spend cap set to $0.00' })
     );
 
     setCap.mockClear();
@@ -112,8 +161,8 @@ describe('spend-cap validation', () => {
 
   it('rejects malformed amounts, then preserves the value through API failure and retry', async () => {
     render(<UsagePage />);
-    await userEvent.click(screen.getByRole('button', { name: 'Manage spend cap' }));
-    const cap = screen.getByRole('spinbutton', { name: 'Cap (EUR)' });
+    await userEvent.click(screen.getByRole('button', { name: 'Set a cap' }));
+    const cap = screen.getByRole('spinbutton', { name: 'Cap (USD)' });
 
     await userEvent.type(cap, '-1');
     await userEvent.click(screen.getByRole('button', { name: 'Set cap' }));

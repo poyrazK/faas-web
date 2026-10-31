@@ -5,7 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Panel } from '@/components/dashboard/primitives';
 import { consumeOnboardingGitHubReturn, useAuth } from '@/lib/auth';
+import { GitHubConnectForm } from './github-connect-form';
 import type { SettingsSearch } from './settings-search';
+import { consumeGitHubDeployment } from '@/lib/deployment-handoff';
 
 /**
  * Account-level GitHub connection.
@@ -25,12 +27,24 @@ export function IntegrationSettings({ search }: { search: SettingsSearch }) {
   const justConnected = github === 'connected' && githubConnected;
 
   useEffect(() => {
-    if (!justConnected || !consumeOnboardingGitHubReturn()) return;
-    void navigate({ to: '/onboarding', replace: true });
+    if (!justConnected) return;
+    const deploymentReturn = consumeGitHubDeployment();
+    const onboardingReturn = consumeOnboardingGitHubReturn();
+    if (deploymentReturn) void navigate({ href: deploymentReturn, replace: true });
+    else if (onboardingReturn) void navigate({ to: '/onboarding', replace: true });
   }, [justConnected, navigate]);
 
   return (
     <div className="flex flex-col gap-6">
+      {github === 'connect-forbidden' && (
+        <p
+          role="alert"
+          className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+        >
+          The GitHub connection request expired or could not be verified. Please try connecting
+          again.
+        </p>
+      )}
       {justConnected && (
         <div
           role="status"
@@ -71,8 +85,9 @@ export function IntegrationSettings({ search }: { search: SettingsSearch }) {
               browser.
             </p>
             <div className="flex flex-wrap gap-2">
+              <GitHubConnectForm refresh disabled={!apiReachable} />
               <Button asChild size="sm" className="gap-1.5">
-                <Link to="/dashboard/workflows/new">
+                <Link to="/dashboard/apps/new">
                   Deploy a function
                   <ArrowRight className="h-3.5 w-3.5" />
                 </Link>
@@ -100,18 +115,7 @@ export function IntegrationSettings({ search }: { search: SettingsSearch }) {
                 the installation.
               </p>
             </div>
-            <form method="post" action="/dashboard/install/connect">
-              <Button
-                type="submit"
-                size="sm"
-                variant="cta"
-                className="gap-1.5"
-                disabled={!apiReachable}
-              >
-                <Github className="h-3.5 w-3.5" />
-                Connect GitHub
-              </Button>
-            </form>
+            <GitHubConnectForm disabled={!apiReachable} />
             {!apiReachable && (
               <p className="text-xs text-muted-foreground">
                 The API is currently unreachable. Check the connection and try again.

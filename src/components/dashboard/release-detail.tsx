@@ -1,14 +1,17 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { RefreshDouble } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
+import { SegmentedControl } from '@/components/dashboard/tabs';
 import { Modal } from '@/components/ui/modal';
 import { ErrorState, InlinePhase, LoadingState, UnreachableState, queryPhase } from './primitives';
+import { LogStreamRecovery } from './log-stream-recovery';
 import { ReleaseStatusLabel } from './release-status-label';
 import { useLogStream } from '@/lib/api/logs';
 import { useApp, useApps, useBuild, useDeployment } from '@/lib/api/queries';
 import { deploymentPhase, isDeploymentTerminal } from '@/lib/deployment-status';
 import { formatRelative } from '@/lib/mock-data';
 import { AdvanceCanaryButton, ReorderDeploymentControl } from './deployment-actions';
+import { ResourceActivityTimeline } from './resource-activity';
 import { DeploymentAudit, DeploymentPreviewUrl, DeploymentStages } from './deployment-insights';
 import { DeploymentReleaseSummary } from './deployment-release-summary';
 import { DeploymentLifecycle } from './deployment-lifecycle';
@@ -19,6 +22,9 @@ import { RolloutRecovery } from './rollout-recovery';
 import { LogView } from './log-view';
 import { failureSummary } from './failure-summary';
 import { FailurePanel } from './failure-panel';
+import { ReleaseProcess } from './release-process';
+import { CanaryHealth } from './canary-health';
+import { releaseProcess } from '@/lib/release-process';
 
 function relativeTime(value?: string): string {
   if (!value) return '—';
@@ -153,22 +159,12 @@ export function ReleaseDetailPanel({
           </p>
         ) : (
           <div className="flex flex-col gap-5">
-            <nav
-              aria-label="Release detail sections"
-              className="flex flex-wrap gap-2 border-b border-border pb-3"
-            >
-              {sections.map(([value, label]) => (
-                <Button
-                  key={value}
-                  size="xs"
-                  variant={value === activeSection ? 'outline' : 'ghost'}
-                  aria-pressed={value === activeSection}
-                  onClick={() => (onSectionChange ?? setLocalSection)(value)}
-                >
-                  {label}
-                </Button>
-              ))}
-            </nav>
+            <SegmentedControl
+              label="Release detail sections"
+              value={activeSection}
+              options={sections.map(([key, label]) => ({ key, label }))}
+              onChange={(value) => (onSectionChange ?? setLocalSection)(value)}
+            />
             {activeSection === 'overview' && (
               <>
                 {(failedDeployment || failedBuild) && (
@@ -201,6 +197,15 @@ export function ReleaseDetailPanel({
                         <DeploymentPreviewUrl deploymentId={deployment.id} />
                       </span>
                     </div>
+                    <section aria-label="Process" className="rounded-lg border border-border p-4">
+                      <ReleaseProcess phases={releaseProcess(deployment)} />
+                    </section>
+                    {/* Only a canary has a stable release to be compared against. */}
+                    {slug && deployment.canary_total_steps ? (
+                      <div className="rounded-lg border border-border p-4">
+                        <CanaryHealth slug={slug} deploymentId={deployment.id} />
+                      </div>
+                    ) : null}
                     <EvidenceFields
                       values={[
                         ['Deployment ID', deployment.id],
@@ -286,14 +291,20 @@ export function ReleaseDetailPanel({
               </>
             )}
             {activeSection === 'output' && (
-              <div>
+              <div className="flex flex-col gap-3">
+                <LogStreamRecovery
+                  status={buildLog.status}
+                  reason={buildLog.reason}
+                  canRetry={buildLog.canRetry}
+                  retry={buildLog.retry}
+                />
                 {buildLog.lines.length ? (
                   <LogView lines={buildLog.lines} className="max-h-72" />
                 ) : (
                   <p className="text-sm text-muted-foreground">
                     {!resolvedDeploymentId
                       ? 'Build output is available once a deployment is attached.'
-                      : buildLog.status === 'connecting'
+                      : buildLog.status === 'connecting' || buildLog.status === 'reconnecting'
                         ? 'Reading the build log…'
                         : buildLog.status === 'error'
                           ? `The build log disconnected${buildLog.reason ? `: ${buildLog.reason}` : '.'}`
@@ -331,7 +342,14 @@ export function ReleaseDetailPanel({
               />
             )}
             {!deploymentUnavailable && deployment && activeSection === 'audit' && (
-              <DeploymentAudit deploymentId={deployment.id} />
+              <>
+                <ResourceActivityTimeline
+                  appId={deployment.app_id}
+                  appSlug={slug}
+                  deploymentId={deployment.id}
+                />
+                <DeploymentAudit deploymentId={deployment.id} />
+              </>
             )}
           </div>
         )}

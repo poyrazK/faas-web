@@ -1,6 +1,7 @@
 import createClient, { type Middleware } from 'openapi-fetch';
 import type { paths } from './schema';
 import { ApiError, toApiError } from './errors';
+import { activeOrgHeader } from '../workspace';
 
 /**
  * The one HTTP client. Typed end to end against `api/openapi.yaml`, so a
@@ -44,13 +45,17 @@ const AUTH_ROUTES = ['/login', '/signup', '/v1/auth/'];
 
 const sessionMiddleware: Middleware = {
   async onRequest({ request }) {
-    // Successful POSTs are replay-safe for 24h if they carry a key, and the
-    // server echoes `Idempotent-Replayed: true`. Costs nothing to always send
-    // one, and turns a double-click or a retry into a no-op rather than a
-    // second deployment.
+    // Supply a key when callers do not own a stable operation identity.
+    // This is not unconditional exactly-once execution: replay behavior and
+    // receipt windows belong to each endpoint's backend wrapper. Recovery
+    // journeys must retain explicit keys and reconcile ambiguous outcomes.
     if (request.method === 'POST' && !request.headers.has('Idempotency-Key')) {
       request.headers.set('Idempotency-Key', crypto.randomUUID());
     }
+    // The chosen organization rides on every request; apid applies it to
+    // org-scoped routes and ignores it elsewhere. See lib/workspace.ts.
+    const org = activeOrgHeader();
+    if (org && !request.headers.has('X-Active-Org')) request.headers.set('X-Active-Org', org);
     return request;
   },
 
@@ -75,14 +80,9 @@ export const api = createClient<paths>({
 
 api.use(sessionMiddleware);
 
-export type CSRFAction =
-  | 'auth.logout'
-  | 'auth.session.revoke'
-  | 'auth.sessions.revoke_all'
-  | 'mfa_confirm'
-  | 'mfa_recover'
-  | 'mfa_disable'
-  | 'set_password';
+export type CSRFAction = NonNullable<
+  paths['/v1/auth/csrf']['get']['parameters']['query']
+>['action'];
 
 /**
  * Narrows an `openapi-fetch` result to its data, throwing `ApiError` otherwise.

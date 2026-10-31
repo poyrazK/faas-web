@@ -21,6 +21,7 @@ import {
   useGraceWindow,
   useSetGraceWindow,
 } from '@/lib/api/queries';
+import { PersonalKeyDetail } from './personal-key-detail';
 import { errorMessage } from '@/lib/api/errors';
 
 /**
@@ -148,7 +149,15 @@ function GraceWindowPanel() {
   );
 }
 
-export function PersonalKeysBody() {
+export function PersonalKeysBody({
+  selectedKeyId,
+  onCloseKey,
+  onSelectKey,
+}: {
+  selectedKeyId?: string;
+  onCloseKey?: () => void;
+  onSelectKey?: (id: string) => void;
+} = {}) {
   const { toast } = useToast();
   const confirm = useConfirm();
   const { data, isPending, error, refetch } = useApiKeys();
@@ -181,7 +190,21 @@ export function PersonalKeysBody() {
   );
 
   const columns: Column<KeyRow>[] = [
-    { key: 'label', label: 'Label' },
+    {
+      key: 'label',
+      label: 'Label',
+      render: (key) =>
+        onSelectKey ? (
+          <button
+            className="text-left underline underline-offset-4 hover:text-brand"
+            onClick={() => onSelectKey(key.id)}
+          >
+            {key.label}
+          </button>
+        ) : (
+          key.label
+        ),
+    },
     {
       key: 'prefix',
       label: 'Key',
@@ -291,6 +314,7 @@ export function PersonalKeysBody() {
 
   return (
     <div className="flex flex-col gap-6">
+      {selectedKeyId && <PersonalKeyDetail id={selectedKeyId} onClose={onCloseKey ?? (() => {})} />}
       <PageHeader
         title="Personal API keys"
         description="Bearer keys for the CLI and the API. Revoking is immediate; rotating leaves the old key valid for its grace window."

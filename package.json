@@ -6,13 +6,17 @@
   "scripts": {
     "dev": "vite --port 3000",
     "dev:mock": "MOCK_API=1 vite --port 3000",
+    "build:mock": "MOCK_API=1 vite build --mode development --outDir dist-mock",
+    "preview:mock": "MOCK_API=1 vite preview --outDir dist-mock --port 4173",
     "tour": "node scripts/tour.mjs",
     "build": "tsc && vite build && npm run prerender",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "api:types": "openapi-typescript api/openapi.yaml -o src/lib/api/schema.d.ts",
+    "api:types": "openapi-typescript api/openapi.yaml -o src/lib/api/schema.d.ts --default-non-nullable=false",
     "api:pull": "curl -fsSL https://raw.githubusercontent.com/poyrazK/faas/main/api/openapi.yaml -o api/openapi.yaml && npm run api:types",
     "docs:pull": "node scripts/pull-docs.mjs",
+    "capabilities:pull": "node scripts/pull-capabilities.mjs",
+    "parity": "node scripts/parity-report.mjs",
     "smoke:hosting": "node scripts/smoke-hosting.mjs",
     "og": "node scripts/og-image.mjs",
     "lint": "eslint . --max-warnings 8",
@@ -68,6 +72,6 @@
     "typescript": "^5.9.2",
     "typescript-eslint": "^8.67.0",
     "vite": "^6.3.5",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   }
 }

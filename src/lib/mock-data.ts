@@ -43,8 +43,8 @@ export interface Workflow {
   /** The app slug — what `/v1/apps/{slug}` is keyed by, and what the URL shows. */
   id: string;
   /**
-   * Optional because the API has no project concept: apps are flat per
-   * account. Only the remaining fixtures still set it.
+   * Unset by the adapter: `AppResponse` carries no project. Membership is read
+   * from project details (`useProjectMembership`). Only fixtures set it.
    */
   projectId?: string;
   name: string;
@@ -57,10 +57,17 @@ export interface Workflow {
   /** Optional: this is a one-box platform, so the API reports no region. */
   region?: string;
   url: string;
+  visibility?: 'public' | 'internal';
   invocations24h: number;
   avgDurationMs: number;
   coldStartP50Ms: number;
   errorRatePct: number;
+  /**
+   * True when request metrics could not be read (no metrics on the plan, or a
+   * degraded rollup). The numeric fields are then zero placeholders, not
+   * readings, and must not be shown as traffic.
+   */
+  metricsUnavailable?: boolean;
   lastDeployedAt: number;
   version: string;
 }
@@ -433,11 +440,18 @@ export function formatRelative(ts: number): string {
 
   // Against the real clock: every caller now passes live API timestamps, and
   // the pinned fixture clock above made anything newer than it read "just now".
+  // Future timestamps (an invitation's expiry, a next run) read as time to
+  // come; a few seconds of clock skew still reads as now.
   const diff = Date.now() - ts;
-  if (diff < 60_000) return 'just now';
-  if (diff < HOUR) return `${Math.max(1, Math.round(diff / 60_000))}m ago`;
-  if (diff < DAY) return `${Math.round(diff / HOUR)}h ago`;
-  return `${Math.round(diff / DAY)}d ago`;
+  const span = Math.abs(diff);
+  if (span < 60_000) return 'just now';
+  const amount =
+    span < HOUR
+      ? `${Math.max(1, Math.round(span / 60_000))}m`
+      : span < DAY
+        ? `${Math.round(span / HOUR)}h`
+        : `${Math.round(span / DAY)}d`;
+  return diff < 0 ? `in ${amount}` : `${amount} ago`;
 }
 
 export function formatClock(ts: number): string {

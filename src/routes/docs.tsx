@@ -1,27 +1,16 @@
-import { createFileRoute, Outlet } from '@tanstack/react-router';
+import { createFileRoute, Link, Outlet } from '@tanstack/react-router';
 import { MotionConfig } from 'motion/react';
-import { Nav } from '@/components/landing/nav';
+import { DocsSearch } from '@/components/docs/docs-search';
 import { DocsMobileNav, DocsSidebar } from '@/components/docs/doc-nav';
 import { pageHead } from '@/lib/seo';
+import '@/components/docs/docs.css';
 
 export const Route = createFileRoute('/docs')({
   component: DocsLayout,
   head: () => pageHead({ title: 'Documentation' }),
 });
 
-/**
- * The docs shell: site nav, a persistent section sidebar, and the page.
- *
- * The sidebar is the whole table of contents rather than the current section
- * only — the set is small enough to show at once, and seeing the shape of the
- * documentation is most of what an index is for. Below lg it collapses into a
- * disclosure above the content rather than a drawer — fourteen links do not
- * warrant a modal.
- *
- * No footer here. The landing footer is a tall conversion panel with a dither
- * shader; under a reference page it buries the content and costs a canvas on
- * every doc view.
- */
+/** A docs-specific header and search, persistent navigation, and reading area. */
 function DocsLayout() {
   return (
     <MotionConfig reducedMotion="user">
@@ -29,13 +18,26 @@ function DocsLayout() {
         <a href="#main" className="skip-link">
           Skip to content
         </a>
-        <Nav />
+        <header className="docs-header">
+          <div className="docs-header-inner">
+            <div className="docs-brand">
+              <Link to="/" aria-label="Gregale home">
+                <img src="/favicon.png" alt="" width="28" height="28" />
+                <span>Gregale</span>
+              </Link>
+              <span aria-hidden="true">/</span>
+              <Link to="/docs">Docs</Link>
+            </div>
+            <DocsSearch />
+            <Link to="/dashboard" className="docs-console-link">
+              Open console <span aria-hidden="true">↗</span>
+            </Link>
+          </div>
+        </header>
 
-        {/* pt clears the fixed nav capsule (68px tall) with breathing room,
-            so the page header never starts underneath it. */}
-        <div className="mx-auto max-w-6xl px-4 pb-16 pt-24 sm:px-6 lg:pt-28">
+        <div className="docs-shell">
           <DocsMobileNav />
-          <div className="flex gap-10">
+          <div className="docs-columns">
             <DocsSidebar />
             <main id="main" className="min-w-0 flex-1">
               <Outlet />

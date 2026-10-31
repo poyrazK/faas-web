@@ -248,19 +248,22 @@ describe('canonical Settings', () => {
     expect(await screen.findByRole('tooltip')).toHaveTextContent(label);
   });
 
-  it('defaults invalid sections to General with only browser-local labeling and read-only account details', async () => {
+  it('defaults invalid sections to General with read-only account details and no browser-only label', async () => {
     await mount('/dashboard/settings?section=garbage&scope=bad');
-    expect(screen.getByRole('textbox', { name: 'Console label' })).toBeInTheDocument();
-    expect(screen.getByText(/stored in this browser/i)).toBeInTheDocument();
+    // The workspace is a real organization now, chosen in the breadcrumb.
+    expect(screen.queryByRole('textbox', { name: 'Console label' })).not.toBeInTheDocument();
     expect(screen.getByText('owner@example.com')).toBeInTheDocument();
     expect(screen.queryByRole('textbox', { name: 'Email' })).not.toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Schedule account deletion' })
     ).not.toBeInTheDocument();
     expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument();
+    // Feature availability is shown where each feature is used, not as a list.
     expect(
-      within(screen.getByRole('navigation', { name: 'Settings sections' })).getAllByRole('link')
-    ).toHaveLength(8);
+      within(screen.getByRole('navigation', { name: 'Settings sections' })).queryByRole('link', {
+        name: 'Platform capabilities',
+      })
+    ).not.toBeInTheDocument();
   });
 
   it('restores sections, organization and key scopes through history and copied URLs', async () => {
@@ -584,5 +587,25 @@ describe('canonical Settings', () => {
     expect(screen.queryByRole('button', { name: 'Transfer' })).not.toBeInTheDocument();
     await section('Members');
     expect(screen.getByRole('button', { name: 'Invite member' })).toBeDisabled();
+  });
+});
+
+describe('personal key deep links', () => {
+  it('opens the requested key metadata and clears the URL when closed', async () => {
+    const id = 'd'.repeat(32);
+    const read = api.GET.getMockImplementation()!;
+    api.GET.mockImplementation((path, options) =>
+      path === '/v1/keys' ? ok([{ ...key(id), label: 'deployment bot' }]) : read(path, options)
+    );
+    const { router } = await mount(`/dashboard/settings?section=api-keys&scope=personal&key=${id}`);
+    const dialog = await screen.findByRole('dialog', { name: 'API key details' });
+    await waitFor(() => expect(dialog).toHaveTextContent('deployment bot'));
+    expect(dialog).toHaveTextContent(id);
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(router.state.location.search.key).toBeUndefined());
+  });
+  it('drops malformed key selections', async () => {
+    await mount('/dashboard/settings?section=api-keys&key=invalid');
+    expect(screen.queryByRole('dialog', { name: 'API key details' })).not.toBeInTheDocument();
   });
 });

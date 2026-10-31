@@ -29,7 +29,6 @@ import {
   useAppsMetrics,
   useDeployments,
   useInstances,
-  useUsageSummary,
   type MetricsRange,
 } from '@/lib/api/queries';
 import { formatCompact, formatRelative, type Workflow } from '@/lib/mock-data';
@@ -38,6 +37,8 @@ import { FlowDotsField } from '@/components/dashboard/shapes';
 import { readRecents, recentLabel } from '@/lib/recents';
 import { consoleHead } from '@/lib/seo';
 import { cn } from '@/lib/utils';
+import { useWorkspaceUsageSummary } from '@/lib/api/org-billing';
+import { formatCents } from '@/lib/money';
 
 export const Route = createFileRoute('/dashboard/')({
   component: OverviewPage,
@@ -67,9 +68,7 @@ const formatGbHours = (v: number) => v.toLocaleString(undefined, { maximumFracti
 
 function formatMoney(cents: number | undefined): string {
   if (cents == null) return '—';
-  return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'EUR' }).format(
-    cents / 100
-  );
+  return formatCents(cents);
 }
 
 const UNKNOWN = <span className="text-muted-foreground">—</span>;
@@ -144,9 +143,9 @@ function AppsColumn({ workflows }: { workflows: Workflow[] }) {
   const shown = workflows.slice(0, 4);
   return (
     <section className="flex min-w-0 flex-col gap-1">
-      <ColumnHeader label="Apps" to="/dashboard/workflows" />
+      <ColumnHeader label="Apps" to="/dashboard/apps" />
       <Link
-        to="/dashboard/workflows/new"
+        to="/dashboard/apps/new"
         className="pressable relative mt-2 flex items-center justify-center gap-1.5 overflow-hidden rounded-lg border border-border bg-card py-2 text-sm text-muted-foreground hover:border-border-secondary hover:text-foreground"
       >
         <PointerGlow />
@@ -157,8 +156,8 @@ function AppsColumn({ workflows }: { workflows: Workflow[] }) {
         {shown.map((w) => (
           <li key={w.id}>
             <Link
-              to="/dashboard/workflows/$workflowId"
-              params={{ workflowId: w.id }}
+              to="/dashboard/apps/$appSlug"
+              params={{ appSlug: w.id }}
               className="pressable group flex items-center gap-2.5 rounded py-2.5"
             >
               <span
@@ -189,7 +188,7 @@ const DEPLOY_STATE: Record<string, { label: string; color: string; live?: boolea
 function DeploymentsColumn({ recent }: { recent: Deployment[] }) {
   return (
     <section className="flex min-w-0 flex-col gap-1">
-      <ColumnHeader label="Deployments" to="/dashboard/deployments" />
+      <ColumnHeader label="Deployments" to="/dashboard/releases" />
       {recent.length === 0 ? (
         <p className="mt-2 text-xs text-muted-foreground">Nothing deployed yet.</p>
       ) : (
@@ -326,7 +325,8 @@ function OverviewPage() {
   const { account, user } = useAuth();
   const { range = '24h' } = Route.useSearch();
   const navigate = Route.useNavigate();
-  const usage = useUsageSummary();
+  // The workspace's allowance: the company's in a company workspace.
+  const usage = useWorkspaceUsageSummary();
   // The default remains a cache hit with the store. Other windows are queried
   // directly so the overview changes the underlying rollup, not just its label.
   const paidAccess = isPaidPlan(account?.plan);
@@ -387,8 +387,11 @@ function OverviewPage() {
   const rangeDescription = RANGE_DESCRIPTION[range];
 
   const usageData = usage.data;
-  const included = usageData?.included_gb_hours ?? 0;
-  const remainingGbh = Math.max(0, included - (usageData?.used_gb_hours ?? 0));
+  // null: a company with no usage this month carries no allowance yet.
+  const includedKnown = usageData?.included_gb_hours ?? null;
+  const included = includedKnown ?? 0;
+  const usedGbh = usageData?.used_gb_hours ?? 0;
+  const remainingGbh = Math.max(0, included - usedGbh);
   const overGbh = usageData?.overage_gb_hours ?? 0;
   const usageFailed = Boolean(usage.error);
 
@@ -463,7 +466,7 @@ function OverviewPage() {
           <p role={verdict.trouble ? 'alert' : 'status'} className="contents">
             <Magnetic range={60} strength={0.2}>
               <Link
-                to={verdict.trouble ? '/dashboard/workflows' : '/dashboard/usage'}
+                to={verdict.trouble ? '/dashboard/apps' : '/dashboard/usage'}
                 className="glass pressable label-mono inline-flex items-center gap-2 rounded-full border border-border px-3.5 py-1.5 text-muted-foreground hover:border-border-secondary hover:text-foreground"
               >
                 <LiveDot color={verdict.color} />
@@ -493,8 +496,8 @@ function OverviewPage() {
               {failing.slice(0, 4).map((app) => (
                 <Link
                   key={app.id}
-                  to="/dashboard/workflows/$workflowId"
-                  params={{ workflowId: app.id }}
+                  to="/dashboard/apps/$appSlug"
+                  params={{ appSlug: app.id }}
                   search={{ tab: 'Logs' }}
                   className="pressable inline-flex items-center gap-1.5 rounded font-mono text-xs hover:text-foreground"
                 >
@@ -642,14 +645,24 @@ function OverviewPage() {
             )}
           </StatCard>
           <StatCard
-            label={overGbh > 0 ? 'GB-h over' : 'GB-h left'}
+            label={
+              overGbh > 0
+                ? 'GB-h over'
+                : includedKnown === null && usageData
+                  ? 'GB-h used'
+                  : 'GB-h left'
+            }
             hint="Compute allowance for this billing period."
             sub={
               usage.isPending || usageFailed
                 ? 'reading usage'
                 : overGbh > 0
-                  ? `${formatMoney(usageData?.overage_cents)} overage this period`
-                  : `of ${formatGbHours(included)} this period`
+                  ? usageData?.overage_cents === undefined
+                    ? 'over the allowance this period'
+                    : `${formatMoney(usageData.overage_cents)} overage this period`
+                  : includedKnown === null
+                    ? 'this period'
+                    : `of ${formatGbHours(included)} this period`
             }
           >
             {usage.isPending ? (
@@ -660,6 +673,8 @@ function OverviewPage() {
               <span style={{ color: 'var(--status-warning)' }}>
                 <Odometer value={overGbh} format={formatGbHours} />
               </span>
+            ) : includedKnown === null ? (
+              <Odometer value={usedGbh} format={formatGbHours} />
             ) : (
               <Odometer value={remainingGbh} format={formatGbHours} />
             )}

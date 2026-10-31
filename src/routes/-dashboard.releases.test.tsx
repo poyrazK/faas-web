@@ -10,9 +10,9 @@ import {
 } from '@tanstack/react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Route as Releases } from './dashboard.deployments';
+import { Route as Releases } from './dashboard.releases';
 import { Route as Builds } from './dashboard.builds';
-import { Route as App } from './dashboard.workflows.$workflowId';
+import { Route as App } from './dashboard.apps.$appSlug';
 
 const fixtures = vi.hoisted(() => ({
   omitBuildFromHistory: false,
@@ -27,8 +27,6 @@ const fixtures = vi.hoisted(() => ({
     status: 'failed',
     build_id: 'build-1',
     created_at: '2026-09-11T00:00:00Z',
-    rollback_on_5xx: false,
-    first_5xx_count: 0,
     min_instances: 0,
     traffic_percent: 0,
   },
@@ -57,6 +55,12 @@ const fixtures = vi.hoisted(() => ({
   sbom: vi.fn(),
   toast: vi.fn(),
 }));
+// The capability registry needs an account; this harness has none, so gates read as on.
+vi.mock('@/lib/api/capabilities', async (original) => ({
+  ...(await original<typeof import('@/lib/api/capabilities')>()),
+  useCapabilityRegistry: () => ({ query: { data: undefined }, phase: 'loading' }),
+  useCapabilityAccess: () => ({ access: 'on', refresh: () => {} }),
+}));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: fixtures.toast }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn().mockResolvedValue(true) }));
 vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { plan: 'pro' }, loading: false }) }));
@@ -77,6 +81,14 @@ vi.mock('@/lib/store', () => ({
     error: null,
     refresh: vi.fn(),
   }),
+}));
+vi.mock('@/components/dashboard/resource-activity', () => ({
+  ResourceActivityTimeline: ({ appId, deploymentId }: { appId: string; deploymentId: string }) => (
+    <div aria-label="Release activity" data-app={appId} data-release={deploymentId}>
+      Scoped release activity
+    </div>
+  ),
+  AppActivityTimeline: ({ slug }: { slug: string }) => <div>App activity for {slug}</div>,
 }));
 vi.mock('@/components/dashboard/tarball-deploy', () => ({ TarballDeploy: () => null }));
 vi.mock('@/lib/api/queries', async (original) => {
@@ -178,7 +190,7 @@ class Stream {
   }
 }
 
-async function mount(entry = '/dashboard/deployments') {
+async function mount(entry = '/dashboard/releases') {
   const root = createRootRoute({ component: Outlet });
   const dashboard = createRoute({
     getParentRoute: () => root,
@@ -188,7 +200,7 @@ async function mount(entry = '/dashboard/deployments') {
   const routes = [Releases, Builds, App].map((route, i) =>
     createRoute({
       getParentRoute: () => dashboard,
-      path: ['deployments', 'builds', 'workflows/$workflowId'][i],
+      path: ['releases', 'builds', 'apps/$appSlug'][i],
       component: route.options.component,
       validateSearch: route.options.validateSearch,
       beforeLoad: (context) => route.options.beforeLoad?.(context as never),
@@ -231,10 +243,24 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('Releases hub', () => {
+  it('opens app Activity from its URL and restores it through browser history', async () => {
+    const router = await mount('/dashboard/apps/alpha?tab=Activity');
+    expect(await screen.findByText('App activity for alpha')).toBeInTheDocument();
+    expect(router.state.location.search.tab).toBe('Activity');
+    await userEvent.click(
+      within(screen.getByRole('group', { name: 'Delivery pages' })).getByRole('button', {
+        name: 'Deployments',
+      })
+    );
+    await waitFor(() => expect(router.state.location.search.tab).toBe('Deployments'));
+    act(() => router.history.back());
+    expect(await screen.findByText('App activity for alpha')).toBeInTheDocument();
+  });
+
   it('shortens list identifiers but keeps full IDs and digests searchable and readable in detail', async () => {
     fixtures.deployment.id = '0123456789abcdef0123456789abcdef';
     fixtures.deployment.image_digest = `sha256:${'a'.repeat(64)}`;
-    const router = await mount(`/dashboard/deployments?q=${fixtures.deployment.image_digest}`);
+    const router = await mount(`/dashboard/releases?q=${fixtures.deployment.image_digest}`);
     const row = screen.getByRole('button', { name: /01234567…cdef/ });
     expect(row).not.toHaveTextContent(fixtures.deployment.image_digest);
     expect(within(row).getByTitle(fixtures.deployment.id)).toBeInTheDocument();
@@ -252,7 +278,7 @@ describe('Releases hub', () => {
   });
 
   it('offers actual status values and preserves unrelated URL state when filtering', async () => {
-    const router = await mount('/dashboard/deployments?campaign=handoff#details');
+    const router = await mount('/dashboard/releases?campaign=handoff#details');
     await userEvent.selectOptions(
       screen.getByRole('combobox', { name: 'Status filter' }),
       'failed'
@@ -266,7 +292,7 @@ describe('Releases hub', () => {
 
   it('names the active Builds view when filters match nothing', async () => {
     const router = await mount(
-      '/dashboard/deployments?view=builds&status=missing&campaign=handoff#builds'
+      '/dashboard/releases?view=builds&status=missing&campaign=handoff#builds'
     );
     expect(screen.getByText('No builds match these filters.')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
@@ -276,7 +302,7 @@ describe('Releases hub', () => {
   });
   it('uses App terminology when a selected app no longer exists', async () => {
     fixtures.appMissing = true;
-    await mount('/dashboard/workflows/missing');
+    await mount('/dashboard/apps/missing');
     expect(screen.getByRole('heading', { name: 'App not found' })).toBeInTheDocument();
     expect(screen.getByText('This app does not exist or has been deleted.')).toBeInTheDocument();
     expect(document.title).toContain('App not found');
@@ -287,7 +313,7 @@ describe('Releases hub', () => {
     expect(screen.getByText('No releases yet.')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Choose an app to deploy' })).toHaveAttribute(
       'href',
-      '/dashboard/workflows'
+      '/dashboard/apps'
     );
   });
 
@@ -299,9 +325,14 @@ describe('Releases hub', () => {
       'hidden',
       'md:table-cell'
     );
-    expect(screen.getByRole('columnheader', { name: 'Deployment state' })).not.toHaveClass(
-      'hidden'
-    );
+    expect(screen.getByRole('columnheader', { name: 'Process' })).not.toHaveClass('hidden');
+  });
+
+  it('shows each release as a process with its current phase', async () => {
+    await mount();
+    const processes = await screen.findAllByRole('list', { name: 'Release process' });
+    expect(processes.length).toBeGreaterThan(0);
+    expect(processes[0].querySelectorAll('li')).toHaveLength(5);
   });
 
   it.each(['error', 'pending'])(
@@ -312,7 +343,7 @@ describe('Releases hub', () => {
       const download = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
       URL.createObjectURL = vi.fn().mockReturnValue('blob:sbom');
       URL.revokeObjectURL = vi.fn();
-      await mount('/dashboard/deployments?view=builds&build=build-only');
+      await mount('/dashboard/releases?view=builds&build=build-only');
       expect(await screen.findByText('Failure class')).toBeInTheDocument();
       expect(screen.getByText('4.0 KB', { selector: 'dd' })).toBeInTheDocument();
       expect(screen.queryByText(/No deployment is attached/)).not.toBeInTheDocument();
@@ -330,9 +361,9 @@ describe('Releases hub', () => {
   );
 
   it.each([
-    ['/dashboard/deployments', 'pointer', 'release'],
-    ['/dashboard/deployments?view=builds', 'keyboard', 'build'],
-    ['/dashboard/workflows/alpha?tab=Deployments', 'keyboard', 'app release'],
+    ['/dashboard/releases', 'pointer', 'release'],
+    ['/dashboard/releases?view=builds', 'keyboard', 'build'],
+    ['/dashboard/apps/alpha?tab=Deployments', 'keyboard', 'app release'],
   ])(
     'opens %s detail in a modal for %s selection without scrolling and restores focus on close/Back',
     async (entry, input, kind) => {
@@ -377,7 +408,7 @@ describe('Releases hub', () => {
     ['succeeded', 'var(--status-good)'],
   ])('distinguishes %s build status in the list and shared detail', async (status, color) => {
     fixtures.build.status = status;
-    await mount('/dashboard/deployments');
+    await mount('/dashboard/releases');
     const row = screen.getByRole('button', { name: /dep-1\b/ });
     expect(within(row).getAllByText(status).at(-1)?.parentElement).toHaveStyle({ color });
     await userEvent.click(row);
@@ -421,7 +452,7 @@ describe('Releases hub', () => {
     const router = await mount(
       '/dashboard/builds?build=build-only&q=tarball&status=succeeded&campaign=handoff#output'
     );
-    expect(router.state.location.pathname).toBe('/dashboard/deployments');
+    expect(router.state.location.pathname).toBe('/dashboard/releases');
     expect(router.state.location.search).toMatchObject({
       view: 'builds',
       build: 'build-only',
@@ -434,7 +465,7 @@ describe('Releases hub', () => {
   });
 
   it('restores selected detail and section after Back, Forward and a copied URL', async () => {
-    const router = await mount('/dashboard/deployments?campaign=handoff#details');
+    const router = await mount('/dashboard/releases?campaign=handoff#details');
     await userEvent.click(screen.getByRole('button', { name: /dep-1\b/ }));
     await userEvent.click(screen.getByRole('button', { name: 'Security scans' }));
     expect(await screen.findByText('CVE-2026-1234')).toBeInTheDocument();
@@ -455,8 +486,8 @@ describe('Releases hub', () => {
   });
 
   it.each([
-    '/dashboard/deployments?deployment=dep-1',
-    '/dashboard/workflows/alpha?tab=Deployments&deployment=dep-1',
+    '/dashboard/releases?deployment=dep-1',
+    '/dashboard/apps/alpha?tab=Deployments&deployment=dep-1',
   ])('uses shared release evidence and operational actions at %s', async (entry) => {
     const router = await mount(entry);
     expect(await screen.findByRole('heading', { name: 'Release details' })).toBeInTheDocument();
@@ -475,14 +506,13 @@ describe('Releases hub', () => {
     expect(screen.getByText('/app/config:4')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Overview' }));
     await userEvent.click(screen.getByRole('button', { name: 'Retry options' }));
-    fireEvent.change(screen.getByRole('combobox', { name: 'Resume from' }), {
-      target: { value: 'image_build' },
-    });
+    expect(screen.queryByRole('combobox', { name: 'Resume from' })).not.toBeInTheDocument();
+    expect(screen.getByText(/Intermediate checkpoints are not retained/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Retry deployment' }));
-    expect(fixtures.retry).toHaveBeenCalledWith({ id: 'dep-1', from_stage: 'image_build' });
+    expect(fixtures.retry).toHaveBeenCalledWith({ id: 'dep-1', from_stage: 'source_download' });
     expect(await screen.findByRole('link', { name: 'View new deployment' })).toHaveAttribute(
       'href',
-      '/dashboard/deployments?deployment=retry-1&releaseSection=overview'
+      '/dashboard/releases?deployment=retry-1&releaseSection=overview'
     );
     await userEvent.click(screen.getByRole('button', { name: 'Runtime controls' }));
     fireEvent.change(screen.getByRole('spinbutton', { name: /Minimum instances/ }), {
@@ -497,6 +527,8 @@ describe('Releases hub', () => {
     expect(fixtures.traffic).toHaveBeenCalledWith({ id: 'dep-1', traffic_percent: 25 });
     await userEvent.click(screen.getByRole('button', { name: 'Audit context' }));
     expect(await screen.findByText('Audit timeline')).toBeInTheDocument();
+    expect(screen.getByLabelText('Release activity')).toHaveAttribute('data-app', 'app-1');
+    expect(screen.getByLabelText('Release activity')).toHaveAttribute('data-release', 'dep-1');
     expect(screen.getByText('operator@example.test')).toBeInTheDocument();
     expect(router.state.location.search).toMatchObject({
       deployment: 'dep-1',
@@ -516,7 +548,7 @@ describe('Releases hub', () => {
       })
     );
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
-    await mount('/dashboard/deployments?view=builds&build=build-only&releaseSection=provenance');
+    await mount('/dashboard/releases?view=builds&build=build-only&releaseSection=provenance');
     await userEvent.click(await screen.findByRole('button', { name: 'Download SBOM' }));
     expect(fixtures.sbom).toHaveBeenCalledWith('build-only');
     expect(click).toHaveBeenCalled();
@@ -526,7 +558,7 @@ describe('Releases hub', () => {
 
   it('normalizes invalid owned state without discarding valid selection or foreign search', async () => {
     const router = await mount(
-      '/dashboard/deployments?deployment=dep-1&view=wrong&releaseSection=wrong&campaign=handoff'
+      '/dashboard/releases?deployment=dep-1&view=wrong&releaseSection=wrong&campaign=handoff'
     );
     expect(await screen.findByRole('heading', { name: 'Release details' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Overview' })).toHaveAttribute(
@@ -543,7 +575,7 @@ describe('Releases hub', () => {
 
   it('normalizes a deployment-only section on an unattached build while retaining its selection', async () => {
     const router = await mount(
-      '/dashboard/deployments?view=builds&build=build-only&releaseSection=scans&campaign=handoff'
+      '/dashboard/releases?view=builds&build=build-only&releaseSection=scans&campaign=handoff'
     );
     expect(await screen.findByText(/No deployment is attached/)).toBeInTheDocument();
     await waitFor(() => expect(router.state.location.search.releaseSection).toBe('overview'));
@@ -554,7 +586,7 @@ describe('Releases hub', () => {
   });
 
   it('restores app release sections and selection through Back, Forward and refresh', async () => {
-    const router = await mount('/dashboard/workflows/alpha?tab=Deployments#release');
+    const router = await mount('/dashboard/apps/alpha?tab=Deployments#release');
     await userEvent.click(screen.getByRole('button', { name: /image aaaa/ }));
     await userEvent.click(await screen.findByRole('button', { name: 'Security scans' }));
     const copied = router.state.location.href;
@@ -574,7 +606,7 @@ describe('Releases hub', () => {
 
   it('preserves Debugger investigation and unrelated state when selecting and closing app releases', async () => {
     const router = await mount(
-      '/dashboard/workflows/alpha?tab=Deployments&debugView=compare&debugFilter=failed&debugWindow=6h&request=request-7&debugRoute=%2Fcheckout&campaign=handoff#evidence'
+      '/dashboard/apps/alpha?tab=Deployments&debugView=compare&debugFilter=failed&debugWindow=6h&request=request-7&debugRoute=%2Fcheckout&campaign=handoff#evidence'
     );
     const investigation = {
       debugView: 'compare',
@@ -595,15 +627,23 @@ describe('Releases hub', () => {
     expect(router.state.location.search).toMatchObject(investigation);
     expect(router.state.location.search.deployment).toBeUndefined();
     expect(router.state.location.search.releaseSection).toBeUndefined();
-    await userEvent.click(screen.getByRole('tab', { name: 'Debugger' }));
+    await userEvent.click(screen.getByRole('tab', { name: 'Observe' }));
+    await userEvent.click(
+      within(screen.getByRole('group', { name: 'Observe pages' })).getByRole('button', {
+        name: 'Debugger',
+      })
+    );
     expect(await screen.findByRole('dialog', { name: 'Request evidence' })).toBeInTheDocument();
     expect(router.state.location.search).toMatchObject(investigation);
     await act(async () => router.history.back());
+    await waitFor(() => expect(router.state.location.search.tab).toBe('Logs'));
+    await act(async () => router.history.back());
     await waitFor(() =>
-      expect(screen.getByRole('tab', { name: 'Deployments' })).toHaveAttribute(
-        'aria-selected',
-        'true'
-      )
+      expect(
+        within(screen.getByRole('group', { name: 'Delivery pages' })).getByRole('button', {
+          name: 'Deployments',
+        })
+      ).toHaveAttribute('aria-pressed', 'true')
     );
     await act(async () => router.history.back());
     expect(await screen.findByText('CVE-2026-1234')).toBeInTheDocument();
@@ -622,7 +662,7 @@ describe('Releases hub', () => {
 
   it('clears an invalid app release section without losing the existing app tab and deployment', async () => {
     const router = await mount(
-      '/dashboard/workflows/alpha?tab=Deployments&deployment=dep-1&releaseSection=wrong'
+      '/dashboard/apps/alpha?tab=Deployments&deployment=dep-1&releaseSection=wrong'
     );
     expect(await screen.findByRole('button', { name: 'Overview' })).toHaveAttribute(
       'aria-pressed',

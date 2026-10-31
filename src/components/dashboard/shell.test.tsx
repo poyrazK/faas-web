@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
@@ -58,14 +59,19 @@ vi.mock('@/components/ui/toast', () => ({
 describe('DashboardShell', () => {
   it('offers the existing new-app flow from the global top bar', () => {
     render(
-      <DashboardShell>
-        <p>Current page</p>
-      </DashboardShell>
+      <QueryClientProvider client={new QueryClient()}>
+        <DashboardShell>
+          <p>Current page</p>
+        </DashboardShell>
+      </QueryClientProvider>
     );
 
     expect(screen.getByRole('link', { name: 'New app' })).toHaveAttribute(
       'href',
-      '/dashboard/workflows/new'
+      '/dashboard/apps/new'
     );
+    const attention = screen.getByRole('button', { name: 'Needs Attention' });
+    expect(attention.nextElementSibling).toBe(screen.getByRole('link', { name: 'New app' }));
+    expect(attention).toHaveAttribute('aria-haspopup', 'dialog');
   });
 });

@@ -39,6 +39,9 @@ beforeEach(() => {
   lists.fetchNextJobs.mockReset().mockResolvedValue(undefined);
 });
 
+vi.mock('@/components/dashboard/automations-body', () => ({
+  AutomationsBody: () => <p>Automations body</p>,
+}));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn() }));
 vi.mock('@/lib/auth', () => ({
@@ -231,10 +234,11 @@ describe('Jobs hub', () => {
       lists.empty = true;
       lists.appsRead = state;
       await mount('/dashboard/jobs?section=scheduled');
+      await userEvent.click(screen.getByRole('button', { name: 'New scheduled request' }));
       expect(
         screen.getByText(state === 'pending' ? 'Loading apps…' : 'App lookup offline')
       ).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Add cron' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Create scheduled request' })).toBeDisabled();
       expect(screen.queryByRole('link', { name: 'Create an app' })).not.toBeInTheDocument();
       if (state === 'error') {
         await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
@@ -249,7 +253,7 @@ describe('Jobs hub', () => {
     await mount('/dashboard/jobs?section=scheduled');
     expect(screen.getByRole('link', { name: 'Create an app' })).toHaveAttribute(
       'href',
-      '/dashboard/workflows/new'
+      '/dashboard/apps/new'
     );
   });
 
@@ -279,11 +283,11 @@ describe('Jobs hub', () => {
     await userEvent.click(
       screen.getByRole('button', { name: 'Create your first scheduled request' })
     );
-    expect(screen.getByRole('textbox', { name: 'Schedule' })).toHaveFocus();
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Schedule' })).toHaveFocus());
   });
 
   it('uses compact workload columns and discoverable schedule actions', async () => {
-    await mount();
+    await mount('/dashboard/jobs?section=workloads');
     expect(screen.getByRole('columnheader', { name: 'Image' })).toHaveClass(
       'hidden',
       'md:table-cell'
@@ -299,7 +303,7 @@ describe('Jobs hub', () => {
 
   it('loads older workloads on demand', async () => {
     lists.jobsHasNext = true;
-    await mount();
+    await mount('/dashboard/jobs?section=workloads');
 
     await userEvent.click(await screen.findByRole('button', { name: 'Load older jobs' }));
     expect(lists.fetchNextJobs).toHaveBeenCalledOnce();
@@ -308,7 +312,7 @@ describe('Jobs hub', () => {
   it('keeps loaded workloads visible when an older page fails and offers retry', async () => {
     lists.jobsError = true;
     lists.jobsNextError = true;
-    await mount();
+    await mount('/dashboard/jobs?section=workloads');
 
     expect(await screen.findByRole('button', { name: 'nightly-export' })).toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent('Workloads offline');
@@ -319,6 +323,12 @@ describe('Jobs hub', () => {
   it('composes model-specific sections with accessible navigation', async () => {
     const router = await mount('/dashboard/jobs?campaign=handoff#details');
     const navigation = screen.getByRole('navigation', { name: 'Jobs sections' });
+    expect(within(navigation).getByRole('link', { name: 'Automations' })).toHaveAttribute(
+      'aria-current',
+      'page'
+    );
+    expect(screen.getByText('Automations body')).toBeInTheDocument();
+    await userEvent.click(within(navigation).getByRole('link', { name: 'Workloads' }));
     expect(within(navigation).getByRole('link', { name: 'Workloads' })).toHaveAttribute(
       'aria-current',
       'page'
@@ -327,7 +337,8 @@ describe('Jobs hub', () => {
     expect(screen.getByRole('columnheader', { name: 'Image' })).toBeInTheDocument();
     await userEvent.click(within(navigation).getByRole('link', { name: 'Scheduled requests' }));
     expect(await screen.findByText(/HTTP requests on a Cron schedule/)).toBeInTheDocument();
-    expect(screen.getByRole('textbox', { name: 'Path' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'New scheduled request' })).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'Path' })).not.toBeInTheDocument();
     expect(screen.queryByRole('columnheader', { name: 'Image' })).not.toBeInTheDocument();
     expect(router.state.location.search).toMatchObject({
       section: 'scheduled',
@@ -360,7 +371,7 @@ describe('Jobs hub', () => {
   );
 
   it('restores workload, run and task from a copied URL, refresh, Back and Forward', async () => {
-    const router = await mount('/dashboard/jobs?campaign=handoff');
+    const router = await mount('/dashboard/jobs?section=workloads&campaign=handoff');
     await userEvent.click(screen.getByRole('button', { name: 'nightly-export' }));
     await userEvent.click(await screen.findByRole('button', { name: 'run-1' }));
     await userEvent.click(await screen.findByRole('button', { name: 'task 0' }));
@@ -399,6 +410,32 @@ describe('Jobs hub', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 
+  it('opens on Automations, the first section, unless the URL names another', async () => {
+    await mount('/dashboard/jobs');
+    const navigation = screen.getByRole('navigation', { name: 'Jobs sections' });
+    expect(within(navigation).getAllByRole('link')[0]).toHaveTextContent('Automations');
+    expect(within(navigation).getByRole('link', { name: 'Automations' })).toHaveAttribute(
+      'aria-current',
+      'page'
+    );
+    expect(screen.getByText('Automations body')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'nightly-export' })).not.toBeInTheDocument();
+    cleanup();
+    await mount('/dashboard/jobs?section=workloads');
+    expect(screen.getByRole('button', { name: 'nightly-export' })).toBeInTheDocument();
+  });
+
+  it('keeps a workload link without a section on Workloads after closing it', async () => {
+    const router = await mount('/dashboard/jobs?job=job-1');
+    expect(screen.getByRole('link', { name: 'Workloads' })).toHaveAttribute('aria-current', 'page');
+    await userEvent.click(await screen.findByRole('button', { name: 'run-1' }));
+    expect(router.state.location.search).toMatchObject({
+      section: 'workloads',
+      job: 'job-1',
+      run: 'run-1',
+    });
+  });
+
   it('restores section and trigger selection through history', async () => {
     const router = await mount('/dashboard/jobs');
     await userEvent.click(screen.getByRole('link', { name: 'Triggers' }));
@@ -411,7 +448,7 @@ describe('Jobs hub', () => {
     await act(async () => router.history.back());
     await waitFor(() => expect(screen.queryByText('Configuration')).not.toBeInTheDocument());
     await act(async () => router.history.back());
-    expect(await screen.findByRole('button', { name: 'nightly-export' })).toBeInTheDocument();
+    expect(await screen.findByText('Automations body')).toBeInTheDocument();
     await act(async () => router.history.forward());
     expect(await screen.findByRole('button', { name: 'orders' })).toBeInTheDocument();
   });
@@ -434,7 +471,10 @@ describe('Jobs hub', () => {
     const router = await mount(
       '/dashboard/jobs?section=bogus&job=123&run=false&task=-1&campaign=handoff'
     );
-    expect(screen.getByRole('link', { name: 'Workloads' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Automations' })).toHaveAttribute(
+      'aria-current',
+      'page'
+    );
     expect(router.state.matches.at(-1)?.search).toMatchObject({ campaign: 'handoff' });
     expect(router.state.matches.at(-1)?.search).toMatchObject({
       task: undefined,

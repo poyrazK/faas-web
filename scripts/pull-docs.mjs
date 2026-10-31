@@ -59,10 +59,24 @@ const headers = {
 
 mkdirSync(OUT_DIR, { recursive: true });
 
+// The upstream docs-URL catalog, which `src/lib/docs-catalog.ts` turns into
+// redirects and a coverage test. Pulled first: a missing manifest source is a
+// stale page, a missing catalog is a stale contract.
+{
+  const response = await fetch(url('docs/customer-pages.json'), { headers });
+  if (!response.ok) {
+    console.error(`docs/customer-pages.json → HTTP ${response.status}`);
+    process.exit(1);
+  }
+  writeFileSync(join('content', 'customer-pages.json'), await response.text());
+  console.log('  customer-pages.json      docs/customer-pages.json');
+}
+
 let written = 0;
 const failures = [];
 
 for (const entry of DOC_ENTRIES) {
+  if (entry.local) continue;
   const response = await fetch(url(entry.source), { headers });
 
   if (!response.ok) {
@@ -78,7 +92,9 @@ for (const entry of DOC_ENTRIES) {
   written++;
 }
 
-console.log(`\npulled ${written}/${DOC_ENTRIES.length} docs from ${REPO}@${REF}`);
+console.log(
+  `\npulled ${written}/${DOC_ENTRIES.filter((entry) => !entry.local).length} upstream docs from ${REPO}@${REF}`
+);
 
 if (failures.length) {
   console.error(`\n${failures.length} failed:`);

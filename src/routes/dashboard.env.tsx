@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils';
 const KEY_RULE = /^[A-Z][A-Z0-9_]*$/;
 import { formatRelative } from '@/lib/mock-data';
 import { consoleHead } from '@/lib/seo';
+import { EnvTransferPanel } from '@/components/dashboard/env-transfer';
 import { EnvDiffPanel } from '@/components/dashboard/app-insights';
 
 export const Route = createFileRoute('/dashboard/env')({
@@ -196,6 +197,8 @@ export function EnvBody({ slug }: { slug: string }) {
         </form>
       </Panel>
 
+      <EnvTransferPanel key={slug} slug={slug} />
+
       <ResourceTable
         rows={rows}
         columns={columns}
@@ -220,7 +223,7 @@ function EnvPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Env vars"
-        description="Plain configuration injected at boot. Values are write-only; credentials belong in Secrets."
+        description="Plain configuration injected at boot. Editing is write-only; explicit exports require confirmation. Credentials belong in Secrets."
         actions={<AppSelect slug={slug} onSelect={select} apps={apps} />}
       />
 

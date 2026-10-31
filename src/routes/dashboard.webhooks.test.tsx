@@ -27,8 +27,11 @@ vi.mock('@/components/dashboard/app-select', () => ({
   AppSelect: () => null,
   useSelectedApp: () => ({ slug: 'api', apps: [], select: vi.fn() }),
 }));
+vi.mock('@/components/dashboard/inbound-webhooks', () => ({
+  InboundWebhooks: ({ slug }: { slug: string }) => <div>Inbound endpoints for {slug}</div>,
+}));
 
-const { WebhooksBody } = await import('./dashboard.webhooks');
+const { WebhooksBody, WebhooksHub, validateWebhookSearch } = await import('./dashboard.webhooks');
 
 beforeEach(() => {
   createWebhook
@@ -91,5 +94,18 @@ describe('webhook form validation', () => {
 
     expect(target).toHaveAccessibleDescription('Target URLs can be at most 2048 characters.');
     expect(createWebhook).not.toHaveBeenCalled();
+  });
+});
+
+describe('webhook directions', () => {
+  it('keeps old links on outbound and switches to inbound through the URL callback', async () => {
+    expect(validateWebhookSearch({}).direction).toBeUndefined();
+    const onDirection = vi.fn();
+    render(
+      <WebhooksHub accountId="account-1" slug="api" direction="inbound" onDirection={onDirection} />
+    );
+    expect(screen.getByText('Inbound endpoints for api')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Outbound' }));
+    expect(onDirection).toHaveBeenCalledWith('outbound');
   });
 });

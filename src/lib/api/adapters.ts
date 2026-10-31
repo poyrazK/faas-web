@@ -37,8 +37,10 @@ export function toRunState(status: string | undefined): RunState {
     case 'failed':
     case 'crashed':
       return 'error';
+    case 'undeployed':
+      return 'undeployed';
     default:
-      // `parked` and `stopped` land here, which is correct: scale-to-zero is
+      // `evicted_cold` (apid's parked state), `parked` and `stopped` land here, which is correct: scale-to-zero is
       // the normal resting state on this platform, not a fault.
       return 'idle';
   }
@@ -49,6 +51,22 @@ function shortDigest(digest: string | undefined): string {
   // `sha256:ab12…` — the algorithm prefix is noise in a table cell.
   const bare = digest.includes(':') ? digest.slice(digest.indexOf(':') + 1) : digest;
   return bare.slice(0, 7);
+}
+
+function stateWithoutLiveDeployment(latest?: ApiDeployment): RunState {
+  if (!latest) return 'undeployed';
+  switch ((latest.status ?? '').toLowerCase()) {
+    case 'failed':
+    case 'cancelled':
+      return 'error';
+    case 'pending':
+    case 'building':
+    case 'imaging':
+    case 'snapshotting':
+      return 'deploying';
+    default:
+      return 'undeployed';
+  }
 }
 
 /**
@@ -62,27 +80,35 @@ function shortDigest(digest: string | undefined): string {
 export function toWorkflow(app: App, metrics?: AppsMetrics, latest?: ApiDeployment): Workflow {
   const row = metrics?.apps?.[app.slug];
   const appState = toRunState(app.status);
+  const noLiveDeployment = app.deployment_availability === 'no_live_deployment';
   // `active` is the API's default for a newly-created app as well as a live
   // one. Without a deployment row, showing "Running" tells the customer that
   // something is serving traffic when there is nothing to serve yet.
-  const state = latest
-    ? appState
-    : appState === 'deploying' || appState === 'error'
+  const state = noLiveDeployment
+    ? stateWithoutLiveDeployment(latest)
+    : latest
       ? appState
-      : 'undeployed';
+      : appState === 'deploying' || appState === 'error'
+        ? appState
+        : 'undeployed';
 
   return {
     // The slug, not the 32-hex id: it is what every `/v1/apps/{slug}` route is
     // keyed by, and it makes a shareable console URL readable.
     id: app.slug,
     name: app.slug,
-    runtime: app.runtime ?? app.type,
+    // Older clients persisted managed runtime values on container Apps.
+    runtime: app.type === 'app' ? 'app' : (app.runtime ?? app.type),
     memoryMb: app.ram_mb,
     state,
     reportedStatus: app.status,
     url: app.url,
-    // Metrics come from the Prometheus rollup and are absent when it is
-    // degraded — zero is the honest reading of "no requests in the window".
+    visibility: app.visibility,
+    // Metrics come from the Prometheus rollup. An app missing from a healthy
+    // rollup had no requests in the window, so zero is its reading. With no
+    // rollup at all (a plan without metrics) or a degraded one, the zeros are
+    // placeholders and the row says its metrics are unavailable.
+    metricsUnavailable: !metrics || metrics.source !== 'prometheus' || !metrics.apps,
     invocations24h: row?.request_count ?? 0,
     avgDurationMs: Math.round(row?.latency_p50_ms ?? 0),
     coldStartP50Ms: Math.round(row?.wake_p95_ms ?? 0),

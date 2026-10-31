@@ -12,6 +12,7 @@ import { ResourceTable, type Column } from './resource-table';
 import { AppAnalyticsBody } from './app-analytics';
 import { SloPanel } from './app-core-panels';
 import { WakeTimelinePanel } from './app-insights';
+import { AppHealthPanel, AwakeRoutesPanel, DependencyLatencyPanel } from './app-observability';
 
 export type AccountAnalyticsSearch = {
   app?: string;
@@ -248,7 +249,12 @@ export function AccountAnalytics({ search, setSearch }: SearchProps) {
               }))
             }
           />
+          <AppHealthPanel key={`health-${slug}`} slug={slug} />
           <SloPanel key={slug} slug={slug} />
+          <div className="grid gap-4 xl:grid-cols-2">
+            <AwakeRoutesPanel slug={slug} since={window} />
+            <DependencyLatencyPanel slug={slug} since={window} />
+          </div>
           <WakeTimelinePanel slug={slug} />
         </section>
       )}

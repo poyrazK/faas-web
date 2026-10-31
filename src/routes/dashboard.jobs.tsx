@@ -1,9 +1,12 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { PageHeader } from '@/components/dashboard/primitives';
+import { TabNav, tabClassName } from '@/components/dashboard/tabs';
 import { WorkloadsBody } from '@/components/dashboard/jobs-workloads';
 import { ScheduledRequestsBody } from '@/components/dashboard/jobs-scheduled';
 import { TriggersBody } from '@/components/dashboard/jobs-triggers';
+import { AutomationsBody } from '@/components/dashboard/automations-body';
 import {
+  jobsSection,
   validateJobsSearch,
   type JobsSearch,
   type JobsSection,
@@ -17,6 +20,7 @@ export const Route = createFileRoute('/dashboard/jobs')({
 });
 
 const sections: { value: JobsSection; label: string }[] = [
+  { value: 'automations', label: 'Automations' },
   { value: 'workloads', label: 'Workloads' },
   { value: 'scheduled', label: 'Scheduled requests' },
   { value: 'triggers', label: 'Triggers' },
@@ -25,17 +29,21 @@ const sections: { value: JobsSection; label: string }[] = [
 function JobsPage() {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
-  const section = search.section ?? 'workloads';
+  const section = jobsSection(search);
   const onSelection = (patch: Partial<JobsSearch>) => {
-    void navigate({ search: (current) => ({ ...current, ...patch }), hash: true });
+    // Pin the section a legacy link implied, so closing its selection stays put.
+    void navigate({
+      search: (current) => ({ ...current, section: jobsSection(current), ...patch }),
+      hash: true,
+    });
   };
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Jobs"
-        description="Workloads, scheduled HTTP requests, and event triggers."
+        description="Durable automations, workloads, scheduled HTTP requests, and event triggers."
       />
-      <nav aria-label="Jobs sections" className="flex flex-wrap gap-2 border-b border-border pb-3">
+      <TabNav label="Jobs sections">
         {sections.map(({ value, label }) => (
           <Link
             key={value}
@@ -43,17 +51,14 @@ function JobsPage() {
             search={(current) => ({ ...current, section: value })}
             hash
             aria-current={section === value ? 'page' : undefined}
-            className={
-              section === value
-                ? 'rounded-md bg-muted px-3 py-2 text-sm font-medium'
-                : 'rounded-md px-3 py-2 text-sm text-muted-foreground hover:text-foreground'
-            }
+            className={tabClassName(section === value)}
           >
             {label}
           </Link>
         ))}
-      </nav>
+      </TabNav>
       {section === 'workloads' && <WorkloadsBody search={search} onSelection={onSelection} />}
+      {section === 'automations' && <AutomationsBody search={search} onSelection={onSelection} />}
       {section === 'scheduled' && (
         <ScheduledRequestsBody search={search} onSelection={onSelection} />
       )}

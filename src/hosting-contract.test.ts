@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { securityHeaders } from '@/lib/security-headers';
 
 interface Route {
   src?: string;
@@ -32,18 +33,34 @@ describe('public hosting contract', () => {
     const boundary = config.routes.findIndex(
       (route) => route.src === '^/(.*)$' && route.continue === true
     );
-    const headers = config.routes[boundary]?.headers ?? {};
 
     expect(boundary).toBeGreaterThan(apiEnd);
     expect(boundary).toBeLessThan(filesystem);
-    expect(headers['Content-Security-Policy']).toContain("frame-ancestors 'none'");
-    expect(headers['Content-Security-Policy']).toContain("object-src 'none'");
-    expect(headers['X-Content-Type-Options']).toBe('nosniff');
-    expect(headers['X-Frame-Options']).toBe('DENY');
-    expect(headers['Referrer-Policy']).toBe('strict-origin-when-cross-origin');
-    expect(headers['Permissions-Policy']).toContain('camera=()');
-    expect(headers['Access-Control-Allow-Origin']).toBe('https://gregale.dev');
   });
+
+  it('serves exactly the policy src/lib/security-headers.ts defines', () => {
+    const boundary = config.routes.find(
+      (route) => route.src === '^/(.*)$' && route.continue === true
+    );
+    // On failure: copy `securityHeaders('production')` into vercel.json —
+    // Vercel reads JSON, so the literal is a copy and this test keeps it honest.
+    expect(boundary?.headers).toEqual(securityHeaders('production'));
+  });
+});
+
+it('loads fonts from this origin, not a CDN', () => {
+  // The policy is `font-src 'self'` and `style-src 'self'`; a CDN tag in the
+  // document would be blocked, and a CDN rule in the stylesheet likewise.
+  const thirdParty = /fonts\.googleapis\.com|fonts\.gstatic\.com|fontshare\.com/;
+  expect(readFileSync('index.html', 'utf8')).not.toMatch(thirdParty);
+  const fonts = readFileSync('src/fonts.css', 'utf8');
+  expect(fonts).not.toMatch(thirdParty);
+  for (const family of ['Familjen Grotesk', 'Spline Sans Mono', 'Satoshi']) {
+    expect(fonts).toContain(`font-family: '${family}'`);
+  }
+  // Relative, so Vite content-hashes the files into /assets/, where the
+  // immutable cache rule above already applies; see prerender.test.ts.
+  expect(fonts.match(/url\('\.\/fonts\/[a-z0-9-]+\.woff2'\)/g)).toHaveLength(8);
 });
 
 /** Model only the post-filesystem fallbacks: published documents and assets

@@ -1,3 +1,5 @@
+import { resourceId } from '@/lib/resource-id';
+
 export const SETTINGS_SECTIONS = [
   ['general', 'General'],
   ['organization', 'Organization'],
@@ -5,6 +7,7 @@ export const SETTINGS_SECTIONS = [
   ['api-keys', 'API keys'],
   ['security', 'Security'],
   ['integrations', 'Integrations'],
+  ['previews', 'Previews'],
   ['platform-limits', 'Platform limits'],
   ['data-and-privacy', 'Data and privacy'],
 ] as const;
@@ -15,6 +18,7 @@ export interface SettingsSearch extends Record<string, unknown> {
   org?: string;
   github?: string;
   default_branch?: string;
+  key?: string;
 }
 export function validateSettingsSearch(raw: Record<string, unknown>): SettingsSearch {
   const search = { ...raw } as SettingsSearch;
@@ -23,5 +27,6 @@ export function validateSettingsSearch(raw: Record<string, unknown>): SettingsSe
   for (const key of ['org', 'github', 'default_branch'] as const) {
     if (typeof raw[key] !== 'string' || !raw[key].trim()) search[key] = undefined;
   }
+  search.key = resourceId(raw.key);
   return search;
 }

@@ -33,41 +33,35 @@ import {
 } from '@/components/dashboard/primitives';
 import { Pill } from '@/components/dashboard/resource-table';
 import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
-import { LOG_LEVELS, MAX_LINES, useLogStream, type LogLevelFilter } from '@/lib/api/logs';
+import { LOG_LEVELS, MAX_LINES, useLogStream } from '@/lib/api/logs';
+import {
+  isoDay,
+  logFilters,
+  logsSearch,
+  validateLogsSearch,
+  type LogFilters,
+  type LogsSearch,
+} from '@/components/dashboard/logs-search';
 import { slugIndex, toDeployment } from '@/lib/api/adapters';
 import { useAppDeployments, useAppInstances } from '@/lib/api/queries';
 import { errorMessage } from '@/lib/api/errors';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import { consoleHead } from '@/lib/seo';
+import { LogStreamRecovery } from '@/components/dashboard/log-stream-recovery';
 import { DeploymentGate } from '@/components/dashboard/deployment-gate';
 import { hasRunnableDeployment } from '@/lib/deployment-status';
 
 export const Route = createFileRoute('/dashboard/logs')({
   component: LogsPage,
   head: () => consoleHead('logs'),
-  // Filters live in the URL, so a pasted link opens the same view — the
-  // shareable log link an on-call handoff actually needs.
-  validateSearch: (search: Record<string, unknown>): LogsSearch => ({
-    ...(typeof search.app === 'string' && search.app ? { app: search.app } : {}),
-    ...(LOG_LEVELS.includes(search.level as LogLevelFilter)
-      ? { level: search.level as LogLevelFilter }
-      : {}),
-    ...(typeof search.q === 'string' && search.q ? { q: search.q } : {}),
-    ...(search.mode === 'archive' ? { mode: 'archive' as const } : {}),
-  }),
+  validateSearch: validateLogsSearch,
 });
-
-interface LogsSearch {
-  app?: string;
-  level?: LogLevelFilter;
-  q?: string;
-  mode?: 'archive';
-}
 
 const STATUS_LABEL: Record<string, { label: string; color?: string }> = {
   idle: { label: 'idle' },
   connecting: { label: 'connecting', color: 'var(--status-warning)' },
+  reconnecting: { label: 'reconnecting', color: 'var(--status-warning)' },
   streaming: { label: 'live', color: 'var(--status-good)' },
   paused: { label: 'paused', color: 'var(--status-warning)' },
   ended: { label: 'ended' },
@@ -85,48 +79,49 @@ const ARCHIVE_REASON: Record<string, string> = {
   archive_degraded: 'Partial — some of this day was never shipped to the archive.',
 };
 
-const isoDay = (offsetDays = 0) =>
-  new Date(Date.now() - offsetDays * 86_400_000).toISOString().slice(0, 10);
-
-export interface LogFilters {
-  level: LogLevelFilter | '';
-  grep: string;
-  mode: 'live' | 'archive';
+/** Applied filters are controlled by the route; only the text draft is local. */
+function LogTextFilter({ value, onApply }: { value: string; onApply: (value: string) => void }) {
+  const [draft, setDraft] = useState(value);
+  return (
+    <form
+      className="relative flex min-w-56 flex-1 items-center sm:max-w-xs"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onApply(draft);
+      }}
+    >
+      <Search className="pointer-events-none absolute left-3 h-3.5 w-3.5 text-muted-foreground" />
+      <input
+        aria-label="Filter log text"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        maxLength={2048}
+        placeholder="grep… (press Enter)"
+        className="h-9 w-full rounded-md border border-border bg-card pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-brand/50"
+      />
+    </form>
+  );
 }
 
-/**
- * The live log view, without the page chrome around it.
- *
- * Rendered both by this route and as a tab on the app detail page. The
- * route passes `initial` (from the URL) and listens on `onFilters` to keep
- * the URL shareable; the tab passes neither and behaves as before.
- */
+/** Shared log viewer. Route-owned filters restore without remounting the pause state. */
 export function LogsBody({
   slug,
-  initial,
+  filters,
   onFilters,
 }: {
   slug: string;
-  initial?: Partial<LogFilters>;
-  onFilters?: (f: LogFilters) => void;
+  filters?: LogFilters;
+  onFilters?: (f: LogFilters, replace?: boolean) => void;
 }) {
   const [connected, setConnected] = useState(true);
-  const [grepInput, setGrepInput] = useState(initial?.grep ?? '');
-  const [grep, setGrep] = useState(initial?.grep ?? '');
-  const [level, setLevel] = useState<LogLevelFilter | ''>(initial?.level ?? '');
-  const [mode, setMode] = useState<'live' | 'archive'>(initial?.mode ?? 'live');
-
-  // Report filter changes upward without ever depending on the callback's
-  // identity — the route recreates it per render.
-  const onFiltersRef = useRef(onFilters);
-  useEffect(() => {
-    onFiltersRef.current = onFilters;
-  });
-  useEffect(() => {
-    onFiltersRef.current?.({ level, grep, mode });
-  }, [level, grep, mode]);
-  const [instance, setInstance] = useState('');
-  const [date, setDate] = useState(() => isoDay(1));
+  const [localFilters, setLocalFilters] = useState(() => logFilters({}));
+  const current = filters ?? localFilters;
+  const { grep, level, mode, instance, date } = current;
+  const update = (patch: Partial<LogFilters>) => {
+    const next = { ...current, ...patch };
+    if (onFilters) onFilters(next);
+    else setLocalFilters(next);
+  };
   const [wrap, setWrap] = useState(() => localStorage.getItem(WRAP_KEY) !== '0');
   const { copied, copy: copyBuffer } = useCopy(1800);
 
@@ -136,6 +131,13 @@ export function LogsBody({
 
   const instances = useAppInstances(mode === 'archive' ? slug : '');
   const chosenInstance = instance || instances.data?.[0]?.id || '';
+  // Pin a default instance into a shared archive URL once it is known. An
+  // explicit historical instance is never replaced by a currently running one.
+  useEffect(() => {
+    if (filters && mode === 'archive' && !instance && chosenInstance) {
+      onFilters?.({ ...filters, instance: chosenInstance }, true);
+    }
+  }, [filters, mode, instance, chosenInstance, onFilters]);
 
   const source = useMemo(
     () =>
@@ -145,7 +147,7 @@ export function LogsBody({
     [mode, slug, chosenInstance, date, grep, level]
   );
   // An archive read is a one-shot fetch, so the pause switch does not apply.
-  const { lines, status, reason, error, truncated, clear } = useLogStream(
+  const { lines, status, reason, error, truncated, clear, canRetry, retry } = useLogStream(
     source,
     mode === 'archive' ? true : connected
   );
@@ -212,7 +214,7 @@ export function LogsBody({
               key={m}
               type="button"
               aria-pressed={mode === m}
-              onClick={() => setMode(m)}
+              onClick={() => update({ mode: m })}
               className={cn(
                 'rounded px-2.5 py-1 text-xs capitalize pressable',
                 mode === m
@@ -225,23 +227,7 @@ export function LogsBody({
           ))}
         </div>
 
-        <form
-          className="relative flex min-w-56 flex-1 items-center sm:max-w-xs"
-          onSubmit={(e) => {
-            e.preventDefault();
-            // Applied on submit, not per keystroke: each change restarts the
-            // stream, and doing that on every letter would thrash the server.
-            setGrep(grepInput);
-          }}
-        >
-          <Search className="pointer-events-none absolute left-3 h-3.5 w-3.5 text-muted-foreground" />
-          <input
-            value={grepInput}
-            onChange={(e) => setGrepInput(e.target.value)}
-            placeholder="grep… (press Enter)"
-            className="h-9 w-full rounded-md border border-border bg-card pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-brand/50"
-          />
-        </form>
+        <LogTextFilter key={grep} value={grep} onApply={(value) => update({ grep: value })} />
 
         {/* Filtered server-side, so a narrower level is less traffic, not just
             less on screen. */}
@@ -251,7 +237,7 @@ export function LogsBody({
               key={value || 'all'}
               type="button"
               aria-pressed={level === value}
-              onClick={() => setLevel(value)}
+              onClick={() => update({ level: value })}
               className={cn(
                 'rounded px-2.5 py-1 text-xs pressable',
                 level === value
@@ -280,11 +266,16 @@ export function LogsBody({
               <span className="label-mono text-muted-foreground">Instance</span>
               <select
                 value={chosenInstance}
-                onChange={(e) => setInstance(e.target.value)}
+                onChange={(e) => update({ instance: e.target.value })}
                 aria-label="Instance to read"
                 className="h-9 max-w-44 rounded-md border border-border bg-card px-2.5 font-mono text-xs outline-none focus:border-brand/50"
               >
-                {(instances.data ?? []).length === 0 && <option value="">No instances</option>}
+                {instance && !instances.data?.some((i) => i.id === instance) && (
+                  <option value={instance}>{instance.slice(0, 12)}… · historical instance</option>
+                )}
+                {!instance && (instances.data ?? []).length === 0 && (
+                  <option value="">No instances</option>
+                )}
                 {(instances.data ?? []).map((i) => (
                   <option key={i.id} value={i.id}>
                     {i.id.slice(0, 12)}… · {i.state}
@@ -301,7 +292,9 @@ export function LogsBody({
                 // usually prevented rather than reported.
                 min={isoDay(retention)}
                 max={isoDay(0)}
-                onChange={(e) => setDate(e.target.value)}
+                onChange={(e) => {
+                  if (e.target.value) update({ date: e.target.value });
+                }}
                 aria-label="Archive date"
                 className="h-9 rounded-md border border-border bg-card px-2.5 text-sm outline-none focus:border-brand/50"
               />
@@ -369,13 +362,13 @@ export function LogsBody({
         </div>
       </div>
 
-      {/* An unknown `level` comes back as an SSE error frame with a code, which
-          is worth more than a generic disconnect. */}
-      {status === 'error' && reason && (
+      {mode === 'live' ? (
+        <LogStreamRecovery status={status} reason={reason} canRetry={canRetry} retry={retry} />
+      ) : status === 'error' && reason ? (
         <p role="alert" className="text-xs text-muted-foreground">
-          The stream stopped: <span className="font-mono">{reason}</span>
+          The archive could not be read: <span className="font-mono">{reason}</span>
         </p>
-      )}
+      ) : null}
       {mode === 'archive' && lines.length > 0 && reason && (
         <p className="text-xs text-muted-foreground">
           {lines.length} lines from {date}. {ARCHIVE_REASON[reason] ?? reason}
@@ -412,9 +405,13 @@ export function LogsBody({
                 ? 'Reading the archive…'
                 : (reason && ARCHIVE_REASON[reason]) ||
                   (error ? errorMessage(error) : 'Nothing archived for this instance and date.')
-              : connected
-                ? 'Waiting for output. A parked app produces nothing until it wakes.'
-                : 'Paused. Resume to stream logs.'
+              : status === 'reconnecting'
+                ? 'Waiting to reconnect…'
+                : status === 'error'
+                  ? 'The log stream is disconnected.'
+                  : connected
+                    ? 'Waiting for output. A parked app produces nothing until it wakes.'
+                    : 'Paused. Resume to stream logs.'
           }
         />
       ) : (
@@ -473,12 +470,9 @@ export function LogsBody({
  * Saved views — named filter sets, kept in the browser
  * ------------------------------------------------------------------ */
 
-interface SavedView {
+interface SavedView extends LogsSearch {
   name: string;
   app: string;
-  level?: LogLevelFilter;
-  q?: string;
-  mode?: 'archive';
 }
 
 const VIEWS_KEY = 'gregale.logs.views';
@@ -486,15 +480,18 @@ const VIEWS_KEY = 'gregale.logs.views';
 function readViews(): SavedView[] {
   try {
     const parsed: unknown = JSON.parse(window.localStorage.getItem(VIEWS_KEY) ?? '[]');
-    return Array.isArray(parsed)
-      ? parsed.filter(
-          (v): v is SavedView =>
-            typeof v === 'object' &&
-            v !== null &&
-            typeof (v as SavedView).name === 'string' &&
-            typeof (v as SavedView).app === 'string'
-        )
-      : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.flatMap((value) => {
+      if (
+        !value ||
+        typeof value !== 'object' ||
+        typeof value.name !== 'string' ||
+        !value.name.trim()
+      )
+        return [];
+      const search = validateLogsSearch(value);
+      return search.app ? [{ ...search, app: search.app, name: value.name }] : [];
+    });
   } catch {
     return [];
   }
@@ -583,7 +580,7 @@ function SavedViewsMenu({
         open={naming}
         onClose={() => setNaming(false)}
         title="Save this view"
-        description="App, level, search, and mode — as they stand now."
+        description="App, level, search, source, and archive instance/date — as they stand now."
         footer={
           <Button size="sm" disabled={!name.trim()} onClick={save}>
             Save view
@@ -609,7 +606,13 @@ function LogsPage() {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
   const appState = useSelectedApp();
-  const { slug, select, apps } = appState;
+  const { select, apps } = appState;
+  const slug = search.app
+    ? apps.some((app) => app.slug === search.app)
+      ? search.app
+      : ''
+    : appState.slug;
+  const filters = logFilters(search);
   // The account-wide feed is intentionally capped. Reading it here meant a
   // busy workspace could hide this app's only runnable deployment behind the
   // global page boundary, so Logs now gates on the app-scoped history query.
@@ -625,48 +628,18 @@ function LogsPage() {
     loading: deploymentsQuery.isPending,
   });
 
-  // The URL's app wins over the remembered one, once the list can confirm
-  // it exists. Cheap no-op on every render after it has applied.
+  // Canonical defaults replace the current entry; explicit edits add history.
   useEffect(() => {
-    if (search.app && search.app !== slug && apps.some((a) => a.slug === search.app)) {
-      select(search.app);
+    if (slug && (!search.app || (search.mode === 'archive' && !search.date))) {
+      void navigate({ replace: true, search: logsSearch(logFilters(search), slug) });
     }
-  });
+  }, [slug, search, navigate]);
 
-  const filtersRef = useRef<LogFilters>({
-    level: search.level ?? '',
-    grep: search.q ?? '',
-    mode: search.mode ?? 'live',
-  });
-  // Remounts LogsBody when a saved view applies, so its internal state
-  // re-initialises from the fresh URL.
-  const [viewNonce, setViewNonce] = useState(0);
-
-  const syncUrl = (f: LogFilters, app: string) => {
-    void navigate({
-      replace: true,
-      search: {
-        ...(app ? { app } : {}),
-        ...(f.level ? { level: f.level } : {}),
-        ...(f.grep ? { q: f.grep } : {}),
-        ...(f.mode === 'archive' ? { mode: 'archive' as const } : {}),
-      },
-    });
+  const syncUrl = (next: LogFilters, app: string, replace = false) => {
+    void navigate({ replace, search: logsSearch(next, app) });
   };
-
-  const applyView = (v: SavedView) => {
-    if (apps.some((a) => a.slug === v.app)) select(v.app);
-    void navigate({
-      replace: true,
-      search: {
-        app: v.app,
-        ...(v.level ? { level: v.level } : {}),
-        ...(v.q ? { q: v.q } : {}),
-        ...(v.mode ? { mode: v.mode } : {}),
-      },
-    });
-    filtersRef.current = { level: v.level ?? '', grep: v.q ?? '', mode: v.mode ?? 'live' };
-    setViewNonce((n) => n + 1);
+  const applyView = (view: SavedView) => {
+    void navigate({ search: validateLogsSearch({ ...view }) });
   };
 
   return (
@@ -677,22 +650,14 @@ function LogsPage() {
         actions={
           <div className="flex items-center gap-2">
             <SavedViewsMenu
-              current={() => {
-                const f = filtersRef.current;
-                return {
-                  app: slug,
-                  ...(f.level ? { level: f.level } : {}),
-                  ...(f.grep ? { q: f.grep } : {}),
-                  ...(f.mode === 'archive' ? { mode: 'archive' as const } : {}),
-                };
-              }}
+              current={() => ({ ...logsSearch(filters, slug), app: slug })}
               onApply={applyView}
             />
             <AppSelect
-              slug={slug}
+              slug={search.app ?? slug}
               onSelect={(next) => {
                 select(next);
-                syncUrl(filtersRef.current, next);
+                syncUrl({ ...filters, instance: '' }, next);
               }}
               apps={apps}
             />
@@ -700,7 +665,11 @@ function LogsPage() {
         }
       />
       <AppScope state={appState} resource="logs">
-        {deploymentsPhase === 'unreachable' ? (
+        {search.app && !slug ? (
+          <EmptyState
+            message={`The app “${search.app}” is unavailable in this account. It may have been deleted or your access may have changed. Choose an accessible app to continue.`}
+          />
+        ) : deploymentsPhase === 'unreachable' ? (
           <UnreachableState onRetry={() => void deploymentsQuery.refetch()} />
         ) : deploymentsPhase === 'error' ? (
           <ErrorState
@@ -713,17 +682,10 @@ function LogsPage() {
           <DeploymentGate slug={slug} resource="Logs" />
         ) : (
           <LogsBody
-            key={viewNonce}
+            key={slug}
             slug={slug}
-            initial={{
-              level: search.level ?? '',
-              grep: search.q ?? '',
-              mode: search.mode ?? 'live',
-            }}
-            onFilters={(f) => {
-              filtersRef.current = f;
-              syncUrl(f, slug);
-            }}
+            filters={filters}
+            onFilters={(next, replace) => syncUrl(next, slug, replace)}
           />
         )}
       </AppScope>

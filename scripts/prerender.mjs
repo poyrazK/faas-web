@@ -168,7 +168,8 @@ for (const route of ROUTES) {
           operatingSystem: 'Linux',
           url: `${SITE_URL}/`,
           description:
-            'Open-source serverless on Firecracker microVMs. Functions scale to zero when idle and wake from a snapshot in under 350 ms.',
+            'Bring APIs, services and background work onto one platform. Hosting is in public beta; ' +
+            'background jobs, workflows and internal services are in preview.',
           softwareHelp: `${SITE_URL}/docs`,
         },
       ],

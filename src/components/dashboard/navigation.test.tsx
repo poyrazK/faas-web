@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
@@ -15,6 +16,8 @@ import type { Workflow } from '@/lib/mock-data';
 import { OverviewSearch } from './overview-search';
 import { validateSettingsSearch } from './settings-search';
 import type { ReactNode } from 'react';
+import { keys, type App } from '@/lib/api/queries';
+import type { components } from '@/lib/api/schema';
 
 const app: Workflow = {
   id: 'api',
@@ -54,7 +57,11 @@ function Page() {
   return <p data-testid="page">{pathname}</p>;
 }
 
-async function renderShell(initialEntry = '/dashboard', content?: ReactNode) {
+async function renderShell(
+  initialEntry = '/dashboard',
+  content?: ReactNode,
+  queryClient?: QueryClient
+) {
   const root = createRootRoute({ component: Outlet });
   const dashboard = createRoute({
     getParentRoute: () => root,
@@ -78,10 +85,163 @@ async function renderShell(initialEntry = '/dashboard', content?: ReactNode) {
     routeTree: root.addChildren([dashboard.addChildren([index, settings, page])]),
     history: createMemoryHistory({ initialEntries: [initialEntry] }),
   });
-  render(<RouterProvider router={router as never} />);
+  const client = queryClient ?? new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={client}>
+      <RouterProvider router={router as never} />
+    </QueryClientProvider>
+  );
   await screen.findByTestId('page');
   return router;
 }
+
+function attentionClient() {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+  });
+  client.setQueryData<App[]>(keys.apps, [
+    {
+      id: 'app-api',
+      slug: 'api',
+      visibility: 'public',
+      status: 'active',
+      type: 'app',
+      ram_mb: 256,
+      vcpu: 1,
+      cpu_millicores: 250,
+      configured_resources: { memory_mb: 256, cpu_millicores: 250 },
+      max_concurrency: 1,
+      concurrency_per_vm: 80,
+      min_instances: 0,
+      effective_limits: {
+        memory_limit_mb: 256,
+        plan_memory_max_mb: 256,
+        ephemeral_disk_max_mb: 1024,
+        guest_vcpus: 1,
+        cpu_limit_millicores: 250,
+        plan_cpu_max_millicores: 250,
+        cpu_weight: 100,
+        max_instances: 1,
+        concurrency_per_instance: 80,
+        concurrency_queue_depth: 10,
+        concurrency_queue_wait_ms: 5000,
+        app_request_rate_rps: 10,
+        app_request_burst: 20,
+        account_request_rate_rpm: 100,
+        request_budget_ms: 30000,
+        request_budget_max_ms: 30000,
+        response_write_timeout_s: 30,
+        request_body_max_bytes: 10_485_760,
+      },
+      build_cache_hit_rate_pct: 0,
+      url: 'https://api.example.test',
+      manifest: { entrypoint: ['node', 'server.js'], head_wakes: false, crawler_policy: 'wake' },
+      autoscale_target_rps: 0,
+      autoscale_target_cpu_pct: 0,
+    },
+  ]);
+  // App status is a lifecycle state with no failure value, so the live check
+  // that needs attention here is the app's recent failed deployment.
+  client.setQueryData<components['schemas']['DeploymentListResponse']>([...keys.deployments, 50], {
+    items: [
+      {
+        id: 'dep-api',
+        app_id: 'app-api',
+        image_digest: 'sha256:0123',
+        kind: 'github',
+        status: 'failed',
+        created_at: new Date(Date.now() - 60 * 60_000).toISOString(),
+      },
+    ],
+  });
+  client.setQueryData<components['schemas']['UsageSummaryResponse']>(keys.usageSummary, {
+    month: '2026-10',
+    used_gb_hours: 45,
+    included_gb_hours: 50,
+    overage_gb_hours: 0,
+    overage_cents: 0,
+  });
+  return client;
+}
+
+describe('global Needs Attention dropdown', () => {
+  it('opens live attention checks from a non-overview page and restores focus on Escape', async () => {
+    const user = userEvent.setup();
+    await renderShell('/dashboard/usage', undefined, attentionClient());
+    expect(screen.queryByRole('region', { name: 'Needs attention' })).not.toBeInTheDocument();
+    const trigger = screen.getByRole('button', { name: 'Needs Attention' });
+    await user.click(trigger);
+    const dialog = screen.getByRole('dialog', { name: 'Needs Attention' });
+    expect(dialog).not.toHaveAttribute('aria-modal', 'true');
+    expect(document.body.style.overflow).not.toBe('hidden');
+    expect(screen.queryByRole('button', { name: 'Close dialog' })).not.toBeInTheDocument();
+    expect(within(dialog).getByRole('link', { name: 'View deployment dep-api' })).toHaveAttribute(
+      'href',
+      '/dashboard/releases?deployment=dep-api'
+    );
+    expect(within(dialog).getByRole('link', { name: 'Review usage' })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Needs Attention' })).not.toBeInTheDocument()
+    );
+    expect(trigger).toHaveFocus();
+  });
+
+  it('dismisses the dropdown when an investigation link navigates to the failed deployment', async () => {
+    const user = userEvent.setup();
+    const router = await renderShell('/dashboard', undefined, attentionClient());
+    await user.click(screen.getByRole('button', { name: 'Needs Attention' }));
+    await user.click(screen.getByRole('link', { name: 'View deployment dep-api' }));
+    await waitFor(() =>
+      expect(router.state.location.href).toBe('/dashboard/releases?deployment=dep-api')
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Needs Attention' })).not.toBeInTheDocument()
+    );
+  });
+
+  it('can close and reopen checks using the dropdown close button', async () => {
+    const user = userEvent.setup();
+    await renderShell('/dashboard', undefined, attentionClient());
+    const trigger = screen.getByRole('button', { name: 'Needs Attention' });
+    await user.click(trigger);
+    await user.click(
+      within(screen.getByRole('dialog', { name: 'Needs Attention' })).getByRole('button', {
+        name: 'Close',
+      })
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Needs Attention' })).not.toBeInTheDocument()
+    );
+    await user.click(trigger);
+    expect(screen.getByRole('dialog', { name: 'Needs Attention' })).toBeInTheDocument();
+  });
+
+  it('toggles the dropdown closed on a second click of the Needs Attention button', async () => {
+    const user = userEvent.setup();
+    await renderShell('/dashboard', undefined, attentionClient());
+    const trigger = screen.getByRole('button', { name: 'Needs Attention' });
+    await user.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    await user.click(trigger);
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Needs Attention' })).not.toBeInTheDocument()
+    );
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('dismisses on an outside click without blocking the underlying page', async () => {
+    const user = userEvent.setup();
+    await renderShell('/dashboard', <button type="button">Page action</button>, attentionClient());
+    await user.click(screen.getByRole('button', { name: 'Needs Attention' }));
+    const action = screen.getByRole('button', { name: 'Page action' });
+    await user.click(action);
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Needs Attention' })).not.toBeInTheDocument()
+    );
+    expect(action).toHaveFocus();
+  });
+});
 
 /**
  * Every rail row, in order — hubs and the sections nested under them.
@@ -92,18 +252,21 @@ async function renderShell(initialEntry = '/dashboard', content?: ReactNode) {
  */
 const RAIL = [
   'Overview',
-  'All apps',
+  'All projects',
   'Templates',
   'Import',
   'Jobs',
   'Releases',
-  'Instances',
   'Domains',
+  'Customers',
   'Storage',
   'Postgres',
+  'Events',
+  'Integrations',
   'Analytics',
   'Debugger',
   'Invocations',
+  'Instances',
   'Audit Log',
   'Usage',
   'Invoices',
@@ -119,7 +282,7 @@ const RAIL = [
  * `aria-current="page"` last and unconditionally, so a second link to the same
  * URL would be a second current page that no prop can suppress.
  */
-const RAIL_PARENTS = ['Apps', 'Data', 'Observe', 'Billing'];
+const RAIL_PARENTS = ['Projects', 'Data', 'Observe', 'Billing'];
 
 /** The group headings that give the rail its scent. */
 const RAIL_GROUPS = ['Build', 'Operate', 'Account'];
@@ -135,10 +298,10 @@ function sectionsNav(hub: string) {
 }
 const GROUPS = [
   {
-    hub: 'Apps',
-    anchor: '/dashboard/workflows',
+    hub: 'Projects',
+    anchor: '/dashboard/projects',
     links: [
-      ['All apps', '/dashboard/workflows'],
+      ['All projects', '/dashboard/projects'],
       ['Templates', '/dashboard/templates'],
       ['Import', '/dashboard/import'],
     ],
@@ -156,7 +319,8 @@ const GROUPS = [
     anchor: '/dashboard/debug',
     links: [
       ['Debugger', '/dashboard/debug'],
-      ['Invocations', '/dashboard/traces'],
+      ['Invocations', '/dashboard/invocations'],
+      ['Instances', '/dashboard/instances'],
       ['Audit Log', '/dashboard/audit'],
     ],
   },
@@ -298,8 +462,8 @@ describe('dashboard navigation foundation', () => {
     const sections = screen.getByRole('navigation', { name: 'App sections' });
     for (const [label, path] of [
       ['Logs', 'logs'],
-      ['Routes', 'apis'],
-      ['Upstreams', 'databases'],
+      ['Routes', 'routes'],
+      ['Upstreams', 'upstreams'],
       ['Edge rules', 'edge-rules'],
       ['OpenAPI', 'openapi'],
     ]) {
@@ -315,7 +479,9 @@ describe('dashboard navigation foundation', () => {
     // Edge rules is an app section with no rail row of its own, so the rail
     // shows the branch rather than claiming a current page it does not have.
     expect(
-      within(screen.getByRole('navigation', { name: 'Main' })).getByRole('button', { name: 'Apps' })
+      within(screen.getByRole('navigation', { name: 'Main' })).getByRole('button', {
+        name: 'Projects',
+      })
     ).toBeInTheDocument();
     expect(
       within(screen.getByRole('navigation', { name: 'App sections' })).getByRole('link', {
@@ -396,24 +562,39 @@ describe('dashboard navigation foundation', () => {
   });
 
   it('identifies only the current page in a hub anchor breadcrumb', async () => {
-    await renderShell('/dashboard/deployments');
+    await renderShell('/dashboard/debug');
     const breadcrumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
-    expect(within(breadcrumb).getByText('Releases')).toBeInTheDocument();
-    expect(within(breadcrumb).getByText('Deployments')).toHaveAttribute('aria-current', 'page');
+    expect(within(breadcrumb).getByText('Observe')).toBeInTheDocument();
+    expect(within(breadcrumb).getByText('Debugger')).toHaveAttribute('aria-current', 'page');
     expect(breadcrumb.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
   });
 
-  it('preserves an Apps list bookmark when its primary destination is reselected', async () => {
-    const router = await renderShell('/dashboard/workflows?q=api&state=running#list');
-    const link = within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', {
-      name: 'All apps',
-    });
-    expect(link).toHaveAttribute('href', '/dashboard/workflows?q=api&state=running#list');
-    await userEvent.click(link);
-    expect(router.state.location.href).toBe('/dashboard/workflows?q=api&state=running#list');
+  it('names the Releases page once, as its own title does', async () => {
+    await renderShell('/dashboard/releases');
+    const breadcrumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    expect(within(breadcrumb).getByText('Releases')).toHaveAttribute('aria-current', 'page');
+    expect(within(breadcrumb).queryByText('Deployments')).not.toBeInTheDocument();
   });
 
-  it.each(['/dashboard/workflows', '/dashboard/workflows/'])(
+  it('preserves a Projects bookmark when its primary destination is reselected', async () => {
+    const router = await renderShell('/dashboard/projects?q=api#list');
+    const link = within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', {
+      name: 'All projects',
+    });
+    expect(link).toHaveAttribute('href', '/dashboard/projects?q=api#list');
+    await userEvent.click(link);
+    expect(router.state.location.href).toBe('/dashboard/projects?q=api#list');
+  });
+
+  it('files apps under Projects: no Apps row, and app pages light Projects', async () => {
+    await renderShell('/dashboard/apps/api');
+    const main = screen.getByRole('navigation', { name: 'Main' });
+    expect(within(main).queryByRole('link', { name: 'All apps' })).toBeNull();
+    expect(within(main).queryByRole('button', { name: 'Apps' })).toBeNull();
+    expect(within(main).getByRole('button', { name: 'Projects' })).toBeInTheDocument();
+  });
+
+  it.each(['/dashboard/apps', '/dashboard/apps/'])(
     'omits app sections from the All apps page at %s',
     async (path) => {
       await renderShell(path);
@@ -464,7 +645,7 @@ describe('dashboard navigation foundation', () => {
       await userEvent.keyboard('{Control>}k{/Control}');
       await userEvent.type(await screen.findByRole('combobox', { name: 'Search commands' }), label);
       await userEvent.click(
-        screen.getAllByRole('option').find((option) => option.textContent === `${label}Go to`)!
+        screen.getAllByRole('option').find((option) => option.textContent === label)!
       );
       await waitFor(() =>
         expect(router.state.location.search).toEqual({
@@ -499,7 +680,7 @@ describe('dashboard navigation foundation', () => {
       'Members'
     );
     await userEvent.click(
-      screen.getAllByRole('option').find((option) => option.textContent === 'MembersGo to')!
+      screen.getAllByRole('option').find((option) => option.textContent === 'Members')!
     );
     await waitFor(() => expect(router.state.location.pathname).toBe('/dashboard/settings'));
     expect(router.state.location.search).toEqual({ section: 'members' });
@@ -532,11 +713,11 @@ describe('dashboard navigation foundation', () => {
   });
 
   it.each([
-    ['/dashboard/builds', 'Releases', 'Builds', '/dashboard/deployments'],
+    ['/dashboard/builds', 'Releases', 'Builds', '/dashboard/releases'],
     ['/dashboard/team', 'Settings', 'Team', '/dashboard/settings'],
-    ['/dashboard/workflows/api', 'Apps', 'Public API', '/dashboard/workflows'],
-    ['/dashboard/workflows/missing', 'Apps', 'App', '/dashboard/workflows'],
-    ['/dashboard/workflows/new', 'Apps', 'New app', '/dashboard/workflows'],
+    ['/dashboard/apps/api', 'Projects', 'Public API', '/dashboard/projects'],
+    ['/dashboard/apps/missing', 'Projects', 'App', '/dashboard/projects'],
+    ['/dashboard/apps/new', 'Projects', 'New app', '/dashboard/projects'],
   ])(
     'shows a linked parent hub and meaningful current breadcrumb at %s',
     async (path, hub, current, anchor) => {
@@ -555,20 +736,23 @@ describe('dashboard navigation foundation', () => {
     const user = userEvent.setup();
     await user.keyboard('{Control>}k{/Control}');
     const input = await screen.findByRole('combobox', { name: 'Search commands' });
-    expect(input).toHaveAttribute('placeholder', 'Search apps, jump to a page, run an action…');
+    expect(input).toHaveAttribute(
+      'placeholder',
+      'Search apps, deployments, domains, keys, or invocation IDs…'
+    );
     expect(screen.queryByText('Workflows', { exact: true })).not.toBeInTheDocument();
     await user.type(input, 'Tail logs');
     const command = screen
       .getAllByRole('option')
-      .find((option) => option.textContent === 'Tail logs — Public APIApp actions');
+      .find((option) => option.textContent === 'Tail logs — Public API');
     expect(command).toBeDefined();
     await user.click(command!);
-    await waitFor(() => expect(router.state.location.pathname).toBe('/dashboard/workflows/api'));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/dashboard/apps/api'));
     expect(router.state.location.search).toEqual({ tab: 'Logs' });
   });
 
   it.each([
-    ['Releases', '/dashboard/deployments'],
+    ['Releases', '/dashboard/releases'],
     ['Analytics', '/dashboard/analytics'],
     ['Builds', '/dashboard/builds'],
     ['Data', '/dashboard/storage'],
@@ -582,7 +766,7 @@ describe('dashboard navigation foundation', () => {
     await user.type(input, label);
     const options = screen
       .queryAllByRole('option')
-      .filter((option) => option.textContent === `${label}Go to`);
+      .filter((option) => option.textContent === label);
     expect(options).toHaveLength(1);
     await user.click(options[0]);
     await waitFor(() => expect(router.state.location.pathname).toBe(path));

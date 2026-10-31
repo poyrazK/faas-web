@@ -4,7 +4,6 @@ import {
   keys,
   useApps,
   useAppsMetrics,
-  useCreateApp,
   useDeployments,
   useLatestAppDeployments,
   useRollback,
@@ -12,6 +11,7 @@ import {
   type MetricsRange,
 } from './api/queries';
 import { slugIndex, toDeployment, toWorkflow } from './api/adapters';
+import { useCreateWorkspaceApp } from './api/workspace-apps';
 import { useAuth } from './auth';
 import { isPaidPlan } from './plan';
 import { isDeploymentTerminal } from './deployment-status';
@@ -34,13 +34,16 @@ import { NOW, type Deployment, type Runtime, type Workflow } from './mock-data';
  *   caller has to await them and show what happened.
  */
 
-export interface NewWorkflowInput {
+export type NewWorkflowInput = {
   name: string;
-  runtime: Runtime;
   memoryMb: number;
-  /** `function` runs a runtime; `app` runs a container image. */
-  type?: 'app' | 'function';
-}
+  visibility?: 'public' | 'internal';
+  /**
+   * The shared workspace the app is attributed to, as shown to the person
+   * creating it (`useWorkspaceTarget`); null or absent creates it personally.
+   */
+  org?: string | null;
+} & ({ type: 'app'; runtime?: never } | { type?: 'function'; runtime: Runtime });
 
 interface DataValue {
   workflows: Workflow[];
@@ -52,7 +55,8 @@ interface DataValue {
   workflowsForProject: (projectId: string) => Workflow[];
   addWorkflow: (input: NewWorkflowInput) => Promise<Workflow>;
   /** Rolls the app back to its previous deployment. */
-  redeploy: (id: string) => Promise<void>;
+  /** Resolves with the new deployment the rollback queued. */
+  redeploy: (id: string) => Promise<{ id: string }>;
   /** Refetches apps, metrics, and deployments. */
   refresh: () => void;
 }
@@ -82,7 +86,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const paidAccess = isPaidPlan(account?.plan);
   const metricsQuery = useAppsMetrics(DEFAULT_RANGE, { enabled: paidAccess });
 
-  const createApp = useCreateApp();
+  const createApp = useCreateWorkspaceApp();
   const rollback = useRollback();
 
   const apps = useMemo(() => appsQuery.data ?? [], [appsQuery.data]);
@@ -130,15 +134,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
       addWorkflow: async (input) => {
         const app = await createApp.mutateAsync({
-          slug: input.name,
-          type: input.type ?? 'function',
-          runtime: input.runtime,
-          ram_mb: input.memoryMb,
-          // Defaulted in the spec, but openapi-typescript makes defaulted
-          // properties required, so the API defaults are sent explicitly.
-          cpu_millicores: 1000,
-          head_wakes: false,
-          crawler_policy: 'wake',
+          org: input.org ?? null,
+          body: {
+            slug: input.name,
+            type: input.type ?? 'function',
+            ...(input.type === 'app' ? {} : { runtime: input.runtime }),
+            ram_mb: input.memoryMb,
+            // Keep resource and request-policy defaults explicit for both creation paths.
+            cpu_millicores: 1000,
+            head_wakes: false,
+            crawler_policy: 'wake',
+            visibility: input.visibility ?? 'public',
+          },
         });
         return toWorkflow(app);
       },
@@ -146,9 +153,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       // The console's "redeploy" is a rollback to the previous deployment.
       // Creating a *new* deployment needs an image or a source ref, which is
       // the CLI's and GitHub integration's job, not a button in a dashboard.
-      redeploy: async (id) => {
-        await rollback.mutateAsync(id);
-      },
+      redeploy: (id) => rollback.mutateAsync(id),
 
       refresh: () => {
         void qc.invalidateQueries({ queryKey: keys.apps });

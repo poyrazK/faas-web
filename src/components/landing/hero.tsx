@@ -1,10 +1,14 @@
 import { motion, useReducedMotion } from 'motion/react';
+import { Link } from '@tanstack/react-router';
 import { ArrowRight } from 'iconoir-react';
 import { SweepLink } from '@/components/sweep-link';
+import { RestoreTarget } from '@/components/restore-target';
+import { RESTORE_CONTEXT } from '@/lib/platform-claims';
 import { DeployTerminal } from './deploy-terminal';
-import { InstallCommand } from './install-command';
 import { EASE } from './reveal';
 import { LIQUID_PRESETS, LiquidField } from './liquid-field';
+import { HeroHeadline } from './hero-headline';
+import { CompatibilityEntry } from './compatibility-entry';
 
 /**
  * The hero: one full screen of light with the words alone in the middle of
@@ -12,7 +16,7 @@ import { LIQUID_PRESETS, LiquidField } from './liquid-field';
  *
  * The light is `LiquidField` — a liquid-gradient shader in the site's mint —
  * with the frosted-glass mark behind the headline. The command pill holds the
- * install command on the left, copyable, and the primary action on the right.
+ * docs link on the left and the primary action on the right.
  */
 
 /**
@@ -46,51 +50,43 @@ export function Hero() {
   return (
     <>
       <section
-        aria-label="Gregale serverless platform"
+        aria-label="Gregale backend platform"
         className="relative isolate flex min-h-[100svh] w-full flex-col items-center justify-center overflow-hidden px-4 pt-24 pb-36 sm:px-6 sm:pb-44"
       >
         <LiquidField params={LIQUID_PRESETS.gregale} fadeBottom={0.28} />
         <Emblem />
 
-        <div className="relative z-10 flex w-full max-w-[46rem] flex-col items-center text-center">
-          <p className="relative mb-7 inline-flex items-start gap-1.5 text-[25px] font-semibold leading-none tracking-[-0.055em] text-[#212121]">
-            Gregale
-            <span className="mt-0.5 text-[11px] font-medium tracking-normal text-mint-11">
-              Beta
-            </span>
-          </p>
-          <h1
-            className="animate-hero-enter relative text-balance text-[40px] font-semibold leading-[0.98] tracking-[-0.065em] text-[#212121] sm:text-[58px] lg:text-[62px]"
-            style={{ animationDelay: '0.06s' }}
-          >
-            Build the API. <br />
-            <span className="bg-gradient-to-r from-[color-mix(in_oklab,var(--brand)_70%,#3987e5)] via-brand to-[#2f9d86] bg-clip-text text-transparent">
-              We’ll run it.
-            </span>
-          </h1>
+        <div className="relative z-10 flex w-full max-w-[54rem] flex-col items-center text-center">
+          <HeroHeadline />
 
           <p
             className="animate-hero-enter relative mt-6 max-w-[30rem] text-pretty text-[15px] leading-[1.5] text-[#3d4a45] sm:text-[17px]"
             style={{ animationDelay: '0.12s' }}
           >
-            Deploy APIs and functions from your repository. Gregale runs them in isolated microVMs,
-            scales them to zero when idle, and wakes them when requests arrive.
+            Deploy your API on Gregale. Bring services, background work and AI tools onto the same
+            platform as your product grows.
           </p>
 
-          {/* the pill: install command on the left, the action on the right */}
-          <div
-            className="animate-hero-enter relative mt-8 flex w-full max-w-[29rem] items-center rounded-full bg-[color-mix(in_srgb,var(--secondary)_78%,transparent)] p-1 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.7),0_1px_2px_rgba(13,21,18,0.05)] backdrop-blur-md"
-            style={{ animationDelay: '0.18s' }}
-          >
-            <InstallCommand variant="inline" />
+          <CompatibilityEntry />
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-sm">
+            <Link
+              to="/docs"
+              className="rounded text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-brand"
+            >
+              Read the docs
+            </Link>
             <SweepLink
               to="/signup"
-              className="group inline-flex h-12 shrink-0 items-center gap-2 rounded-full bg-[#1c2622] px-6 text-[15px] font-semibold text-white shadow-[inset_0_1px_0_0_rgba(255,255,255,0.12),0_8px_24px_-10px_rgba(13,21,18,0.6)] outline-none transition-[background-color,transform] duration-200 hover:bg-[#0d1512] focus-visible:ring-[3px] focus-visible:ring-ring/50 active:scale-[0.98] motion-reduce:transform-none"
+              className="group inline-flex items-center gap-2 rounded font-medium text-brand hover:text-brand-hover focus-visible:outline-2 focus-visible:outline-brand"
             >
               Join the beta
               <ArrowRight className="size-4 transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transition-none" />
             </SweepLink>
           </div>
+          <p className="mt-6 max-w-[34rem] text-center font-mono text-[11px] text-muted-foreground">
+            Hosting and PR previews are in public beta. Connected work, MCP hosting and isolated
+            runs are in preview; plan and rollout limits apply.
+          </p>
         </div>
       </section>
 
@@ -112,7 +108,8 @@ export function Hero() {
           <DeployTerminal />
         </motion.div>
         <p className="mb-8 text-center font-mono text-[11px] text-muted-foreground">
-          Example deployment and requests. Timings are illustrative, not a performance guarantee.
+          Example deployment and requests; timings are illustrative. <RestoreTarget />.{' '}
+          <span>{RESTORE_CONTEXT}</span>
         </p>
       </section>
     </>
