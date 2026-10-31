@@ -2,7 +2,8 @@ import { useMemo } from 'react';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { InlinePhase, PageHeader, queryPhase } from '@/components/dashboard/primitives';
 import { ResourceTable, type Column } from '@/components/dashboard/resource-table';
-import { formatRelative } from '@/lib/mock-data';
+import { CopyableId } from '@/components/ui/copyable-id';
+import { Timestamp } from '@/components/ui/timestamp';
 import {
   useApps,
   useBuildRecords,
@@ -36,6 +37,8 @@ interface ReleaseRow {
   deploymentId?: string;
   buildId?: string;
   image: string;
+  /** The deployment's upstream commit, when the API knows it. */
+  commit?: string;
   app: string;
   status: string;
   buildStatus: string;
@@ -106,6 +109,7 @@ export function DeploymentsPage() {
       deploymentId: deployment?.id,
       buildId: build?.id,
       image: deployment?.image_digest ?? '',
+      commit: deployment?.commit_sha ?? undefined,
       app: deployment ? (appById.get(deployment.app_id) ?? deployment.app_id) : '—',
       status: deployment?.status ?? build!.status,
       buildStatus: build?.status ?? '—',
@@ -138,11 +142,28 @@ export function DeploymentsPage() {
     if (view === 'releases') void apps.refetch();
     void currentQuery.refetch();
   };
+  const commitColumn: Column<ReleaseRow> = {
+    key: 'commit',
+    label: 'Commit',
+    priority: 'secondary',
+    width: 'md:w-[13%]',
+    render: (r) =>
+      r.commit ? (
+        <CopyableId
+          value={r.commit}
+          label="commit"
+          displayLength={7}
+          className="text-muted-foreground"
+        />
+      ) : (
+        '—'
+      ),
+  };
   const columns: Column<ReleaseRow>[] = [
     {
       key: view === 'builds' ? 'id' : 'app',
       label: view === 'builds' ? 'Build' : 'Release',
-      width: 'w-[52%] md:w-[32%]',
+      width: view === 'builds' ? 'w-[52%] md:w-[32%]' : 'w-[52%] md:w-[26%]',
       render: (r) => (
         <span className="flex min-w-0 flex-col gap-1 py-1">
           {view === 'releases' && (
@@ -150,9 +171,11 @@ export function DeploymentsPage() {
               {r.app}
             </span>
           )}
-          <span className="truncate font-mono text-xs text-muted-foreground" title={r.id}>
-            {r.id.length > 16 ? `${r.id.slice(0, 8)}…${r.id.slice(-4)}` : r.id}
-          </span>
+          <CopyableId
+            value={r.id}
+            label={view === 'builds' ? 'build ID' : 'deployment ID'}
+            className="text-muted-foreground"
+          />
           {r.failure && (
             <span className="truncate text-xs text-status-critical" title={r.failure}>
               {r.failure}
@@ -176,7 +199,7 @@ export function DeploymentsPage() {
       key: view === 'builds' ? 'source' : 'buildStatus',
       label: view === 'builds' ? 'Source' : 'Build / source',
       priority: 'secondary',
-      width: 'md:w-[21%]',
+      width: view === 'builds' ? 'md:w-[21%]' : 'md:w-[17%]',
       render: (r) => (
         <span className="flex min-w-0 flex-col gap-1">
           {view === 'releases' && <ReleaseStatusLabel status={r.buildStatus} compact />}
@@ -189,12 +212,13 @@ export function DeploymentsPage() {
         </span>
       ),
     },
+    ...(view === 'releases' ? [commitColumn] : []),
     {
       key: 'duration',
       label: 'Duration',
       priority: 'secondary',
       numeric: true,
-      width: 'md:w-[12%]',
+      width: view === 'builds' ? 'md:w-[12%]' : 'md:w-[9%]',
       render: (r) => (r.duration == null ? '—' : `${r.duration}s`),
     },
     {
@@ -203,7 +227,7 @@ export function DeploymentsPage() {
       priority: 'secondary',
       numeric: true,
       width: 'md:w-[14%]',
-      render: (r) => formatRelative(Date.parse(r.createdAt)),
+      render: (r) => <Timestamp value={r.createdAt} />,
     },
   ];
   const selected = deployments.find((deployment) => deployment.id === search.deployment);
@@ -242,7 +266,17 @@ export function DeploymentsPage() {
         initialSort={{ key: 'createdAt', dir: 'desc' }}
         query={search.q ?? ''}
         onQueryChange={(q) => select({ q: q || undefined }, true)}
-        searchKeys={['id', 'image', 'app', 'status', 'source', 'failure', 'buildId', 'buildStatus']}
+        searchKeys={[
+          'id',
+          'image',
+          'commit',
+          'app',
+          'status',
+          'source',
+          'failure',
+          'buildId',
+          'buildStatus',
+        ]}
         searchPlaceholder="Filter by release, build, image or source…"
         emptyMessage={
           loadedItems.length

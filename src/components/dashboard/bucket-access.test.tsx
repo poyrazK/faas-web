@@ -1,7 +1,7 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const useBucketAccessGrants = vi.fn();
 const useBucketS3Credentials = vi.fn();
@@ -92,6 +92,26 @@ describe('BucketAccess', () => {
   });
 });
 
+describe('BucketAccess S3 keys owned by an app binding', () => {
+  it('leaves out a credential that belongs to an app binding, which is shown as that connection', () => {
+    const credential = (id: string, label: string) => ({
+      id,
+      bucket_id: 'b',
+      access_key_id: `GRGA${id}`,
+      label,
+      permission: 'read',
+      status: 'active',
+      created_at: '2026-10-01T00:00:00Z',
+    });
+    useBucketS3Credentials.mockReturnValue(
+      ready({ items: [credential('bound', 'compute'), credential('mine', 'ci-backup')] })
+    );
+    render(wrap(<BucketAccess slug="api" bucketId="b" hiddenCredentials={new Set(['bound'])} />));
+    expect(screen.getByText('ci-backup')).toBeInTheDocument();
+    expect(screen.queryByText('compute')).not.toBeInTheDocument();
+  });
+});
+
 describe('BucketAccess grants', () => {
   it('shows the key’s own status beside the grant, since a revoked key grants nothing', () => {
     render(wrap(<BucketAccess slug="api" bucketId="b17c0ffee0000000000000000000dead" />));
@@ -134,5 +154,78 @@ describe('BucketAccess S3 credentials', () => {
     );
     expect(await screen.findByText('super-secret-value')).toBeInTheDocument();
     expect(screen.getByText(/shown once/i)).toBeInTheDocument();
+  });
+
+  describe('connection details', () => {
+    const created = (extra: Record<string, unknown> = {}) => ({
+      id: 'c1',
+      access_key_id: 'GKABC123',
+      secret_access_key: 'super-secret-value',
+      label: 'backup-runner',
+      permission: 'read',
+      status: 'active',
+      ...extra,
+    });
+    async function createOne() {
+      const user = userEvent.setup();
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+      render(wrap(<BucketAccess slug="api" bucketId="b17c0ffee0000000000000000000dead" />));
+      await user.type(screen.getByLabelText('Credential label'), 'backup-runner');
+      await user.click(screen.getByRole('button', { name: /create/i }));
+      await screen.findByText('super-secret-value');
+      return { user, writeText };
+    }
+    afterEach(() => vi.restoreAllMocks());
+
+    it('shows the endpoint, region and addressing style next to the secret', async () => {
+      createCredential.mockResolvedValue(
+        created({
+          endpoint: 'https://s3.gregale.dev',
+          region: 'us-east-1',
+          addressing_style: 'path',
+        })
+      );
+      await createOne();
+      const status = screen.getByRole('status');
+      expect(within(status).getByText('https://s3.gregale.dev')).toBeInTheDocument();
+      expect(within(status).getByText('us-east-1')).toBeInTheDocument();
+      expect(within(status).getByText('path')).toBeInTheDocument();
+    });
+
+    it('copies one env block with the key, secret, endpoint and region', async () => {
+      createCredential.mockResolvedValue(
+        created({
+          endpoint: 'https://s3.gregale.dev',
+          region: 'us-east-1',
+          addressing_style: 'path',
+        })
+      );
+      const { user, writeText } = await createOne();
+      await user.click(screen.getByRole('button', { name: 'Copy: S3 environment variables' }));
+      expect(writeText).toHaveBeenCalledWith(
+        [
+          'AWS_ACCESS_KEY_ID=GKABC123',
+          'AWS_SECRET_ACCESS_KEY=super-secret-value',
+          'AWS_ENDPOINT_URL_S3=https://s3.gregale.dev',
+          'AWS_REGION=us-east-1',
+        ].join('\n')
+      );
+    });
+
+    it('leaves out the lines and fields the response did not include', async () => {
+      createCredential.mockResolvedValue(created({ region: 'us-east-1' }));
+      const { user, writeText } = await createOne();
+      await user.click(screen.getByRole('button', { name: 'Copy: S3 environment variables' }));
+      expect(writeText).toHaveBeenCalledWith(
+        [
+          'AWS_ACCESS_KEY_ID=GKABC123',
+          'AWS_SECRET_ACCESS_KEY=super-secret-value',
+          'AWS_REGION=us-east-1',
+        ].join('\n')
+      );
+      expect(screen.queryByText('Endpoint')).not.toBeInTheDocument();
+      expect(screen.queryByText('Addressing style')).not.toBeInTheDocument();
+    });
   });
 });

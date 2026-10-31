@@ -78,7 +78,7 @@ export function InvokePanel({ slug }: { slug: string }) {
         ...(effectiveMode === 'async' ? asyncInvokeExtras(asyncOptions) : {}),
       };
     } catch (error) {
-      toast({ kind: 'error', title: 'Invalid request', description: errorMessage(error) });
+      toast({ kind: 'error', title: 'Invalid request', error: error });
       return;
     }
 
@@ -96,7 +96,7 @@ export function InvokePanel({ slug }: { slug: string }) {
         }
       })
       .catch((error: unknown) =>
-        toast({ kind: 'error', title: 'Invocation failed', description: errorMessage(error) })
+        toast({ kind: 'error', title: 'Invocation failed', error: error })
       );
   };
 
@@ -350,7 +350,7 @@ export function RegistryCredentialsPanel({ slug }: { slug: string }) {
         toast({
           kind: 'error',
           title: 'Could not save credential',
-          description: errorMessage(error),
+          error: error,
         })
       );
   };
@@ -447,7 +447,7 @@ export function RegistryCredentialsPanel({ slug }: { slug: string }) {
                         toast({
                           kind: 'error',
                           title: 'Could not remove credential',
-                          description: errorMessage(error),
+                          error: error,
                         })
                       );
                   }}

@@ -183,6 +183,18 @@ const entries: Capability[] = [
     enabled: true,
   },
   {
+    key: 'progressive-rollouts',
+    name: 'Progressive rollouts and rollback',
+    category: 'delivery',
+    description:
+      'Shift traffic between immutable deployment revisions, advance a canary ladder automatically while health signals stay clean, and roll back to a named revision.',
+    maturity: 'beta',
+    plans: ALL,
+    docs_url: '/docs/deploys',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
+  {
     key: 'declarative-response-caching',
     name: 'Declarative response caching',
     category: 'delivery',

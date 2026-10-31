@@ -69,11 +69,19 @@ vi.mock('@tanstack/react-query', async (original) => ({
   ...(await original<typeof import('@tanstack/react-query')>()),
   useQueryClient: () => ({ invalidateQueries: vi.fn() }),
 }));
+vi.mock('./service-wake-ahead', () => ({
+  ServiceWakeAhead: ({ slug, previewOf }: { slug: string; previewOf?: string }) => (
+    <section aria-label="wake-ahead stub">
+      {slug}:{previewOf ?? 'production'}
+    </section>
+  ),
+}));
 const { ServiceBindings } = await import('./service-bindings');
 
 beforeEach(() => {
   capability.state = 'available';
   ownership.data = { kind: 'project', projectSlug: 'shop' };
+  delete (app.data as { preview_of_slug?: string }).preview_of_slug;
 });
 
 it('shows partial inventory and stale canary evidence without making internal addresses public links', () => {
@@ -90,4 +98,15 @@ it('keeps project-owned policies read-only with a source handoff', () => {
   render(<ServiceBindings slug="app-a" />);
   expect(screen.getByText(/project shop owns these service policies/i)).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /save service policy/i })).not.toBeInTheDocument();
+});
+
+it('offers wake-ahead on a project-owned app, since gregale.yaml does not own it', () => {
+  render(<ServiceBindings slug="app-a" />);
+  expect(screen.getByLabelText('wake-ahead stub')).toHaveTextContent('app-a:production');
+});
+
+it('tells the wake-ahead panel when the app is a PR preview', () => {
+  (app.data as { preview_of_slug?: string }).preview_of_slug = 'app-main';
+  render(<ServiceBindings slug="app-a" />);
+  expect(screen.getByLabelText('wake-ahead stub')).toHaveTextContent('app-a:app-main');
 });
