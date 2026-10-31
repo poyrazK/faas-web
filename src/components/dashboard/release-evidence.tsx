@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
-import { ApiError, errorMessage } from '@/lib/api/errors';
+import { ApiError } from '@/lib/api/errors';
 import {
   useBuildProvenance,
   useFetchBuildSbom,
@@ -31,7 +31,7 @@ export function ReleaseProvenance({ buildId, succeeded }: { buildId: string; suc
         URL.revokeObjectURL(url);
       }
     } catch (error) {
-      toast({ kind: 'error', title: 'No SBOM for this build', description: errorMessage(error) });
+      toast({ kind: 'error', title: 'No SBOM for this build', error: error });
     }
   };
   return (

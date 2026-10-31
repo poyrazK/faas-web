@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { NavArrowDown } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
@@ -32,6 +33,7 @@ import { useUnsavedGuard } from '@/lib/use-unsaved-guard';
 import { appNameError } from './new-app-validation';
 import { CapabilityNotice } from './capability-notice';
 import { DeploymentProgress } from './deployment-progress';
+import { SettingRow, SettingsSection } from './new-app-settings';
 import { WorkerReleaseProgress } from './worker-release-progress';
 import type { components } from '@/lib/api/schema';
 
@@ -568,6 +570,7 @@ function ImageJourney({
   const shownError = (field: ImageField) =>
     fieldValidation.submitAttempted ? fieldErrors[field] : undefined;
   const fieldProps = (field: ImageField) => ({
+    id: `${fieldsId}-${field}`,
     name: field,
     form: `${fieldsId}-fields`,
     ...fieldErrorProps(shownError(field), `${fieldsId}-${field}-error`),
@@ -578,51 +581,41 @@ function ImageJourney({
   };
 
   return (
-    <section
-      aria-label={title}
-      className="flex flex-col gap-4 rounded-lg border border-border bg-card p-5"
-    >
-      <h2 className="text-lg font-medium">{title}</h2>
-      <p className="text-sm text-muted-foreground">
-        {kind === 'worker' ? (
-          <>
-            Linux/amd64 long-lived worker image with no HTTP listener requirement. Worker compute is
-            billed for its lifetime; restarts can replay in-flight work. Use explicit queue bindings
-            after deployment. Host mounts and privileged containers are not supported.
-          </>
-        ) : (
-          <>
-            Linux/amd64 HTTP images, stateless ephemeral disk. Listen on <code>0.0.0.0:$PORT</code>.
-            Host mounts and privileged containers are not supported.
-          </>
-        )}
-      </p>
-      <CapabilityNotice
-        capability={availability.capability}
-        state={availability.state}
-        onRetry={availability.refresh}
-      />
-      {kind === 'worker' && (
+    <section aria-label={title} className="flex flex-col gap-8">
+      {/* In New app the page header names this step; on an app page the form
+          names itself. What the image must be sits with the image field. */}
+      <h2 className={slug ? 'text-lg font-medium' : 'sr-only'}>{title}</h2>
+      {/* A capability that is simply available needs no line; one that is
+          missing, not on the plan, or unconfirmed says so and how to act. */}
+      {availability.state !== 'available' && (
+        <CapabilityNotice
+          capability={availability.capability}
+          state={availability.state}
+          onRetry={availability.refresh}
+        />
+      )}
+      {kind === 'worker' && workerAvailability.state !== 'available' && (
         <CapabilityNotice
           capability={workerAvailability.capability}
           state={workerAvailability.state}
           onRetry={workerAvailability.refresh}
         />
       )}
-      {((kind === 'worker' && !fixedApp) || (!fixedApp && visibility === 'internal')) && (
-        <CapabilityNotice
-          capability={privateAvailability.capability}
-          state={privateAvailability.state}
-          onRetry={privateAvailability.refresh}
-        />
-      )}
+      {((kind === 'worker' && !fixedApp) || (!fixedApp && visibility === 'internal')) &&
+        privateAvailability.state !== 'available' && (
+          <CapabilityNotice
+            capability={privateAvailability.capability}
+            state={privateAvailability.state}
+            onRetry={privateAvailability.refresh}
+          />
+        )}
       {error && (
         <p role="alert" className="text-sm text-[color:var(--status-critical)]">
           {error}
         </p>
       )}
       {operation ? (
-        <>
+        <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4">
           <p className="break-all text-sm">
             App: <strong>{operation.createRequest.slug}</strong> · Image:{' '}
             <code>{operation.deployRequest.image}</code>
@@ -840,7 +833,7 @@ function ImageJourney({
           >
             Inspect app and releases
           </a>
-        </>
+        </div>
       ) : (
         <>
           {editingApp && (
@@ -851,10 +844,10 @@ function ImageJourney({
           {/* The fields join this form by id: validation needs a form to
               focus through, and wrapping them would reflow the section. */}
           <form ref={fieldsForm} id={`${fieldsId}-fields`} hidden />
+
           {!fixedApp && (
-            <>
-              <label className="flex flex-col gap-1.5 text-sm">
-                App name
+            <SettingsSection id={`${fieldsId}-app-section`} title="App">
+              <SettingRow label="App name" htmlFor={`${fieldsId}-app-name`}>
                 <Input
                   {...fieldProps('app-name')}
                   disabled={reviewing || frozen}
@@ -862,60 +855,131 @@ function ImageJourney({
                   onChange={(e) => setName(e.target.value)}
                   maxLength={40}
                 />
-              </label>
-              {fieldError('app-name')}
-            </>
-          )}
-          {!fixedApp && kind === 'http' && (
-            <label className="flex flex-col gap-1.5 text-sm">
-              App visibility
-              <select
-                aria-label="App visibility"
-                className="ml-2 rounded border border-border bg-background px-2 py-1"
-                value={visibility}
-                disabled={reviewing || frozen}
-                onChange={(event) => setVisibility(event.target.value as 'public' | 'internal')}
+                {fieldError('app-name')}
+              </SettingRow>
+              {kind === 'http' && (
+                <SettingRow
+                  label="App visibility"
+                  htmlFor={`${fieldsId}-visibility`}
+                  hint="Internal apps have no public platform URL."
+                >
+                  <select
+                    id={`${fieldsId}-visibility`}
+                    aria-label="App visibility"
+                    className="h-9 rounded-md border border-border bg-background px-2 text-sm"
+                    value={visibility}
+                    disabled={reviewing || frozen}
+                    onChange={(event) => setVisibility(event.target.value as 'public' | 'internal')}
+                  >
+                    <option value="public">Public edge</option>
+                    <option value="internal">Internal service only</option>
+                  </select>
+                </SettingRow>
+              )}
+              <SettingRow
+                label="Memory (MB)"
+                htmlFor={`${fieldsId}-memory`}
+                hint={`Up to ${maxMemory} MB on your plan.`}
               >
-                <option value="public">Public edge</option>
-                <option value="internal">Internal service only</option>
-              </select>
-            </label>
+                <Input
+                  {...fieldProps('memory')}
+                  type="number"
+                  min={128}
+                  max={maxMemory}
+                  step={128}
+                  disabled={reviewing}
+                  value={memory}
+                  onChange={(e) => setMemory(Number(e.target.value))}
+                />
+                {fieldError('memory')}
+              </SettingRow>
+            </SettingsSection>
           )}
-          <label className="flex flex-col gap-1.5 text-sm">
-            Image reference
-            <Input
-              {...fieldProps('image')}
-              disabled={reviewing}
-              value={image}
-              onChange={(e) => setImage(e.target.value)}
-              placeholder="ghcr.io/team/api@sha256:…"
-              autoComplete="off"
-            />
-          </label>
-          {fieldError('image')}
-          {!fixedApp && (
-            <label className="flex flex-col gap-1.5 text-sm">
-              Memory (MB)
+
+          <SettingsSection id={`${fieldsId}-image-section`} title="Image">
+            <SettingRow
+              label="Image reference"
+              htmlFor={`${fieldsId}-image`}
+              hint={
+                kind === 'worker' ? (
+                  <>
+                    A Linux/amd64 image with no HTTP listener. It is billed for its lifetime, and a
+                    restart can replay in-flight work.
+                  </>
+                ) : (
+                  <>
+                    A Linux/amd64 image that listens on <code>0.0.0.0:$PORT</code>. Its disk is
+                    ephemeral.
+                  </>
+                )
+              }
+            >
               <Input
-                {...fieldProps('memory')}
-                type="number"
-                min={128}
-                max={maxMemory}
-                step={128}
+                {...fieldProps('image')}
                 disabled={reviewing}
-                value={memory}
-                onChange={(e) => setMemory(Number(e.target.value))}
+                value={image}
+                onChange={(e) => setImage(e.target.value)}
+                placeholder="ghcr.io/team/api@sha256:…"
+                autoComplete="off"
+                className="font-mono"
               />
-            </label>
-          )}
-          {!fixedApp && fieldError('memory')}
+              {fieldError('image')}
+            </SettingRow>
+            <SettingRow
+              label="Registry credentials"
+              hint={
+                plan === 'free' && kind === 'http'
+                  ? 'Free supports public images. Private registry credentials require Hobby or above.'
+                  : fixedApp
+                    ? registry.isError
+                      ? 'Registry metadata unavailable; no saved credential is assumed.'
+                      : registry.isPending
+                        ? 'Loading this app’s registry metadata…'
+                        : `This app’s saved registries: ${registry.data?.credentials.map((item) => item.registry).join(', ') || 'none'}.`
+                    : 'For a private image. Sealed by the server, never stored in this browser.'
+              }
+            >
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={privateRegistry}
+                  disabled={reviewing || plan === 'free'}
+                  onChange={(e) => setPrivateRegistry(e.target.checked)}
+                />
+                Add registry credentials
+              </label>
+              {privateRegistry && (
+                <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                  <label className="flex flex-col gap-1.5 text-[13px] text-muted-foreground">
+                    Registry username
+                    <Input
+                      autoComplete="off"
+                      disabled={reviewing}
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1.5 text-[13px] text-muted-foreground">
+                    Registry password
+                    <Input
+                      type="password"
+                      autoComplete="new-password"
+                      disabled={reviewing}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                    />
+                  </label>
+                </div>
+              )}
+            </SettingRow>
+          </SettingsSection>
+
           {kind === 'worker' && !fixedApp && (
-            <div className="space-y-3 rounded border border-border p-3 text-sm">
-              <p>Worker lifecycle</p>
-              <label className="flex flex-col gap-1.5">
-                <span>Restart policy</span>
+            <SettingsSection id={`${fieldsId}-lifecycle-section`} title="Worker lifecycle">
+              <SettingRow label="Restart policy" htmlFor={`${fieldsId}-restart`}>
                 <select
-                  className="block rounded border border-border bg-background px-2 py-1"
+                  id={`${fieldsId}-restart`}
+                  className="h-9 rounded-md border border-border bg-background px-2 text-sm"
                   value={restartPolicy}
                   disabled={reviewing}
                   onChange={(event) => setRestartPolicy(event.target.value as typeof restartPolicy)}
@@ -925,44 +989,61 @@ function ImageJourney({
                   <option value="unless-stopped">Unless stopped</option>
                   <option value="no">Never</option>
                 </select>
-              </label>
-              <label className="flex flex-col gap-1.5">
-                <span>Startup deadline (seconds)</span>
+              </SettingRow>
+              <SettingRow
+                label="Startup deadline (seconds)"
+                htmlFor={`${fieldsId}-deadline`}
+                hint="Zero uses the plan default: Hobby 30, Pro 60, Scale 120."
+              >
                 <Input
+                  id={`${fieldsId}-deadline`}
                   type="number"
                   min={0}
                   value={startupDeadline}
                   disabled={reviewing}
                   onChange={(event) => setStartupDeadline(Number(event.target.value))}
                 />
-              </label>
-              <label className="flex flex-col gap-1.5">
-                <span>Max restart retries</span>
+              </SettingRow>
+              <SettingRow
+                label="Max restart retries"
+                htmlFor={`${fieldsId}-retries`}
+                hint="Zero uses the plan default: Hobby 5, Pro 10, Scale 20."
+              >
                 <Input
+                  id={`${fieldsId}-retries`}
                   type="number"
                   min={0}
                   value={maxRetries}
                   disabled={reviewing}
                   onChange={(event) => setMaxRetries(Number(event.target.value))}
                 />
-              </label>
-              <p className="text-xs text-muted-foreground">
-                Zero uses the plan default: Hobby 30 seconds / 5 retries, Pro 60 / 10, Scale 120 /
-                20.
-              </p>
-            </div>
+              </SettingRow>
+            </SettingsSection>
           )}
-          <details ref={advanced}>
-            <summary className="cursor-pointer text-sm">Advanced settings</summary>
-            <div className="mt-3 flex flex-col gap-3">
+
+          {/* Overrides keep the image's own defaults until set, so they stay
+              folded, like New app's resource settings. */}
+          <details ref={advanced} className="group/adv rounded-xl border border-border bg-card">
+            <summary className="flex min-h-14 cursor-pointer list-none items-center gap-3 rounded-xl px-4 py-3 focus-visible:outline-2 focus-visible:outline-brand [&::-webkit-details-marker]:hidden">
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="text-sm font-medium">Advanced settings</span>
+                <span className="text-[13px] text-muted-foreground">
+                  {kind === 'http' ? 'Port, health path, image fallback' : 'Image fallback'}
+                </span>
+              </span>
+              <NavArrowDown
+                aria-hidden
+                className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open/adv:rotate-180 motion-reduce:transition-none"
+              />
+            </summary>
+            <div className="@container flex flex-col divide-y divide-border border-t border-border">
               {kind === 'http' && (
                 <>
-                  <p className="text-xs text-muted-foreground">
-                    Omit overrides to use the image defaults. A health path is readiness
-                    configuration, not proof that the app is healthy.
-                  </p>
-                  <label className="flex flex-col gap-1.5 text-sm">
-                    Port override
+                  <SettingRow
+                    label="Port override"
+                    htmlFor={`${fieldsId}-port`}
+                    hint="Omit it to use the image's default."
+                  >
                     <Input
                       {...fieldProps('port')}
                       disabled={reviewing}
@@ -970,90 +1051,47 @@ function ImageJourney({
                       onChange={(e) => setPort(e.target.value)}
                       inputMode="numeric"
                     />
-                  </label>
-                  {fieldError('port')}
-                  <label className="flex flex-col gap-1.5 text-sm">
-                    Health path override
+                    {fieldError('port')}
+                  </SettingRow>
+                  <SettingRow
+                    label="Health path override"
+                    htmlFor={`${fieldsId}-health`}
+                    hint="Readiness configuration, not proof that the app is healthy."
+                  >
                     <Input
                       {...fieldProps('health')}
                       disabled={reviewing}
                       value={health}
                       onChange={(e) => setHealth(e.target.value)}
                     />
-                  </label>
-                  {fieldError('health')}
+                    {fieldError('health')}
+                  </SettingRow>
                 </>
               )}
-              <label className="flex gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  disabled={reviewing}
-                  checked={allowAuto}
-                  onChange={(e) => setAllowAuto(e.target.checked)}
-                />
-                Allow self-contained image fallback
-              </label>
-              {plan === 'free' && (
-                <p className="text-xs text-muted-foreground">
-                  Free self-contained images need this explicit full-rootfs fallback opt-in. It does
-                  not make every image compatible.
-                </p>
-              )}
+              <SettingRow
+                label="Image fallback"
+                hint={
+                  plan === 'free'
+                    ? 'Free self-contained images need this explicit full-rootfs fallback opt-in. It does not make every image compatible.'
+                    : undefined
+                }
+              >
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    disabled={reviewing}
+                    checked={allowAuto}
+                    onChange={(e) => setAllowAuto(e.target.checked)}
+                  />
+                  Allow self-contained image fallback
+                </label>
+              </SettingRow>
             </div>
           </details>
-          {fixedApp && (
-            <div className="text-xs text-muted-foreground">
-              {registry.isError
-                ? 'Registry metadata unavailable; no saved credential is assumed.'
-                : registry.isPending
-                  ? 'Loading this app’s registry metadata…'
-                  : `This app’s saved registries: ${registry.data?.credentials.map((item) => item.registry).join(', ') || 'none'}.`}
-            </div>
-          )}
-          <label className="flex gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={privateRegistry}
-              disabled={reviewing || plan === 'free'}
-              onChange={(e) => setPrivateRegistry(e.target.checked)}
-            />
-            Add registry credentials
-          </label>
-          {plan === 'free' && kind === 'http' && (
-            <p className="text-xs text-muted-foreground">
-              Free supports public images. Private registry credentials require Hobby or above.
-            </p>
-          )}
-          {privateRegistry && (
-            <>
-              <label className="flex flex-col gap-1.5 text-sm">
-                Registry username
-                <Input
-                  autoComplete="off"
-                  disabled={reviewing}
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                />
-              </label>
-              <label className="flex flex-col gap-1.5 text-sm">
-                Registry password
-                <Input
-                  type="password"
-                  autoComplete="new-password"
-                  disabled={reviewing}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </label>
-              <p className="text-xs text-muted-foreground">
-                Saved only for this app’s image registry. The password is sealed by the server and
-                never stored in this browser.
-              </p>
-            </>
-          )}
+
           {reviewing ? (
-            <>
-              <p className="text-sm">
+            <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4">
+              <p className="text-sm leading-6">
                 Review: {fixedApp || name}
                 {!fixedApp && ` · in the ${workspace.label} workspace`} · {memory} MB ·{' '}
                 {kind === 'worker'
@@ -1069,11 +1107,12 @@ function ImageJourney({
                   ? 'Save this app’s registry credential first.'
                   : 'Use a public image or this app’s saved matching credential.'}
               </p>
-              <div className="flex flex-wrap gap-3">
+              <div className="flex flex-wrap justify-end gap-3">
                 <Button variant="outline" disabled={busy} onClick={() => setReviewing(false)}>
                   Edit configuration
                 </Button>
                 <Button
+                  variant="cta"
                   disabled={
                     !permitted ||
                     !privateCreateAllowed ||
@@ -1088,58 +1127,61 @@ function ImageJourney({
                       : 'Create app and deploy image'}
                 </Button>
               </div>
-            </>
+            </div>
           ) : (
-            <Button
-              disabled={
-                !permitted ||
-                (kind === 'worker' && Boolean(slug) && !editingApp && !existingWorker.data)
-              }
-              onClick={() => {
-                // An advanced field may be the culprit; open its disclosure
-                // so focus can land on it.
-                if ((fieldErrors.port || fieldErrors.health) && advanced.current)
-                  advanced.current.open = true;
-                if (
-                  fieldsForm.current &&
-                  !fieldValidation.validate(fieldErrors, fieldsForm.current)
-                ) {
-                  setError(null);
-                  return;
+            <div className="flex justify-end">
+              <Button
+                variant="cta"
+                disabled={
+                  !permitted ||
+                  (kind === 'worker' && Boolean(slug) && !editingApp && !existingWorker.data)
                 }
-                try {
-                  imageRequest(
-                    image,
-                    kind === 'worker' ? '' : port,
-                    kind === 'worker' ? '' : health,
-                    allowAuto
-                  );
-                  if (!fixedApp && appNameError(name)) throw new Error(appNameError(name)!);
-                  if (privateRegistry && (!username || !password))
-                    throw new Error('Enter registry credentials before review.');
-                  if (!Number.isInteger(memory) || memory < 128 || memory > maxMemory)
-                    throw new Error('Select memory within your plan limit.');
-                  if (!privateCreateAllowed)
-                    throw new Error('Private app availability must be confirmed before review.');
-                  if (kind === 'worker' && !fixedApp)
-                    workerCreateRequest({
-                      slug: name,
-                      memory,
-                      maxMemory,
-                      plan,
-                      restartPolicy,
-                      startupDeadline,
-                      maxRetries,
-                    });
-                  setError(null);
-                  setReviewing(true);
-                } catch (error) {
-                  setError(errorMessage(error));
-                }
-              }}
-            >
-              {kind === 'worker' ? 'Review worker deployment' : 'Review image deployment'}
-            </Button>
+                onClick={() => {
+                  // An advanced field may be the culprit; open its disclosure
+                  // so focus can land on it.
+                  if ((fieldErrors.port || fieldErrors.health) && advanced.current)
+                    advanced.current.open = true;
+                  if (
+                    fieldsForm.current &&
+                    !fieldValidation.validate(fieldErrors, fieldsForm.current)
+                  ) {
+                    setError(null);
+                    return;
+                  }
+                  try {
+                    imageRequest(
+                      image,
+                      kind === 'worker' ? '' : port,
+                      kind === 'worker' ? '' : health,
+                      allowAuto
+                    );
+                    if (!fixedApp && appNameError(name)) throw new Error(appNameError(name)!);
+                    if (privateRegistry && (!username || !password))
+                      throw new Error('Enter registry credentials before review.');
+                    if (!Number.isInteger(memory) || memory < 128 || memory > maxMemory)
+                      throw new Error('Select memory within your plan limit.');
+                    if (!privateCreateAllowed)
+                      throw new Error('Private app availability must be confirmed before review.');
+                    if (kind === 'worker' && !fixedApp)
+                      workerCreateRequest({
+                        slug: name,
+                        memory,
+                        maxMemory,
+                        plan,
+                        restartPolicy,
+                        startupDeadline,
+                        maxRetries,
+                      });
+                    setError(null);
+                    setReviewing(true);
+                  } catch (error) {
+                    setError(errorMessage(error));
+                  }
+                }}
+              >
+                {kind === 'worker' ? 'Review worker deployment' : 'Review image deployment'}
+              </Button>
+            </div>
           )}
         </>
       )}

@@ -43,6 +43,22 @@ export function setMfaRequiredHandler(handler: (() => void) | null) {
 /** Paths where a 401 is the answer to the question, not an expired session. */
 const AUTH_ROUTES = ['/login', '/signup', '/v1/auth/'];
 
+/**
+ * 401 codes that refuse the credential a request acts on (rotating an expired
+ * or revoked deploy token, faas errors.go:5385-5397), not the browser session.
+ * Signing out on those would end a healthy session.
+ */
+const OTHER_CREDENTIAL_CODES = new Set(['api_key_expired', 'api_key_revoked']);
+
+async function refusesOtherCredential(response: Response): Promise<boolean> {
+  try {
+    const body = (await response.clone().json()) as { code?: unknown };
+    return typeof body.code === 'string' && OTHER_CREDENTIAL_CODES.has(body.code);
+  } catch {
+    return false;
+  }
+}
+
 const sessionMiddleware: Middleware = {
   async onRequest({ request }) {
     // Supply a key when callers do not own a stable operation identity.
@@ -62,7 +78,8 @@ const sessionMiddleware: Middleware = {
   async onResponse({ request, response }) {
     if (
       response.status === 401 &&
-      !AUTH_ROUTES.some((p) => new URL(request.url).pathname.startsWith(p))
+      !AUTH_ROUTES.some((p) => new URL(request.url).pathname.startsWith(p)) &&
+      !(await refusesOtherCredential(response))
     ) {
       onUnauthorized?.();
     }
