@@ -31,6 +31,9 @@ vi.mock('@/lib/api/queries', () => ({
 }));
 vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { plan: 'hobby', app_count: 1 } }) }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }));
+vi.mock('@/components/dashboard/app-capacity', () => ({
+  AppCapacity: () => <section aria-label="App capacity" />,
+}));
 vi.mock('@/components/dashboard/object-storage-usage', () => ({
   ObjectStorageUsagePanel: () => null,
 }));
@@ -55,6 +58,14 @@ beforeEach(() => {
     .mockRejectedValueOnce(new Error('offline'))
     .mockResolvedValue({ overage_cap_cents: 1250 });
   toast.mockReset();
+});
+
+describe('app capacity', () => {
+  it('shows app slots against the plan here, instead of a bare app count', () => {
+    render(<UsagePage />);
+    expect(screen.getByRole('region', { name: 'App capacity' })).toBeInTheDocument();
+    expect(screen.queryByText('Apps', { selector: 'p, span, dt' })).not.toBeInTheDocument();
+  });
 });
 
 describe('usage in a company workspace', () => {

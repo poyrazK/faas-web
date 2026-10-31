@@ -17,6 +17,13 @@ vi.mock('@/lib/api/queries', () => ({
 vi.mock('@/lib/api/logs', () => ({
   useLogStream: (source: unknown, connected: boolean) => useLogStream(source, connected) as unknown,
 }));
+vi.mock('./deployment-aliases', () => ({
+  DeploymentAliasesHere: ({ slug, deployment }: { slug: string; deployment: Deployment }) => (
+    <p>
+      aliases of {slug} for {deployment.id}
+    </p>
+  ),
+}));
 vi.mock('./deployment-actions', () => ({
   AdvanceCanaryButton: () => null,
   ReorderDeploymentControl: () => null,
@@ -28,6 +35,15 @@ vi.mock('./deployment-insights', () => ({
 }));
 vi.mock('./deployment-release-summary', () => ({ DeploymentReleaseSummary: () => null }));
 vi.mock('./rollout-recovery', () => ({ RolloutRecovery: () => null }));
+const marker = (name: string) => () => <p>{name}</p>;
+vi.mock('./deployment-diff', () => ({ DeploymentDiff: marker('diff') }));
+vi.mock('./deployment-rollout-state', () => ({ DeploymentRolloutState: marker('rollout state') }));
+vi.mock('./deployment-promote', () => ({ PromoteDeployment: marker('promote') }));
+vi.mock('./deployment-runtime', () => ({ DeploymentRuntime: marker('runtime base') }));
+vi.mock('./rollback-status', () => ({ RollbackToRelease: marker('rollback to release') }));
+vi.mock('./rollout-observation', () => ({ RolloutObservation: marker('worker rollout') }));
+vi.mock('./deployment-lifecycle', () => ({ DeploymentLifecycle: () => null }));
+vi.mock('./release-controls', () => ({ DeploymentControls: () => null }));
 
 const { DeploymentDetailPanel } = await import('./deployment-detail');
 
@@ -170,6 +186,17 @@ describe('DeploymentDetailPanel app scope', () => {
     );
   });
 
+  it('offers the release’s aliases once it is known to belong to the app', () => {
+    useDeployment.mockReturnValue(ready(deployment({ id: 'dep-a', app_id: 'app-a' })));
+    render(<DeploymentDetailPanel deploymentId="dep-a" appSlug="alpha" onClose={vi.fn()} />);
+    expect(screen.getByText('aliases of alpha for dep-a')).toBeInTheDocument();
+  });
+
+  it('offers no aliases when the release’s app is unknown', () => {
+    render(<DeploymentDetailPanel deploymentId="dep-b" onClose={vi.fn()} />);
+    expect(screen.queryByText(/aliases of/)).not.toBeInTheDocument();
+  });
+
   it('preserves account-wide details when no app slug is supplied', () => {
     render(<DeploymentDetailPanel deploymentId="dep-b" onClose={vi.fn()} />);
 
@@ -201,5 +228,22 @@ describe('DeploymentDetailPanel app scope', () => {
     render(<DeploymentDetailPanel deploymentId="dep-b" section="output" onClose={vi.fn()} />);
     expect(screen.getByRole('status')).toHaveTextContent('Reconnecting automatically');
     expect(screen.getByText('buffered build output')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['overview', ['rollout state', 'diff', 'rollback to release']],
+    ['lifecycle', ['promote', 'worker rollout']],
+    ['runtime', ['runtime base']],
+  ] as const)('wires the %s section to its deployment detail panels', (section, panels) => {
+    useDeployment.mockReturnValue(ready(deployment({ id: 'dep-a', app_id: 'app-a' })));
+    render(
+      <DeploymentDetailPanel
+        deploymentId="dep-a"
+        appSlug="alpha"
+        section={section}
+        onClose={vi.fn()}
+      />
+    );
+    for (const panel of panels) expect(screen.getByText(panel)).toBeInTheDocument();
   });
 });

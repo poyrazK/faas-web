@@ -3,14 +3,14 @@ import { useInView } from 'motion/react';
 import './hero-headline.css';
 
 const CAPABILITIES = [
-  { text: 'APIs that wake on demand.', availability: 'Public beta' },
-  { text: 'services that work together.', availability: 'Preview' },
-  { text: 'background jobs that retry.', availability: 'Preview' },
-  { text: 'workflows that wait and resume.', availability: 'Preview' },
-  { text: 'webhooks that wake your app.', availability: 'Preview' },
-  { text: 'MCP servers for your agents.', availability: 'Preview' },
-  { text: 'previews before you merge.', availability: 'Public beta' },
-  { text: 'code runs in isolated microVMs.', availability: 'Preview' },
+  { text: 'APIs that wake on demand.' },
+  { text: 'services that work together.' },
+  { text: 'background jobs that retry.' },
+  { text: 'workflows that wait and resume.' },
+  { text: 'webhooks that wake your app.' },
+  { text: 'MCP servers for your agents.' },
+  { text: 'previews before you merge.' },
+  { text: 'code runs in isolated microVMs.' },
 ] as const;
 
 const subscribeMotion = (notify: () => void) => {

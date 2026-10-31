@@ -10,7 +10,6 @@ import { DelayedTasks } from '@/components/dashboard/delayed-tasks';
 import { useQueuePeek, useQueueSend, useQueueState } from '@/lib/api/queries';
 import { formatRelative } from '@/lib/mock-data';
 import { useToast } from '@/components/ui/toast';
-import { errorMessage } from '@/lib/api/errors';
 import { consoleHead } from '@/lib/seo';
 
 export const Route = createFileRoute('/dashboard/queues')({
@@ -58,7 +57,7 @@ function QueueSendPanel({ slug }: { slug: string }) {
     try {
       parsed = JSON.parse(payload);
     } catch (error) {
-      toast({ kind: 'error', title: 'Invalid JSON', description: errorMessage(error) });
+      toast({ kind: 'error', title: 'Invalid JSON', error: error });
       return;
     }
     if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
@@ -72,7 +71,7 @@ function QueueSendPanel({ slug }: { slug: string }) {
         toast({ kind: 'success', title: 'Message queued', description: result.id });
       })
       .catch((error: unknown) =>
-        toast({ kind: 'error', title: 'Could not queue message', description: errorMessage(error) })
+        toast({ kind: 'error', title: 'Could not queue message', error: error })
       );
   };
 

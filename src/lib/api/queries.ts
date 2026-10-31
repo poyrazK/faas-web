@@ -63,8 +63,11 @@ export const keys = {
   auditLog: ['audit-log'] as const,
   appSecrets: (slug: string) => ['apps', slug, 'secrets'] as const,
   appEnv: (slug: string) => ['apps', slug, 'env'] as const,
+  /** Config history and guard (ADR-1451); every env or secret write moves both. */
+  appConfig: (slug: string) => ['apps', slug, 'config'] as const,
   appAlerts: (slug: string) => ['apps', slug, 'alerts'] as const,
   appRegistryCredentials: (slug: string) => ['apps', slug, 'registry-credentials'] as const,
+  appGitHub: (slug: string) => ['apps', slug, 'github'] as const,
 };
 
 /** Shared policy: never retry a settled 4xx, retry the rest twice. */
@@ -144,7 +147,13 @@ export function useBindRepo(slug: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: BindRepoInput) => bindRepo(slug, input),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [...keys.app(slug), 'repo-binding'] }),
+    // Both reads of the binding (the deploy dialog's and the GitHub panel's)
+    // show the new one without a reload.
+    onSuccess: () =>
+      Promise.all([
+        qc.invalidateQueries({ queryKey: [...keys.app(slug), 'repo-binding'] }),
+        qc.invalidateQueries({ queryKey: keys.appGitHub(slug) }),
+      ]),
   });
 }
 
@@ -301,10 +310,11 @@ export function useAcceptInvitation() {
  * ------------------------------------------------------------------ */
 
 /** Read the saved monthly overage ceiling without conflating zero and no cap. */
-export function useOverageCap() {
+export function useOverageCap(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: [...keys.account, 'overage-cap'],
     queryFn: () => unwrap(api.GET('/v1/account/overage-cap', {})),
+    enabled: options?.enabled ?? true,
   });
 }
 
@@ -700,16 +710,26 @@ export function useAppErrorSample(slug: string, fingerprint: string) {
   });
 }
 
-/** Frame-by-frame anatomy of one wake attempt. */
+/**
+ * Frame-by-frame anatomy of one wake attempt, oldest first. The endpoint has
+ * no cursor parameter: `next_cursor` is an RFC 3339 timestamp passed back as
+ * `since`, so later pages hold later frames. `since` is inclusive, so the
+ * boundary frame repeats; callers de-duplicate.
+ */
 export function useWakeTimeline(slug: string, wakeId: string) {
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: ['apps', slug, 'wakes', wakeId],
-    queryFn: () =>
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam }) =>
       unwrap(
         api.GET('/v1/apps/{slug}/wakes/{wake_id}/timeline', {
-          params: { path: { slug, wake_id: wakeId } },
+          params: {
+            path: { slug, wake_id: wakeId },
+            query: { limit: 1000, ...(pageParam ? { since: pageParam } : {}) },
+          },
         })
       ),
+    getNextPageParam: (last) => last.next_cursor || undefined,
     enabled: Boolean(slug && wakeId),
   });
 }
@@ -1702,6 +1722,80 @@ export function useCancelJobRun() {
   });
 }
 
+/**
+ * Fan out a run of a job (`POST /v1/jobs/{name}/runs`). The answer is the new
+ * run in `queued`, not a finished one. `idempotencyKey` is chosen by the caller
+ * so a retry of the same intent replays the first run instead of billing a
+ * second.
+ */
+export function useStartJobRun() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      name,
+      tasks,
+      idempotencyKey,
+    }: {
+      name: string;
+      tasks: number;
+      idempotencyKey: string;
+    }) =>
+      unwrap(
+        api.POST('/v1/jobs/{name}/runs', {
+          params: { path: { name }, header: { 'Idempotency-Key': idempotencyKey } },
+          body: { tasks },
+        })
+      ),
+    // Awaited so the run list already holds the new run when the caller
+    // selects it, rather than briefly reporting "Run not found".
+    onSuccess: () => qc.invalidateQueries({ queryKey: [...keys.jobs] }),
+  });
+}
+
+/**
+ * Soft-delete a job. The API answers 409 `job_has_live_instances` while any of
+ * its tasks is still in flight.
+ */
+export function useDeleteJob() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (name: string) => {
+      try {
+        return await unwrap(api.DELETE('/v1/jobs/{name}', { params: { path: { name } } }));
+      } catch (error) {
+        // A delete is a soft delete and every read of a deleted job is a 404,
+        // so a 404 means it is already gone. Succeeding here (rather than in
+        // the caller) lets onSuccess drop the stale list row and detail query.
+        if (error instanceof ApiError && error.status === 404) return undefined;
+        throw error;
+      }
+    },
+    onSuccess: async (_none, name) => {
+      // Refresh the lists, but not the deleted job's own detail and runs: they
+      // would only come back 404 while the page is still showing them.
+      await qc.invalidateQueries({
+        queryKey: keys.jobs,
+        predicate: (query) => query.queryKey[1] !== name,
+      });
+      qc.removeQueries({ queryKey: [...keys.jobs, name] });
+    },
+  });
+}
+
+/**
+ * Pause or resume a job (`PATCH /v1/jobs/{name}` with `status`). apid refuses
+ * the change with 409 while any task is queued or claimed; a paused job answers
+ * 409 to a run start.
+ */
+export function useSetJobStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ name, status }: { name: string; status: 'active' | 'paused' }) =>
+      unwrap(api.PATCH('/v1/jobs/{name}', { params: { path: { name } }, body: { status } })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.jobs }),
+  });
+}
+
 export type Job = components['schemas']['JobResponse'];
 export type JobRun = components['schemas']['JobRunResponse'];
 export type JobTask = components['schemas']['JobTaskResponse'];
@@ -1953,11 +2047,12 @@ export function useInfiniteInvoices(limit = 50) {
   });
 }
 
-export function useUsageSummary() {
+export function useUsageSummary(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: keys.usageSummary,
     queryFn: () => unwrap(api.GET('/v1/usage/summary', {})),
     refetchInterval: 30_000,
+    enabled: options?.enabled ?? true,
   });
 }
 
@@ -2018,7 +2113,10 @@ export function useSetSecret(slug: string) {
           body: { value },
         })
       ),
-    onSuccess: () => qc.invalidateQueries({ queryKey: keys.appSecrets(slug) }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.appConfig(slug) });
+      return qc.invalidateQueries({ queryKey: keys.appSecrets(slug) });
+    },
   });
 }
 
@@ -2033,7 +2131,10 @@ export function useDeleteSecret(slug: string) {
         secrets: old.secrets?.filter((s) => s.key !== key),
       })),
     onError: (_err, _key, rollback) => rollback?.(),
-    onSettled: () => qc.invalidateQueries({ queryKey: keys.appSecrets(slug) }),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: keys.appConfig(slug) });
+      return qc.invalidateQueries({ queryKey: keys.appSecrets(slug) });
+    },
   });
 }
 
@@ -2054,7 +2155,10 @@ export function useSetEnv(slug: string) {
       unwrap(
         api.PUT('/v1/apps/{slug}/env/{key}', { params: { path: { slug, key } }, body: { value } })
       ),
-    onSuccess: () => qc.invalidateQueries({ queryKey: keys.appEnv(slug) }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.appConfig(slug) });
+      return qc.invalidateQueries({ queryKey: keys.appEnv(slug) });
+    },
   });
 }
 
@@ -2069,7 +2173,10 @@ export function useDeleteEnv(slug: string) {
         env: old.env?.filter((v) => v.key !== key),
       })),
     onError: (_err, _key, rollback) => rollback?.(),
-    onSettled: () => qc.invalidateQueries({ queryKey: keys.appEnv(slug) }),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: keys.appConfig(slug) });
+      return qc.invalidateQueries({ queryKey: keys.appEnv(slug) });
+    },
   });
 }
 
@@ -2117,6 +2224,22 @@ export function useVerifyDomain() {
     mutationFn: (domain: string) =>
       unwrap(api.POST('/v1/domains/{domain}/verify', { params: { path: { domain } } })),
     onSettled: () => qc.invalidateQueries({ queryKey: keys.domains }),
+  });
+}
+
+/**
+ * Re-arm polling for a pending domain (`POST /v1/domains/{domain}/retry`, 202,
+ * no body). Only works while the TXT challenge is unexpired: the API answers
+ * 409 for an expired challenge and for a domain that is already verified, and
+ * never extends the window. The caller decides what a 409 means by re-reading
+ * the domain, so this hook does not invalidate on error.
+ */
+export function useRetryDomain() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (domain: string) =>
+      unwrap(api.POST('/v1/domains/{domain}/retry', { params: { path: { domain } } })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.domains }),
   });
 }
 
@@ -3846,7 +3969,7 @@ export function usePostgresBindings(id: string) {
     enabled: Boolean(id) && ready,
     refetchInterval: (query) =>
       (query.state.data?.items ?? []).some(
-        (b) => b.state === 'provisioning' || b.state === 'deleting'
+        (b) => b.state === 'provisioning' || b.state === 'deleting' || b.rotation_pending
       )
         ? 5_000
         : false,
@@ -3886,6 +4009,38 @@ export function useCreatePostgresBinding(databaseId: string) {
             api.POST('/v1/postgres/databases/{id}/bindings', {
               params: { path: { id: databaseId } },
               body,
+            })
+          ),
+    onSuccess: () =>
+      void qc.invalidateQueries({ queryKey: [...postgresKey(org), databaseId, 'bindings'] }),
+  });
+}
+
+/**
+ * Rotate a binding's credential (`POST /v1/postgres/bindings/{id}/rotate`).
+ * The answer is the binding with its new `credential_generation` and a
+ * `rotation_pending` flag: the previous credential stays valid until the app
+ * runtime's rolling refresh completes, so `true` means accepted, not finished.
+ * `idempotencyKey` is chosen by the caller so a retry of the same intent
+ * replays the first answer.
+ */
+export function useRotatePostgresBinding(databaseId: string) {
+  const qc = useQueryClient();
+  const { org } = useWorkspaceTarget();
+  return useMutation({
+    mutationFn: ({ id, idempotencyKey }: { id: string; idempotencyKey: string }) =>
+      org
+        ? unwrap(
+            api.POST('/v1/orgs/{organization}/postgres/bindings/{id}/rotate', {
+              params: {
+                path: { organization: org, id },
+                header: { 'Idempotency-Key': idempotencyKey },
+              },
+            })
+          )
+        : unwrap(
+            api.POST('/v1/postgres/bindings/{id}/rotate', {
+              params: { path: { id }, header: { 'Idempotency-Key': idempotencyKey } },
             })
           ),
     onSuccess: () =>

@@ -21,7 +21,6 @@ import {
   useWebhookDeliveries,
   useWebhooks,
 } from '@/lib/api/queries';
-import { errorMessage } from '@/lib/api/errors';
 import { useAuth } from '@/lib/auth';
 import { InboundWebhooks } from '@/components/dashboard/inbound-webhooks';
 import { formatRelative } from '@/lib/mock-data';
@@ -196,7 +195,7 @@ function Deliveries({
                         toast({
                           kind: 'error',
                           title: 'Could not retry',
-                          description: errorMessage(err),
+                          error: err,
                         })
                       )
                   }
@@ -266,9 +265,7 @@ export function WebhooksBody({ slug }: { slug: string }) {
     void update
       .mutateAsync({ id: w.id, enabled })
       .then(() => toast({ kind: 'success', title: enabled ? 'Webhook enabled' : 'Webhook paused' }))
-      .catch((err: unknown) =>
-        toast({ kind: 'error', title: 'Could not update', description: errorMessage(err) })
-      );
+      .catch((err: unknown) => toast({ kind: 'error', title: 'Could not update', error: err }));
 
   const columns: Column<WebhookRow>[] = [
     {
@@ -343,7 +340,7 @@ export function WebhooksBody({ slug }: { slug: string }) {
                   toast({
                     kind: 'error',
                     title: 'Could not delete',
-                    description: errorMessage(err),
+                    error: err,
                   })
                 );
             }}
@@ -389,7 +386,7 @@ export function WebhooksBody({ slug }: { slug: string }) {
                 toast({ kind: 'success', title: 'Webhook added' });
               })
               .catch((err: unknown) =>
-                toast({ kind: 'error', title: 'Could not add', description: errorMessage(err) })
+                toast({ kind: 'error', title: 'Could not add', error: err })
               );
           }}
         >

@@ -25,6 +25,7 @@ export function Modal({
   children,
   footer,
   width = 'max-w-md',
+  placement = 'center',
 }: {
   open: boolean;
   onClose: () => void;
@@ -33,12 +34,15 @@ export function Modal({
   children?: ReactNode;
   footer?: ReactNode;
   width?: string;
+  /** `right` slides in a full-height drawer; `width` then does not apply. */
+  placement?: 'center' | 'right';
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const reduce = useReducedMotion();
   const descriptionId = useId();
   // Focus in on open, Tab wraps inside, focus restored on close.
   useFocusTrap(panelRef, open);
+  const right = placement === 'right';
 
   useEffect(() => {
     if (!open) return;
@@ -72,7 +76,13 @@ export function Modal({
   return createPortal(
     <AnimatePresence>
       {open && (
-        <div className="fixed inset-0 z-[95] flex items-center justify-center p-4">
+        <div
+          className={
+            right
+              ? 'fixed inset-0 z-[95] flex items-stretch justify-end'
+              : 'fixed inset-0 z-[95] flex items-center justify-center p-4'
+          }
+        >
           <motion.button
             aria-label="Close dialog"
             tabIndex={-1}
@@ -91,20 +101,29 @@ export function Modal({
             aria-modal="true"
             aria-label={title}
             aria-describedby={description ? descriptionId : undefined}
-            initial={reduce ? false : { opacity: 0, scale: 0.98, y: -6 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
+            data-placement={placement}
+            initial={
+              reduce ? false : right ? { opacity: 0, x: 24 } : { opacity: 0, scale: 0.98, y: -6 }
+            }
+            animate={right ? { opacity: 1, x: 0 } : { opacity: 1, scale: 1, y: 0 }}
             exit={
               reduce
                 ? { opacity: 0, transition: { duration: 0 } }
-                : {
-                    opacity: 0,
-                    scale: 0.98,
-                    y: -6,
-                    transition: { duration: 0.12, ease: EASE },
-                  }
+                : right
+                  ? { opacity: 0, x: 24, transition: { duration: 0.12, ease: EASE } }
+                  : {
+                      opacity: 0,
+                      scale: 0.98,
+                      y: -6,
+                      transition: { duration: 0.12, ease: EASE },
+                    }
             }
             transition={{ duration: reduce ? 0 : 0.18, ease: EASE }}
-            className={`relative flex max-h-[calc(100dvh-2rem)] w-full ${width} flex-col overflow-hidden rounded-xl border border-border bg-popover shadow-elevation-3 outline-none`}
+            className={
+              right
+                ? 'relative flex h-dvh w-full flex-col overflow-hidden border-l border-border bg-popover shadow-elevation-3 outline-none sm:max-w-[720px]'
+                : `relative flex max-h-[calc(100dvh-2rem)] w-full ${width} flex-col overflow-hidden rounded-xl border border-border bg-popover shadow-elevation-3 outline-none`
+            }
           >
             <header className="flex shrink-0 items-start justify-between gap-4 border-b border-border px-5 py-4">
               <div>

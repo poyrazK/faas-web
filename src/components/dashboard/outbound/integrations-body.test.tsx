@@ -184,6 +184,15 @@ describe('Integrations page', () => {
     await waitFor(() => expect(geocoder).toHaveTextContent('0 / no limit'));
   });
 
+  it('shows when the daily budget resets as a time, with the exact time on hover', async () => {
+    renderPage();
+    const { dialog } = await openRow('openai');
+    const resets = await waitFor(() => dialog.getByRole('time'));
+    expect(resets).toHaveAttribute('dateTime', '2026-10-17T00:00:00.000Z');
+    expect(resets).toHaveAttribute('title', expect.stringContaining('2026'));
+    expect(resets.textContent).not.toBe('2026-10-17T00:00:00Z');
+  });
+
   it('creates an integration and goes straight to its credential', async () => {
     const user = userEvent.setup();
     renderPage();

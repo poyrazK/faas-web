@@ -55,24 +55,26 @@ export function SecondaryNavigation({ label, items }: { label: string; items: Na
 export function DashboardSecondaryNavigation() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const hub = findNavHub(pathname);
-  if (!hub?.sections || hub.pageOwnsNavigation) return null;
-  const appSection = APP_SECTIONS.some((item) => matchesNavPath(pathname, item));
-  // Standalone per-app pages (logs, routes, …) keep their strip; the app list
-  // and app detail pages are not among them.
-  const showAppSections = appSection;
+  if (!hub || hub.pageOwnsNavigation) return null;
+  // Standalone per-app pages (logs, routes, …) keep their strip. An app
+  // section that is also a rail row (Debugger, Edge rules) is the account view
+  // there, and the app page's tab is the per-app way in.
+  const showAppSections =
+    !matchesNavPath(pathname, { to: hub.to, exact: true }) &&
+    APP_SECTIONS.some((item) => matchesNavPath(pathname, item));
   // A hub whose sections are nested rows in the rail must not restate them as
   // a tab strip: two controls for one choice, one of which silently scrolls
   // away. Settings keeps its strip — its eight `?section=` panels are the
   // page's own tabs and deliberately stay out of the rail.
-  const showHubSections = sidebarSectionsFor(hub).length === 0;
-  if (!showHubSections && !showAppSections) return null;
+  const hubSections = sidebarSectionsFor(hub).length === 0 ? (hub.sections ?? []) : [];
+  if (hubSections.length === 0 && !showAppSections) return null;
   return (
     <div className="flex min-w-0 flex-col gap-3">
-      {showHubSections && (
-        <SecondaryNavigation label={`${hub.label} sections`} items={hub.sections} />
+      {hubSections.length > 0 && (
+        <SecondaryNavigation label={`${hub.label} sections`} items={hubSections} />
       )}
       {showAppSections && (
-        <details open={appSection} className="min-w-0">
+        <details open className="min-w-0">
           <summary className="pressable w-fit cursor-pointer rounded-md px-3 py-1 text-xs text-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand">
             App sections
           </summary>

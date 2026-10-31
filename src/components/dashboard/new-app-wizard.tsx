@@ -568,7 +568,7 @@ function CreateAppWizard({
         toast({
           kind: 'error',
           title: 'App created, but configuration failed',
-          description: errorMessage(scaleResult.reason),
+          error: scaleResult.reason,
         });
       }
 
@@ -600,7 +600,7 @@ function CreateAppWizard({
         toast({
           kind: 'error',
           title: 'App created, but build was not submitted',
-          description: errorMessage(deploymentResult.reason),
+          error: deploymentResult.reason,
         });
       } else {
         toast({

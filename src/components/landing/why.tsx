@@ -12,15 +12,15 @@ const STAGES = [
   },
   {
     title: 'API',
-    subtitle: 'Beta hosting',
+    subtitle: 'Gregale hosting',
     application:
       'Accept the request and hand off the export. Keep the response small while the report is prepared.',
     platform:
-      'Run your API in isolated compute and connect it to declared services. Background hand-off uses preview capabilities.',
+      'Run your API in isolated compute and connect it to declared services. Hand background work off to the platform.',
   },
   {
     title: 'Background work',
-    subtitle: 'Preview',
+    subtitle: 'Gregale background work',
     application:
       'Write the report logic: gather data, call your internal service and prepare the file. Make external effects safe to retry.',
     platform:
@@ -173,7 +173,7 @@ export function Why() {
           </div>
         </div>
         <p className="mt-6 text-center font-mono text-[11px] leading-relaxed text-muted-foreground">
-          Illustrative workflow using beta hosting and preview background-work capabilities.
+          An example workflow across hosting and background work.
         </p>
       </div>
     </section>
