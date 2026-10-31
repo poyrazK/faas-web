@@ -23,8 +23,9 @@ vi.mock('@/lib/api/palette', () => ({
   }),
 }));
 
+const store = vi.hoisted(() => ({ workflows: [] as unknown[] }));
 vi.mock('@/lib/store', () => ({
-  useData: () => ({ workflows: [] }),
+  useData: () => ({ workflows: store.workflows }),
 }));
 
 function renderPalette(onOpenChange = vi.fn()) {
@@ -33,6 +34,52 @@ function renderPalette(onOpenChange = vi.fn()) {
 }
 
 describe('CommandPalette', () => {
+  it('counts HTTP requests in app hints when metrics are known', async () => {
+    store.workflows = [
+      {
+        id: 'alpha',
+        name: 'alpha',
+        runtime: 'node24',
+        invocations24h: 3,
+        metricsUnavailable: false,
+      },
+    ];
+    try {
+      renderPalette();
+      await userEvent.type(
+        await screen.findByRole('combobox', { name: /search commands/i }),
+        'alpha'
+      );
+      expect(await screen.findByText('3 requests · node24')).toBeInTheDocument();
+      expect(screen.queryByText(/calls/)).not.toBeInTheDocument();
+    } finally {
+      store.workflows = [];
+    }
+  });
+
+  it('leaves request counts out of app hints when request metrics are unknown', async () => {
+    store.workflows = [
+      {
+        id: 'alpha',
+        name: 'alpha',
+        runtime: 'node24',
+        invocations24h: 0,
+        metricsUnavailable: true,
+      },
+    ];
+    try {
+      renderPalette();
+      await userEvent.type(
+        await screen.findByRole('combobox', { name: /search commands/i }),
+        'alpha'
+      );
+      expect(await screen.findByText('node24')).toBeInTheDocument();
+      expect(screen.queryByText(/0 requests/)).not.toBeInTheDocument();
+    } finally {
+      store.workflows = [];
+    }
+  });
+
   it('closes on Escape even before the user clicks into the dialog', async () => {
     const onOpenChange = renderPalette();
     const user = userEvent.setup();

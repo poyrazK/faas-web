@@ -1,21 +1,52 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MfaProvider, useMfa } from './mfa-provider';
 
-vi.mock('@/lib/api/queries', () => ({
+const api = vi.hoisted(() => ({
   confirmMfa: vi.fn(),
   enrollMfa: vi.fn(),
   recoverMfa: vi.fn(),
-  verifyMfa: vi.fn().mockResolvedValue({}),
+  verifyMfa: vi.fn(),
 }));
+vi.mock('@/lib/api/queries', () => api);
 
 function Opener({ onVerified, onDismissed }: { onVerified: () => void; onDismissed: () => void }) {
   const { openMfa } = useMfa();
   return (
     <button type="button" onClick={() => openMfa('verify', { onVerified, onDismissed })}>
       step up
+    </button>
+  );
+}
+
+beforeEach(() => {
+  api.confirmMfa.mockReset().mockResolvedValue({});
+  api.recoverMfa.mockReset().mockResolvedValue({});
+  api.verifyMfa.mockReset().mockResolvedValue({});
+  api.enrollMfa.mockReset().mockResolvedValue({
+    qr_code_png_base64: '',
+    secret: 'SECRET',
+    recovery_codes: ['AAAA-1111'],
+  });
+});
+
+function OpenerWith({
+  mode,
+  reason,
+  onVerified,
+  allowRecovery,
+}: {
+  mode: 'choose' | 'verify';
+  reason?: string;
+  onVerified: (via: string) => void;
+  allowRecovery?: boolean;
+}) {
+  const { openMfa } = useMfa();
+  return (
+    <button type="button" onClick={() => openMfa(mode, { reason, onVerified, allowRecovery })}>
+      open
     </button>
   );
 }
@@ -56,5 +87,123 @@ describe('openMfa completion callbacks', () => {
 
     await waitFor(() => expect(onDismissed).toHaveBeenCalledTimes(1));
     expect(onVerified).not.toHaveBeenCalled();
+  });
+});
+
+describe('openMfa completion method and reason', () => {
+  it('shows the reason the caller gives', async () => {
+    renderWith(
+      <OpenerWith
+        mode="choose"
+        reason="Plan changes need multi-factor authentication."
+        onVerified={vi.fn()}
+      />
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'open' }));
+    expect(
+      await screen.findByText('Plan changes need multi-factor authentication.')
+    ).toBeInTheDocument();
+  });
+
+  it('reports an authenticator code as "authenticator"', async () => {
+    const onVerified = vi.fn();
+    renderWith(<OpenerWith mode="verify" onVerified={onVerified} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'open' }));
+    await user.type(await screen.findByRole('textbox'), '123456');
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(onVerified).toHaveBeenCalledWith('authenticator'));
+  });
+
+  it('reports a recovery code as "recovery"', async () => {
+    const onVerified = vi.fn();
+    renderWith(<OpenerWith mode="verify" onVerified={onVerified} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'open' }));
+    await user.click(await screen.findByRole('button', { name: /use a recovery code/i }));
+    await user.type(await screen.findByLabelText('Recovery code'), 'aaaa-1111');
+    await user.click(screen.getByRole('button', { name: 'Recover access' }));
+    await waitFor(() => expect(onVerified).toHaveBeenCalledWith('recovery'));
+  });
+
+  it('reports finishing enrolment as "enrolment"', async () => {
+    const onVerified = vi.fn();
+    renderWith(<OpenerWith mode="choose" onVerified={onVerified} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'open' }));
+    await user.click(await screen.findByRole('button', { name: 'Set up authenticator' }));
+    await user.type(await screen.findByLabelText('Authenticator code'), '123456');
+    await user.click(screen.getByRole('button', { name: 'Confirm MFA' }));
+    await waitFor(() => expect(onVerified).toHaveBeenCalledWith('enrolment'));
+  });
+
+  it('says MFA is optional when nothing gated the open', async () => {
+    renderWith(<OpenerWith mode="choose" onVerified={vi.fn()} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'open' }));
+    expect(await screen.findByText(/MFA is optional/)).toBeInTheDocument();
+    expect(screen.getByText('Protect your account with MFA')).toBeInTheDocument();
+  });
+
+  it('drops every "optional" claim when a gate asked for the modal', async () => {
+    renderWith(
+      <OpenerWith
+        mode="choose"
+        reason="Plan changes need multi-factor authentication."
+        onVerified={vi.fn()}
+      />
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'open' }));
+    await screen.findByText('Plan changes need multi-factor authentication.');
+    expect(screen.queryByText(/optional/i)).toBeNull();
+    expect(screen.queryByText('Protect your account with MFA')).toBeNull();
+    expect(screen.getByText('Multi-factor authentication required')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Set up authenticator' })).toBeInTheDocument();
+  });
+
+  it('hides the recovery code for a gate that does not accept one', async () => {
+    renderWith(
+      <OpenerWith
+        mode="choose"
+        reason="Plan changes need multi-factor authentication."
+        allowRecovery={false}
+        onVerified={vi.fn()}
+      />
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'open' }));
+    await screen.findByText('Plan changes need multi-factor authentication.');
+    expect(screen.queryByRole('button', { name: /recovery code/i })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Enter authenticator code' }));
+    await screen.findByLabelText('Authenticator code');
+    expect(screen.queryByRole('button', { name: /recovery code/i })).toBeNull();
+    expect(screen.queryByText(/recovery code/i)).toBeNull();
+  });
+
+  it('keeps the recovery code for the session-level gate', async () => {
+    renderWith(<OpenerWith mode="verify" onVerified={vi.fn()} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'open' }));
+    expect(await screen.findByRole('button', { name: /use a recovery code/i })).toBeInTheDocument();
+  });
+
+  it('names multi-factor authentication the same way on every screen', async () => {
+    renderWith(
+      <OpenerWith
+        mode="choose"
+        reason="Plan changes need multi-factor authentication."
+        onVerified={vi.fn()}
+      />
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'open' }));
+    await user.click(await screen.findByRole('button', { name: 'Enter authenticator code' }));
+    await screen.findByLabelText('Authenticator code');
+    expect(
+      screen.getByRole('heading', { name: /multi-factor authentication/i })
+    ).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent(/two-factor/i);
   });
 });
