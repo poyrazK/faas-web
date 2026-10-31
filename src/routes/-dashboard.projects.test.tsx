@@ -155,7 +155,7 @@ it('lists each project with its apps, without GitHub or a paid capability gate',
   );
   expect(
     within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', {
-      name: 'All projects',
+      name: 'Projects',
     })
   ).toHaveAttribute('aria-current', 'page');
 });

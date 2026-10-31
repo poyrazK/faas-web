@@ -1,3 +1,5 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { spyApi } from '@/test/api';
 import {
   createMemoryHistory,
   createRootRoute,
@@ -5,12 +7,13 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const useAppsMetrics = vi.fn();
 let plan = 'hobby';
+let deployments: unknown[] = [];
 const metricsRefetch = vi.fn();
 
 vi.mock('@/lib/store', () => ({
@@ -31,7 +34,7 @@ vi.mock('@/lib/store', () => ({
         version: 'abc1234',
       },
     ],
-    deployments: [],
+    deployments,
     loading: false,
     error: null,
     refresh: vi.fn(),
@@ -46,6 +49,24 @@ vi.mock('@/lib/api/capabilities', async (original) => ({
 }));
 vi.mock('@/lib/auth', () => ({
   useAuth: () => ({ account: { status: 'active', plan }, user: { name: 'Ada Lovelace' } }),
+}));
+
+const workspace = vi.hoisted(() => ({
+  org: null as string | null,
+  label: 'Personal',
+  ready: true,
+}));
+vi.mock('@/lib/api/workspace-apps', () => ({ useWorkspaceTarget: () => workspace }));
+const companyUsage = vi.hoisted(() => ({
+  rows: [
+    {
+      app_id: 'a',
+      mb_seconds: 2 * 1024 * 3600,
+      requests: 1,
+      included_gb_hours: 1000,
+      cpu_usec: 3.6e9,
+    },
+  ],
 }));
 
 vi.mock('@/lib/api/queries', async (importOriginal) => {
@@ -131,6 +152,7 @@ function metrics(range: string, requestCount: number) {
 
 beforeEach(() => {
   plan = 'hobby';
+  deployments = [];
   metricsRefetch.mockReset();
   useAppsMetrics
     .mockReset()
@@ -160,7 +182,11 @@ describe('overview analytics window', () => {
         routeTree: root.addChildren([overview, analytics]),
         history: createMemoryHistory({ initialEntries: [`/dashboard?range=${range}`] }),
       });
-      render(<RouterProvider router={router} />);
+      render(
+        <QueryClientProvider client={new QueryClient()}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>
+      );
       const link = await screen.findByRole('link', { name: 'Analytics' });
       expect(link).toHaveAttribute('href', `/dashboard/analytics?window=${window}`);
       if (input === 'keyboard') {
@@ -184,7 +210,11 @@ describe('overview analytics window', () => {
       history: createMemoryHistory({ initialEntries: ['/dashboard'] }),
     });
 
-    render(<RouterProvider router={router} />);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    );
     expect(await screen.findByText('100')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: '7d' }));
@@ -205,7 +235,13 @@ function renderOverview() {
     routeTree: root.addChildren([overview]),
     history: createMemoryHistory({ initialEntries: ['/dashboard'] }),
   });
-  return render(<RouterProvider router={router} />);
+  // The company allowance is a real query; personal reads are mocked above.
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={client}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>
+  );
 }
 
 it('gates Free metrics and range controls while preserving usage and instance reads', async () => {
@@ -237,4 +273,73 @@ it('shows unknown paid metrics for a degraded rollup instead of measured zeroes'
   expect(await screen.findByText('metrics degraded — unknowns read as —')).toBeInTheDocument();
   expect(screen.queryByText('Metrics is available on Hobby and above')).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: '7d' })).toBeEnabled();
+});
+
+it("shows the company's compute allowance in a company workspace, not the signed-in account's", async () => {
+  workspace.org = 'acme';
+  workspace.label = 'Acme';
+  const get = spyApi('GET').mockImplementation(async (path: string) => ({
+    data: path === '/v1/orgs/{slug}/usage' ? companyUsage.rows : {},
+    response: new Response(null, { status: 200 }),
+  }));
+  try {
+    renderOverview();
+    // Personal: 80 of 100 GB-h left. Company: 998 of 1,000.
+    expect(await screen.findByText('of 1,000 this period')).toBeInTheDocument();
+    expect(screen.queryByText('of 100 this period')).not.toBeInTheDocument();
+    expect(get).toHaveBeenCalledWith('/v1/orgs/{slug}/usage', expect.anything());
+  } finally {
+    workspace.org = null;
+    workspace.label = 'Personal';
+  }
+});
+
+describe('overview deployments column', () => {
+  it.each(['pointer', 'keyboard'])(
+    'opens a recent deployment in the releases hub using %s',
+    async (input) => {
+      deployments = [
+        {
+          id: 'dep-1',
+          workflowId: 'api',
+          version: 'abc1234',
+          state: 'failed',
+          commit: 'abc1234',
+          message: 'Fix the thing',
+          author: 'ada',
+          createdAt: Date.now() - 60_000,
+        },
+      ];
+      const root = createRootRoute();
+      const overview = Route.update({
+        id: '/dashboard/',
+        path: '/dashboard',
+        getParentRoute: () => root,
+      } as never);
+      const releases = createRoute({
+        getParentRoute: () => root,
+        path: '/dashboard/releases',
+        component: () => <h1>Releases</h1>,
+      });
+      const router = createRouter({
+        routeTree: root.addChildren([overview, releases]),
+        history: createMemoryHistory({ initialEntries: ['/dashboard'] }),
+      });
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      render(
+        <QueryClientProvider client={client}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>
+      );
+      const column = (await screen.findByRole('link', { name: 'Deployments' })).closest('section')!;
+      const row = within(column).getByRole('link', { name: /api.*failed/i });
+      expect(row).toHaveAttribute('href', '/dashboard/releases?deployment=dep-1');
+      if (input === 'keyboard') {
+        row.focus();
+        await userEvent.keyboard('{Enter}');
+      } else await userEvent.click(row);
+      expect(await screen.findByRole('heading', { name: 'Releases' })).toBeInTheDocument();
+      expect(router.state.location.search).toEqual({ deployment: 'dep-1' });
+    }
+  );
 });

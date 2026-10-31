@@ -12,6 +12,7 @@ import {
 } from '@/lib/api/queries';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import { useConfirm } from '@/components/ui/confirm';
+import { CopyableId } from '@/components/ui/copyable-id';
 import { useToast } from '@/components/ui/toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -135,7 +136,7 @@ export function TriggerConfiguration({ triggerId }: { triggerId: string }) {
             label={data.enabled ? 'enabled' : 'paused'}
             color={data.enabled ? 'var(--status-good)' : 'var(--status-idle)'}
           />
-          <span className="font-mono text-xs text-muted-foreground">{data.id}</span>
+          <CopyableId value={data.id} label="trigger ID" full className="text-muted-foreground" />
         </div>
 
         <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -314,6 +315,10 @@ export function TriggerDetail({
           title="Source and delivery"
           description="The effective configuration currently polled by the platform."
         >
+          <div className="mb-4 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <span>Trigger ID</span>
+            <CopyableId value={trigger.id} label="trigger ID" full />
+          </div>
           <dl className="grid gap-4 sm:grid-cols-2">
             {[
               ...sourceRows(draft),

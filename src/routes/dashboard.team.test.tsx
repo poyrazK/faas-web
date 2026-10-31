@@ -171,6 +171,24 @@ describe('invitation disclosure and one-time evidence', () => {
     expect(region).not.toBeInTheDocument();
   });
 
+  it('reads an invitation expiry as a future time, and joined dates with the exact time on hover', () => {
+    const now = vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 8, 12));
+    try {
+      render(<TeamPage />);
+
+      const expiry = screen.getByText('in 6d');
+      expect(expiry.tagName).toBe('TIME');
+      expect(expiry).toHaveAttribute('dateTime', '2026-09-18T00:00:00.000Z');
+      expect(expiry).toHaveAttribute('title', expect.stringContaining('2026'));
+
+      const joined = screen.getAllByText('11d ago');
+      expect(joined).toHaveLength(2);
+      expect(joined[0]).toHaveAttribute('dateTime', '2026-09-01T00:00:00.000Z');
+    } finally {
+      now.mockRestore();
+    }
+  });
+
   it('revokes a pending invitation by id while keeping member management functional', async () => {
     render(<TeamPage />);
     expect(

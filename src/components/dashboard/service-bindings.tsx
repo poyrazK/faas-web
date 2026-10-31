@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { CapabilityNotice } from './capability-notice';
 import { Panel } from './primitives';
 import { ServicePolicyEditor } from './service-policy-editor';
+import { ServiceWakeAhead } from './service-wake-ahead';
 
 export function ServiceBindings({ slug }: { slug: string }) {
   const { account } = useAuth();
@@ -131,6 +132,10 @@ export function ServiceBindings({ slug }: { slug: string }) {
               .map((row) => row.name)}
           />
         )}
+
+      {/* Not gated on source ownership: wake-ahead is not a gregale.yaml key.
+          It waits for the app only to know whether it is a preview. */}
+      {data && <ServiceWakeAhead slug={slug} previewOf={data.preview_of_slug || undefined} />}
 
       <Panel
         title="Binding inventory"
