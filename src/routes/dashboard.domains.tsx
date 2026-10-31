@@ -15,6 +15,7 @@ import {
   useDomains,
   useVerifyDomain,
 } from '@/lib/api/queries';
+import { DomainDetailButton } from '@/components/dashboard/domain-detail';
 import { DomainDoctor } from '@/components/dashboard/domain-doctor';
 import { slugIndex } from '@/lib/api/adapters';
 import { errorMessage } from '@/lib/api/errors';
@@ -190,6 +191,7 @@ function DomainsPage() {
             </Button>
           )}
 
+          <DomainDetailButton domain={d.domain} />
           <IconButton
             type="button"
             aria-label={`Diagnose ${d.domain}`}

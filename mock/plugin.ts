@@ -19,6 +19,7 @@ import {
   mockApprovalId,
 } from './environment-readiness';
 import { getStageQueueRecord, putStageQueueRecord } from './stage-queues';
+import { mockDomainDetail, mockSetDefaultDomain } from './domain-detail';
 import {
   advanceDeployments,
   buildLogAt,
@@ -4412,6 +4413,25 @@ route('GET', '/v1/domains/{domain}/doctor', ({ params }) => {
           { name: 'ipv6_conflict', status: 'na', detail: 'No AAAA record published.' },
         ],
   };
+});
+
+// One domain with its certificate, and the app default (mock/domain-detail.ts).
+// Setting the default also moves the app's canonical URL, as appResponse does.
+route('GET', '/v1/domains/{domain}', ({ params }) => {
+  const d = db.domains.find((x) => x.domain === params.domain);
+  if (!d) throw new Problem(404, 'not_found', 'no such domain');
+  return mockDomainDetail(d);
+});
+route('POST', '/v1/domains/{domain}/default', ({ params }) => {
+  const result = mockSetDefaultDomain(db.domains, params.domain);
+  if ('status' in result) throw new Problem(result.status, result.code);
+  const app = db.apps.find((a) => a.id === result.app_id);
+  if (app)
+    Object.assign(app, {
+      canonical_url: `https://${result.domain}`,
+      default_domain: result.domain,
+    });
+  return result;
 });
 
 // --- Debugger (ADR-127) -----------------------------------------------------
