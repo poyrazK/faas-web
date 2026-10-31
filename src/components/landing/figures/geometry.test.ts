@@ -1,204 +1,204 @@
 import { describe, expect, it } from 'vitest';
 import {
-  branchCommit,
-  branchHeight,
-  branchNodeX,
-  branchPath,
-  cellAt,
-  cellCore,
-  CELLS,
-  COMPUTE_FOCUS,
-  COMMITS,
-  deployBar,
-  deployDotRadius,
-  deployFrame,
-  deployProgress,
-  DEPLOY_REST,
-  domainFill,
-  dotX,
-  objectPos,
-  objectRest,
-  objectSlot,
-  OBJECTS,
-  perimeterPath,
-  ringRadius,
-  RINGS,
-  rowCentre,
-  rowSeal,
-  ROWS,
-  SECRETS_FOCUS,
-  shackleLift,
-  spanCrossed,
-  SPANS,
-  storeFill,
-  traceCursor,
+  COMPUTE,
+  DEPLOYS,
+  DOMAINS,
+  PREVIEWS,
+  SECRETS,
+  STORAGE,
+  STORAGE_LEVELS,
+  STORAGE_RISE,
+  STORAGE_ROWS,
+  TRACE_SPANS,
+  TRACES,
+  box,
+  branchY,
+  capsule,
+  circle,
+  computeLift,
+  current,
+  deployStroke,
+  hash,
+  influence,
+  sealSize,
+  slotFill,
+  spanHeight,
 } from './geometry';
 
+const FIELDS = { DEPLOYS, COMPUTE, DOMAINS, TRACES, SECRETS, PREVIEWS, STORAGE };
+
+describe('influence', () => {
+  it('is nothing at rest, full under the pointer, and gone at the radius', () => {
+    expect(influence(100, 50, 100, 50, 0)).toBe(0);
+    expect(influence(100, 50, 100, 50, 1)).toBe(1);
+    expect(influence(100, 50, 100, 50, 0.4)).toBeCloseTo(0.4);
+    expect(influence(170, 50, 100, 50, 1, 70)).toBe(0);
+    expect(influence(300, 50, 100, 50, 1, 70)).toBe(0);
+  });
+
+  it('falls off smoothly with distance', () => {
+    const near = influence(110, 50, 100, 50, 1, 70);
+    const mid = influence(130, 50, 100, 50, 1, 70);
+    const far = influence(160, 50, 100, 50, 1, 70);
+    expect(near).toBeGreaterThan(mid);
+    expect(mid).toBeGreaterThan(far);
+    expect(far).toBeGreaterThan(0);
+  });
+});
+
+describe('hash', () => {
+  it('is deterministic and stays in [0, 1)', () => {
+    for (let i = 0; i < 40; i++)
+      for (let j = 0; j < 40; j++) {
+        const v = hash(i, j);
+        expect(v).toBe(hash(i, j));
+        expect(v).toBeGreaterThanOrEqual(0);
+        expect(v).toBeLessThan(1);
+      }
+  });
+});
+
+describe('shape segments', () => {
+  it('draws nothing for an empty shape', () => {
+    expect(box(0, 0, 0, 4)).toBe('');
+    expect(box(0, 0, 4, 0)).toBe('');
+    expect(circle(4, 4, 0)).toBe('');
+  });
+
+  it('rounds a capsule fully at its ends', () => {
+    expect(capsule(0, 0, 10, 4)).toBe('M2 0h6a2 2 0 0 1 0 4h-6a2 2 0 0 1 0 -4z');
+    expect(capsule(0, 0, 4, 4)).toBe('M2 0h0a2 2 0 0 1 0 4h0a2 2 0 0 1 0 -4z');
+  });
+});
+
+describe('every field', () => {
+  it.each(Object.entries(FIELDS))('%s rests the same wherever the pointer was', (_, field) => {
+    for (let r = 0; r < field.rows; r++)
+      expect(field.row(r, 20, 30, 0)).toEqual(field.row(r, 400, 180, 0));
+  });
+
+  it.each(Object.entries(FIELDS))('%s changes only near the pointer', (_, field) => {
+    const rest = Array.from({ length: field.rows }, (_, r) => field.row(r, 0, 0, 0));
+    const woken = Array.from({ length: field.rows }, (_, r) => field.row(r, 210, 190, 1));
+    expect(woken).not.toEqual(rest);
+    // The top row is out of reach of a pointer at the bottom edge.
+    expect(woken[0]).toEqual(rest[0]);
+  });
+});
+
 describe('source deploys', () => {
-  it('rests as scattered faint bars with no frame and no live dot', () => {
-    const p = deployProgress(400, 0);
-    expect(p).toBe(0);
-    expect(deployBar(0, p)).toEqual({ x: 28, y: 34, fillOpacity: 0.25 });
-    expect(deployBar(11, p)).toEqual({ x: 72, y: 96, fillOpacity: 0.25 });
-    expect(deployFrame(p)).toBe(0);
-    expect(deployDotRadius(p)).toBe(0);
+  it('rests as short strokes leaning along the current', () => {
+    expect(deployStroke(55, 45, 0, 0, 0)).toEqual({
+      angle: current(55, 45),
+      length: 5.5,
+      width: 1.2,
+    });
   });
 
-  it('stacks the bars into the image, closes the snapshot and lights the dot at full progress', () => {
-    const p = deployProgress(340, 1);
-    expect(p).toBe(1);
-    expect(deployBar(0, p)).toEqual({ x: 230, y: 46, fillOpacity: 1 });
-    expect(deployBar(11, p)).toEqual({ x: 230, y: 145, fillOpacity: 1 });
-    expect(deployFrame(p)).toBe(1);
-    expect(deployDotRadius(p)).toBe(6);
+  it('aligns to the deploy direction under the pointer, longer and bolder', () => {
+    const stroke = deployStroke(205, 95, 205, 95, 1);
+    expect(stroke.angle).toBeCloseTo(0);
+    expect(stroke.length).toBeCloseTo(9.5);
+    expect(stroke.width).toBeCloseTo(3.2);
   });
 
-  it('draws the snapshot frame only past two thirds and the dot only past 0.85', () => {
-    expect(deployFrame(0.66)).toBe(0);
-    expect(deployFrame(0.83)).toBeCloseTo(0.5);
-    expect(deployDotRadius(0.85)).toBe(0);
-    expect(deployDotRadius(0.925)).toBeCloseTo(3);
-  });
-
-  it('traces the rectangle perimeter clockwise up to the drawn fraction', () => {
-    expect(perimeterPath(0, 0, 10, 5, 0)).toBe('M 0 0');
-    expect(perimeterPath(0, 0, 10, 5, 1)).toBe('M 0 0 L 10 0 L 10 5 L 0 5 L 0 0');
-    // A third of 30 is 10: exactly the top edge.
-    expect(perimeterPath(0, 0, 10, 5, 1 / 3)).toBe('M 0 0 L 10 0');
-    expect(perimeterPath(0, 0, 10, 5, 0.5)).toBe('M 0 0 L 10 0 L 10 5');
-  });
-
-  it('keeps all twelve rest positions inside the left half', () => {
-    expect(DEPLOY_REST).toHaveLength(12);
-    for (const [x, y] of DEPLOY_REST) {
-      expect(x + 64).toBeLessThanOrEqual(210);
-      expect(y).toBeGreaterThanOrEqual(0);
-      expect(y + 5).toBeLessThanOrEqual(200);
-    }
+  it('leans neighbours together: the current is smooth', () => {
+    expect(Math.abs(current(105, 95) - current(115, 95))).toBeLessThan(0.3);
   });
 });
 
 describe('isolated compute', () => {
-  it('lays out a 6 × 3 grid inside the frame', () => {
-    expect(CELLS).toHaveLength(18);
-    expect(CELLS[0]).toEqual({ x: 17, y: 18 });
-    expect(CELLS[17]).toEqual({ x: 347, y: 134 });
-  });
-
-  it('finds the cell under the pointer, and none in the gaps', () => {
-    expect(cellAt(17 + 28, 18 + 24)).toBe(0);
-    expect(cellAt(347 + 10, 134 + 10)).toBe(17);
-    // x 76 sits in the 10px gap between columns 0 and 1.
-    expect(cellAt(78, 40)).toBe(-1);
-    // y 70 sits in the gap between rows 0 and 1.
-    expect(cellAt(45, 70)).toBe(-1);
-  });
-
-  it('focuses on a cell, not on the gap at the centre of the grid', () => {
-    expect(cellAt(210, 100)).toBe(-1);
-    expect(cellAt(...COMPUTE_FOCUS)).toBeGreaterThanOrEqual(0);
-  });
-
-  it('swells only the hovered cell, scaled by active', () => {
-    expect(cellCore(4, 4, 1)).toEqual({ size: 30, stroke: 2.5 });
-    expect(cellCore(4, 4, 0)).toEqual({ size: 12, stroke: 1 });
-    expect(cellCore(3, 4, 1)).toEqual({ size: 12, stroke: 1 });
-    expect(cellCore(4, -1, 1)).toEqual({ size: 12, stroke: 1 });
+  it('lifts nothing at rest and lifts a box fully under the pointer', () => {
+    expect(computeLift(5, 7, 205, 77, 0)).toBe(0);
+    expect(computeLift(4, 7, 195, 60, 1)).toBe(24);
+    expect(computeLift(4, 7, 195, 60, 0.5)).toBe(12);
   });
 });
 
 describe('custom domains', () => {
-  it('rests with an empty fill, plain rings and a lifted shackle', () => {
-    const f = domainFill(300, 0);
-    expect(f).toBe(0);
-    for (const cx of RINGS) expect(ringRadius(cx, cx, 0)).toBe(14);
-    expect(shackleLift(f)).toBe(-6);
+  it('draws no routes and no sealed junctions at rest', () => {
+    for (let r = 0; r < DOMAINS.rows; r++) {
+      const row = DOMAINS.row(r, 0, 0, 0);
+      expect(row.route).toBe('');
+      expect(row.dot).toBe('');
+      expect(row.street).not.toBe('');
+      expect(row.ring).not.toBe('');
+    }
   });
 
-  it('fills to the pointer, widens the nearest ring, and closes the lock at the app', () => {
-    expect(domainFill(214, 1)).toBeCloseTo(0.5);
-    expect(ringRadius(214, 214, 1)).toBe(20);
-    expect(ringRadius(150, 214, 1)).toBe(14);
-    expect(domainFill(344, 1)).toBe(1);
-    expect(shackleLift(1)).toBeCloseTo(0);
-    expect(shackleLift(0.9)).toBe(-6);
+  it('seals junctions and draws routes around the pointer', () => {
+    const row = DOMAINS.row(4, 210, 90, 1);
+    expect(row.route).not.toBe('');
+    expect(row.dot).not.toBe('');
   });
 });
 
 describe('logs and traces', () => {
-  it('keeps the cursor on the trace and crosses the right spans', () => {
-    expect(traceCursor(0)).toBe(24);
-    expect(traceCursor(400)).toBe(324);
-    expect(SPANS).toHaveLength(7);
-    const crossed = SPANS.map((_, i) => spanCrossed(i, 170));
-    // Span 2 ends at 168, just short of the cursor.
-    expect(crossed).toEqual([true, true, false, true, true, false, false]);
+  it('tiles every row edge to edge with spans of plausible widths', () => {
+    for (const spans of TRACE_SPANS) {
+      expect(spans[0][0]).toBeLessThanOrEqual(0);
+      const [lx, lw] = spans[spans.length - 1];
+      expect(lx + lw).toBeGreaterThanOrEqual(420);
+      for (const [, w] of spans) {
+        expect(w).toBeGreaterThanOrEqual(4);
+        expect(w).toBeLessThanOrEqual(48);
+      }
+    }
+  });
+
+  it('rests as hairlines and swells to bars under the pointer', () => {
+    expect(spanHeight(0)).toBe(1);
+    expect(spanHeight(1)).toBe(10);
   });
 });
 
 describe('secrets and config', () => {
-  it('seals only the row under the pointer, and none at the midpoint', () => {
-    expect(ROWS).toBe(6);
-    expect(rowSeal(2, rowCentre(2), 1)).toBe(1);
-    expect(rowSeal(1, rowCentre(2), 1)).toBe(0);
-    const midpoint = (rowCentre(2) + rowCentre(3)) / 2;
-    expect(rowSeal(2, midpoint, 1)).toBe(0);
-    expect(rowSeal(3, midpoint, 1)).toBe(0);
-    expect(rowSeal(2, rowCentre(2), 0)).toBe(0);
-  });
-
-  it('focuses on a row, not on the midpoint between rows at the centre', () => {
-    expect(rowSeal(2, 100, 1)).toBe(0);
-    expect(rowSeal(2, SECRETS_FOCUS[1], 1)).toBe(1);
-  });
-
-  it('gathers the dots to the centre as the row seals', () => {
-    expect(dotX(0, 0)).toBe(132);
-    expect(dotX(7, 0)).toBe(314);
-    expect(dotX(0, 1)).toBe(223);
-    expect(dotX(7, 1)).toBe(223);
+  it('rests as round dots and fuses neighbours into a band when sealed', () => {
+    expect(sealSize(0)).toEqual({ w: 2.4, h: 2.4 });
+    const sealed = sealSize(1);
+    expect(sealed.w).toBeGreaterThan(10); // wider than the 10-unit pitch
+    expect(sealed.h).toBeLessThan(sealed.w);
   });
 });
 
 describe('pr previews', () => {
-  it('rests flat and forks from the nearest commit', () => {
-    expect(COMMITS).toEqual([44, 86, 128, 170, 212, 254, 296, 338, 380]);
-    expect(branchCommit(0)).toBe(44);
-    expect(branchCommit(150)).toBe(170);
-    expect(branchCommit(999)).toBe(380);
-    expect(branchHeight(0)).toBe(0);
-    expect(branchPath(170, 0)).toBe('M 170 140 C 170 140 210 140 210 140');
+  it('rests as straight lines', () => {
+    for (const y0 of [5, 95, 195]) expect(branchY(150, y0, 0, 0, 0)).toBe(y0);
   });
 
-  it('forks left near the right edge so the node stays in frame', () => {
-    expect(branchNodeX(296)).toBe(336);
-    expect(branchNodeX(338)).toBe(298);
-    expect(branchNodeX(380)).toBe(340);
-    for (const cx of COMMITS) expect(branchNodeX(cx) + 22).toBeLessThanOrEqual(420);
-    expect(branchPath(338, 1)).toBe('M 338 140 C 338 98 298 70 298 70');
+  it('parts the lines around the pointer without crossing them', () => {
+    for (const [x, y] of [
+      [210, 100],
+      [60, 37],
+      [400, 190],
+      [210, 5],
+    ])
+      for (let sx = 0; sx <= 420; sx += 6) {
+        let previous = -Infinity;
+        for (let i = 0; i < PREVIEWS.rows; i++) {
+          const sy = branchY(sx, 5 + 10 * i, x, y, 1);
+          expect(sy).toBeGreaterThan(previous);
+          previous = sy;
+        }
+      }
+    expect(branchY(210, 85, 210, 100, 1)).toBeLessThan(85);
+    expect(branchY(210, 115, 210, 100, 1)).toBeGreaterThan(115);
   });
 });
 
 describe('object storage', () => {
-  it('rests with every object in the app frame and the bucket empty', () => {
-    expect(OBJECTS).toBe(24);
-    expect(storeFill(400, 0)).toBe(0);
-    expect(objectPos(0, 0)).toEqual(objectRest(0));
-    expect(objectRest(0)).toEqual([36, 68]);
-    expect(objectRest(23)).toEqual([101, 116]);
+  it('rests as a skyline that a full rise never pushes past the top', () => {
+    expect(STORAGE_LEVELS.length).toBe(35);
+    expect(Math.min(...STORAGE_LEVELS)).toBeGreaterThanOrEqual(0);
+    expect(Math.max(...STORAGE_LEVELS) + STORAGE_RISE).toBeLessThanOrEqual(STORAGE_ROWS);
+    expect(new Set(STORAGE_LEVELS).size).toBeGreaterThan(3);
   });
 
-  it('settles every object exactly in its slot at full sweep, without overshoot', () => {
-    const f = storeFill(9999, 1);
-    expect(f).toBe(1);
-    for (let i = 0; i < OBJECTS; i++) expect(objectPos(i, f)).toEqual(objectSlot(i));
-    expect(objectSlot(0)).toEqual([290, 160]);
-    expect(objectSlot(23)).toEqual([374, 136]);
-  });
-
-  it('moves objects in order as the fill grows', () => {
-    const half = 0.5;
-    expect(objectPos(0, half)).toEqual(objectSlot(0));
-    expect(objectPos(23, half)).toEqual(objectRest(23));
+  it('fills slots up to the level and raises the stack under the pointer', () => {
+    const level = STORAGE_LEVELS[10];
+    expect(slotFill(10, level - 1, 0)).toBe(1);
+    expect(slotFill(10, level, 0)).toBe(0);
+    expect(slotFill(10, level + STORAGE_RISE - 1, 1)).toBe(1);
+    expect(slotFill(10, level, 0.5 / STORAGE_RISE)).toBeCloseTo(0.5);
   });
 });

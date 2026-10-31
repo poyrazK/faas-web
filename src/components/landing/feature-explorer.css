@@ -235,17 +235,22 @@
 .feature-figure {
   position: relative;
   width: 100%;
-  height: 200px;
+  /* The drawing's own 420 x 200 proportions: it fills the frame, no letterbox. */
+  aspect-ratio: 21 / 10;
 }
 .feature-figure svg {
   display: block;
   width: 100%;
   height: 100%;
 }
+/* Hairlines stay one screen pixel at any scale. */
+.feature-figure svg * {
+  vector-effect: non-scaling-stroke;
+}
 .feature-pillars {
   position: relative;
   width: 100%;
-  height: 200px;
+  aspect-ratio: 21 / 10;
   overflow: hidden;
   border-radius: 4px;
 }

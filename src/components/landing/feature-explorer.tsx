@@ -1,13 +1,17 @@
 import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Link } from '@tanstack/react-router';
 import { ArrowRight } from 'iconoir-react';
-import { SourceDeploysFigure } from './figures/source-deploys';
-import { IsolatedComputeFigure } from './figures/isolated-compute';
-import { CustomDomainsFigure } from './figures/custom-domains';
-import { LogsTracesFigure } from './figures/logs-traces';
-import { SecretsConfigFigure } from './figures/secrets-config';
-import { PrPreviewsFigure } from './figures/pr-previews';
-import { ObjectStorageFigure } from './figures/object-storage';
+import { FieldFigure } from './figures/field-figure';
+import {
+  COMPUTE,
+  DEPLOYS,
+  DOMAINS,
+  PREVIEWS,
+  SECRETS,
+  STORAGE,
+  TRACES,
+  type Field,
+} from './figures/geometry';
 import { Pillars } from './textures/pillars';
 import './feature-explorer.css';
 
@@ -183,14 +187,20 @@ function Wiring() {
   );
 }
 
+// Every Hosting feature is drawn as its own pointer-reactive texture.
+const HOSTING_FIELDS: Partial<Record<Diagram, Field>> = {
+  deploy: DEPLOYS,
+  compute: COMPUTE,
+  domain: DOMAINS,
+  trace: TRACES,
+  secrets: SECRETS,
+  previews: PREVIEWS,
+  objects: STORAGE,
+};
+
 function FeatureDiagram({ kind }: { kind: Diagram }) {
-  if (kind === 'deploy') return <SourceDeploysFigure />;
-  if (kind === 'compute') return <IsolatedComputeFigure />;
-  if (kind === 'domain') return <CustomDomainsFigure />;
-  if (kind === 'trace') return <LogsTracesFigure />;
-  if (kind === 'secrets') return <SecretsConfigFigure />;
-  if (kind === 'previews') return <PrPreviewsFigure />;
-  if (kind === 'objects') return <ObjectStorageFigure />;
+  const field = HOSTING_FIELDS[kind];
+  if (field) return <FieldFigure field={field} />;
   // Scale to zero, drawn as a field of parked instances: the pointer plays the
   // request, the pillars around it wake, and they settle back when it leaves.
   // Touch screens get an ambient drift, reduced motion the resting frame.

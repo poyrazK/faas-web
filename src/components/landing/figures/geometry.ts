@@ -1,152 +1,343 @@
 /**
- * The maths behind the Hosting figures, as plain functions of the pointer.
+ * Pure maths for the Hosting figures. Each figure is a dense texture in the
+ * Pillars recipe: a field of small marks, batched into a few paths per row,
+ * that answers the pointer with one soft radial falloff and settles back.
  *
- * Every figure lives in a 420 × 200 frame. `px` and `py` are the pointer in
- * that frame and `active` runs 0 → 1 while the figure is acted on, so every
- * function returns the figure's resting frame when `active` is 0.
- * Coordinates come from docs/superpowers/specs/2026-10-30-hosting-figures-design.md.
+ * A field is `{ rows, row(r, x, y, a) }`: given the spring-smoothed pointer
+ * (x, y) in the 420 × 200 frame and `a` (0 at rest, 1 while acted on), `row`
+ * returns that row's path data keyed by layer. At `a = 0` every field draws
+ * its resting frame, wherever the pointer was.
  */
+export type Layer = {
+  /** The key `row` returns this layer's path data under. */
+  key: string;
+  fill?: string;
+  stroke?: string;
+  opacity?: number;
+};
 
-export const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
-export const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+export type Field = {
+  /** The figure's `data-figure` name. */
+  name: string;
+  rows: number;
+  /** Drawn in this order within each row, rows top to bottom. */
+  layers: readonly Layer[];
+  row: (r: number, x: number, y: number, a: number) => Record<string, string>;
+};
 
-// Source deploys: loose pieces become one image, a snapshot, then live.
+const BRAND = 'var(--brand)';
+const SURFACE = 'var(--background)';
 
-export const DEPLOY_REST: readonly [number, number][] = [
-  [28, 34],
-  [96, 52],
-  [52, 74],
-  [118, 88],
-  [34, 104],
-  [84, 118],
-  [130, 40],
-  [60, 134],
-  [104, 150],
-  [24, 160],
-  [142, 124],
-  [72, 96],
-];
+const RADIUS = 70;
 
-export const deployProgress = (px: number, active: number) => active * clamp01((px - 40) / 300);
+export const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
-export function deployBar(i: number, p: number) {
-  const [rx, ry] = DEPLOY_REST[i];
-  return { x: lerp(rx, 230, p), y: lerp(ry, 46 + 9 * i, p), fillOpacity: 0.25 + 0.75 * p };
+const n = (v: number) => +v.toFixed(2);
+
+/** How strongly the pointer at (x, y) acts on a point at (x0, y0): Pillars' 1.5 falloff. */
+export function influence(
+  x0: number,
+  y0: number,
+  x: number,
+  y: number,
+  a: number,
+  radius = RADIUS
+) {
+  if (a < 0.001) return 0;
+  const d = Math.hypot(x0 - x, y0 - y) / radius;
+  return d >= 1 ? 0 : a * Math.pow(1 - d, 1.5);
 }
 
-/** 0 → 1 over the last part of progress; `(1 - start)` cancels exactly at p = 1. */
-const tail = (p: number, start: number) => clamp01((p - start) / (1 - start));
-export const deployFrame = (p: number) => tail(p, 0.66);
-export const deployDotRadius = (p: number) => 6 * tail(p, 0.85);
+/** Deterministic 0..1 noise per cell: organic, but identical on every render. */
+export function hash(i: number, j: number) {
+  const s = Math.sin(i * 127.1 + j * 311.7) * 43758.5453;
+  return s - Math.floor(s);
+}
 
-/** The rectangle's perimeter, clockwise from its top-left corner, drawn up to `t`. */
-export function perimeterPath(x: number, y: number, w: number, h: number, t: number): string {
-  const corners: [number, number][] = [
-    [x + w, y],
-    [x + w, y + h],
-    [x, y + h],
-    [x, y],
-  ];
-  const edges = [w, h, w, h];
-  let left = clamp01(t) * 2 * (w + h);
-  let d = `M ${x} ${y}`;
-  let from: [number, number] = [x, y];
-  for (let i = 0; i < 4 && left > 1e-9; i++) {
-    const [tx, ty] = corners[i];
-    const part = Math.min(1, left / edges[i]);
-    const px = from[0] + (tx - from[0]) * part;
-    const py = from[1] + (ty - from[1]) * part;
-    d += ` L ${+px.toFixed(2)} ${+py.toFixed(2)}`;
-    left -= edges[i];
-    from = [tx, ty];
+/** A horizontal capsule (fully rounded rectangle) as a path segment. */
+export function capsule(x: number, y: number, w: number, h: number) {
+  const r = Math.min(h, w) / 2;
+  const body = Math.max(0, w - 2 * r);
+  return `M${n(x + r)} ${n(y)}h${n(body)}a${n(r)} ${n(r)} 0 0 1 0 ${n(2 * r)}h${n(-body)}a${n(r)} ${n(r)} 0 0 1 0 ${n(-2 * r)}z`;
+}
+
+/** A circle as a path segment; nothing when it has no radius. */
+export function circle(cx: number, cy: number, r: number) {
+  if (r <= 0) return '';
+  return `M${n(cx - r)} ${n(cy)}a${n(r)} ${n(r)} 0 1 0 ${n(2 * r)} 0a${n(r)} ${n(r)} 0 1 0 ${n(-2 * r)} 0`;
+}
+
+/** An axis-aligned rectangle as a path segment; nothing when it is empty. */
+export function box(x: number, y: number, w: number, h: number) {
+  if (w <= 0 || h <= 0) return '';
+  return `M${n(x)} ${n(y)}h${n(w)}v${n(h)}h${n(-w)}z`;
+}
+
+/** A quadrilateral through four corners as a path segment. */
+function quad(
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  cx: number,
+  cy: number,
+  dx: number,
+  dy: number
+) {
+  return `M${n(ax)} ${n(ay)}L${n(bx)} ${n(by)}L${n(cx)} ${n(cy)}L${n(dx)} ${n(dy)}Z`;
+}
+
+// Source deploys: a flow field of short strokes leaning along a smooth current.
+// Near the pointer they align to the deploy direction (right), longer and bolder.
+
+/** The resting current, an angle in radians; smooth, so neighbours lean together. */
+export function current(x: number, y: number) {
+  return (
+    1.1 * Math.sin(x * 0.019 + 1.4 * Math.sin(y * 0.031)) + 0.7 * Math.cos(y * 0.026 - x * 0.012)
+  );
+}
+
+export function deployStroke(cx: number, cy: number, x: number, y: number, a: number) {
+  const k = influence(cx, cy, x, y, a, 100);
+  return { angle: current(cx, cy) * (1 - k), length: 5.5 + 4 * k, width: 1.2 + 2 * k };
+}
+
+export const DEPLOYS: Field = {
+  name: 'source-deploys',
+  rows: 20,
+  layers: [{ key: 'strokes', fill: BRAND }],
+  row(r, x, y, a) {
+    let strokes = '';
+    const cy = 5 + r * 10;
+    for (let c = 0; c < 42; c++) {
+      const cx = 5 + c * 10;
+      const { angle, length, width } = deployStroke(cx, cy, x, y, a);
+      const [ux, uy] = [(Math.cos(angle) * length) / 2, (Math.sin(angle) * length) / 2];
+      const [ox, oy] = [(-Math.sin(angle) * width) / 2, (Math.cos(angle) * width) / 2];
+      strokes += quad(
+        cx - ux + ox,
+        cy - uy + oy,
+        cx + ux + ox,
+        cy + uy + oy,
+        cx + ux - ox,
+        cy + uy - oy,
+        cx - ux - ox,
+        cy - uy - oy
+      );
+    }
+    return { strokes };
+  },
+};
+
+// Isolated compute: a dense isometric field of separate microVM boxes, offset
+// every other row and drawn back to front. The pointer lifts the boxes near it.
+
+const BOX_W = 16;
+const BOX_H = 8;
+const BOX_STEP_X = 30;
+const BOX_STEP_Y = 17;
+const BOX_BODY = 96; // bodies hang behind the rows in front, so only tops and edges show
+const BOX_PEAK = 24;
+const BOX_REACH = 3.2; // in cells
+
+const boxX = (r: number, c: number) =>
+  c * BOX_STEP_X + (r % 2 ? BOX_STEP_X / 2 : 0) - BOX_STEP_X / 2;
+const boxY = (r: number) => r * BOX_STEP_Y - BOX_H;
+
+export function computeLift(r: number, c: number, x: number, y: number, a: number) {
+  if (a < 0.001) return 0;
+  const d = Math.hypot((boxX(r, c) - x) / BOX_STEP_X, (boxY(r) - y) / BOX_STEP_Y);
+  return d >= BOX_REACH ? 0 : BOX_PEAK * a * Math.pow(1 - d / BOX_REACH, 1.5);
+}
+
+export const COMPUTE: Field = {
+  name: 'isolated-compute',
+  rows: 14,
+  layers: [
+    { key: 'left', fill: SURFACE, stroke: BRAND },
+    { key: 'right', fill: SURFACE, stroke: BRAND },
+    { key: 'top', fill: BRAND, stroke: BRAND },
+  ],
+  row(r, x, y, a) {
+    let left = '';
+    let right = '';
+    let top = '';
+    const hw = BOX_W / 2;
+    const hh = BOX_H / 2;
+    for (let c = 0; c < 16; c++) {
+      const X = boxX(r, c);
+      const Y = boxY(r) - computeLift(r, c, x, y, a);
+      top += quad(X, Y - hh, X + hw, Y, X, Y + hh, X - hw, Y);
+      left += quad(X - hw, Y, X, Y + hh, X, Y + hh + BOX_BODY, X - hw, Y + BOX_BODY);
+      right += quad(X, Y + hh, X + hw, Y, X + hw, Y + BOX_BODY, X, Y + hh + BOX_BODY);
+    }
+    return { left, right, top };
+  },
+};
+
+// Custom domains: a route mesh of hairline streets with a ring at every
+// junction. Near the pointer junctions seal and the streets thicken into routes.
+
+const MESH = 20;
+const RING = 2.6;
+const STREET = 0.6;
+
+function routeWidth(k: number) {
+  const t = STREET + 1.6 * k;
+  return t > STREET + 0.02 ? t : 0;
+}
+
+export const DOMAINS: Field = {
+  name: 'custom-domains',
+  rows: 10,
+  layers: [
+    { key: 'street', fill: BRAND, opacity: 0.32 },
+    { key: 'route', fill: BRAND },
+    { key: 'ring', fill: SURFACE, stroke: BRAND },
+    { key: 'dot', fill: BRAND },
+  ],
+  row(r, x, y, a) {
+    let street = '';
+    let route = '';
+    let ring = '';
+    let dot = '';
+    const cy = 10 + r * MESH;
+    for (let c = 0; c < 21; c++) {
+      const cx = 10 + c * MESH;
+      const k = influence(cx, cy, x, y, a, 85);
+      ring += circle(cx, cy, RING);
+      dot += circle(cx, cy, (RING + 0.6) * k);
+      if (c < 20) {
+        const t = routeWidth((k + influence(cx + MESH, cy, x, y, a, 85)) / 2);
+        street += box(cx, cy - STREET / 2, MESH, STREET);
+        route += box(cx, cy - t / 2, MESH, t);
+      }
+      if (r < 9) {
+        const t = routeWidth((k + influence(cx, cy + MESH, x, y, a, 85)) / 2);
+        street += box(cx - STREET / 2, cy, STREET, MESH);
+        route += box(cx - t / 2, cy, t, MESH);
+      }
+    }
+    return { street, route, ring, dot };
+  },
+};
+
+// Logs & traces: a barcode of hairline spans, row after row, that swell into
+// solid bars where the pointer reads.
+
+const TRACE_GAP = 3;
+
+/** Each row's spans as [x, width], tiling the row edge to edge. */
+export const TRACE_SPANS = Array.from({ length: 10 }, (_, r) => {
+  const spans: [number, number][] = [];
+  let x = -hash(r, 99) * 20;
+  for (let i = 0; x < 420 + TRACE_GAP; i++) {
+    const w = 4 + Math.pow(hash(r, i), 2) * 44;
+    spans.push([x, w]);
+    x += w + TRACE_GAP;
   }
-  return d;
+  return spans;
+});
+
+export const spanHeight = (k: number) => 1 + 9 * k;
+
+export const TRACES: Field = {
+  name: 'logs-traces',
+  rows: 10,
+  layers: [{ key: 'spans', fill: BRAND }],
+  row(r, x, y, a) {
+    let spans = '';
+    const cy = 10 + r * 20;
+    for (const [sx, w] of TRACE_SPANS[r]) {
+      const h = spanHeight(influence(sx + w / 2, cy, x, y, a, 85));
+      spans += box(sx, cy - h / 2, w, h);
+    }
+    return { spans };
+  },
+};
+
+// Secrets & config: a fine dot matrix whose dots fuse into sealed bands.
+
+export const sealSize = (k: number) => ({ w: 2.4 + 8.2 * k, h: 2.4 + 3.6 * k });
+
+export const SECRETS: Field = {
+  name: 'secrets-config',
+  rows: 20,
+  layers: [{ key: 'dots', fill: BRAND }],
+  row(r, x, y, a) {
+    let dots = '';
+    const cy = 5 + r * 10;
+    for (let c = 0; c < 42; c++) {
+      const cx = 5 + c * 10;
+      const { w, h } = sealSize(influence(cx, cy, x, y, a, 75));
+      dots += capsule(cx - w / 2, cy - h / 2, w, h);
+    }
+    return { dots };
+  },
+};
+
+// PR previews: parallel lines that part around the pointer, opening a preview
+// beside the main line. Lines above go up, lines below go down; none cross.
+
+const BRANCH = 22;
+
+export function branchY(sx: number, y0: number, x: number, y: number, a: number) {
+  const k = influence(sx, y0, x, y, a, 90);
+  return y0 + BRANCH * k * Math.tanh((y0 - y) / 6);
 }
 
-// Isolated compute: one cell reacts, its neighbours stay still.
+export const PREVIEWS: Field = {
+  name: 'pr-previews',
+  rows: 20,
+  layers: [{ key: 'line', stroke: BRAND }],
+  row(i, x, y, a) {
+    const y0 = 5 + i * 10;
+    let line = '';
+    for (let sx = -6; sx <= 426; sx += 6)
+      line += `${line ? 'L' : 'M'}${n(sx)} ${n(branchY(sx, y0, x, y, a))}`;
+    return { line };
+  },
+};
 
-export const CELLS: readonly { x: number; y: number }[] = Array.from({ length: 18 }, (_, i) => ({
-  x: 17 + 66 * (i % 6),
-  y: 18 + 58 * Math.floor(i / 6),
-}));
+// Object storage: a skyline of buckets, each a column of slots with objects
+// stacked from the floor. Near the pointer more objects drop in.
 
-/** Keyboard focus point: the centre of column 3, row 1; the grid's own centre is a gap. */
-export const COMPUTE_FOCUS = [243, 100] as const;
+export const STORAGE_ROWS = 16;
+export const STORAGE_RISE = 7;
+const SLOT_STEP = 12;
+const SLOT = 8;
 
-export function cellAt(px: number, py: number): number {
-  return CELLS.findIndex((c) => px >= c.x && px <= c.x + 56 && py >= c.y && py <= c.y + 48);
+/** Resting stack height per bucket, in slots: a smooth skyline with a little grain. */
+export const STORAGE_LEVELS = Array.from({ length: 35 }, (_, c) =>
+  Math.max(
+    0,
+    Math.round(2.6 + 3.2 * Math.sin(c * 0.36) * Math.cos(c * 0.13 + 1) + 1.4 * (hash(c, 3) - 0.5))
+  )
+);
+
+/** How full a slot is (0..1), counted from the floor, given the pointer's pull on its bucket. */
+export function slotFill(c: number, fromFloor: number, k: number) {
+  return clamp(STORAGE_LEVELS[c] + STORAGE_RISE * k - fromFloor, 0, 1);
 }
 
-export function cellCore(index: number, hovered: number, active: number) {
-  const k = index === hovered ? active : 0;
-  return { size: lerp(12, 30, k), stroke: lerp(1, 2.5, k) };
-}
-
-// Custom domains: a path that completes and locks.
-
-export const RINGS: readonly number[] = [150, 214, 278];
-export const domainFill = (px: number, active: number) => active * clamp01((px - 84) / 260);
-export const ringRadius = (cx: number, px: number, active: number) =>
-  14 + 6 * active * Math.max(0, 1 - Math.abs(px - cx) / 48);
-export const shackleLift = (fill: number) => -6 * (1 - clamp01((fill - 0.9) / 0.1));
-
-// Logs & traces: a cursor reads one request.
-
-export const SPANS: readonly [number, number, number][] = [
-  [24, 24, 300],
-  [48, 46, 180],
-  [72, 68, 96],
-  [132, 90, 120],
-  [160, 112, 60],
-  [232, 134, 84],
-  [256, 156, 40],
-];
-export const traceCursor = (px: number) => Math.min(324, Math.max(24, px));
-export function spanCrossed(i: number, cursor: number): boolean {
-  const [x, , w] = SPANS[i];
-  return cursor >= x && cursor <= x + w;
-}
-
-// Secrets & config: values stay sealed.
-
-export const ROWS = 6;
-export const rowCentre = (r: number) => 30 + 28 * r;
-export const rowSeal = (r: number, py: number, active: number) =>
-  active * Math.max(0, 1 - Math.abs(py - rowCentre(r)) / 14);
-/** Keyboard focus point: row 2's seal; the frame's centre falls between rows 2 and 3. */
-export const SECRETS_FOCUS = [223, 86] as const;
-export const dotX = (d: number, seal: number) => lerp(132 + 26 * d, 223, seal);
-
-// PR previews: a branch forks and merges.
-
-export const COMMITS: readonly number[] = Array.from({ length: 9 }, (_, k) => 44 + 42 * k);
-export const branchCommit = (px: number) =>
-  44 + 42 * Math.round(Math.min(8, Math.max(0, (px - 44) / 42)));
-/** Right of x 300 the node forks left, or it would leave the frame. */
-export const branchNodeX = (cx: number) => (cx > 300 ? cx - 40 : cx + 40);
-export const branchHeight = (active: number) => 70 * active;
-export function branchPath(cx: number, active: number): string {
-  const h = branchHeight(active);
-  const nx = branchNodeX(cx);
-  const top = +(140 - h).toFixed(2);
-  return `M ${cx} 140 C ${cx} ${+(140 - 0.6 * h).toFixed(2)} ${nx} ${top} ${nx} ${top}`;
-}
-
-// Object storage: objects leave the runtime for a closed bucket.
-
-export const OBJECTS = 24;
-export const objectRest = (i: number): [number, number] => [
-  36 + 13 * (i % 6),
-  68 + 16 * Math.floor(i / 6),
-];
-export const objectSlot = (i: number): [number, number] => [
-  290 + 12 * (i % 8),
-  160 - 12 * Math.floor(i / 8),
-];
-export const storeFill = (px: number, active: number) => active * clamp01((px - 24) / 360);
-export function objectPos(i: number, fill: number): [number, number] {
-  const q = clamp01(OBJECTS * fill - i);
-  const [rx, ry] = objectRest(i);
-  const [sx, sy] = objectSlot(i);
-  return [lerp(rx, sx, q), lerp(ry, sy, q)];
-}
+export const STORAGE: Field = {
+  name: 'object-storage',
+  rows: STORAGE_ROWS,
+  layers: [
+    { key: 'slot', stroke: BRAND, opacity: 0.35 },
+    { key: 'object', fill: BRAND },
+  ],
+  row(r, x, y, a) {
+    let slot = '';
+    let object = '';
+    const top = 4 + r * SLOT_STEP + (SLOT_STEP - SLOT) / 2;
+    for (let c = 0; c < STORAGE_LEVELS.length; c++) {
+      const left = c * SLOT_STEP + (SLOT_STEP - SLOT) / 2;
+      // A bucket answers to the pointer's distance across, not up and down.
+      const fill = slotFill(c, STORAGE_ROWS - 1 - r, influence(left + SLOT / 2, y, x, y, a));
+      if (fill < 1) slot += box(left, top, SLOT, SLOT);
+      object += box(left, top + SLOT * (1 - fill), SLOT, SLOT * fill);
+    }
+    return { slot, object };
+  },
+};

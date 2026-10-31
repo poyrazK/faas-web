@@ -209,8 +209,6 @@ export function FigureFrame({
           aria-hidden="true"
           focusable="false"
           fill="none"
-          stroke="var(--brand)"
-          strokeWidth={1}
         >
           {children}
         </svg>
