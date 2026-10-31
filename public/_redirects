@@ -3,6 +3,8 @@
 # cookie while keeping the API implementation behind the edge.
 /cli-auth    https://api.gregale.dev/cli-auth   200
 /status/slo.json    https://api.gregale.dev/status/slo.json   200
+# RFC 9116: security.txt is canonical on the apex; apid serves the one copy.
+/.well-known/security.txt    https://api.gregale.dev/.well-known/security.txt   200
 /status/incidents/*    /status/incidents/index.html   200
 
 # Docs paths the API and CLI emit that are published under another slug

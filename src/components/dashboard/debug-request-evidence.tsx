@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { useCopy } from '@/components/ui/copy-button';
+import { CopyableId } from '@/components/ui/copyable-id';
 import { Pill } from '@/components/dashboard/resource-table';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import { useDebugRequestEvidence, useDeployment } from '@/lib/api/queries';
@@ -98,7 +99,14 @@ export function DebugRequestEvidence({
                 <dl className="grid gap-3 text-xs sm:grid-cols-2">
                   {[
                     ['App', slug],
-                    ['Request', data.request.id],
+                    [
+                      'Request',
+                      data.request.id ? (
+                        <CopyableId value={data.request.id} label="request ID" full />
+                      ) : (
+                        'Not reported'
+                      ),
+                    ],
                     ['Release / deployment', data.request.deployment_id || 'Not reported'],
                     [
                       'Build',
@@ -109,7 +117,14 @@ export function DebugRequestEvidence({
                             ? 'Build context unavailable'
                             : 'Not reported'),
                     ],
-                    ['Trace', data.request.trace_id || 'Not reported'],
+                    [
+                      'Trace',
+                      data.request.trace_id ? (
+                        <CopyableId value={data.request.trace_id} label="trace ID" full />
+                      ) : (
+                        'Not reported'
+                      ),
+                    ],
                     ['Received', data.request.received_at],
                     ['Requests represented', data.request.count],
                     [
@@ -121,7 +136,7 @@ export function DebugRequestEvidence({
                           : 'Not reported',
                     ],
                   ].map(([label, value]) => (
-                    <div key={label}>
+                    <div key={String(label)}>
                       <dt className="text-muted-foreground">{label}</dt>
                       <dd className="mt-1 break-words font-mono">{value}</dd>
                     </div>

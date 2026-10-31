@@ -4,18 +4,18 @@ import {
   AnalyticsWindowSelector,
   type AccountAnalyticsSearch,
 } from '@/components/dashboard/account-analytics';
+import { ANALYTICS_GROUPS } from '@/components/dashboard/app-analytics';
 import { PageHeader } from '@/components/dashboard/primitives';
 import { WakeDrawer } from '@/components/dashboard/wake-drawer';
 import { consoleHead } from '@/lib/seo';
 
-const GROUPS = ['route', 'country', 'referrer_host', 'ua_family', 'status'] as const;
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as const;
 
 export const Route = createFileRoute('/dashboard/analytics')({
   component: AnalyticsPage,
   head: () => consoleHead('analytics'),
   validateSearch: (search: Record<string, unknown>): AccountAnalyticsSearch => {
-    const group = GROUPS.find((value) => value === search.group);
+    const group = ANALYTICS_GROUPS.find(({ value }) => value === search.group)?.value;
     const method = METHODS.find((value) => value === search.method);
     const route =
       typeof search.route === 'string' && search.route.trim() ? search.route : undefined;

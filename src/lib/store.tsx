@@ -55,7 +55,8 @@ interface DataValue {
   workflowsForProject: (projectId: string) => Workflow[];
   addWorkflow: (input: NewWorkflowInput) => Promise<Workflow>;
   /** Rolls the app back to its previous deployment. */
-  redeploy: (id: string) => Promise<void>;
+  /** Resolves with the new deployment the rollback queued. */
+  redeploy: (id: string) => Promise<{ id: string }>;
   /** Refetches apps, metrics, and deployments. */
   refresh: () => void;
 }
@@ -152,9 +153,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       // The console's "redeploy" is a rollback to the previous deployment.
       // Creating a *new* deployment needs an image or a source ref, which is
       // the CLI's and GitHub integration's job, not a button in a dashboard.
-      redeploy: async (id) => {
-        await rollback.mutateAsync(id);
-      },
+      redeploy: (id) => rollback.mutateAsync(id),
 
       refresh: () => {
         void qc.invalidateQueries({ queryKey: keys.apps });

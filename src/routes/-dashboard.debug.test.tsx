@@ -79,6 +79,12 @@ const fixtures = vi.hoisted(() => ({
     last_detected_at: '2026-09-11T09:00:00Z',
   },
 }));
+// The capability registry is a query; these pages render without a client here.
+vi.mock('@/lib/api/capabilities', async (original) => ({
+  ...(await original<typeof import('@/lib/api/capabilities')>()),
+  useCapabilityRegistry: () => ({ query: { data: undefined }, phase: 'loading' }),
+  useCapabilityAccess: () => ({ access: 'on', refresh: () => {} }),
+}));
 vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { plan: 'pro' }, loading: false }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn() }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));

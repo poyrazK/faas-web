@@ -133,6 +133,55 @@ export const DOC_SECTIONS: DocSection[] = [
         summary:
           'Sync local code to a cloud dev environment with a stable URL, live patches, and debugging.',
       },
+      {
+        slug: 'apps',
+        source: 'docs/apps.md',
+        title: 'Apps',
+        summary:
+          'Create, configure, scale, rename and restore apps, and open a shell in a fresh VM.',
+      },
+      {
+        slug: 'functions',
+        source: 'docs/functions.md',
+        title: 'Functions and runtimes',
+        summary: 'Function handlers, streaming, budgets, runtimes and database requests.',
+      },
+      {
+        slug: 'multi-service',
+        source: 'docs/multi-service-apps.md',
+        title: 'Multi-service apps',
+        summary: 'Deploy a Compose project or several services as one project.',
+      },
+      {
+        slug: 'jobs',
+        source: 'docs/jobs.md',
+        title: 'Jobs',
+        summary: 'Run-to-completion tasks from an OCI image, on demand or on a schedule.',
+      },
+      {
+        slug: 'crons',
+        source: 'docs/crons.md',
+        title: 'Crons',
+        summary: 'Call a path on your app on a schedule, waking it when needed.',
+      },
+      {
+        slug: 'event-driven',
+        source: 'docs/event-driven.md',
+        title: 'Event-driven workloads',
+        summary: 'Async invokes, workflows, delayed tasks and deployment webhooks.',
+      },
+      {
+        slug: 'code-workflows',
+        source: 'docs/code-workflows.md',
+        title: 'Code-first workflows',
+        summary: 'Durable workflows written as ordinary async functions.',
+      },
+      {
+        slug: 'networking',
+        source: 'docs/networking.md',
+        title: 'Networking',
+        summary: 'Outbound rules, WebSockets, gRPC, internal services and service bindings.',
+      },
     ],
   },
   {
@@ -185,12 +234,37 @@ export const DOC_SECTIONS: DocSection[] = [
         summary:
           'Consume queue messages from a worker without an HTTP listener: lease, ack, nack, extend.',
       },
+      {
+        slug: 'secrets',
+        source: 'docs/secrets.md',
+        title: 'Delivered secrets',
+        summary: 'Set, rotate and hot-reload secrets without restarting the app.',
+      },
+      {
+        slug: 'auth',
+        source: 'docs/auth.md',
+        title: 'Authentication',
+        summary: 'CLI login, scoped tokens for CI, MFA and OIDC token exchange.',
+      },
+      {
+        slug: 'edge-rules',
+        source: 'docs/edge-rules.md',
+        title: 'Edge rules',
+        summary: 'Redirects, headers, rate limits, IP and geo rules at the edge.',
+      },
     ],
   },
   {
     title: 'Observe',
     blurb: 'What the platform can tell you about a request.',
     entries: [
+      {
+        slug: 'logs',
+        source: 'docs/logs.md',
+        title: 'Logs',
+        summary:
+          'Live tail, archived logs of parked instances, retention by plan, filters and log drains.',
+      },
       {
         slug: 'tracing',
         source: 'docs/tracing.md',
@@ -211,6 +285,12 @@ export const DOC_SECTIONS: DocSection[] = [
         title: 'Trace edge rules',
         summary:
           'Replay a request against an app’s edge rules from a JSON scenario to see what applies.',
+      },
+      {
+        slug: 'alerts',
+        source: 'docs/alerts.md',
+        title: 'Alerts',
+        summary: 'Alert presets, notification channels and anomaly rules.',
       },
     ],
   },
@@ -284,6 +364,30 @@ export const DOC_SECTIONS: DocSection[] = [
         title: 'API monetization',
         summary:
           'Beta: meter, price, and invoice your API’s own customers with rate cards and statements.',
+      },
+      {
+        slug: 'billing',
+        source: 'docs/billing.md',
+        title: 'Billing',
+        summary: 'Spend caps, usage costs, budgets and invoice exports.',
+      },
+      {
+        slug: 'errors',
+        source: 'docs/errors.md',
+        title: 'Errors',
+        summary: 'Error codes, what they mean and what to do next.',
+      },
+      {
+        slug: 'sdks',
+        source: 'docs/sdks.md',
+        title: 'SDKs',
+        summary: 'Install the Node, Python and Go SDKs.',
+      },
+      {
+        slug: 'agents',
+        source: 'docs/agents.md',
+        title: 'Coding agents',
+        summary: 'Use Gregale from Claude Code, Codex, Cursor and other agents.',
       },
     ],
   },
