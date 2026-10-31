@@ -2669,7 +2669,11 @@ route('GET', '/v1/apps/{slug}/debug/requests/{req_id}/evidence', ({ params }) =>
       status: 500,
       latency_ms: 2400,
       count: 1,
-      cold_boot: false,
+      // Even-led request ids woke the app, so the debugger can open a wake.
+      cold_boot: parseInt(params.req_id[0], 16) % 2 === 0,
+      ...(parseInt(params.req_id[0], 16) % 2 === 0
+        ? { wake_id: `wk-${params.req_id.slice(0, 12)}` }
+        : {}),
       trace_id: traceId,
       received_at: db.iso(120_000),
     },
@@ -7902,30 +7906,149 @@ route('GET', '/v1/apps/{slug}/errors/{fingerprint}/first', () => ({
   },
   redactions_applied: ['authorization', 'cookie'],
 }));
+// Canonical ADR-064 frames, one stable story per wake id: recent-wake rows
+// carry random ids, and each must open the same scenario every time.
+const WAKE_SCENARIOS = [
+  'restore',
+  'restore',
+  'restore',
+  'fetched',
+  'cold_boot',
+  'thaw',
+  'fallback',
+  'failed',
+  'stalled',
+] as const;
+function wakeScenario(id: string) {
+  let h = 0;
+  for (const c of id) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return WAKE_SCENARIOS[h % WAKE_SCENARIOS.length];
+}
+function mockRestoreBreakdown(fetched: boolean) {
+  return {
+    lease_acquire_ms: 2,
+    env_prepare_ms: 1,
+    pre_network_ms: 0,
+    setup_network_ms: 3,
+    restore_gate_wait_ms: 0,
+    chroot_ms: 4,
+    materialize_mem_ms: 12,
+    materialize_vmstate_ms: 2,
+    resolve_images_ms: fetched ? 640 : 6,
+    stage_drives_ms: 9,
+    stage_pre_boot_files_ms: 7,
+    stage_snapshot_ms: 3,
+    helper_ms: 5,
+    start_jailer_ms: 11,
+    bind_tun_ms: 8,
+    load_snapshot_ms: 142,
+    resume_hook_ms: 14,
+    wait_ready_ms: 40,
+    total_ms: fetched ? 936 : 302,
+    resolve_artifacts: [
+      { artifact: 'kernel', source: 'cache_hit', duration_ms: 1, bytes: 12_000_000 },
+      { artifact: 'base', source: 'backend_local', duration_ms: 2, bytes: 210_000_000 },
+      fetched
+        ? { artifact: 'main', source: 'materialized', duration_ms: 636, bytes: 480_000_000 }
+        : { artifact: 'main', source: 'cache_hit', duration_ms: 3, bytes: 480_000_000 },
+    ],
+  };
+}
 route('GET', '/v1/apps/{slug}/wakes/{wake_id}/timeline', ({ params }) => {
+  if (process.env.MOCK_PLAN === 'free')
+    throw new Problem(
+      402,
+      'plan_per_app_metrics_not_allowed',
+      'the free plan does not include per-app metrics; upgrade to Hobby or above.'
+    );
+  const a = app(params.slug);
+  const scenario = wakeScenario(params.wake_id);
   const t0 = Date.now() - 3600e3;
-  const frames: [number, string][] = [
-    [0, 'wake.requested'],
-    [4, 'admission.granted'],
-    [9, 'snapshot.located'],
-    [31, 'restore.started'],
-    [212, 'restore.completed'],
-    [219, 'resume_hook.entropy_reseeded'],
-    [224, 'resume_hook.clock_stepped'],
-    [281, 'healthz.first_probe'],
-    [304, 'ready'],
-  ];
+  const frames: { dt: number; kind: string; actor: string; data: Record<string, unknown> }[] = [];
+  const f = (dt: number, kind: string, actor: string, data: Record<string, unknown> = {}) =>
+    frames.push({ dt, kind, actor, data: { wake_id: params.wake_id, app_id: a.id, ...data } });
+
+  if (scenario === 'cold_boot') {
+    f(0, 'wake.queue_accepted', 'schedd', { queue_wait_ms: 0 });
+    f(3, 'wake.admitted', 'schedd');
+    f(6, 'wake.boot_started', 'schedd', { method: 'cold_boot' });
+    f(905, 'wake.cold_boot_breakdown', 'vmmd', {
+      resolve_images_ms: 120,
+      chroot_ms: 5,
+      provision_ms: 40,
+      stage_runtime_ms: 30,
+      prepare_config_ms: 4,
+      helper_ms: 6,
+      start_jailer_ms: 12,
+      bind_tun_ms: 9,
+      cgroup_ms: 3,
+      write_config_ms: 2,
+      wait_ready_ms: 640,
+      quota_restore_ms: 1,
+      total_ms: 872,
+      resolve_artifacts: [
+        { artifact: 'base', source: 'direct', duration_ms: 120, bytes: 210_000_000 },
+      ],
+    });
+    f(906, 'wake.readiness_200', 'vmmd', { probe_count: 9, elapsed_ms: 640 });
+    f(914, 'wake.boot_completed', 'schedd', { method: 'cold_boot' });
+    f(940, 'wake.proxy_first_byte', 'gatewayd', { latency_ms: 940, proxy_latency_ms: 4 });
+  } else if (scenario === 'failed') {
+    f(0, 'wake.queue_accepted', 'schedd', { queue_wait_ms: 0 });
+    f(3, 'wake.admitted', 'schedd');
+    f(6, 'wake.boot_started', 'schedd', { method: 'restore' });
+    f(720, 'wake.boot_failed', 'schedd', { method: 'restore', reason: 'readiness_timeout' });
+  } else if (scenario === 'stalled') {
+    f(0, 'wake.queue_accepted', 'schedd', { queue_wait_ms: 12 });
+    f(4, 'wake.admitted', 'schedd');
+    f(8, 'wake.boot_started', 'schedd', { method: 'restore' });
+    f(30_000, 'wake.stalled', 'schedd', { reason: 'watchdog_timeout' });
+    f(30_001, 'state_transition', 'schedd', { from: 'BOOTING', to: 'FAILED' });
+    f(30_002, 'wake.cold_boot_cpu', 'vmmd', { startup_cpu_millicores: 1000 });
+  } else {
+    const fetched = scenario === 'fetched';
+    const bd = mockRestoreBreakdown(fetched);
+    const ready = 9 + bd.total_ms - 20;
+    f(0, 'wake.queue_accepted', 'schedd', { queue_wait_ms: 0 });
+    f(4, 'wake.admitted', 'schedd');
+    f(9, 'wake.boot_started', 'schedd', { method: 'restore' });
+    f(ready - 1, 'wake.restore_breakdown', 'vmmd', bd);
+    f(ready, 'wake.readiness_200', 'vmmd', { probe_count: 2, elapsed_ms: 40 });
+    f(ready + 8, 'wake.boot_completed', 'schedd', {
+      method: scenario === 'fallback' ? 'cold_boot' : 'restore',
+      ...(scenario === 'fallback' ? { restore_fallback_reason: 'after_restore_failed' } : {}),
+    });
+    f(ready + 29, 'wake.proxy_first_byte', 'gatewayd', {
+      latency_ms: ready + 29,
+      proxy_latency_ms: 3,
+      gateway_phases_ms: { route: 1, wake_wait: ready + 20 },
+    });
+    if (scenario === 'thaw') {
+      for (const at of [600_000, 1_200_000]) {
+        f(at, 'wake.thaw_breakdown', 'schedd', {
+          wake_reads_ms: 1,
+          thaw_reads_ms: 2,
+          vmmd_thaw_ms: 20,
+          publish_ms: 1,
+          after_publish_ms: 2,
+          total_ms: 26,
+        });
+        f(at + 30, 'wake.proxy_first_byte', 'gatewayd', { latency_ms: 30 });
+      }
+    }
+  }
+
   return {
     wake_id: params.wake_id,
-    app_id: db.apps[0]?.id ?? 'unknown',
-    events: frames.map(([dt, kind]) => ({
+    app_id: a.id,
+    events: frames.map(({ dt, kind, actor, data }) => ({
       at: new Date(t0 + dt).toISOString(),
       kind,
-      actor: 'schedd',
-      data: {},
+      actor,
+      data,
     })),
     next_cursor: '',
-    limit: 100,
+    limit: 1000,
   };
 });
 route('POST', '/v1/apps/{slug}/diff', async ({ params, body }) => {
