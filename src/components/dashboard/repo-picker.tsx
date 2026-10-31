@@ -1,4 +1,4 @@
-import { useId, useRef, useState, type ComponentProps } from 'react';
+import { useEffect, useId, useRef, useState, type ComponentProps } from 'react';
 import { Check, GitBranch, Lock, Search } from 'iconoir-react';
 import { Select } from '@/components/ui/field';
 import { FIELD } from '@/components/ui/field';
@@ -41,6 +41,7 @@ export function RepoPicker({
   variant = 'select',
   labelledBy,
   unlistedNote = 'not listed for this installation',
+  onAvailabilityChange,
   ...control
 }: {
   value: string;
@@ -50,11 +51,24 @@ export function RepoPicker({
   /** The list variant's group name: the id of the caller's visible label. */
   labelledBy?: string;
   unlistedNote?: string;
+  /**
+   * Whether the chosen repository can be deployed: false while the list loads
+   * and when the installation does not list it. A repository carried in from
+   * elsewhere (a compatibility check) may not be one the installation can see.
+   */
+  onAvailabilityChange?: (available: boolean) => void;
 } & ControlProps) {
   const { account } = useAuth();
   const installId = account?.github_install_id ? Number(account.github_install_id) : null;
   const repos = useInstallRepos(installId, account?.id);
   const list = repos.data ?? [];
+  // GitHub may report a repository's canonical casing; match it either way.
+  const selected = findRepo(list, value);
+  const missing =
+    Boolean(value.trim()) && Boolean(installId) && !repos.isPending && !repos.error && !selected;
+  useEffect(() => {
+    onAvailabilityChange?.(!(installId && repos.isPending) && !missing);
+  }, [onAvailabilityChange, installId, repos.isPending, missing]);
 
   if (!installId || repos.error || (!repos.isPending && list.length === 0)) {
     return (
@@ -97,6 +111,7 @@ export function RepoPicker({
   if (variant === 'list')
     return (
       <RepoList
+        missing={missing}
         repos={list}
         pending={repos.isPending}
         value={value}
@@ -108,30 +123,58 @@ export function RepoPicker({
     );
 
   return (
-    <Select
-      {...control}
-      aria-label={control.id ? undefined : 'Repository'}
-      value={value}
-      disabled={repos.isPending}
-      onChange={(e) => {
-        const repo = list.find((r) => r.full_name === e.target.value);
-        onChange(e.target.value, repo?.default_branch);
-      }}
-      className={cn('font-mono', className)}
-    >
-      <option value="">{repos.isPending ? 'Reading repositories…' : 'Choose a repository…'}</option>
-      {value && !list.some((r) => r.full_name === value) && (
-        <option value={value}>
-          {value} ({unlistedNote})
+    <div className="flex flex-col gap-2">
+      <Select
+        {...control}
+        aria-label={control.id ? undefined : 'Repository'}
+        value={selected?.full_name ?? value}
+        disabled={repos.isPending}
+        onChange={(e) => {
+          const repo = list.find((r) => r.full_name === e.target.value);
+          onChange(e.target.value, repo?.default_branch);
+        }}
+        className={cn('font-mono', className)}
+      >
+        <option value="">
+          {repos.isPending ? 'Reading repositories…' : 'Choose a repository…'}
         </option>
-      )}
-      {list.map((r) => (
-        <option key={r.id} value={r.full_name}>
-          {r.full_name}
-          {r.private ? ' (private)' : ''}
-        </option>
-      ))}
-    </Select>
+        {value && !selected && (
+          <option value={value}>
+            {value} ({unlistedNote})
+          </option>
+        )}
+        {list.map((r) => (
+          <option key={r.id} value={r.full_name}>
+            {r.full_name}
+            {r.private ? ' (private)' : ''}
+          </option>
+        ))}
+      </Select>
+      {missing && <NotListed />}
+    </div>
+  );
+}
+
+function findRepo<T extends { full_name: string }>(list: T[], value: string): T | undefined {
+  const wanted = value.trim().toLowerCase();
+  return wanted ? list.find((r) => r.full_name.toLowerCase() === wanted) : undefined;
+}
+
+/** The chosen repository is one the installation cannot see: how to fix it. */
+function NotListed() {
+  return (
+    <p role="status" className="text-[13px] leading-5 text-muted-foreground">
+      This repository is not listed in your GitHub installation. Choose an accessible repository or{' '}
+      <a
+        href="https://github.com/settings/installations"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-brand underline-offset-2 hover:underline"
+      >
+        update repository access on GitHub
+      </a>
+      , then reload this page.
+    </p>
   );
 }
 
@@ -142,6 +185,7 @@ type Repo = { id: number; full_name: string; default_branch: string; private: bo
 const FILTER_FROM = 7;
 const SHOWN = 5;
 function RepoList({
+  missing,
   repos,
   pending,
   value,
@@ -150,6 +194,7 @@ function RepoList({
   unlistedNote,
   control,
 }: {
+  missing: boolean;
   repos: Repo[];
   pending: boolean;
   value: string;
@@ -177,10 +222,10 @@ function RepoList({
   // A chosen repository the installation does not list (one an app is already
   // bound to, say) still shows, pinned, rather than leaving nothing chosen.
   const unlisted: Repo | undefined =
-    value && !repos.some((r) => r.full_name === value)
+    value && !findRepo(repos, value)
       ? { id: -1, full_name: value, default_branch: '', private: false }
       : undefined;
-  const chosen = repos.find((r) => r.full_name === value) ?? unlisted;
+  const chosen = findRepo(repos, value) ?? unlisted;
   const candidates = chosen ? [chosen, ...matches.filter((r) => r !== chosen)] : matches;
   const shown = long && !all ? candidates.slice(0, SHOWN) : candidates;
   const hidden = candidates.length - shown.length;
@@ -274,7 +319,7 @@ function RepoList({
                 // A row at the card's edge rounds with it, so its highlight
                 // follows the corner instead of being clipped by it.
                 i === 0 && !long && 'rounded-t-[11px]',
-                i === shown.length - 1 && hidden === 0 && 'rounded-b-[11px]'
+                i === shown.length - 1 && hidden === 0 && !missing && 'rounded-b-[11px]'
               )}
             >
               <input
@@ -284,7 +329,7 @@ function RepoList({
                 value={r.full_name}
                 aria-label={r.full_name}
                 aria-describedby={`${uid}-${r.id}-meta`}
-                checked={value === r.full_name}
+                checked={r === chosen}
                 onChange={() => onChange(r.full_name, r.default_branch || undefined)}
                 className="sr-only"
               />
@@ -331,6 +376,11 @@ function RepoList({
           </p>
         )}
       </div>
+      {missing && (
+        <div className="border-t border-border px-4 py-3">
+          <NotListed />
+        </div>
+      )}
       {hidden > 0 && (
         <div className="flex items-center justify-between gap-3 border-t border-border px-4 py-2 text-xs text-muted-foreground">
           <span>

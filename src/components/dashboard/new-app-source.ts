@@ -1,3 +1,4 @@
+import { defaultStringifySearch } from '@tanstack/react-router';
 import { resourceId } from '@/lib/resource-id';
 
 export interface DeploymentRecoveryContext {
@@ -42,6 +43,9 @@ export interface NewAppSearch {
   step?: 'source' | 'setup' | 'configure' | 'review';
   slug?: string;
   branch?: string;
+  /** A repository and exact ref carried in from a compatibility check. */
+  repo?: string;
+  ref?: string;
   recovery?: DeploymentRecoveryContext;
 }
 
@@ -67,8 +71,25 @@ export function validateNewAppSearch(search: Record<string, unknown>): NewAppSea
         : undefined,
     slug: typeof search.slug === 'string' ? search.slug : undefined,
     branch: typeof search.branch === 'string' ? search.branch : undefined,
+    repo: typeof search.repo === 'string' && search.repo.length <= 512 ? search.repo : undefined,
+    ref: typeof search.ref === 'string' && search.ref.length <= 200 ? search.ref : undefined,
     recovery: validateRecovery(search.recovery),
   };
+}
+
+/**
+ * New app's URL for a search, keeping only the wizard's own fields: what a
+ * full-page redirect (sign-in, OAuth, GitHub installation) must carry back.
+ */
+export function newAppPath(search: NewAppSearch, onboarding = false): string {
+  const params: Record<string, string> = {};
+  const validated = validateNewAppSearch(search as Record<string, unknown>);
+  for (const key of ['source', 'repo', 'ref', 'template', 'step', 'slug', 'branch'] as const) {
+    const value = validated[key];
+    if (value) params[key] = value;
+  }
+  const path = onboarding ? '/onboarding' : '/dashboard/apps/new';
+  return `${path}${defaultStringifySearch(params)}`;
 }
 const GITHUB_REPO = /^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/;
 const FORBIDDEN_REF_CHAR = /[\\`?%[\]{}<>"'*:^~]/;

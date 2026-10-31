@@ -10,6 +10,7 @@ import { LogView } from './log-view';
 import { FailurePanel } from './failure-panel';
 import { failureSummary } from './failure-summary';
 import { AppCallIt } from './call-it';
+import { FirstResponse } from './first-response';
 import { publicAppUrl } from '@/lib/app-url';
 import { cn } from '@/lib/utils';
 
@@ -375,6 +376,11 @@ export function DeploymentProgress({
         )}
       </div>
 
+      {/* An explicit request through the platform, separate from deployment
+          status: only when asked, and never counted as verification on failure. */}
+      {live && endpoint && appSlug && (
+        <FirstResponse key={`response-${deploymentId}`} slug={appSlug} endpoint={endpoint} />
+      )}
       {live && appSlug && <AppCallIt slug={appSlug} />}
     </section>
   );

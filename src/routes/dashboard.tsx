@@ -10,6 +10,7 @@ import { DashboardShell } from '@/components/dashboard/shell';
 import { useToast } from '@/components/ui/toast';
 import { hasOnboarded, hasOnboardingGitHubReturn, readSession, useAuth } from '@/lib/auth';
 import { validateSettingsSearch } from '@/components/dashboard/settings-search';
+import { validateNewAppSearch } from '@/components/dashboard/new-app-source';
 
 export const Route = createFileRoute('/dashboard')({
   // Guards run before the route loads, so a signed-out visitor never sees a
@@ -25,7 +26,11 @@ export const Route = createFileRoute('/dashboard')({
           validateSettingsSearch(location.search).section === 'integrations')) &&
       hasOnboardingGitHubReturn();
     if (!hasOnboarded() && !returningFromOnboardingGitHub) {
-      throw redirect({ to: '/onboarding' });
+      throw redirect({
+        to: '/onboarding',
+        search:
+          location.pathname === '/dashboard/apps/new' ? validateNewAppSearch(location.search) : {},
+      });
     }
   },
   component: DashboardLayout,

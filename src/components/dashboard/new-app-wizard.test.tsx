@@ -35,7 +35,10 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('@tanstack/react-router', () => ({
+vi.mock('@tanstack/react-router', async (importOriginal) => ({
+  // newAppPath writes the URL a GitHub connection returns to with the real one.
+  defaultStringifySearch: (await importOriginal<typeof import('@tanstack/react-router')>())
+    .defaultStringifySearch,
   Link: ({ children }: { children: ReactNode }) => <a>{children}</a>,
   useNavigate: () => vi.fn(),
 }));
@@ -54,19 +57,36 @@ vi.mock('@/lib/tar', async (importOriginal) => ({
 vi.mock('@/lib/api/logs', () => ({
   useLogStream: () => ({ lines: [], status: 'streaming', reason: null }),
 }));
-vi.mock('@/components/dashboard/repo-picker', () => ({
-  // The real picker forwards id/name/form/ARIA to its control; so does this,
-  // so label association is asserted through the wizard's own <label>.
-  RepoPicker: ({
-    onChange,
-    className: _className,
-    ...control
-  }: {
-    value: string;
-    onChange: (value: string) => void;
-    className?: string;
-  }) => <input {...control} onChange={(event) => onChange(event.target.value)} />,
-}));
+vi.mock('@/components/dashboard/repo-picker', async () => {
+  const { useEffect } = await import('react');
+  return {
+    // The real picker forwards id/name/form/ARIA to its control; so does this,
+    // so label association is asserted through the wizard's own <label>. Its
+    // installation lists every repository except team/hidden.
+    RepoPicker: ({
+      onChange,
+      onAvailabilityChange,
+      className: _className,
+      variant: _variant,
+      labelledBy: _labelledBy,
+      unlistedNote: _unlistedNote,
+      ...control
+    }: {
+      value: string;
+      onChange: (value: string) => void;
+      onAvailabilityChange?: (available: boolean) => void;
+      className?: string;
+      variant?: string;
+      labelledBy?: string;
+      unlistedNote?: string;
+    }) => {
+      useEffect(() => {
+        onAvailabilityChange?.(control.value !== 'team/hidden');
+      }, [control.value, onAvailabilityChange]);
+      return <input {...control} onChange={(event) => onChange(event.target.value)} />;
+    },
+  };
+});
 vi.mock('@/components/ui/toast', () => ({
   useToast: () => ({ toast: mocks.toast }),
 }));
@@ -119,6 +139,7 @@ vi.mock('@/lib/api/queries', () => ({
   useBindRepoFor: () => ({ mutateAsync: mocks.bindRepo }),
   useDeployFromRefFor: () => ({ mutateAsync: mocks.deployFromRef }),
   useDeployFunctionSourceFor: () => ({ mutateAsync: mocks.deployFunction }),
+  useInvokeApp: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useUpdateAppFor: () => ({ mutateAsync: mocks.updateApp }),
   useSourceRefScan: (input: unknown) => mocks.scan(input),
   // The wizard reads the starter catalog to prefill from a `?template=` name.
@@ -940,6 +961,27 @@ describe('NewAppWizard Git submission', () => {
     expect(posted?.get('return_to')).toBe('/dashboard/apps/new?source=git');
   });
 
+  // A repository and commit carried in from a compatibility check survive the
+  // round trip through GitHub, instead of returning to an empty Git page.
+  it('returns from GitHub with the checked repository and commit', async () => {
+    mocks.account.github_install_id = '';
+    let posted: FormData | undefined;
+    const submit = vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(function (
+      this: HTMLFormElement
+    ) {
+      posted = new FormData(this);
+    });
+    const sha = 'c'.repeat(40);
+    render(<NewAppWizard search={{ source: 'git', repo: 'team/api', ref: sha }} />);
+    expect(screen.getByText(`team/api@${sha}`)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Connect GitHub' }));
+    await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    expect(posted?.get('return_to')).toBe(
+      `/dashboard/apps/new?source=git&repo=team%2Fapi&ref=${sha}`
+    );
+  });
+
   it('keeps resource defaults available behind a named disclosure', async () => {
     const user = userEvent.setup();
     render(<NewAppWizard onboarding />);
@@ -1183,5 +1225,47 @@ describe('NewAppWizard function written here', () => {
     const tar = new TextDecoder().decode(await (archive as Blob).arrayBuffer());
     expect(tar).toContain('handler.py');
     expect(tar).toContain('async def handler(event, ctx):\n    return {}');
+  });
+});
+
+describe('NewAppWizard repository from a compatibility check', () => {
+  it('deploys the checked commit without binding auto-deploys to a SHA', async () => {
+    const user = userEvent.setup();
+    function Journey() {
+      const [search, setSearch] = useState<NewAppSearch>({
+        source: 'git',
+        repo: 'team/checked-api',
+        ref: 'a'.repeat(40),
+      });
+      return <NewAppWizard onboarding search={search} onSearchChange={setSearch} />;
+    }
+    render(<Journey />);
+    expect(screen.getByLabelText('Repository')).toHaveValue('team/checked-api');
+    expect(screen.getByLabelText('Ref')).toHaveValue('a'.repeat(40));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await nameApp(user, 'checked-api');
+    await user.click(screen.getByRole('button', { name: 'Review' }));
+    await user.click(await screen.findByRole('button', { name: 'Deploy app' }));
+    await waitFor(() =>
+      expect(mocks.deployFromRef).toHaveBeenCalledWith({
+        slug: 'demo-app',
+        repo: 'team/checked-api',
+        ref: 'a'.repeat(40),
+        format: 'tarball',
+      })
+    );
+    expect(mocks.bindRepo).toHaveBeenCalledWith(
+      expect.objectContaining({ repo: 'team/checked-api', branch: '' })
+    );
+  });
+
+  it('stops on a repository the installation cannot see, and says why', async () => {
+    const user = userEvent.setup();
+    render(<NewAppWizard onboarding search={{ source: 'git', repo: 'team/hidden' }} />);
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    const repository = screen.getByLabelText('Repository');
+    expect(repository).toHaveFocus();
+    expect(repository).toHaveAccessibleDescription(/installation cannot see this repository/);
+    expect(screen.queryByLabelText('App name')).not.toBeInTheDocument();
   });
 });

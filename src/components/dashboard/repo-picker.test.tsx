@@ -218,3 +218,66 @@ describe('the list variant', () => {
     expect(screen.getByRole('textbox', { name: 'Repository' })).toHaveValue('a/b');
   });
 });
+
+describe('a repository carried in from a compatibility check', () => {
+  const allowed = [{ id: 1, full_name: 'team/allowed', default_branch: 'main', private: false }];
+
+  it('matches it to the installation whatever its casing', () => {
+    mocks.data = allowed;
+    render(<RepoPicker value="Team/Allowed" onChange={vi.fn()} />);
+    expect(screen.getByRole('combobox', { name: 'Repository' })).toHaveValue('team/allowed');
+    expect(screen.queryByText(/not listed in your GitHub installation/)).not.toBeInTheDocument();
+  });
+
+  it('keeps an inaccessible one visible, says how to grant access, and reports it', () => {
+    mocks.data = allowed;
+    const onAvailabilityChange = vi.fn();
+    render(
+      <RepoPicker
+        value="team/checked"
+        onChange={vi.fn()}
+        onAvailabilityChange={onAvailabilityChange}
+      />
+    );
+    expect(screen.getByRole('combobox', { name: 'Repository' })).toHaveValue('team/checked');
+    expect(screen.getByRole('status')).toHaveTextContent(/not listed in your GitHub installation/);
+    expect(
+      screen.getByRole('link', { name: 'update repository access on GitHub' })
+    ).toHaveAttribute('href', 'https://github.com/settings/installations');
+    expect(onAvailabilityChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('reports an accessible one as available', () => {
+    mocks.data = allowed;
+    const onAvailabilityChange = vi.fn();
+    render(
+      <RepoPicker
+        value="team/allowed"
+        onChange={vi.fn()}
+        onAvailabilityChange={onAvailabilityChange}
+      />
+    );
+    expect(onAvailabilityChange).toHaveBeenLastCalledWith(true);
+  });
+
+  it('does the same in the list: the chosen one matched by casing, an unlisted one explained', () => {
+    mocks.data = allowed;
+    const onAvailabilityChange = vi.fn();
+    const { unmount } = render(
+      <RepoPicker variant="list" value="Team/Allowed" onChange={vi.fn()} />
+    );
+    expect(screen.getByRole('radio', { name: 'team/allowed' })).toBeChecked();
+    unmount();
+    render(
+      <RepoPicker
+        variant="list"
+        value="team/checked"
+        onChange={vi.fn()}
+        onAvailabilityChange={onAvailabilityChange}
+      />
+    );
+    expect(screen.getByRole('radio', { name: 'team/checked' })).toBeChecked();
+    expect(screen.getByRole('status')).toHaveTextContent(/not listed in your GitHub installation/);
+    expect(onAvailabilityChange).toHaveBeenLastCalledWith(false);
+  });
+});

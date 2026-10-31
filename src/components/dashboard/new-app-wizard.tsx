@@ -18,11 +18,13 @@ import { DeploymentProgress } from '@/components/dashboard/deployment-progress';
 import {
   isValidGitHubRepo,
   isValidGitRef,
+  newAppPath,
   type AppSource,
   type NewAppSearch,
   type DeploymentRecoveryContext,
 } from '@/components/dashboard/new-app-source';
 import { TemplateCatalog } from '@/components/dashboard/template-catalog';
+import { rememberGitHubDeployment } from '@/lib/deployment-handoff';
 import { ProjectImport } from '@/components/dashboard/project-import';
 import { NewAppCapabilities } from './new-app-capabilities';
 import { summaryRows } from './new-app-summary';
@@ -79,6 +81,9 @@ const APP_TYPES: { id: 'function' | 'app'; label: string; desc: string }[] = [
   { id: 'function', label: 'Function', desc: 'One handler on a managed runtime.' },
   { id: 'app', label: 'App', desc: 'Your own server or Dockerfile.' },
 ];
+
+// A full commit SHA: what a compatibility check hands over to deploy exactly.
+const FULL_SHA = /^[a-f0-9]{40}$/i;
 
 // A handler written in the browser is one small file; anything bigger is a
 // project, which deploys better from a repository or the CLI.
@@ -200,8 +205,13 @@ function CreateAppWizard({
   // The endpoint the API assigned. Constructing one from the slug would be a
   // guess about the platform's hostname scheme; this is the real value.
   const [createdUrl, setCreatedUrl] = useState<string | null>(null);
-  const [repo, setRepo] = useState('');
-  const [ref, setRef] = useState('main');
+  // A compatibility check can hand over the repository and the exact commit
+  // it checked (`?repo=&ref=`); after that, typing here stays local.
+  const [repo, setRepo] = useState(search.repo ?? '');
+  const [ref, setRef] = useState(search.ref ?? 'main');
+  // Whether the installation can see the chosen repository: one carried in
+  // from elsewhere may not be.
+  const [repoAccessible, setRepoAccessible] = useState(true);
   const [nameDraft, setName] = useState<string | null>(null);
   const [nameTouched, setNameTouched] = useState(false);
   // A chosen repository names the app until the customer types a name of
@@ -350,13 +360,19 @@ function CreateAppWizard({
         : new TextEncoder().encode(fnCode).length > HANDLER_MAX_BYTES
           ? 'The handler is over 256 KB. Deploy it from a repository or the CLI instead.'
           : undefined;
+  // Where a GitHub connection returns: this source, with this repository and ref.
+  // A named source lands on its Setup, so `source=git` is all it needs.
+  const gitReturn: NewAppSearch = {
+    source: 'git',
+    ...(repo.trim() ? { repo: repo.trim(), ref: normalizedRef } : {}),
+  };
   const sourceValid =
     !handlerError &&
     Boolean(source) &&
     source !== 'import' &&
     (source !== 'template' || picked) &&
     gitSourceValid &&
-    (source !== 'git' || githubConnected);
+    (source !== 'git' || (githubConnected && repoAccessible));
   // Each reason Continue cannot go on, keyed by the control that fixes it.
   // Source-level reasons focus the card the customer most likely meant.
   const sourceErrors: Partial<Record<SourceField, string>> = {
@@ -374,7 +390,9 @@ function CreateAppWizard({
         ? repo.trim()
           ? 'Use owner/name, like acme/api.'
           : 'Choose a repository to deploy.'
-        : undefined,
+        : source === 'git' && githubConnected && !repoAccessible
+          ? 'Your GitHub installation cannot see this repository. Grant it access, or choose another.'
+          : undefined,
     ref:
       source === 'git' && githubConnected && !refValid
         ? 'Use a valid branch, tag, or commit SHA of at most 200 characters.'
@@ -472,7 +490,9 @@ function CreateAppWizard({
       slug,
       installationId,
       repo: repo.trim(),
-      branch: normalizedRef,
+      // A checked commit pins the first build; it is not a branch to watch.
+      // Empty lets the binding select the repository's default branch.
+      branch: FULL_SHA.test(normalizedRef) ? '' : normalizedRef,
     });
     sourceRequested.current = true;
     return deployFromRef.mutateAsync({
@@ -944,12 +964,26 @@ function CreateAppWizard({
                 ref you deploy.
               </p>
             </div>
-            {/* Connecting from New app comes straight back to the Git source.
-                    Onboarding keeps the Settings landing its return flag expects. */}
+            {/* Connecting from New app comes straight back to the Git source,
+                with the repository and ref already chosen. Onboarding keeps the
+                Settings landing its return flag expects, and a hand-off brings
+                it back to the same choice. */}
             <GitHubConnectForm
-              onConnect={onConnectGitHub}
-              returnTo={onConnectGitHub ? undefined : '/dashboard/apps/new?source=git'}
+              onConnect={() => {
+                if (onboarding) rememberGitHubDeployment(gitReturn, true);
+                onConnectGitHub?.();
+              }}
+              returnTo={onConnectGitHub ? undefined : newAppPath(gitReturn)}
             />
+            {repo.trim() && (
+              <p className="w-full break-all text-[13px] text-muted-foreground">
+                Continues with{' '}
+                <span className="font-mono text-foreground">
+                  {repo.trim()}@{normalizedRef}
+                </span>{' '}
+                after connecting.
+              </p>
+            )}
           </div>
         ) : source === 'git' ? (
           <>
@@ -972,6 +1006,7 @@ function CreateAppWizard({
                   form={`${uid}-source-form`}
                   {...fieldErrorProps(repoError, `${uid}-repository-error`)}
                   value={repo}
+                  onAvailabilityChange={setRepoAccessible}
                   onChange={(nextRepo, defaultBranch) => {
                     setRepo(nextRepo);
                     if (defaultBranch) setRef(defaultBranch);
