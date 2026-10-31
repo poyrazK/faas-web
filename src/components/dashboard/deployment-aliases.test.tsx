@@ -11,10 +11,14 @@ const toast = vi.fn();
 const confirm = vi.fn();
 const list = vi.fn();
 const access = vi.fn();
+const fresh = vi.fn();
+const follow = vi.fn();
 
 vi.mock('@/lib/api/deployment-aliases', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/api/deployment-aliases')>()),
   useDeploymentAliases: (slug: string) => list(slug),
+  useFreshDeploymentAliases: () => fresh,
+  useAliasesFollowDeployments: (slug: string, signature: string) => follow(slug, signature),
   useSetDeploymentAlias: () => ({ mutateAsync: set, isPending: false }),
   useDeleteDeploymentAlias: () => ({ mutateAsync: remove, isPending: false }),
 }));
@@ -78,6 +82,9 @@ beforeEach(() => {
   confirm.mockReset().mockResolvedValue(true);
   list.mockReset();
   listed([alias()]);
+  // By default apid agrees with the cache.
+  fresh.mockReset().mockImplementation(async () => list().data);
+  follow.mockReset();
   access.mockReset().mockReturnValue({
     access: 'on',
     capability: { key: 'deployment-aliases', maturity: 'beta' },
@@ -184,6 +191,33 @@ describe('DeploymentAliasesPanel', () => {
     expect(set).not.toHaveBeenCalled();
   });
 
+  it('decides a move from a fresh read, not a list someone may have changed since', async () => {
+    listed([]);
+    fresh.mockResolvedValue([alias()]);
+    render(<DeploymentAliasesPanel slug="api" onOpenDeployment={vi.fn()} />);
+    await userEvent.type(screen.getByRole('textbox', { name: 'Alias name' }), 'canary');
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Release' }), 'd4');
+    await userEvent.click(screen.getByRole('button', { name: 'Set alias' }));
+    await waitFor(() => expect(confirm).toHaveBeenCalled());
+    expect(confirm.mock.calls[0][0].title).toBe('Move canary from v3 to v4?');
+  });
+
+  it('sends nothing when the fresh read fails', async () => {
+    fresh.mockRejectedValue(
+      new ApiError({ status: 503, code: 'capacity_unavailable', title: 'Briefly at capacity' })
+    );
+    render(<DeploymentAliasesPanel slug="api" onOpenDeployment={vi.fn()} />);
+    await userEvent.type(screen.getByRole('textbox', { name: 'Alias name' }), 'staging');
+    await userEvent.click(screen.getByRole('button', { name: 'Set alias' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/briefly at capacity/i);
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  it('rereads the aliases as the app’s deployments change', () => {
+    render(<DeploymentAliasesPanel slug="api" onOpenDeployment={vi.fn()} />);
+    expect(follow).toHaveBeenCalledWith('api', 'd3:live,d2:superseded,d1:failed,d4:building');
+  });
+
   it('refuses a name apid would refuse, before sending it', async () => {
     render(<DeploymentAliasesPanel slug="api" onOpenDeployment={vi.fn()} />);
     await userEvent.type(screen.getByRole('textbox', { name: 'Alias name' }), 'Canary');
@@ -282,6 +316,11 @@ describe('DeploymentAliasesHere', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Point alias here' }));
     await waitFor(() => expect(set).toHaveBeenCalled());
     expect(confirm.mock.calls[0][0].title).toBe('Move canary from v4 to v3?');
+  });
+
+  it('rereads the aliases as this release’s status changes', () => {
+    render(<DeploymentAliasesHere slug="api" deployment={deployments[0]} />);
+    expect(follow).toHaveBeenCalledWith('api', 'd3:live');
   });
 
   it('says why a superseded release cannot take an alias', () => {

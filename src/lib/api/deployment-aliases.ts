@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, unwrap } from './client';
 import type { components } from './schema';
@@ -49,19 +50,47 @@ export function aliasServing(
 }
 
 const aliasKey = (slug: string) => [...keys.app(slug), 'deployment-aliases'] as const;
+const aliasQuery = (slug: string) => ({
+  queryKey: aliasKey(slug),
+  queryFn: async ({ signal }: { signal?: AbortSignal }) =>
+    (
+      await unwrap(
+        api.GET('/v1/apps/{slug}/deployment-aliases', { params: { path: { slug } }, signal })
+      )
+    ).items,
+});
 
 export function useDeploymentAliases(slug: string) {
-  return useQuery({
-    queryKey: aliasKey(slug),
-    queryFn: async ({ signal }) =>
-      (
-        await unwrap(
-          api.GET('/v1/apps/{slug}/deployment-aliases', { params: { path: { slug } }, signal })
-        )
-      ).items,
-    enabled: Boolean(slug),
-    retry: retryPolicy,
-  });
+  return useQuery({ ...aliasQuery(slug), enabled: Boolean(slug), retry: retryPolicy });
+}
+
+/**
+ * A read that ignores the cache. PUT upserts, so whether a set moves an
+ * existing name is decided from what apid has now, not from a list someone
+ * else may have changed since it was read.
+ */
+export function useFreshDeploymentAliases(slug: string) {
+  const cache = useQueryClient();
+  return useCallback(
+    () => cache.fetchQuery({ ...aliasQuery(slug), staleTime: 0, retry: false }),
+    [cache, slug]
+  );
+}
+
+/**
+ * A deployment going live supersedes the one before it, which stops its
+ * aliases serving; that happens on the deployments poll, not through a
+ * mutation, so the list rereads whenever `signature` (the deployments' ids
+ * and statuses) changes.
+ */
+export function useAliasesFollowDeployments(slug: string, signature: string) {
+  const cache = useQueryClient();
+  const seen = useRef(signature);
+  useEffect(() => {
+    if (seen.current === signature) return;
+    seen.current = signature;
+    void cache.invalidateQueries({ queryKey: aliasKey(slug) });
+  }, [cache, slug, signature]);
 }
 
 export function useSetDeploymentAlias(slug: string) {

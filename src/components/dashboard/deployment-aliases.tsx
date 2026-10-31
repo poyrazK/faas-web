@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import { Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { CopyIconButton } from '@/components/ui/copy-button';
@@ -12,8 +12,10 @@ import {
   aliasNameProblem,
   aliasServing,
   aliasTargetable,
+  useAliasesFollowDeployments,
   useDeleteDeploymentAlias,
   useDeploymentAliases,
+  useFreshDeploymentAliases,
   useSetDeploymentAlias,
   type DeploymentAlias,
 } from '@/lib/api/deployment-aliases';
@@ -46,72 +48,100 @@ type Outcome = { done: true } | { done: false; problem?: string };
  * Point and remove, with the confirmations both surfaces share. Moving an
  * existing name changes what its URL serves for everyone using it, so it asks
  * first and names both releases; creating a new name changes nothing anyone
- * relies on yet, so it does not.
+ * relies on yet, so it does not. Whether a name exists is read fresh: PUT
+ * upserts, so a name created elsewhere since the list was read would
+ * otherwise move without a word. One action runs at a time, from the first
+ * click, since the fresh read and the confirm come before the mutation is
+ * pending.
  */
-function useAliasActions(slug: string, aliases: DeploymentAlias[]) {
+function useAliasActions(slug: string) {
   const set = useSetDeploymentAlias(slug);
   const remove = useDeleteDeploymentAlias(slug);
+  const readFresh = useFreshDeploymentAliases(slug);
   const confirm = useConfirm();
   const { toast } = useToast();
+  const flight = useRef(false);
+  const [working, setWorking] = useState(false);
 
-  const point = async (
-    name: string,
-    target: { id: string; revision?: number }
-  ): Promise<Outcome> => {
-    const problem = aliasNameProblem(name);
-    if (problem) return { done: false, problem };
-    const to = revisionLabel(target.revision, target.id);
-    const current = aliases.find((alias) => alias.name === name);
-    if (current?.deployment_id === target.id)
-      return { done: false, problem: `${name} already points at ${to}.` };
-    if (current) {
-      const from = revisionLabel(current.revision, current.deployment_id);
+  const exclusive = async <T,>(run: () => Promise<T>, idle: T): Promise<T> => {
+    if (flight.current) return idle;
+    flight.current = true;
+    setWorking(true);
+    try {
+      return await run();
+    } finally {
+      flight.current = false;
+      setWorking(false);
+    }
+  };
+
+  const point = (name: string, target: { id: string; revision?: number }): Promise<Outcome> =>
+    exclusive<Outcome>(
+      async () => {
+        const problem = aliasNameProblem(name);
+        if (problem) return { done: false, problem };
+        let aliases: DeploymentAlias[];
+        try {
+          aliases = await readFresh();
+        } catch (error) {
+          return { done: false, problem: errorMessage(error) };
+        }
+        const to = revisionLabel(target.revision, target.id);
+        const current = aliases.find((alias) => alias.name === name);
+        if (current?.deployment_id === target.id)
+          return { done: false, problem: `${name} already points at ${to}.` };
+        if (current) {
+          const from = revisionLabel(current.revision, current.deployment_id);
+          const ok = await confirm({
+            title: `Move ${name} from ${from} to ${to}?`,
+            description: `${where(current)} will serve ${to} instead of ${from}, for everyone using it, as soon as you confirm. Production traffic does not change.`,
+            confirmLabel: 'Move alias',
+          });
+          if (!ok) return { done: false };
+        }
+        try {
+          const saved = await set.mutateAsync({ name, deploymentId: target.id });
+          toast({
+            kind: 'success',
+            title: `${saved.name} now points at ${revisionLabel(saved.revision, saved.deployment_id)}`,
+            description:
+              saved.url ?? 'This installation has no public apps domain, so it has no URL.',
+          });
+          return { done: true };
+        } catch (error) {
+          // apid's detail already says why: a target that is not live or in
+          // progress, a name too long for the host label, a hostname collision.
+          return { done: false, problem: errorMessage(error) };
+        }
+      },
+      { done: false }
+    );
+
+  const drop = (alias: DeploymentAlias) =>
+    exclusive(async () => {
       const ok = await confirm({
-        title: `Move ${name} from ${from} to ${to}?`,
-        description: `${where(current)} will serve ${to} instead of ${from}, for everyone using it, as soon as you confirm. Production traffic does not change.`,
-        confirmLabel: 'Move alias',
+        title: `Remove alias ${alias.name}?`,
+        description: `${where(alias)} stops serving ${revisionLabel(alias.revision, alias.deployment_id)}. The release itself and production traffic are unchanged, and setting ${alias.name} again brings the same URL back.`,
+        confirmLabel: 'Remove alias',
+        destructive: true,
       });
-      if (!ok) return { done: false };
-    }
-    try {
-      const saved = await set.mutateAsync({ name, deploymentId: target.id });
-      toast({
-        kind: 'success',
-        title: `${saved.name} now points at ${revisionLabel(saved.revision, saved.deployment_id)}`,
-        description: saved.url ?? 'This installation has no public apps domain, so it has no URL.',
-      });
-      return { done: true };
-    } catch (error) {
-      // apid's detail already says why: a target that is not live or in
-      // progress, a name too long for the host label, a hostname collision.
-      return { done: false, problem: errorMessage(error) };
-    }
-  };
+      if (!ok) return;
+      try {
+        await remove.mutateAsync(alias.name);
+        toast({ kind: 'success', title: `Removed ${alias.name}` });
+      } catch (error) {
+        if (error instanceof ApiError && error.code === 'not_found')
+          toast({ kind: 'info', title: `${alias.name} was already removed` });
+        else
+          toast({
+            kind: 'error',
+            title: `Could not remove ${alias.name}`,
+            description: errorMessage(error),
+          });
+      }
+    }, undefined);
 
-  const drop = async (alias: DeploymentAlias) => {
-    const ok = await confirm({
-      title: `Remove alias ${alias.name}?`,
-      description: `${where(alias)} stops serving ${revisionLabel(alias.revision, alias.deployment_id)}. The release itself and production traffic are unchanged, and setting ${alias.name} again brings the same URL back.`,
-      confirmLabel: 'Remove alias',
-      destructive: true,
-    });
-    if (!ok) return;
-    try {
-      await remove.mutateAsync(alias.name);
-      toast({ kind: 'success', title: `Removed ${alias.name}` });
-    } catch (error) {
-      if (error instanceof ApiError && error.code === 'not_found')
-        toast({ kind: 'info', title: `${alias.name} was already removed` });
-      else
-        toast({
-          kind: 'error',
-          title: `Could not remove ${alias.name}`,
-          description: errorMessage(error),
-        });
-    }
-  };
-
-  return { point, drop, busy: set.isPending || remove.isPending };
+  return { point, drop, busy: working || set.isPending || remove.isPending };
 }
 
 function AliasUrl({ alias }: { alias: DeploymentAlias }) {
@@ -182,10 +212,10 @@ function AliasesBody({
   const query = useDeploymentAliases(slug);
   const deploymentsQuery = useAppDeployments(slug);
   const aliases = query.data ?? [];
-  const { point, drop, busy } = useAliasActions(slug, aliases);
-  const targets = (deploymentsQuery.data?.pages.flatMap((page) => page.items) ?? []).filter((d) =>
-    aliasTargetable(d.status)
-  );
+  const { point, drop, busy } = useAliasActions(slug);
+  const releases = deploymentsQuery.data?.pages.flatMap((page) => page.items) ?? [];
+  useAliasesFollowDeployments(slug, releases.map((d) => `${d.id}:${d.status}`).join(','));
+  const targets = releases.filter((d) => aliasTargetable(d.status));
   const [name, setName] = useState('');
   const [picked, setPicked] = useState('');
   const [problem, setProblem] = useState('');
@@ -364,7 +394,8 @@ function HereBody({
 }) {
   const query = useDeploymentAliases(slug);
   const aliases = query.data ?? [];
-  const { point, busy } = useAliasActions(slug, aliases);
+  const { point, busy } = useAliasActions(slug);
+  useAliasesFollowDeployments(slug, `${deployment.id}:${deployment.status}`);
   const [name, setName] = useState('');
   const [problem, setProblem] = useState('');
   const here = aliases.filter((alias) => alias.deployment_id === deployment.id);

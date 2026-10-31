@@ -7,8 +7,10 @@ import {
   aliasNameProblem,
   aliasServing,
   aliasTargetable,
+  useAliasesFollowDeployments,
   useDeleteDeploymentAlias,
   useDeploymentAliases,
+  useFreshDeploymentAliases,
   useSetDeploymentAlias,
 } from './deployment-aliases';
 import { spyApi } from '@/test/api';
@@ -26,7 +28,10 @@ const alias = {
 };
 
 function wrapper() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  // The console's own default: a cached list counts as fresh for 30 s.
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: 30_000 } },
+  });
   return ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
   );
@@ -115,6 +120,34 @@ describe('hooks', () => {
     expect(del).toHaveBeenCalledWith('/v1/apps/{slug}/deployment-aliases/{name}', {
       params: { path: { slug: 'api', name: 'canary' } },
     });
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(2));
+  });
+
+  it('reads the list fresh on demand, even while the cached copy counts as fresh', async () => {
+    const get = spyApi('GET')
+      .mockResolvedValueOnce(ok({ items: [] }))
+      .mockResolvedValue(ok({ items: [alias] }));
+    const w = wrapper();
+    renderHook(() => useDeploymentAliases('api'), { wrapper: w });
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(1));
+    const fresh = renderHook(() => useFreshDeploymentAliases('api'), { wrapper: w });
+    await expect(fresh.result.current()).resolves.toEqual([alias]);
+    expect(get).toHaveBeenCalledTimes(2);
+  });
+
+  it('rereads the list when the app’s deployments change, not on every render', async () => {
+    const get = spyApi('GET').mockResolvedValue(ok({ items: [alias] }));
+    const hook = renderHook(
+      ({ signature }) => {
+        useAliasesFollowDeployments('api', signature);
+        return useDeploymentAliases('api');
+      },
+      { wrapper: wrapper(), initialProps: { signature: 'd2:live' } }
+    );
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(1));
+    hook.rerender({ signature: 'd2:live' });
+    expect(get).toHaveBeenCalledTimes(1);
+    hook.rerender({ signature: 'd3:live,d2:superseded' });
     await waitFor(() => expect(get).toHaveBeenCalledTimes(2));
   });
 });
