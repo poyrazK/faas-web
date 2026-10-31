@@ -21,6 +21,10 @@ content/docs
 dither-kit.json
 components.json
 
+# Local plan workspaces (superpowers); git-ignored by their own .gitignore,
+# which Prettier does not read.
+.superpowers
+
 # Vendored upstream docs-URL catalog, pulled by `npm run docs:pull`; kept byte-identical.
 content/customer-pages.json
 

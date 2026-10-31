@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { CapabilityAccess } from '@/lib/capability-state';
 import { SegmentedControl, Tabs, tabId } from './tabs';
 
 /**
@@ -39,6 +40,31 @@ type AppTabGroup = (typeof APP_TAB_GROUPS)[number];
 type AppTabGroupLabel = AppTabGroup['label'];
 export const APP_DETAIL_TABS: readonly AppTab[] = APP_TAB_GROUPS.flatMap((g) => [...g.tabs]);
 
+/** Catalog ids (faas pkg/productcap/catalog.json) for tabs that are not GA or beta. */
+export const APP_TAB_CAPABILITY: Partial<Record<AppTab, string>> = {
+  Routes: 'route-insights',
+  Upstreams: 'data-upstreams',
+  Mirrors: 'traffic-mirroring',
+  'Tenant surfaces': 'tenant-surfaces',
+  Debugger: 'production-debugger',
+  Issues: 'issues',
+  Errors: 'issues',
+  MCP: 'mcp-hosting',
+  OpenAPI: 'openapi-contract-preview',
+  Consumers: 'api-consumers',
+  'Consumer plans': 'api-monetization',
+  Automations: 'automations',
+  Queues: 'queues',
+};
+
+/** Hide a tab only once the registry has said its capability is off. */
+export function visibleAppTabs(access: (id: string) => CapabilityAccess): AppTab[] {
+  return APP_DETAIL_TABS.filter((tab) => {
+    const id = APP_TAB_CAPABILITY[tab];
+    return !id || access(id) !== 'off';
+  });
+}
+
 /**
  * Tabs that were merged away. Env vars and secrets are one question — what
  * does this app's environment contain — so they are one page now; links that
@@ -69,11 +95,19 @@ export function AppTabNavigation({
   tab,
   onSelect,
   panelId,
+  visible = APP_DETAIL_TABS,
 }: {
   tab: AppTab;
   onSelect: (tab: AppTab) => void;
   panelId: string;
+  /** Tabs the account can use; the selected tab always shows, so a deep link explains itself. */
+  visible?: readonly AppTab[];
 }) {
+  const shown = (name: AppTab) => name === tab || visible.includes(name);
+  const groups = APP_TAB_GROUPS.map((group) => ({
+    label: group.label,
+    tabs: (group.tabs as readonly AppTab[]).filter(shown),
+  })).filter((group) => group.tabs.length > 0);
   const [remembered, setRemembered] = useState<Partial<Record<AppTabGroupLabel, AppTab>>>({});
   const active = appTabGroup(tab);
   const select = (next: AppTab) => {
@@ -84,16 +118,18 @@ export function AppTabNavigation({
     }));
     onSelect(next);
   };
-  const pages = active.tabs.map((name) => ({ key: name as AppTab, label: name }));
+  const activeTabs = groups.find((g) => g.label === active.label)?.tabs ?? [tab];
+  const pages = activeTabs.map((name) => ({ key: name, label: name }));
   return (
     <div className="flex flex-col gap-3">
       <Tabs
         label="App sections"
         value={active.label}
-        options={APP_TAB_GROUPS.map((group) => ({ key: group.label, label: group.label }))}
+        options={groups.map((group) => ({ key: group.label, label: group.label }))}
         onChange={(label) => {
-          const group = APP_TAB_GROUPS.find((g) => g.label === label)!;
-          select(remembered[group.label] ?? group.tabs[0]);
+          const group = groups.find((g) => g.label === label)!;
+          const last = remembered[group.label];
+          select(last && group.tabs.includes(last) ? last : group.tabs[0]);
         }}
         panelId={panelId}
       />
