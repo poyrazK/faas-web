@@ -7,6 +7,7 @@ import { Panel } from '@/components/dashboard/primitives';
 import { consumeOnboardingGitHubReturn, useAuth } from '@/lib/auth';
 import { GitHubConnectForm } from './github-connect-form';
 import type { SettingsSearch } from './settings-search';
+import { consumeGitHubDeployment } from '@/lib/deployment-handoff';
 
 /**
  * Account-level GitHub connection.
@@ -26,8 +27,11 @@ export function IntegrationSettings({ search }: { search: SettingsSearch }) {
   const justConnected = github === 'connected' && githubConnected;
 
   useEffect(() => {
-    if (!justConnected || !consumeOnboardingGitHubReturn()) return;
-    void navigate({ to: '/onboarding', replace: true });
+    if (!justConnected) return;
+    const deploymentReturn = consumeGitHubDeployment();
+    const onboardingReturn = consumeOnboardingGitHubReturn();
+    if (deploymentReturn) void navigate({ href: deploymentReturn, replace: true });
+    else if (onboardingReturn) void navigate({ to: '/onboarding', replace: true });
   }, [justConnected, navigate]);
 
   return (

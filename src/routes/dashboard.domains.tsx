@@ -24,6 +24,7 @@ import { cn } from '@/lib/utils';
 /** A registrable hostname: labels of letters/digits/hyphens, at least one dot. */
 const HOST_RULE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i;
 import { consoleHead } from '@/lib/seo';
+import { useCapabilityAccess } from '@/lib/api/capabilities';
 
 export const Route = createFileRoute('/dashboard/domains')({
   component: DomainsPage,
@@ -79,6 +80,8 @@ function DomainsPage() {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
   const doctorFor = search.doctor;
+  // The doctor is a preview capability; off, there is nothing to open.
+  const doctorAccess = useCapabilityAccess('domain-doctor').access;
   const select = (patch: Partial<typeof search>, replace = false) =>
     void navigate({
       search: (current) => ({ ...current, ...patch }),
@@ -190,14 +193,16 @@ function DomainsPage() {
             </Button>
           )}
 
-          <IconButton
-            type="button"
-            aria-label={`Diagnose ${d.domain}`}
-            onClick={() => setDoctorFor(doctorFor === d.domain ? undefined : d.domain)}
-            className="text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <Activity className="h-3.5 w-3.5" />
-          </IconButton>
+          {doctorAccess !== 'off' && (
+            <IconButton
+              type="button"
+              aria-label={`Diagnose ${d.domain}`}
+              onClick={() => setDoctorFor(doctorFor === d.domain ? undefined : d.domain)}
+              className="text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <Activity className="h-3.5 w-3.5" />
+            </IconButton>
+          )}
 
           <IconButton
             type="button"

@@ -38,6 +38,7 @@ import { readRecents, recentLabel } from '@/lib/recents';
 import { consoleHead } from '@/lib/seo';
 import { cn } from '@/lib/utils';
 import { useWorkspaceUsageSummary } from '@/lib/api/org-billing';
+import { formatCents } from '@/lib/money';
 
 export const Route = createFileRoute('/dashboard/')({
   component: OverviewPage,
@@ -67,9 +68,7 @@ const formatGbHours = (v: number) => v.toLocaleString(undefined, { maximumFracti
 
 function formatMoney(cents: number | undefined): string {
   if (cents == null) return '—';
-  return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'EUR' }).format(
-    cents / 100
-  );
+  return formatCents(cents);
 }
 
 const UNKNOWN = <span className="text-muted-foreground">—</span>;

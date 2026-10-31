@@ -7,6 +7,7 @@ export const SETTINGS_SECTIONS = [
   ['api-keys', 'API keys'],
   ['security', 'Security'],
   ['integrations', 'Integrations'],
+  ['previews', 'Previews'],
   ['platform-limits', 'Platform limits'],
   ['data-and-privacy', 'Data and privacy'],
 ] as const;
