@@ -665,9 +665,10 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 95,
     name: 'Delayed tasks',
-    status: 'full',
+    status: 'partial',
     surfaces: ['/dashboard/apps/$appSlug?tab=Queues', '/dashboard/queues'],
     capability: 'delayed-execution',
+    gap: 'Schedule form lacks headers, retry policy, retention, webhook destinations, relative delay and work policy',
     wave: 2,
   },
   // E96 · beta

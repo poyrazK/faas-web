@@ -24,8 +24,8 @@ import { formatRelative } from '@/lib/mock-data';
  * (`/v1/apps/{slug}/delayed-tasks`, faas handlers_invocations.go:703-871).
  *
  * The list is the API's own newest-first ledger, so tasks scheduled by the CLI
- * or another session show up here too. Rows never carry the payload or
- * headers: the API does not return them. Cancelling only stops a task that is
+ * or another session show up here too. Nothing shows the payload or headers:
+ * the API does not return them. Cancelling only stops a task that is
  * still `pending`; one already `dispatching` may complete, and the API answers
  * with the state it actually left the task in, which the toast reports.
  */
@@ -44,6 +44,9 @@ const STATE_COLOR: Record<string, string> = {
   failed: 'var(--status-critical)',
   dead_letter: 'var(--status-critical)',
   cancelled: 'var(--chart-muted)',
+  // Not in the OpenAPI enum, but faas state/types.go:4633-4634 can write them.
+  superseded: 'var(--chart-muted)',
+  expired: 'var(--chart-muted)',
 };
 
 interface TaskRow {
@@ -203,7 +206,7 @@ function DelayedTasksPanel({ slug }: { slug: string }) {
             t.state === 'pending' ? (
               <button
                 type="button"
-                aria-label={`Cancel task ${t.target}`}
+                aria-label={`Cancel task ${t.id.slice(0, 8)} (${t.target}, runs ${when(t.runsAt)})`}
                 onClick={() => void onCancel(t)}
                 className="pressable rounded text-xs text-muted-foreground hover:text-foreground"
               >
@@ -336,7 +339,11 @@ function ScheduleForm({ slug }: { slug: string }) {
   );
 }
 
-/** One task read by id. The payload and headers are not part of the response. */
+/**
+ * One task read by id. The payload and headers are not part of the response;
+ * the result is the app's own retained response body, shown as the
+ * invocations drawer shows it.
+ */
 function DelayedTaskDetail({ id, onClose }: { id: string | null; onClose: () => void }) {
   const q = useDelayedTask(id ?? '', { poll: true });
   const t = q.data;
@@ -376,6 +383,14 @@ function DelayedTaskDetail({ id, onClose }: { id: string | null; onClose: () => 
             >
               {t.last_error}
             </p>
+          )}
+          {t.result != null && (
+            <div>
+              <p className="label-mono mb-1.5 text-muted-foreground">Result</p>
+              <pre className="max-h-56 overflow-auto rounded-md border border-border bg-background p-3 font-mono text-xs leading-relaxed">
+                {JSON.stringify(t.result, null, 2)}
+              </pre>
+            </div>
           )}
         </div>
       )}

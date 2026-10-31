@@ -160,6 +160,18 @@ describe('DelayedTasks list', () => {
 });
 
 describe('DelayedTasks cancel', () => {
+  it('gives every cancel button its own accessible name', async () => {
+    listRoute(spyApi('GET'), [
+      { tasks: [task(PENDING), task(OLDER, { scheduled_at: iso(5 * HOUR) })] },
+    ]);
+    mount();
+    const names = (await screen.findAllByRole('button', { name: /cancel task/i })).map((b) =>
+      b.getAttribute('aria-label')
+    );
+    expect(names).toHaveLength(2);
+    expect(new Set(names).size).toBe(2);
+  });
+
   it('offers cancel only on pending tasks, and asks before cancelling', async () => {
     listRoute(spyApi('GET'), [page]);
     const del = spyApi('DELETE').mockImplementation(() =>
@@ -204,7 +216,27 @@ describe('DelayedTasks cancel', () => {
   });
 });
 
+describe('DelayedTasks states', () => {
+  it.each(['superseded', 'expired'])('colours a %s task', async (state) => {
+    listRoute(spyApi('GET'), [{ tasks: [task(DONE, { state })] }]);
+    mount();
+    expect(await screen.findByText(state)).toHaveStyle({ color: 'var(--chart-muted)' });
+  });
+});
+
 describe('DelayedTasks detail', () => {
+  it("shows the app's retained result", async () => {
+    spyApi('GET').mockImplementation((path: string) =>
+      path === '/v1/delayed-tasks/{id}'
+        ? ok(task(DONE, { state: 'completed', attempts: 1, result: { sent: true } }))
+        : ok(page)
+    );
+    mount();
+    await userEvent.click(await screen.findByText('GET /month-close'));
+    const dialog = await screen.findByRole('dialog');
+    expect(await within(dialog).findByText(/"sent": true/)).toBeInTheDocument();
+  });
+
   it('opens one task by id with its attempts and last error', async () => {
     const get = spyApi('GET');
     get.mockImplementation((path: string) =>

@@ -6425,6 +6425,7 @@ function seedDelayedTasks(appId: string) {
       path,
       attempts,
       ...(lastError ? { last_error: lastError } : {}),
+      ...(state === 'completed' ? { result: { delivered: true, status: 200 } } : {}),
       created_at: new Date(created).toISOString(),
       ...(state === 'pending'
         ? {}

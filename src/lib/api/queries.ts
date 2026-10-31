@@ -549,12 +549,46 @@ export function useScheduleDelayedTask(slug: string) {
   });
 }
 
+const POLL_FAST = 5_000;
+const POLL_CEILING = 60_000;
+/** How long past its time a pending task still counts as about to run. */
+const OVERDUE_GRACE = 3 * 60_000;
+
+/**
+ * When to re-read delayed tasks, or `false` to stop. TanStack evaluates a
+ * `refetchInterval` function only after the query updates, so returning
+ * `false` for a task that is not yet due would never wake again: a pending
+ * task always keeps a timer, set to its due time (5 s floor, 60 s ceiling).
+ * Dispatching work and tasks just past their time read every 5 s; a task
+ * long overdue (the scheduler is behind) backs off to the ceiling.
+ */
+export function delayedTaskPollInterval(
+  tasks: readonly DelayedTask[],
+  now = Date.now()
+): number | false {
+  if (tasks.some((t) => t.state === 'dispatching')) return POLL_FAST;
+  let next: number | false = false;
+  for (const t of tasks) {
+    if (t.state !== 'pending') continue;
+    const until = Date.parse(t.scheduled_at) - now;
+    const wait = Number.isNaN(until)
+      ? POLL_CEILING
+      : until > 0
+        ? Math.min(Math.max(until, POLL_FAST), POLL_CEILING)
+        : -until < OVERDUE_GRACE
+          ? POLL_FAST
+          : POLL_CEILING;
+    next = next === false ? wait : Math.min(next, wait);
+  }
+  return next;
+}
+
 /**
  * One app's delayed tasks, newest first, paged by the API's `next_before`
  * cursor (faas handlers_invocations.go:812). The rows carry state, schedule,
  * target and attempts — never the payload or headers, which the API does not
- * return. Polls while a loaded task is dispatching or due within a minute, so
- * a row does not sit at "pending" after it has fired.
+ * return. Polls on `delayedTaskPollInterval`, so a row does not sit at
+ * "pending" after it has fired.
  */
 export function useDelayedTasks(slug: string, limit = 20) {
   return useInfiniteQuery({
@@ -572,18 +606,10 @@ export function useDelayedTasks(slug: string, limit = 20) {
     getNextPageParam: (lastPage) => lastPage.next_before ?? undefined,
     enabled: Boolean(slug),
     retry: retryPolicy,
-    refetchInterval: (query) => {
-      if (query.state.error) return false;
-      const soon = Date.now() + 60_000;
-      const live = query.state.data?.pages.some((page) =>
-        page.tasks.some(
-          (t) =>
-            t.state === 'dispatching' ||
-            (t.state === 'pending' && Date.parse(t.scheduled_at) <= soon)
-        )
-      );
-      return live ? 5_000 : false;
-    },
+    refetchInterval: (query) =>
+      query.state.error
+        ? false
+        : delayedTaskPollInterval(query.state.data?.pages.flatMap((page) => page.tasks) ?? []),
   });
 }
 
@@ -594,7 +620,10 @@ export function useDelayedTask(id: string, options?: { poll?: boolean }) {
     queryFn: () => unwrap(api.GET('/v1/delayed-tasks/{id}', { params: { path: { id } } })),
     enabled: Boolean(id),
     refetchInterval: options?.poll
-      ? (query) => (query.state.data?.state === 'pending' ? 5_000 : false)
+      ? (query) =>
+          query.state.error || !query.state.data
+            ? false
+            : delayedTaskPollInterval([query.state.data])
       : undefined,
   });
 }
