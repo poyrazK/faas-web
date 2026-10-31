@@ -263,3 +263,14 @@ it('keeps the CLI panel away when storage is disabled on this installation', () 
   show();
   expect(screen.queryByRole('region', { name: 'More in the CLI' })).not.toBeInTheDocument();
 });
+it('shows each bucket ID with a copy button that carries the full ID', () => {
+  const id = '3f2b8c1e-5d4a-4e7b-9a10-6c2d8e4f1a77';
+  mocks.buckets.mockReturnValue({
+    data: { ...capabilities, items: [{ ...bucket, id }] },
+    isPending: false,
+    error: null,
+  });
+  show();
+  expect(screen.getByText('3f2b8c1e-5d4…')).toHaveAttribute('title', id);
+  expect(screen.getByRole('button', { name: `Copy: bucket ID ${id}` })).toBeInTheDocument();
+});

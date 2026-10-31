@@ -235,3 +235,46 @@ describe('PostgresDatabases', () => {
     expect(await screen.findByText(/not included in this plan/i)).toBeInTheDocument();
   });
 });
+
+describe('IDs for the CLI', () => {
+  const dbId = '7b0c9a52-1d3e-4f68-8a2b-5e9d4c1f0a33';
+  const bindingId = 'c41d7e90-6a2b-4b85-9f03-2d8e1a7b5c64';
+  const sourceId = '0e5a1f7c-93b2-4d68-a4c1-8b7d2e6f9013';
+
+  it('shows the database ID in full with a copy button', async () => {
+    usePostgresDatabases.mockReturnValue(ready({ items: [database({ id: dbId })] }));
+    usePostgresBindings.mockReturnValue(ready({ items: [] }));
+    render(<PostgresDatabases />);
+    await userEvent.click(screen.getByRole('button', { name: /orders/i }));
+    expect(await screen.findByText(dbId)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: `Copy: database ID ${dbId}` })).toBeInTheDocument();
+  });
+
+  it('shows each binding ID with a copy button carrying the full ID', async () => {
+    usePostgresBindings.mockReturnValue(ready({ items: [binding({ id: bindingId })] }));
+    render(<PostgresDatabases />);
+    await userEvent.click(screen.getByRole('button', { name: /orders/i }));
+    expect(
+      await screen.findByRole('button', { name: `Copy: binding ID ${bindingId}` })
+    ).toBeInTheDocument();
+  });
+
+  it('shows the restore source in full and copyable, not an 8-character slice', async () => {
+    usePostgresDatabases.mockReturnValue(
+      ready({
+        items: [
+          database({
+            restore_source_database_id: sourceId,
+            restore_point_in_time: '2026-09-07T10:30:00Z',
+          }),
+        ],
+      })
+    );
+    render(<PostgresDatabases />);
+    await userEvent.click(screen.getByRole('button', { name: /orders/i }));
+    expect(await screen.findByText(sourceId)).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: `Copy: source database ID ${sourceId}` })
+    ).toBeInTheDocument();
+  });
+});

@@ -245,6 +245,13 @@ describe('Domains operational state', () => {
     expect(await screen.findByRole('tooltip')).toHaveTextContent('Diagnose alpha.example.com');
   });
 
+  it('lets the TXT verification value be copied', async () => {
+    await mount();
+    expect(
+      await screen.findByRole('button', { name: 'Copy: TXT record verify-alpha' })
+    ).toBeInTheDocument();
+  });
+
   it('shows the actual doctor error and retries it', async () => {
     doctorFails = true;
     await mount('/dashboard/domains?doctor=alpha.example.com');

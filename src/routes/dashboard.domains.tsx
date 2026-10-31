@@ -2,11 +2,13 @@ import { useMemo, useRef, useState } from 'react';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { Activity, Plus, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
+import { CopyIconButton } from '@/components/ui/copy-button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Modal } from '@/components/ui/modal';
 import { InlinePhase, PageHeader, Panel, queryPhase } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { useToast } from '@/components/ui/toast';
+import { Timestamp } from '@/components/ui/timestamp';
 import { useConfirm } from '@/components/ui/confirm';
 import {
   useAddDomain,
@@ -61,12 +63,6 @@ interface DomainRow {
   isDefault: boolean;
   verifiedAt: string | null;
   txtRecord: string | null;
-}
-
-function formatDate(value: string | null | undefined): string {
-  if (!value) return '—';
-  const ms = Date.parse(value);
-  return Number.isNaN(ms) ? '—' : new Date(ms).toLocaleDateString();
 }
 
 function DomainsPage() {
@@ -161,9 +157,14 @@ function DomainsPage() {
         d.verified ? (
           <span className="text-xs text-muted-foreground">—</span>
         ) : (
-          <code className="select-all break-all text-xs text-muted-foreground">
-            {d.txtRecord ?? '—'}
-          </code>
+          <span className="flex items-center gap-1">
+            <code className="select-all break-all text-xs text-muted-foreground">
+              {d.txtRecord ?? '—'}
+            </code>
+            {d.txtRecord && (
+              <CopyIconButton text={d.txtRecord} label={`TXT record ${d.txtRecord}`} />
+            )}
+          </span>
         ),
     },
     {
@@ -171,7 +172,7 @@ function DomainsPage() {
       label: 'Verified',
       priority: 'secondary',
       numeric: true,
-      render: (d) => formatDate(d.verifiedAt),
+      render: (d) => <Timestamp value={d.verifiedAt} />,
     },
     {
       key: 'id',

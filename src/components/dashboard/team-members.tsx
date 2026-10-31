@@ -19,7 +19,7 @@ import {
   useRevokeInvitation,
 } from '@/lib/api/queries';
 import { isValidEmail, useAuth } from '@/lib/auth';
-import { formatRelative } from '@/lib/mock-data';
+import { Timestamp } from '@/components/ui/timestamp';
 
 /**
  * Members and invitations of an organisation.
@@ -58,12 +58,6 @@ const ROLE_HINT: Record<(typeof ROLES)[number], string> = {
   viewer: 'Read everything, change nothing.',
   billing: 'Invoices and the plan. Nothing else.',
 };
-
-function when(value: string | undefined): string {
-  if (!value) return '—';
-  const ms = Date.parse(value);
-  return Number.isNaN(ms) ? '—' : formatRelative(ms);
-}
 
 /** Keying by organisation also discards form drafts and late token responses. */
 export function TeamMembersBody({
@@ -184,7 +178,7 @@ export function TeamMembersBody({
       label: 'Joined',
       priority: 'secondary',
       numeric: true,
-      render: (m) => <span className="text-xs text-muted-foreground">{when(m.joinedAt)}</span>,
+      render: (m) => <Timestamp value={m.joinedAt} className="text-xs text-muted-foreground" />,
     },
     {
       key: 'id',
@@ -258,7 +252,7 @@ export function TeamMembersBody({
       numeric: true,
       render: (i) => (
         <span className="text-xs text-muted-foreground">
-          {i.status === 'pending' ? when(i.expiresAt) : '—'}
+          {i.status === 'pending' ? <Timestamp value={i.expiresAt} /> : '—'}
         </span>
       ),
     },

@@ -12,6 +12,8 @@ import { FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/
 import { PageHeader, Panel } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { useToast } from '@/components/ui/toast';
+import { Timestamp } from '@/components/ui/timestamp';
+import { parseTime } from '@/lib/time';
 import { useConfirm } from '@/components/ui/confirm';
 import {
   useApiKeys,
@@ -52,12 +54,6 @@ interface KeyRow {
   prefix: string;
   scopes: string;
   lastUsedAt: string | null;
-}
-
-function formatWhen(value: string | null | undefined): string {
-  if (!value) return 'Never';
-  const ms = Date.parse(value);
-  return Number.isNaN(ms) ? 'Never' : new Date(ms).toLocaleDateString();
 }
 
 /** How long a rotated key's predecessor keeps working. Plan default unless
@@ -228,9 +224,12 @@ export function PersonalKeysBody({
       label: 'Last used',
       priority: 'secondary',
       numeric: true,
-      render: (k) => (
-        <span className="text-xs text-muted-foreground">{formatWhen(k.lastUsedAt)}</span>
-      ),
+      render: (k) =>
+        parseTime(k.lastUsedAt) ? (
+          <Timestamp value={k.lastUsedAt} className="text-xs text-muted-foreground" />
+        ) : (
+          <span className="text-xs text-muted-foreground">Never</span>
+        ),
     },
     {
       key: 'id',
