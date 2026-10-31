@@ -6,6 +6,7 @@ import * as db from './data';
 import * as automationMock from './automations';
 import { registerMonetizationMock } from './monetization';
 import * as logDrainMock from './log-drains';
+import * as edgeRuleMock from './edge-rules';
 import { mockCapabilities } from './capabilities';
 import { registerEventMocks } from './events';
 import { mockOpenAPIPreview } from './openapi-preview';
@@ -5530,12 +5531,55 @@ route('POST', '/v1/apps/{slug}/edge-rules', ({ params, body }) => {
     validate_mode: (body.validate_mode ??
       'block') as (typeof db.edgeRules)[number]['validate_mode'],
     action: body.action as (typeof db.edgeRules)[number]['action'],
+    ...edgeRuleExtras(body),
     created_at: db.iso(0),
     updated_at: db.iso(0),
   };
   db.edgeRules.push(rule);
+  edgeRuleMock.record(a.id);
   return status(201, rule);
 });
+
+/**
+ * The optional create/PATCH fields recipes and the dialog send: name,
+ * description, a match condition naming lists, log mode and a penalty.
+ */
+function edgeRuleExtras(body: Record<string, unknown>) {
+  const out: Partial<(typeof db.edgeRules)[number]> = {};
+  if (typeof body.name === 'string') out.name = body.name;
+  if (typeof body.description === 'string') out.description = body.description;
+  if (body.mode === 'log' || body.mode === 'enforce') out.mode = body.mode;
+  if (body.match && typeof body.match === 'object')
+    out.match = body.match as (typeof db.edgeRules)[number]['match'];
+  if (body.penalty && typeof body.penalty === 'object') {
+    const p = body.penalty as { seconds?: number; after?: number; within_seconds?: number };
+    if (!p.seconds || p.seconds < 60 || p.seconds > 86400)
+      throw new Problem(422, 'validation_failed', 'penalty.seconds must be in 60..86400');
+    out.penalty = {
+      seconds: p.seconds,
+      after: p.after || 1,
+      within_seconds: p.within_seconds || 60,
+    };
+  }
+  // edge_rule_penalty.go:49: only rules that refuse a client can box it.
+  const kind = String(body.kind ?? '');
+  if (out.penalty && kind && !['ip', 'geo', 'throttle', 'waf'].includes(kind))
+    throw new Problem(422, 'validation_failed', `penalty: kind=${kind} cannot box clients`);
+  for (const name of edgeRuleListNames(out.match))
+    if (!edgeRuleMock.lists.some((l) => l.name === name))
+      throw new Problem(404, 'edge_rule_list_not_found', `no edge rule list named "${name}"`);
+  return out;
+}
+
+function edgeRuleListNames(m: (typeof db.edgeRules)[number]['match']): string[] {
+  if (!m) return [];
+  return [
+    ...(m.op === 'in_list' && m.list ? [m.list] : []),
+    ...(m.all ?? []).flatMap(edgeRuleListNames),
+    ...(m.any ?? []).flatMap(edgeRuleListNames),
+    ...edgeRuleListNames(m.not),
+  ];
+}
 
 route('PATCH', '/v1/edge-rules/{id}', ({ params, body }) => {
   const rule = db.edgeRules.find((r) => r.id === params.id);
@@ -5551,7 +5595,12 @@ route('PATCH', '/v1/edge-rules/{id}', ({ params, body }) => {
     if (k in body && body[k] != null) (rule as Record<string, unknown>)[k] = body[k];
   // `action` replaces whole — there is no partial shape for it.
   if (body.action) rule.action = body.action as typeof rule.action;
+  if (body.penalty && body.clear_penalty)
+    throw new Problem(422, 'validation_failed', 'set penalty or clear_penalty, not both');
+  Object.assign(rule, edgeRuleExtras({ ...body, kind: rule.kind }));
+  if (body.clear_penalty) delete rule.penalty;
   rule.updated_at = db.iso(0);
+  edgeRuleMock.record(rule.app_id);
   return rule;
 });
 
@@ -5600,7 +5649,196 @@ route('GET', '/v1/apps/{slug}/throttle-suggestions', ({ params, query }) => {
 route('DELETE', '/v1/edge-rules/{id}', ({ params }) => {
   const i = db.edgeRules.findIndex((r) => r.id === params.id);
   if (i < 0) throw new Problem(404, 'edge_rule_not_found');
-  db.edgeRules.splice(i, 1);
+  const [gone] = db.edgeRules.splice(i, 1);
+  edgeRuleMock.record(gone.app_id);
+  return NO_CONTENT;
+});
+
+// Rule-set versions and rollback (faas pkg/apid/edgerules/versions.go).
+route('GET', '/v1/apps/{slug}/edge-rules/versions', ({ params, res }) => {
+  const a = app(params.slug);
+  res.setHeader('ETag', `"${edgeRuleMock.latest(a.id)}"`);
+  return edgeRuleMock.list(a.id);
+});
+route('GET', '/v1/apps/{slug}/edge-rules/versions/{version}', ({ params }) => {
+  const a = app(params.slug);
+  const v = Number(params.version);
+  if (!Number.isInteger(v) || v < 1)
+    throw new Problem(400, 'validation_failed', 'version must be a positive integer');
+  const found = edgeRuleMock.get(a.id, v);
+  if (!found) throw new Problem(404, 'not_found', 'no such edge-rule version');
+  return found;
+});
+route('POST', '/v1/apps/{slug}/edge-rules/rollback', ({ params, body, req }) => {
+  const a = app(params.slug);
+  const version = Number(body.version);
+  if (!Number.isInteger(version) || version < 1)
+    throw new Problem(400, 'validation_failed', 'body must be {"version": <positive integer>}');
+  const current = edgeRuleMock.latest(a.id);
+  const ifMatch = String(req.headers['if-match'] ?? '').trim();
+  if (ifMatch && ifMatch !== '*' && ifMatch.replace(/^W\//, '') !== `"${current}"`)
+    throw new Problem(
+      412,
+      'edge_rules_version_mismatch',
+      `If-Match ${ifMatch} does not match the current edge-rule set version "${current}"; re-read the rules and retry`
+    );
+  const restored = edgeRuleMock.restore(a.id, version);
+  if (!restored) throw new Problem(404, 'not_found', 'no such edge-rule version');
+  return restored;
+});
+
+// Suggested protections (suggestions.go); Free records no request telemetry.
+route('GET', '/v1/apps/{slug}/edge-rules/suggestions', ({ params }) => {
+  if (db.account.plan === 'free')
+    throw new Problem(
+      402,
+      'plan_feature_gated',
+      "the free plan doesn't include request analytics; upgrade to Hobby or higher for historical observability."
+    );
+  return edgeRuleMock.suggestions(app(params.slug).id);
+});
+
+// The WAF false-positive review and one-step exclusions (waf_review.go).
+route('GET', '/v1/apps/{slug}/edge-rules/waf-review', ({ params }) =>
+  edgeRuleMock.wafReview(app(params.slug).id)
+);
+route('POST', '/v1/edge-rules/{id}/waf-exclusions', ({ params, body }) => {
+  const rule = db.edgeRules.find((r) => r.id === params.id);
+  if (!rule) throw new Problem(404, 'not_found', 'no such edge rule');
+  if (rule.kind !== 'waf')
+    throw new Problem(422, 'validation_failed', 'waf exclusions apply to kind=waf rules only');
+  const add = Array.isArray(body.add) ? body.add.map(Number) : [];
+  const remove = Array.isArray(body.remove) ? body.remove.map(Number) : [];
+  if (!add.length && !remove.length)
+    throw new Problem(422, 'validation_failed', 'add or remove at least one CRS rule ID');
+  const bad = [...add, ...remove].find((n) => !(n >= 900000 && n <= 999999));
+  if (bad !== undefined)
+    throw new Problem(422, 'validation_failed', `${bad} is not a CRS rule ID (900000..999999)`);
+  const action = rule.action as components['schemas']['EdgeRuleWAFAction'];
+  const ids = [...new Set([...(action.exclude_rule_ids ?? []), ...add])].filter(
+    (n) => !remove.includes(n)
+  );
+  if (ids.length > 50) throw new Problem(422, 'validation_failed', 'at most 50 excluded CRS rules');
+  rule.action = { ...action, exclude_rule_ids: ids };
+  rule.updated_at = db.iso(0);
+  edgeRuleMock.record(rule.app_id);
+  return rule;
+});
+
+// Reusable rule lists (lists.go), the signed-in account's.
+const listView = (l: (typeof edgeRuleMock.lists)[number], items: boolean) => {
+  const { items: all, ...rest } = l;
+  return {
+    ...rest,
+    item_count: all.length,
+    referenced_by: edgeRuleMock.referencedBy(l.name),
+    ...(items ? { items: all } : {}),
+  };
+};
+const findList = (name: string) => {
+  const l = edgeRuleMock.lists.find((x) => x.name === name);
+  if (!l)
+    throw new Problem(
+      404,
+      'edge_rule_list_not_found',
+      `no edge rule list named "${name}" in this account`
+    );
+  return l;
+};
+const listItemCap = (n: number) => {
+  const cap = edgeRuleMock.LIST_LIMITS[db.account.plan]?.[1] ?? 0;
+  if (n > cap)
+    throw new Problem(
+      403,
+      'plan_limit_edge_rule_list_items',
+      `${db.account.plan} plan caps an edge rule list at ${cap} items; this list would have ${n}.`
+    );
+};
+route('GET', '/v1/edge-rule-lists', () => ({
+  lists: edgeRuleMock.lists.map((l) => listView(l, false)),
+}));
+route('POST', '/v1/edge-rule-lists', ({ body }) => {
+  const name = String(body.name ?? '');
+  const kind = String(body.kind ?? '');
+  if (!edgeRuleMock.LIST_NAME.test(name))
+    throw new Problem(
+      422,
+      'validation_failed',
+      `list name "${name}" must be 1-64 characters of a-z, 0-9, '_' and '-', starting with a letter or digit`
+    );
+  if (!['ip', 'country', 'host', 'string', 'asn'].includes(kind))
+    throw new Problem(
+      422,
+      'validation_failed',
+      `unknown list kind "${kind}" (ip, country, host, string, asn)`
+    );
+  const cap = edgeRuleMock.LIST_LIMITS[db.account.plan]?.[0] ?? 0;
+  if (edgeRuleMock.lists.length >= cap)
+    throw new Problem(
+      403,
+      'plan_limit_edge_rule_lists',
+      `${db.account.plan} plan caps edge rule lists at ${cap} per account; you have ${edgeRuleMock.lists.length}.`
+    );
+  if (edgeRuleMock.lists.some((l) => l.name === name))
+    throw new Problem(
+      409,
+      'edge_rule_list_exists',
+      `an edge rule list named "${name}" already exists`
+    );
+  const items = edgeRuleMock.normalizeItems(
+    kind,
+    Array.isArray(body.items) ? body.items.map(String) : []
+  );
+  listItemCap(items.length);
+  const l = {
+    id: db.id(),
+    name,
+    kind: kind as (typeof edgeRuleMock.lists)[number]['kind'],
+    ...(typeof body.description === 'string' && body.description
+      ? { description: body.description }
+      : {}),
+    item_count: items.length,
+    items,
+    referenced_by: [],
+    created_at: db.iso(0),
+    updated_at: db.iso(0),
+  };
+  edgeRuleMock.lists.push(l);
+  return status(201, listView(l, true));
+});
+route('GET', '/v1/edge-rule-lists/{name}', ({ params }) => listView(findList(params.name), true));
+route('PATCH', '/v1/edge-rule-lists/{name}', ({ params, body }) => {
+  const l = findList(params.name);
+  if (Array.isArray(body.items) && (body.add || body.remove))
+    throw new Problem(
+      422,
+      'validation_failed',
+      'items replaces the list and cannot be combined with add or remove'
+    );
+  let items = l.items;
+  if (Array.isArray(body.items)) items = body.items.map(String);
+  if (Array.isArray(body.add)) items = [...items, ...body.add.map(String)];
+  if (Array.isArray(body.remove)) {
+    const gone = new Set(body.remove.map(String));
+    items = items.filter((i) => !gone.has(i));
+  }
+  items = edgeRuleMock.normalizeItems(l.kind, items);
+  listItemCap(items.length);
+  l.items = items;
+  if (typeof body.description === 'string') l.description = body.description;
+  l.updated_at = db.iso(0);
+  return listView(l, true);
+});
+route('DELETE', '/v1/edge-rule-lists/{name}', ({ params }) => {
+  const l = findList(params.name);
+  const refs = edgeRuleMock.referencedBy(l.name);
+  if (refs.length)
+    throw new Problem(
+      409,
+      'edge_rule_list_in_use',
+      `edge rule list "${l.name}" is referenced by ${refs.length} rule(s) (${refs.join(', ')}); remove the references first`
+    );
+  edgeRuleMock.lists.splice(edgeRuleMock.lists.indexOf(l), 1);
   return NO_CONTENT;
 });
 
