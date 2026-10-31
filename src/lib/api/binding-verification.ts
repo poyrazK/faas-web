@@ -122,6 +122,36 @@ const TERMINAL_FAIL = new Set([
   'blocked',
 ]);
 
+export type CompleteBlocker =
+  { kind: 'failed'; steps: number[]; status: string } | { kind: 'admit' | 'wait'; steps: number[] };
+
+/**
+ * Why Complete would be refused before its final policy check, or null. faas
+ * Complete (bindings/verification_runs.go:239-246) answers 409 when a probe or
+ * queue-canary step has no resource this run owns, or an owned resource has
+ * not succeeded. Step numbers are 1-based. A failure comes first: no later
+ * admission can rescue the run.
+ */
+export function completeBlocker(run: Pick<VerificationRun, 'steps'>): CompleteBlocker | null {
+  const failed: number[] = [];
+  const admit: number[] = [];
+  const wait: number[] = [];
+  let failedStatus = '';
+  run.steps.forEach((step, i) => {
+    const admits = step.plan.action === 'probe' || step.plan.action === 'queue-canary';
+    if (step.owned && step.resource_id) {
+      if (TERMINAL_FAIL.has(step.status)) {
+        failed.push(i + 1);
+        failedStatus ||= step.status;
+      } else if (step.status !== 'succeeded') wait.push(i + 1);
+    } else if (admits) admit.push(i + 1);
+  });
+  if (failed.length) return { kind: 'failed', steps: failed, status: failedStatus };
+  if (admit.length) return { kind: 'admit', steps: admit };
+  if (wait.length) return { kind: 'wait', steps: wait };
+  return null;
+}
+
 /** Why a step is in its state, in one sentence, from the plan and its resource. */
 export function stepExplanation(step: VerificationRunStep): string {
   const { action, reason } = step.plan;
@@ -255,7 +285,8 @@ export function useVerificationRun(accountId: string, slug: string, run: string)
   });
 }
 
-export function useRunDiagnostics(accountId: string, slug: string, run: string) {
+/** Polled alongside the run while it is pending, and stopped with it. */
+export function useRunDiagnostics(accountId: string, slug: string, run: string, live = false) {
   return useQuery({
     queryKey: runDiagnosticsKey(accountId, slug, run),
     queryFn: ({ signal }) =>
@@ -267,6 +298,7 @@ export function useRunDiagnostics(accountId: string, slug: string, run: string) 
       ),
     enabled: Boolean(accountId && slug && run),
     retry: retryPolicy,
+    refetchInterval: live ? 5_000 : false,
   });
 }
 

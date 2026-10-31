@@ -275,7 +275,49 @@ it('explains a full admission budget by its code', async () => {
   expect(await within(detail).findByText(/budget is full/i)).toBeInTheDocument();
 });
 
+/** Every probe and queue-canary step admitted by this run and succeeded. */
+function admitAll(status = 'succeeded') {
+  const run = runs[RUN_ID];
+  run.steps = run.steps.map((step, index) => {
+    const action = (step.plan as { action: string }).action;
+    if (action !== 'probe' && action !== 'queue-canary') return step;
+    return {
+      ...step,
+      resource_id: '55555555-5555-4555-8555-55555555555' + index,
+      resource_kind: action === 'queue-canary' ? 'queue' : 'task',
+      owned: true,
+      status,
+    };
+  });
+}
+
+it('keeps Complete off until every probe and canary step this run admitted succeeded', async () => {
+  // faas bindings/verification_runs.go:239-246 refuses completion otherwise.
+  const user = userEvent.setup();
+  const detail = await openRun(user);
+  expect(within(detail).getByRole('button', { name: /^complete/i })).toBeDisabled();
+  expect(within(detail).getByText(/admit steps 1 and 2 first/i)).toBeInTheDocument();
+});
+
+it('keeps Complete off while an admitted step is still running', async () => {
+  admitAll('running');
+  const user = userEvent.setup();
+  const detail = await openRun(user);
+  expect(within(detail).getByRole('button', { name: /^complete/i })).toBeDisabled();
+  expect(within(detail).getByText(/wait for steps 1 and 2 to succeed/i)).toBeInTheDocument();
+});
+
+it('says a failed step needs a new run, and offers no Complete', async () => {
+  admitAll();
+  (runs[RUN_ID].steps[0] as Record<string, unknown>).status = 'failed';
+  const user = userEvent.setup();
+  const detail = await openRun(user);
+  expect(within(detail).getByRole('button', { name: /^complete/i })).toBeDisabled();
+  expect(within(detail).getByText(/step 1 ended failed.*review a new run/i)).toBeInTheDocument();
+});
+
 it('completes a run and shows it passed, without implying traffic moved', async () => {
+  admitAll();
   const user = userEvent.setup();
   const detail = await openRun(user);
   await user.click(within(detail).getByRole('button', { name: /^complete/i }));
@@ -285,6 +327,7 @@ it('completes a run and shows it passed, without implying traffic moved', async 
 });
 
 it('says what it is waiting for when completion is still settling', async () => {
+  admitAll();
   answers.complete = () => ({
     ...runs[RUN_ID],
     qualification: {
@@ -299,12 +342,26 @@ it('says what it is waiting for when completion is still settling', async () => 
   expect(within(detail).getByText(/queue_consumer_unobserved/)).toBeInTheDocument();
 });
 
-it('explains a changed review on completion by its code', async () => {
+it('explains a 409 after every step succeeded as the final policy check, not a dead run', async () => {
+  admitAll();
   answers.complete = () => problem(409, 'binding_verification_run_changed', 'Changed.');
   const user = userEvent.setup();
   const detail = await openRun(user);
   await user.click(within(detail).getByRole('button', { name: /^complete/i }));
-  expect(await within(detail).findByText(/review a new run/i)).toBeInTheDocument();
+  expect(await within(detail).findByText(/final policy check/i)).toBeInTheDocument();
+  expect(within(detail).getByText(/check the diagnostics/i)).toBeInTheDocument();
+});
+
+it('explains a 409 after a step failed meanwhile as needing a new run', async () => {
+  admitAll();
+  answers.complete = () => {
+    (runs[RUN_ID].steps[1] as Record<string, unknown>).status = 'failed';
+    return problem(409, 'binding_verification_run_changed', 'Changed.');
+  };
+  const user = userEvent.setup();
+  const detail = await openRun(user);
+  await user.click(within(detail).getByRole('button', { name: /^complete/i }));
+  expect(await within(detail).findByText(/step 2 ended failed/i)).toBeInTheDocument();
 });
 
 it('cancels only after a destructive confirmation naming the effect', async () => {
@@ -363,13 +420,17 @@ it('reviews the live deployment, then creates a run only with the consent it nee
   expect(await screen.findByRole('region', { name: /run [0-9a-f]{8}/i })).toBeInTheDocument();
 });
 
-it('explains a review the server refused as needing an enforced policy', async () => {
+it('explains a review the server refused with every condition faas checks', async () => {
   answers.review = () => problem(409, 'binding_verification_run_changed', 'Changed.');
   const user = userEvent.setup();
   renderWithProviders(<BindingVerificationRuns slug="api" />);
   await user.click(await screen.findByRole('button', { name: /review a new run/i }));
   await user.click(screen.getByRole('button', { name: /review plan/i }));
-  expect(await screen.findByText(/enforced release policy/i)).toBeInTheDocument();
+  // validVerificationRunInventory (faas bindings/verification_runs.go:102-104).
+  const message = await screen.findByText(/enforced release policy/i);
+  expect(message).toHaveTextContent(/complete binding inventory/i);
+  expect(message).toHaveTextContent(/deployment you named/i);
+  expect(message).toHaveTextContent(/instance.*started since its configuration/i);
 });
 
 it('shows plan blockers and offers no creation when the review is not ready', async () => {

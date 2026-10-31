@@ -13,10 +13,12 @@ import {
   runAction,
   stepAdmittable,
   stepExplanation,
+  completeBlocker,
   useRunDiagnostics,
   useRunWrites,
   useVerificationRun,
   useVerificationRuns,
+  type CompleteBlocker,
   type RunAction,
   type VerificationDiagnostics,
   type VerificationPlanStep,
@@ -51,6 +53,20 @@ const when = (iso: string) =>
   new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 const short = (id: string) => id.slice(0, 8);
 
+/** "step 1", "steps 1 and 2", "steps 1, 2 and 4". */
+function stepList(steps: number[]) {
+  if (steps.length === 1) return `step ${steps[0]}`;
+  return `steps ${steps.slice(0, -1).join(', ')} and ${steps[steps.length - 1]}`;
+}
+function blockerText(blocker: CompleteBlocker) {
+  const list = stepList(blocker.steps);
+  if (blocker.kind !== 'failed')
+    return blocker.kind === 'admit'
+      ? `To complete, admit ${list} first.`
+      : `To complete, wait for ${list} to succeed.`;
+  return `${list[0].toUpperCase()}${list.slice(1)} ended ${blocker.status}. The run can no longer pass; review a new run.`;
+}
+
 function StatusBadge({ status }: { status: string }) {
   return (
     <Badge
@@ -67,7 +83,9 @@ function explain(error: unknown, context: 'review' | 'create' | 'run'): string {
     switch (error.code) {
       case 'binding_verification_run_changed':
         if (context === 'review')
-          return 'No plan could be reviewed. A run needs an enforced release policy (revision 1 or later) in the deployment’s scope and a complete binding inventory with no issues.';
+          // validVerificationRunInventory, faas bindings/verification_runs.go:102-104,
+          // and the selected-deployment check in verification_reviews.go:62-67.
+          return 'No plan could be reviewed. A run needs an enforced release policy (revision 1 or later) in the deployment’s scope, a complete binding inventory with no issues, the deployment you named to be the one under verification (leave the field empty for the live deployment), and an instance of that deployment started since its configuration last changed.';
         if (context === 'create') return 'The plan changed since you reviewed it. Review again.';
         return 'The reviewed plan, policy, configuration, deadline or evidence changed. Check the diagnostics, then review a new run.';
       case 'binding_verification_budget_full':
@@ -198,14 +216,18 @@ function RunDetail({ slug, runId }: { slug: string; runId: string }) {
   const { account } = useAuth();
   const accountId = account?.id ?? '';
   const run = useVerificationRun(accountId, slug, runId);
-  const diagnostics = useRunDiagnostics(accountId, slug, runId);
+  const diagnostics = useRunDiagnostics(accountId, slug, runId, run.data?.status === 'pending');
   const refresh = useRunWrites(accountId, slug);
   const confirm = useConfirm();
   const [notice, setNotice] = useState<ReactNode>(null);
+  const [completeConflict, setCompleteConflict] = useState(false);
   const phase = queryPhase({ error: run.error, loading: run.isLoading });
 
   const act = useMutation({
-    mutationFn: (action: RunAction) => runAction(slug, runId, action),
+    mutationFn: (action: RunAction) => {
+      setCompleteConflict(false);
+      return runAction(slug, runId, action);
+    },
     onSuccess: (result, action) => {
       if (action === 'complete' && result.status === 'pending' && result.qualification) {
         setNotice(
@@ -228,7 +250,18 @@ function RunDetail({ slug, runId }: { slug: string; runId: string }) {
         setNotice(<p role="status">The original review still holds.</p>);
       } else setNotice(null);
     },
-    onError: (error) => setNotice(<p role="alert">{explain(error, 'run')}</p>),
+    onError: (error, action) => {
+      // Complete's 409 means different things by step state, which the
+      // refetch below brings in; it is explained from the run as rendered.
+      if (
+        action === 'complete' &&
+        error instanceof ApiError &&
+        error.code === 'binding_verification_run_changed'
+      ) {
+        setNotice(null);
+        setCompleteConflict(true);
+      } else setNotice(<p role="alert">{explain(error, 'run')}</p>);
+    },
     onSettled: refresh,
   });
   const admit = useMutation({
@@ -280,6 +313,7 @@ function RunDetail({ slug, runId }: { slug: string; runId: string }) {
         blocker.message,
       ]);
   const busy = act.isPending || admit.isPending;
+  const blocker = data ? completeBlocker(data) : null;
 
   return (
     <section
@@ -315,9 +349,25 @@ function RunDetail({ slug, runId }: { slug: string; runId: string }) {
             ))}
           </ol>
           {notice}
+          {data.status === 'pending' && blocker && (
+            <p role="status" className="text-xs">
+              {blockerText(blocker)}
+            </p>
+          )}
+          {data.status === 'pending' && completeConflict && !blocker && (
+            <p role="alert">
+              Every step succeeded, but the final policy check is blocked: the policy, configuration
+              or evidence may have changed since the review. Check the diagnostics below; if they
+              show the review changed, review a new run.
+            </p>
+          )}
           {data.status === 'pending' && (
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" disabled={busy} onClick={() => act.mutate('complete')}>
+              <Button
+                size="sm"
+                disabled={busy || blocker !== null}
+                onClick={() => act.mutate('complete')}
+              >
                 Complete
               </Button>
               <Button

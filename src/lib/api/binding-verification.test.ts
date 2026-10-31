@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  completeBlocker,
   policyWrite,
   parseVerificationAge,
   stepAdmittable,
@@ -164,5 +165,56 @@ describe('stepExplanation', () => {
     expect(
       stepExplanation(step({ action: 'blocked', reason: 'binding_selection_invalid' }))
     ).toMatch(/binding_selection_invalid/);
+  });
+});
+
+describe('completeBlocker', () => {
+  // faas bindings/verification_runs.go:239-246: every probe and queue-canary
+  // step needs a resource this run owns, and every owned resource must succeed.
+  const owned = (status: string, action = 'probe') =>
+    step({ action, resource_id: 'r', resource_kind: 'task', owned: true, status });
+  const pending = (...steps: VerificationRunStep[]) =>
+    ({ status: 'pending', steps }) as unknown as VerificationRun;
+
+  it('is clear when every admitted step succeeded, ignoring steps that admit nothing', () => {
+    expect(
+      completeBlocker(
+        pending(
+          owned('succeeded'),
+          owned('succeeded', 'queue-canary'),
+          step({ action: 'reuse', resource_id: 'x', status: 'succeeded' }),
+          step({ action: 'skip' }),
+          step({ action: 'observe' })
+        )
+      )
+    ).toBeNull();
+  });
+
+  it('asks to admit steps that have no resource of this run', () => {
+    expect(
+      completeBlocker(pending(step(), owned('succeeded'), step({ action: 'queue-canary' })))
+    ).toEqual({ kind: 'admit', steps: [1, 3] });
+    // A recorded but unowned resource is not this run's admission either.
+    expect(completeBlocker(pending(step({ resource_id: 'x', status: 'succeeded' })))).toEqual({
+      kind: 'admit',
+      steps: [1],
+    });
+  });
+
+  it('waits for owned resources that have not finished', () => {
+    expect(completeBlocker(pending(owned('queued'), owned('dispatching', 'queue-canary')))).toEqual(
+      {
+        kind: 'wait',
+        steps: [1, 2],
+      }
+    );
+  });
+
+  it('names a failed owned resource first, since the run can no longer pass', () => {
+    expect(completeBlocker(pending(step(), owned('timed_out')))).toEqual({
+      kind: 'failed',
+      steps: [2],
+      status: 'timed_out',
+    });
   });
 });
