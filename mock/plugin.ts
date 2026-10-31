@@ -27,6 +27,7 @@ import {
   trackedDeployment,
 } from './deploy-lifecycle';
 import { CONNECT_FORBIDDEN, MOCK_INSTALL_ID, connectReturnTarget } from './github-connect';
+import * as configHistory from './config-history';
 import {
   environmentInventory,
   environmentState,
@@ -880,17 +881,20 @@ route('GET', '/v1/apps/{slug}/secrets', ({ params }) => {
   const secrets = listOf(db.secrets, params.slug);
   return { secrets, quota_max: 64, count: secrets.length };
 });
-route('PUT', '/v1/apps/{slug}/secrets/{key}', ({ params }) => {
+route('PUT', '/v1/apps/{slug}/secrets/{key}', ({ params, query }) => {
   const list = listOf(db.secrets, params.slug);
   const existing = list.find((s) => s.key === params.key);
   const now = db.iso(0);
+  const before = configState(params.slug, 'default');
+  const receipt = () =>
+    recordConfigChange(params.slug, 'default', 'secret.set', params.key, before, query);
   if (existing) {
     // A new value is a new delivery version; the mock delivers it at once.
     existing.updated_at = now;
     existing.delivery_version += 1;
     existing.delivered_version = existing.delivery_version;
     existing.delivery_status = 'delivered';
-    return existing;
+    return { ...existing, config_change: receipt() };
   }
   const created: (typeof list)[number] = {
     key: params.key,
@@ -905,13 +909,15 @@ route('PUT', '/v1/apps/{slug}/secrets/{key}', ({ params }) => {
   };
   list.push(created);
   db.secrets.set(params.slug, list);
-  return created;
+  return { ...created, config_change: receipt() };
 });
-route('DELETE', '/v1/apps/{slug}/secrets/{key}', ({ params }) => {
+route('DELETE', '/v1/apps/{slug}/secrets/{key}', ({ params, query }) => {
   const list = listOf(db.secrets, params.slug);
   const i = list.findIndex((s) => s.key === params.key);
   if (i < 0) throw new Problem(404, 'secret_not_found');
+  const before = configState(params.slug, 'default');
   list.splice(i, 1);
+  recordConfigChange(params.slug, 'default', 'secret.delete', params.key, before, query);
   return NO_CONTENT;
 });
 
@@ -930,6 +936,128 @@ const envScope = (query: URLSearchParams) => {
   if (!/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(scope)) throw new Problem(400, 'env_scope_invalid');
   return scope;
 };
+
+// --- Config history and guard (faas ADR-1451) ---------------------------------
+
+/** The scope's variables and secret versions, as a revision records them. */
+function configState(slug: string, scope: string): configHistory.ConfigState {
+  const variables: Record<string, string> = {};
+  for (const row of listOf(db.env, slug))
+    if (row.scope === scope)
+      variables[row.key] = envValues.get(envValueKey(slug, scope, row.key)) ?? '';
+  const secret_versions: Record<string, number> = {};
+  for (const row of listOf(db.secrets, slug))
+    if (row.scope === scope) secret_versions[row.key] = row.delivery_version;
+  return { variables, secret_versions };
+}
+/** A guard opens only when asked (`?guard=false` opts out) and the app has a live deployment. */
+function recordConfigChange(
+  slug: string,
+  scope: string,
+  source: Parameters<typeof configHistory.recordChange>[0]['source'],
+  key: string | undefined,
+  before: configHistory.ConfigState,
+  query: URLSearchParams,
+  restored?: number
+) {
+  const a = app(slug);
+  const live = db.deployments.some((d) => d.app_id === a.id && d.status === 'live');
+  return configHistory.recordChange({
+    slug: a.slug,
+    scope,
+    source,
+    key,
+    actor: db.account.email,
+    before,
+    after: configState(slug, scope),
+    guard: query.get('guard') !== 'false' && live,
+    restored,
+  });
+}
+db.apps.forEach((a, i) =>
+  configHistory.seedHistory(a.slug, configState(a.slug, 'default'), {
+    watching: i === 0,
+    iso: db.iso,
+  })
+);
+const revisionLimit = (query: URLSearchParams) => {
+  const raw = query.get('limit');
+  if (raw == null) return 20;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1 || n > 100)
+    throw new Problem(400, 'validation_failed', 'limit must be between 1 and 100');
+  return n;
+};
+route('GET', '/v1/apps/{slug}/config/revisions', ({ params, query }) =>
+  configHistory.listRevisions(app(params.slug).slug, envScope(query), revisionLimit(query))
+);
+route('GET', '/v1/apps/{slug}/config/revisions/{revision}', ({ params, query }) => {
+  const scope = envScope(query);
+  const n = Number(params.revision);
+  if (!Number.isInteger(n) || n < 1)
+    throw new Problem(400, 'validation_failed', 'revision must be a positive integer');
+  const found = configHistory.getRevision(app(params.slug).slug, scope, n);
+  if (!found)
+    throw new Problem(
+      404,
+      'config_revision_not_found',
+      `Scope "${scope}" has no config revision ${n}.`
+    );
+  return found;
+});
+route('GET', '/v1/apps/{slug}/config/guard', ({ params, query }) => {
+  const scope = envScope(query);
+  const guard = configHistory.latestGuard(app(params.slug).slug, scope);
+  if (!guard)
+    throw new Problem(
+      404,
+      'config_guard_not_found',
+      `No config change in scope "${scope}" has been guarded.`
+    );
+  return guard;
+});
+route('POST', '/v1/apps/{slug}/config/rollback', ({ params, body, query }) => {
+  const n = Number(body.revision);
+  if (!Number.isInteger(n) || n < 1)
+    throw new Problem(400, 'validation_failed', 'body must name a positive revision');
+  const scope = envScope(query);
+  const slug = app(params.slug).slug;
+  const target = configHistory.getRevision(slug, scope, n);
+  if (!target)
+    throw new Problem(
+      404,
+      'config_revision_not_found',
+      `Scope "${scope}" has no config revision ${n}.`
+    );
+  const before = configState(slug, scope);
+  const { set, deleted } = configHistory.variablesToward(target.variables, before.variables);
+  const out: components['schemas']['ConfigRollbackResponse'] = {
+    restored_revision: n,
+    set,
+    deleted,
+    secrets_not_restored: configHistory.secretsDiffering(
+      target.secret_versions,
+      before.secret_versions
+    ),
+  };
+  if (set.length === 0 && deleted.length === 0) return out;
+  const list = listOf(db.env, slug);
+  const now = db.iso(0);
+  for (const key of set) {
+    envValues.set(envValueKey(slug, scope, key), target.variables[key]);
+    const row = list.find((r) => r.key === key && r.scope === scope);
+    if (row) row.updated_at = now;
+    else list.push({ key, scope, created_at: now, updated_at: now });
+  }
+  for (const key of deleted) {
+    const i = list.findIndex((r) => r.key === key && r.scope === scope);
+    if (i >= 0) list.splice(i, 1);
+    envValues.delete(envValueKey(slug, scope, key));
+  }
+  db.env.set(slug, list);
+  out.change = recordConfigChange(slug, scope, 'config.rollback', undefined, before, query, n);
+  return out;
+});
 route('GET', '/v1/apps/{slug}/env', ({ params, query }) => {
   const all = listOf(db.env, params.slug);
   if (query.get('scope') === '__all__')
@@ -953,23 +1081,28 @@ route('PUT', '/v1/apps/{slug}/env/{key}', ({ params, body, query }) => {
   const existing = list.find((entry) => entry.key === params.key && entry.scope === scope);
   const now = db.iso(0);
   if (!existing && list.length >= 128) throw new Problem(403, 'plan_limit_env_vars');
+  const before = configState(params.slug, scope);
   envValues.set(envValueKey(params.slug, scope, params.key), String(body.value ?? ''));
+  const receipt = () =>
+    recordConfigChange(params.slug, scope, 'env.set', params.key, before, query);
   if (existing) {
     existing.updated_at = now;
-    return existing;
+    return { ...existing, config_change: receipt() };
   }
   const created = { key: params.key, scope, created_at: now, updated_at: now };
   list.push(created);
   db.env.set(params.slug, list);
-  return created;
+  return { ...created, config_change: receipt() };
 });
 route('DELETE', '/v1/apps/{slug}/env/{key}', ({ params, query }) => {
   const scope = envScope(query);
   const list = listOf(db.env, params.slug);
   const index = list.findIndex((entry) => entry.key === params.key && entry.scope === scope);
   if (index < 0) throw new Problem(404, 'env_not_found');
+  const before = configState(params.slug, scope);
   list.splice(index, 1);
   envValues.delete(envValueKey(params.slug, scope, params.key));
+  recordConfigChange(params.slug, scope, 'env.delete', params.key, before, query);
   return NO_CONTENT;
 });
 route('GET', '/v1/apps/{slug}/upstreams', ({ params }) => {
