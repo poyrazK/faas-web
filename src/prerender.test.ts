@@ -228,3 +228,19 @@ describeBuilt('structured data', () => {
     expect(ld).not.toMatch(/open[\s-]?source/i);
   });
 });
+
+describeBuilt('landing hero emblem', () => {
+  const html = built ? readFileSync('dist/index.html', 'utf8') : '';
+
+  // The master PNG is 1.9 MB; the emblem draws at 300px or 520px. It ships as
+  // hashed AVIF and WebP cut at twice those widths, never as the master.
+  it('ships responsive variants, not the master PNG', () => {
+    expect(html).not.toContain('gregale-frosted.png');
+    expect(html).toMatch(
+      /type="image\/avif" srcSet="\/assets\/gregale-frosted-600-[^"]+\.avif 600w/
+    );
+    for (const [, src] of html.matchAll(/(\/assets\/gregale-frosted-\d+-[\w-]+\.(?:avif|webp))/g)) {
+      expect(existsSync(`dist${src}`), src).toBe(true);
+    }
+  });
+});
