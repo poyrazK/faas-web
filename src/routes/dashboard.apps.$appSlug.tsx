@@ -84,6 +84,7 @@ import {
   DependencyLatencyPanel,
 } from '@/components/dashboard/app-observability';
 import { AppOverview } from '@/components/dashboard/app-overview';
+import { StatelessContract } from '@/components/dashboard/stateless-contract';
 import { PreviewDiscovery } from '@/components/dashboard/projects/preview-workload-set';
 import { AppHeader } from '@/components/dashboard/app-header';
 import { useProjectMembership } from '@/lib/api/projects';
@@ -449,6 +450,7 @@ function FunctionDetailPage() {
                   onRetryMetrics={() => void metrics.refetch()}
                 />
               )}
+              {tab === 'Overview' && <StatelessContract slug={appSlug} />}
               {tab === 'Metrics' &&
                 (authLoading || account === null ? (
                   <LoadingState message="Checking plan access…" />
