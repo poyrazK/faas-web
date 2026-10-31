@@ -15,7 +15,11 @@ export const projects: Project[] = db.EMPTY
         created_at: db.iso(10 * 24 * 3600000),
         updated_at: db.iso(3600000),
         exclusions: [],
-        workloads: apps.map((app) => {
+        // internal-tools came in through Acme Corp before it adopted resource
+        // ownership: it sits in the personal list but belongs to the company
+        // (faas projectaccess/access.go:117), so its repository is fixed.
+        org_id: index === 1 ? db.ORG_ID : undefined,
+        workloads: apps.map((app, appIndex) => {
           const deployment = db.deployments.find((item) => item.app_id === app.id);
           const build = deployment?.build_id
             ? db.builds.find((item) => item.id === deployment.build_id)
@@ -26,6 +30,8 @@ export const projects: Project[] = db.EMPTY
             status: app.status,
             deployment_status: deployment?.status,
             build_status: build?.status,
+            // The first service declares it calls the others (Compose depends_on).
+            depends_on: appIndex === 0 ? apps.slice(1).map((other) => other.slug) : undefined,
           };
         }),
       };
