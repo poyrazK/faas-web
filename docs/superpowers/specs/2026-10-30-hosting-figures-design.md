@@ -3,6 +3,28 @@
 **Status:** approved in conversation on 2026-10-30, section by section, awaiting review of this written spec.
 **Branch:** `feat/landing-pillars` (on top of c3690b1, which put the Pillars texture on Scale to zero). One PR for the whole Hosting group.
 
+> **Revised 2026-10-31: textures replace the diagrams.** The figures built from
+> this spec read as diagrams next to Pillars, so each is now a dense texture in
+> the Pillars recipe (commit 91ede71): hundreds of marks, a soft radial falloff
+> around the pointer, spring settle, no grid or chrome. Decisions 1–6 and the
+> shared frame (§1) still hold. §2's per-figure scenes are superseded by one
+> primitive per feature, each a `Field` in `figures/geometry.ts` drawn by
+> `figures/field-figure.tsx`:
+>
+> | Feature          | Primitive                                         | Pointer answer                                           |
+> | ---------------- | ------------------------------------------------- | -------------------------------------------------------- |
+> | Source deploys   | flow field of short strokes on a smooth current   | strokes align to the deploy direction, longer and bolder |
+> | Isolated compute | isometric microVM boxes, offset rows              | boxes lift                                               |
+> | Custom domains   | route mesh: hairline streets, a ring per junction | junctions seal, streets thicken into routes              |
+> | Logs & traces    | barcode of hairline spans                         | spans swell into bars                                    |
+> | Secrets & config | fine dot matrix                                   | dots fuse into sealed bands                              |
+> | PR previews      | parallel lines                                    | lines part around the pointer without crossing           |
+> | Object storage   | skyline of buckets stacked from the floor         | stacks rise                                              |
+>
+> Budget is now one path per layer per row (≤ 60 per figure); the per-figure
+> focus points are unused because every texture reacts at the centre. The
+> frame is `aspect-ratio: 21 / 10` instead of 200px tall.
+
 ## Why
 
 "Explore the pieces of your backend" (`src/components/landing/feature-explorer.tsx`) shows one illustration per feature. Scale to zero now has Pillars: a wordless field that reacts to the pointer, where the pointer plays a request and the instances around it wake. The other seven Hosting features still show labelled schematics that animate once and ignore the pointer. Next to Pillars they read as a different family.
