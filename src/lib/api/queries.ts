@@ -936,7 +936,14 @@ export function useInfiniteDeployments(limit = 50) {
  * a busy account from truncating one app's release history at an arbitrary
  * global page boundary.
  */
-export function useAppDeployments(slug: string, limit = 50) {
+export function useAppDeployments(
+  slug: string,
+  limit = 50,
+  options?: {
+    /** Keep asking while the app has no deployment yet (a CLI deploy is coming). */
+    pollWhileEmpty?: boolean;
+  }
+) {
   return useInfiniteQuery({
     queryKey: [...keys.appDeployments(slug), limit],
     queryFn: ({ pageParam }) =>
@@ -957,7 +964,8 @@ export function useAppDeployments(slug: string, limit = 50) {
     refetchInterval: (query) => {
       if (query.state.error) return false;
       const latest = query.state.data?.pages[0]?.items[0];
-      return latest && !isDeploymentTerminal(latest.status) ? 2_500 : false;
+      if (!latest) return options?.pollWhileEmpty ? 3_000 : false;
+      return !isDeploymentTerminal(latest.status) ? 2_500 : false;
     },
   });
 }
@@ -3699,9 +3707,9 @@ export function useRestorePostgresDatabase() {
   });
 }
 
-export function usePostgresBindings(id: string) {
-  return useQuery({
-    queryKey: [...postgresKey, id, 'bindings'],
+export function postgresBindingsOptions(id: string) {
+  return queryOptions({
+    queryKey: [...postgresKey, id, 'bindings'] as const,
     queryFn: () =>
       unwrap(api.GET('/v1/postgres/databases/{id}/bindings', { params: { path: { id } } })),
     enabled: Boolean(id),
@@ -3712,6 +3720,10 @@ export function usePostgresBindings(id: string) {
         ? 5_000
         : false,
   });
+}
+
+export function usePostgresBindings(id: string) {
+  return useQuery(postgresBindingsOptions(id));
 }
 
 export function usePostgresBinding(id: string) {

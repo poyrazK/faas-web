@@ -1,5 +1,6 @@
 import type { ComponentType, SVGProps } from 'react';
 import { SETTINGS_SECTIONS } from './settings-search';
+import { featureFlags } from '@/lib/feature-flags';
 import {
   Activity,
   Antenna,
@@ -73,6 +74,18 @@ export const NAV_HUBS: NavHub[] = [
     exact: true,
     sidebarIconClassName: 'text-brand/80',
   },
+  // Owner-local preview. The literal flag folds to `false` in every shipped
+  // build, so this entry (and the Canvas group label below) disappear.
+  ...(featureFlags.canvas
+    ? [
+        {
+          to: '/dashboard/canvas',
+          label: 'Canvas',
+          icon: Network,
+          sidebarIconClassName: 'text-brand/80',
+        } satisfies NavHub,
+      ]
+    : []),
   {
     // Projects are the way in: apps live inside them (standalone apps are a
     // group on the Projects page), so there is no separate Apps row. The app
@@ -227,7 +240,7 @@ export const NAV_HUBS: NavHub[] = [
  * the hub pages themselves are untouched.
  */
 const SIDEBAR_GROUPS: { title?: string; hubs: string[] }[] = [
-  { hubs: ['Overview'] },
+  { hubs: ['Overview', ...(featureFlags.canvas ? ['Canvas'] : [])] },
   { title: 'Build', hubs: ['Projects', 'Jobs', 'Releases'] },
   {
     title: 'Operate',
@@ -362,6 +375,7 @@ export const SECTION_LABELS: Record<string, string> = {
       i.label,
     ])
   ),
+  canvas: 'Canvas',
   // The Releases page keeps "Deployments" as a searchable section name, but its
   // title is the page's own.
   releases: 'Releases',
@@ -370,3 +384,13 @@ export const SECTION_LABELS: Record<string, string> = {
   account: 'Account',
   security: 'Security',
 };
+
+/**
+ * Pages that own the whole viewport below the header instead of the 1100px
+ * reading measure. The canvas pans and zooms; a measure would only crop it.
+ */
+const FULL_BLEED_PATHS = new Set(['/dashboard/canvas']);
+
+export function isFullBleedPath(pathname: string): boolean {
+  return FULL_BLEED_PATHS.has(pathname.replace(/\/$/, ''));
+}

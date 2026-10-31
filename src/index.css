@@ -160,6 +160,12 @@
   --status-warning: #9a6700;
   --status-serious: #b4521f;
   --status-critical: #c02626;
+  /* Canvas (Wind): glass nodes over a field lit from the northeast. */
+  --canvas-glass: rgb(255 255 255 / 0.72);
+  --canvas-glass-border: rgb(13 21 18 / 0.08);
+  --canvas-edge: rgb(13 21 18 / 0.18);
+  --canvas-field: rgb(13 21 18 / 0.1);
+  --canvas-light: rgb(0 206 145 / 0.1);
 }
 
 /* --- Dark surface (the console) -------------------------------------------
@@ -224,6 +230,11 @@
   --status-warning: #fabf47;
   --status-serious: #f3a17e;
   --status-critical: #ff9393;
+  --canvas-glass: rgb(36 36 36 / 0.72);
+  --canvas-glass-border: rgb(255 255 255 / 0.08);
+  --canvas-edge: rgb(255 255 255 / 0.14);
+  --canvas-field: rgb(237 237 237 / 0.09);
+  --canvas-light: rgb(81 222 170 / 0.1);
 }
 
 /* Foil is a silver material in either polarity. Its colour vocabulary stays
@@ -306,6 +317,9 @@
   --color-status-warning: var(--status-warning);
   --color-status-serious: var(--status-serious);
   --color-status-critical: var(--status-critical);
+  --color-canvas-glass: var(--canvas-glass);
+  --color-canvas-glass-border: var(--canvas-glass-border);
+  --color-canvas-edge: var(--canvas-edge);
 
   --shadow-elevation-1: var(--elevation-1);
   --shadow-elevation-2: var(--elevation-2);

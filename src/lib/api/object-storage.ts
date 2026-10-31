@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, unwrap } from './client';
 import type { components } from './schema';
 
@@ -7,12 +7,32 @@ export const bucketKey = (slug: string) => ['object-buckets', slug] as const;
 export const objectKey = (slug: string, bucket: string) =>
   ['bucket-objects', slug, bucket] as const;
 
-export function useObjectBuckets(slug: string) {
-  return useQuery({
+/** Shared by the Storage page and the canvas, which fans it out per app. */
+export function bucketListOptions(slug: string) {
+  return queryOptions({
     queryKey: bucketKey(slug),
     queryFn: () => unwrap(api.GET('/v1/apps/{slug}/buckets', { params: { path: { slug } } })),
     enabled: !!slug,
     retry: false,
+  });
+}
+
+export function useObjectBuckets(slug: string) {
+  return useQuery(bucketListOptions(slug));
+}
+
+/** Creates stay pessimistic: the server mints the id, scope default and state. */
+export function useCreateObjectBucket(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ name, region }: { name: string; region?: string }) =>
+      unwrap(
+        api.POST('/v1/apps/{slug}/buckets', {
+          params: { path: { slug } },
+          body: { name, scope: 'default', ...(region ? { region } : {}) },
+        })
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: bucketKey(slug) }),
   });
 }
 

@@ -92,3 +92,16 @@ describe('ConsolePageTransition', () => {
     expect(screen.getByRole('button', { name: 'Ready' })).toBeVisible();
   });
 });
+
+describe('ConsolePageTransition sizing', () => {
+  it('lets a full-bleed page claim the column height', () => {
+    render(
+      <ConsolePageTransition pageKey="/dashboard/canvas" className="h-full gap-0">
+        <p>canvas</p>
+      </ConsolePageTransition>
+    );
+    const wrapper = screen.getByText('canvas').parentElement!;
+    expect(wrapper).toHaveClass('console-page', 'flex', 'h-full', 'gap-0');
+    expect(wrapper).not.toHaveClass('gap-6');
+  });
+});

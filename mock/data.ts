@@ -1024,6 +1024,39 @@ export const crons: S['CronResponse'][] = [
   },
 ];
 
+/** Object buckets per app slug, the shape of `GET /v1/apps/{slug}/buckets`. */
+export const buckets = new Map<string, S['ObjectBucket'][]>([
+  [
+    apps[0].slug,
+    [
+      {
+        id: id(),
+        name: 'uploads',
+        scope: 'default',
+        region: 'eu-central',
+        state: 'ready',
+        public: false,
+        created_at: iso(20 * D),
+      },
+    ],
+  ],
+  [
+    apps[1].slug,
+    [
+      {
+        id: id(),
+        name: 'originals',
+        scope: 'default',
+        region: 'eu-central',
+        state: 'ready',
+        public: false,
+        created_at: iso(12 * D),
+      },
+    ],
+  ],
+]);
+export const BUCKETS_PER_APP = 10;
+
 export const keys: S['APIKeyResponse'][] = [
   {
     id: id(),
@@ -1579,7 +1612,7 @@ if (EMPTY) {
   ] as { length: number }[]) {
     list.length = 0;
   }
-  for (const map of [secrets, env, upstreams, alerts, webhooks]) map.clear();
+  for (const map of [secrets, env, upstreams, alerts, webhooks, buckets]) map.clear();
   account.app_count = 0;
   account.usage_gb_hours = 0;
   // A first sign-in has not connected GitHub yet; the mock's

@@ -31,6 +31,7 @@
 /dashboard/apps    /index.html   200
 /dashboard/audit    /index.html   200
 /dashboard/builds    /index.html   200
+/dashboard/canvas    /index.html   200
 /dashboard/crons    /index.html   200
 /dashboard/customers    /index.html   200
 /dashboard/databases    /index.html   200
