@@ -56,7 +56,10 @@ describe('TriggerSourceFields', () => {
     ['sqs_compat', ['Queue URL', 'Long poll (seconds)']],
     ['queue', ['Queue mode']],
   ] as const)('renders only %s source fields', (kind, labels) => {
-    render(<Harness initial={sourceDraft(kind)} />);
+    // Existing sqs_compat triggers are still edited; new ones are never offered.
+    const initial: TriggerSourceDraft =
+      kind === 'sqs_compat' ? { kind, queueUrl: '', longPollSecs: '' } : sourceDraft(kind);
+    render(<Harness initial={initial} />);
     for (const label of labels) expect(screen.getByLabelText(label)).toBeInTheDocument();
     expect(screen.queryByLabelText('Brokers')).not.toBeInTheDocument();
   });

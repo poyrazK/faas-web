@@ -8,6 +8,7 @@ import { pageHead } from '@/lib/seo';
 import { DatamoshBand } from '@/components/datamosh/datamosh-band';
 import { Button } from '@/components/ui/button';
 import { isValidGitHubRepo, newAppPath } from '@/components/dashboard/new-app-source';
+import { formatCents } from '@/lib/money';
 
 type Report = components['schemas']['PreflightReport'];
 type Finding = components['schemas']['PreflightFinding'];
@@ -382,10 +383,7 @@ function FindingList({ title, findings }: { title: string; findings: Finding[] }
 
 /** Millicents are 1/1000 of a cent; integer-divide to cents before display. */
 function formatPrice(millicents: number): string {
-  const cents = Math.round(millicents / 1000);
-  return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'EUR' }).format(
-    cents / 100
-  );
+  return formatCents(Math.round(millicents / 1000));
 }
 
 function formatRunningTime(minutes: number): string {
