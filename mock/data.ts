@@ -362,6 +362,10 @@ export const apps: App[] = APP_SEEDS.map((a, i) => ({
   require_authn: false,
   warm_snapshot_enabled: true,
   eviction_priority: a.min > 0 ? 'reserved' : 'best_effort',
+  // apid reports the effective policy, so an app that never set one reads safe.
+  release_policy: a.slug === 'api-gateway' ? 'fast' : 'safe',
+  ...(a.slug === 'api-gateway' ? { release_probe_paths: ['/healthz', '/api/orders'] } : {}),
+  ...(a.slug === 'image-resize' ? { function_concurrency: 4 } : {}),
   // Staggered so "created" sorts deterministically.
   ...({ created_at: iso((40 - i * 5) * D) } as object),
 }));
