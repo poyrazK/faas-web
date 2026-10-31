@@ -2690,6 +2690,63 @@ route('POST', '/v1/apps/{slug}/deployments/source-tarball', ({ params, req }) =>
   return status(202, startSourceDeployment(a, 'tarball', `${a.slug} (uploaded archive)`));
 });
 
+// Resumable upload sessions (POST/PATCH/GET /v1/uploads, commit), the route
+// the console deploys tarballs through. Bytes are counted, not kept.
+const uploads = new Map<
+  string,
+  { slug: string; total: number; received: number; deployment?: unknown }
+>();
+const UPLOAD_CHUNK = 1_048_576;
+const uploadExpiry = () => new Date(Date.now() + 3_600_000).toISOString();
+function uploadSession(id: string) {
+  const u = uploads.get(id);
+  if (!u) throw new Problem(404, 'not_found', 'No such upload session.');
+  return u;
+}
+route('POST', '/v1/uploads', ({ body }) => {
+  const a = app(String(body.app_slug));
+  const id = crypto.randomUUID();
+  uploads.set(id, { slug: a.slug, total: Number(body.total_size), received: 0 });
+  return status(201, {
+    upload_id: id,
+    chunk_size: UPLOAD_CHUNK,
+    total_size: Number(body.total_size),
+    expires_at: uploadExpiry(),
+  });
+});
+route('GET', '/v1/uploads/{id}', ({ params }) => {
+  const u = uploadSession(params.id);
+  return {
+    upload_id: params.id,
+    app_slug: u.slug,
+    chunk_size: UPLOAD_CHUNK,
+    total_size: u.total,
+    received_bytes: u.received,
+    status: u.received >= u.total ? 'complete' : 'open',
+    expires_at: uploadExpiry(),
+  };
+});
+route('PATCH', '/v1/uploads/{id}', ({ params, req }) => {
+  const u = uploadSession(params.id);
+  if (Number(req.headers['upload-offset']) !== u.received)
+    throw new Problem(
+      409,
+      'upload_session_offset_conflict',
+      'Upload-Offset does not match the received bytes.'
+    );
+  // readBody has consumed the stream as text; the header carries the byte count.
+  u.received += Number(req.headers['content-length'] ?? 0);
+  return {};
+});
+route('POST', '/v1/uploads/{id}/commit', ({ params }) => {
+  const u = uploadSession(params.id);
+  if (u.deployment) return status(202, u.deployment);
+  if (u.received < u.total) throw new Problem(409, 'conflict', 'The upload is incomplete.');
+  const a = app(u.slug);
+  u.deployment = startSourceDeployment(a, 'tarball', `${a.slug} (uploaded archive)`);
+  return status(201, u.deployment);
+});
+
 route('GET', '/v1/account/object-storage-usage', () => ({
   usage: {
     observed_bytes: 41_237_899_264,
