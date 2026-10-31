@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import type { Plugin } from 'vite';
+import type { Connect, Logger, Plugin } from 'vite';
 import type { components } from '../src/lib/api/schema';
 import * as db from './data';
 import * as automationMock from './automations';
@@ -102,12 +102,84 @@ const status = (code: number, body: unknown) => ({ __status: code, body });
 
 const latency = () => Number(process.env.MOCK_LATENCY ?? 180) + Math.random() * 160;
 
+const HIDDEN_AT_BOOT = new Set(
+  (process.env.MOCK_HIDDEN_CAPABILITIES ?? '').split(',').filter(Boolean)
+);
+const hiddenCapabilities = new Set(HIDDEN_AT_BOOT);
+
 route('GET', '/v1/capabilities', ({ res }) => {
   res.setHeader('Cache-Control', 'no-store');
   const raw = process.env.MOCK_PLAN ?? db.account.plan;
   const plan = raw === 'free' || raw === 'hobby' || raw === 'pro' || raw === 'scale' ? raw : 'pro';
-  return mockCapabilities(plan, (process.env.MOCK_UNAVAILABLE_CAPABILITIES ?? '').split(','));
+  const registry = mockCapabilities(
+    plan,
+    (process.env.MOCK_UNAVAILABLE_CAPABILITIES ?? '').split(',')
+  );
+  // Catalog ids whose platform flag is off for the account, as apid lists them
+  // (internal ones included); the console hides those tabs and pages.
+  const hidden = [...hiddenCapabilities];
+  return hidden.length ? { ...registry, hidden_capabilities: hidden } : registry;
 });
+
+// Self-serve previews (faas ADR-20261021080640). Joining one turns its
+// capability on, so a page hidden by MOCK_HIDDEN_CAPABILITIES appears.
+const PREVIEWS = [
+  {
+    key: 'events',
+    capability: 'events',
+    label: 'Events',
+    description: 'Publish, subscribe to and replay application events.',
+    retire_by: '2027-03-31',
+    eligible: true,
+  },
+  {
+    key: 'realtime',
+    capability: 'realtime',
+    label: 'Realtime',
+    description: 'Channels, presence and occupancy for live clients.',
+    eligible: true,
+  },
+  {
+    key: 'gitlab',
+    capability: 'gitlab-deploys',
+    label: 'GitLab deploys',
+    description: 'Connect GitLab projects and deploy on push.',
+    eligible: false,
+  },
+];
+const joinedPreviews = new Set<string>();
+function previewView(p: (typeof PREVIEWS)[number]) {
+  const joined = joinedPreviews.has(p.key);
+  return {
+    key: p.key,
+    label: p.label,
+    description: p.description,
+    ...(p.retire_by ? { retire_by: p.retire_by } : {}),
+    joined,
+    eligible: p.eligible,
+    enabled: joined || !hiddenCapabilities.has(p.capability),
+  };
+}
+function changePreview(key: string, join: boolean) {
+  const p = PREVIEWS.find((x) => x.key === key);
+  if (!p) throw new Problem(404, 'preview_not_offered', 'Not a preview open to self-serve.');
+  if (join && !p.eligible)
+    throw new Problem(403, 'preview_plan_not_eligible', 'Your plan cannot join this preview.');
+  if (join) {
+    joinedPreviews.add(key);
+    hiddenCapabilities.delete(p.capability);
+  } else {
+    joinedPreviews.delete(key);
+    if (HIDDEN_AT_BOOT.has(p.capability)) hiddenCapabilities.add(p.capability);
+  }
+  return previewView(p);
+}
+route('GET', '/v1/previews', () => ({ items: PREVIEWS.map(previewView) }));
+route('PUT', '/v1/previews/{key}', ({ params }) => changePreview(params.key, true));
+route('DELETE', '/v1/previews/{key}', ({ params }) => changePreview(params.key, false));
+route('GET', '/v1/orgs/{slug}/previews', () => ({ items: PREVIEWS.map(previewView) }));
+route('PUT', '/v1/orgs/{slug}/previews/{key}', ({ params }) => changePreview(params.key, true));
+route('DELETE', '/v1/orgs/{slug}/previews/{key}', ({ params }) => changePreview(params.key, false));
 
 // --- Public status -----------------------------------------------------------
 
@@ -640,6 +712,12 @@ function createMockApp(body: Record<string, unknown>, req: IncomingMessage) {
 route('POST', '/v1/apps', ({ body, req }) => createMockApp(body, req));
 route('POST', '/v1/apps/{slug}/deployments', ({ params, body, req }) => {
   const a = app(params.slug);
+  // A source upload (a function written in New app) builds like any tarball.
+  if (String(req.headers['content-type'] ?? '').startsWith('multipart/form-data')) {
+    if (a.type !== 'function')
+      throw new Problem(422, 'invalid_app_type', 'This mock builds uploads for functions only.');
+    return status(202, startSourceDeployment(a, 'tarball', `${a.slug} (uploaded handler)`));
+  }
   if (a.type !== 'app')
     throw new Problem(422, 'invalid_app_type', 'Image deployment requires an app.');
   if (typeof body.image !== 'string' || !isDigestPinnedImage(body.image))
@@ -663,6 +741,13 @@ route('POST', '/v1/apps/{slug}/deployments', ({ params, body, req }) => {
     startDeployment({ deployment, app: a, now: Date.now() });
   imageDeployReceipts.set(key, deployment);
   return status(202, deployment);
+});
+// A sync invoke answers at once with what a small JSON handler would return.
+route('POST', '/v1/apps/{slug}/invoke', ({ params, body }) => {
+  const a = app(params.slug);
+  const method = typeof body.method === 'string' ? body.method : 'POST';
+  const path = typeof body.path === 'string' ? body.path : '/';
+  return { id: db.id(), status: 'completed', result: { ok: true, app: a.slug, method, path } };
 });
 const imageRegistryMetadata = new Map<
   string,
@@ -851,19 +936,49 @@ route('POST', '/v1/apps/{slug}/deployments/source-ref', ({ params, body }) => {
     startSourceDeployment(a, 'github', `${String(body.repo)}@${String(body.ref)}`)
   );
 });
-route('POST', '/v1/apps/{slug}/rollback', ({ params }) => {
+// apid's targets (handlers_ext.go rollbackAppCore): by default the newest
+// superseded deployment; an explicit target may also be a live row at 0%
+// traffic. The target row itself goes live again; no new row is written.
+route('POST', '/v1/apps/{slug}/rollback', ({ params, body }) => {
   const a = app(params.slug);
-  const previous = db.deployments.filter((d) => d.app_id === a.id && d.status === 'succeeded')[0];
-  if (!previous) throw new Problem(409, 'no_previous_deployment', 'Nothing to roll back to.');
-  const dep: db.Deployment = {
-    ...previous,
-    id: db.id(),
-    status: 'active',
-    created_at: db.iso(0),
-    traffic_percent: 100,
-  };
-  db.deployments.unshift(dep);
-  return status(202, dep);
+  const rows = db.deployments.filter((d) => d.app_id === a.id);
+  const ref = typeof body.target_deployment_id === 'string' ? body.target_deployment_id.trim() : '';
+  let target: db.Deployment | undefined;
+  if (ref) {
+    target = rows.find((d) => d.id === ref);
+    if (!target)
+      throw new Problem(
+        404,
+        'rollback_target_not_found',
+        `No rollback-eligible deployment with id "${ref}" belongs to ${a.slug}.`
+      );
+    const zeroTrafficLive = target.status === 'live' && (target.traffic_percent ?? 0) === 0;
+    if (target.status === 'live' && !zeroTrafficLive)
+      throw new Problem(
+        409,
+        'rollback_target_already_live',
+        `Deployment "${ref}" is already the current live deployment.`
+      );
+    if (target.status !== 'superseded' && !zeroTrafficLive)
+      throw new Problem(
+        409,
+        'rollback_target_ineligible',
+        `Deployment "${ref}" has status "${target.status}"; only a superseded or zero-traffic live deployment can be rolled back.`
+      );
+  } else {
+    target = rows.find((d) => d.status === 'superseded');
+    if (!target)
+      throw new Problem(409, 'no_rollback_target', 'No earlier deployment to roll back to.');
+  }
+  const scope = target.scope ?? 'prod';
+  for (const d of rows) {
+    if (d === target || d.status !== 'live' || (d.scope ?? 'prod') !== scope) continue;
+    d.status = 'superseded';
+    d.traffic_percent = 0;
+  }
+  target.status = 'live';
+  target.traffic_percent = 100;
+  return status(202, target);
 });
 route('GET', '/v1/apps/{slug}/metrics', ({ params, query }) =>
   db.metricsFor(app(params.slug), query.get('range') ?? '24h')
@@ -2654,6 +2769,63 @@ route('POST', '/v1/apps/{slug}/deployments/source-tarball', ({ params, req }) =>
   return status(202, startSourceDeployment(a, 'tarball', `${a.slug} (uploaded archive)`));
 });
 
+// Resumable upload sessions (POST/PATCH/GET /v1/uploads, commit), the route
+// the console deploys tarballs through. Bytes are counted, not kept.
+const uploads = new Map<
+  string,
+  { slug: string; total: number; received: number; deployment?: unknown }
+>();
+const UPLOAD_CHUNK = 1_048_576;
+const uploadExpiry = () => new Date(Date.now() + 3_600_000).toISOString();
+function uploadSession(id: string) {
+  const u = uploads.get(id);
+  if (!u) throw new Problem(404, 'not_found', 'No such upload session.');
+  return u;
+}
+route('POST', '/v1/uploads', ({ body }) => {
+  const a = app(String(body.app_slug));
+  const id = crypto.randomUUID();
+  uploads.set(id, { slug: a.slug, total: Number(body.total_size), received: 0 });
+  return status(201, {
+    upload_id: id,
+    chunk_size: UPLOAD_CHUNK,
+    total_size: Number(body.total_size),
+    expires_at: uploadExpiry(),
+  });
+});
+route('GET', '/v1/uploads/{id}', ({ params }) => {
+  const u = uploadSession(params.id);
+  return {
+    upload_id: params.id,
+    app_slug: u.slug,
+    chunk_size: UPLOAD_CHUNK,
+    total_size: u.total,
+    received_bytes: u.received,
+    status: u.received >= u.total ? 'complete' : 'open',
+    expires_at: uploadExpiry(),
+  };
+});
+route('PATCH', '/v1/uploads/{id}', ({ params, req }) => {
+  const u = uploadSession(params.id);
+  if (Number(req.headers['upload-offset']) !== u.received)
+    throw new Problem(
+      409,
+      'upload_session_offset_conflict',
+      'Upload-Offset does not match the received bytes.'
+    );
+  // readBody has consumed the stream as text; the header carries the byte count.
+  u.received += Number(req.headers['content-length'] ?? 0);
+  return {};
+});
+route('POST', '/v1/uploads/{id}/commit', ({ params }) => {
+  const u = uploadSession(params.id);
+  if (u.deployment) return status(202, u.deployment);
+  if (u.received < u.total) throw new Problem(409, 'conflict', 'The upload is incomplete.');
+  const a = app(u.slug);
+  u.deployment = startSourceDeployment(a, 'tarball', `${a.slug} (uploaded archive)`);
+  return status(201, u.deployment);
+});
+
 route('GET', '/v1/account/object-storage-usage', () => ({
   usage: {
     observed_bytes: 41_237_899_264,
@@ -2908,6 +3080,74 @@ route('POST', '/v1/postgres/databases', ({ body }) => {
   return status(201, database);
 });
 route('GET', '/v1/postgres/databases/{id}', ({ params }) => pgDatabase(params.id));
+// A company's databases (faas org_postgres_routes.go): its own list, separate
+// from the signed-in account's. acme-corp starts with one.
+const orgPg = new Map<string, Record<string, unknown>[]>([
+  [
+    'acme-corp',
+    [
+      {
+        id: 'pg-acme-ledger',
+        name: 'acme-ledger',
+        region: 'fra',
+        postgres_major: 16,
+        service_class: 'production',
+        availability: 'single_zone',
+        scale_to_zero: false,
+        storage_limit_bytes: 20 * 1024 ** 3,
+        restore_window_seconds: 7 * 24 * 3600,
+        restore_source_database_id: null,
+        restore_point_in_time: null,
+        state: 'available',
+        last_error_code: null,
+        created_at: '2026-10-05T10:00:00Z',
+        updated_at: '2026-10-05T10:00:00Z',
+      },
+    ],
+  ],
+]);
+const orgDatabases = (org: string) => {
+  requireOrgRole(org, ANY_MEMBER);
+  if (!orgPg.has(org)) orgPg.set(org, []);
+  return orgPg.get(org)!;
+};
+route('GET', '/v1/orgs/{organization}/postgres/databases', ({ params }) => {
+  pgGate();
+  return { items: orgDatabases(params.organization) };
+});
+route('POST', '/v1/orgs/{organization}/postgres/databases', ({ params, body }) => {
+  pgGate();
+  const list = orgDatabases(params.organization);
+  const now = new Date().toISOString();
+  const database = {
+    id: db.id(),
+    name: String(body.name ?? '').trim(),
+    region: String(body.region ?? 'fra'),
+    postgres_major: Number(body.postgres_major ?? 16),
+    service_class: String(body.service_class ?? 'development'),
+    availability: String(body.availability ?? 'single_zone'),
+    scale_to_zero: body.scale_to_zero !== false,
+    storage_limit_bytes: Number(body.storage_limit_bytes ?? 10 * 1024 ** 3),
+    restore_window_seconds: Number(body.restore_window_seconds ?? 7 * 24 * 3600),
+    restore_source_database_id: null,
+    restore_point_in_time: null,
+    state: 'available',
+    last_error_code: null,
+    created_at: now,
+    updated_at: now,
+  };
+  list.push(database);
+  return status(201, database);
+});
+route('GET', '/v1/orgs/{organization}/postgres/databases/{id}', ({ params }) => {
+  const row = orgDatabases(params.organization).find((d) => d.id === params.id);
+  if (!row) throw new Problem(404, 'managed_postgres_not_found', 'no such database');
+  return row;
+});
+route('GET', '/v1/orgs/{organization}/postgres/databases/{id}/bindings', ({ params }) => {
+  orgDatabases(params.organization);
+  return { items: [] };
+});
 route('DELETE', '/v1/postgres/databases/{id}', ({ params }) => {
   const database = pgDatabase(params.id);
   database.state = 'deleting';
@@ -5424,6 +5664,67 @@ function requireOrgRole(slug: string, roles: string[], mutable = false) {
   if (!role || !roles.includes(role)) throw new Problem(403, 'org_role_forbidden');
   return org;
 }
+// Company billing (faas org_billing_routes.go): status and usage for any
+// member, invoices for owners and billing admins. MOCK_ORG_ROLE overrides the
+// signed-in member's role, to see a refusal.
+function requireOrgBillingRole(slug: string, roles: string[]) {
+  const forced = process.env.MOCK_ORG_ROLE;
+  if (forced && !roles.includes(forced)) throw new Problem(403, 'org_role_forbidden');
+  return requireOrgRole(slug, forced ? [...roles, forced] : roles);
+}
+const ANY_MEMBER = ['owner', 'admin', 'developer', 'viewer', 'billing', 'member'];
+route('GET', '/v1/orgs/{slug}/billing/status', ({ params }) => {
+  requireOrgBillingRole(params.slug, ANY_MEMBER);
+  return {
+    mode: 'live',
+    enabled: true,
+    provider: 'stripe',
+    plan: 'pro',
+    account_status: 'active',
+    customer_configured: true,
+    subscription_configured: true,
+    usage_reconciliation_enabled: true,
+  };
+});
+route('GET', '/v1/orgs/{slug}/usage', ({ params }) => {
+  requireOrgBillingRole(params.slug, ANY_MEMBER);
+  return inventoryForOrg(params.slug).map((app, i) => ({
+    app_id: app.id,
+    mb_seconds: 3_686_400 * (i + 2),
+    requests: 12_400 * (i + 1),
+    included_gb_hours: 1000,
+    cold_boots: 4 + i,
+  }));
+});
+route('GET', '/v1/orgs/{slug}/invoices', ({ params }) => {
+  requireOrgBillingRole(params.slug, ['owner', 'billing']);
+  return {
+    items: [
+      {
+        id: 'org-inv-1',
+        number: 'ACME-0042',
+        provider: 'stripe',
+        provider_invoice_id: 'in_acme_0042',
+        status: 'paid',
+        period_start: '2026-09-01T00:00:00Z',
+        period_end: '2026-09-30T23:59:59Z',
+        subtotal_cents: 4900,
+        tax_cents: 0,
+        total_cents: 4900,
+        amount_paid_cents: 4900,
+        currency: 'usd',
+        pdf_available: true,
+        created_at: '2026-10-01T00:00:00Z',
+      },
+    ],
+    next_before: null,
+  };
+});
+route('GET', '/v1/orgs/{slug}/billing/portal', ({ params }) => {
+  requireOrgBillingRole(params.slug, ['owner']);
+  return { url: 'https://billing.example.test/portal/acme', payment_method: 'card' };
+});
+
 route('GET', '/v1/orgs', () => ({
   orgs: db.orgs
     .filter((org) => org.status !== 'deleted_pending')
@@ -5597,20 +5898,48 @@ route('POST', '/dashboard/install/connect', ({ body, req, res }) => {
 });
 route('POST', '/v1/install/repos/list', () => {
   requireGitHub();
-  return [
+  const seeded = [
     { id: 1001, full_name: 'acme-corp/storefront', default_branch: 'main', private: true },
     { id: 1002, full_name: 'acme-corp/checkout', default_branch: 'main', private: true },
     { id: 1003, full_name: 'acme-corp/webhook-router', default_branch: 'master', private: false },
     { id: 1004, full_name: 'acme-corp/nightly-etl', default_branch: 'main', private: true },
   ];
+  // MOCK_REPOS=<n> pads the installation to n repositories across a few
+  // owners, to see the New app repository list as a large account sees it.
+  const total = Number(process.env.MOCK_REPOS ?? 0);
+  const owners = ['acme-corp', 'acme-labs', 'design-ops'];
+  const words = ['billing', 'search', 'auth', 'media', 'events', 'catalog', 'inbox', 'ledger'];
+  for (let i = seeded.length; i < total; i++)
+    seeded.push({
+      id: 2000 + i,
+      full_name: `${owners[i % owners.length]}/${words[i % words.length]}-${['api', 'worker', 'web', 'cron'][i % 4]}-${i}`,
+      default_branch: i % 5 ? 'main' : 'develop',
+      private: i % 3 !== 0,
+    });
+  return seeded;
 });
-route('POST', '/v1/apps/{slug}/install/bind', async ({ body }) => {
-  requireGitHub();
+const repoBindings = new Map<string, { repo_full_name: string; production_branch: string }>();
+route('GET', '/v1/apps/{slug}/install/bind', ({ params }) => {
+  const bound = repoBindings.get(params.slug);
+  const installed = Boolean(db.account.github_install_id);
   return {
-    binding_id: hex(32),
+    state: bound ? 'bound' : installed ? 'installed' : 'not_installed',
+    health: installed ? 'healthy' : 'not_connected',
+    connected: installed,
+    ...(installed ? { installation_id: Number(MOCK_INSTALL_ID) } : {}),
+    last_reconcile_repository_count: 4,
+    last_reconcile_detached_count: 0,
+    ...bound,
+  };
+});
+route('POST', '/v1/apps/{slug}/install/bind', async ({ params, body }) => {
+  requireGitHub();
+  const bound = {
     repo_full_name: String(body.repo_full_name ?? ''),
     production_branch: String(body.production_branch ?? 'main'),
   };
+  repoBindings.set(params.slug, bound);
+  return { binding_id: hex(32), ...bound };
 });
 
 // --- Organisations, org keys, invitations ---
@@ -5732,6 +6061,7 @@ const MOCK_CSRF_ACTIONS = new Set([
   'mfa_disable',
   'set_password',
   'connect_github',
+  'bind_app_to_repo',
 ]);
 route('GET', '/v1/auth/csrf', ({ query, res }) => {
   const action = query.get('action') ?? '';
@@ -6596,6 +6926,28 @@ route('POST', '/v1/projects/scan/source-ref', async ({ body }) => {
   } satisfies components['schemas']['PlanResponse'];
 });
 route('GET', '/v1/projects', () => projectSummaries());
+// A company's projects (faas org_project_routes.go), including one a teammate
+// created: GET /v1/projects lists only the signed-in account's own.
+const teammateProject = {
+  slug: 'acme-billing',
+  workload_count: 1,
+  created_at: '2026-10-02T09:00:00Z',
+} as const;
+route('GET', '/v1/orgs/{organization}/projects', ({ params }) => {
+  const org = requireOrgRole(params.organization, ANY_MEMBER);
+  if (org.personal) return projectSummaries();
+  return params.organization === 'acme-corp'
+    ? [{ ...projectSummaries()[0], ...teammateProject }]
+    : [];
+});
+route('GET', '/v1/orgs/{organization}/projects/{slug}', ({ params }) => {
+  requireOrgRole(params.organization, ANY_MEMBER);
+  const found = projects.find((p) => p.slug === params.slug);
+  if (found) return found;
+  if (params.slug === teammateProject.slug && projects[0])
+    return { ...projects[0], slug: teammateProject.slug, name: 'acme-billing' };
+  throw new Problem(404, 'not_found', `project ${params.slug} not found`);
+});
 route('GET', '/v1/projects/{slug}', ({ params }) => {
   const project = projects.find((item) => item.slug === params.slug);
   if (!project) throw new Problem(404, 'not_found', 'Project not found.');
@@ -6972,68 +7324,73 @@ const MOCKED_PREFIXES = [
   '/dashboard/install/connect',
 ];
 
+/** What the installer needs from either Vite server; dev and preview both have it. */
+type MockHost = { config: { logger: Logger }; middlewares: Connect.Server };
+
 export function mockApi(): Plugin {
+  const install = (server: MockHost) => {
+    server.config.logger.info(
+      `  ➜  mock api: serving /v1/* from mock/ — no backend needed${db.EMPTY ? ' (empty workspace)' : ''}`
+    );
+    server.middlewares.use((req, res, next) => {
+      const url = new URL(req.url ?? '/', 'http://localhost');
+      const method = req.method ?? 'GET';
+      // GET /login and /signup are this app's own pages; only the POSTs are the API's.
+      const isApi =
+        url.pathname.startsWith('/v1/') ||
+        url.pathname === '/status/slo.json' ||
+        (method !== 'GET' &&
+          MOCKED_PREFIXES.some((p) => url.pathname === p || url.pathname.startsWith(p + '/')));
+      if (!isApi) return next();
+
+      const match = routes.find((r) => r.method === method && r.pattern.test(url.pathname));
+      if (!match) {
+        server.config.logger.warn(`  mock api: no handler for ${method} ${url.pathname}`);
+        return problem(
+          res,
+          new Problem(
+            404,
+            'not_mocked',
+            `The mock API has no handler for ${method} ${url.pathname}.`
+          )
+        );
+      }
+
+      const values = url.pathname.match(match.pattern)!.slice(1).map(decodeURIComponent);
+      const params = Object.fromEntries(match.keys.map((k, i) => [k, values[i]]));
+
+      void (async () => {
+        const body = method === 'GET' ? {} : await readBody(req);
+        await new Promise((r) => setTimeout(r, latency()));
+        // Deployments created here move along their lifecycle as time passes.
+        advanceDeployments(Date.now());
+        try {
+          const out = await match.handler({ params, query: url.searchParams, body, req, res });
+          if (res.writableEnded || res.headersSent) return; // streaming handlers own the response
+          if (out === NO_CONTENT) {
+            res.statusCode = 204;
+            res.end();
+            return;
+          }
+          if (out && typeof out === 'object' && '__status' in out) {
+            const s = out as { __status: number; body: unknown };
+            return json(res, s.__status, s.body);
+          }
+          json(res, 200, out);
+        } catch (err) {
+          if (err instanceof Problem) return problem(res, err);
+          server.config.logger.error(`  mock api: ${method} ${url.pathname} threw: ${String(err)}`);
+          problem(res, new Problem(500, 'mock_error', String(err)));
+        }
+      })();
+    });
+  };
   return {
     name: 'gregale-mock-api',
     apply: 'serve',
-    configureServer(server) {
-      server.config.logger.info(
-        `  ➜  mock api: serving /v1/* from mock/ — no backend needed${db.EMPTY ? ' (empty workspace)' : ''}`
-      );
-      server.middlewares.use((req, res, next) => {
-        const url = new URL(req.url ?? '/', 'http://localhost');
-        const method = req.method ?? 'GET';
-        // GET /login and /signup are this app's own pages; only the POSTs are the API's.
-        const isApi =
-          url.pathname.startsWith('/v1/') ||
-          url.pathname === '/status/slo.json' ||
-          (method !== 'GET' &&
-            MOCKED_PREFIXES.some((p) => url.pathname === p || url.pathname.startsWith(p + '/')));
-        if (!isApi) return next();
-
-        const match = routes.find((r) => r.method === method && r.pattern.test(url.pathname));
-        if (!match) {
-          server.config.logger.warn(`  mock api: no handler for ${method} ${url.pathname}`);
-          return problem(
-            res,
-            new Problem(
-              404,
-              'not_mocked',
-              `The mock API has no handler for ${method} ${url.pathname}.`
-            )
-          );
-        }
-
-        const values = url.pathname.match(match.pattern)!.slice(1).map(decodeURIComponent);
-        const params = Object.fromEntries(match.keys.map((k, i) => [k, values[i]]));
-
-        void (async () => {
-          const body = method === 'GET' ? {} : await readBody(req);
-          await new Promise((r) => setTimeout(r, latency()));
-          // Deployments created here move along their lifecycle as time passes.
-          advanceDeployments(Date.now());
-          try {
-            const out = await match.handler({ params, query: url.searchParams, body, req, res });
-            if (res.writableEnded || res.headersSent) return; // streaming handlers own the response
-            if (out === NO_CONTENT) {
-              res.statusCode = 204;
-              res.end();
-              return;
-            }
-            if (out && typeof out === 'object' && '__status' in out) {
-              const s = out as { __status: number; body: unknown };
-              return json(res, s.__status, s.body);
-            }
-            json(res, 200, out);
-          } catch (err) {
-            if (err instanceof Problem) return problem(res, err);
-            server.config.logger.error(
-              `  mock api: ${method} ${url.pathname} threw: ${String(err)}`
-            );
-            problem(res, new Problem(500, 'mock_error', String(err)));
-          }
-        })();
-      });
-    },
+    configureServer: install,
+    // `vite preview` serves the built bundle; with the mock installed here too,
+    // `npm run preview:mock` tours a real build under the production headers.
+    configurePreviewServer: install,
   };
 }
