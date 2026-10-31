@@ -9,6 +9,10 @@ vi.mock('@tanstack/react-router', () => ({
 }));
 
 vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { id: 'account1' } }) }));
+const hiddenCapabilities = vi.hoisted(() => ({ ids: [] as string[] }));
+vi.mock('./nav-access', () => ({
+  useCapabilityOff: () => (id: string) => hiddenCapabilities.ids.includes(id),
+}));
 vi.mock('@/lib/api/palette', () => ({
   usePaletteResources: () => ({
     deployments: [],
@@ -91,6 +95,19 @@ describe('CommandPalette', () => {
       expect(onOpenChange).toHaveBeenCalledWith(false);
     } finally {
       opener.remove();
+    }
+  });
+
+  it('does not list a page apid hides from the account', async () => {
+    hiddenCapabilities.ids = ['object-storage'];
+    try {
+      renderPalette();
+      const input = await screen.findByRole('combobox', { name: /search commands/i });
+      await userEvent.type(input, 'stor');
+      expect(screen.queryByRole('option', { name: /^Storage/ })).toBeNull();
+      hiddenCapabilities.ids = [];
+    } finally {
+      hiddenCapabilities.ids = [];
     }
   });
 

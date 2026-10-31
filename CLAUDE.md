@@ -80,6 +80,9 @@ paths are checked against `api/openapi.yaml` by `src/lib/mock-spec-drift.test.ts
   their age on each request (`mock/deploy-lifecycle.ts`); seeded rows never move.
   `MOCK_BUILD_FAIL=1` makes new source builds fail installing dependencies
   (`dep_install_failed`) after ~4.5 s, for first-deployment recovery.
+  `MOCK_HIDDEN_CAPABILITIES=<id,id>` lists catalog capabilities as hidden for
+  the account (`hidden_capabilities`), so gated tabs, nav items and pages can be
+  seen in their off state.
 - **`npm run tour` walks the console and fails on what a unit test cannot see** —
   an error boundary, a spinner nothing resolves, a path the mock does not
   answer, a page that threw. Point it at a running dev server

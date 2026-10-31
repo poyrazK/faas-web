@@ -24,6 +24,7 @@ vi.mock('@/lib/auth', () => ({
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: mocks.toast }) }));
 vi.mock('@/lib/api/capabilities', () => ({
   useCapability: () => ({ accountId: 'account', state: 'unavailable' }),
+  useCapabilityAccess: () => ({ access: 'off', refresh: () => {} }),
 }));
 vi.mock('./app-core-panels', () => ({ RegistryCredentialsPanel: () => null }));
 vi.mock('./supply-chain-panel', () => ({ SupplyChainPanel: () => null }));

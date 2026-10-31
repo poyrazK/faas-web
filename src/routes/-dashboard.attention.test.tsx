@@ -19,6 +19,12 @@ const ready = (data: unknown) => ({
   error: null,
   refetch: vi.fn(),
 });
+// The capability registry is a query; these pages render without a client here.
+vi.mock('@/lib/api/capabilities', async (original) => ({
+  ...(await original<typeof import('@/lib/api/capabilities')>()),
+  useCapabilityRegistry: () => ({ query: { data: undefined }, phase: 'loading' }),
+  useCapabilityAccess: () => ({ access: 'on', refresh: () => {} }),
+}));
 vi.mock('@/lib/auth', () => ({
   useAuth: () => ({ account: { plan: 'free', status: 'active' }, user: { name: 'Ada' } }),
 }));

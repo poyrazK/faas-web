@@ -106,7 +106,14 @@ route('GET', '/v1/capabilities', ({ res }) => {
   res.setHeader('Cache-Control', 'no-store');
   const raw = process.env.MOCK_PLAN ?? db.account.plan;
   const plan = raw === 'free' || raw === 'hobby' || raw === 'pro' || raw === 'scale' ? raw : 'pro';
-  return mockCapabilities(plan, (process.env.MOCK_UNAVAILABLE_CAPABILITIES ?? '').split(','));
+  const registry = mockCapabilities(
+    plan,
+    (process.env.MOCK_UNAVAILABLE_CAPABILITIES ?? '').split(',')
+  );
+  // Catalog ids whose platform flag is off for the account, as apid lists them
+  // (internal ones included); the console hides those tabs and pages.
+  const hidden = (process.env.MOCK_HIDDEN_CAPABILITIES ?? '').split(',').filter(Boolean);
+  return hidden.length ? { ...registry, hidden_capabilities: hidden } : registry;
 });
 
 // --- Public status -----------------------------------------------------------
