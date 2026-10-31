@@ -854,6 +854,68 @@ describe('POST /v1/apps/{slug}/rollback', () => {
   });
 });
 
+describe('log drains', () => {
+  const intake = 'https://http-intake.logs.datadoghq.eu/api/v2/logs';
+  async function app(slug: string) {
+    const created = await json('/v1/apps', {
+      method: 'POST',
+      body: JSON.stringify({ slug, type: 'app', runtime: 'node24' }),
+    });
+    expect(created.status).toBe(201);
+  }
+  const post = (slug: string, body: object) =>
+    json(`/v1/apps/${slug}/log-drains`, { method: 'POST', body: JSON.stringify(body) });
+
+  it('takes a datadog drain only at a Datadog intake with a DD-API-KEY, as apid does', async () => {
+    await app('drain-dd');
+    const elsewhere = await post('drain-dd', {
+      kind: 'datadog',
+      target_url: 'https://logs.example.com',
+      auth_header: 'DD-API-KEY: k',
+    });
+    expect(elsewhere).toMatchObject({ status: 400, body: { code: 'app_log_drain_invalid' } });
+    const keyless = await post('drain-dd', { kind: 'datadog', target_url: intake });
+    expect(keyless).toMatchObject({ status: 400, body: { code: 'app_log_drain_invalid' } });
+    const ok = await post('drain-dd', {
+      kind: 'datadog',
+      target_url: intake,
+      auth_header: 'DD-API-KEY: k',
+    });
+    expect(ok).toMatchObject({ status: 201, body: { kind: 'datadog', auth_header_masked: '***' } });
+    expect(JSON.stringify(ok.body)).not.toContain('DD-API-KEY');
+  });
+
+  it('switches a drain to datadog only with a key', async () => {
+    await app('drain-switch');
+    const { body: drain } = await post('drain-switch', {
+      kind: 'http_json',
+      target_url: 'https://logs.example.com/ingest',
+    });
+    const path = `/v1/apps/drain-switch/log-drains/${drain.id}`;
+    const keyless = await json(path, {
+      method: 'PATCH',
+      body: JSON.stringify({ kind: 'datadog', target_url: intake }),
+    });
+    expect(keyless).toMatchObject({ status: 400, body: { code: 'app_log_drain_invalid' } });
+    const ok = await json(path, {
+      method: 'PATCH',
+      body: JSON.stringify({ kind: 'datadog', target_url: intake, auth_header: 'DD-API-KEY: k' }),
+    });
+    expect(ok).toMatchObject({ status: 200, body: { kind: 'datadog', target_url: intake } });
+  });
+
+  it('refuses a drain past the plan cap per app with plan_log_drain_quota', async () => {
+    await app('drain-quota');
+    for (let i = 0; i < 10; i++)
+      expect(
+        (await post('drain-quota', { kind: 'otlp', target_url: `https://o${i}.example.com` }))
+          .status
+      ).toBe(201);
+    const over = await post('drain-quota', { kind: 'otlp', target_url: 'https://o10.example.com' });
+    expect(over).toMatchObject({ status: 403, body: { code: 'plan_log_drain_quota' } });
+  });
+});
+
 describe('/v1/apps/{slug}/deployment-aliases', () => {
   async function app(slug: string) {
     const created = await json('/v1/apps', {
