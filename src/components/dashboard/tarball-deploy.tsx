@@ -12,8 +12,8 @@ import { cn } from '@/lib/utils';
  * `gregale deploy --tarball`, for code that is not in a connected repository.
  *
  * The annotations the API accepts alongside the archive (ADR-116) travel in
- * the `sidecar` part: a reason, one of the closed set of tags, and a PR
- * number. They are what makes a deploy auditable later, so they are offered
+ * the upload session's deploy options: a reason, one of the closed set of
+ * tags, and a PR number. They are what makes a deploy auditable later, so they are offered
  * here rather than left to the CLI.
  */
 
@@ -41,17 +41,20 @@ export function TarballDeploy({
   const [file, setFile] = useState<File | null>(null);
   const [reason, setReason] = useState('');
   const [tag, setTag] = useState<Tag>('');
+  const [sent, setSent] = useState<number | null>(null);
 
   const submit = async () => {
     if (!file) return;
     try {
       const deployment = await deploy.mutateAsync({
         file,
-        sidecar: {
+        onProgress: (s, t) => setSent(Math.round((s / t) * 100)),
+        options: {
           ...(reason.trim() ? { reason: reason.trim() } : {}),
           ...(tag ? { tag } : {}),
         },
       });
+      setSent(null);
       setFile(null);
       setReason('');
       setTag('');
@@ -63,6 +66,7 @@ export function TarballDeploy({
       });
       onDeployed?.(deployment.id);
     } catch (err) {
+      setSent(null);
       if (err instanceof ApiError && err.code === 'source_too_large') {
         toast({
           kind: 'error',
@@ -142,6 +146,11 @@ export function TarballDeploy({
           Deploy archive
         </Button>
       </div>
+      {sent !== null && (
+        <p role="status" className="text-xs text-muted-foreground">
+          Uploading… {sent}%
+        </p>
+      )}
     </form>
   );
 }
