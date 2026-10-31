@@ -20,6 +20,7 @@ import { SpendControl } from '@/components/dashboard/spend-control';
 import { ObjectStorageUsagePanel } from '@/components/dashboard/object-storage-usage';
 import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
 import { OrgUsage } from '@/components/dashboard/org-billing';
+import { formatCents } from '@/lib/money';
 
 export const Route = createFileRoute('/dashboard/usage')({
   component: UsagePage,
@@ -38,9 +39,7 @@ export const Route = createFileRoute('/dashboard/usage')({
  */
 function formatMoney(cents: number | undefined): string {
   if (cents == null) return '—';
-  return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'EUR' }).format(
-    cents / 100
-  );
+  return formatCents(cents);
 }
 
 /**

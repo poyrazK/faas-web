@@ -45,7 +45,7 @@ import {
  */
 export function Customers() {
   return (
-    <MonetizationGate title="Customers">
+    <MonetizationGate title="Customers" capability="platform-tenants">
       <CustomersBody />
     </MonetizationGate>
   );
