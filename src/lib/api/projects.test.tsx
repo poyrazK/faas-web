@@ -5,6 +5,10 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { ApiError } from './errors';
 import { useProjects, useProject } from './projects';
 import { spyApi } from '@/test/api';
+import { bindWorkspaceAccount } from '@/lib/workspace';
+
+// The shell binds the workspace to the signed-in account; project reads wait for it.
+bindWorkspaceAccount('account-projects');
 afterEach(() => vi.restoreAllMocks());
 function setup() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, retryDelay: 0 } } });
