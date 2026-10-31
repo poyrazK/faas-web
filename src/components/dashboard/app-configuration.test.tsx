@@ -27,6 +27,7 @@ vi.mock('@/lib/api/capabilities', () => ({
 }));
 vi.mock('./app-core-panels', () => ({ RegistryCredentialsPanel: () => null }));
 vi.mock('./supply-chain-panel', () => ({ SupplyChainPanel: () => null }));
+vi.mock('./deploy-tokens', () => ({ DeployTokensPanel: () => null }));
 vi.mock('./app-insights', () => ({ StaticEgressIP: () => null, StreamingCapNote: () => null }));
 vi.mock('./app-lifecycle', () => ({ PurgeCacheControl: () => null }));
 vi.mock('./app-visibility', () => ({ AppVisibility: () => null }));
