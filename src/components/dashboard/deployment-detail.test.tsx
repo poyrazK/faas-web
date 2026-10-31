@@ -17,6 +17,13 @@ vi.mock('@/lib/api/queries', () => ({
 vi.mock('@/lib/api/logs', () => ({
   useLogStream: (source: unknown, connected: boolean) => useLogStream(source, connected) as unknown,
 }));
+vi.mock('./deployment-aliases', () => ({
+  DeploymentAliasesHere: ({ slug, deployment }: { slug: string; deployment: Deployment }) => (
+    <p>
+      aliases of {slug} for {deployment.id}
+    </p>
+  ),
+}));
 vi.mock('./deployment-actions', () => ({
   AdvanceCanaryButton: () => null,
   ReorderDeploymentControl: () => null,
@@ -177,6 +184,17 @@ describe('DeploymentDetailPanel app scope', () => {
       { kind: 'build', deploymentId: 'dep-a', limit: 200 },
       true
     );
+  });
+
+  it('offers the release’s aliases once it is known to belong to the app', () => {
+    useDeployment.mockReturnValue(ready(deployment({ id: 'dep-a', app_id: 'app-a' })));
+    render(<DeploymentDetailPanel deploymentId="dep-a" appSlug="alpha" onClose={vi.fn()} />);
+    expect(screen.getByText('aliases of alpha for dep-a')).toBeInTheDocument();
+  });
+
+  it('offers no aliases when the release’s app is unknown', () => {
+    render(<DeploymentDetailPanel deploymentId="dep-b" onClose={vi.fn()} />);
+    expect(screen.queryByText(/aliases of/)).not.toBeInTheDocument();
   });
 
   it('preserves account-wide details when no app slug is supplied', () => {

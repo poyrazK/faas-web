@@ -28,6 +28,7 @@ vi.mock('@/lib/api/queries', () => ({
   useAddDomain: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useDeleteDomain: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useVerifyDomain: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useRetryDomain: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn() }));

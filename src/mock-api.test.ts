@@ -446,6 +446,89 @@ describe('workload creation mock contract', () => {
   });
 });
 
+describe('workload run and delete mock contract', () => {
+  const json = { 'Content-Type': 'application/json' };
+  const create = (name: string, kind = 'batch') =>
+    fetch(`${origin}/v1/jobs`, {
+      method: 'POST',
+      headers: json,
+      body: JSON.stringify({
+        name,
+        kind,
+        image_ref: 'ghcr.io/acme/backup:v1',
+        command: ['/bin/true'],
+      }),
+    });
+  const start = (name: string, body: unknown) =>
+    fetch(`${origin}/v1/jobs/${name}/runs`, {
+      method: 'POST',
+      headers: json,
+      body: JSON.stringify(body),
+    });
+  const remove = (name: string) => fetch(`${origin}/v1/jobs/${name}`, { method: 'DELETE' });
+
+  it('queues a run that the run list and run read then return', async () => {
+    await create('run-me-once');
+    const response = await start('run-me-once', { tasks: 7 });
+    expect(response.status).toBe(201);
+    const run = await response.json();
+    expect(run).toMatchObject({
+      id: expect.any(String),
+      tasks: 7,
+      trigger_kind: 'manual',
+      aggregate_status: 'queued',
+      tasks_succeeded: 0,
+    });
+    const listed = await get('/v1/jobs/run-me-once/runs');
+    expect(listed.body.runs).toEqual([run]);
+    expect((await get(`/v1/jobs/run-me-once/runs/${run.id}`)).body).toEqual(run);
+  });
+
+  it('refuses a run with no valid task count, and for an unknown job', async () => {
+    await create('run-bad-input');
+    for (const tasks of [undefined, 0, 2.5, 'ten']) {
+      expect((await start('run-bad-input', { tasks })).status).toBe(400);
+    }
+    expect((await start('no-such-workload', { tasks: 1 })).status).toBe(404);
+  });
+
+  it('refuses to run a paused workload with 409', async () => {
+    const response = await start('legacy-backfill', { tasks: 1 });
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ code: 'job_paused' });
+  });
+
+  it('soft-deletes a workload with nothing in flight', async () => {
+    await create('delete-me-now');
+    expect((await remove('delete-me-now')).status).toBe(204);
+    expect((await get('/v1/jobs/delete-me-now')).response.status).toBe(404);
+    const { body } = await get('/v1/jobs');
+    expect(body.jobs.map((job: { name: string }) => job.name)).not.toContain('delete-me-now');
+    expect((await remove('delete-me-now')).status).toBe(404);
+  });
+
+  it('refuses to delete while a run still has live tasks, until it is cancelled', async () => {
+    await create('delete-after-cancel');
+    const run = await (await start('delete-after-cancel', { tasks: 2 })).json();
+    const refused = await remove('delete-after-cancel');
+    expect(refused.status).toBe(409);
+    expect(await refused.json()).toMatchObject({ code: 'job_has_live_instances' });
+    const cancel = await fetch(`${origin}/v1/jobs/delete-after-cancel/runs/${run.id}/cancel`, {
+      method: 'POST',
+    });
+    expect(cancel.status).toBe(200);
+    expect((await remove('delete-after-cancel')).status).toBe(204);
+  });
+
+  it('keeps the free-plan gate on run and delete', async () => {
+    process.env.MOCK_PLAN = 'free';
+    for (const response of [await start('nightly-export', { tasks: 1 }), await remove('x-y-z')]) {
+      expect(response.status).toBe(402);
+      expect(await response.json()).toMatchObject({ code: 'jobs_not_allowed' });
+    }
+  });
+});
+
 describe('app release history mock contract', () => {
   it('pages newest-first within the selected app without repeating the cursor row', async () => {
     const first = await get('/v1/apps/api-gateway/deployments?limit=1');
@@ -671,6 +754,10 @@ describe('mock API', () => {
       // The fixture has no deployment. Restored metadata alone is not execution evidence.
       expect(await restored.json()).toMatchObject({ id: original.id, slug, status: 'undeployed' });
       expect((await fetch(`${base}/v1/apps/${slug}/restore`, { method: 'POST' })).status).toBe(409);
+      // A slug that was never an app is the spec's `not_found`, not an app-scoped code.
+      const unknown = await fetch(`${base}/v1/apps/never-existed-app/restore`, { method: 'POST' });
+      expect(unknown.status).toBe(404);
+      expect(await unknown.json()).toMatchObject({ code: 'not_found' });
       expect((await fetch(`${base}/v1/apps/${slug}`, { method: 'DELETE' })).status).toBe(204);
       clock.mockReturnValue(now + 8 * 86400e3);
       const expired = await fetch(`${base}/v1/apps/${slug}/restore`, { method: 'POST' });

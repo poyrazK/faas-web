@@ -12,6 +12,7 @@ import { registerEventMocks } from './events';
 import { mockOpenAPIPreview } from './openapi-preview';
 import { isDigestPinnedImage } from '../src/lib/oci-image';
 import { advancePolicy, mockRuntimePolicy } from './runtime-policy';
+import * as bindingVerification from './binding-verification';
 import {
   isMockProblem,
   readRequestAudit,
@@ -728,6 +729,7 @@ function newDeployment(a: db.App, kind: string): db.Deployment {
     created_at: new Date().toISOString(),
     traffic_percent: 0,
     scan: null,
+    revision: nextRevision(a.id),
   };
 }
 
@@ -968,19 +970,22 @@ route('GET', '/v1/apps/{slug}/bindings', ({ params, query }) => {
     ...(query.get('scope') ? { scope: query.get('scope') } : {}),
     generated_at: new Date().toISOString(),
     complete: !partial,
-    bindings: (a.service_bindings ?? []).map((binding) => ({
-      type: 'service',
-      name: binding.service,
-      binding: binding.binding,
-      scope: 'app',
-      access: a.service_binding_policy ?? 'account',
-      state: 'configured',
-      runtime_status: 'not_observed',
-      verification_status: 'unknown',
-      http_url: `http://${binding.service}.svc.gregale:10081`,
-      https_url: `https://${binding.service}.internal`,
-      transport: a.service_binding_transport ?? 'http',
-    })),
+    bindings: (a.service_bindings ?? [])
+      .map((binding): S_['AppBindingInventoryItem'] => ({
+        type: 'service',
+        name: binding.service,
+        binding: binding.binding,
+        scope: 'app',
+        access: a.service_binding_policy ?? 'account',
+        state: 'configured',
+        runtime_status: 'not_observed',
+        verification_status: 'unknown',
+        http_url: `http://${binding.service}.svc.gregale:10081`,
+        https_url: `https://${binding.service}.internal`,
+        transport: a.service_binding_transport ?? 'http',
+      }))
+      .concat(bindingVerification.queueInventoryItems(bindingApp(a))),
+    ...(bindingApp(a).live ? { verification_deployment_id: bindingApp(a).live } : {}),
     ...(partial
       ? {
           issues: [
@@ -995,6 +1000,108 @@ route('GET', '/v1/apps/{slug}/bindings', ({ params, query }) => {
       : {}),
   };
 });
+// Binding release policy, verification runs and queue canaries (faas
+// ADR-598, ADR-1355, ADR-1352). The api-gateway app is seeded with an
+// enforced policy, a pending run and a queue binding that supports canaries.
+function bindingApp(a: db.App) {
+  const live = db.deployments.find((d) => d.app_id === a.id && d.status === 'live');
+  return { id: a.id, slug: a.slug, live: live?.id };
+}
+function bindingCall<T>(fn: () => T): T {
+  try {
+    return fn();
+  } catch (error) {
+    if (error instanceof bindingVerification.BindingMockProblem)
+      throw new Problem(error.status, error.code, error.detail);
+    throw error;
+  }
+}
+route('GET', '/v1/apps/{slug}/bindings/release-policy', ({ params, query }) =>
+  bindingCall(() =>
+    bindingVerification.readReleasePolicy(bindingApp(app(params.slug)), query.get('scope'))
+  )
+);
+route('PUT', '/v1/apps/{slug}/bindings/release-policy', ({ params, query, body }) =>
+  bindingCall(() =>
+    bindingVerification.writeReleasePolicy(
+      bindingApp(app(params.slug)),
+      query.get('scope'),
+      'base',
+      body
+    )
+  )
+);
+route(
+  'PUT',
+  '/v1/apps/{slug}/bindings/release-policy-with-object-storage',
+  ({ params, query, body }) =>
+    bindingCall(() =>
+      bindingVerification.writeReleasePolicy(
+        bindingApp(app(params.slug)),
+        query.get('scope'),
+        'storage',
+        body
+      )
+    )
+);
+route('PUT', '/v1/apps/{slug}/bindings/release-policy-with-queues', ({ params, query, body }) =>
+  bindingCall(() =>
+    bindingVerification.writeReleasePolicy(
+      bindingApp(app(params.slug)),
+      query.get('scope'),
+      'queues',
+      body
+    )
+  )
+);
+route('GET', '/v1/apps/{slug}/bindings/verification-runs', ({ params, query }) =>
+  bindingCall(() => bindingVerification.listRuns(bindingApp(app(params.slug)), query))
+);
+route('POST', '/v1/apps/{slug}/bindings/verification-runs/review', ({ params, body }) =>
+  bindingCall(() => {
+    const a = bindingApp(app(params.slug));
+    return bindingVerification.reviewRun(a, a.live, body);
+  })
+);
+route('POST', '/v1/apps/{slug}/bindings/verification-runs', ({ params, body }) =>
+  bindingCall(() => status(201, bindingVerification.createRun(bindingApp(app(params.slug)), body)))
+);
+route('GET', '/v1/apps/{slug}/bindings/verification-runs/{run}', ({ params }) =>
+  bindingCall(() => bindingVerification.getRun(bindingApp(app(params.slug)), params.run))
+);
+route('DELETE', '/v1/apps/{slug}/bindings/verification-runs/{run}', ({ params }) =>
+  bindingCall(() => bindingVerification.cancelRun(bindingApp(app(params.slug)), params.run))
+);
+route('GET', '/v1/apps/{slug}/bindings/verification-runs/{run}/diagnostics', ({ params }) =>
+  bindingCall(() => bindingVerification.runDiagnostics(bindingApp(app(params.slug)), params.run))
+);
+route('POST', '/v1/apps/{slug}/bindings/verification-runs/{run}/resume', ({ params }) =>
+  bindingCall(() => bindingVerification.resumeRun(bindingApp(app(params.slug)), params.run))
+);
+route('POST', '/v1/apps/{slug}/bindings/verification-runs/{run}/complete', ({ params }) =>
+  bindingCall(() => bindingVerification.completeRun(bindingApp(app(params.slug)), params.run))
+);
+route('POST', '/v1/apps/{slug}/bindings/verification-runs/{run}/steps/{step}/admit', ({ params }) =>
+  bindingCall(() =>
+    bindingVerification.admitRunStep(bindingApp(app(params.slug)), params.run, Number(params.step))
+  )
+);
+route('POST', '/v1/apps/{slug}/bindings/queue-canaries', ({ params, body }) =>
+  bindingCall(() => {
+    const a = bindingApp(app(params.slug));
+    return status(201, bindingVerification.createQueueCanaryMock(a, a.live, body));
+  })
+);
+route('GET', '/v1/apps/{slug}/bindings/queue-canaries/{canary}', ({ params }) =>
+  bindingCall(() =>
+    bindingVerification.getQueueCanaryMock(bindingApp(app(params.slug)), params.canary)
+  )
+);
+route('DELETE', '/v1/apps/{slug}/bindings/queue-canaries/{canary}', ({ params }) =>
+  bindingCall(() =>
+    bindingVerification.cancelQueueCanaryMock(bindingApp(app(params.slug)), params.canary)
+  )
+);
 route('GET', '/v1/apps/{slug}/service-wake-ahead', ({ params }) => readWakeAhead(app(params.slug)));
 route('PUT', '/v1/apps/{slug}/service-wake-ahead', ({ params, body }) => {
   const a = app(params.slug);
@@ -2861,7 +2968,10 @@ route('POST', '/v1/apps/{slug}/restart', ({ params }) => {
 route('POST', '/v1/apps/{slug}/restore', ({ params }) => {
   const deleted = [...deletedApps.values()].find((r) => r.app.slug === params.slug);
   if (!deleted) {
-    app(params.slug);
+    // The restore operation's own not-found is the spec's `not_found`, not the
+    // app-scoped `app_not_found` of the active-app routes: apid looks the slug up
+    // among tombstones and answers the generic code for a stranger's slug too.
+    if (!db.appBySlug(params.slug)) throw new Problem(404, 'not_found', 'no such app');
     throw new Problem(409, 'app_not_restorable', 'the app is not pending deletion.');
   }
   return restoreDeleted(deleted);
@@ -3988,6 +4098,11 @@ function pgSettle(row: PgRow): PgRow {
   } else if (row.state === 'deleting' && Date.now() - Date.parse(row.updated_at) > 4000) {
     row.state = 'deleted';
     row.updated_at = new Date().toISOString();
+  } else if (row.rotation_pending === true && Date.now() - Date.parse(row.updated_at) > 4000) {
+    // A rotation keeps the previous credential valid while the app refreshes,
+    // then settles.
+    row.rotation_pending = false;
+    row.updated_at = new Date().toISOString();
   }
   return row;
 }
@@ -4201,6 +4316,7 @@ route('POST', '/v1/postgres/databases/{id}/bindings', ({ params, body }) => {
     environment_key: key,
     access: String(body.access ?? 'read_write'),
     credential_generation: 1,
+    rotation_pending: false,
     state: 'provisioning',
     last_error_code: null,
     created_at: now,
@@ -4213,6 +4329,32 @@ route('GET', '/v1/postgres/bindings/{id}', ({ params }) => {
   const binding = pgBindings.find((b) => b.id === params.id);
   if (!binding) throw new Problem(404, 'managed_postgres_not_found', 'no such binding');
   return pgSettle(binding);
+});
+// Receipts for the optional Idempotency-Key: a repeated key replays the first
+// answer, as the spec's IdempotencyKey parameter describes.
+const pgRotateReceipts = new Map<string, PgRow>();
+route('POST', '/v1/postgres/bindings/{id}/rotate', ({ params, req }) => {
+  const binding = pgBindings.find((b) => b.id === params.id);
+  if (!binding) throw new Problem(404, 'managed_postgres_not_found', 'no such binding');
+  const key = String(req.headers['idempotency-key'] ?? '');
+  const receipt = key ? pgRotateReceipts.get(`${binding.id}:${key}`) : undefined;
+  if (receipt) return receipt;
+  pgSettle(binding);
+  if (binding.state !== 'ready')
+    throw new Problem(
+      409,
+      'managed_postgres_conflict',
+      `the binding is ${binding.state}; rotate it once it is ready.`
+    );
+  // A rotation already in flight is joined, not restarted.
+  if (binding.rotation_pending !== true) {
+    binding.credential_generation = Number(binding.credential_generation) + 1;
+    binding.rotation_pending = true;
+    binding.updated_at = new Date().toISOString();
+  }
+  const answer = { ...binding };
+  if (key) pgRotateReceipts.set(`${binding.id}:${key}`, answer);
+  return answer;
 });
 route('DELETE', '/v1/postgres/bindings/{id}', ({ params }) => {
   const binding = pgBindings.find((b) => b.id === params.id);
@@ -4917,6 +5059,136 @@ route('GET', '/v1/deployments/{id}/url', ({ params }) => {
     alive,
     last_checked_at: new Date().toISOString(),
   };
+});
+
+// --- Deployment aliases (faas handlers_deployment_aliases.go) ---------------
+// A name pinned to one deployment, served at `tag-<name>-<app id>`. Setting
+// accepts only a live or in-progress target; a seeded alias left on a
+// superseded release shows the "not serving" state the list reports.
+
+/** Per-app revision, the same ordinal the preview hostnames above use. */
+function revisionOf(d: db.Deployment) {
+  if (d.revision) return d.revision;
+  return (
+    db.deployments
+      .filter((x) => x.app_id === d.app_id)
+      .sort((x, y) => Date.parse(x.created_at) - Date.parse(y.created_at))
+      .findIndex((x) => x.id === d.id) + 1
+  );
+}
+function nextRevision(appId: string) {
+  const own = db.deployments.filter((d) => d.app_id === appId);
+  return own.reduce((max, d) => Math.max(max, revisionOf(d)), 0) + 1;
+}
+for (const d of db.deployments) d.revision = revisionOf(d);
+
+interface MockAlias {
+  app_id: string;
+  name: string;
+  deployment_id: string;
+  created_at: string;
+  updated_at: string;
+}
+const deploymentAliases = new Map<string, MockAlias>();
+const ALIAS_NAME = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
+const ALIAS_TARGETABLE = new Set(['pending', 'building', 'imaging', 'snapshotting', 'live']);
+const aliasHost = (appId: string, name: string) => `tag-${name}-${appId}.gregale.app`;
+{
+  const first = db.apps[0];
+  const live = db.deployments.find((d) => d.app_id === first?.id && d.status === 'live');
+  const old = db.deployments.find((d) => d.app_id === first?.id && d.status === 'superseded');
+  const at = new Date(db.NOW - 26 * 3600_000).toISOString();
+  for (const [name, d] of [
+    ['stable', live],
+    ['partner-demo', old],
+  ] as const)
+    if (first && d)
+      deploymentAliases.set(`${first.id}/${name}`, {
+        app_id: first.id,
+        name,
+        deployment_id: d.id,
+        created_at: at,
+        updated_at: at,
+      });
+}
+function aliasView(alias: MockAlias) {
+  const d = db.deployments.find((x) => x.id === alias.deployment_id);
+  const host = aliasHost(alias.app_id, alias.name);
+  return {
+    name: alias.name,
+    deployment_id: alias.deployment_id,
+    revision: d ? revisionOf(d) : 1,
+    ...(d ? { deployment_status: d.status } : {}),
+    host,
+    url: `https://${host}`,
+    created_at: alias.created_at,
+    updated_at: alias.updated_at,
+  };
+}
+function aliasName(a: db.App, name: string) {
+  if (!ALIAS_NAME.test(name))
+    throw new Problem(
+      400,
+      'validation_failed',
+      'alias name must be a lowercase DNS label of at most 63 characters'
+    );
+  if (`tag-${name}-${a.id}`.length > 63)
+    throw new Problem(
+      400,
+      'validation_failed',
+      'alias name must fit in a 63-character hostname label'
+    );
+  return name;
+}
+
+route('GET', '/v1/apps/{slug}/deployment-aliases', ({ params }) => {
+  const a = app(params.slug);
+  return {
+    items: [...deploymentAliases.values()]
+      .filter((alias) => alias.app_id === a.id)
+      .sort((x, y) => x.name.localeCompare(y.name))
+      .map(aliasView),
+  };
+});
+
+route('PUT', '/v1/apps/{slug}/deployment-aliases/{name}', ({ params, body }) => {
+  const a = app(params.slug);
+  const name = aliasName(a, params.name);
+  const id = typeof body.deployment_id === 'string' ? body.deployment_id : '';
+  if (!id) throw new Problem(400, 'validation_failed', 'deployment_id is required');
+  const d = db.deployments.find((x) => x.id === id);
+  if (!d || d.app_id !== a.id)
+    throw new Problem(404, 'not_found', `no deployment ${id} on this app`);
+  if (!ALIAS_TARGETABLE.has(d.status))
+    throw new Problem(
+      404,
+      'not_found',
+      `deployment v${revisionOf(d)} is ${d.status}; an alias can point only at a live or in-progress deployment (roll back to it or redeploy it first)`
+    );
+  const key = `${a.id}/${name}`;
+  const now = new Date().toISOString();
+  const alias: MockAlias = {
+    app_id: a.id,
+    name,
+    deployment_id: d.id,
+    created_at: deploymentAliases.get(key)?.created_at ?? now,
+    updated_at: now,
+  };
+  deploymentAliases.set(key, alias);
+  return aliasView(alias);
+});
+
+route('DELETE', '/v1/apps/{slug}/deployment-aliases/{name}', ({ params }) => {
+  const a = app(params.slug);
+  if (!ALIAS_NAME.test(params.name))
+    throw new Problem(
+      400,
+      'validation_failed',
+      'alias name must be a lowercase DNS label of at most 63 characters'
+    );
+  if (!deploymentAliases.delete(`${a.id}/${params.name}`))
+    throw new Problem(404, 'not_found', 'no such deployment alias');
+  return NO_CONTENT;
 });
 
 route('POST', '/v1/deployments/{id}/canary/advance', ({ params, body }) => {
@@ -5649,23 +5921,66 @@ route('GET', '/v1/deployments/{id}/scan', ({ params }) => {
   };
 });
 
+// A pending domain's TXT challenge lives seven days from creation and is never
+// extended (pkg/state/custom_domain_polling.go). The expiry sits beside the
+// rows, which are schema-typed. `MOCK_DOMAIN_EXPIRED=1` makes the seeded pending
+// domain arrive already expired, so the recovery path can be seen on demand.
+const CHALLENGE_MS = 7 * 24 * 60 * 60 * 1000;
+const domainExpiry = new Map<string, number>();
+function challengeExpiry(domain: string): number {
+  let at = domainExpiry.get(domain);
+  if (at === undefined) {
+    at = process.env.MOCK_DOMAIN_EXPIRED === '1' ? 0 : Date.now() + CHALLENGE_MS;
+    domainExpiry.set(domain, at);
+  }
+  return at;
+}
+const txtRecordFor = (domain: string) => `_gregale-challenge.${domain} TXT "${db.id()}"`;
+
 route('GET', '/v1/domains', () => db.domains);
+// Binds by `app_id` (an id or, as the API also accepts, a slug). Adding a domain
+// that is pending with an expired challenge re-arms it: a new token and a new
+// seven-day window. A verified domain or a live challenge is a 409.
 route('POST', '/v1/domains', ({ body }) => {
   const domain = String(body.domain ?? '')
     .toLowerCase()
     .trim();
   if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(domain)) throw new Problem(400, 'invalid_domain');
-  if (db.domains.some((d) => d.domain === domain)) throw new Problem(409, 'domain_exists');
-  const a = db.appBySlug(String(body.app_slug ?? '')) ?? db.apps[0];
+  const ref = String(body.app_id ?? '');
+  const a = db.apps.find((x) => x.id === ref) ?? db.appBySlug(ref);
+  if (!a) throw new Problem(404, 'not_found', 'no such app');
+  const existing = db.domains.find((d) => d.domain === domain);
+  if (existing) {
+    if (existing.verified || challengeExpiry(domain) > Date.now())
+      throw new Problem(409, 'validation_failed', 'Domain taken');
+    existing.app_id = a.id;
+    existing.challenge_token = db.id().slice(0, 24);
+    existing.txt_record = txtRecordFor(domain);
+    domainExpiry.set(domain, Date.now() + CHALLENGE_MS);
+    verifyAttempts.delete(domain);
+    return status(201, existing);
+  }
   const created = {
     domain,
     app_id: a.id,
     verified: false,
     challenge_token: db.id().slice(0, 24),
-    txt_record: `_gregale-challenge.${domain} TXT "${db.id()}"`,
+    txt_record: txtRecordFor(domain),
   };
   db.domains.push(created);
+  domainExpiry.set(domain, Date.now() + CHALLENGE_MS);
   return status(201, created);
+});
+// Retry only accelerates the next poll of a live challenge. 409 for an expired
+// challenge or an already verified domain; 202 with no body otherwise.
+route('POST', '/v1/domains/{domain}/retry', ({ params, res }) => {
+  const d = db.domains.find((x) => x.domain === params.domain);
+  if (!d) throw new Problem(404, 'domain_not_found');
+  if (d.verified || challengeExpiry(d.domain) <= Date.now())
+    throw new Problem(409, 'validation_failed', 'Domain cannot be retried');
+  // 202 with an empty body, which no helper expresses: answer directly.
+  res.statusCode = 202;
+  res.end();
 });
 route('DELETE', '/v1/domains/{domain}', ({ params }) => {
   const i = db.domains.findIndex((d) => d.domain === params.domain);
@@ -6081,6 +6396,100 @@ route('POST', '/v1/jobs/{name}/runs/{id}/cancel', ({ params }) => {
   return { run, cancelled_at: new Date().toISOString() };
 });
 
+// POST /v1/jobs/{name}/runs fans out `tasks` tasks. A count above
+// Plan.JobMaxTasksPerRun (Hobby 100, Pro 1000, Scale 5000) is refused with 403
+// job_quota_exceeded carrying `limit` and `observed`, not clamped
+// (handlers_jobs.go createJobRun; ErrJobQuota). The run starts queued with
+// nothing done.
+route('POST', '/v1/jobs/{name}/runs', ({ params, body }) => {
+  gateJobs();
+  const job = jobs.find((j) => j.name === params.name);
+  if (!job) throw new Problem(404, 'job_not_found', 'no such job');
+  if (job.status === 'paused') throw new Problem(409, 'job_paused', 'This job is paused.');
+  const requested = body.tasks;
+  if (typeof requested !== 'number' || !Number.isSafeInteger(requested) || requested < 1)
+    throw new Problem(400, 'validation_failed', 'tasks must be a positive whole number.');
+  const tier = process.env.MOCK_PLAN === 'hobby' ? 0 : process.env.MOCK_PLAN === 'scale' ? 2 : 1;
+  const cap = [100, 1000, 5000][tier];
+  if (requested > cap)
+    throw new Problem(
+      403,
+      'job_quota_exceeded',
+      `This plan caps jobs at ${cap} for tasks_per_run; you have ${requested}.`,
+      { limit: cap, observed: requested }
+    );
+  const run = {
+    id: db.id(),
+    job_id: job.id,
+    account_id: 'acct-1',
+    trigger_kind: 'manual' as const,
+    tasks: requested,
+    parallelism: job.max_parallelism,
+    retry_max: job.retry_max,
+    task_timeout_sec: job.task_timeout_sec,
+    execution_class: 'standard',
+    failure_policy: 'continue',
+    aggregate_status: 'queued',
+    tasks_succeeded: 0,
+    tasks_failed: 0,
+    tasks_cancelled: 0,
+    tasks_running: 0,
+    dead_letter_count: 0,
+    created_at: db.iso(0),
+    updated_at: db.iso(0),
+  };
+  runsOf(job.name).unshift(run);
+  return status(201, run);
+});
+
+// Pause or resume. The real API (updateJob) accepts only active or paused here;
+// the other fields are a partial update the console does not send.
+route('PATCH', '/v1/jobs/{name}', ({ params, body }) => {
+  gateJobs();
+  const job = jobs.find((j) => j.name === params.name);
+  if (!job) throw new Problem(404, 'job_not_found', 'no such job');
+  if (body.status !== undefined) {
+    if (body.status !== 'active' && body.status !== 'paused')
+      throw new Problem(
+        400,
+        'validation_failed',
+        "status must be 'active' or 'paused' (use DELETE for soft-delete)"
+      );
+    // apid refuses any update while a task is queued or claimed
+    // (pkg/state/pgstore_jobs.go:345-350; handlers_jobs.go:1081-1084).
+    if (
+      runsOf(job.name).some(
+        (r) => r.aggregate_status === 'running' || r.aggregate_status === 'queued'
+      )
+    )
+      throw new Problem(409, 'validation_failed', 'Job has active runs');
+    job.status = body.status;
+    job.updated_at = db.iso(0);
+  }
+  return job;
+});
+
+// Soft delete. The real API refuses with 409 job_has_live_instances while any
+// task of the job is still queued or running; the mock reads that off run state.
+route('DELETE', '/v1/jobs/{name}', ({ params }) => {
+  gateJobs();
+  const index = jobs.findIndex((j) => j.name === params.name);
+  if (index < 0) throw new Problem(404, 'job_not_found', 'no such job');
+  if (
+    runsOf(params.name).some(
+      (r) => r.aggregate_status === 'running' || r.aggregate_status === 'queued'
+    )
+  )
+    throw new Problem(
+      409,
+      'job_has_live_instances',
+      'This job still has tasks running. Cancel its runs or wait for them to finish.'
+    );
+  jobs.splice(index, 1);
+  runCache.delete(params.name);
+  return NO_CONTENT;
+});
+
 // --- Triggers ---------------------------------------------------------------
 // Six kinds so every pill renders, one paused, and a spread of record states
 // and dead-letter reasons so each filter has something to find.
@@ -6457,16 +6866,59 @@ route('POST', '/v1/triggers/{id}/records/{rid}/retry', ({ params }) => {
 route('POST', '/v1/triggers/{id}/records/{rid}/drop', () => NO_CONTENT);
 
 route('GET', '/v1/crons', () => db.crons);
-route('POST', '/v1/crons', ({ body }) => {
-  const a = db.apps.find((x) => x.id === body.app_id);
-  if (!a) throw new Problem(404, 'app_not_found', 'No app with that id.');
-  const schedule = String(body.schedule ?? '').trim();
+
+// The real handlers reject a schedule that is not five fields and a timezone
+// the runtime cannot load; both come back as 400 with a stable code.
+function cronSchedule(value: unknown): string {
+  const schedule = String(value ?? '').trim();
   if (schedule.split(/\s+/).length !== 5)
     throw new Problem(
       400,
       'invalid_schedule',
       'A schedule has five fields: minute hour day month weekday.'
     );
+  return schedule;
+}
+function cronTimezone(value: unknown): string {
+  const zone = String(value ?? '').trim() || 'UTC';
+  try {
+    new Intl.DateTimeFormat('en', { timeZone: zone });
+  } catch {
+    throw new Problem(400, 'invalid_timezone', `Unknown timezone "${zone}". Use an IANA name.`);
+  }
+  return zone;
+}
+
+const OVERLAPS = ['allow', 'skip', 'replace'];
+const MISSED_RUNS = ['coalesce_latest', 'skip'];
+/** Mirrors workpolicy.SchedulePolicy.Validate (pkg/workpolicy/scheduled_policy.go). */
+function schedulePolicy(value: unknown) {
+  const p = value as Record<string, unknown>;
+  const deadline = p.start_deadline_seconds ?? 0;
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    p.version !== 1 ||
+    !OVERLAPS.includes(String(p.overlap)) ||
+    !MISSED_RUNS.includes(String(p.missed_runs)) ||
+    typeof deadline !== 'number' ||
+    deadline < 0 ||
+    deadline > 30 * 24 * 60 * 60
+  )
+    throw new Problem(400, 'validation_failed', 'schedule_policy is not valid.');
+  return {
+    version: 1 as const,
+    overlap: p.overlap as 'allow' | 'skip' | 'replace',
+    missed_runs: p.missed_runs as 'coalesce_latest' | 'skip',
+    ...(deadline ? { start_deadline_seconds: deadline } : {}),
+  };
+}
+
+route('POST', '/v1/crons', ({ body }) => {
+  const a = db.apps.find((x) => x.id === body.app_id);
+  if (!a) throw new Problem(404, 'app_not_found', 'No app with that id.');
+  const schedule = cronSchedule(body.schedule);
+  const policy = body.schedule_policy == null ? undefined : schedulePolicy(body.schedule_policy);
   const cron = {
     id: db.id(),
     app_id: a.id,
@@ -6474,8 +6926,9 @@ route('POST', '/v1/crons', ({ body }) => {
     schedule,
     path: String(body.path ?? '/'),
     enabled: body.enabled !== false,
-    timezone: String(body.timezone ?? 'UTC'),
+    timezone: cronTimezone(body.timezone),
     skip_if_running: body.skip_if_running === true,
+    ...(policy ? { schedule_policy: policy } : {}),
     created_at: db.iso(0),
     last_fired_at: null,
   };
@@ -6486,9 +6939,20 @@ route('POST', '/v1/crons', ({ body }) => {
 route('PATCH', '/v1/crons/{id}', ({ params, body }) => {
   const c = db.crons.find((x) => x.id === params.id);
   if (!c) throw new Problem(404, 'cron_not_found');
-  if (typeof body.schedule === 'string') c.schedule = body.schedule;
+  // Validate everything before applying anything, so a refused patch changes nothing.
+  const schedule = typeof body.schedule === 'string' ? cronSchedule(body.schedule) : undefined;
+  const timezone = typeof body.timezone === 'string' ? cronTimezone(body.timezone) : undefined;
+  // null is a no-op; an object replaces the whole policy, as the API does.
+  const policy = body.schedule_policy == null ? undefined : schedulePolicy(body.schedule_policy);
+  if (schedule !== undefined) c.schedule = schedule;
+  if (policy !== undefined) c.schedule_policy = policy;
   if (typeof body.path === 'string') c.path = body.path;
   if (typeof body.enabled === 'boolean') c.enabled = body.enabled;
+  if (timezone !== undefined) c.timezone = timezone;
+  if (typeof body.skip_if_running === 'boolean') c.skip_if_running = body.skip_if_running;
+  if (typeof body.retry_max === 'number') c.retry_max = body.retry_max;
+  if (typeof body.retry_backoff_seconds === 'number')
+    c.retry_backoff_seconds = body.retry_backoff_seconds;
   return c;
 });
 route('GET', '/v1/crons/{id}/runs', ({ params }) => {
@@ -7934,31 +8398,135 @@ route('GET', '/v1/secrets', () => ({
   next_before: null,
 }));
 
-// --- Scheduling: delayed tasks (session-tracked) + cron fire-now state ---
-const delayedTasks = new Map<string, { id: string; scheduled_at: string; state: string }>();
-route('POST', '/v1/apps/{slug}/delayed-tasks', async ({ body }) => {
-  const id = `dt_${hex(10)}`;
-  const t = {
+// --- Scheduling: delayed tasks + cron fire-now state ---
+// Rows mirror faas DelayedTaskResponse (pkg/api/dto.go): like the API, they
+// never carry the payload or headers. Seeded lazily per app, so MOCK_EMPTY
+// (no apps) stays empty, with enough history to page past the first 20.
+type MockDelayedTask = components['schemas']['DelayedTaskResponse'];
+const delayedTasks = new Map<string, MockDelayedTask>();
+const delayedSeeded = new Set<string>();
+/** Pro's per-app pending cap (faas pkg/api/limits.go MaxDelayedTasksPerApp). */
+const DELAYED_TASK_CAP = 50;
+const DELAYED_TARGETS = [
+  ['POST', '/internal/send-reminder'],
+  ['POST', '/month-close'],
+  ['POST', '/webhooks/retry-charge'],
+  ['GET', '/reports/weekly'],
+] as const;
+function seedDelayedTasks(appId: string) {
+  if (delayedSeeded.has(appId)) return;
+  delayedSeeded.add(appId);
+  const H = 3_600_000;
+  const now = Date.now();
+  // [state, created ms ago, runs ms from now, attempts, last error]
+  const shapes: Array<[MockDelayedTask['state'], number, number, number, string?]> = [
+    ['pending', 20 * 60_000, 40 * 60_000, 0],
+    ['pending', 2 * H, 22 * H, 0],
+    ['pending', 26 * H, 6 * 24 * H, 0],
+    ['failed', 5 * H, -4 * H, 4, 'app returned 503 Service Unavailable after 4 attempts'],
+    ['cancelled', 9 * H, 3 * H, 0],
+  ];
+  for (let i = 0; i < 24; i++) {
+    const [state, ago, ahead, attempts, lastError] =
+      shapes[i] ?? (['completed', (10 + i * 7) * H, -(9 + i * 7) * H, 1] as const);
+    const [method, path] = DELAYED_TARGETS[i % DELAYED_TARGETS.length];
+    const created = now - ago;
+    const id = hex(32);
+    delayedTasks.set(id, {
+      id,
+      app_id: appId,
+      scheduled_at: new Date(now + ahead).toISOString(),
+      state,
+      method,
+      path,
+      attempts,
+      ...(lastError ? { last_error: lastError } : {}),
+      ...(state === 'completed' ? { result: { delivered: true, status: 200 } } : {}),
+      created_at: new Date(created).toISOString(),
+      ...(state === 'pending'
+        ? {}
+        : { completed_at: new Date(now + Math.min(ahead, 0)).toISOString() }),
+    });
+  }
+}
+/** A pending task whose time has passed has run (the drain is instant here). */
+function settleDelayedTask(t: MockDelayedTask) {
+  if (t.state === 'pending' && Date.parse(t.scheduled_at) < Date.now()) {
+    t.state = 'completed';
+    t.attempts = 1;
+    t.completed_at = new Date().toISOString();
+  }
+  return t;
+}
+function delayedTaskFor(id: string) {
+  const t = delayedTasks.get(id);
+  if (!t)
+    throw new Problem(
+      404,
+      'invocation_not_found',
+      `no invocation with id "${id}" on this account.`
+    );
+  return settleDelayedTask(t);
+}
+route('GET', '/v1/apps/{slug}/delayed-tasks', ({ params, query }) => {
+  const selected = app(params.slug);
+  seedDelayedTasks(selected.id);
+  const requested = Number(query.get('limit') ?? 20);
+  // apid ignores an out-of-range limit and keeps the default.
+  const limit = Number.isInteger(requested) && requested > 0 && requested <= 200 ? requested : 20;
+  const ordered = [...delayedTasks.values()]
+    .filter((t) => t.app_id === selected.id)
+    .map(settleDelayedTask)
+    .sort((a, b) => Date.parse(b.created_at ?? '') - Date.parse(a.created_at ?? ''));
+  const before = query.get('before');
+  const start = before ? ordered.findIndex((t) => t.id === before) + 1 : 0;
+  const tasks = before && start === 0 ? [] : ordered.slice(start, start + limit);
+  return {
+    tasks,
+    ...(tasks.length === limit ? { next_before: tasks.at(-1)!.id } : {}),
+  };
+});
+route('POST', '/v1/apps/{slug}/delayed-tasks', ({ params, body }) => {
+  const selected = app(params.slug);
+  seedDelayedTasks(selected.id);
+  const pending = [...delayedTasks.values()].filter(
+    (t) => t.app_id === selected.id && settleDelayedTask(t).state === 'pending'
+  ).length;
+  if (pending >= DELAYED_TASK_CAP)
+    throw new Problem(
+      403,
+      'plan_delayed_tasks_cap',
+      `the plan caps this app at ${DELAYED_TASK_CAP} scheduled delayed_tasks; observed ${pending}.`
+    );
+  const at = Date.parse(String(body.scheduled_at ?? ''));
+  if (!Number.isFinite(at) || at <= Date.now())
+    throw new Problem(
+      400,
+      'invalid_scheduled_at',
+      'scheduled_at must be a future timestamp; the server clock rejected the value'
+    );
+  const id = hex(32);
+  const t: MockDelayedTask = {
     id,
-    scheduled_at: String(body.scheduled_at ?? new Date().toISOString()),
+    app_id: selected.id,
+    scheduled_at: new Date(at).toISOString(),
     state: 'pending',
+    method: typeof body.method === 'string' ? body.method : 'POST',
+    path: typeof body.path === 'string' ? body.path : '/',
+    created_at: new Date().toISOString(),
   };
   delayedTasks.set(id, t);
-  return t;
+  return status(201, t);
 });
-route('GET', '/v1/delayed-tasks/{id}', ({ params, res }) => {
-  const t = delayedTasks.get(params.id);
-  if (!t) {
-    res.statusCode = 404;
-    return { type: 'about:blank', title: 'not found', code: 'not_found' };
-  }
-  if (t.state === 'pending' && Date.parse(t.scheduled_at) < Date.now()) t.state = 'completed';
-  return t;
-});
+route('GET', '/v1/delayed-tasks/{id}', ({ params }) => delayedTaskFor(params.id));
+// Cancel stops only a pending task; any other state comes back unchanged.
 route('DELETE', '/v1/delayed-tasks/{id}', ({ params }) => {
-  const t = delayedTasks.get(params.id);
-  if (t) t.state = 'cancelled';
-  return {};
+  const t = delayedTaskFor(params.id);
+  if (t.state === 'pending') {
+    t.state = 'cancelled';
+    t.completed_at = new Date().toISOString();
+  }
+  return t;
 });
 const fireRequests = new Map<string, number>();
 route('GET', '/v1/cron-fire-now-requests/{request_id}', ({ params }) => {
@@ -8276,11 +8844,46 @@ const AUTH_EVENTS = [
     data: { attempts: 3, locked: false },
   },
 ];
+// Runtime stateless advisories (faas ADR-047): one row per debounced batch of
+// writes to a watched directory, attributed to the app by `data.app_id`. Only
+// search-indexer writes state locally, so every other app reads empty.
+const statelessAdvisories = () => {
+  const appId = db.appBySlug('search-indexer')?.id ?? '';
+  const batch = (id: string, minutesAgo: number, instance: string, writes: [string, string][]) => {
+    const at = new Date(Date.now() - minutesAgo * 60e3);
+    const highPath = writes.some(([path]) => /^\/(data|db)(\/|$)/.test(path));
+    return {
+      id,
+      at: at.toISOString(),
+      actor: 'apid',
+      kind: 'stateless.advisory',
+      subject: db.ACCOUNT_ID,
+      severity: highPath ? 'high' : 'warn',
+      data: {
+        app_id: appId,
+        instance,
+        count: writes.length,
+        severity: highPath ? 'high' : 'warn',
+        events: writes.map(([path, mask]) => ({ path, mask, pid: 41, ts_unix_ms: at.getTime() })),
+      },
+    };
+  };
+  return [
+    batch('2210', 4, 'inst-7f2c19', [
+      ['/data/index/segment-0042.bin', 'create,modify'],
+      ['/data/index/segment-0043.bin', 'create'],
+    ]),
+    batch('2207', 38, 'inst-7f2c19', [['/data/index/manifest.json', 'modify']]),
+    batch('2201', 190, 'inst-3a90d4', [['/var/lib/redis/dump.rdb', 'create,move']]),
+  ];
+};
 route('GET', '/v1/audit-events', ({ query }) => {
   const prefix = query.get('kind_prefix') ?? '';
+  const appId = query.get('app_id') ?? '';
   const limit = Math.min(100, Math.max(1, Number(query.get('limit') ?? 50)));
-  const events = [...overageEvents, ...AUTH_EVENTS]
+  const events = [...overageEvents, ...AUTH_EVENTS, ...statelessAdvisories()]
     .filter((event) => event.kind.startsWith(prefix))
+    .filter((event) => !appId || (event.data as { app_id?: string }).app_id === appId)
     .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
     .slice(0, limit);
   return { events, limit };

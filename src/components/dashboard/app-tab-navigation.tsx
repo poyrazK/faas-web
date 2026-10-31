@@ -23,6 +23,7 @@ export const APP_TAB_GROUPS = [
     tabs: [
       'Routes',
       'Upstreams',
+      'Outbound',
       'Services',
       'MCP',
       'Edge rules',
@@ -58,6 +59,7 @@ export const APP_TAB_CAPABILITY: Partial<Record<AppTab, string>> = {
   'Consumer plans': 'api-monetization',
   Automations: 'automations',
   Queues: 'queues',
+  Outbound: 'outbound-integrations',
 };
 
 /** Hide a tab only once the registry has said its capability is off. */
