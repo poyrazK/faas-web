@@ -138,6 +138,12 @@ it('needs a reason to turn enforcement off, and says traffic loses its fence', a
   await user.click(screen.getByRole('radio', { name: /off/i }));
   await user.click(screen.getByRole('button', { name: /save policy/i }));
   expect(await screen.findByText(/reason is required/i)).toBeInTheDocument();
+  const reason = screen.getByRole('textbox', { name: /reason/i });
+  expect(reason).toHaveAttribute('aria-invalid', 'true');
+  expect(reason).toHaveAccessibleDescription(/reason is required/i);
+  expect(screen.getByRole('textbox', { name: /maximum evidence age/i })).not.toHaveAttribute(
+    'aria-invalid'
+  );
   expect(spies.PUT).not.toHaveBeenCalled();
 
   await user.type(screen.getByRole('textbox', { name: /reason/i }), 'Incident recovery');
@@ -158,6 +164,8 @@ it('rejects an evidence age outside 1s–24h before writing', async () => {
   await user.type(age, '25h');
   await user.click(screen.getByRole('button', { name: /save policy/i }));
   expect(await screen.findByText(/whole seconds from 1s to 24h/i)).toBeInTheDocument();
+  expect(age).toHaveAttribute('aria-invalid', 'true');
+  expect(age).toHaveAccessibleDescription(/whole seconds from 1s to 24h/i);
   expect(spies.PUT).not.toHaveBeenCalled();
 });
 
@@ -187,6 +195,9 @@ it('rejects an invalid queue binding name', async () => {
   await user.type(screen.getByRole('textbox', { name: /queue binding 1/i }), 'Orders!');
   await user.click(screen.getByRole('button', { name: /save policy/i }));
   expect(await screen.findByText(/lowercase letters/i)).toBeInTheDocument();
+  const name = screen.getByRole('textbox', { name: /queue binding 1/i });
+  expect(name).toHaveAttribute('aria-invalid', 'true');
+  expect(name).toHaveAccessibleDescription(/lowercase letters/i);
   expect(spies.PUT).not.toHaveBeenCalled();
 });
 

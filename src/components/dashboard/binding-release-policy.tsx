@@ -16,7 +16,7 @@ import {
 } from '@/lib/api/binding-verification';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { FieldError, Select } from '@/components/ui/field';
+import { FieldError, Select, fieldErrorProps } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
@@ -206,24 +206,52 @@ const rowsOf = (map: Record<string, string> | undefined) =>
   Object.entries(map ?? {}).map(([key, value]) => ({ key, value }));
 const mapOf = (rows: Row[]) => Object.fromEntries(rows.map((row) => [row.key.trim(), row.value]));
 
-function validate(form: PolicyForm, queue: Row[], storage: Row[]): string[] {
-  const errors: string[] = [];
+interface PolicyErrors {
+  maxAge?: string;
+  reason?: string;
+  queue?: string;
+  storage?: string;
+  /** Row indices the requirement error applies to. */
+  queueRows: number[];
+  storageRows: number[];
+}
+const hasErrors = (e: PolicyErrors) => Boolean(e.maxAge || e.reason || e.queue || e.storage);
+
+/** Rows whose key fails `pattern` or repeats an earlier row's key. */
+function badRows(rows: Row[], pattern: RegExp) {
+  const keys = rows.map((row) => row.key.trim());
+  const invalid = keys.flatMap((key, i) => (pattern.test(key) ? [] : [i]));
+  const repeated = keys.flatMap((key, i) => (keys.indexOf(key) !== i ? [i] : []));
+  return { invalid, repeated };
+}
+
+function validate(form: PolicyForm, queue: Row[], storage: Row[]): PolicyErrors {
+  const errors: PolicyErrors = { queueRows: [], storageRows: [] };
   if (parseVerificationAge(form.maxAge) === null)
-    errors.push('Maximum evidence age must be whole seconds from 1s to 24h, such as 10m or 90s.');
+    errors.maxAge =
+      'Maximum evidence age must be whole seconds from 1s to 24h, such as 10m or 90s.';
   if (form.mode === 'off' && !form.reason.trim())
-    errors.push('A reason is required to turn enforcement off.');
-  if (new TextEncoder().encode(form.reason.trim()).length > REASON_MAX_BYTES)
-    errors.push(`The reason must be at most ${REASON_MAX_BYTES} bytes.`);
-  const queueNames = queue.map((row) => row.key.trim());
-  if (queueNames.some((name) => !QUEUE_BINDING_NAME.test(name)))
-    errors.push(
-      'Queue binding names start with a lowercase letter, then lowercase letters, digits or hyphens.'
-    );
-  if (new Set(queueNames).size !== queueNames.length) errors.push('Each queue binding once.');
-  const prefixes = storage.map((row) => row.key.trim());
-  if (prefixes.some((prefix) => !STORAGE_PREFIX.test(prefix)))
-    errors.push('Storage prefixes are uppercase letters, digits or underscores, such as MEDIA.');
-  if (new Set(prefixes).size !== prefixes.length) errors.push('Each storage prefix once.');
+    errors.reason = 'A reason is required to turn enforcement off.';
+  else if (new TextEncoder().encode(form.reason.trim()).length > REASON_MAX_BYTES)
+    errors.reason = `The reason must be at most ${REASON_MAX_BYTES} bytes.`;
+  const q = badRows(queue, QUEUE_BINDING_NAME);
+  if (q.invalid.length) {
+    errors.queue =
+      'Queue binding names start with a lowercase letter, then lowercase letters, digits or hyphens.';
+    errors.queueRows = q.invalid;
+  } else if (q.repeated.length) {
+    errors.queue = 'List each queue binding once.';
+    errors.queueRows = q.repeated;
+  }
+  const st = badRows(storage, STORAGE_PREFIX);
+  if (st.invalid.length) {
+    errors.storage =
+      'Storage prefixes are uppercase letters, digits or underscores, such as MEDIA.';
+    errors.storageRows = st.invalid;
+  } else if (st.repeated.length) {
+    errors.storage = 'List each storage prefix once.';
+    errors.storageRows = st.repeated;
+  }
   return errors;
 }
 
@@ -253,9 +281,15 @@ function PolicyEditor({
   const [reason, setReason] = useState('');
   const [queue, setQueue] = useState<Row[]>(rowsOf(current.queue_requirements));
   const [storage, setStorage] = useState<Row[]>(rowsOf(current.object_storage_requirements));
-  const [errors, setErrors] = useState<string[]>([]);
+  const [errors, setErrors] = useState<PolicyErrors>({ queueRows: [], storageRows: [] });
   const [failure, setFailure] = useState('');
   const errorId = useId();
+  const ids = {
+    maxAge: `${errorId}-age`,
+    reason: `${errorId}-reason`,
+    queue: `${errorId}-queue`,
+    storage: `${errorId}-storage`,
+  };
   const modeName = useId();
 
   async function submit(event: FormEvent) {
@@ -271,7 +305,7 @@ function PolicyEditor({
     const found = validate(form, queue, storage);
     setErrors(found);
     setFailure('');
-    if (found.length) return;
+    if (hasErrors(found)) return;
     if (mode !== current.mode) {
       const ok = await confirm(
         mode === 'enforce'
@@ -342,7 +376,9 @@ function PolicyEditor({
           value={maxAge}
           onChange={(e) => setMaxAge(e.target.value)}
           className="w-40 font-mono"
+          {...fieldErrorProps(errors.maxAge, ids.maxAge)}
         />
+        {errors.maxAge && <FieldError id={ids.maxAge}>{errors.maxAge}</FieldError>}
       </label>
       <label className="flex items-start gap-2">
         <input
@@ -365,6 +401,9 @@ function PolicyEditor({
         setRows={setQueue}
         editable={queueEditable}
         options={QUEUE_EVIDENCE}
+        error={errors.queue}
+        invalidRows={errors.queueRows}
+        errorId={ids.queue}
         hint="consumer_readiness needs a healthy push consumer poll; handler_completion needs a completed canary."
       />
       <Requirements
@@ -373,6 +412,9 @@ function PolicyEditor({
         setRows={setStorage}
         editable={storageEditable}
         options={STORAGE_MODES}
+        error={errors.storage}
+        invalidRows={errors.storageRows}
+        errorId={ids.storage}
         hint="Prefixes are managed environment prefixes in this scope."
       />
 
@@ -385,17 +427,15 @@ function PolicyEditor({
           value={reason}
           maxLength={REASON_MAX_BYTES}
           onChange={(e) => setReason(e.target.value)}
+          {...fieldErrorProps(errors.reason, ids.reason)}
         />
+        {errors.reason && <FieldError id={ids.reason}>{errors.reason}</FieldError>}
       </label>
 
-      {errors.length > 0 && (
-        <div id={errorId} role="alert" className="space-y-1">
-          {errors.map((message) => (
-            <FieldError key={message} id={`${errorId}-${message}`}>
-              {message}
-            </FieldError>
-          ))}
-        </div>
+      {hasErrors(errors) && (
+        <p role="alert" className="sr-only">
+          Some fields need attention.
+        </p>
       )}
       {failure && (
         <p role="alert" style={{ color: 'var(--status-critical)' }}>
@@ -421,6 +461,9 @@ function Requirements({
   editable,
   options,
   hint,
+  error,
+  invalidRows,
+  errorId,
 }: {
   kind: 'queue' | 'storage';
   rows: Row[];
@@ -428,6 +471,9 @@ function Requirements({
   editable: boolean;
   options: Record<string, string>;
   hint: string;
+  error?: string;
+  invalidRows: number[];
+  errorId: string;
 }) {
   const title = kind === 'queue' ? 'Queue requirements' : 'Object-storage requirements';
   const keyLabel = kind === 'queue' ? 'Queue binding' : 'Storage prefix';
@@ -466,6 +512,7 @@ function Requirements({
             value={row.key}
             onChange={(e) => update(index, { key: e.target.value })}
             className="w-48 font-mono"
+            {...fieldErrorProps(invalidRows.includes(index) ? error : undefined, errorId)}
           />
           <Select
             aria-label={`${valueLabel} ${index + 1}`}
@@ -499,6 +546,7 @@ function Requirements({
           Add {kind} requirement
         </Button>
       )}
+      {error && <FieldError id={errorId}>{error}</FieldError>}
     </fieldset>
   );
 }
