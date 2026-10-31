@@ -80,6 +80,27 @@ it('groups the consumer pages under Monetize', () => {
   ).toEqual(['Consumers', 'Consumer plans']);
 });
 
+it('puts Outbound integrations under Connect, beside the app’s other destinations', () => {
+  render(<Navigation initial="Outbound" />);
+  expect(screen.getByRole('tab', { name: 'Connect' })).toHaveAttribute('aria-selected', 'true');
+  expect(within(pages('Connect')).getByRole('button', { name: 'Outbound' })).toHaveAttribute(
+    'aria-pressed',
+    'true'
+  );
+  expect(resolveAppTab('Outbound')).toBe('Outbound');
+});
+
+it('puts the request audit with the other Observe pages', () => {
+  render(<Navigation initial="Request audit" />);
+  expect(screen.getByRole('tab', { name: 'Observe' })).toHaveAttribute('aria-selected', 'true');
+  expect(
+    within(pages('Observe'))
+      .getAllByRole('button')
+      .map((b) => b.textContent)
+  ).toEqual(['Logs', 'Log drains', 'Errors', 'Issues', 'Alerts', 'Debugger', 'Request audit']);
+  expect(resolveAppTab('Request audit')).toBe('Request audit');
+});
+
 describe('visibleAppTabs', () => {
   it('hides tabs whose capability is off and keeps GA tabs', () => {
     const tabs = visibleAppTabs((id) =>

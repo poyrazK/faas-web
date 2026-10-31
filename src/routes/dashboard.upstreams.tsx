@@ -9,7 +9,6 @@ import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-
 import { useToast } from '@/components/ui/toast';
 import { useConfirm } from '@/components/ui/confirm';
 import { useAddUpstream, useDeleteUpstream, useUpstreams } from '@/lib/api/queries';
-import { errorMessage } from '@/lib/api/errors';
 import { consoleHead } from '@/lib/seo';
 import { UpstreamHistoryPanel } from '@/components/dashboard/upstream-history';
 
@@ -179,7 +178,7 @@ export function UpstreamsBody({ slug }: { slug: string }) {
               .mutateAsync(u.id)
               .then(() => toast({ kind: 'success', title: 'Upstream removed' }))
               .catch((err: unknown) =>
-                toast({ kind: 'error', title: 'Could not remove', description: errorMessage(err) })
+                toast({ kind: 'error', title: 'Could not remove', error: err })
               );
           }}
           className="text-muted-foreground transition-colors hover:text-foreground"
@@ -224,7 +223,7 @@ export function UpstreamsBody({ slug }: { slug: string }) {
                 toast({ kind: 'success', title: `${kind} upstream declared` });
               })
               .catch((err: unknown) =>
-                toast({ kind: 'error', title: 'Could not declare', description: errorMessage(err) })
+                toast({ kind: 'error', title: 'Could not declare', error: err })
               );
           }}
         >

@@ -111,7 +111,7 @@ export function OrgPanel({ slug }: { slug: string }) {
                   toast({
                     kind: 'error',
                     title: 'Could not rename',
-                    description: errorMessage(err),
+                    error: err,
                   })
                 );
             }}
@@ -175,7 +175,7 @@ export function OrgPanel({ slug }: { slug: string }) {
                     toast({
                       kind: 'error',
                       title: 'Could not transfer',
-                      description: errorMessage(err),
+                      error: err,
                     })
                   );
               }}
@@ -288,7 +288,7 @@ function OrgKeysBody({ slug, canManage }: { slug: string; canManage: boolean }) 
                     toast({
                       kind: 'error',
                       title: 'Could not create',
-                      description: errorMessage(err),
+                      error: err,
                     })
                   )
                   .finally(() => create.reset());
@@ -397,7 +397,7 @@ function OrgKeysBody({ slug, canManage }: { slug: string; canManage: boolean }) 
                               toast({
                                 kind: 'error',
                                 title: 'Could not rotate',
-                                description: errorMessage(err),
+                                error: err,
                               })
                             )
                             .finally(() => rotate.reset());
@@ -426,7 +426,7 @@ function OrgKeysBody({ slug, canManage }: { slug: string; canManage: boolean }) 
                               toast({
                                 kind: 'error',
                                 title: 'Could not revoke',
-                                description: errorMessage(err),
+                                error: err,
                               })
                             );
                         }}

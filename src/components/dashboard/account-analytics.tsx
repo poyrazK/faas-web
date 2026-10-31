@@ -20,6 +20,7 @@ export type AccountAnalyticsSearch = {
   group?: AnalyticsGroupBy;
   route?: string;
   method?: AppAnalyticsTimeseriesOptions['method'];
+  wake?: string;
 };
 
 type SearchProps = {
@@ -41,7 +42,11 @@ export function AnalyticsWindowSelector({ search, setSearch }: SearchProps) {
   );
 }
 
-export function AccountAnalytics({ search, setSearch }: SearchProps) {
+export function AccountAnalytics({
+  search,
+  setSearch,
+  onOpenWake,
+}: SearchProps & { onOpenWake?: (wakeId: string, slug: string) => void }) {
   const window = search.window ?? '24h';
   const account = useAccountSlo(window);
   const metrics = useAppsMetrics(window);
@@ -255,7 +260,10 @@ export function AccountAnalytics({ search, setSearch }: SearchProps) {
             <AwakeRoutesPanel slug={slug} since={window} />
             <DependencyLatencyPanel slug={slug} since={window} />
           </div>
-          <WakeTimelinePanel slug={slug} />
+          <WakeTimelinePanel
+            slug={slug}
+            onOpenWake={onOpenWake && ((wake) => onOpenWake(wake, slug))}
+          />
         </section>
       )}
     </div>

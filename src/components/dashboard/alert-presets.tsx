@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Pill } from '@/components/dashboard/resource-table';
 import { InlinePhase, queryPhase } from '@/components/dashboard/primitives';
 import { useToast } from '@/components/ui/toast';
-import { ApiError, errorMessage } from '@/lib/api/errors';
+import { ApiError } from '@/lib/api/errors';
 import { useAlertPresets, useEnableAlertPreset, useTestAlertPreset } from '@/lib/api/queries';
 
 /**
@@ -92,7 +92,7 @@ function EnableForm({
                 });
                 return;
               }
-              toast({ kind: 'error', title: 'Could not enable', description: errorMessage(err) });
+              toast({ kind: 'error', title: 'Could not enable', error: err });
             });
         }}
       >
@@ -141,7 +141,7 @@ export function AlertPresets({ slug }: { slug: string }) {
           });
           return;
         }
-        toast({ kind: 'error', title: 'Could not send test', description: errorMessage(err) });
+        toast({ kind: 'error', title: 'Could not send test', error: err });
       });
   };
 

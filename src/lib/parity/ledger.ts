@@ -136,9 +136,9 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 16,
     name: 'Stateless-contract checks and source review',
-    status: 'none',
-    surfaces: [],
-    gap: 'Source-review results on the deployment (open PR #168)',
+    status: 'partial',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Overview'],
+    gap: 'Reviewed-source deploy: the source-review pin sent as expected_source on a source-ref deploy',
     wave: 1,
   },
   // A17 · beta
@@ -161,10 +161,8 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 19,
     name: 'Projects: multi-app apply, submissions, project previews',
-    status: 'partial',
-    surfaces: ['/dashboard/projects'],
-    gap: 'Update and delete projects, project previews, new fields',
-    wave: 1,
+    status: 'full',
+    surfaces: ['/dashboard/projects', '/dashboard/projects/$projectSlug'],
   },
   // A20 · preview
   {
@@ -173,7 +171,7 @@ export const LEDGER: LedgerEntry[] = [
     status: 'partial',
     surfaces: ['/dashboard/projects/$projectSlug'],
     capability: 'environments',
-    gap: 'Create, config, secrets and routes; promotions, approvals, release sets, GitOps',
+    gap: 'Create, config, secrets and routes; promotions, approvals, release sets, GitOps; environments of a company project',
     wave: 3,
   },
   // A21 · preview
@@ -198,27 +196,26 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 24,
     name: 'Rollback to a named revision',
-    status: 'partial',
+    status: 'full',
     surfaces: ['/dashboard/apps/$appSlug?tab=Deployments'],
-    gap: 'Rollback status and named-revision detail',
-    wave: 1,
   },
   // B25 · beta
   {
     row: 25,
     name: 'Progressive rollouts: canary ladder, traffic split, automatic rollback on 5xx',
     status: 'partial',
-    surfaces: ['/dashboard/releases'],
-    gap: 'Deployment diff, runtime upgrade preview, promote, rollout observation',
+    surfaces: ['/dashboard/releases', '/dashboard/apps/$appSlug?tab=Deployments'],
+    capability: 'progressive-rollouts',
+    gap: 'Promote cannot pin the release expected to be serving (expected_serving_deployment_id)',
     wave: 1,
   },
   // B26 · beta
   {
     row: 26,
     name: 'Deployment aliases',
-    status: 'none',
-    surfaces: [],
-    gap: 'Deployment aliases',
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Deployments'],
+    capability: 'deployment-aliases',
     wave: 2,
   },
   // B27 · GA
@@ -227,7 +224,8 @@ export const LEDGER: LedgerEntry[] = [
     name: 'Pull-request previews',
     status: 'partial',
     surfaces: ['/dashboard/releases'],
-    gap: 'Create a preview; preview by slug',
+    capability: 'pr-previews',
+    gap: 'Previews of a company project',
     wave: 1,
   },
   // B28 · preview
@@ -488,7 +486,7 @@ export const LEDGER: LedgerEntry[] = [
     name: 'Custom domains with managed TLS, wildcard domains (Pro+), domain doctor',
     status: 'partial',
     surfaces: ['/dashboard/domains'],
-    gap: 'Domain detail and default (open PRs #206, #208)',
+    gap: 'Wildcard and environment-bound domains cannot be added from the form',
     wave: 1,
   },
   // D64 · GA
@@ -511,7 +509,7 @@ export const LEDGER: LedgerEntry[] = [
     name: 'Service bindings, verification and probes',
     status: 'partial',
     surfaces: ['/dashboard/apps/$appSlug?tab=Services'],
-    gap: 'Verification runs, release policy, queue canaries',
+    gap: 'bindings_check_failed in the promote UI, runs status filter, project-wide graph runs, editing service targets',
     wave: 1,
   },
   // D67 · beta
@@ -666,8 +664,9 @@ export const LEDGER: LedgerEntry[] = [
     row: 95,
     name: 'Delayed tasks',
     status: 'partial',
-    surfaces: ['/dashboard/apps/$appSlug?tab=Queues'],
-    gap: 'List delayed tasks',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Queues', '/dashboard/queues'],
+    capability: 'delayed-execution',
+    gap: 'Schedule form lacks headers, retry policy, retention, webhook destinations, relative delay and work policy',
     wave: 2,
   },
   // E96 · beta
