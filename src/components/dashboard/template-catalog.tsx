@@ -4,6 +4,7 @@ import { CopyIconButton } from '@/components/ui/copy-button';
 import { EmptyState, InlinePhase, queryPhase } from '@/components/dashboard/primitives';
 import { Pill } from '@/components/dashboard/resource-table';
 import { useTemplates, type TemplateView } from '@/lib/api/queries';
+import { cliInitCommand } from '@/lib/cli-commands';
 
 /**
  * The starter catalog, from `GET /v1/templates` — the same 13-entry list the
@@ -97,10 +98,10 @@ export function TemplateCatalog({
                     <p className="text-xs leading-relaxed text-muted-foreground">{t.description}</p>
                     <div className="mt-auto flex items-center justify-between gap-3 pt-2">
                       <span className="flex items-center gap-1.5 font-mono text-xs text-muted-foreground">
-                        gregale init --template {t.name}
+                        {cliInitCommand(t.name)}
                         <CopyIconButton
-                          text={`gregale init --template ${t.name}`}
-                          label={`gregale init --template ${t.name}`}
+                          text={cliInitCommand(t.name)}
+                          label={cliInitCommand(t.name)}
                         />
                       </span>
                       <Button
