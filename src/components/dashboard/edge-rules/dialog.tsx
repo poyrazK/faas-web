@@ -17,6 +17,7 @@ import {
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import { ChipSet, NumberField, TextField, ToggleRow } from './fields';
+import { ruleAction } from '@/lib/api/edge-rules';
 import { KINDS, KIND_ORDER, type ActionMap, type Kind } from './kinds';
 import {
   PENALTY_KINDS,
@@ -153,7 +154,7 @@ export function EdgeRuleDialog({
         priority: rule.priority,
         enabled: rule.enabled,
       });
-      setAction(rule.action as ActionMap[Kind]);
+      setAction(ruleAction(rule) as ActionMap[Kind]);
     } else {
       setKind(null);
       setMatch({

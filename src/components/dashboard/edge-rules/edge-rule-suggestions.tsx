@@ -5,9 +5,9 @@ import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
 import { InlinePhase, Panel, queryPhase } from '@/components/dashboard/primitives';
 import { PlanGated, isPlanGate } from '@/components/dashboard/plan-gated';
-import { useEdgeRuleSuggestions, useEdgeStage } from '@/lib/api/edge-rules';
+import { useEdgeRuleSuggestions } from '@/lib/api/edge-rules';
 import { useCreateEdgeRule } from '@/lib/api/queries';
-import { useCapabilityAccess } from '@/lib/api/capabilities';
+import { useCapabilityAccess, useCapabilityStage } from '@/lib/api/capabilities';
 import { errorMessage } from '@/lib/api/errors';
 import {
   RECIPES,
@@ -28,7 +28,7 @@ import { TextField, ToggleRow } from './fields';
  * get 402 `plan_feature_gated`.
  */
 export function EdgeRuleSuggestions({ slug }: { slug: string }) {
-  const stage = useEdgeStage('edge-rule-suggestions');
+  const stage = useCapabilityStage('edge-rule-suggestions');
   const q = useEdgeRuleSuggestions(slug);
   const [applying, setApplying] = useState<{
     recipe: RecipeId;

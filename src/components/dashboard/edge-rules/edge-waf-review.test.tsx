@@ -11,7 +11,8 @@ const state = vi.hoisted(() => ({
   confirm: vi.fn(),
   toast: vi.fn(),
 }));
-vi.mock('@/lib/api/edge-rules', () => ({
+vi.mock('@/lib/api/edge-rules', async (importOriginal) => ({
+  ruleAction: (await importOriginal<typeof import('@/lib/api/edge-rules')>()).ruleAction,
   useEdgeWAFReview: () => ({
     data: state.data,
     error: state.error,
@@ -37,7 +38,11 @@ const waf: EdgeRule = {
   priority: 50,
   enabled: true,
   kind: 'waf',
-  action: { mode: 'block', exclude_rule_ids: [920350] },
+  // apid wraps the payload under its kind (faas edgerules/rules.go:46).
+  action: {
+    kind: 'waf',
+    waf: { mode: 'block', exclude_rule_ids: [920350] },
+  } as unknown as EdgeRule['action'],
   created_at: '2026-10-01T00:00:00Z',
   updated_at: '2026-10-01T00:00:00Z',
 };
@@ -135,7 +140,10 @@ describe('EdgeWAFReview', () => {
     await userEvent.click(
       screen.getByRole('button', { name: 'Score CRS 920350 again in API WAF' })
     );
-    expect(state.confirm.mock.calls[0][0]).toMatchObject({ destructive: false });
+    expect(state.confirm.mock.calls[0][0]).toMatchObject({
+      destructive: false,
+      description: expect.stringContaining('and blocked when it fires'),
+    });
     await waitFor(() => expect(state.update).toHaveBeenCalledWith({ id: 'w1', remove: [920350] }));
   });
 
@@ -144,15 +152,19 @@ describe('EdgeWAFReview', () => {
     expect(screen.queryByRole('button', { name: /Exclude/ })).toBeNull();
   });
 
-  it('reports a refused exclusion', async () => {
-    state.update.mockRejectedValue(
-      new ApiError({ status: 422, code: 'validation_failed', title: 'Bad', detail: 'at most 50' })
-    );
+  it('reports a refused exclusion with the error, so ProblemHelp can explain it', async () => {
+    const err = new ApiError({
+      status: 422,
+      code: 'validation_failed',
+      title: 'Bad',
+      detail: 'at most 50',
+    });
+    state.update.mockRejectedValue(err);
     render(<EdgeWAFReview slug="api" rules={[waf]} />);
     await userEvent.click(screen.getByRole('button', { name: 'Exclude CRS 942100 from API WAF' }));
     await waitFor(() =>
       expect(state.toast).toHaveBeenCalledWith(
-        expect.objectContaining({ kind: 'error', description: 'at most 50' })
+        expect.objectContaining({ kind: 'error', error: err })
       )
     );
   });

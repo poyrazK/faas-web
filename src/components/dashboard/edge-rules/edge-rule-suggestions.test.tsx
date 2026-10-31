@@ -13,7 +13,6 @@ const state = vi.hoisted(() => ({
   penalty: 'off' as string,
 }));
 vi.mock('@/lib/api/edge-rules', () => ({
-  useEdgeStage: () => 'Beta',
   useEdgeRuleSuggestions: () => ({
     data: state.data,
     error: state.error,
@@ -26,6 +25,7 @@ vi.mock('@/lib/api/queries', () => ({
 }));
 vi.mock('@/lib/api/capabilities', () => ({
   useCapabilityAccess: () => ({ access: state.penalty }),
+  useCapabilityStage: () => 'Beta',
 }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => state.confirm }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: state.toast }) }));

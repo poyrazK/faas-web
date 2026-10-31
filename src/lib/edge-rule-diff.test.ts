@@ -67,3 +67,13 @@ describe('rollbackSummary', () => {
     );
   });
 });
+
+describe('diffRuleSets across action shapes', () => {
+  it('compares the kind payload whether apid sent it wrapped or flat', () => {
+    const flat = rule('a', { action: { deny: ['0.0.0.0/0'] } });
+    const wrapped = rule('a', {
+      action: { kind: 'ip', ip: { deny: ['0.0.0.0/0'] } } as unknown as EdgeRule['action'],
+    });
+    expect(diffRuleSets([flat], [wrapped])[0].change).toBe('same');
+  });
+});

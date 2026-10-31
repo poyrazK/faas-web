@@ -4,13 +4,13 @@ import { Pill } from '@/components/dashboard/resource-table';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
 import {
+  ruleAction,
   useEdgeWAFReview,
   useUpdateWAFExclusions,
   type EdgeWAFReviewGroup,
 } from '@/lib/api/edge-rules';
 import type { EdgeRule } from '@/lib/api/queries';
-import { errorMessage } from '@/lib/api/errors';
-import { formatRelative } from '@/lib/mock-data';
+import { Timestamp } from '@/components/ui/timestamp';
 
 /**
  * The WAF false-positive review (faas ADR-831 amendment 13): the app's sampled
@@ -56,7 +56,7 @@ export function EdgeWAFReview({ slug, rules }: { slug: string; rules: EdgeRule[]
         })
       : await confirm({
           title: `Score CRS ${g.crs_rule_id} again in ${name}?`,
-          description: `Requests this rule matches are checked against CRS ${g.crs_rule_id} (${g.category}) again, and ${rule.action && 'mode' in rule.action && rule.action.mode === 'block' ? 'blocked' : 'flagged'} when it fires.`,
+          description: `Requests this rule matches are checked against CRS ${g.crs_rule_id} (${g.category}) again, and ${(ruleAction(rule) as { mode?: string } | undefined)?.mode === 'block' ? 'blocked' : 'flagged'} when it fires.`,
           confirmLabel: 'Score again',
           destructive: false,
         });
@@ -75,7 +75,7 @@ export function EdgeWAFReview({ slug, rules }: { slug: string; rules: EdgeRule[]
       toast({
         kind: 'error',
         title: 'Could not change exclusions',
-        description: errorMessage(err),
+        error: err,
       });
     } finally {
       setBusy(null);
@@ -122,8 +122,7 @@ export function EdgeWAFReview({ slug, rules }: { slug: string; rules: EdgeRule[]
                 <p className="text-xs text-muted-foreground">
                   {ruleLabel(g, rule)} · {g.events} events ({g.detected} detected, {g.warned}{' '}
                   warned, {g.blocked} blocked) · {g.clients}{' '}
-                  {g.clients === 1 ? 'client' : 'clients'} · last{' '}
-                  <span title={g.last_seen}>{formatRelative(Date.parse(g.last_seen))}</span>
+                  {g.clients === 1 ? 'client' : 'clients'} · last <Timestamp value={g.last_seen} />
                 </p>
                 <p className="text-xs leading-relaxed">
                   {g.reason.replace(/^./, (c) => c.toUpperCase())}.

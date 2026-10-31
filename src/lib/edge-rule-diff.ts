@@ -1,4 +1,5 @@
 import type { EdgeRule } from '@/lib/api/queries';
+import { ruleAction } from '@/lib/api/edge-rules';
 
 /**
  * The difference between an app's rules now and a recorded version of them.
@@ -67,7 +68,11 @@ export function diffRuleSets(current: EdgeRule[], target: EdgeRule[]): RuleDiff[
       added.push({ id: after.id, change: 'added', after, fields: [] });
       continue;
     }
-    const fields = FIELDS.filter((f) => canonical(before[f]) !== canonical(after[f]));
+    const fields = FIELDS.filter((f) =>
+      f === 'action'
+        ? canonical(ruleAction(before)) !== canonical(ruleAction(after))
+        : canonical(before[f]) !== canonical(after[f])
+    );
     (fields.length ? changed : same).push({
       id: after.id,
       change: fields.length ? 'changed' : 'same',

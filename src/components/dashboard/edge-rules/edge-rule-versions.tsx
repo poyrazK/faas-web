@@ -6,16 +6,18 @@ import { useToast } from '@/components/ui/toast';
 import { InlinePhase, Panel, queryPhase } from '@/components/dashboard/primitives';
 import { Pill } from '@/components/dashboard/resource-table';
 import {
+  ruleAction,
   useEdgeRuleVersion,
   useEdgeRuleVersions,
-  useEdgeStage,
   useRollbackEdgeRules,
   type EdgeRuleSetVersion,
 } from '@/lib/api/edge-rules';
+import { useCapabilityStage } from '@/lib/api/capabilities';
 import type { EdgeRule } from '@/lib/api/queries';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import { diffRuleSets, rollbackSummary, type RuleDiff } from '@/lib/edge-rule-diff';
-import { formatRelative } from '@/lib/mock-data';
+import { Timestamp } from '@/components/ui/timestamp';
+import { absoluteTime } from '@/lib/time';
 import { summarise } from './kinds';
 
 /**
@@ -27,8 +29,8 @@ import { summarise } from './kinds';
  * not a diff, so a version is shown beside the rules now, paired by rule id —
  * the ids a rollback preserves.
  */
-export function EdgeRuleVersions({ slug, rules }: { slug: string; rules: EdgeRule[] }) {
-  const stage = useEdgeStage('edge-rule-history');
+export function EdgeRuleVersions({ slug }: { slug: string }) {
+  const stage = useCapabilityStage('edge-rule-history');
   const versions = useEdgeRuleVersions(slug);
   const [open, setOpen] = useState<number | null>(null);
   const list = versions.data ?? [];
@@ -65,9 +67,7 @@ export function EdgeRuleVersions({ slug, rules }: { slug: string; rules: EdgeRul
               <span className="text-xs text-muted-foreground">
                 {v.rule_count} {v.rule_count === 1 ? 'rule' : 'rules'}
               </span>
-              <span className="text-xs text-muted-foreground" title={v.created_at}>
-                {formatRelative(Date.parse(v.created_at))}
-              </span>
+              <Timestamp value={v.created_at} className="text-xs text-muted-foreground" />
               <button
                 type="button"
                 onClick={() => setOpen(v.version)}
@@ -86,7 +86,6 @@ export function EdgeRuleVersions({ slug, rules }: { slug: string; rules: EdgeRul
           slug={slug}
           version={open}
           latest={latest}
-          rules={rules}
           onClose={() => setOpen(null)}
           onStale={() => void versions.refetch()}
         />
@@ -106,25 +105,28 @@ function VersionDialog({
   slug,
   version,
   latest,
-  rules,
   onClose,
   onStale,
 }: {
   slug: string;
   version: number;
   latest: number;
-  rules: EdgeRule[];
   onClose: () => void;
   onStale: () => void;
 }) {
   const detail = useEdgeRuleVersion(slug, version);
+  // The If-Match is `latest`, so the diff is against that recorded set, not
+  // the separately fetched rule list: the person confirms exactly the rules
+  // the rollback replaces (versions.go:186-200).
+  const now = useEdgeRuleVersion(slug, latest || null);
   const rollback = useRollbackEdgeRules(slug);
   const confirm = useConfirm();
   const { toast } = useToast();
   const [problem, setProblem] = useState<unknown>(null);
   const diff = useMemo(
-    () => (detail.data ? diffRuleSets(rules, detail.data.rules ?? []) : []),
-    [detail.data, rules]
+    () =>
+      detail.data && now.data ? diffRuleSets(now.data.rules ?? [], detail.data.rules ?? []) : [],
+    [detail.data, now.data]
   );
   const shown = diff.filter((d) => d.change !== 'same');
   const unchanged = diff.length - shown.length;
@@ -159,7 +161,7 @@ function VersionDialog({
       title={`Version ${version}`}
       description={
         detail.data
-          ? `Recorded ${new Date(detail.data.created_at).toLocaleString()}. Compared with the rules now.`
+          ? `Recorded ${absoluteTime(Date.parse(detail.data.created_at))}. Compared with the latest version, the rules now.`
           : undefined
       }
       width="max-w-4xl"
@@ -168,7 +170,7 @@ function VersionDialog({
           <Button variant="ghost" size="sm" onClick={onClose}>
             Close
           </Button>
-          {detail.data && !isCurrent && (
+          {detail.data && now.data && !isCurrent && (
             <Button
               size="sm"
               disabled={rollback.isPending || !shown.length}
@@ -180,10 +182,13 @@ function VersionDialog({
         </>
       }
     >
-      {!detail.data ? (
+      {!detail.data || !now.data ? (
         <InlinePhase
-          phase={queryPhase({ error: detail.error, loading: detail.isPending })}
-          error={detail.error}
+          phase={queryPhase({
+            error: detail.error ?? now.error,
+            loading: detail.isPending || now.isPending,
+          })}
+          error={detail.error ?? now.error}
           loadingMessage="Reading the version…"
         />
       ) : (
@@ -261,7 +266,7 @@ function RuleCell({ heading, rule, empty }: { heading: string; rule?: EdgeRule; 
             {rule.match_host}
             {rule.match_path} · {rule.match_methods?.length ? rule.match_methods.join(', ') : 'ANY'}
           </span>
-          <span className="break-words font-mono">{summarise(rule.kind, rule.action)}</span>
+          <span className="break-words font-mono">{summarise(rule.kind, ruleAction(rule))}</span>
           {rule.match && (
             <span className="break-words font-mono text-muted-foreground">
               when {describeMatch(rule.match)}

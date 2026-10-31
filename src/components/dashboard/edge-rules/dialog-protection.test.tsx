@@ -113,6 +113,27 @@ describe('challenge kind', () => {
   });
 });
 
+describe('the wire shape', () => {
+  it('prefills an edit from the kind-wrapped action apid returns, and saves it flat', async () => {
+    // faas EdgeRuleResponse marshals state.EdgeRuleAction (edgerules/rules.go:46).
+    mount({
+      ...ipRule,
+      action: {
+        kind: 'ip',
+        ip: { deny: ['10.0.0.0/8'] },
+        penalty: { seconds: 600 },
+      } as unknown as EdgeRule['action'],
+    });
+    expect(screen.getByLabelText(/^Deny/)).toHaveValue('10.0.0.0/8');
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() =>
+      expect(state.update).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'ip-1', action: { deny: ['10.0.0.0/8'] } })
+      )
+    );
+  });
+});
+
 describe('penalty box', () => {
   it('adds a penalty to a new ip rule', async () => {
     mount();

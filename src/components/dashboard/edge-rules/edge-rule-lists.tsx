@@ -11,12 +11,12 @@ import {
   useDeleteEdgeRuleList,
   useEdgeRuleList,
   useEdgeRuleLists,
-  useEdgeStage,
   useUpdateEdgeRuleList,
   type EdgeRuleList,
   type EdgeRuleListKind,
 } from '@/lib/api/edge-rules';
 import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
+import { useCapabilityStage } from '@/lib/api/capabilities';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import { useAuth } from '@/lib/auth';
 import { LinesField, SelectField, TextField } from './fields';
@@ -44,10 +44,12 @@ const KINDS: { value: EdgeRuleListKind; label: string; hint: string }[] = [
 const NAME = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 
 export function EdgeRuleLists() {
-  const stage = useEdgeStage('edge-rule-lists');
+  const stage = useCapabilityStage('edge-rule-lists');
   const { account } = useAuth();
   const workspace = useWorkspaceTarget();
   const personal = workspace.ready && !workspace.org;
+  // Free allows no lists (faas limits.go:5171), so it is not offered one.
+  const canCreate = personal && (account?.plan ?? 'free') !== 'free';
   const lists = useEdgeRuleLists(account?.id ?? '', personal);
   const remove = useDeleteEdgeRuleList();
   const confirm = useConfirm();
@@ -78,10 +80,10 @@ export function EdgeRuleLists() {
       toast({
         kind: 'error',
         title: 'Could not delete the list',
-        description:
-          err instanceof ApiError && err.code === 'edge_rule_list_in_use'
-            ? 'A rule uses this list now. Remove it from that rule first.'
-            : errorMessage(err),
+        ...(err instanceof ApiError && err.code === 'edge_rule_list_in_use'
+          ? { description: 'A rule uses this list now. Remove it from that rule first.' }
+          : {}),
+        error: err,
       });
     }
   };
@@ -91,7 +93,7 @@ export function EdgeRuleLists() {
       title="Rule lists"
       description={`${stage ? `${stage} · ` : ''}IPs, countries, hosts, values or networks that many rules can share. Account-wide: an edit applies to every rule that uses the list within seconds.`}
       actions={
-        personal ? (
+        canCreate ? (
           <Button size="sm" className="gap-1.5" onClick={() => setCreating(true)}>
             <Plus className="h-3.5 w-3.5" />
             New list
@@ -112,7 +114,11 @@ export function EdgeRuleLists() {
             phase={phase}
             error={lists.error}
             loadingMessage="Reading lists…"
-            emptyMessage="No lists yet. Lists are on Hobby and above."
+            emptyMessage={
+              canCreate
+                ? 'No lists yet.'
+                : 'No lists yet. Rule lists are on Hobby and above; the Free plan has none.'
+            }
             onRetry={() => void lists.refetch()}
           />
         </div>

@@ -8,7 +8,7 @@ import {
 } from '@tanstack/react-query';
 import { api, unwrap } from './client';
 import type { components } from './schema';
-import { useCapability } from './capabilities';
+import { edgeRuleListFilters, type EdgeRule } from './queries';
 
 /**
  * The parts of edge rules beyond the rules themselves: recorded versions of an
@@ -19,10 +19,10 @@ import { useCapability } from './capabilities';
  * reusable rule lists (ADR-963, lists.go). Routes: faas
  * pkg/apid/apidserver/server.go:3699-3714.
  *
- * None of these keys contains 'edge-rules': queries.ts patches every query
- * whose key does as an EdgeRule[] when a rule is toggled or deleted, which
- * would mangle a version list or a review. They follow rule changes through
- * `useEdgeRuleSetFollower` instead.
+ * Per-app keys sit under the app's ['apps', slug, 'edge-rules'], beside the
+ * rule list; `edgeRuleListFilters` (queries.ts) matches only the lists, so the
+ * optimistic toggle and delete never touch a version list or a review. They
+ * follow rule changes through `useEdgeRuleSetFollower`.
  */
 
 type S = components['schemas'];
@@ -32,30 +32,40 @@ export type EdgeWAFReviewGroup = S['EdgeWAFReviewGroup'];
 export type EdgeRuleList = S['EdgeRuleListResponse'];
 export type EdgeRuleListKind = EdgeRuleList['kind'];
 
-const setKey = (slug: string) => ['apps', slug, 'edge-rule-sets'] as const;
-const listsKey = (accountId: string) => ['account', accountId, 'edge-rule-lists'] as const;
+const setKey = (slug: string) => ['apps', slug, 'edge-rules'] as const;
+const listsKey = (accountId: string) => ['edge-rule-lists', accountId] as const;
 
-/** Every cached rule list, per-app or account-wide (the queries.ts filter). */
-const ruleFilters: QueryFilters = { predicate: (q) => q.queryKey.includes('edge-rules') };
+/** What an app's rule set feeds — versions, suggestions, the review — not the rules. */
+const derivedFilters = (slug: string): QueryFilters => ({
+  queryKey: setKey(slug),
+  predicate: ({ queryKey: k }) => k.length > 3 && k[3] !== 'account',
+});
+
+/**
+ * A rule's kind payload. apid returns the stored action wrapped by kind —
+ * `{"kind":"waf","waf":{…},"penalty":{…}}` — because EdgeRuleResponse
+ * marshals state.EdgeRuleAction (faas pkg/apid/edgerules/rules.go:46-47,
+ * pkg/state/types.go:8638-8725; handlers_edge_rules_test.go:706-714 reads it
+ * so). The vendored spec documents the flat payload, which is also what
+ * create and PATCH take, so both read the same here.
+ */
+export function ruleAction(rule: Pick<EdgeRule, 'kind' | 'action'>): unknown {
+  const action = rule.action as Record<string, unknown> | null | undefined;
+  if (action && typeof action === 'object' && action.kind === rule.kind)
+    return (action[rule.kind] as object | undefined) ?? {};
+  return action;
+}
+
 const openAPIFilters: QueryFilters = {
   predicate: (q) => q.queryKey[0] === 'apps' && q.queryKey[2] === 'openapi',
 };
 
 function rereadRules(qc: QueryClient, slug?: string) {
   return Promise.all([
-    qc.invalidateQueries(ruleFilters),
+    qc.invalidateQueries(edgeRuleListFilters),
     qc.invalidateQueries(openAPIFilters),
     ...(slug ? [qc.invalidateQueries({ queryKey: setKey(slug) })] : []),
   ]);
-}
-
-/** "Beta" or "Preview" from a capability's maturity; "" for GA or unknown. */
-export function edgeStage(maturity: string | undefined): string {
-  return maturity === 'beta' ? 'Beta' : maturity === 'preview' ? 'Preview' : '';
-}
-
-export function useEdgeStage(capability: string): string {
-  return edgeStage(useCapability(capability).capability?.maturity);
 }
 
 /**
@@ -70,7 +80,7 @@ export function useEdgeRuleSetFollower(slug: string, signature: string) {
   useEffect(() => {
     if (last.current === signature) return;
     last.current = signature;
-    void qc.invalidateQueries({ queryKey: setKey(slug) });
+    void qc.invalidateQueries(derivedFilters(slug));
   }, [qc, slug, signature]);
 }
 
@@ -89,7 +99,7 @@ export function useEdgeRuleVersions(slug: string) {
 /** One recorded version with its rules. A version never changes once recorded. */
 export function useEdgeRuleVersion(slug: string, version: number | null) {
   return useQuery({
-    queryKey: ['apps', slug, 'edge-rule-version', version],
+    queryKey: [...setKey(slug), 'version', version],
     queryFn: ({ signal }) =>
       unwrap(
         api.GET('/v1/apps/{slug}/edge-rules/versions/{version}', {
@@ -189,7 +199,7 @@ function useListMutation<V, R>(fn: (vars: V) => Promise<R>) {
     onSettled: () =>
       Promise.all([
         qc.invalidateQueries({
-          predicate: (q) => q.queryKey[0] === 'account' && q.queryKey[2] === 'edge-rule-lists',
+          predicate: (q) => q.queryKey[0] === 'edge-rule-lists',
         }),
         rereadRules(qc),
       ]),

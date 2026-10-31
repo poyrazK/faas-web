@@ -100,3 +100,14 @@ it('cancels a confirmed cache deletion if availability changes while confirmatio
   await act(async () => decide(true));
   expect(state.remove).not.toHaveBeenCalled();
 });
+
+it('summarises the kind-wrapped action apid returns (faas edgerules/rules.go:46)', () => {
+  state.rules = [
+    {
+      ...routeRule,
+      action: { kind: 'route', route: { target_app_slug: 'billing' } } as never,
+    },
+  ];
+  render(<EdgeRulesBody slug="api" />);
+  expect(screen.getByText('→ billing')).toBeInTheDocument();
+});

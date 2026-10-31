@@ -12,6 +12,21 @@ type Rule = S['EdgeRuleResponse'];
  */
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
+
+/**
+ * A stored rule as apid sends it. The mock stores the flat payload create and
+ * PATCH take; apid answers with state.EdgeRuleAction, the payload keyed by
+ * kind with the penalty beside it (faas pkg/apid/edgerules/rules.go:46-47,
+ * pkg/state/types.go:8638-8725), so every route that returns a rule wraps it.
+ */
+export function wireRule(rule: Rule): Rule {
+  const action = {
+    kind: rule.kind,
+    [rule.kind]: rule.action ?? {},
+    ...(rule.penalty ? { penalty: rule.penalty } : {}),
+  };
+  return { ...rule, action: action as unknown as Rule['action'] };
+}
 const H = 3_600_000;
 
 /** A block-mode WAF rule on the first app, so the review has something to read. */
@@ -132,7 +147,7 @@ export function get(appId: string, version: number): S['EdgeRuleSetVersionRespon
     rules_sha256: digest(v.rules),
     created_at: v.created_at,
     current: v.version === all[0]?.version,
-    rules: clone(v.rules),
+    rules: clone(v.rules).map(wireRule),
   };
 }
 
@@ -146,7 +161,7 @@ export function restore(appId: string, version: number): Rule[] | null {
   const restored = clone(v.rules).filter((r) => r.managed_by !== 'attack_mode');
   db.edgeRules.push(...restored.map((r) => ({ ...r, updated_at: db.iso(0) })));
   record(appId);
-  return db.edgeRules.filter((r) => r.app_id === appId);
+  return db.edgeRules.filter((r) => r.app_id === appId).map(wireRule);
 }
 
 const recipeAdded = (appId: string, recipe: string) =>

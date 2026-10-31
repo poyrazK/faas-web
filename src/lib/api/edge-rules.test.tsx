@@ -3,16 +3,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { spyApi } from '@/test/api';
-
-const capability = vi.hoisted(() => ({ maturity: 'beta' as string | undefined }));
-vi.mock('./capabilities', () => ({
-  useCapability: (key: string) => ({
-    capability: capability.maturity ? { key, maturity: capability.maturity } : undefined,
-  }),
-}));
+import { edgeRuleListFilters } from './queries';
 
 const {
-  edgeStage,
+  ruleAction,
   useCreateEdgeRuleList,
   useDeleteEdgeRuleList,
   useEdgeRuleLists,
@@ -24,7 +18,6 @@ const {
   useRollbackEdgeRules,
   useUpdateEdgeRuleList,
   useUpdateWAFExclusions,
-  useEdgeStage,
 } = await import('./edge-rules');
 
 const ok = (data: unknown) => ({ data, response: new Response() }) as never;
@@ -39,7 +32,6 @@ function setup() {
 
 afterEach(() => {
   vi.restoreAllMocks();
-  capability.maturity = 'beta';
 });
 
 describe('edge rule set versions', () => {
@@ -77,7 +69,7 @@ describe('edge rule set versions', () => {
       headers: { 'If-Match': '"5"' },
     });
     const keys = invalidate.mock.calls.map(([f]) => JSON.stringify(f));
-    expect(keys.some((k) => k.includes('edge-rule-sets'))).toBe(true);
+    expect(keys.some((k) => k.includes('"edge-rules"'))).toBe(true);
   });
 });
 
@@ -91,12 +83,19 @@ describe('the follower', () => {
     });
     expect(invalidate).not.toHaveBeenCalled();
     view.rerender({ sig: 'a@2' });
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['apps', 'api', 'edge-rule-sets'] });
+    const [filters] = invalidate.mock.calls[0];
+    const matches = (queryKey: unknown[]) => filters?.predicate?.({ queryKey } as never);
+    expect(filters?.queryKey).toEqual(['apps', 'api', 'edge-rules']);
+    expect(matches(['apps', 'api', 'edge-rules', 'versions'])).toBe(true);
+    expect(matches(['apps', 'api', 'edge-rules', 'waf-review'])).toBe(true);
+    // The rules themselves are the caller's to reread.
+    expect(matches(['apps', 'api', 'edge-rules'])).toBe(false);
+    expect(matches(['apps', 'api', 'edge-rules', 'account', 'acct'])).toBe(false);
   });
 });
 
 describe('suggestions and the WAF review', () => {
-  it('reads both per app, with keys the edge-rule optimistic updates never touch', async () => {
+  it('reads both per app, under keys the rule-list optimistic updates never touch', async () => {
     spyApi('GET').mockImplementation((path: string) =>
       Promise.resolve(ok(path.endsWith('suggestions') ? { suggestions: [] } : { groups: [] }))
     );
@@ -105,9 +104,9 @@ describe('suggestions and the WAF review', () => {
     const w = renderHook(() => useEdgeWAFReview('api', true), { wrapper });
     await waitFor(() => expect(s.result.current.data).toEqual({ suggestions: [] }));
     await waitFor(() => expect(w.result.current.data).toEqual({ groups: [] }));
-    // queries.ts patches every query whose key includes 'edge-rules' as a rule list.
+    // queries.ts patches the rule-list queries as EdgeRule[] optimistically.
     for (const q of client.getQueryCache().getAll())
-      expect(q.queryKey.includes('edge-rules')).toBe(false);
+      expect(edgeRuleListFilters.predicate!(q)).toBe(false);
   });
 
   it('adds a CRS exclusion to one waf rule', async () => {
@@ -159,19 +158,43 @@ describe('edge rule lists', () => {
   });
 });
 
-describe('stage', () => {
-  it('reads Beta or Preview from the capability, never a hardcoded label', () => {
-    expect(edgeStage('beta')).toBe('Beta');
-    expect(edgeStage('preview')).toBe('Preview');
-    expect(edgeStage('ga')).toBe('');
-    expect(edgeStage(undefined)).toBe('');
-    const { wrapper } = setup();
-    expect(renderHook(() => useEdgeStage('edge-rule-history'), { wrapper }).result.current).toBe(
-      'Beta'
-    );
-    capability.maturity = undefined;
-    expect(renderHook(() => useEdgeStage('edge-rule-history'), { wrapper }).result.current).toBe(
-      ''
-    );
+describe('ruleAction', () => {
+  it('unwraps the kind-keyed action apid returns (faas edgerules/rules.go:46)', () => {
+    expect(
+      ruleAction({
+        kind: 'waf',
+        action: { kind: 'waf', waf: { mode: 'block' }, penalty: { seconds: 60 } },
+      } as never)
+    ).toEqual({ mode: 'block' });
+    expect(
+      ruleAction({
+        kind: 'circuit_breaker',
+        action: { kind: 'circuit_breaker', circuit_breaker: { failure_threshold: 5 } },
+      } as never)
+    ).toEqual({ failure_threshold: 5 });
+  });
+
+  it('reads an empty payload as an empty action', () => {
+    expect(ruleAction({ kind: 'challenge', action: { kind: 'challenge' } } as never)).toEqual({});
+  });
+
+  it('passes the flat shape the spec documents through unchanged', () => {
+    const flat = { deny: ['0.0.0.0/0'] };
+    expect(ruleAction({ kind: 'ip', action: flat } as never)).toBe(flat);
+    expect(ruleAction({ kind: 'challenge', action: {} } as never)).toEqual({});
+  });
+});
+
+describe('edgeRuleListFilters', () => {
+  it('matches only the account and per-app rule lists', () => {
+    const m = (queryKey: unknown[]) => edgeRuleListFilters.predicate!({ queryKey } as never);
+    expect(m(['edge-rules'])).toBe(true);
+    expect(m(['edge-rules', 'account', 'acct'])).toBe(true);
+    expect(m(['apps', 'api', 'edge-rules'])).toBe(true);
+    expect(m(['apps', 'api', 'edge-rules', 'account', 'acct'])).toBe(true);
+    expect(m(['apps', 'api', 'edge-rules', 'versions'])).toBe(false);
+    expect(m(['apps', 'api', 'edge-rules', 'version', 3])).toBe(false);
+    expect(m(['edge-rule-lists', 'acct'])).toBe(false);
+    expect(m(['apps', 'api', 'openapi'])).toBe(false);
   });
 });

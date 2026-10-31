@@ -13,9 +13,12 @@ const state = vi.hoisted(() => ({
   confirm: vi.fn(),
   toast: vi.fn(),
   asked: null as number | null,
+  latest: 4,
+  current: undefined as unknown,
 }));
-vi.mock('@/lib/api/edge-rules', () => ({
-  useEdgeStage: () => 'Beta',
+vi.mock('@/lib/api/capabilities', () => ({ useCapabilityStage: () => 'Beta' }));
+vi.mock('@/lib/api/edge-rules', async (importOriginal) => ({
+  ruleAction: (await importOriginal<typeof import('@/lib/api/edge-rules')>()).ruleAction,
   useEdgeRuleVersions: () => ({
     data: state.versionsError ? undefined : state.versions,
     error: state.versionsError,
@@ -23,8 +26,12 @@ vi.mock('@/lib/api/edge-rules', () => ({
     refetch: state.refetch,
   }),
   useEdgeRuleVersion: (_slug: string, v: number | null) => {
-    state.asked = v;
-    return { data: v === null ? undefined : state.version, error: null, isPending: false };
+    if (v !== state.latest) state.asked = v;
+    return {
+      data: v === null ? undefined : v === state.latest ? state.current : state.version,
+      error: null,
+      isPending: false,
+    };
   },
   useRollbackEdgeRules: () => ({ mutateAsync: state.rollback, isPending: false }),
 }));
@@ -86,9 +93,21 @@ beforeEach(() => {
             { field: 'path', op: 'prefix', values: ['/.env', '/.git/'] },
           ],
         },
-        action: { requests_per_second: 5, burst: 10 } as EdgeRule['action'],
+        // apid wraps the payload under its kind (faas edgerules/rules.go:46).
+        action: {
+          kind: 'throttle',
+          throttle: { requests_per_second: 5, burst: 10 },
+        } as unknown as EdgeRule['action'],
       }),
     ],
+  };
+  state.current = {
+    version: 4,
+    rule_count: 1,
+    rules_sha256: 'x',
+    created_at: '2026-10-30T10:00:00Z',
+    current: true,
+    rules: current,
   };
   state.versionsError = null;
   state.rollback.mockReset().mockResolvedValue([]);
@@ -98,14 +117,14 @@ beforeEach(() => {
 });
 
 async function openVersion3() {
-  render(<EdgeRuleVersions slug="api" rules={current} />);
+  render(<EdgeRuleVersions slug="api" />);
   await userEvent.click(screen.getByRole('button', { name: 'Compare version 3' }));
   return screen.getByRole('dialog', { name: 'Version 3' });
 }
 
 describe('EdgeRuleVersions', () => {
   it('lists versions newest first, marks the current one and says it is beta', () => {
-    render(<EdgeRuleVersions slug="api" rules={current} />);
+    render(<EdgeRuleVersions slug="api" />);
     expect(screen.getByText(/^Beta · /)).toBeInTheDocument();
     const rows = screen.getAllByRole('listitem');
     expect(rows[0]).toHaveTextContent('v4');
@@ -190,9 +209,15 @@ describe('EdgeRuleVersions', () => {
     expect(await within(dialog).findByRole('alert')).toHaveTextContent(/CORS preset/);
   });
 
+  it('diffs against the latest recorded version, the set the rollback replaces', async () => {
+    state.current = { ...(state.current as object), rules: [rule('a', { priority: 10 })] };
+    const dialog = await openVersion3();
+    expect(within(dialog).getByText('1 rule comes back.')).toBeInTheDocument();
+  });
+
   it('offers no rollback to the current version', async () => {
-    state.version = { ...(state.version as object), version: 4, current: true, rules: current };
-    render(<EdgeRuleVersions slug="api" rules={current} />);
+    state.version = state.current;
+    render(<EdgeRuleVersions slug="api" />);
     await userEvent.click(screen.getByRole('button', { name: 'Compare version 4' }));
     const dialog = screen.getByRole('dialog', { name: 'Version 4' });
     expect(within(dialog).queryByRole('button', { name: /Roll back/ })).toBeNull();

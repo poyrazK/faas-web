@@ -54,3 +54,11 @@ export function capabilityAccess(
     ? 'runtime-unavailable'
     : 'plan-not-entitled';
 }
+
+/**
+ * "Beta" or "Preview" from a capability's maturity, for the label a surface
+ * carries while its capability is not GA; "" for GA, internal or unknown.
+ */
+export function capabilityStage(maturity: string | undefined): '' | 'Beta' | 'Preview' {
+  return maturity === 'beta' ? 'Beta' : maturity === 'preview' ? 'Preview' : '';
+}

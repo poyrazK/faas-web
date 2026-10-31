@@ -13,9 +13,10 @@ const state = vi.hoisted(() => ({
   confirm: vi.fn(),
   toast: vi.fn(),
   workspace: { org: null as string | null, label: 'Personal', ready: true },
+  plan: 'pro',
 }));
+vi.mock('@/lib/api/capabilities', () => ({ useCapabilityStage: () => 'Beta' }));
 vi.mock('@/lib/api/edge-rules', () => ({
-  useEdgeStage: () => 'Beta',
   useEdgeRuleLists: (_account: string, enabled: boolean) => {
     state.enabled.push(enabled);
     return {
@@ -35,7 +36,9 @@ vi.mock('@/lib/api/edge-rules', () => ({
   useDeleteEdgeRuleList: () => ({ mutateAsync: state.remove, isPending: false }),
 }));
 vi.mock('@/lib/api/workspace-apps', () => ({ useWorkspaceTarget: () => state.workspace }));
-vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { id: 'acct', plan: 'pro' } }) }));
+vi.mock('@/lib/auth', () => ({
+  useAuth: () => ({ account: { id: 'acct', plan: state.plan } }),
+}));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => state.confirm }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: state.toast }) }));
 
@@ -69,6 +72,7 @@ beforeEach(() => {
   state.confirm.mockReset().mockResolvedValue(true);
   state.toast.mockReset();
   state.workspace = { org: null, label: 'Personal', ready: true };
+  state.plan = 'pro';
 });
 
 describe('EdgeRuleLists', () => {
@@ -164,15 +168,31 @@ describe('EdgeRuleLists', () => {
     await waitFor(() => expect(state.remove).toHaveBeenCalledWith('blocked-countries'));
   });
 
+  it('explains on Free that lists start on Hobby, instead of offering one apid refuses', () => {
+    state.plan = 'free';
+    state.lists = [];
+    render(<EdgeRuleLists />);
+    expect(screen.queryByRole('button', { name: 'New list' })).toBeNull();
+    expect(screen.getByText(/Rule lists are on Hobby and above/)).toBeInTheDocument();
+  });
+
   it('explains a list that came into use since the page read it', async () => {
-    state.remove.mockRejectedValue(
-      new ApiError({ status: 409, code: 'edge_rule_list_in_use', title: 'In use', detail: 'r9' })
-    );
+    const err = new ApiError({
+      status: 409,
+      code: 'edge_rule_list_in_use',
+      title: 'In use',
+      detail: 'r9',
+    });
+    state.remove.mockRejectedValue(err);
     render(<EdgeRuleLists />);
     await userEvent.click(screen.getByRole('button', { name: 'Delete blocked-countries' }));
     await waitFor(() =>
       expect(state.toast).toHaveBeenCalledWith(
-        expect.objectContaining({ kind: 'error', description: expect.stringMatching(/rule uses/) })
+        expect.objectContaining({
+          kind: 'error',
+          description: expect.stringMatching(/rule uses/),
+          error: err,
+        })
       )
     );
   });

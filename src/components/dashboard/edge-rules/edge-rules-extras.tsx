@@ -27,7 +27,7 @@ export function EdgeRulesExtras({ slug, rules }: { slug?: string; rules: EdgeRul
       {slug && (
         <>
           <CapabilityGate capability="edge-rule-history" title="Versions">
-            <EdgeRuleVersions slug={slug} rules={rules} />
+            <EdgeRuleVersions slug={slug} />
           </CapabilityGate>
           <CapabilityGate capability="edge-rule-suggestions" title="Suggested protections">
             <EdgeRuleSuggestions slug={slug} />

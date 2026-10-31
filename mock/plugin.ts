@@ -6490,10 +6490,10 @@ route('POST', '/v1/keys/{id}/rotate', ({ params }) => {
   };
 });
 
-route('GET', '/v1/edge-rules', () => db.edgeRules);
+route('GET', '/v1/edge-rules', () => db.edgeRules.map(edgeRuleMock.wireRule));
 route('GET', '/v1/apps/{slug}/edge-rules', ({ params }) => {
   const a = app(params.slug);
-  return db.edgeRules.filter((r) => r.app_id === a.id);
+  return db.edgeRules.filter((r) => r.app_id === a.id).map(edgeRuleMock.wireRule);
 });
 
 /** jwt and ip are paid; geo is allowed on free with a tighter quota. */
@@ -6568,7 +6568,7 @@ route('POST', '/v1/apps/{slug}/edge-rules', ({ params, body }) => {
   };
   db.edgeRules.push(rule);
   edgeRuleMock.record(a.id);
-  return status(201, rule);
+  return status(201, edgeRuleMock.wireRule(rule));
 });
 
 /**
@@ -6632,7 +6632,7 @@ route('PATCH', '/v1/edge-rules/{id}', ({ params, body }) => {
   if (body.clear_penalty) delete rule.penalty;
   rule.updated_at = db.iso(0);
   edgeRuleMock.record(rule.app_id);
-  return rule;
+  return edgeRuleMock.wireRule(rule);
 });
 
 route('GET', '/v1/apps/{slug}/throttle-suggestions', ({ params, query }) => {
@@ -6753,7 +6753,7 @@ route('POST', '/v1/edge-rules/{id}/waf-exclusions', ({ params, body }) => {
   rule.action = { ...action, exclude_rule_ids: ids };
   rule.updated_at = db.iso(0);
   edgeRuleMock.record(rule.app_id);
-  return rule;
+  return edgeRuleMock.wireRule(rule);
 });
 
 // Reusable rule lists (lists.go), the signed-in account's.
